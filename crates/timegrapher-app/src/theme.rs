@@ -1113,6 +1113,9 @@ pub fn pane_toolbar(
     ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
         ui.set_clip_rect(room.intersect(ui.clip_rect()));
         ui.horizontal(|ui| {
+            // The row as tall as its tallest field from the start, so each
+            // control is centred on the same line.
+            ui.set_min_height(CONTROL_H);
             ui.spacing_mut().item_spacing = Vec2::new(BAR_GAP, 4.0);
             set_bar(
                 ui,
@@ -1562,7 +1565,6 @@ pub enum Icon {
     Truing,
     AutoCentre,
     Masks,
-    Unmask,
     ArrowDown,
     ArrowRight,
     Stacked,

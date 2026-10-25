@@ -533,8 +533,10 @@ fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
 }
 
 /// A choice between two settings is one switch in a toolbar, an icon's
-/// width, not a pair of icons: Direction on the strip, Show on the
-/// distributions, Layout on the profile, and the rest.
+/// width, not a pair of icons: Show on the distributions, Layout on the
+/// profile, and the rest. (The strip's Direction is the one labelled
+/// two-part control, Down | Across: see
+/// `the_strip_direction_is_down_or_across_in_words`.)
 #[test]
 fn a_two_way_choice_is_one_icon_wide() {
     let ctx = {
@@ -561,32 +563,102 @@ fn a_two_way_choice_is_one_icon_wide() {
         let prefix = format!("{}/", p.title());
         for (k, r) in theme::tools_drawn_at(&ctx) {
             if let Some(name) = k.strip_prefix(&prefix) {
-                if [
-                    "Show",
-                    "Values",
-                    "Direction",
-                    "Layout",
-                    "Scale",
-                    "Time From",
-                    "Keep",
-                ]
-                .contains(&name)
-                {
+                if ["Show", "Values", "Layout", "Scale", "Time From", "Keep"].contains(&name) {
                     assert!(r.width() < 30.0, "{k} is {} pt wide", r.width());
                     seen.push(name.to_string());
                 }
             }
         }
     }
-    for name in [
-        "Show",
-        "Values",
-        "Direction",
-        "Layout",
-        "Scale",
-        "Time From",
-        "Keep",
-    ] {
+    for name in ["Show", "Values", "Layout", "Scale", "Time From", "Keep"] {
         assert!(seen.iter().any(|s| s == name), "{name} not drawn: {seen:?}");
     }
+}
+
+/// The Paper Strip's toolbar, per the Bench design: Rate, Amplitude and
+/// Beat Error at its left end, then Width and Length; Direction is a
+/// labelled Down | Across control; Unmask All is gone (Edit ▸ Remove All
+/// Masks does it).
+#[test]
+fn the_strip_direction_is_down_or_across_in_words() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 700.0));
+    let mut out = None;
+    for _ in 0..3 {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        out = Some(ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.pane_tools(ui, Pane::Strip);
+            });
+        }));
+    }
+    let words: Vec<String> = out
+        .unwrap()
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+            _ => None,
+        })
+        .collect();
+    for w in ["Direction", "Down", "Across", "Width", "Length"] {
+        assert!(words.iter().any(|t| t == w), "{w} not drawn: {words:?}");
+    }
+    let keys: Vec<String> = theme::tools_drawn_at(&ctx)
+        .into_iter()
+        .filter_map(|(k, _)| k.strip_prefix("Paper Strip/").map(str::to_string))
+        .filter(|k| !k.starts_with('|'))
+        .collect();
+    assert_eq!(
+        keys.first().map(String::as_str),
+        Some("Draw Over the Strip"),
+        "{keys:?}"
+    );
+    assert_eq!(keys.get(1).map(String::as_str), Some("Width"), "{keys:?}");
+    assert!(!keys.iter().any(|k| k == "Unmask All"), "{keys:?}");
+    let at = |k: &str| keys.iter().position(|x| x == k).unwrap();
+    assert!(
+        at("Centre") < at("Rate Line") && at("Rate Line") < at("Mask"),
+        "{keys:?}"
+    );
+    assert!(at("Mask") < at("Direction"), "{keys:?}");
+}
+
+/// Edit ▸ Remove All Masks asks before it brings every masked stretch
+/// back: the masks stay while the question is up.
+#[test]
+fn removing_all_masks_asks_first() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    app.set_masked(vec![(10.0, 12.0), (30.0, 33.0)]);
+    assert!(
+        app.masked_words().contains("2 stretches masked"),
+        "{}",
+        app.masked_words()
+    );
+    app.remove_masks_asked = true;
+    let mut words = Vec::new();
+    for _ in 0..2 {
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            app.remove_masks_dialog(ctx)
+        });
+        words = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect();
+    }
+    assert!(words.iter().any(|w| w == "Remove all masks?"), "{words:?}");
+    assert_eq!(app.masked.len(), 2, "nothing removed before the yes");
 }
