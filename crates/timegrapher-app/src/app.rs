@@ -5078,7 +5078,8 @@ impl TimegrapherApp {
                 RichText::new(match what {
                     Confirm::NewSession => "Start a new session?",
                     Confirm::NewTake(_) => "Start a new take without saving?",
-                    Confirm::PickWatch(_) => "Pick another watch without saving?",
+                    // A watch picked on the Watch line is the next take's.
+                    Confirm::PickWatch(_) => "Start a new take without saving?",
                     Confirm::Quit => "Quit without saving?",
                     Confirm::Open { .. } => "Open the recording without saving?",
                     Confirm::Microphone | Confirm::QuickListen => {
@@ -7577,14 +7578,16 @@ impl TimegrapherApp {
     }
 
     /// A watch, or No Watch (`None`), picked on the Watch line: the watch
-    /// on the microphone, so a take on show is put away first (asking when
-    /// it has unsaved sound) and the card shows the watch picked at once.
+    /// on the microphone, so a take on show is put away first and the card
+    /// shows the watch picked at once. Unsaved sound is asked about first,
+    /// Quick Listen's too: sound never goes without a question here.
     fn line_pick(&mut self, id: Option<String>, asked: bool) {
         if self.running() || self.saving_busy() {
             return;
         }
         if self.live.is_some() || self.session.recorder.is_some() {
-            if !asked && self.needs_save_confirmation() {
+            let quick = self.quick_unsaved() && self.unsaved_s() > 5.0;
+            if !asked && (self.needs_save_confirmation() || quick) {
                 self.confirm = Some(Confirm::PickWatch(id));
                 return;
             }
@@ -21012,6 +21015,44 @@ mod tests {
         app.line_pick(None, false);
         assert!(app.open_watch().is_none() && app.live.is_none());
         assert_eq!((app.lift_deg, app.bph), (DEFAULT_LIFT_DEG, None));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Unsaved sound, Quick Listen's included, is asked about before the
+    /// Watch line puts its take away: Cancel leaves everything as it was,
+    /// Don't Save picks the watch.
+    #[test]
+    fn the_watch_line_asks_before_putting_away_unsaved_sound() {
+        let (mut app, base) = line_app("ask", &["Pepsi"], None);
+        let pepsi = watch_id(&app, "Pepsi");
+        app.quick_listen = true;
+        app.session.listen();
+        let info = app.info("", 48000, 16);
+        let mut r = Recorder::start(&base.join("unsaved"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 20],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        assert!(app.quick_unsaved() && !app.needs_save_confirmation());
+        app.line_pick(Some(pepsi.clone()), false);
+        assert_eq!(app.confirm, Some(Confirm::PickWatch(Some(pepsi.clone()))));
+        assert!(app.open_watch().is_none() && app.session.recorder.is_some());
+        // Cancel: nothing changes.
+        app.confirm = None;
+        assert!(app.open_watch().is_none() && app.session.recorder.is_some());
+        // Don't Save.
+        app.line_pick(Some(pepsi), true);
+        assert!(
+            app.session.recorder.is_none(),
+            "the sound went, as answered"
+        );
+        assert_eq!(app.open_watch().unwrap().watch.name, "Pepsi");
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }
