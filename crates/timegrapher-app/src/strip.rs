@@ -446,8 +446,9 @@ fn paint_density(
 
 /// Write `name` along the stretch `seg` of the track `lane` from its start
 /// (`start_at` its start's place along the time), else `code` when the
-/// name doesn't fit, else nothing. Turned a quarter, read from the top,
-/// when the track runs down.
+/// name doesn't fit, else nothing, in `color` on a small `plate`, so it
+/// reads the same on solid teal, faded teal or hatching. Turned a quarter,
+/// read from the top, when the track runs down.
 #[allow(clippy::too_many_arguments)]
 fn track_label(
     painter: &egui::Painter,
@@ -457,6 +458,7 @@ fn track_label(
     name: &str,
     code: &str,
     color: Color32,
+    plate: Color32,
     horizontal: bool,
 ) {
     let font = FontId::proportional(11.0);
@@ -471,11 +473,19 @@ fn track_label(
         .map(|t| painter.layout_no_wrap(t.to_string(), font.clone(), color))
         .find(|g| g.size().x <= room);
     let Some(galley) = galley else { return };
-    let w = galley.size().x;
+    let (w, h) = (galley.size().x, galley.size().y);
     if horizontal {
         // From the start, or the left edge it runs in from.
         let x = start_at.max(seg.left()) + 4.0;
         let x = x.min(seg.right() - 4.0 - w);
+        painter.rect_filled(
+            Rect::from_min_size(
+                Pos2::new(x - 2.0, lane.center().y - h / 2.0),
+                Vec2::new(w + 4.0, h),
+            ),
+            2.0,
+            plate,
+        );
         painter.galley(
             Pos2::new(x, lane.center().y - galley.size().y / 2.0),
             galley,
@@ -485,6 +495,14 @@ fn track_label(
         // Newest at the top: the start is the bottom.
         let y = start_at.min(seg.bottom()) - 4.0 - w;
         let y = y.max(seg.top() + 4.0);
+        painter.rect_filled(
+            Rect::from_min_size(
+                Pos2::new(lane.center().x - h / 2.0, y - 2.0),
+                Vec2::new(h, w + 4.0),
+            ),
+            2.0,
+            plate,
+        );
         let shape = egui::epaint::TextShape::new(
             Pos2::new(lane.center().x + galley.size().y / 2.0, y),
             galley,
@@ -549,15 +567,6 @@ pub fn paint_track(
     let ink = vis.text_color();
     for (i, &(a, b, name, code)) in track.iter().enumerate() {
         let start = along(at(a.max(0.0)));
-        // Dark words on the solid part, the text colour on the faded.
-        let settled = settled_from(a, b, settles);
-        let ink_at = |t: f64| {
-            if t < settled {
-                crate::theme::TRACK_LABEL
-            } else {
-                ink
-            }
-        };
         if i > 0 {
             if horizontal {
                 painter.vline(start, lane.y_range(), cut);
@@ -586,7 +595,8 @@ pub fn paint_track(
                         along(at(from.max(0.0))),
                         name,
                         code,
-                        ink_at(from),
+                        ink,
+                        pal.card,
                         horizontal,
                     );
                 }
@@ -602,7 +612,8 @@ pub fn paint_track(
                     along(at(from.max(0.0))),
                     name,
                     code,
-                    ink_at(from),
+                    ink,
+                    pal.card,
                     horizontal,
                 );
             }
@@ -618,6 +629,7 @@ pub fn paint_track(
                 why,
                 "",
                 ink.gamma_multiply(0.7),
+                pal.card,
                 horizontal,
             );
         }
@@ -626,29 +638,6 @@ pub fn paint_track(
         if let Some(seg) = along_rect(lane, a, b, &at, horizontal) {
             painter.rect_filled(seg, 0.0, vis.extreme_bg_color);
             crate::theme::hatch(&painter, seg, pal.text_tertiary, 2.5, 6.0);
-            // A backing under the word, so the hatching doesn't run
-            // through it.
-            let word = painter.layout_no_wrap("Masked".into(), FontId::proportional(11.0), ink);
-            let room = if horizontal {
-                seg.width()
-            } else {
-                seg.height()
-            } - 8.0;
-            if word.size().x <= room {
-                let (w, h) = (word.size().x + 4.0, word.size().y);
-                let back = if horizontal {
-                    Rect::from_min_size(
-                        Pos2::new(seg.left() + 2.0, lane.center().y - h / 2.0),
-                        Vec2::new(w, h),
-                    )
-                } else {
-                    Rect::from_min_size(
-                        Pos2::new(lane.center().x - h / 2.0, seg.bottom() - 2.0 - w),
-                        Vec2::new(h, w),
-                    )
-                };
-                painter.rect_filled(back, 2.0, vis.extreme_bg_color);
-            }
             track_label(
                 &painter,
                 lane,
@@ -657,6 +646,7 @@ pub fn paint_track(
                 "Masked",
                 "",
                 ink,
+                pal.card,
                 horizontal,
             );
         }

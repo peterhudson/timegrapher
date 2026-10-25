@@ -4386,7 +4386,7 @@ impl TimegrapherApp {
                     0.0,
                     egui::TextFormat {
                         background: pal.positions,
-                        ..egui::TextFormat::simple(font.clone(), theme::TRACK_LABEL)
+                        ..egui::TextFormat::simple(font.clone(), theme::ON_TEAL)
                     },
                 );
                 job.append(
@@ -4433,9 +4433,9 @@ impl TimegrapherApp {
                 return;
             }
             let font = egui::FontId::proportional(12.0);
-            let code =
-                ui.painter()
-                    .layout_no_wrap(shown.code().to_string(), font, theme::TRACK_LABEL);
+            let code = ui
+                .painter()
+                .layout_no_wrap(shown.code().to_string(), font, theme::ON_TEAL);
             let w = 4.0 + 18.0 + 4.0 + 3.0 + code.size().x + 3.0 + 4.0 + 10.0 + 4.0;
             let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 26.0), egui::Sense::click());
             let on = self.brush.is_some();
@@ -4471,7 +4471,7 @@ impl TimegrapherApp {
             ui.painter()
                 .rect_filled(swatch, 3.0, pal.positions.gamma_multiply(fade));
             ui.painter()
-                .galley(code_at, code, theme::TRACK_LABEL.gamma_multiply(fade));
+                .galley(code_at, code, theme::ON_TEAL.gamma_multiply(fade));
             // The ▾, drawn as the pop-ups' is.
             let c = egui::Pos2::new(rect.right() - 9.0, rect.center().y + 1.0);
             ui.painter().add(egui::Shape::convex_polygon(
@@ -6993,7 +6993,7 @@ impl TimegrapherApp {
             };
             painter.rect_filled(r, egui::CornerRadius::same(theme::CONTROL_RADIUS - 1), fill);
             let ink = if on {
-                theme::TRACK_LABEL
+                theme::ON_TEAL
             } else if editable {
                 pal.text
             } else {
@@ -10733,15 +10733,29 @@ impl TimegrapherApp {
             };
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if let Some(kind) = alert {
-                    let (icon, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
-                    theme::alert_icon(ui.painter(), icon, kind, pal);
+                let icon = |ui: &mut egui::Ui| {
+                    if let Some(kind) = alert {
+                        let (icon, _) =
+                            ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
+                        theme::alert_icon(ui.painter(), icon, kind, pal);
+                    }
+                };
+                // The bar's right side runs right to left: the icon still
+                // reads first.
+                let rtl = ui.layout().prefer_right_to_left();
+                if !rtl {
+                    icon(ui);
                 }
-                ui.add(
-                    egui::Button::new(RichText::new(text).small().color(color))
-                        .frame_when_inactive(false),
-                )
-                .on_hover_text(hint)
+                let resp = ui
+                    .add(
+                        egui::Button::new(RichText::new(text).small().color(color))
+                            .frame_when_inactive(false),
+                    )
+                    .on_hover_text(hint);
+                if rtl {
+                    icon(ui);
+                }
+                resp
             })
             .inner
         };

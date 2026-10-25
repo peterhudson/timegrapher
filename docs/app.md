@@ -705,8 +705,9 @@ through the unlock, with a shaded band where the middle 80% of beats fall
 and the marks the engine read, all grey and told apart by their lines:
 unlock (solid) and drop (dashed), from which
 amplitude and the unlock-based beat error come, the drop's peak (a thinner
-dashed line), the three sounds where the engine tells them apart (dotted: 1 unlock,
-2 impulse, 3 drop) and the noise floor. Each line is named on the plot.
+dashed line), the three sounds where the engine tells them apart (short dotted stubs up
+from the foot, numbered 1 unlock, 2 impulse, 3 drop, the whole name and
+time in each one's hover) and the noise floor. The edges are named at the top.
 The edges and the dotted sounds are two different measurements of
 the same averaged sound, not single beats: the edges are where the
 readings come from, and the sounds are where each of the three sounds
@@ -907,7 +908,9 @@ the strip runs down):
   40 s and stays faint, so each change shows; a thin dark line marks
   each change. The plot behind the beats takes the same at a sixth of
   the strength.
-- Masked stretches are grey over it, named "Masked".
+- Masked stretches are grey hatching over it, named "Masked".
+- Each name sits on a small plate of the card's colour, in the text
+  colour, so it reads over solid teal, faded teal or hatching.
 - During and after a Positions Test, the time before the test and the
   time it didn't use are left plain, with their names.
 - **Tick** and **Tock** are in the corner left of it; each line drawn

@@ -70,8 +70,9 @@ pub struct Palette {
 pub const TRACK_FADE_S: f64 = 40.0;
 /// The plot behind the beats takes the track at this much of its strength.
 pub const TRACK_WASH: f32 = 1.0 / 6.0;
-/// The words on the solid part of the track: dark in both themes.
-pub const TRACK_LABEL: Color32 = Color32::from_rgb(0x1d, 0x1d, 0x1f);
+/// Words and codes drawn on solid teal (the brush's swatch, a lit
+/// position button): dark in both themes.
+pub const ON_TEAL: Color32 = Color32::from_rgb(0x1d, 0x1d, 0x1f);
 /// A masked stretch is hatched in the faint text colour: on the track at
 /// full strength, down the plot at [`MASK_WASH`] of it.
 pub const MASK_WASH: f32 = 0.35;

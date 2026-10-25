@@ -194,11 +194,11 @@ pub const PROFILE: &[&str] = &[
      from: unlock (solid) where the beat first rises above the noise, drop (dashed) where \
      the drop starts, and the drop's peak (a thinner dashed line). Amplitude comes from the time between unlock and drop; the beat \
      error from the unlocks.",
-    "The dotted grey lines mark where each of the three sounds rises halfway up its own \
-     climb. They come from a separate measurement of the beat's shape, so they sit \
+    "The short dotted grey stubs at the foot, numbered 1, 2 and 3, mark where each of the \
+     three sounds rises halfway up its own climb. Hover over one for its name and time. They come from a separate measurement of the beat's shape, so they sit \
      near but not exactly on the edges. Both \
      are measured on the same averaged sound, not on single beats.",
-    "A dotted sound line is missing when that sound can't be told apart from its \
+    "A sound's stub is missing when that sound can't be told apart from its \
      neighbour: a soft unlock that merges into the impulse, say.",
     "The flat dashed line is the noise floor: the level before the beat starts.",
     "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
