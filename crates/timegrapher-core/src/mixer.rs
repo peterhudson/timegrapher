@@ -342,8 +342,8 @@ pub fn other_fixes(check: &SignalCheck, os: &str) -> Vec<Fix> {
         fix(
             IssueCode::AgcSuspected,
             match os {
-                "windows" => "The background rises between ticks, as automatic gain makes it. Windows keeps automatic gain under Control Panel > Sound > Recording > the microphone > Properties, as 'Audio enhancements' or an AGC option.",
-                "macos" => "The background rises between ticks, as automatic gain makes it. macOS has no system automatic gain for USB microphones; some apps and voice-processing tools add it.",
+                "windows" => "The background rises between ticks, as automatic gain makes it. A USB microphone's own automatic gain is the AGC option under Control Panel > Sound > Recording > the microphone > Properties (Levels or Custom), and `timegrapher devices --agc-off` or the app's Automatic Gain switch (Settings > Microphone) turns it off; 'Audio enhancements' there can add more.",
+                "macos" => "The background rises between ticks, as automatic gain makes it. macOS shows no setting for a USB microphone's own automatic gain; `timegrapher devices --agc-off` or the app's Automatic Gain switch (Settings > Microphone) turns it off. The microphone turns it on again when it is plugged in.",
                 _ => "The background rises between ticks, as automatic gain makes it.",
             }
             .to_string(),
