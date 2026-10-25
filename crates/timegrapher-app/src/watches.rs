@@ -1,4 +1,4 @@
-//! The Watches pane's parts: the library's watches as a list, one watch's
+//! The Watches view's parts: the library's watches as a list, one watch's
 //! details and takes, and the form for a watch's details. The app owns
 //! the library and acts on what these return.
 
@@ -14,6 +14,9 @@ use timegrapher_core::library::{Field, FieldKind, Library, Take, Watch, WatchEnt
 use timegrapher_core::session::Position;
 
 pub const HELP: &[&str] = &[
+    "Watches is the window's second view: the switch at the top left, or View > Watches \
+     (Ctrl+2, Cmd+2 on a Mac), shows it, and Bench (Ctrl+1) goes back. A take keeps running \
+     behind it. Open on a take, or starting one from a watch, goes to the Bench.",
     "Your watches, each with its details and every take made of it, kept in the Watches \
      folder (Settings > General says where). Pick a watch to see its takes and to start a \
      new one; Save… then saves the take into that watch, named by when it started.",
