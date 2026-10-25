@@ -827,6 +827,10 @@ const AGC_HINT: &str = "The microphone's own automatic gain, which raises its le
 const MASK_HINT: &str = "Drag across a stretch to leave it out of the readings. Nothing is \
      deleted: the beats stay, hatched. Right-click a mask to remove it; Edit > Remove All \
      Masks removes them all.";
+/// The Steadiness panes' Info button.
+const INFO_HINT: &str =
+    "Info: what this view shows, and each reading's findings and statistics, in full.";
+
 const EXPORT_HINT: &str = "Save this pane as a picture: a PNG of it as it is on the screen, \
      or an SVG drawing whose lines and text stay sharp at any size. The file name's ending, \
      .png or .svg, decides which. The pane's name, and a chart's key, go at the top in place \
@@ -2069,6 +2073,8 @@ pub struct TimegrapherApp {
     maps_log: bool,
     /// The calibre's wheels marked on the period axes.
     show_wheels: bool,
+    /// The Steadiness panes' Info panel open, in every view alike.
+    steady_info: bool,
     scope_view: scope::View,
     /// Sound read from the recording for the Scope once stopped: the
     /// stretch asked for (seconds) and what was read of it.
@@ -2246,6 +2252,7 @@ impl TimegrapherApp {
             fft_timing: self.fft_timing,
             maps_log: self.maps_log,
             show_wheels: self.show_wheels,
+            steady_info: self.steady_info,
             positions_settle_s: self.guided_settle_s,
             positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
@@ -2294,6 +2301,7 @@ impl TimegrapherApp {
             fft_timing,
             maps_log,
             show_wheels,
+            steady_info,
             positions_settle_s,
             positions_measure_s,
             scope,
@@ -2361,6 +2369,7 @@ impl TimegrapherApp {
         self.fft_timing = fft_timing;
         self.maps_log = maps_log;
         self.show_wheels = show_wheels;
+        self.steady_info = steady_info;
         self.guided_settle_s =
             positions_settle_s.clamp(*guided::SETTLE_RANGE.start(), *guided::SETTLE_RANGE.end());
         self.session.set_settle_s(self.guided_settle_s);
@@ -2537,6 +2546,7 @@ impl TimegrapherApp {
             fft_timing: false,
             maps_log: false,
             show_wheels: true,
+            steady_info: false,
             scope_view: scope::View::default(),
             scope_audio: None,
             scope_traces: std::collections::VecDeque::new(),
@@ -6963,10 +6973,21 @@ impl TimegrapherApp {
                 self.export_button(ui, pane);
             }),
             p if p.steady_view().is_some() => {
-                theme::pane_toolbar(ui, title, help::STEADINESS, |ui| {
+                let mut info = self.steady_info;
+                let mut pin = |ui: &mut egui::Ui| {
+                    let accent = theme::pal(ui).accent;
+                    if theme::icon_toggle(ui, Icon::Info, info, accent)
+                        .on_hover_text(INFO_HINT)
+                        .clicked()
+                    {
+                        info = !info;
+                    }
+                };
+                theme::pane_toolbar_pinned(ui, title, help::STEADINESS, Some(&mut pin), |ui| {
                     self.steady_settings(ui, p);
                     self.export_button(ui, p);
-                })
+                });
+                self.steady_info = info;
             }
             Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |ui| {
                 self.export_button(ui, pane)
@@ -7342,6 +7363,7 @@ impl TimegrapherApp {
                 fft_timing: self.fft_timing,
                 maps_log: self.maps_log,
                 wheels: self.show_wheels,
+                info: self.steady_info,
             },
         );
     }
@@ -14728,10 +14750,10 @@ fn chart_key(
 /// A chart's key, right to left from its top right corner: each name
 /// after a dot, or a short dash for a line drawn dashed over another
 /// colour.
-fn paint_key(
+pub fn paint_key(
     painter: &egui::Painter,
     frame: egui::Rect,
-    key: &[(&'static str, Color32, Option<Color32>)],
+    key: &[(&str, Color32, Option<Color32>)],
     ui: &egui::Ui,
     pal: &theme::Palette,
 ) {

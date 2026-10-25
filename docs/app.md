@@ -1100,14 +1100,23 @@ unlock) each change over the session, from the same tests as
 `timegrapher series` (see [series.md](series.md)). Each view is a pane of
 its own, so two can sit side by side; their icons sit together under
 **Analysis** in the icon bar (and in an Analysis menu under View), and
-they start as hidden tabs beside the Tick Tock Profile. Each series shows the sentence `series` writes, saying what
-was detected (a cycle, two levels, a step, a trend, correlation between
-readings, or none of these), with no verdict word or colour, and under it
-the statistics: readings, median, standard deviation, the scatter from one
-reading to the next, the lag-1 correlation and Ljung–Box p-value, and the
-trend and period when found. **Rate**, **Amplitude** and **Beat Error**,
-in each pane's toolbar, choose which series that pane shows; at least one
-stays on.
+they start as hidden tabs beside the Tick Tock Profile. Above the plots
+is the toolbar and nothing else: each plot has its series' title, and the
+plots take the rest of the pane. **Info**, an "i" in a circle fixed at the
+right of the toolbar just left of the **?**, opens the Info panel down the
+right of the pane (300 pt, or a third of the pane if less; over the plots,
+from the pane's top right corner, in a pane under 600 pt wide): what the
+view shows, then for each series shown, under its coloured title, the
+sentence `series` writes, saying what was detected (a cycle, two levels, a
+step, a trend, correlation between readings, or none of these), with no
+verdict word or colour, and the statistics: what was tested ("Tested on 179
+10 s readings"), median, standard deviation, the scatter from one reading
+to the next, the lag-1 correlation and Ljung–Box p-value, and the trend
+and period when found; then how much of the session was tested. Its words
+wrap, scroll and can be selected to copy. It opens and closes only when
+clicked, and is one setting for every Steadiness view, kept between runs.
+**Rate**, **Amplitude** and **Beat Error**, in each pane's toolbar, choose
+which series that pane shows; at least one stays on.
 
 Known phase jumps and position boundaries remain cuts in the derived
 Steadiness log, including when separate visits to one position are joined.
@@ -1122,7 +1131,11 @@ sizes, positive, as the tests beside them read them.
 The views:
 **Readings Over Time** (the readings in time order, with the stretches of
 constant level the change finder found and, for two states, the two
-levels dashed; scaled to the readings with lone wild ones left out),
+levels dashed; scaled to the readings with lone wild ones left out; a key
+in the plot's top right corner, as Charts' key, says after a dot in the
+series' colour what a dot is and how many are drawn: "10 s readings
+(179)" for the rate, "2 s windows (880)" for the amplitude and beat
+error, measured every 2 s),
 **Periods** (the period search's score at each period on a logarithmic
 axis, with the 1% false-alarm line dashed, the calibre's wheels' periods
 marked, and the strongest component labelled; **Log

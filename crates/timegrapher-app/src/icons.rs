@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 78] = [
+const ALL: [Icon; 79] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -87,6 +87,7 @@ const ALL: [Icon; 78] = [
     Icon::Funnel,
     Icon::Fit,
     Icon::Highlighter,
+    Icon::Info,
 ];
 
 /// The drawing behind each icon, with the pun it makes.
@@ -388,6 +389,10 @@ fn drawing(icon: Icon) -> &'static str {
         // paints a stretch of the strip as one position.
         Icon::Highlighter => {
             r#"<path d="M15 3l6 6-8.5 8.5-6-6z"/><path d="M6.5 11.5L5 16l3 3 4.5-1.5"/><path d="M3 21.5h9" stroke-width="2.6"/>"#
+        }
+        // The standard "i" in a circle: Info, the findings in full.
+        Icon::Info => {
+            r#"<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/>"#
         }
     }
 }

@@ -220,9 +220,14 @@ pub const STEADINESS: &[&str] = &[
      levels the readings switch between, a level that steps and stays, a slow trend, \
      correlation between readings, or none of these. When two levels come from the \
      unlock mark hopping between two edges of the sound, the sentence says so. Under \
-     it are the statistics: readings, median, standard deviation, the scatter from one \
-     reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
-     trend and period when found.",
+     it are the statistics: what was tested, median, standard deviation, the scatter \
+     from one reading to the next, the lag-1 correlation and the Ljung–Box p-value, and \
+     the trend and period when found. Info, the i at the right of the toolbar, shows \
+     them beside the plots, with what the view shows; it is the same in every view.",
+    "Two kinds of dot: a rate reading needs 10 s of beats, while the amplitude and the \
+     beat error are measured every 2 s, so their plots draw a dot per 2 s window and \
+     their cycles are folded on those finer windows. The key in each plot's corner says \
+     which, and how many.",
     "Each view is a pane of its own, with its icon under Analysis at the top, so two \
      can sit side by side. The hare, the swing and the seesaw, for Rate, Amplitude and \
      Beat Error in each pane's toolbar, choose which series that pane shows; at least one \
