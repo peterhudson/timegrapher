@@ -13,6 +13,10 @@ cargo run --release -p timegrapher-app -- rec.flac  # analyse a recording
 
 On Linux, building it needs the ALSA headers (`sudo apt install libasound2-dev`).
 
+The app's look and behaviour are set by the [Design Guide](design/design-guide.md),
+and how its parts fit together by [App Structure](design/app-structure.md).
+Where today's app differs from them, the app changes.
+
 ## The screen
 
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or

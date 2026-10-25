@@ -34,9 +34,11 @@ REPO = os.environ.get("GITHUB_REPOSITORY") or "peterhudson/timegrapher"
 PLATFORMS = ("linux", "macos", "windows")
 INDEX = "docs/index.md"
 # Research evidence, the calibre train counts with their photographs (over
-# 200 MB), stays on GitHub: links to it from the download go there.
+# 200 MB), and the design guide for contributors stay on GitHub: links to
+# them from the download go there.
 ON_GITHUB = ("docs/*-train-wheel-counts.md", "docs/*-train-research.md",
-             "docs/assets/train-wheels/*", "docs/assets/seiko-miyota/*")
+             "docs/assets/train-wheels/*", "docs/assets/seiko-miyota/*",
+             "docs/design/*")
 
 STYLE = """
 :root { color-scheme: light dark; --fg: #1d1d1f; --muted: #6e6e73; --bg: #fff;
