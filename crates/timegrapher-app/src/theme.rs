@@ -1564,6 +1564,7 @@ pub enum Icon {
     Screwdriver,
     NewPhoto,
     Funnel,
+    Fit,
 }
 
 /// A square button with an icon. While `on` it is a chip tinted in `color`

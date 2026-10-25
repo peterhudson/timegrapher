@@ -179,15 +179,16 @@ pub fn combo(
         egui::CornerRadius::same(crate::theme::CONTROL_RADIUS),
         fill,
     );
-    // The ▾, 10 in from the right edge.
+    // The ▾, 10 in from the right edge, drawn as a pop-up's is: the field
+    // reads as live as the pop-ups beside it.
     let c = egui::pos2(rect.right() - 14.0, rect.center().y);
     ui.painter().add(egui::Shape::convex_polygon(
         vec![
-            c + egui::vec2(-4.0, -2.5),
-            c + egui::vec2(4.0, -2.5),
-            c + egui::vec2(0.0, 2.5),
+            c + egui::vec2(-5.0, -3.0),
+            c + egui::vec2(5.0, -3.0),
+            c + egui::vec2(0.0, 3.5),
         ],
-        pal.text_secondary,
+        pal.text,
         egui::Stroke::NONE,
     ));
     let mut child = ui.new_child(
