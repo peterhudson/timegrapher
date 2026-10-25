@@ -3398,6 +3398,21 @@ impl TimegrapherApp {
         (out, settles)
     }
 
+    /// A take in a watch whose session file names no calibre (one kept
+    /// from Quick Listen by an older app) opens with the watch's details.
+    fn watch_fills_in(&mut self, take: &Path, m: &Manifest) {
+        if m.calibre.as_deref().is_some_and(|c| !c.is_empty()) {
+            return;
+        }
+        let w = match &self.library {
+            Ok(Some(l)) => l.watch_of(take).map(|e| e.watch.clone()),
+            _ => None,
+        };
+        if let Some(w) = w.filter(|w| w.calibre.as_deref().is_some_and(|c| !c.is_empty())) {
+            self.take_watch_details(&w);
+        }
+    }
+
     /// Open a recording, analysed whole. With `ask`, unsaved sound from a
     /// microphone session is not thrown away without asking first.
     fn open_recording(&mut self, path: &Path, ask: bool) {
@@ -3655,7 +3670,11 @@ impl TimegrapherApp {
             self.open_note = None;
         }
         let (stretches, settles) = match manifest {
-            Some((m, entries)) => self.apply_manifest(&m, &entries),
+            Some((m, entries)) => {
+                let out = self.apply_manifest(&m, &entries);
+                self.watch_fills_in(path, &m);
+                out
+            }
             None => Default::default(),
         };
         // Read again for a new beat rate: the settings as they were, not
@@ -3770,6 +3789,7 @@ impl TimegrapherApp {
         self.set_watch_setup(WatchSetup::default());
         self.open_note = None;
         let (stretches, settles) = self.apply_manifest(&m, &entries);
+        self.watch_fills_in(path, &m);
         let label = format!("{name} (analysis only)");
         let (tx, rx) = std::sync::mpsc::channel();
         let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -7156,8 +7176,35 @@ impl TimegrapherApp {
         self.unsorted_open = false;
         self.quick_listen = false;
         self.watch = name;
+        if let Some(w) = self.open_watch().map(|e| e.watch.clone()) {
+            self.take_watch_details(&w);
+        }
         self.note_settings();
         self.save_again();
+    }
+
+    /// A take kept in, or opened from, the watch `w` without a calibre of
+    /// its own takes the watch's:
+    /// - the calibre, and with it the calibre's lift angle and wheels;
+    /// - the watch's own lift angle, where it has one;
+    /// - the watch's beat rate, unless the take was heard at another.
+    ///
+    /// The readings on show are read again at the new lift, not cleared.
+    fn take_watch_details(&mut self, w: &library::Watch) {
+        if let Some(c) = w.calibre.clone().filter(|c| !c.is_empty()) {
+            self.set_calibre(c);
+        }
+        if let Some(l) = w.lift.or_else(|| self.cal.lift(&self.calibre)) {
+            if l != self.lift_deg {
+                self.set_lift(l);
+            }
+            self.lift_context = (l, true);
+        }
+        let bph = w.bph.or_else(|| self.cal.bph(&self.calibre));
+        let heard = self.live.as_ref().and_then(|l| l.bph());
+        if bph.is_some() && heard.is_none_or(|h| Some(h) == bph) {
+            self.bph = bph;
+        }
     }
 
     /// Whether the cards offer Beat Rate and Lift Angle: when the
@@ -16486,6 +16533,74 @@ mod tests {
         assert!(!app.quick_listen && app.watch_open.as_deref() == Some(pepsi.as_str()));
         assert_eq!(app.watch, "Pepsi");
         assert!(!app.needs_save_confirmation());
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A Quick Listen take kept in a watch is saved with the watch's
+    /// calibre, lift angle and beat rate; a take an older app kept there
+    /// without them opens with the watch's.
+    #[test]
+    fn a_take_kept_in_a_watch_takes_the_watchs_calibre() {
+        let base = std::env::temp_dir().join(format!("tg-app-keep-cal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let c = timegrapher_core::calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        let mut diver = library::Watch::new("Diver");
+        diver.calibre = Some(c.calibre.clone());
+        diver.lift = Some(55.0);
+        lib.add(&diver).unwrap();
+        let id = lib.find("Diver").unwrap().watch.id.clone();
+        drop(lib);
+        let takes = root.join("Diver").join(library::TAKES);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        assert!(app.quick_listen_ready(true));
+        assert!(app.calibre.is_empty() && app.bph.is_none());
+        app.session.listen();
+        let info = app.info("", 48000, 16);
+        let mut r = Recorder::start(&base.join("unsaved"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 20],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        app.stop_listening();
+        app.wait_for_save();
+        app.keep_in_watch(&id);
+        app.wait_for_save();
+        let take = std::fs::read_dir(&takes)
+            .unwrap()
+            .next()
+            .expect("a take in the watch")
+            .unwrap()
+            .path();
+        let (m, _) = read_manifest(&take).unwrap().expect("its session file");
+        assert_eq!(m.calibre.as_deref(), Some(c.calibre.as_str()));
+        assert_eq!(m.lift, Some(55.0));
+        assert_eq!(m.bph, c.bph);
+        drop(app);
+
+        // One kept without them opens with the watch's.
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        let bare = Manifest {
+            lift: Some(DEFAULT_LIFT_DEG),
+            ..Default::default()
+        };
+        app.apply_manifest(&bare, &[]);
+        app.watch_fills_in(&take, &bare);
+        assert_eq!(app.calibre, c.calibre);
+        assert_eq!(app.lift_deg, 55.0);
+        assert_eq!(app.bph, c.bph);
+        // A take outside the library keeps what its file says.
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        app.apply_manifest(&bare, &[]);
+        app.watch_fills_in(&base.join("elsewhere"), &bare);
+        assert!(app.calibre.is_empty() && app.bph.is_none());
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

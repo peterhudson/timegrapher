@@ -141,6 +141,9 @@ is no pause, and listening again starts a new take. Its take is not kept
 until it is saved: once it has stopped, **Keep in a Watch** saves it into
 the watch picked from the Save menu (or **New Watch…** there adds one
 first, and the take is kept in it when the form's button is pressed),
+with the watch's calibre, lift angle and beat rate (a beat rate heard
+that differs from the watch's is kept as heard; a take kept in a watch
+without a calibre, by an older app, opens with the watch's),
 **Save in a Folder…** saves it into a folder chosen, and **Save…** in the
 File menu saves it into Unsorted, named as a watch's takes are. Once
 kept, Stop or Save Again adds the sound since to the same take. Until it
