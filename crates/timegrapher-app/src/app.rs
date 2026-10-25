@@ -683,10 +683,14 @@ const EXPORT_HINT: &str = "Save this pane as a picture: a PNG of it as it is on 
      or an SVG drawing whose lines and text stay sharp at any size. The file name's ending, \
      .png or .svg, decides which. The pane's name, and a chart's key, go at the top in place \
      of its controls.";
-const SAVE_MASKS_HINT: &str = "Save the masked stretches to the recording's session file, so \
-     they come back when it is opened again; nothing else in the file changes. A recording \
-     with no session file gets one, which makes its folder a take: refused where the folder \
-     holds other recordings, or a session file that doesn't list the recording.";
+const BRUSH_HINT: &str = "Mark a stretch of the strip as one position, on a take live or \
+     opened: pick the position, then drag along the strip. Drag a change of position along \
+     the track to move it. Esc stops painting.";
+const SAVE_MARKS_HINT: &str = "Save the masked stretches and the positions to the recording's \
+     session file, so they come back when it is opened again; nothing else in the file \
+     changes. A recording with no session file gets one, which makes its folder a take: \
+     refused where the folder holds other recordings, or a session file that doesn't list the \
+     recording.";
 const QUICK_LISTEN_HINT: &str = "Listen: the watch on the microphone, with no watch picked \
      first. Each Listen is a new take. It isn't kept unless Save keeps it, in one of your \
      watches or in a folder: listening again or quitting lets it go without asking.";
@@ -1733,6 +1737,17 @@ pub struct TimegrapherApp {
     /// The strip's Mask tool is on: dragging along it masks a stretch, and
     /// a click on a masked one brings it back.
     masking: bool,
+    /// For a recording opened from disk: the positions and settling its
+    /// session file gave when it was opened or last saved to, so a change
+    /// made with the Position Brush can be asked about before it is thrown
+    /// away. None for a microphone session.
+    opened_positions: Option<Positions>,
+    /// Read again at a new beat rate: the positions as they were, and as
+    /// the session file gave them, to put back once it is in.
+    carried_positions: Option<(Positions, Option<Positions>)>,
+    /// The strip's Position Brush is on, with this position: dragging
+    /// along the strip sets that stretch to it.
+    brush: Option<Position>,
     /// Where the last Save put the session, if it has been saved.
     /// The folder Save offers first.
     save_dir: String,
@@ -2199,6 +2214,9 @@ impl TimegrapherApp {
             masked: Vec::new(),
             opened_masks: None,
             masking: false,
+            opened_positions: None,
+            carried_positions: None,
+            brush: None,
             confirm: None,
             open_ask: None,
             opened_path: String::new(),
@@ -2429,7 +2447,7 @@ impl TimegrapherApp {
         }
         // Listening replaces the recording on show: changed masks on it
         // are asked about first.
-        if !let_go && self.masks_unsaved() {
+        if !let_go && self.marks_unsaved() {
             self.confirm = Some(Confirm::Microphone);
             return;
         }
@@ -2463,7 +2481,9 @@ impl TimegrapherApp {
                 // A new take: nothing of it masked yet.
                 self.masked.clear();
                 self.opened_masks = None;
+                self.opened_positions = None;
                 self.masking = false;
+                self.brush = None;
                 self.reset_session(
                     c.sample_rate,
                     format!("{label} at {} Hz, {}-bit", c.sample_rate, c.bits),
@@ -2640,7 +2660,9 @@ impl TimegrapherApp {
         self.live = None;
         self.masked.clear();
         self.opened_masks = None;
+        self.opened_positions = None;
         self.masking = false;
+        self.brush = None;
         self.clear_trends();
         self.sound_history.clear();
         self.no_sound = false;
@@ -2721,7 +2743,7 @@ impl TimegrapherApp {
     fn needs_save_confirmation(&self) -> bool {
         self.session.recording_fault().is_some()
             || !self.quick_unsaved() && (self.unsaved_s() > 5.0 || self.metadata_unsaved())
-            || self.masks_unsaved()
+            || self.marks_unsaved()
     }
 
     /// Unsaved sound from Quick Listen goes without a question: listening
@@ -2731,14 +2753,57 @@ impl TimegrapherApp {
         self.quick_listen && self.session.mic() && self.session.saved_to().is_none()
     }
 
+    /// A recording opened from disk whose masked stretches or positions
+    /// have changed since it was opened or last saved to.
+    fn marks_unsaved(&self) -> bool {
+        self.masks_changed() || self.positions_changed()
+    }
+
     /// A recording opened from disk whose masked stretches have changed
     /// since it was opened or last saved to.
-    fn masks_unsaved(&self) -> bool {
+    fn masks_changed(&self) -> bool {
         !self.session.mic()
             && self
                 .opened_masks
                 .as_ref()
                 .is_some_and(|m| *m != self.masked)
+    }
+
+    /// A recording opened from disk whose positions have been painted
+    /// since it was opened or last saved to.
+    fn positions_changed(&self) -> bool {
+        !self.session.mic()
+            && self
+                .opened_positions
+                .as_ref()
+                .is_some_and(|p| *p != (self.session.stretches(), self.session.settles()))
+    }
+
+    /// The positions of the recording opened from disk as its session
+    /// file lists them: one entry per stretch in one position, from the
+    /// end of its settling to the next change, in seconds into the
+    /// recording; one with no times while the watch stayed put.
+    fn opened_entries(&self) -> Entries {
+        let spans = self.session.position_spans(self.position);
+        let one = spans.len() == 1;
+        let settles = self.session.settles();
+        spans
+            .iter()
+            .enumerate()
+            .map(|(i, &(a, b, p))| {
+                let a = if i == 0 { 0.0 } else { a };
+                let start = settles
+                    .iter()
+                    .find(|s| (s.0 - a).abs() < 1e-6)
+                    .map_or(a, |s| s.1.min(b));
+                let end = b.is_finite().then_some(b);
+                (
+                    (!one).then_some(start),
+                    end.filter(|_| !one),
+                    p.code().to_string(),
+                )
+            })
+            .collect()
     }
 
     /// Save the masked stretches of the recording opened from disk to its
@@ -2748,20 +2813,27 @@ impl TimegrapherApp {
     /// or a folder with no session file, gets a new one, as a take
     /// recorded here with the same settings would have, which makes its
     /// folder a take; refused where the folder holds other recordings.
-    fn save_masks(&mut self) {
+    fn save_marks(&mut self) {
         let path = PathBuf::from(&self.opened_path);
         let masked: Vec<[f64; 2]> = self.masked.iter().map(|&(a, b)| [a, b]).collect();
+        let positions = self.positions_changed().then(|| self.opened_entries());
+        let what = match (self.masks_changed(), positions.is_some()) {
+            (true, true) => "the masked stretches and the positions",
+            (false, true) => "the positions",
+            _ => "the masked stretches",
+        };
         let saved = match read_manifest(&path) {
-            Ok(Some(_)) => save_masks_to_take(&path, &masked),
+            Ok(Some(_)) => save_marks_to_take(&path, &masked, positions.as_ref()),
             Ok(None) => self.new_take_file(&path, &masked),
             Err(e) => Err(e),
         };
         match saved {
             Ok(file) => {
                 self.opened_masks = Some(self.masked.clone());
-                self.info_msg(format!("Saved the masked stretches to {}.", file.display()));
+                self.opened_positions = Some((self.session.stretches(), self.session.settles()));
+                self.info_msg(format!("Saved {what} to {}.", file.display()));
             }
-            Err(e) => self.error(format!("Couldn't save the masked stretches: {e}")),
+            Err(e) => self.error(format!("Couldn't save {what}: {e}")),
         }
     }
 
@@ -2806,12 +2878,18 @@ impl TimegrapherApp {
             }
         }
         let mut m = self.manifest_header();
-        m.recordings = vec![RecordingEntry {
-            file,
-            position: Some(self.position.code().into()),
-            masked: masked.to_vec(),
-            ..Default::default()
-        }];
+        m.recordings = self
+            .opened_entries()
+            .into_iter()
+            .map(|(start_s, end_s, code)| RecordingEntry {
+                file: file.clone(),
+                position: Some(code),
+                start_s,
+                end_s,
+                masked: masked.to_vec(),
+                ..Default::default()
+            })
+            .collect();
         let text = toml::to_string_pretty(&m).map_err(|e| e.to_string())?;
         write_replacing(&target, &text)?;
         Ok(target)
@@ -3422,7 +3500,7 @@ impl TimegrapherApp {
         if self.analysis_save_busy() || self.saving_busy() {
             return;
         }
-        if ask && (self.session.mic() || self.masks_unsaved()) && self.needs_save_confirmation() {
+        if ask && (self.session.mic() || self.marks_unsaved()) && self.needs_save_confirmation() {
             self.confirm = Some(Confirm::Open {
                 path: path.to_path_buf(),
             });
@@ -3463,6 +3541,7 @@ impl TimegrapherApp {
         self.stop();
         self.masked.clear();
         self.masking = false;
+        self.brush = None;
         let inner = match take_folder(path) {
             Ok(p) => p,
             Err(e) => return self.open_failed(e),
@@ -3606,12 +3685,16 @@ impl TimegrapherApp {
             return self.open_failed(why);
         }
         self.stop();
+        if self.reread_with.is_none() {
+            self.carried_positions = None;
+        }
         // Masks carried with the settings stay; anything else opened
         // starts with what its session file masks.
         let carried_masks = carried.is_some().then(|| std::mem::take(&mut self.masked));
         self.masked.clear();
         if carried_masks.is_none() {
             self.masking = false;
+            self.brush = None;
         }
         // A folder a take was saved into holds the take's own folder.
         let inner = match take_folder(path) {
@@ -4093,7 +4176,16 @@ impl TimegrapherApp {
                 .unwrap_or_default();
             match r {
                 Ok(Some(log)) => {
+                    // Read again at a new beat rate: the positions as they were.
+                    let carried = self.carried_positions.take();
+                    let (stretches, settles) = match &carried {
+                        Some((now, _)) => now.clone(),
+                        None => (stretches, settles),
+                    };
                     self.show_log(log, label, stretches, settles);
+                    if let Some((_, opened)) = carried {
+                        self.opened_positions = opened;
+                    }
                     // A take with no sound shows the profiles it kept.
                     if let Some(k) =
                         kept.and_then(|k| k.lock().ok().map(|mut k| std::mem::take(&mut *k)))
@@ -4165,6 +4257,7 @@ impl TimegrapherApp {
         if let Some(&(_, p)) = self.session.stretches().last() {
             self.position = p;
         }
+        self.opened_positions = Some((self.session.stretches(), self.session.settles()));
         live.set_masked(&self.masked);
         self.live = Some(live);
         self.steady = None;
@@ -4256,6 +4349,201 @@ impl TimegrapherApp {
             v.push((a, b));
         }
         self.set_masked(v);
+    }
+
+    /// The Position Brush's menu button in the Paper Strip toolbar: its
+    /// position's code in teal, and a menu of the six positions, then Stop
+    /// Painting while it is on. In the toolbar's "…" menu, a menu of the
+    /// same.
+    fn brush_control(&mut self, ui: &mut egui::Ui, live: bool) {
+        let pal = theme::pal(ui);
+        let test = self.in_test();
+        let why_not = if !live {
+            Some("Nothing to paint yet. Listen, or open a recording.")
+        } else if test {
+            Some("Not during a Positions Test: the test sets each position.")
+        } else {
+            None
+        };
+        if why_not.is_some() {
+            self.brush = None;
+        }
+        let shown = self.brush.unwrap_or(self.position);
+        let items = |app: &mut Self, ui: &mut egui::Ui| {
+            let font = egui::FontId::proportional(13.0);
+            let widths = Position::ALL.map(|p| {
+                ui.painter()
+                    .layout_no_wrap(p.code().to_string(), font.clone(), pal.teal)
+                    .size()
+                    .x
+            });
+            // The names in a column of their own after the codes.
+            let column = widths.iter().copied().fold(0.0, f32::max);
+            for (p, w) in Position::ALL.into_iter().zip(widths) {
+                let mut job = egui::text::LayoutJob::default();
+                job.append(
+                    p.code(),
+                    0.0,
+                    egui::TextFormat::simple(font.clone(), pal.teal),
+                );
+                job.append(
+                    p.name(),
+                    8.0 + column - w,
+                    egui::TextFormat::simple(font.clone(), pal.text),
+                );
+                // The one in use framed, its teal code still readable.
+                let picked = app.brush == Some(p);
+                if ui
+                    .add(egui::Button::new(job).frame_when_inactive(picked))
+                    .on_hover_text(format!(
+                        "Drag along the strip to mark a stretch {}",
+                        p.name()
+                    ))
+                    .clicked()
+                {
+                    app.brush = Some(p);
+                    app.masking = false;
+                    ui.close();
+                }
+            }
+            if app.brush.is_some() {
+                ui.separator();
+                if ui
+                    .add(
+                        egui::Button::new("Stop Painting")
+                            .shortcut_text("Esc")
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                    )
+                    .clicked()
+                {
+                    app.brush = None;
+                    ui.close();
+                }
+            }
+        };
+        ui.add_enabled_ui(why_not.is_none(), |ui| {
+            if !theme::in_toolbar(ui) {
+                ui.menu_button("Position Brush", |ui| items(self, ui))
+                    .response
+                    .on_hover_text(BRUSH_HINT)
+                    .on_disabled_hover_text(why_not.unwrap_or_default());
+                return;
+            }
+            let font = egui::FontId::proportional(12.0);
+            let code = ui
+                .painter()
+                .layout_no_wrap(shown.code().to_string(), font, pal.teal);
+            let w = 4.0 + 18.0 + 4.0 + code.size().x + 4.0 + 10.0 + 4.0;
+            let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 26.0), egui::Sense::click());
+            let on = self.brush.is_some();
+            let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp));
+            let radius = egui::CornerRadius::same(theme::CONTROL_RADIUS);
+            if on {
+                ui.painter().rect(
+                    rect.shrink(0.5),
+                    radius,
+                    pal.teal.gamma_multiply(0.16),
+                    egui::Stroke::new(1.0_f32, pal.teal.gamma_multiply(0.45)),
+                    egui::StrokeKind::Inside,
+                );
+            } else if resp.hovered() || open {
+                ui.painter().rect_filled(rect, radius, pal.control_hover);
+            }
+            let enabled = ui.is_enabled();
+            let ink = if on {
+                pal.teal
+            } else {
+                pal.text_tertiary.gamma_multiply(0.75)
+            };
+            let icon = egui::Rect::from_min_size(rect.min + Vec2::new(4.0, 4.0), Vec2::splat(18.0));
+            crate::icons::draw(ui.painter(), icon, Icon::Highlighter, ink);
+            let code_at =
+                egui::Pos2::new(icon.right() + 4.0, rect.center().y - code.size().y / 2.0);
+            let code_ink = if enabled {
+                pal.teal
+            } else {
+                pal.teal.gamma_multiply(0.4)
+            };
+            ui.painter().galley(code_at, code, code_ink);
+            // The ▾, drawn as the pop-ups' is.
+            let c = egui::Pos2::new(rect.right() - 9.0, rect.center().y + 1.0);
+            ui.painter().add(egui::Shape::convex_polygon(
+                vec![
+                    c + Vec2::new(-3.5, -1.75),
+                    c + Vec2::new(3.5, -1.75),
+                    c + Vec2::new(0.0, 1.75),
+                ],
+                if enabled { pal.text } else { pal.text_tertiary },
+                egui::Stroke::NONE,
+            ));
+            resp.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::Checkbox,
+                    enabled,
+                    on,
+                    "Position Brush",
+                )
+            });
+            let resp = resp
+                .on_hover_text(format!("Position Brush: {BRUSH_HINT}"))
+                .on_disabled_hover_text(format!("Position Brush: {}", why_not.unwrap_or_default()));
+            egui::Popup::menu(&resp).show(|ui| items(self, ui));
+        });
+    }
+
+    /// Set the stretch from `a` to `b` to the Position Brush's position;
+    /// one under half a second, a slip of the mouse, is left alone. A
+    /// stretch reaching the newest beat (within a second) puts the watch
+    /// in that position from then on.
+    fn paint_position(&mut self, a: f64, b: f64) {
+        let Some(pos) = self.brush else { return };
+        let latest = self.latest_s().max(0.0);
+        let (a, mut b) = (a.min(b).max(0.0), a.max(b).min(latest));
+        // To a tenth of a second: finer than a pointer can place it.
+        let (a, b0) = (tenth(a), tenth(b));
+        b = b0.min(latest);
+        if b - a < 0.5 {
+            return;
+        }
+        if b >= latest - 1.0 {
+            b = latest;
+        }
+        let now = self.session.paint(a, b, pos, self.position, latest);
+        self.positions_moved(now);
+    }
+
+    /// Move the change of position at `was` to `now`.
+    fn move_position_change(&mut self, was: f64, now: f64) {
+        let latest = self.latest_s().max(0.0);
+        let at = self
+            .session
+            .move_change(was, tenth(now), self.position, latest);
+        self.positions_moved(at);
+    }
+
+    /// The positions changed by hand, the watch now in `now`: the
+    /// readings are cut at each change and settling again, and the
+    /// charts, the steadiness tests and the Positions Test table worked
+    /// out afresh.
+    fn positions_moved(&mut self, now: Position) {
+        self.position = now;
+        if let Some(live) = self.live.as_mut() {
+            let heard = live.duration_s();
+            let stretches = self.session.stretches();
+            let mut breaks: Vec<f64> = stretches
+                .iter()
+                .skip(1)
+                .map(|s| s.0)
+                .chain(self.session.settles().iter().map(|s| s.1))
+                .filter(|&t| t <= heard)
+                .collect();
+            breaks.sort_by(f64::total_cmp);
+            breaks.dedup();
+            live.set_breaks(breaks);
+        }
+        self.steady = None;
+        self.steady_job = None;
+        self.rebuild_trend();
     }
 
     /// Bring back the masked stretch over `t`, if there is one.
@@ -4655,7 +4943,7 @@ impl TimegrapherApp {
         let mut choice = None;
         let unsaved = strip::fmt_time(self.unsaved_s());
         let metadata = self.metadata_unsaved();
-        let masks = self.masks_unsaved();
+        let masks = self.marks_unsaved();
         let fault = self.session.recording_fault().map(|f| f.description());
         egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
             ui.set_width(360.0);
@@ -4675,8 +4963,8 @@ impl TimegrapherApp {
             ui.label(if let Some(fault) = &fault {
                 fault.clone()
             } else if masks {
-                "Changes to the masked stretches haven't been saved to the recording's session \
-                 file and will be thrown away."
+                "Changes to the masked stretches or positions haven't been saved to the \
+                 recording's session file and will be thrown away."
                     .to_string()
             } else if metadata && self.unsaved_s() <= 0.0 {
                 "Changes to this session's settings or position history haven't been saved and will be thrown away.".to_string()
@@ -4720,7 +5008,7 @@ impl TimegrapherApp {
         });
         match choice {
             Some(0) if masks => {
-                self.save_masks();
+                self.save_marks();
                 if self.needs_save_confirmation() {
                     return; // saving failed
                 }
@@ -5555,6 +5843,10 @@ impl TimegrapherApp {
         self.clear_trends();
         if let Some(take) = shown {
             let masked = self.masked.clone();
+            self.carried_positions = Some((
+                (self.session.stretches(), self.session.settles()),
+                self.opened_positions.clone(),
+            ));
             self.reread_with = Some(self.watch_setup());
             self.analyse_whole(&take, None);
             self.reread_with = None;
@@ -7383,7 +7675,7 @@ impl TimegrapherApp {
             .settles()
             .into_iter()
             .filter(|s| !test.iter().any(|t| s.0 < t.1 && t.0 < s.1))
-            .map(|(a, b)| (a, b, "Settling"))
+            .map(|(a, b)| (a, b, guided::SETTLING))
             .chain(test.iter().copied())
             .collect();
         out.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -7633,6 +7925,15 @@ impl TimegrapherApp {
                 }
             });
         });
+        // The Mask tool and the Position Brush exclude each other.
+        if self.masking {
+            self.brush = None;
+        }
+        theme::note_icon(ui, Icon::Highlighter, "Position Brush");
+        theme::bar_item(ui, "Position Brush", |ui| self.brush_control(ui, live));
+        if self.brush.is_some() {
+            self.masking = false;
+        }
         let unmask_hint = if self.masked.is_empty() {
             "Bring every masked stretch back into the readings".to_string()
         } else {
@@ -7920,17 +8221,17 @@ impl TimegrapherApp {
         let saved = self.session.saved_to().is_some();
         let can_save = self.session.allows(Action::Save);
         let saving = self.saving.is_some();
-        if self.masks_unsaved() {
+        if self.marks_unsaved() {
             if ui
                 .add(
                     egui::Button::new("Save")
                         .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::S))),
                 )
-                .on_hover_text(SAVE_MASKS_HINT)
+                .on_hover_text(SAVE_MARKS_HINT)
                 .clicked()
             {
                 ui.close();
-                self.save_masks();
+                self.save_marks();
             }
         } else if ui
             .add_enabled(
@@ -11926,6 +12227,12 @@ impl TimegrapherApp {
             });
         }
         let bands = self.position_bands();
+        let track: Vec<(f64, f64, &str, &str)> = self
+            .session
+            .position_spans(self.position)
+            .into_iter()
+            .map(|(a, b, p)| (a.max(0.0), b, p.label(), p.code()))
+            .collect();
         let mut settles = self.strip_settles();
         if guessing {
             // Drawn faintly, as the beats the readings leave out are.
@@ -11946,6 +12253,8 @@ impl TimegrapherApp {
             measured: &self.guided_measured,
             masked: &self.masked,
             masking: self.masking,
+            track: &track,
+            brush: self.brush.map(Position::code),
         };
         let Some(live) = &self.live else { return };
         // The possible beats numbered at the strip's beat period from the
@@ -12327,6 +12636,12 @@ impl TimegrapherApp {
     fn apply_strip_input(&mut self, input: StripInput, end: f64) {
         if let Some((a, b)) = input.mask {
             self.mask(a, b);
+        }
+        if let Some((a, b)) = input.paint {
+            self.paint_position(a, b);
+        }
+        if let Some((was, now)) = input.move_change {
+            self.move_position_change(was, now);
         }
         if let Some(t) = input.unmask_at {
             self.unmask_at(t);
@@ -13679,10 +13994,18 @@ fn lists(dir: &Path, file: &str, path: &Path) -> bool {
             && recordings_in(&named).is_ok_and(|f| f.len() == 1 && same(&f[0], path)))
 }
 
-/// Set `masked` on the entries of the session file beside `path` that
-/// list it, leaving the rest of the file as it was, comments and keys this
-/// app doesn't read too. Returns the session file.
-fn save_masks_to_take(path: &Path, masked: &[[f64; 2]]) -> Result<PathBuf, String> {
+/// Save `masked` to the entries for `path` in its take's session file,
+/// leaving the rest of the file as it was, comments and keys this app
+/// doesn't read too, and with `positions` (start, end and position
+/// code of each stretch, as [`App::opened_entries`] gives them) put one
+/// entry per stretch in place of those entries, each keeping what the
+/// first of them said besides. Positions are refused where the entries
+/// list more than one file.
+fn save_marks_to_take(
+    path: &Path,
+    masked: &[[f64; 2]],
+    positions: Option<&Entries>,
+) -> Result<PathBuf, String> {
     let dir = if path.is_dir() {
         path.to_path_buf()
     } else {
@@ -13711,22 +14034,121 @@ fn save_masks_to_take(path: &Path, masked: &[[f64; 2]]) -> Result<PathBuf, Strin
             t.insert("masked", toml_edit::value(spans.clone()));
         }
     };
+    // One stretch's entry: the first entry listed, with its position and
+    // times.
+    let place = |t: &mut dyn toml_edit::TableLike,
+                 (start, end, code): &(Option<f64>, Option<f64>, String)| {
+        t.insert("position", toml_edit::value(code.as_str()));
+        for (key, v) in [("start_s", start), ("end_s", end)] {
+            match v {
+                Some(v) => t.insert(key, toml_edit::value(*v)),
+                None => t.remove(key),
+            };
+        }
+    };
+    let one_file = |files: Vec<String>| {
+        if files.windows(2).any(|w| w[0] != w[1]) {
+            Err(format!(
+                "{} lists {} as more than one file, so its positions can't be saved",
+                file.display(),
+                capture_label(path)
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    let file_of = |t: &dyn toml_edit::TableLike| {
+        t.get("file")
+            .and_then(|f| f.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
     let mut changed = 0;
     match doc.get_mut("recording") {
-        Some(toml_edit::Item::ArrayOfTables(tables)) => {
-            for t in tables.iter_mut().filter(|t| listed(*t)) {
-                set(t);
-                changed += 1;
-            }
-        }
-        Some(toml_edit::Item::Value(toml_edit::Value::Array(entries))) => {
-            for t in entries.iter_mut().filter_map(|v| v.as_inline_table_mut()) {
-                if listed(t) {
+        Some(toml_edit::Item::ArrayOfTables(tables)) => match positions {
+            None => {
+                for t in tables.iter_mut().filter(|t| listed(*t)) {
                     set(t);
                     changed += 1;
                 }
             }
-        }
+            Some(positions) => {
+                one_file(
+                    tables
+                        .iter()
+                        .filter(|t| listed(*t))
+                        .map(|t| file_of(t))
+                        .collect(),
+                )?;
+                let mut out = toml_edit::ArrayOfTables::new();
+                let mut done = false;
+                for t in tables.iter() {
+                    if !listed(t) {
+                        out.push(t.clone());
+                        continue;
+                    }
+                    changed += 1;
+                    if std::mem::replace(&mut done, true) {
+                        continue;
+                    }
+                    for (i, p) in positions.iter().enumerate() {
+                        let mut e = t.clone();
+                        // A comment stays on the first copy alone.
+                        if i > 0 {
+                            e.decor_mut().set_prefix("\n");
+                            for (_, item) in e.iter_mut() {
+                                if let Some(v) = item.as_value_mut() {
+                                    v.decor_mut().clear();
+                                }
+                            }
+                        }
+                        place(&mut e, p);
+                        set(&mut e);
+                        out.push(e);
+                    }
+                }
+                *tables = out;
+            }
+        },
+        Some(toml_edit::Item::Value(toml_edit::Value::Array(entries))) => match positions {
+            None => {
+                for t in entries.iter_mut().filter_map(|v| v.as_inline_table_mut()) {
+                    if listed(t) {
+                        set(t);
+                        changed += 1;
+                    }
+                }
+            }
+            Some(positions) => {
+                one_file(
+                    entries
+                        .iter()
+                        .filter_map(|v| v.as_inline_table())
+                        .filter(|t| listed(*t))
+                        .map(|t| file_of(t))
+                        .collect(),
+                )?;
+                let mut out = toml_edit::Array::new();
+                let mut done = false;
+                for v in entries.iter() {
+                    let Some(t) = v.as_inline_table().filter(|t| listed(*t)) else {
+                        out.push_formatted(v.clone());
+                        continue;
+                    };
+                    changed += 1;
+                    if std::mem::replace(&mut done, true) {
+                        continue;
+                    }
+                    for p in positions {
+                        let mut e = t.clone();
+                        place(&mut e, p);
+                        set(&mut e);
+                        out.push(e);
+                    }
+                }
+                *entries = out;
+            }
+        },
         _ => {}
     }
     if changed == 0 {
@@ -13738,6 +14160,11 @@ fn save_masks_to_take(path: &Path, masked: &[[f64; 2]]) -> Result<PathBuf, Strin
     }
     write_replacing(&file, &doc.to_string())?;
     Ok(file)
+}
+
+/// `t` seconds to the nearest tenth.
+fn tenth(t: f64) -> f64 {
+    (t * 10.0).round() / 10.0
 }
 
 /// Write `text` to `target` through a file beside it, renamed over it once
@@ -13949,9 +14376,16 @@ impl TimegrapherApp {
         {
             self.save_recording();
         }
+        // Esc puts the Position Brush down.
+        if self.brush.is_some()
+            && !egui::Popup::is_any_open(ctx)
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.brush = None;
+        }
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::S))) {
-            if self.masks_unsaved() {
-                self.save_masks();
+            if self.marks_unsaved() {
+                self.save_marks();
             } else if self.session.allows(Action::Save) {
                 self.save_again();
             }
@@ -14240,6 +14674,13 @@ type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Option<f64>);
 
 /// What [`TimegrapherApp::free_table`] was read from: the beats heard,
 /// each position's settled stretches, the masks and the True Clock.
+/// A take's changes of position and the settling after each.
+type Positions = (Vec<(f64, Position)>, Vec<(f64, f64)>);
+
+/// One entry per stretch in one position, as a session file lists it:
+/// start, end and the position's code.
+type Entries = Vec<(Option<f64>, Option<f64>, String)>;
+
 type FreeKey = (
     usize,
     Vec<(core_session::Position, f64, f64)>,
@@ -17042,7 +17483,7 @@ mod tests {
         // Masks changed on it are saved into its session file, which still
         // says it has no sound.
         a.masked = vec![(30.0, 32.0), (50.0, 52.0)];
-        a.save_masks();
+        a.save_marks();
         let m: Manifest =
             toml::from_str(&std::fs::read_to_string(kept.join(MANIFEST)).unwrap()).unwrap();
         assert_eq!(m.audio, Some(false));
@@ -17625,15 +18066,15 @@ mod tests {
         let mut app = opened_recording(&base, "reverso_DD.wav", 30.0);
         assert!(!app.needs_save_confirmation(), "nothing changed yet");
         app.mask(10.0, 14.0);
-        assert!(app.masks_unsaved());
+        assert!(app.marks_unsaved());
         app.open_recording(&base.join("reverso_DD.wav"), true);
         assert!(
             matches!(app.confirm, Some(Confirm::Open { .. })),
             "asked first"
         );
         app.confirm = None;
-        app.save_masks();
-        assert!(!app.masks_unsaved());
+        app.save_marks();
+        assert!(!app.marks_unsaved());
         let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
         let m: Manifest = toml::from_str(&text).unwrap();
         // What the recorder writes for a take with these settings: the
@@ -17682,7 +18123,7 @@ mod tests {
         app.listen_after_ask();
         assert!(!app.running());
         assert_eq!(app.masked, [(2.0, 5.0)]);
-        assert!(app.masks_unsaved());
+        assert!(app.marks_unsaved());
         assert_eq!(app.guided_after_ask, None);
         assert!(!app.masks_let_go);
         let _ = std::fs::remove_dir_all(&base);
@@ -17697,8 +18138,8 @@ mod tests {
         opened_recording(&base, "a.wav", 12.0);
         let mut app = opened_recording(&base, "b.wav", 12.0);
         app.mask(2.0, 5.0);
-        app.save_masks();
-        assert!(app.masks_unsaved(), "still unsaved");
+        app.save_marks();
+        assert!(app.marks_unsaved(), "still unsaved");
         assert!(!base.join(MANIFEST).exists());
         let said = app
             .message
@@ -17732,8 +18173,8 @@ mod tests {
         let mut app = opened_recording(&base, "take.wav", 20.0);
         assert_eq!(app.masked, [(1.0, 2.0)]);
         app.mask(6.0, 9.5);
-        app.save_masks();
-        assert!(!app.masks_unsaved());
+        app.save_marks();
+        assert!(!app.marks_unsaved());
         let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
         assert_eq!(
             text,
@@ -17744,11 +18185,147 @@ mod tests {
         assert_eq!(entries[0].masked, [[1.0, 2.0], [6.0, 9.5]]);
         // Every mask brought back: the key goes.
         app.set_masked(Vec::new());
-        app.save_masks();
+        app.save_marks();
         let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
         assert_eq!(text, original.replace("masked = [[1.0, 2.0]]\n", ""));
         assert!(!base.join(".session.toml.saving").exists());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The Position Brush on a recording opened from disk: a stretch
+    /// painted is asked about before it goes, and Save puts one entry per
+    /// stretch in its session file in place of the entries for what was
+    /// opened, each keeping the rest of what the first said; the take opens
+    /// with them again. Comments, keys this app doesn't read and the other
+    /// recording's entry stay.
+    #[test]
+    fn positions_painted_on_a_take_are_saved_to_it() {
+        let base = std::env::temp_dir().join(format!("tg-app-paint-take-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let original = "# A hand-written note\n\
+            watch = \"Test\"\n\
+            lift = 52.0\n\n\
+            [[recording]]\n\
+            file = \"take.wav\"\n\
+            position = \"DU\"\n\
+            notes = \"kept\" # and its note\n\n\
+            [[recording]]\n\
+            file = \"other.wav\"\n\
+            position = \"CD\"\n";
+        std::fs::write(base.join(MANIFEST), original).unwrap();
+        let mut app = opened_recording(&base, "take.wav", 80.0);
+        assert_eq!(app.position, Position::DialUp);
+        assert!(!app.marks_unsaved());
+        app.brush = Some(Position::CrownUp);
+        app.paint_position(10.04, 40.0);
+        assert!(app.marks_unsaved());
+        assert_eq!(app.position, Position::DialUp, "Dial Up again after it");
+        assert_eq!(
+            app.session.stretches(),
+            [
+                (0.0, Position::DialUp),
+                (10.0, Position::CrownUp),
+                (40.0, Position::DialUp)
+            ]
+        );
+        // The readings are cut at each change: none reaches across one.
+        let breaks = app.live.as_ref().unwrap().breaks().to_vec();
+        assert!(
+            breaks.contains(&10.0) && breaks.contains(&40.0),
+            "{breaks:?}"
+        );
+        app.open_recording(&base.join("take.wav"), true);
+        assert!(
+            matches!(app.confirm, Some(Confirm::Open { .. })),
+            "asked first"
+        );
+        app.confirm = None;
+        app.save_marks();
+        assert!(!app.marks_unsaved());
+        let settle = app.session.settle_len();
+        let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
+        let entry = |pos: &str, times: &str, comment: bool| {
+            format!(
+                "[[recording]]\nfile = \"take.wav\"\nposition = \"{pos}\"\nnotes = \"kept\"{}\n{times}\n",
+                if comment { " # and its note" } else { "" }
+            )
+        };
+        let want = format!(
+            "# A hand-written note\nwatch = \"Test\"\nlift = 52.0\n\n{}\n{}\n{}\n\
+             [[recording]]\nfile = \"other.wav\"\nposition = \"CD\"\n",
+            entry("DU", "start_s = 0.0\nend_s = 10.0", true),
+            entry(
+                "CU",
+                &format!("start_s = {:?}\nend_s = 40.0", 10.0 + settle),
+                false
+            ),
+            entry("DU", &format!("start_s = {:?}", 40.0 + settle), false),
+        );
+        assert_eq!(text, want);
+        let again = reopened(&base.join("take.wav"));
+        assert_eq!(again.session.stretches(), app.session.stretches());
+        assert_eq!(again.session.settles(), app.session.settles());
+        assert!(!again.marks_unsaved());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A change of position dragged moves with its settling; painting to
+    /// the newest beat puts the watch in that position from then on; the
+    /// brush is put down by Esc and by the Mask tool, and isn't offered
+    /// during a Positions Test.
+    #[test]
+    fn the_position_brush_paints_and_moves_changes() {
+        let mut app = synthetic(60.0, 0.0);
+        app.brush = Some(Position::CrownLeft);
+        app.paint_position(20.0, 30.0);
+        app.move_position_change(20.0, 15.0);
+        assert_eq!(app.session.stretches()[1], (15.0, Position::CrownLeft));
+        assert_eq!(app.session.settles()[0].0, 15.0);
+        let latest = app.latest_s();
+        app.paint_position(40.0, latest - 0.5);
+        assert_eq!(app.position, Position::CrownLeft, "to the end");
+        assert_eq!(
+            app.session.stretches().last(),
+            Some(&(40.0, Position::CrownLeft))
+        );
+        // Esc puts it down.
+        let ctx = themed();
+        let esc = |pressed| egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        let _ = ctx.run(
+            egui::RawInput {
+                events: vec![esc(true), esc(false)],
+                ..Default::default()
+            },
+            |ctx| app.panels(ctx),
+        );
+        assert_eq!(app.brush, None);
+        // Picking the Mask tool puts it down too.
+        app.brush = Some(Position::DialUp);
+        app.masking = true;
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                theme::pane_toolbar(ui, "Paper Strip", &[], |ui| app.strip_settings(ui))
+            });
+        });
+        assert_eq!(app.brush, None);
+        assert!(app.masking);
+        // Not during a Positions Test.
+        app.masking = false;
+        app.brush = Some(Position::DialUp);
+        app.guided_measured = vec![(0.0, 10.0)];
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                theme::pane_toolbar(ui, "Paper Strip", &[], |ui| app.strip_settings(ui))
+            });
+        });
+        assert_eq!(app.brush, None);
     }
 
     /// After a masked stretch the charts stay empty until a whole
@@ -19116,7 +19693,10 @@ mod tests {
         // name, which a compact card cuts short.
         let texts = window_texts(&mut app, &ctx, 1000.0);
         assert!(texts.iter().any(|t| t == "Position"), "{texts:?}");
-        assert_eq!(texts.iter().filter(|t| *t == "DU").count(), 1, "{texts:?}");
+        // The cards are drawn before the panes; the Paper Strip's Position
+        // Brush shows a code of its own.
+        let cards = texts.iter().take_while(|t| *t != "Paper Strip");
+        assert_eq!(cards.filter(|t| *t == "DU").count(), 1, "{texts:?}");
         for gone in ["Dial", "Up", "Dial Up"] {
             assert!(!texts.iter().any(|t| t == gone), "{gone}: {texts:?}");
         }
@@ -19982,12 +20562,16 @@ mod tests {
                     ..Default::default()
                 };
                 let out = ctx.run(input, |ctx| app.panels(ctx));
+                top_of.clear();
+                bottom_of.clear();
                 for c in &out.shapes {
                     if let egui::Shape::Text(t) = &c.shape {
                         let r = c.shape.visual_bounding_rect();
                         let k = t.galley.text().to_string();
-                        top_of.insert(k.clone(), r.top());
-                        bottom_of.insert(k, r.bottom());
+                        // The first drawn of a text: the cards come before
+                        // the panes (the Position Brush shows a code too).
+                        top_of.entry(k.clone()).or_insert(r.top());
+                        bottom_of.entry(k).or_insert(r.bottom());
                     }
                 }
             }

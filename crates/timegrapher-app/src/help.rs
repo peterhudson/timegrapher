@@ -171,6 +171,12 @@ pub const STRIP: &[&str] = &[
      Average Over that ends there, so just after a masked stretch the line is blank \
      for about one Average Over, while the sound after it builds up. While Mask is on, dragging masks instead of sliding \
      the trace.",
+    "The track along the top (down the right when the strip runs down) shows each \
+     position in teal: solid while the watch settles after a change, then fading. Masked \
+     stretches are grey on it.",
+    "Position Brush marks a stretch as one position: pick the position from its menu, \
+     then drag along the strip. Drag a change of position along the track to move it. \
+     Esc, or Stop Painting, puts the brush down.",
 ];
 
 pub const PROFILE: &[&str] = &[
