@@ -172,9 +172,17 @@ takes Quick Listen kept. Those takes have the same menu as a watch's, with **Fil
 the watch picked from it) in place of Move to Another Watch, so a take
 waits there until it is filed or deleted. No watch can be called
 Unsorted. **New Watch…** opens a form:
-only the **Name** is needed. Name, Calibre (which fills the Lift Angle
-and Beat Rate), Lift Angle, Beat Rate and Notes are always in the form,
-set or not; **Add Field** adds a suggested field or one of your own, and
+only the **Name** is needed. Name, Calibre, Lift Angle, Beat Rate and
+Notes are always in the form, set or not. Lift Angle and Beat Rate are
+either the calibre's or yours:
+
+- **With a calibre**, each figure the calibre table gives is shown ("50°
+  from the calibre") and can't be changed.
+- **A figure the table doesn't give**, or **with no calibre**, is set in
+  the form: the lift angle as a number (52° until set), the beat rate
+  from a menu that starts at Auto.
+
+**Add Field** adds a suggested field or one of your own, and
 only those can be removed, with their ×. A watch is kept or deleted:
 there is no hiding one (a watch an older version marked Archived is
 listed like any other, and saving it clears the mark). The first watch makes the Watches folder.
