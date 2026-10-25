@@ -303,8 +303,10 @@ measured: the watch's details apply to its next take. **Keep in a
 Watch**, for a recording opened from outside the Watches folder (a lone
 file or a take folder), copies it into one of your watches, or into a
 **New Watch…**, kept in the new watch when you press its button, asking
-only what neither its files nor the watch say; the original stays where
-it is.
+only what neither its files, the watch nor the take on show say (its
+position, beat rate and lift angle are the ones on show, written with
+it; when it started is offered to check); the original stays where it
+is. **Keep** stays greyed out until what is asked is given.
 
 **Open Recording…** or **Open Folder…** in the File menu first asks where
 the recording goes (when there are watches and it isn't in them already):

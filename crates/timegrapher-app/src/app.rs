@@ -6070,8 +6070,17 @@ impl TimegrapherApp {
             a.keeping = true;
             a.watch = Some(id.to_string());
             a.new_watch = false;
+            // What is on show is not asked again: its position, its beat
+            // rate (set or heard) and its lift angle.
+            a.position = a.position.or(Some(self.position));
+            a.bph = a
+                .bph
+                .or(self.bph)
+                .or(self.live.as_ref().and_then(|l| l.bph()));
+            a.lift = self.lift_deg;
+            a.lift_set = true;
             let need = self.open_need(&a);
-            if need == OpenNeed::default() {
+            if Self::open_asks(&a, need) == OpenNeed::default() {
                 self.answer_open_ask(a, need);
             } else {
                 self.open_ask = Some(a);
@@ -9391,6 +9400,33 @@ impl TimegrapherApp {
         }
     }
 
+    /// Of what `need` says is missing, what the window asks for: all of
+    /// it, except, when keeping the recording on show, what the take on
+    /// show already says. It is still written with the take.
+    fn open_asks(a: &OpenAsk, need: OpenNeed) -> OpenNeed {
+        if !a.keeping {
+            return need;
+        }
+        OpenNeed {
+            bph: need.bph && a.bph.is_none(),
+            lift: need.lift && !a.lift_set,
+            position: need.position && a.position.is_none(),
+            started: need.started,
+        }
+    }
+
+    /// Whether the window's go button can act: a recording just opened,
+    /// or one going into a watch with everything `need` asks given.
+    fn open_ready(a: &OpenAsk, need: OpenNeed) -> bool {
+        let into =
+            (a.watch.is_some() && !a.new_watch) || (a.new_watch && !a.new_name.trim().is_empty());
+        !a.add
+            || (into
+                && (!need.bph || a.bph.is_some())
+                && (!need.position || a.position.is_some())
+                && (!need.started || parse_local_minute(&a.started).is_some()))
+    }
+
     /// The window Open asks in, while it is open.
     /// Set Up the Microphone, at the first launch: which microphone, and
     /// its level set against the watch on the stand, in three numbered
@@ -9738,13 +9774,9 @@ impl TimegrapherApp {
             _ => Vec::new(),
         };
         let need = self.open_need(&a);
+        let asks = Self::open_asks(&a, need);
         let started = parse_local_minute(&a.started);
-        let ready = !a.add
-            || ((a.watch.is_some() && !a.new_watch)
-                || (a.new_watch && !a.new_name.trim().is_empty()))
-                && (!need.bph || a.bph.is_some())
-                && (!need.position || a.position.is_some())
-                && (!need.started || started.is_some());
+        let ready = Self::open_ready(&a, need);
         let mut answer = None;
         let modal = egui::Modal::new(egui::Id::new("open question")).show(ctx, |ui| {
             ui.set_width(440.0);
@@ -9823,7 +9855,7 @@ impl TimegrapherApp {
                         },
                     );
                 }
-                if need == OpenNeed::default() {
+                if asks == OpenNeed::default() {
                     ui.label(
                         RichText::new("Its files and the watch say everything a take needs.")
                             .color(pal.text_secondary),
@@ -9837,7 +9869,7 @@ impl TimegrapherApp {
                         .color(pal.text_secondary),
                     );
                 }
-                if need.bph {
+                if asks.bph {
                     theme::row(ui, "Beat Rate", Some("Beats per hour"), |ui| {
                         egui::ComboBox::from_id_salt("open bph")
                             .width(ui.available_width())
@@ -9852,7 +9884,7 @@ impl TimegrapherApp {
                             });
                     });
                 }
-                if need.lift {
+                if asks.lift {
                     let changed = theme::row(
                         ui,
                         "Lift Angle",
@@ -9876,7 +9908,7 @@ impl TimegrapherApp {
                     );
                     a.lift_set |= changed;
                 }
-                if need.position {
+                if asks.position {
                     theme::row(
                         ui,
                         "Position",
@@ -9895,7 +9927,7 @@ impl TimegrapherApp {
                         },
                     );
                 }
-                if need.started {
+                if asks.started {
                     theme::row(
                         ui,
                         "Started",
@@ -18107,6 +18139,91 @@ mod tests {
         assert!(started_in(&take).is_some());
         // What is in the watches already opens straight away.
         assert!(app.open_ask_for(&take).is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Keep in a Watch… of a recording on show asks only what the take
+    /// on show doesn't say: not its position, beat rate or lift angle,
+    /// which are written with it. And Keep stays greyed out until what is
+    /// asked is given, for an existing watch as for a new one.
+    #[test]
+    fn keeping_a_recording_asks_only_what_is_not_on_show() {
+        let base = std::env::temp_dir().join(format!("tg-app-keep-shown-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        // No position in its name, no session file: nothing it says.
+        let lone = base.join("outside").join("bench.wav");
+        std::fs::create_dir_all(lone.parent().unwrap()).unwrap();
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 8000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(&lone, spec).unwrap();
+        for _ in 0..8000 {
+            w.write_sample(0i16).unwrap();
+        }
+        w.finalize().unwrap();
+        let mut app = synthetic(5.0, 0.0);
+        app.use_library(Some(root.clone()));
+        app.input = Input::File;
+        app.opened_path = lone.display().to_string();
+        app.position = Position::CrownLeft;
+        app.bph = Some(28800);
+        app.lift_deg = 50.0;
+
+        // Opening it from outside asks for all of it, and Add and Open
+        // waits for it even with a watch picked.
+        let mut a = app.open_ask_for(&lone).unwrap();
+        a.watch = Some(pepsi.clone());
+        a.new_watch = false;
+        a.add = true;
+        // Its start, guessed from the file, left out to see it asked for.
+        a.started.clear();
+        let need = app.open_need(&a);
+        assert!(need.bph && need.position && need.started);
+        assert!(!TimegrapherApp::open_ready(&a, need));
+        a.bph = Some(21600);
+        a.position = Some(Position::DialUp);
+        assert!(!TimegrapherApp::open_ready(&a, need));
+        a.started = "2026-10-22 14:30".into();
+        assert!(TimegrapherApp::open_ready(&a, need));
+
+        // Keep in a Watch: only when it started is asked (guessed from
+        // the file, to be checked).
+        app.keep_into(&pepsi);
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut text = String::new();
+        for _ in 0..2 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| app.open_ask_dialog(ctx));
+            text = format!("{:?}", out.shapes);
+        }
+        assert!(text.contains("Started"), "{text}");
+        for not_asked in ["Choose a Position", "Choose a Beat Rate", "Lift Angle"] {
+            assert!(!text.contains(not_asked), "{not_asked}");
+        }
+        let mut a = app.open_ask.take().expect("asked when it started");
+        a.started.clear();
+        assert!(!TimegrapherApp::open_ready(&a, app.open_need(&a)));
+        a.started = "2026-10-22 14:30".into();
+        let need = app.open_need(&a);
+        assert!(TimegrapherApp::open_ready(&a, need));
+        app.answer_open_ask(a, need);
+        let Ok(Some(lib)) = &app.library else {
+            panic!()
+        };
+        let e = lib.find("Pepsi").unwrap();
+        let take = e.take_dir(&e.takes[0]);
+        let m: Manifest =
+            toml::from_str(&std::fs::read_to_string(take.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!((m.bph, m.lift), (Some(28800), Some(50.0)));
+        assert_eq!(m.recordings[0].position.as_deref(), Some("CL"));
         let _ = std::fs::remove_dir_all(&base);
     }
 
