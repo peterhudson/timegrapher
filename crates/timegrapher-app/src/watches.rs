@@ -2,8 +2,9 @@
 //! details and takes, and the form for a watch's details. The app owns
 //! the library and acts on what these return.
 
-use crate::app::fmt_bytes;
+use crate::app::{fmt_bytes, DEFAULT_LIFT_DEG};
 use crate::calibre_ui::Calibres;
+use crate::fields;
 use crate::photos::{Thumb, Thumbs};
 use crate::theme;
 use eframe::egui::{self, RichText, Sense, Vec2};
@@ -937,38 +938,33 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         }
         w.calibre = (!p.is_empty()).then_some(p);
     }
+    // Either the calibre or the watch: a figure the calibre gives is the
+    // calibre's, and only one it doesn't give is set here.
+    let calibre = w.calibre.clone().unwrap_or_default();
+    let (cal_lift, cal_bph) = (cal.lift(&calibre), cal.bph(&calibre));
     theme::row(
         ui,
         "Lift Angle",
-        Some(
-            "Degrees; each new take of this watch starts with it. Not set, the calibre's is \
-             used, else 52°.",
-        ),
-        |ui| match w.lift {
-            Some(mut lift) => {
-                ui.add(
-                    egui::DragValue::new(&mut lift)
-                        .range(10.0..=90.0)
-                        .suffix("°"),
-                );
-                let clear = ui
-                    .small_button("Clear")
-                    .on_hover_text("Leave the lift angle not set")
-                    .clicked();
-                w.lift = (!clear).then_some(lift);
+        Some(match cal_lift {
+            Some(_) => "Degrees, from the calibre. Pick no calibre to set it here.",
+            None => "Degrees; each new take of this watch starts with it.",
+        }),
+        |ui| match cal_lift {
+            Some(l) => {
+                w.lift = Some(l);
+                ui.label(format!("{}° from the calibre", fields::plain(l)));
             }
             None => {
+                let mut lift = w.lift.unwrap_or(DEFAULT_LIFT_DEG);
                 if ui
-                    .button("Not Set")
-                    .on_hover_text("Set this watch's lift angle")
-                    .clicked()
+                    .add(
+                        egui::DragValue::new(&mut lift)
+                            .range(10.0..=90.0)
+                            .suffix("°"),
+                    )
+                    .changed()
                 {
-                    w.lift = Some(
-                        w.calibre
-                            .as_deref()
-                            .and_then(|c| cal.lift(c))
-                            .unwrap_or(52.0),
-                    );
+                    w.lift = Some(lift);
                 }
             }
         },
@@ -976,16 +972,25 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
     theme::row(
         ui,
         "Beat Rate",
-        Some("Beats per hour; each new take of this watch starts with it. Not set, it is found."),
-        |ui| {
-            egui::ComboBox::from_id_salt("form bph")
-                .selected_text(w.bph.map_or("Not Set".to_string(), |b| format!("{b} bph")))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut w.bph, None, "Not Set");
-                    for b in timegrapher_core::beats::STANDARD_BPH {
-                        ui.selectable_value(&mut w.bph, Some(b), format!("{b} bph"));
-                    }
-                });
+        Some(match cal_bph {
+            Some(_) => "Beats per hour, from the calibre. Pick no calibre to set it here.",
+            None => "Beats per hour; each new take of this watch starts with it. Auto finds it.",
+        }),
+        |ui| match cal_bph {
+            Some(b) => {
+                w.bph = Some(b);
+                ui.label(format!("{b} bph from the calibre"));
+            }
+            None => {
+                egui::ComboBox::from_id_salt("form bph")
+                    .selected_text(w.bph.map_or("Auto".to_string(), |b| format!("{b} bph")))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut w.bph, None, "Auto");
+                        for b in timegrapher_core::beats::STANDARD_BPH {
+                            ui.selectable_value(&mut w.bph, Some(b), format!("{b} bph"));
+                        }
+                    });
+            }
         },
     );
     let mut remove = None;

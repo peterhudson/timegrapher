@@ -5600,14 +5600,19 @@ impl TimegrapherApp {
             }
             None => {}
         }
-        if let Some(l) = w.lift {
+        // The calibre's lift angle and beat rate, else the watch's own,
+        // else 52° and Auto: nothing kept from the watch picked before.
+        let lift = self.cal.lift(&self.calibre).or(w.lift);
+        let l = lift.unwrap_or(DEFAULT_LIFT_DEG);
+        if l != self.lift_deg {
             self.set_lift(l);
-            self.lift_context = (l, true);
         }
-        if w.bph.is_some() && w.bph != self.bph {
-            self.bph = w.bph;
+        self.lift_context = (l, lift.is_some());
+        let bph = self.cal.bph(&self.calibre).or(w.bph);
+        if bph != self.bph {
+            self.bph = bph;
             if let Some(l) = self.live.as_mut() {
-                l.set_bph(w.bph);
+                l.set_bph(bph);
             }
             self.anchor = None;
             self.clear_trends();
@@ -7252,21 +7257,22 @@ impl TimegrapherApp {
     /// A take kept in, or opened from, the watch `w` without a calibre of
     /// its own takes the watch's:
     /// - the calibre, and with it the calibre's lift angle and wheels;
-    /// - the watch's own lift angle, where it has one;
-    /// - the watch's beat rate, unless the take was heard at another.
+    /// - the watch's own lift angle, where the calibre gives none;
+    /// - the calibre's beat rate, else the watch's, unless the take was
+    ///   heard at another.
     ///
     /// The readings on show are read again at the new lift, not cleared.
     fn take_watch_details(&mut self, w: &library::Watch) {
         if let Some(c) = w.calibre.clone().filter(|c| !c.is_empty()) {
             self.set_calibre(c);
         }
-        if let Some(l) = w.lift.or_else(|| self.cal.lift(&self.calibre)) {
+        if let Some(l) = self.cal.lift(&self.calibre).or(w.lift) {
             if l != self.lift_deg {
                 self.set_lift(l);
             }
             self.lift_context = (l, true);
         }
-        let bph = w.bph.or_else(|| self.cal.bph(&self.calibre));
+        let bph = self.cal.bph(&self.calibre).or(w.bph);
         let heard = self.live.as_ref().and_then(|l| l.bph());
         if bph.is_some() && heard.is_none_or(|h| Some(h) == bph) {
             self.bph = bph;
@@ -14189,7 +14195,7 @@ const SCOPE_KEPT: usize = 40;
 type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 
 /// The lift angle used until a calibre is picked or one is typed in.
-const DEFAULT_LIFT_DEG: f64 = 52.0;
+pub const DEFAULT_LIFT_DEG: f64 = 52.0;
 
 /// An error as a person reads it: the system's own words for the common
 /// file errors, and no "(os error 2)" codes. The log keeps the original.
@@ -16660,7 +16666,10 @@ mod tests {
             .path();
         let (m, _) = read_manifest(&take).unwrap().expect("its session file");
         assert_eq!(m.calibre.as_deref(), Some(c.calibre.as_str()));
-        assert_eq!(m.lift, Some(55.0));
+        // The calibre's lift angle over the watch's own, where it gives one.
+        let lift = c.lift_angle_deg.expect("the table gives the 2824-2's lift");
+        assert_ne!(lift, 55.0);
+        assert_eq!(m.lift, Some(lift));
         assert_eq!(m.bph, c.bph);
         drop(app);
 
@@ -16674,7 +16683,7 @@ mod tests {
         app.apply_manifest(&bare, &[]);
         app.watch_fills_in(&take, &bare);
         assert_eq!(app.calibre, c.calibre);
-        assert_eq!(app.lift_deg, 55.0);
+        assert_eq!(app.lift_deg, lift);
         assert_eq!(app.bph, c.bph);
         // A take outside the library keeps what its file says.
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
@@ -19796,6 +19805,57 @@ mod tests {
                 assert_eq!(height(app, w), h, "at {w} pt wide");
             }
         }
+    }
+
+    /// The watch form's lift angle and beat rate are the calibre's where it
+    /// gives them, shown and not set; with no calibre both are set there,
+    /// the beat rate Auto until picked, and there is no Clear.
+    #[test]
+    fn the_watch_form_takes_lift_and_beat_rate_from_the_calibre_or_from_you() {
+        let c = timegrapher_core::calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        let lift = c.lift_angle_deg.expect("its lift");
+        let bph = c.bph.expect("its beat rate");
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let ctx = themed();
+        let drawn = |app: &mut TimegrapherApp| {
+            let mut all = String::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    app.watch_form_dialog(ctx);
+                });
+                all = format!("{:?}", out.shapes);
+            }
+            all
+        };
+        let mut w = library::Watch::new("Diver");
+        w.calibre = Some(c.calibre.clone());
+        w.lift = Some(55.0);
+        app.watch_form = Some(watches::Form {
+            watch: w,
+            new: true,
+            error: None,
+        });
+        let d = drawn(&mut app);
+        let from = format!("{}° from the calibre", fields::plain(lift));
+        assert!(d.contains(&from), "{d}");
+        assert!(d.contains(&format!("{bph} bph from the calibre")), "{d}");
+        assert!(!d.contains("Clear"), "{d}");
+        let w = &app.watch_form.as_ref().unwrap().watch;
+        assert_eq!((w.lift, w.bph), (Some(lift), Some(bph)), "the calibre's");
+
+        let mut bare = library::Watch::new("Pepsi");
+        bare.lift = Some(48.0);
+        app.watch_form = Some(watches::Form {
+            watch: bare,
+            new: true,
+            error: None,
+        });
+        let d = drawn(&mut app);
+        assert!(d.contains("48°") && d.contains("\"Auto\""), "{d}");
+        assert!(
+            !d.contains("from the calibre") && !d.contains("Clear"),
+            "{d}"
+        );
     }
 
     /// With no watch picked, or a watch with no calibre, the Calibre card
