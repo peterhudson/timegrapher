@@ -14,7 +14,7 @@ use crate::profiles;
 use crate::report::{self, ReportDialog};
 use crate::reserve;
 use crate::scope;
-use crate::settings::Settings;
+use crate::settings::{Settings, RATE_ONLY};
 use crate::settings_window::{self, Tab};
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
@@ -2152,7 +2152,7 @@ impl TimegrapherApp {
             sound: self.sound_opts,
             folded: self.folded.iter().cloned().collect(),
             theme: self.theme,
-            steady_series: [true; 3],
+            steady_series: RATE_ONLY,
             steady_shown: self.steady_series.iter().map(|(v, s)| (*v, *s)).collect(),
             periods_log: self.periods_log,
             fft_timing: self.fft_timing,
@@ -2258,7 +2258,7 @@ impl TimegrapherApp {
         self.overlays = overlays;
         self.follow = follow;
         // One left on is kept: a pane with none shown would be empty.
-        let some = |s: [bool; 3]| if s.contains(&true) { s } else { [true; 3] };
+        let some = |s: [bool; 3]| if s.contains(&true) { s } else { RATE_ONLY };
         self.chart_series = some(chart_series);
         self.dist_series = some(dist_series);
         self.hist_cumulative = hist_cumulative;
@@ -2276,14 +2276,16 @@ impl TimegrapherApp {
         self.guided_measure_s =
             positions_measure_s.clamp(*guided::MEASURE_RANGE.start(), *guided::MEASURE_RANGE.end());
         // Each pane's series, at least one shown; a pane not set yet takes
-        // the choice the one Steadiness pane had.
-        let every = steady_series;
+        // the choice the one Steadiness pane had, unless that was every
+        // series, which older apps wrote whatever was chosen: those panes
+        // show Rate alone, as at first.
+        let every = Some(steady_series).filter(|s| *s != [true; 3]);
         self.steady_series = steady_shown
             .into_iter()
             .chain(
                 Pane::STEADY
                     .iter()
-                    .filter_map(|p| Some((p.steady_view()?, every))),
+                    .filter_map(|p| Some((p.steady_view()?, every?))),
             )
             .filter(|(_, s)| s.contains(&true))
             .fold(Default::default(), |mut m, (v, s)| {
@@ -2430,8 +2432,8 @@ impl TimegrapherApp {
             rate_line: true,
             rate_guides: true,
             overlays: [true, false, false],
-            chart_series: [true; 3],
-            dist_series: [true; 3],
+            chart_series: RATE_ONLY,
+            dist_series: RATE_ONLY,
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
             pane_top: 0.0,
@@ -6992,10 +6994,10 @@ impl TimegrapherApp {
                 self.steady_series
                     .get(&steady::View::Stft)
                     .copied()
-                    .unwrap_or([true; 3]),
+                    .unwrap_or(RATE_ONLY),
             )
         } else {
-            self.steady_series.get(&view).copied().unwrap_or([true; 3])
+            self.steady_series.get(&view).copied().unwrap_or(RATE_ONLY)
         }
     }
 
@@ -7008,10 +7010,10 @@ impl TimegrapherApp {
                 ui,
                 self.steady_series
                     .entry(steady::View::Stft)
-                    .or_insert([true; 3]),
+                    .or_insert(RATE_ONLY),
             );
         } else {
-            steady::series_switches(ui, self.steady_series.entry(view).or_insert([true; 3]));
+            steady::series_switches(ui, self.steady_series.entry(view).or_insert(RATE_ONLY));
         }
         let accent = theme::pal(ui).accent;
         if view == steady::View::Periods {
@@ -16438,6 +16440,17 @@ mod tests {
             }
             all
         };
+        // At first only the rate: no amplitude or beat error plot in
+        // either pane.
+        assert_eq!((app.chart_series, app.dist_series), (RATE_ONLY, RATE_ONLY));
+        let text = draw(&mut app);
+        assert!(text.contains("Rate"), "{text}");
+        for t in ["Beat Error:", "Amplitude:", "From the Unlock", "From Tick"] {
+            assert!(!text.contains(t), "{t}: {text}");
+        }
+        // All three turned on.
+        app.chart_series = [true; 3];
+        app.dist_series = [true; 3];
         let text = draw(&mut app);
         for t in [
             "Charts",
@@ -16449,14 +16462,7 @@ mod tests {
             assert!(text.contains(t), "{t}: {text}");
         }
         assert!(!text.contains("Match Strip"), "{text}");
-        // Only the rate: no amplitude or beat error plot in either pane.
-        app.chart_series = [true, false, false];
-        app.dist_series = [true, false, false];
-        let text = draw(&mut app);
-        assert!(text.contains("Rate"), "{text}");
-        for t in ["Beat Error:", "Amplitude:", "From the Unlock", "From Tick"] {
-            assert!(!text.contains(t), "{t}: {text}");
-        }
+        app.chart_series = RATE_ONLY;
         // The last one on stays on; another comes on beside it.
         steady::flip_series(&mut app.chart_series, 0);
         assert_eq!(app.chart_series, [true, false, false]);
@@ -20803,7 +20809,7 @@ mod tests {
         let mut back = TimegrapherApp::with_devices(Vec::new(), None);
         back.apply_settings(old);
         assert!(back.hist_cumulative, "the rest is kept");
-        assert_eq!(back.chart_series, [true; 3]);
+        assert_eq!(back.chart_series, RATE_ONLY);
         for p in [Pane::Charts, Pane::Distributions] {
             let n = back
                 .panes
@@ -23404,9 +23410,10 @@ mod tests {
         assert_eq!(back.average_s, 30.0);
     }
 
-    /// Each Steadiness pane's series come back next time, with every
-    /// series off read as all on, and the one choice an older app kept for
-    /// its single Steadiness pane given to every view.
+    /// Each Steadiness pane's series come back next time, Rate alone for a
+    /// pane not set and for every series off, and the one choice an older
+    /// app kept for its single Steadiness pane given to every view, unless
+    /// that was all three, which older apps wrote whatever was chosen.
     #[test]
     fn each_steady_panes_series_are_kept() {
         use steady::View;
@@ -23416,11 +23423,16 @@ mod tests {
         let mut back = TimegrapherApp::with_devices(Vec::new(), None);
         back.apply_settings(s.clone());
         assert_eq!(back.steady_series[&View::Fft], [false, true, false]);
-        assert_eq!(back.steady_series[&View::Cycle], [true; 3]);
+        assert_eq!(back.series_shown(View::Cycle), RATE_ONLY);
         let mut none = s;
         none.steady_shown = vec![(View::Fft, [false; 3])];
         back.apply_settings(none);
-        assert_eq!(back.steady_series[&View::Fft], [true; 3]);
+        assert_eq!(back.series_shown(View::Fft), RATE_ONLY);
+        let mut all = app.settings();
+        all.steady_shown.clear();
+        all.steady_series = [true; 3];
+        back.apply_settings(all);
+        assert_eq!(back.series_shown(View::Cycle), RATE_ONLY);
         let mut older = app.settings();
         older.steady_shown.clear();
         older.steady_series = [true, false, false];

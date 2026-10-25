@@ -64,6 +64,9 @@ tinted chip; a hidden one is grey. No pane icon takes a reading's colour.
 The readings have pictures of their
 own wherever the app shows or switches one: a hare for the rate, a swing
 for the amplitude and a seesaw for the beat error, in their colours.
+A pane of several plots, one for each reading (Charts, Distributions and
+the Steadiness panes), shows the rate alone until its switches turn the
+others on; each pane keeps its switches from then on.
 
 **The readings**, across the top, are six cards, left to right:
 **Current Position**, **Calibre** and **Listen**, then **Rate**,
