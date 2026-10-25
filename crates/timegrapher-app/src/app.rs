@@ -4780,13 +4780,6 @@ impl TimegrapherApp {
     /// second, in the background, the last table showing until the next is
     /// ready; a take on show is read at once.
     fn free_table(&self, ctx: &egui::Context) -> Option<guided::FreeTable> {
-        let live = self.live.as_ref()?;
-        let latest = self.latest_s();
-        let end = if self.running() {
-            (latest / FREE_TABLE_STEP_S).floor() * FREE_TABLE_STEP_S
-        } else {
-            latest
-        };
         let stretches: Vec<(core_session::Position, f64, f64)> = guided::ORDER
             .iter()
             .filter_map(|&p| Some((p, core_session::Position::parse(p.code())?)))
@@ -4794,8 +4787,44 @@ impl TimegrapherApp {
                 self.session
                     .settled_spans(self.position, p)
                     .into_iter()
-                    .map(move |(a, b)| (sp, a.max(0.0), b.min(end)))
+                    .map(move |(a, b)| (sp, a, b))
             })
+            .collect();
+        self.table_of(ctx, stretches)
+    }
+
+    /// The guided test's figures for the position being measured, so far:
+    /// its measuring up to now read as [`Self::free_table`] reads a
+    /// position, every second. None until it has 10 s.
+    fn guided_live(&self, ctx: &egui::Context) -> Option<guided::FreeCell> {
+        let t = self.guided.as_ref()?;
+        let now = self.live.as_ref()?.duration_s();
+        let &(from, to) = t.measured(now).get(t.stretches().len())?;
+        let p = core_session::Position::parse(t.position().code())?;
+        let table = self.table_of(ctx, vec![(p, from, to)])?;
+        let label = guided::position_label(p);
+        let row = table.rows.into_iter().find(|r| r.0 == label)?;
+        matches!(row.2, guided::FreeCell::Read(..)).then_some(row.2)
+    }
+
+    /// A Positions Test table of `stretches` (position, start, end), each
+    /// cut at the take's end so far: read afresh every second, in the
+    /// background, while listening; at once for a take on show.
+    fn table_of(
+        &self,
+        ctx: &egui::Context,
+        stretches: Vec<(core_session::Position, f64, f64)>,
+    ) -> Option<guided::FreeTable> {
+        let live = self.live.as_ref()?;
+        let latest = self.latest_s();
+        let end = if self.running() {
+            (latest / FREE_TABLE_STEP_S).floor() * FREE_TABLE_STEP_S
+        } else {
+            latest
+        };
+        let stretches: Vec<(core_session::Position, f64, f64)> = stretches
+            .into_iter()
+            .map(|(p, a, b)| (p, a.max(0.0), b.min(end)))
             .filter(|s| s.1 < s.2)
             .collect();
         let masked = core_session::masked_spans(
@@ -6901,18 +6930,21 @@ impl TimegrapherApp {
             p.file_name()
                 .map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into())
         };
-        let name = if let Some(to) = self.session.saved_to() {
-            file_name(to)
+        // A take not yet saved or opened, with no watch, is Quick Listen's,
+        // as the Calibre card's title says (No Watch (Quick Listen)).
+        let file = if let Some(to) = self.session.saved_to() {
+            Some(file_name(to))
         } else if self.input == Input::File && !self.opened_path.is_empty() {
-            file_name(Path::new(&self.opened_path))
-        } else if self.quick_listen {
-            "Quick Listen".to_string()
+            Some(file_name(Path::new(&self.opened_path)))
         } else {
-            "New Take".to_string()
+            None
         };
+        let quick = self.quick_listen || file.is_none() && self.watch.is_empty();
+        let name =
+            file.unwrap_or_else(|| if quick { "Quick Listen" } else { "New Take" }.to_string());
         let watch = if !self.watch.is_empty() {
             self.watch.clone()
-        } else if self.quick_listen {
+        } else if quick {
             "No watch".to_string()
         } else {
             "No watch picked".to_string()
@@ -11864,12 +11896,17 @@ impl TimegrapherApp {
         } else {
             None
         };
+        let live = match phase {
+            Some(guided::Phase::Measuring(_)) => self.guided_live(ui.ctx()),
+            _ => None,
+        };
         let action = guided::pane(
             ui,
             self.guided.as_ref(),
             phase,
             self.guided_earlier.as_ref(),
             free.as_ref(),
+            live.as_ref(),
             self.guided_settle_s,
             self.guided_measure_s,
         );
@@ -18315,7 +18352,23 @@ mod tests {
         );
         assert_eq!(row("Crown Up (CU, 3H)").2, guided::FreeCell::NotMarked);
         assert_eq!(t.read, 2);
-        assert!((t.largest_difference.unwrap().abs() - 60.0).abs() < 8.0);
+        assert!((t.largest[0].unwrap() - 60.0).abs() < 8.0);
+        // The mean and the largest differences are core's, over the two
+        // positions read.
+        let (
+            guided::FreeCell::Read(Some(du_rate), Some(du_amp), Some(du_be)),
+            guided::FreeCell::Read(Some(dd_rate), Some(dd_amp), Some(dd_be)),
+        ) = (&du.2, &dd.2)
+        else {
+            panic!("{t:?}");
+        };
+        let near = |a: Option<f64>, b: f64| (a.unwrap() - b).abs() < 1e-9;
+        assert!(near(t.mean[0], (du_rate + dd_rate) / 2.0));
+        assert!(near(t.mean[1], (du_amp + dd_amp) / 2.0));
+        assert!(near(t.mean[2], (du_be + dd_be) / 2.0));
+        assert!(near(t.largest[0], (du_rate - dd_rate).abs()));
+        assert!(near(t.largest[1], (du_amp - dd_amp).abs()));
+        assert!(near(t.largest[2], (du_be - dd_be).abs()));
 
         // The pane draws it, with Each Position's word for a free take.
         let ctx = themed();
@@ -18333,7 +18386,8 @@ mod tests {
             "This Take",
             "Duration",
             "Not marked",
-            "Largest Rate Difference",
+            "Average",
+            "Largest Difference",
             "2 of 6",
             "Each Position applies only to the guided test.",
         ] {
@@ -18414,6 +18468,42 @@ mod tests {
             du(&next)
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_guided_test_reads_the_position_under_way_as_it_is_measured() {
+        let mut app = synthetic(20.0, 0.0);
+        let start = app.live.as_ref().unwrap().duration_s();
+        let mut test = guided::Test::new().timed(5.0, 60.0);
+        test.tick(start);
+        app.guided = Some(test);
+        let ctx = egui::Context::default();
+        // One stretch of sound at +30 s/d, heard in two parts.
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 40.0,
+                rate_s_per_day: 30.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let (first, rest) = audio.samples.split_at(12 * 48_000);
+        let feed = |app: &mut TimegrapherApp, samples: &[f32]| {
+            let live = app.live.as_mut().unwrap();
+            for b in samples.chunks(960) {
+                live.push(b);
+            }
+        };
+        // Settled, but under 10 s measured: nothing to show yet.
+        feed(&mut app, first);
+        assert_eq!(app.guided_live(&ctx), None);
+        // 35 s measured: its figures so far.
+        feed(&mut app, rest);
+        let Some(guided::FreeCell::Read(Some(rate), Some(_), _)) = app.guided_live(&ctx) else {
+            panic!("{:?}", app.guided_live(&ctx));
+        };
+        assert!((rate - 30.0).abs() < 5.0, "{rate}");
     }
 
     #[test]
@@ -20739,7 +20829,9 @@ mod tests {
                 assert!(!texts.iter().any(|t| t == gone), "{gone} at {w}: {texts:?}");
             }
             assert!(
-                texts.iter().any(|t| t.starts_with("New Take · ")),
+                texts
+                    .iter()
+                    .any(|t| t.starts_with("Quick Listen · No watch · ")),
                 "the status line: {texts:?}"
             );
         }
@@ -21186,6 +21278,27 @@ mod tests {
     /// Unsaved sound, Quick Listen's included, is asked about before the
     /// Watch line puts its take away: Cancel leaves everything as it was,
     /// Don't Save picks the watch.
+    /// The status bar names a take with no watch as Quick Listen's, however
+    /// No Watch was reached: picked on the Watch line over a watch's take
+    /// that was put away, or there from the start.
+    #[test]
+    fn the_status_bar_names_no_watch_quick_listen_however_it_was_reached() {
+        let (mut app, base) = line_app("status", &["Pepsi"], None);
+        assert_eq!(app.status_words(), "Quick Listen · No watch · Not Started");
+        let pepsi = watch_id(&app, "Pepsi");
+        app.line_pick(Some(pepsi), false);
+        assert_eq!(app.status_words(), "New Take · Pepsi · Not Started");
+        // A take on show, put away by picking No Watch on the line.
+        app.reset_session(48000, "test".into());
+        app.session.listen();
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        app.line_pick(None, true);
+        assert_eq!(app.status_words(), "Quick Listen · No watch · Not Started");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn the_watch_line_asks_before_putting_away_unsaved_sound() {
         let (mut app, base) = line_app("ask", &["Pepsi"], None);

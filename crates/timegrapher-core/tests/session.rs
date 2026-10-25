@@ -933,6 +933,23 @@ fn a_takes_positions_table_reads_each_position_marked() {
     // The largest difference is over the two positions read.
     let d = t.indices.d_rate.unwrap();
     assert!((d.abs() - 20.0).abs() < 4.0, "{d}");
+    // The averages and the largest differences of amplitude and beat
+    // error are over the same two positions.
+    let (du_m, cu_m) = (
+        du.measurement.as_ref().unwrap(),
+        row(Position::H3).measurement.as_ref().unwrap(),
+    );
+    let both =
+        |f: &dyn Fn(&session::Measurement) -> Option<f64>| (f(du_m).unwrap(), f(cu_m).unwrap());
+    let near = |a: Option<f64>, b: f64| (a.unwrap() - b).abs() < 1e-9;
+    let (a, b) = both(&|m| m.rate_s_per_day);
+    assert!(near(t.indices.x, (a + b) / 2.0));
+    let (a, b) = both(&|m| m.amplitude_deg);
+    assert!(near(t.indices.amplitude_mean, (a + b) / 2.0));
+    assert!(near(t.indices.d_amplitude, (a - b).abs()));
+    let (a, b) = both(&|m| m.beat_error());
+    assert!(near(t.indices.beat_error_mean, (a + b) / 2.0));
+    assert!(near(t.indices.d_beat_error, (a - b).abs()));
 
     // A position marked twice is read as one, the time between left out.
     let twice = [(Position::CH, 2.0, 20.0), (Position::CH, 26.0, 42.0)];
@@ -945,4 +962,5 @@ fn a_takes_positions_table_reads_each_position_marked() {
         3.0
     ));
     assert!(t.indices.d_rate.is_none(), "one position: no difference");
+    assert!(t.indices.d_amplitude.is_none() && t.indices.d_beat_error.is_none());
 }

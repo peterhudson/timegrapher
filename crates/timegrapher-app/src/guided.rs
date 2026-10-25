@@ -569,6 +569,29 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 .fill(pal.accent),
         );
         ui.add_space(4.0);
+        // Each button has its own slot, as wide as the widest it holds, so
+        // none moves as the phase changes: Stop is always where it was.
+        let pad = 2.0 * ui.spacing().button_padding.x;
+        let widest = |ui: &egui::Ui, words: &mut dyn Iterator<Item = String>| {
+            let font = theme::semibold(13.0);
+            words
+                .map(|w| ui.fonts_mut(|f| f.layout_no_wrap(w, font.clone(), pal.text).size().x))
+                .fold(84.0_f32, |a, w| a.max(w + pad))
+        };
+        let first_w = widest(
+            ui,
+            &mut ORDER
+                .iter()
+                .map(|p| format!("Start {} Measurement", p.code()))
+                .chain(["Finish", "Resume", "Pause"].map(String::from)),
+        );
+        let restart_w = widest(
+            ui,
+            &mut ORDER
+                .iter()
+                .map(|p| format!("Restart {} Measurement", p.code())),
+        );
+        let slot = |ui: &mut egui::Ui, w: f32, b: egui::Button<'_>| ui.add_sized([w, 0.0], b);
         ui.horizontal_wrapped(|ui| {
             let code = test.position().code();
             let name = test.position().name();
@@ -589,28 +612,29 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                             "Read the six positions together".to_string(),
                         ),
                     };
-                    if ui
-                        .add(theme::primary(ui, &next))
+                    if slot(ui, first_w, theme::primary(ui, &next))
                         .on_hover_text(next_hint)
                         .clicked()
                     {
                         action = Some(Action::Next);
                     }
-                    if ui
-                        .button(format!("Restart {code} Measurement"))
-                        .on_hover_text(format!(
-                            "The {name} measurement was disturbed (a knock, a noise): put the \
+                    if slot(
+                        ui,
+                        restart_w,
+                        egui::Button::new(format!("Restart {code} Measurement")),
+                    )
+                    .on_hover_text(format!(
+                        "The {name} measurement was disturbed (a knock, a noise): put the \
                              watch back {} and settle and measure it again",
-                            name.to_lowercase()
-                        ))
-                        .clicked()
+                        name.to_lowercase()
+                    ))
+                    .clicked()
                     {
                         action = Some(Action::Redo);
                     }
                 }
                 Phase::Paused => {
-                    if ui
-                        .add(theme::primary(ui, "Resume"))
+                    if slot(ui, first_w, theme::primary(ui, "Resume"))
                         .on_hover_text(format!(
                             "Settle and measure {name} again from now, with the watch {}",
                             name.to_lowercase()
@@ -619,10 +643,11 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     {
                         action = Some(Action::Resume);
                     }
+                    // Restart's slot stays, empty.
+                    ui.add_space(restart_w + ui.spacing().item_spacing.x);
                 }
                 Phase::Settling(_) | Phase::Measuring(_) => {
-                    if ui
-                        .button("Pause")
+                    if slot(ui, first_w, egui::Button::new("Pause"))
                         .on_hover_text(format!(
                             "Hold the test here, to deal with the watch or the room. What \
                              {name} measured so far isn't used: Resume settles and measures it \
@@ -632,17 +657,22 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     {
                         action = Some(Action::Pause);
                     }
-                    if ui
-                        .button(format!("Restart {code} Measurement"))
-                        .on_hover_text(format!(
-                            "Settle and measure {name} again from now, as after a knock"
-                        ))
-                        .clicked()
+                    if slot(
+                        ui,
+                        restart_w,
+                        egui::Button::new(format!("Restart {code} Measurement")),
+                    )
+                    .on_hover_text(format!(
+                        "Settle and measure {name} again from now, as after a knock"
+                    ))
+                    .clicked()
                     {
                         action = Some(Action::Redo);
                     }
                 }
-                Phase::Finished => {}
+                Phase::Finished => {
+                    ui.add_space(first_w + restart_w + 2.0 * ui.spacing().item_spacing.x);
+                }
             }
             if ui
                 .button("Stop")
@@ -757,7 +787,13 @@ const LABEL_W: f32 = 150.0;
 /// first `t.rows.len()` hold figures; `status` names what the next row is
 /// doing (settling, measuring) while the test runs. Then the means, the
 /// largest difference, vertical less horizontal and any conditions.
-fn table_grid(ui: &mut egui::Ui, id: &str, t: &Table, status: Option<String>) {
+fn table_grid(
+    ui: &mut egui::Ui,
+    id: &str,
+    t: &Table,
+    status: Option<String>,
+    live: Option<&FreeCell>,
+) {
     let pal = theme::pal(ui);
     egui::Grid::new(id)
         .num_columns(5)
@@ -769,7 +805,7 @@ fn table_grid(ui: &mut egui::Ui, id: &str, t: &Table, status: Option<String>) {
             for (h, hint) in [
                 ("Rate, s/d", "Seconds a day gained (+) or lost (−)"),
                 (
-                    "From Mean, s/d",
+                    "From Average, s/d",
                     "This position's rate less the mean of the positions measured",
                 ),
                 (
@@ -795,43 +831,52 @@ fn table_grid(ui: &mut egui::Ui, id: &str, t: &Table, status: Option<String>) {
                         let label = position_label(
                             session::Position::parse(p.code()).unwrap_or(session::Position::CH),
                         );
-                        match status.take() {
-                            Some(s) => {
+                        match (status.take(), live) {
+                            // Being measured, with 10 s or more: its figures
+                            // so far, in the colour of the words under way.
+                            (Some(_), Some(FreeCell::Read(rate, amp, be))) => {
+                                ui.label(RichText::new(label).strong().color(pal.text))
+                                    .on_hover_text("Being measured: its figures so far");
+                                right(ui, signed(*rate, 1), false, pal.accent);
+                                ui.label("");
+                                right(ui, plain(*amp, 0), false, pal.accent);
+                                right(ui, plain(*be, 2), false, pal.accent);
+                            }
+                            (Some(s), _) => {
                                 ui.label(RichText::new(label).strong().color(pal.text));
                                 right(ui, s, false, pal.accent);
+                                for _ in 0..3 {
+                                    ui.label("");
+                                }
                             }
-                            None => {
+                            (None, _) => {
                                 ui.label(RichText::new(label).color(pal.text_tertiary));
-                                ui.label("");
+                                for _ in 0..4 {
+                                    ui.label("");
+                                }
                             }
-                        }
-                        for _ in 0..3 {
-                            ui.label("");
                         }
                     }
                 }
                 ui.end_row();
             }
             if !t.rows.is_empty() {
-                ui.label(RichText::new("Mean").strong().color(pal.text));
+                ui.label(RichText::new("Average").strong().color(pal.text));
                 right(ui, signed(t.mean_rate, 1), true, pal.text);
                 ui.label("");
                 right(ui, plain(t.mean_amplitude, 0), true, pal.text);
                 right(ui, plain(t.mean_beat_error, 2), true, pal.text);
                 ui.end_row();
             }
+            if t.rows.len() >= 2 {
+                largest_label(ui);
+                right(ui, plain(t.largest_difference, 1), true, pal.text);
+                ui.label("");
+                right(ui, plain(t.largest_amplitude, 0), true, pal.text);
+                right(ui, plain(t.largest_beat_error, 2), true, pal.text);
+                ui.end_row();
+            }
         });
-    if t.rows.len() >= 2 {
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new(format!(
-                "Largest difference between the positions' rates: {} s/d.",
-                plain(t.largest_difference, 1)
-            ))
-            .color(pal.text),
-        )
-        .on_hover_text("D: the fastest position's rate less the slowest's");
-    }
     if t.dvh_rate.is_some() || t.dvh_amplitude.is_some() {
         ui.label(
             RichText::new(format!(
@@ -943,12 +988,14 @@ fn earlier_line(full: &FullWind) -> String {
 /// the table filling in as each position is measured, and with earlier
 /// results loaded, those results and both tests side by side. Returns
 /// what a button asked for.
+#[allow(clippy::too_many_arguments)]
 pub fn pane(
     ui: &mut egui::Ui,
     test: Option<&Test>,
     phase: Option<Phase>,
     earlier: Option<&FullWind>,
     free: Option<&FreeTable>,
+    live: Option<&FreeCell>,
     settle_s: f64,
     measure_s: f64,
 ) -> Option<Action> {
@@ -983,7 +1030,8 @@ pub fn pane(
                     Some(Phase::Turn) if t.needs_reading() => Some("Reading…".to_string()),
                     _ => None,
                 };
-                table_grid(ui, "positions", &table(t.readings_so_far()), status);
+                let live = live.filter(|_| matches!(phase, Some(Phase::Measuring(_))));
+                table_grid(ui, "positions", &table(t.readings_so_far()), status, live);
             }
             if let (None, Some(f)) = (test, free) {
                 heading(
@@ -1047,7 +1095,7 @@ pub fn pane(
                         action = Some(Action::ClearEarlier);
                     }
                 });
-                table_grid(ui, "earlier", &kept_table(full), None);
+                table_grid(ui, "earlier", &kept_table(full), None, None);
             }
             ui.add_space(10.0);
             let about = match (test, earlier) {
@@ -1107,6 +1155,9 @@ pub struct Table {
     pub mean_beat_error: Option<f64>,
     /// The largest difference between the rates, s/d (D).
     pub largest_difference: Option<f64>,
+    /// The same for amplitude, degrees, and beat error, ms.
+    pub largest_amplitude: Option<f64>,
+    pub largest_beat_error: Option<f64>,
     /// The vertical positions' mean rate less the horizontal ones', s/d
     /// (DVH).
     pub dvh_rate: Option<f64>,
@@ -1222,6 +1273,8 @@ fn table_of(figures: &[Figures], notes: Vec<String>) -> Table {
         mean_amplitude: ix.amplitude_mean,
         mean_beat_error: ix.beat_error_mean,
         largest_difference: ix.d_rate,
+        largest_amplitude: ix.d_amplitude,
+        largest_beat_error: ix.d_beat_error,
         dvh_rate: ix.dvh_rate,
         dvh_amplitude: ix.dvh_amplitude,
         notes,
@@ -1240,12 +1293,15 @@ pub enum FreeCell {
 }
 
 /// A free take's table: each position in the card's order with its
-/// duration and readings, and the largest rate difference over the
-/// positions read. The figures are core `session::positions_table`'s.
+/// duration and readings, then the mean and the largest difference of
+/// rate, amplitude and beat error over the positions read. The figures
+/// are core `session::positions_table`'s.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FreeTable {
     pub rows: Vec<(String, f64, FreeCell)>,
-    pub largest_difference: Option<f64>,
+    /// Rate (s/d), amplitude (degrees) and beat error (ms).
+    pub mean: [Option<f64>; 3],
+    pub largest: [Option<f64>; 3],
     /// How many positions have readings.
     pub read: usize,
 }
@@ -1272,7 +1328,16 @@ pub fn free_table(t: &session::PositionsTable) -> FreeTable {
         .count();
     FreeTable {
         rows,
-        largest_difference: t.indices.d_rate,
+        mean: [
+            t.indices.x,
+            t.indices.amplitude_mean,
+            t.indices.beat_error_mean,
+        ],
+        largest: [
+            t.indices.d_rate,
+            t.indices.d_amplitude,
+            t.indices.d_beat_error,
+        ],
         read,
     }
 }
@@ -1290,7 +1355,7 @@ fn table_duration(v: f64) -> String {
 }
 
 /// The free take's table: Position, Duration, Rate, Amplitude and Beat
-/// Error, each reading in its own colour, then the largest rate
+/// Error, each reading in its own colour, then the mean and the largest
 /// difference once two positions have readings.
 fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
     let pal = theme::pal(ui);
@@ -1348,22 +1413,35 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                 ui.end_row();
             }
             if t.read >= 2 {
-                ui.label(
-                    RichText::new("Largest Rate Difference")
-                        .strong()
-                        .color(pal.text),
-                )
-                .on_hover_text("The fastest position's rate less the slowest's");
+                ui.label(RichText::new("Average").strong().color(pal.text))
+                    .on_hover_text("Over the positions read");
                 right(ui, format!("{} of 6", t.read), false, pal.text_secondary);
+                right(ui, signed(t.mean[0], 1), true, pal.trace_rate);
+                right(ui, plain(t.mean[1], 0), true, pal.trace_amplitude);
+                right(ui, plain(t.mean[2], 2), true, pal.ink(pal.trace_beat_error));
+                ui.end_row();
+                largest_label(ui);
+                ui.label("");
+                right(ui, plain(t.largest[0], 1), true, pal.trace_rate);
+                right(ui, plain(t.largest[1], 0), true, pal.trace_amplitude);
                 right(
                     ui,
-                    plain(t.largest_difference.map(f64::abs), 1),
+                    plain(t.largest[2], 2),
                     true,
-                    pal.trace_rate,
+                    pal.ink(pal.trace_beat_error),
                 );
                 ui.end_row();
             }
         });
+}
+
+/// The label of a table's Largest Difference row, with its hover.
+fn largest_label(ui: &mut egui::Ui) {
+    let pal = theme::pal(ui);
+    ui.label(RichText::new("Largest Difference").strong().color(pal.text))
+        .on_hover_text(
+            "Between the positions read: the highest rate, amplitude or beat error less the lowest",
+        );
 }
 
 /// The full-wind test against the 24 hour half, with the figures
@@ -1446,7 +1524,7 @@ pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<C
 
 /// A position as the app names it: "Crown Up (CU, 3H)", the hobby
 /// code with the Swiss laboratory name beside it, or "Dial Up (DU)".
-fn position_label(p: session::Position) -> String {
+pub fn position_label(p: session::Position) -> String {
     if p.code().starts_with(|c: char| c.is_ascii_digit()) {
         format!("{} ({}, {})", p.name(), p.common(), p.code())
     } else {
@@ -1480,7 +1558,7 @@ pub fn table_text(t: &Table, sep: char) -> String {
     let mut out = line(&[
         "Position".into(),
         "Rate, s/d".into(),
-        "From Mean, s/d".into(),
+        "From Average, s/d".into(),
         "Amplitude, °".into(),
         "Beat Error, ms".into(),
     ]);
@@ -1494,17 +1572,20 @@ pub fn table_text(t: &Table, sep: char) -> String {
         ]);
     }
     out += &line(&[
-        "Mean".into(),
+        "Average".into(),
         num(t.mean_rate, 1),
         String::new(),
         num(t.mean_amplitude, 0),
         num(t.mean_beat_error, 2),
     ]);
-    out.push('\n');
     out += &line(&[
-        "Largest difference between rates, s/d".into(),
+        "Largest Difference".into(),
         num(t.largest_difference, 1),
+        String::new(),
+        num(t.largest_amplitude, 0),
+        num(t.largest_beat_error, 2),
     ]);
+    out.push('\n');
     out += &line(&[
         "Vertical less horizontal rate, s/d".into(),
         num(t.dvh_rate, 1),
@@ -1668,6 +1749,93 @@ mod tests {
     use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
     use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
+
+    /// The pane drawn for `test` in `phase` with `live` figures: each
+    /// piece of text and where it is.
+    fn drawn(test: &Test, phase: Phase, live: Option<&FreeCell>) -> Vec<(String, egui::Rect)> {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut found = Vec::new();
+        for _ in 0..2 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    pane(ui, Some(test), Some(phase), None, None, live, 20.0, 60.0);
+                });
+            });
+            found = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => {
+                        Some((t.galley.text().to_string(), t.visual_bounding_rect()))
+                    }
+                    _ => None,
+                })
+                .collect();
+        }
+        found
+    }
+
+    /// The banner's buttons keep their places as the test moves on: Stop
+    /// never moves, and Restart stays where it was, so a click meant for
+    /// Stop as a position's measuring ends never lands on Restart.
+    #[test]
+    fn the_test_buttons_keep_their_places_from_phase_to_phase() {
+        let mut test = Test::new().timed(20.0, 60.0);
+        let at = |found: &[(String, egui::Rect)], text: &str| {
+            found
+                .iter()
+                .find(|(t, _)| t == text)
+                .map(|(_, r)| r.center().x)
+                .unwrap_or_else(|| panic!("{text}: {found:?}"))
+        };
+        assert!(matches!(test.tick(0.0), Phase::Settling(_)));
+        let ph = test.tick(5.0);
+        let settling = drawn(&test, ph, None);
+        let measuring_phase = test.tick(30.0);
+        assert!(matches!(measuring_phase, Phase::Measuring(_)));
+        let measuring = drawn(&test, measuring_phase, None);
+        assert_eq!(test.tick(85.0), Phase::Turn);
+        let turn = drawn(&test, Phase::Turn, None);
+        let stop = at(&measuring, "Stop");
+        let restart = at(&measuring, "Restart DU Measurement");
+        assert_eq!(at(&settling, "Stop"), stop);
+        assert_eq!(at(&turn, "Stop"), stop);
+        assert_eq!(at(&turn, "Restart DU Measurement"), restart);
+        test.advance(86.0);
+        test.pause(90.0);
+        let ph = test.tick(91.0);
+        let paused = drawn(&test, ph, None);
+        at(&paused, "Resume");
+        assert_eq!(at(&paused, "Stop"), stop);
+    }
+
+    /// The position being measured shows its figures so far, once it has
+    /// them; before then it says it is measuring.
+    #[test]
+    fn the_position_being_measured_shows_its_figures_so_far() {
+        let mut test = Test::new().timed(20.0, 60.0);
+        test.tick(0.0);
+        let phase = test.tick(30.0);
+        let words = |found: Vec<(String, egui::Rect)>| {
+            found.into_iter().map(|(t, _)| t).collect::<Vec<_>>()
+        };
+        let before = words(drawn(&test, phase, None));
+        assert!(before.iter().any(|t| t == "Measuring…"), "{before:?}");
+        let live = FreeCell::Read(Some(-4.25), Some(281.4), Some(0.31));
+        let after = words(drawn(&test, phase, Some(&live)));
+        for want in ["−4.2", "281", "0.31"] {
+            assert!(after.iter().any(|t| t == want), "{want}: {after:?}");
+        }
+        assert!(!after.iter().any(|t| t == "Measuring…"), "{after:?}");
+        // Settling, there is nothing to show yet, whatever is passed.
+        let mut test = Test::new().timed(20.0, 60.0);
+        test.tick(0.0);
+        let ph = test.tick(5.0);
+        let settling = words(drawn(&test, ph, Some(&live)));
+        assert!(settling.iter().any(|t| t == "Settling…"), "{settling:?}");
+        assert!(!settling.iter().any(|t| t == "281"), "{settling:?}");
+    }
 
     #[test]
     fn a_position_says_how_its_beat_error_was_given() {
@@ -2074,6 +2242,11 @@ mod tests {
         // Dial Up averages to 15 s/d before the mean and the difference.
         assert_eq!(t.mean_rate, Some(7.5));
         assert_eq!(t.largest_difference, Some(15.0));
+        // Dial Up's 285° and 0.3 ms against Crown Up's 250° and 0.1 ms.
+        assert_eq!(t.largest_amplitude, Some(35.0));
+        assert!((t.largest_beat_error.unwrap() - 0.2).abs() < 1e-9);
+        assert_eq!(t.largest_amplitude, ix.d_amplitude);
+        assert_eq!(t.largest_beat_error, ix.d_beat_error);
         assert_eq!(t.mean_rate, ix.x);
         assert_eq!(t.mean_amplitude, ix.amplitude_mean);
         assert_eq!(t.mean_beat_error, ix.beat_error_mean);
@@ -2103,6 +2276,8 @@ mod tests {
             mean_amplitude: Some(265.5),
             mean_beat_error: Some(0.4),
             largest_difference: None,
+            largest_amplitude: Some(31.0),
+            largest_beat_error: None,
             dvh_rate: None,
             dvh_amplitude: Some(-31.0),
             notes: vec!["Crown Up (CU, 3H): no regular beat found".into()],
@@ -2111,12 +2286,13 @@ mod tests {
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(
             lines[0],
-            "Position,\"Rate, s/d\",\"From Mean, s/d\",\"Amplitude, °\",\"Beat Error, ms\""
+            "Position,\"Rate, s/d\",\"From Average, s/d\",\"Amplitude, °\",\"Beat Error, ms\""
         );
         assert_eq!(lines[1], "Dial Up (DU),-3.2,-1.0,281,0.40");
         assert_eq!(lines[2], "\"Crown Up (CU, 3H)\",,,250,");
-        assert_eq!(lines[3], "Mean,-2.2,,266,0.40");
-        assert_eq!(lines[4], "");
+        assert_eq!(lines[3], "Average,-2.2,,266,0.40");
+        assert_eq!(lines[4], "Largest Difference,,,31,");
+        assert_eq!(lines[5], "");
         assert_eq!(lines[7], "\"Vertical less horizontal amplitude, °\",-31");
         assert_eq!(lines[8], "\"Crown Up (CU, 3H): no regular beat found\"");
         let tsv = table_text(&t, '\t');
