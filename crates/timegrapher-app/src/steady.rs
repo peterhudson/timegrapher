@@ -502,6 +502,15 @@ fn lag_text(s: f64) -> String {
 }
 
 /// A wheel's name in Title Case.
+/// The wheel to name beside a fold at `period_s`: that of the finding
+/// (period, wheel) folded at, never one of another period's.
+fn fold_wheel<'a>(found: &[(f64, Option<&'a str>)], period_s: f64) -> Option<&'a str> {
+    found
+        .iter()
+        .filter(|(p, _)| (p - period_s).abs() <= 0.01 * period_s)
+        .find_map(|(_, w)| *w)
+}
+
 fn wheel_title(name: &str) -> String {
     name.split(' ')
         .map(|w| {
@@ -1014,12 +1023,12 @@ fn row(
             let label = match &s.fold_from[i] {
                 FoldFrom::Own => {
                     let mut t = format!("{} cycle", secs(f.period_s));
-                    if let Some(w) = c
-                        .cycle
-                        .as_ref()
-                        .and_then(|c| c.wheel.as_ref())
-                        .or(c.period.as_ref().and_then(|p| p.wheel.as_ref()))
-                    {
+                    let found = [
+                        c.cycle.as_ref().map(|c| (c.period_s, c.wheel.as_deref())),
+                        c.period.as_ref().map(|p| (p.period_s, p.wheel.as_deref())),
+                    ];
+                    let found: Vec<_> = found.into_iter().flatten().collect();
+                    if let Some(w) = fold_wheel(&found, f.period_s) {
                         t += &format!(", {}", wheel_title(w));
                     }
                     t + &format!(", {} cycles folded", f.raster.len())
@@ -1619,6 +1628,18 @@ fn note(ui: &mut egui::Ui, text: &str) {
 
 #[cfg(test)]
 mod tests {
+    /// A fold names a wheel only when the finding folded at is that
+    /// wheel's: a 46 s fold doesn't borrow the escape wheel of the beat
+    /// timing's 5.0 s line.
+    #[test]
+    fn a_fold_names_only_its_own_findings_wheel() {
+        let escape = Some("escape wheel");
+        assert_eq!(fold_wheel(&[(46.0, None), (5.0, escape)], 46.0), None);
+        assert_eq!(fold_wheel(&[(5.0, escape)], 5.0), escape);
+        assert_eq!(fold_wheel(&[(46.0, None), (46.2, escape)], 46.0), escape);
+        assert_eq!(fold_wheel(&[], 46.0), None);
+    }
+
     #[test]
     fn a_spectrum_climbing_at_its_end_labels_its_own_peak_not_the_end() {
         // log10 period against log10 size: a hump at 60 s, then a climb
