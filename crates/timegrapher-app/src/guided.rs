@@ -1221,7 +1221,7 @@ pub enum FreeCell {
     Read(Option<f64>, Option<f64>, Option<f64>),
 }
 
-/// A free take's table: each position in the app's order with its
+/// A free take's table: each position in the card's order with its
 /// duration and readings, and the largest rate difference over the
 /// positions read. The figures are core `session::positions_table`'s.
 #[derive(Debug, Clone, PartialEq)]
@@ -1232,9 +1232,10 @@ pub struct FreeTable {
     pub read: usize,
 }
 
-/// The free take's table from core's.
+/// The free take's table from core's, in the Current Position card's
+/// order.
 pub fn free_table(t: &session::PositionsTable) -> FreeTable {
-    let rows: Vec<(String, f64, FreeCell)> = ORDER
+    let rows: Vec<(String, f64, FreeCell)> = Position::ALL
         .iter()
         .filter_map(|p| {
             let sp = session::Position::parse(p.code())?;
