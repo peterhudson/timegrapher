@@ -992,6 +992,93 @@ fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
     v.max_by(|a, b| a.abs().total_cmp(&b.abs()))
 }
 
+/// The least time in a position, seconds, before a take's Positions Test
+/// table reads it: one whole 10 s reading.
+pub const POSITION_MIN_S: f64 = 10.0;
+
+/// One position's row of a take's Positions Test table.
+#[derive(Debug, Clone)]
+pub struct PositionRow {
+    pub position: Position,
+    /// Seconds marked in the position, after each stretch's settling and
+    /// less masked time.
+    pub duration_s: f64,
+    /// Its reading, once `duration_s` reaches the least asked for.
+    pub measurement: Option<Measurement>,
+}
+
+/// A take's Positions Test table: a row for each of the six positions,
+/// in [`Position::ALL`]'s order, and the values over the positions read.
+#[derive(Debug, Clone)]
+pub struct PositionsTable {
+    pub rows: Vec<PositionRow>,
+    pub indices: StateIndices,
+}
+
+/// The Positions Test table of any take, live or opened, guided or not:
+/// each position's settled `stretches` (position, start, end, seconds on
+/// the sound card's clock, settling already trimmed from each start) read
+/// together as one reading, as [`measure_masked`] reads a take: the time
+/// between them and the `masked` stretches (cleaned with [`masked_spans`])
+/// left out. A position is read once its duration reaches `min_s`; the
+/// indices are over the positions read.
+pub fn positions_table(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    masked: &[(f64, f64)],
+    stretches: &[(Position, f64, f64)],
+    min_s: f64,
+) -> PositionsTable {
+    let rows: Vec<PositionRow> = Position::ALL
+        .iter()
+        .map(|&p| {
+            let mut spans: Vec<(f64, f64)> = stretches
+                .iter()
+                .filter(|s| s.0 == p)
+                .map(|&(_, a, b)| (a.max(0.0), b.min(log.duration_s)))
+                .filter(|(a, b)| a < b)
+                .collect();
+            spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let duration_s = spans
+                .iter()
+                .map(|&(a, b)| b - a - masked_within(masked, a, b))
+                .sum::<f64>()
+                .max(0.0);
+            let measurement = match (spans.first(), spans.last()) {
+                (Some(&(from, _)), Some(&(_, to))) if duration_s >= min_s => {
+                    let mut cut = masked.to_vec();
+                    cut.extend(spans.windows(2).map(|w| (w[0].1, w[1].0)));
+                    let cut = masked_spans(&cut.iter().map(|&(a, b)| [a, b]).collect::<Vec<_>>());
+                    Some(measure_masked(log, clock, breaks, &cut, from, to))
+                }
+                _ => None,
+            };
+            PositionRow {
+                position: p,
+                duration_s,
+                measurement,
+            }
+        })
+        .collect();
+    let figures: Vec<Figures> = rows
+        .iter()
+        .filter_map(|r| {
+            let m = r.measurement.as_ref()?;
+            Some((
+                r.position,
+                m.rate_s_per_day,
+                m.amplitude_deg,
+                m.beat_error(),
+            ))
+        })
+        .collect();
+    PositionsTable {
+        indices: indices(0.0, &figures),
+        rows,
+    }
+}
+
 /// Witschi's characteristic values for the readings, and the conditions
 /// found in each recording.
 pub fn evaluate(readings: &[Reading]) -> SessionReport {

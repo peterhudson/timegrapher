@@ -76,7 +76,7 @@ change of position settles (the Positions Test pane's Settle). Along each
 button's foot a teal bar, over a faint track, fills with the seconds
 heard in that position, in Quick Listen as in a test or a take on show:
 settled and not masked, each position's own time only. It is full at the
-Positions Test pane's Measure (60 s unless set otherwise; at 120 s, 60 s
+Positions Test pane's Each Position (60 s unless set otherwise; at 120 s, 60 s
 heard fills half), so a free-form test shows which positions still need
 time; the hover gives the seconds. While you listen, or before anything
 is on show, a button sets the position; keys 1 to 6 do the same, except
@@ -454,11 +454,12 @@ Tock Profile to begin with (its icon is a die showing six, one face for
 each position), leads through the six positions in the app's order: Dial Up,
 Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
 has **Start Test** (**Start a New Test** once one has finished), **Load
-Full-Wind Results…**, **Settle** and **Measure** (the seconds the watch
+Full-Wind Results…**, **Settle** and **Each Position** (the seconds the watch
 settles after each turn and is then measured: 20 s and 60 s unless set
 otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
 field to type in with a menu of common times beside it, 10, 20, 30 and
-60 s for Settle and 30 s to 5 min for Measure), and **Save
+60 s for Settle and 30 s to 5 min for Each Position, which only the
+guided test uses), and **Save
 as CSV…**, **Copy** and, after a test just after winding, **Save
 Results for 24 Hours…**. The pane can be shown with nothing listened
 to yet, so a test can start from it.
@@ -485,6 +486,23 @@ stretches are drawn faintly. The marks stay after the test until a new
 test or a new session. Each position is a stretch of the one session, as
 any change of position is, so the strip and charts mark them and a saved
 session keeps them for `timegrapher session`.
+
+**The table for every take.** With no guided test, the pane shows a
+table for the take on show or under way, filling in as the Current
+Position card is pressed, so a free take becomes a partial or full
+positions test:
+
+- **Columns:** Position, Duration, Rate (red), Amplitude (purple) and
+  Beat Error (yellow).
+- **Duration** is the time marked in the position, less the Settle at
+  the start of each stretch and less masked time.
+- **Readings** show once a position has 10 s. Under that it reads
+  "Under 10 s"; a position never marked reads "Not marked".
+- **Largest rate difference** follows, with "n of 6" positions read,
+  once two positions have readings.
+- The figures are core `session::positions_table`'s: each position's
+  stretches read together, the time between them left out as a mask is.
+  While listening the table is read again every 5 s.
 
 Under the banner, the table fills in as each position is measured, read
 with core `session::measure` as `session` does (rate on the input's

@@ -883,3 +883,66 @@ fn a_stretch_of_exactly_ten_seconds_is_heard() {
         }
     }
 }
+
+#[test]
+fn a_takes_positions_table_reads_each_position_marked() {
+    // Dial up for 40 s at +5 s/d, then crown up for 40 s at +25 s/d, with
+    // a moment of crown down between them too short to read.
+    let cfg = SynthConfig {
+        duration_s: 90.0,
+        rate_s_per_day: 5.0,
+        snr_db: 26.0,
+        ..Default::default()
+    };
+    let path = temp_wav("positions-table");
+    let faster = |t: f64| if t >= 48.0 { 20.0 } else { 0.0 };
+    write_wav(&path, &generate(&cfg, |_| 280.0, faster)).unwrap();
+    let log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+    std::fs::remove_file(&path).ok();
+    let stretches = [
+        (Position::CH, 2.0, 42.0),
+        (Position::H9, 43.0, 47.0),
+        (Position::H3, 50.0, 90.0),
+    ];
+    // Five seconds of dial up masked: its duration leaves them out.
+    let masked = [(20.0, 25.0)];
+    let t = session::positions_table(
+        &log,
+        None,
+        &[],
+        &masked,
+        &stretches,
+        session::POSITION_MIN_S,
+    );
+    let row = |p: Position| t.rows.iter().find(|r| r.position == p).unwrap();
+    assert_eq!(t.rows.len(), 6);
+    let du = row(Position::CH);
+    assert!((du.duration_s - 35.0).abs() < 1e-9, "{}", du.duration_s);
+    let du_rate = du.measurement.as_ref().unwrap().rate_s_per_day;
+    assert!(close(du_rate, 5.0, 3.0), "{du_rate:?}");
+    let cu_rate = row(Position::H3)
+        .measurement
+        .as_ref()
+        .unwrap()
+        .rate_s_per_day;
+    assert!(close(cu_rate, 25.0, 3.0), "{cu_rate:?}");
+    let cd = row(Position::H9);
+    assert!((cd.duration_s - 4.0).abs() < 1e-9 && cd.measurement.is_none());
+    let dd = row(Position::CB);
+    assert!(dd.duration_s == 0.0 && dd.measurement.is_none());
+    // The largest difference is over the two positions read.
+    let d = t.indices.d_rate.unwrap();
+    assert!((d.abs() - 20.0).abs() < 4.0, "{d}");
+
+    // A position marked twice is read as one, the time between left out.
+    let twice = [(Position::CH, 2.0, 20.0), (Position::CH, 26.0, 42.0)];
+    let t = session::positions_table(&log, None, &[], &[], &twice, session::POSITION_MIN_S);
+    let du = &t.rows[0];
+    assert!((du.duration_s - 34.0).abs() < 1e-9, "{}", du.duration_s);
+    assert!(close(
+        du.measurement.as_ref().unwrap().rate_s_per_day,
+        5.0,
+        3.0
+    ));
+    assert!(t.indices.d_rate.is_none(), "one position: no difference");
+}
