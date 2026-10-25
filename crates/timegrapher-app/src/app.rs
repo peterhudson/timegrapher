@@ -7854,7 +7854,9 @@ impl TimegrapherApp {
         }
         let mut bph = self.bph;
         egui::ComboBox::from_id_salt("bph")
-            .width(text_w + 8.0)
+            // The rest of the row, so it ends on the card's right edge as
+            // the Calibre pop-up does (its width is the outer width).
+            .width(ui.available_width())
             // Tall enough for every rate, as in the menus that list them.
             .height(480.0)
             .selected_text(shown)
@@ -20234,6 +20236,58 @@ mod tests {
                 .map(|(_, r)| *r)
                 .unwrap_or_else(|| panic!("the Watch line: {found:?}"));
             assert!(calibre.right() <= w - 12.0, "{w}: {calibre:?}");
+        }
+    }
+
+    #[test]
+    fn the_calibre_cards_fields_end_on_one_right_edge() {
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        for w in [1000.0, 1280.0, 1610.0, 2560.0] {
+            let (mut texts, mut frames) = (Vec::new(), Vec::new());
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 900.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| app.panels(ctx));
+                texts.clear();
+                frames.clear();
+                for c in &out.shapes {
+                    match &c.shape {
+                        egui::Shape::Text(t) => {
+                            texts.push((t.galley.text().to_string(), t.visual_bounding_rect()))
+                        }
+                        egui::Shape::Rect(r) => frames.push(r.rect),
+                        _ => {}
+                    }
+                }
+            }
+            // The smallest frame round each field's words.
+            let field = |words: &str| {
+                let at = texts
+                    .iter()
+                    .find(|(t, _)| t == words)
+                    .map(|(_, r)| r.center())
+                    .unwrap_or_else(|| panic!("{w}: {words}: {texts:?}"));
+                frames
+                    .iter()
+                    .filter(|r| r.contains(at) && r.height() < 40.0)
+                    .min_by(|a, b| a.area().total_cmp(&b.area()))
+                    .copied()
+                    .unwrap_or_else(|| panic!("{w}: no frame round {words}"))
+            };
+            let (calibre, bph) = (field("Not Set"), field("Auto"));
+            assert!(bph.top() > calibre.bottom(), "{w}: {calibre:?} {bph:?}");
+            assert!(
+                (bph.right() - calibre.right()).abs() < 0.5,
+                "{w}: Auto ends at {} where Not Set ends at {}",
+                bph.right(),
+                calibre.right()
+            );
         }
     }
 
