@@ -59,6 +59,22 @@ pub struct Palette {
     pub teal: Color32,
 }
 
+/// How strongly the paper strip's track shows the position, as fractions
+/// of the position colour (teal): solid through the settling after each
+/// change, then fading over [`TRACK_FADE_S`] from [`TRACK_FADE_FROM`] to
+/// [`TRACK_FADE_TO`], where it stays. The plot behind the beats takes the
+/// same at [`TRACK_WASH`] of the strength. Kept here so the palette can
+/// change them without touching the drawing.
+pub const TRACK_SETTLING: f32 = 0.62;
+pub const TRACK_FADE_FROM: f32 = 0.48;
+pub const TRACK_FADE_TO: f32 = 0.16;
+pub const TRACK_FADE_S: f64 = 40.0;
+pub const TRACK_WASH: f32 = 1.0 / 6.0;
+/// A masked stretch on the track and over the plot, as a fraction of the
+/// faint text colour.
+pub const MASK_TRACK: f32 = 0.42;
+pub const MASK_WASH: f32 = 0.14;
+
 const fn c(x: core_palette::Rgb) -> Color32 {
     Color32::from_rgb(x.r, x.g, x.b)
 }
@@ -1565,6 +1581,7 @@ pub enum Icon {
     NewPhoto,
     Funnel,
     Fit,
+    Highlighter,
 }
 
 /// A square button with an icon. While `on` it is a chip tinted in `color`

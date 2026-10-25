@@ -81,6 +81,12 @@ pub struct StripInput {
     /// With the Mask tool on: an edge of a masked stretch dragged, the
     /// stretch as it was and as it is now.
     pub reshape: Option<((f64, f64), (f64, f64))>,
+    /// With the Position Brush on: a stretch dragged over, start and end,
+    /// to set to the brush's position.
+    pub paint: Option<(f64, f64)>,
+    /// A change of position dragged along the track: where it was and
+    /// where it is now.
+    pub move_change: Option<(f64, f64)>,
 }
 
 impl Default for StripInput {
@@ -96,6 +102,8 @@ impl Default for StripInput {
             mask: None,
             unmask_at: None,
             reshape: None,
+            paint: None,
+            move_change: None,
         }
     }
 }
@@ -265,6 +273,14 @@ pub struct Extras<'a> {
     /// The Mask tool is on: dragging along the strip masks a stretch in
     /// place of looking back, and a click brings one back.
     pub masking: bool,
+    /// Every stretch of the take in one position, for the track: start,
+    /// end, the position's name and its code. One over the whole take
+    /// while the watch stayed put.
+    pub track: &'a [(f64, f64, &'a str, &'a str)],
+    /// The Position Brush is on, with this position's code: dragging along
+    /// the strip sets that stretch to the position in place of looking
+    /// back.
+    pub brush: Option<&'a str>,
 }
 
 /// Mark each stretch of the session in one position across the plotting
@@ -336,144 +352,266 @@ pub fn paint_bands(
     }
 }
 
-/// The position ticker in `lane`, beside the plotting area: each stretch's
-/// position named over and over along it, a short rule between repeats,
-/// so the position shows wherever the strip is scrolled, even with both
-/// its ends out of sight; over each stretch left out ("Settling" after a
-/// move), what it is.
-/// The names start from the stretch's own start, so they move with it.
+/// The time along a stretch of the strip from `a` to `b` as a rectangle
+/// across `r`, cut to `r`; `None` when none of it is in view.
+fn along_rect(
+    r: Rect,
+    a: f64,
+    b: f64,
+    at: &impl Fn(f64) -> Pos2,
+    horizontal: bool,
+) -> Option<Rect> {
+    let along = |p: Pos2| if horizontal { p.x } else { p.y };
+    let (lo, hi) = if horizontal {
+        (r.left(), r.right())
+    } else {
+        (r.top(), r.bottom())
+    };
+    let (pa, pb) = (along(at(a.max(-1e12))), along(at(b.min(1e12))));
+    let (s0, s1) = (pa.min(pb).max(lo), pa.max(pb).min(hi));
+    (s1 > s0).then(|| {
+        if horizontal {
+            Rect::from_x_y_ranges(s0..=s1, r.y_range())
+        } else {
+            Rect::from_x_y_ranges(r.x_range(), s0..=s1)
+        }
+    })
+}
+
+/// When the settling that began the stretch from `a` to `b` ends: the
+/// latest end of those in `settles` starting in it, else its start.
+fn settled_from(a: f64, b: f64, settles: &[(f64, f64, &str)]) -> f64 {
+    settles
+        .iter()
+        .filter(|s| s.0 >= a && s.0 < b && s.2 == SETTLING)
+        .fold(a, |to, s| to.max(s.1.min(b)))
+}
+
+/// The track's strength at `t` in a stretch settled from `settled`: solid
+/// through the settling, then fading (see [`crate::theme::TRACK_SETTLING`]).
+fn track_density(t: f64, settled: f64) -> f32 {
+    use crate::theme::{TRACK_FADE_FROM, TRACK_FADE_S, TRACK_FADE_TO, TRACK_SETTLING};
+    if t < settled {
+        TRACK_SETTLING
+    } else {
+        let k = ((t - settled) / TRACK_FADE_S).clamp(0.0, 1.0) as f32;
+        TRACK_FADE_FROM + (TRACK_FADE_TO - TRACK_FADE_FROM) * k
+    }
+}
+
+/// Fill the stretch from `a` to `b` across `r` in `color` at the track's
+/// strength (times `scale`), settled from `settled`: the fade drawn in
+/// slices a couple of points wide.
 #[allow(clippy::too_many_arguments)]
-pub fn paint_ticker(
+fn paint_density(
+    painter: &egui::Painter,
+    r: Rect,
+    a: f64,
+    b: f64,
+    settled: f64,
+    color: Color32,
+    scale: f32,
+    at: &impl Fn(f64) -> Pos2,
+    horizontal: bool,
+) {
+    let fade_to = settled + crate::theme::TRACK_FADE_S;
+    let fill = |a: f64, b: f64, t: f64| {
+        if let Some(rect) = along_rect(r, a, b, at, horizontal) {
+            painter.rect_filled(
+                rect,
+                0.0,
+                color.gamma_multiply(track_density(t, settled) * scale),
+            );
+        }
+    };
+    if settled > a {
+        fill(a, settled.min(b), a);
+    }
+    if fade_to > settled && b > settled {
+        let to = fade_to.min(b);
+        let along = |p: Pos2| if horizontal { p.x } else { p.y };
+        let px = (along(at(to)) - along(at(settled))).abs();
+        let n = ((px / 2.0).ceil() as usize).clamp(1, 64);
+        let step = (to - settled) / n as f64;
+        for k in 0..n {
+            let t0 = settled + step * k as f64;
+            fill(t0, t0 + step, t0 + step / 2.0);
+        }
+    }
+    if b > fade_to {
+        fill(fade_to.max(a), b, fade_to);
+    }
+}
+
+/// Write `name` along the stretch `seg` of the track `lane` from its start
+/// (`start_at` its start's place along the time), else `code` when the
+/// name doesn't fit, else nothing. Turned a quarter, read from the top,
+/// when the track runs down.
+#[allow(clippy::too_many_arguments)]
+fn track_label(
     painter: &egui::Painter,
     lane: Rect,
-    bands: &[(f64, f64, &str)],
+    seg: Rect,
+    start_at: f32,
+    name: &str,
+    code: &str,
+    color: Color32,
+    horizontal: bool,
+) {
+    let font = FontId::proportional(11.0);
+    let room = if horizontal {
+        seg.width()
+    } else {
+        seg.height()
+    } - 8.0;
+    let galley = [name, code]
+        .into_iter()
+        .filter(|t| !t.is_empty())
+        .map(|t| painter.layout_no_wrap(t.to_string(), font.clone(), color))
+        .find(|g| g.size().x <= room);
+    let Some(galley) = galley else { return };
+    let w = galley.size().x;
+    if horizontal {
+        // From the start, or the left edge it runs in from.
+        let x = start_at.max(seg.left()) + 4.0;
+        let x = x.min(seg.right() - 4.0 - w);
+        painter.galley(
+            Pos2::new(x, lane.center().y - galley.size().y / 2.0),
+            galley,
+            color,
+        );
+    } else {
+        // Newest at the top: the start is the bottom.
+        let y = start_at.min(seg.bottom()) - 4.0 - w;
+        let y = y.max(seg.top() + 4.0);
+        let shape = egui::epaint::TextShape::new(
+            Pos2::new(lane.center().x + galley.size().y / 2.0, y),
+            galley,
+            color,
+        )
+        .with_angle(std::f32::consts::FRAC_PI_2);
+        painter.add(shape);
+    }
+}
+
+/// The track in `lane`, beside the plotting area: each stretch of the take
+/// in one position in teal, solid through its settling and then fading,
+/// named at its start, with a thin line at each change; during a
+/// Positions Test the time it didn't use plain, with what it is; masked
+/// stretches grey over them, named "Masked".
+#[allow(clippy::too_many_arguments)]
+pub fn paint_track(
+    painter: &egui::Painter,
+    lane: Rect,
+    track: &[(f64, f64, &str, &str)],
     settles: &[(f64, f64, &str)],
-    measured: &[(f64, f64)],
+    masked: &[(f64, f64)],
     at: impl Fn(f64) -> Pos2,
     horizontal: bool,
     vis: &egui::Visuals,
+    pal: &crate::theme::Palette,
 ) {
-    let text = vis.weak_text_color();
-    let font = FontId::proportional(11.0);
+    let painter = painter.with_clip_rect(lane);
+    let weak = vis.weak_text_color();
+    let plain = weak.gamma_multiply(SETTLING_SHADE);
+    painter.rect_filled(lane, 2.0, plain);
     let along = |p: Pos2| if horizontal { p.x } else { p.y };
-    let (lo, hi) = if horizontal {
-        (lane.left(), lane.right())
-    } else {
-        (lane.top(), lane.bottom())
-    };
-    // The stretches cut at each settling, so it gets a label of its own.
-    let mut parts: Vec<(f64, f64, &str, usize, bool)> = Vec::new();
-    for (i, &(a, b, name)) in bands.iter().enumerate() {
-        let mut from = a;
-        for &(s0, s1, why) in settles.iter().filter(|s| s.0 >= a && s.0 < b) {
-            let s0 = s0.max(from);
-            if s0 > from {
-                parts.push((from, s0, name, i, false));
-            }
-            if s1.min(b) > s0 {
-                parts.push((s0, s1.min(b), why, i, true));
-            }
-            from = from.max(s1.min(b));
-        }
-        if from < b {
-            parts.push((from, b, name, i, false));
+    for &(a, b, _, _) in track {
+        let settled = settled_from(a, b, settles);
+        paint_density(
+            &painter, lane, a, b, settled, pal.teal, 1.0, &at, horizontal,
+        );
+    }
+    // A test's time not used, and before it, stays plain.
+    let plain_parts: Vec<(f64, f64, &str)> = settles
+        .iter()
+        .copied()
+        .filter(|s| s.2 == crate::guided::NOT_USED || s.2 == crate::guided::BEFORE_TEST)
+        .collect();
+    for &(a, b, _) in &plain_parts {
+        if let Some(seg) = along_rect(lane, a, b, &at, horizontal) {
+            painter.rect_filled(seg, 0.0, vis.extreme_bg_color);
+            painter.rect_filled(seg, 0.0, plain);
         }
     }
-    let painter = painter.with_clip_rect(lane);
-    for (a, b, name, i, settling) in parts {
-        let (pa, pb) = (along(at(a)), along(at(b.min(1e12))));
-        let dir = if pb >= pa { 1.0 } else { -1.0 };
-        let (s0, s1) = (pa.min(pb).max(lo), pa.max(pb).min(hi));
-        if s1 <= s0 {
-            continue;
-        }
-        let seg = if horizontal {
-            Rect::from_x_y_ranges(s0..=s1, lane.y_range())
-        } else {
-            Rect::from_x_y_ranges(lane.x_range(), s0..=s1)
-        };
-        // In a Positions Test each phase its own shade, as on the plot;
-        // otherwise every other position a shade darker.
-        let phase = if measured.is_empty() {
-            None
-        } else if settling {
-            Some(name)
-        } else {
-            let mid = (a + b.min(1e12)) / 2.0;
-            measured
-                .iter()
-                .any(|m| mid > m.0 && mid < m.1)
-                .then_some(MEASURED)
-        };
-        let seg = seg.shrink(0.5);
-        match phase {
-            None => {
-                let shade = if i % 2 == 1 {
-                    MEASURED_SHADE
-                } else {
-                    SETTLING_SHADE
-                };
-                painter.rect_filled(seg, 2.0, text.gamma_multiply(shade));
+    let cut = Stroke::new(1.5_f32, Color32::from_black_alpha(150));
+    let ink = vis.text_color();
+    for (i, &(a, b, name, code)) in track.iter().enumerate() {
+        let start = along(at(a.max(0.0)));
+        if i > 0 {
+            if horizontal {
+                painter.vline(start, lane.y_range(), cut);
+            } else {
+                painter.hline(lane.x_range(), start, cut);
             }
-            Some(p) => paint_phase(&painter, seg, p, vis),
         }
-        // Settling a little fainter than the names, but not so faint that
-        // the thin "l"s drop out at this size ("Setting").
-        let color = if settling {
-            vis.text_color().gamma_multiply(0.6)
-        } else {
-            vis.text_color().gamma_multiply(0.85)
-        };
-        let galley = painter.layout_no_wrap(name.to_string(), font.clone(), color);
-        let w = galley.size().x;
-        let gap = 28.0;
-        let pitch = w + gap;
-        // Labels at the stretch's start plus whole pitches, in its own
-        // direction, so they slide with the strip.
-        let first = pa + dir * 6.0;
-        let (k0, k1) = {
-            let (u0, u1) = ((s0 - first) * dir, (s1 - first) * dir);
-            let (u0, u1) = (u0.min(u1), u0.max(u1));
-            (
-                (u0 / pitch).floor().max(0.0) as i64,
-                (u1 / pitch).ceil() as i64,
-            )
-        };
-        for k in k0..=k1 {
-            let start = first + dir * k as f32 * pitch;
-            let (l0, l1) = (start.min(start + dir * w), start.max(start + dir * w));
-            if l0 >= s0 && l1 <= s1 {
-                if horizontal {
-                    painter.galley(
-                        Pos2::new(l0, lane.center().y - galley.size().y / 2.0),
-                        galley.clone(),
-                        color,
+        // Named in the part of it the test used, or all of it.
+        let mut from = a;
+        for &(p0, p1, _) in plain_parts.iter().filter(|p| p.1 > a && p.0 < b) {
+            if p0 > from {
+                if let Some(seg) = along_rect(lane, from, p0, &at, horizontal) {
+                    track_label(
+                        &painter,
+                        lane,
+                        seg,
+                        along(at(from.max(0.0))),
+                        name,
+                        code,
+                        ink,
+                        horizontal,
                     );
-                } else {
-                    // Read from below, turned a quarter.
-                    let shape = egui::epaint::TextShape::new(
-                        Pos2::new(lane.center().x + galley.size().y / 2.0, l0),
-                        galley.clone(),
-                        color,
-                    )
-                    .with_angle(std::f32::consts::FRAC_PI_2);
-                    painter.add(shape);
                 }
             }
-            // A short rule midway to the next.
-            let mid = start + dir * (w + gap / 2.0);
-            let next = start + dir * pitch;
-            if mid > s0 + 2.0 && mid < s1 - 2.0 && (next.min(next + dir * w) >= s0) {
-                let rule = Stroke::new(1.0_f32, text.gamma_multiply(0.5));
-                if horizontal {
-                    painter.vline(mid, lane.shrink(4.0).y_range(), rule);
-                } else {
-                    painter.hline(lane.shrink(4.0).x_range(), mid, rule);
-                }
+            from = from.max(p1);
+        }
+        if from < b {
+            if let Some(seg) = along_rect(lane, from, b, &at, horizontal) {
+                track_label(
+                    &painter,
+                    lane,
+                    seg,
+                    along(at(from.max(0.0))),
+                    name,
+                    code,
+                    ink,
+                    horizontal,
+                );
             }
+        }
+    }
+    for &(a, b, why) in &plain_parts {
+        if let Some(seg) = along_rect(lane, a, b, &at, horizontal) {
+            track_label(
+                &painter,
+                lane,
+                seg,
+                along(at(a.max(0.0))),
+                why,
+                "",
+                ink.gamma_multiply(0.7),
+                horizontal,
+            );
+        }
+    }
+    for &(a, b) in masked {
+        if let Some(seg) = along_rect(lane, a, b, &at, horizontal) {
+            painter.rect_filled(seg, 0.0, vis.extreme_bg_color);
+            painter.rect_filled(seg, 0.0, weak.gamma_multiply(crate::theme::MASK_TRACK));
+            track_label(
+                &painter,
+                lane,
+                seg,
+                along(at(a)),
+                "Masked",
+                "",
+                ink,
+                horizontal,
+            );
         }
     }
 }
+
+use crate::guided::SETTLING;
 
 /// How dark the shade over a measured stretch is, and over a settling (and
 /// the lighter of two positions when no test is under way), as fractions
@@ -596,8 +734,8 @@ fn edge_near(masked: &[(f64, f64)], p: Pos2, g: &Geom) -> Option<(f64, f64, bool
 }
 
 /// Shade the masked stretches across the plotting area `r` between
-/// `oldest` and `end`, each named "Masked" at its start where there is
-/// room, and the stretch being dragged over (`dragging`) more strongly.
+/// `oldest` and `end` (the track names them), and the stretch being
+/// dragged over (`dragging`) more strongly.
 /// `at` places a time on the time axis; `horizontal` when time runs
 /// across.
 #[allow(clippy::too_many_arguments)]
@@ -622,19 +760,8 @@ fn paint_masked(
         }
     };
     let ink = vis.weak_text_color();
-    let font = FontId::proportional(11.0);
     for &(a, b) in masked.iter().filter(|m| m.1 > oldest && m.0 < end) {
-        let rect = band(a, b);
-        painter.rect_filled(rect, 0.0, ink.gamma_multiply(0.14));
-        let name = painter.layout_no_wrap("Masked".into(), font.clone(), ink);
-        let room = if horizontal {
-            rect.width()
-        } else {
-            rect.height()
-        };
-        if room > name.size().x + 8.0 || (!horizontal && room > name.size().y + 4.0) {
-            painter.galley(rect.min + Vec2::splat(3.0), name, ink);
-        }
+        painter.rect_filled(band(a, b), 0.0, ink.gamma_multiply(crate::theme::MASK_WASH));
     }
     if let Some((a, b)) = dragging {
         let rect = band(a, b);
@@ -681,18 +808,14 @@ pub fn draw_strip(
         .collect();
     // The plotting area inside its axes: time labels down the left (or
     // along the bottom when lying across), ms labels along the bottom (or
-    // down the left), the key along the top, and a scale for each overlay
-    // on top (or down the right).
-    // With more than one position, a ticker lane naming them: a row under
-    // the key when the strip lies across, else a column on the right.
-    let lane_h = if extras.bands.is_empty() {
-        0.0
-    } else {
-        row_h + 4.0
-    };
+    // down the left), and a scale for each overlay on top (or down the
+    // right). The track of positions runs along the top when the strip
+    // lies across, the key in the corners either side of it; else the
+    // track is a column on the right, under the key.
+    let lane_h = row_h + 4.0;
     let r = if view.horizontal {
         Rect::from_min_max(
-            outer.min + Vec2::new(extras.gutter.max(46.0), row_h + 4.0 + lane_h),
+            outer.min + Vec2::new(extras.gutter.max(46.0), 3.0 + lane_h),
             outer.max - Vec2::new(4.0 + 58.0 * overlays.len() as f32, row_h + 2.0),
         )
     } else {
@@ -703,7 +826,7 @@ pub fn draw_strip(
     };
     let lane = if view.horizontal {
         Rect::from_min_max(
-            Pos2::new(r.left(), r.top() - lane_h),
+            Pos2::new(r.left(), r.top() - lane_h + 1.0),
             Pos2::new(r.right(), r.top() - 2.0),
         )
     } else {
@@ -720,9 +843,39 @@ pub fn draw_strip(
         horizontal: view.horizontal,
     };
     let mut input = StripInput::default();
-    // A drag moves the strip; with the Mask tool on, the left button masks
-    // and the right one still moves it.
-    let d = if extras.masking && !resp.dragged_by(egui::PointerButton::Secondary) {
+    let at = |p: Option<Pos2>| p.map(|p| g.time_at(p).clamp(oldest, end_s));
+    // A change of position on the track within reach of `p`: its time.
+    let changes: Vec<f64> = extras.track.iter().skip(1).map(|s| s.0).collect();
+    let change_near = |p: Pos2| -> Option<f64> {
+        if !lane.expand(2.0).contains(p) {
+            return None;
+        }
+        let along = |q: Pos2| if view.horizontal { q.x } else { q.y };
+        changes
+            .iter()
+            .map(|&t| (t, (along(g.pos(0.0, t)) - along(p)).abs()))
+            .filter(|c| c.1 <= EDGE_REACH)
+            .min_by(|x, y| x.1.total_cmp(&y.1))
+            .map(|c| c.0)
+    };
+    // A drag that begins on a change of position in the track moves it,
+    // whatever tool is on, unless the Mask tool has a masked edge there.
+    let change_id = resp.id.with("change-edge");
+    if resp.drag_started_by(egui::PointerButton::Primary) {
+        let origin = ui.input(|i| i.pointer.press_origin());
+        if let Some(p) = origin.or(resp.interact_pointer_pos()) {
+            let mask_edge = extras.masking && edge_near(extras.masked, p, &g).is_some();
+            if let Some(t) = change_near(p).filter(|_| !mask_edge) {
+                ui.data_mut(|d| d.insert_temp(change_id, t));
+            }
+        }
+    }
+    let moving_change: Option<f64> = ui.data(|d| d.get_temp(change_id));
+    // A drag moves the strip; with the Mask tool or the Position Brush on,
+    // or a change being moved, the left button does that and the right
+    // one still moves it.
+    let tool = extras.masking || extras.brush.is_some() || moving_change.is_some();
+    let d = if tool && !resp.dragged_by(egui::PointerButton::Secondary) {
         Vec2::ZERO
     } else {
         resp.drag_delta()
@@ -757,7 +910,6 @@ pub fn draw_strip(
         .hover_pos()
         .filter(|p| r.contains(*p))
         .map(|p| g.time_at(p));
-    let at = |p: Option<Pos2>| p.map(|p| g.time_at(p).clamp(oldest, end_s));
     // A right click on a masked stretch brings it back, Mask on or off.
     if resp.secondary_clicked() {
         input.unmask_at = at(resp.interact_pointer_pos());
@@ -767,7 +919,50 @@ pub fn draw_strip(
     // stretch moves that edge instead.
     let mut masking_now: Option<(f64, f64)> = None;
     let mut reshaping: Option<(f64, f64)> = None;
-    if extras.masking {
+    let mut painting_now: Option<(f64, f64)> = None;
+    let mut change_now: Option<f64> = None;
+    if let Some(was) = moving_change {
+        let now = at(resp.interact_pointer_pos());
+        change_now = now;
+        if resp.drag_stopped_by(egui::PointerButton::Primary) {
+            input.move_change = now.map(|t| (was, t));
+            ui.data_mut(|d| d.remove::<f64>(change_id));
+        }
+        ui.ctx().set_cursor_icon(if view.horizontal {
+            egui::CursorIcon::ResizeHorizontal
+        } else {
+            egui::CursorIcon::ResizeVertical
+        });
+    } else if let (Some(_), false) = (extras.brush, extras.masking) {
+        // The Position Brush: where a drag began, kept between frames.
+        let id = resp.id.with("paint-from");
+        if resp.drag_started_by(egui::PointerButton::Primary) {
+            let origin = ui.input(|i| i.pointer.press_origin());
+            if let Some(t) = at(origin.or(resp.interact_pointer_pos())) {
+                ui.data_mut(|d| d.insert_temp(id, t));
+            }
+        }
+        let from: Option<f64> = ui.data(|d| d.get_temp(id));
+        if let (Some(a), Some(b)) = (from, at(resp.interact_pointer_pos())) {
+            painting_now = Some((a.min(b), a.max(b)));
+        }
+        if resp.drag_stopped_by(egui::PointerButton::Primary) {
+            input.paint = painting_now;
+            ui.data_mut(|d| d.remove::<f64>(id));
+        }
+        let on_change = resp.hover_pos().is_some_and(|p| change_near(p).is_some());
+        if resp.dragged_by(egui::PointerButton::Secondary) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else if resp.hovered() && on_change {
+            ui.ctx().set_cursor_icon(if view.horizontal {
+                egui::CursorIcon::ResizeHorizontal
+            } else {
+                egui::CursorIcon::ResizeVertical
+            });
+        } else if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
+    } else if extras.masking {
         let id = resp.id.with("mask-from");
         let edge_id = resp.id.with("mask-edge");
         if resp.drag_started_by(egui::PointerButton::Primary) {
@@ -812,7 +1007,7 @@ pub fn draw_strip(
         }
         let on_edge = resp
             .hover_pos()
-            .is_some_and(|p| edge_near(extras.masked, p, &g).is_some());
+            .is_some_and(|p| edge_near(extras.masked, p, &g).is_some() || change_near(p).is_some());
         if resp.dragged_by(egui::PointerButton::Secondary) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         } else if resp.hovered() && (on_edge || edge.is_some()) {
@@ -829,6 +1024,12 @@ pub fn draw_strip(
         }
     } else if resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    } else if resp.hover_pos().is_some_and(|p| change_near(p).is_some()) {
+        ui.ctx().set_cursor_icon(if view.horizontal {
+            egui::CursorIcon::ResizeHorizontal
+        } else {
+            egui::CursorIcon::ResizeVertical
+        });
     }
 
     let grid = Stroke::new(1.0_f32, vis.widgets.noninteractive.bg_stroke.color);
@@ -930,25 +1131,53 @@ pub fn draw_strip(
         t -= tstep;
     }
     let test = !extras.measured.is_empty();
+    let place = |t: f64| g.pos(0.0, t);
     if test {
         paint_phases(
             &painter,
             r,
             extras.settles,
             extras.measured,
-            |t| g.pos(0.0, t),
+            place,
             view.horizontal,
             &vis,
         );
+    } else {
+        // The track's teal washed faintly down the plot behind the beats.
+        let plot = painter.with_clip_rect(r);
+        for &(a, b, _, _) in extras.track {
+            let settled = settled_from(a, b, extras.settles);
+            paint_density(
+                &plot,
+                r,
+                a,
+                b,
+                settled,
+                pal.teal,
+                crate::theme::TRACK_WASH,
+                &place,
+                view.horizontal,
+            );
+        }
     }
+    // A line at each change of position, where the one being dragged
+    // will be.
+    let bands: Vec<(f64, f64, &str)> = extras
+        .bands
+        .iter()
+        .map(|&(a, b, n)| match (moving_change, change_now) {
+            (Some(was), Some(now)) if (a - was).abs() < 1e-6 => (now, b, n),
+            _ => (a, b, n),
+        })
+        .collect();
     paint_bands(
         &painter,
         r,
-        extras.bands,
-        |t| g.pos(0.0, t),
+        &bands,
+        place,
         view.horizontal,
         false,
-        !test,
+        false,
         &vis,
     );
     // The stretch whose edge is being dragged is drawn as it will be.
@@ -965,53 +1194,126 @@ pub fn draw_strip(
         masking_now,
         oldest,
         end_s,
-        |t| g.pos(0.0, t),
+        place,
         view.horizontal,
         &vis,
     );
-    if !extras.bands.is_empty() {
-        paint_ticker(
-            &painter,
-            lane,
-            extras.bands,
-            extras.settles,
-            extras.measured,
-            |t| g.pos(0.0, t),
-            view.horizontal,
-            &vis,
-        );
+    // The track, with a change being dragged where it will be.
+    let track: Vec<(f64, f64, &str, &str)> = match (moving_change, change_now) {
+        (Some(was), Some(now)) => {
+            let mut t: Vec<(f64, f64, &str, &str)> = extras.track.to_vec();
+            if let Some(i) = t.iter().position(|s| (s.0 - was).abs() < 1e-6) {
+                if i > 0 {
+                    let lo = t[i - 1].0 + 0.5;
+                    let hi = t[i].1 - 0.5;
+                    let now = now.clamp(lo, hi.max(lo));
+                    t[i].0 = now;
+                    t[i - 1].1 = now;
+                }
+            }
+            t
+        }
+        _ => extras.track.to_vec(),
+    };
+    let mut track_masked = masked.clone();
+    track_masked.extend(masking_now);
+    paint_track(
+        &painter,
+        lane,
+        &track,
+        extras.settles,
+        &track_masked,
+        place,
+        view.horizontal,
+        &vis,
+        pal,
+    );
+    // The stretch being painted, in teal over the track and the plot,
+    // with the position and its times.
+    if let (Some(code), Some((a, b))) = (extras.brush, painting_now) {
+        if let Some(rect) = along_rect(r, a, b, &place, view.horizontal) {
+            painter.rect_filled(rect, 0.0, pal.teal.gamma_multiply(0.18));
+        }
+        if let Some(seg) = along_rect(lane, a, b, &place, view.horizontal) {
+            painter.rect_filled(seg, 0.0, pal.teal.gamma_multiply(0.85));
+            painter.rect_stroke(
+                seg,
+                0.0,
+                Stroke::new(1.0_f32, pal.teal),
+                egui::StrokeKind::Inside,
+            );
+            let words = format!("{code} {} to {}", fmt_time(a), fmt_time(b));
+            let galley = painter.layout_no_wrap(words, font.clone(), vis.strong_text_color());
+            let size = galley.size();
+            // Inside the plot, beside the stretch's newest end, on a backing.
+            let newest = place(b);
+            let pos = if view.horizontal {
+                Pos2::new(
+                    (newest.x - size.x).clamp(r.left() + 2.0, r.right() - size.x - 2.0),
+                    r.top() + 4.0,
+                )
+            } else {
+                Pos2::new(
+                    r.right() - size.x - 4.0,
+                    newest.y.clamp(r.top() + 2.0, r.bottom() - size.y - 2.0),
+                )
+            };
+            let back = Rect::from_min_size(pos, size).expand(3.0);
+            painter.rect_filled(back, 3.0, vis.extreme_bg_color.gamma_multiply(0.92));
+            painter.rect_stroke(
+                back,
+                3.0,
+                Stroke::new(1.0_f32, pal.teal),
+                egui::StrokeKind::Inside,
+            );
+            painter.galley(pos, galley, vis.strong_text_color());
+        }
     }
 
-    // The key along the top: Tick, Tock, the rate line and the overlays,
-    // each in its colour.
+    // The key: Tick and Tock in their colours, in the corner left of the
+    // track when the strip lies across, else along the top; each overlay
+    // named in its colour above its scale.
     let colors = side_colors(dark);
-    let mut at = Pos2::new(r.left(), outer.top() + 3.0);
-    let mut keys: Vec<(&str, Color32)> = vec![("Tick", colors[0]), ("Tock", colors[1])];
-    if extras.line && extras.rate_line.is_some() {
-        keys.push(("Rate Line", pal.trace_rate));
-    }
-    for (o, _) in &overlays {
-        keys.push((o.name, o.color));
-    }
-    for (label, c) in keys {
+    let mut at = if view.horizontal {
+        Pos2::new(outer.left() + 6.0, lane.top() + 1.0)
+    } else {
+        Pos2::new(r.left(), outer.top() + 3.0)
+    };
+    for (label, c) in [("Tick", colors[0]), ("Tock", colors[1])] {
         let k = painter.text(at, Align2::LEFT_TOP, label, font.clone(), c);
-        at.x = k.right() + 12.0;
+        at.x = k.right() + 8.0;
     }
     if let Some(n) = extras.note {
-        painter.text(
-            Pos2::new(outer.right() - 6.0, outer.top() + 3.0),
-            Align2::RIGHT_TOP,
-            n,
-            font.clone(),
-            vis.text_color(),
-        );
+        if view.horizontal {
+            // In the plot's top corner, on a backing.
+            let galley = painter.layout_no_wrap(n.to_string(), font.clone(), vis.text_color());
+            let pos = Pos2::new(r.right() - galley.size().x - 6.0, r.top() + 4.0);
+            let back = Rect::from_min_size(pos, galley.size()).expand(2.0);
+            painter.rect_filled(back, 2.0, vis.extreme_bg_color.gamma_multiply(0.85));
+            painter.galley(pos, galley, vis.text_color());
+        } else {
+            painter.text(
+                Pos2::new(outer.right() - 6.0, outer.top() + 3.0),
+                Align2::RIGHT_TOP,
+                n,
+                font.clone(),
+                vis.text_color(),
+            );
+        }
     }
-    // Each overlay's scale: its ends in its colour, in a row of its own
-    // above the strip, or a column of its own right of it.
+    // Each overlay's scale: its ends in its colour, in a column of its own
+    // right of the strip under its name, or a row of its own above it.
     for (i, (o, (lo, hi))) in overlays.iter().enumerate() {
         let f = |v: f64| format!("{v:.*}{}", o.decimals, o.unit);
         if view.horizontal {
             let x = r.right() + 6.0 + 58.0 * i as f32;
+            painter.text(
+                Pos2::new(x, lane.top() + 1.0),
+                Align2::LEFT_TOP,
+                o.name,
+                font.clone(),
+                o.color,
+            );
             painter.text(
                 Pos2::new(x, r.top()),
                 Align2::LEFT_TOP,
@@ -1321,6 +1623,149 @@ mod tests {
         );
         assert!(got.iter().all(|i| i.mask.is_none() && i.reshape.is_none()));
         assert!(got.iter().any(|i| i.time_shift_s < 0.0), "{got:?}");
+    }
+
+    /// Frames of the strip lying across, 100 s long, with a change of
+    /// position at 50 s and `brush` on or off, each given `events`.
+    fn track_frames(
+        ctx: &egui::Context,
+        brush: Option<&str>,
+        frames: &[Vec<egui::Event>],
+    ) -> Vec<StripInput> {
+        let view = StripView {
+            half_width_ms: 10.0,
+            span_s: 100.0,
+            horizontal: true,
+        };
+        let track = [
+            (0.0, 50.0, "Dial Up (DU)", "DU"),
+            (50.0, f64::INFINITY, "Dial Down (DD)", "DD"),
+        ];
+        let extras = Extras {
+            track: &track,
+            brush,
+            ..Default::default()
+        };
+        frames
+            .iter()
+            .map(|events| {
+                let input = egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 400.0))),
+                    events: events.clone(),
+                    ..Default::default()
+                };
+                let mut got = StripInput::default();
+                let _ = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        got = draw_strip(
+                            ui,
+                            &[],
+                            0.125,
+                            None,
+                            100.0,
+                            &view,
+                            &extras,
+                            Vec2::new(860.0, 360.0),
+                        );
+                    });
+                });
+                got
+            })
+            .collect()
+    }
+
+    /// A drag along the strip with the Position Brush on paints that
+    /// stretch rather than moving the strip; a drag that begins on a change
+    /// of position in the track moves the change, brush or no brush.
+    #[test]
+    fn the_brush_paints_and_a_change_moves_in_the_track() {
+        let ctx = egui::Context::default();
+        let at = |x: f32, y: f32| Pos2::new(x, y);
+        let moved = |p: Pos2| egui::Event::PointerMoved(p);
+        let button = |p: Pos2, pressed: bool| egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        let drag = |from: Pos2, to: Pos2| {
+            vec![
+                vec![moved(from)],
+                vec![button(from, true)],
+                vec![moved(from + (to - from) * 0.3)],
+                vec![moved(from + (to - from) * 0.7)],
+                vec![moved(to)],
+                vec![button(to, false)],
+                vec![],
+            ]
+        };
+        // Where 50 s is across the strip, and the track's row above it.
+        let mut x50 = None;
+        for x in (60..860).step_by(2) {
+            let got = track_frames(&ctx, None, &[vec![moved(at(x as f32, 200.0))]]);
+            if got[0].hover_t.is_some_and(|t| t >= 50.0) {
+                x50 = Some(x as f32);
+                break;
+            }
+        }
+        let x50 = x50.expect("50 s is on the strip");
+        let lane_y = (1..120)
+            .map(|y| y as f32)
+            .find(|&y| {
+                track_frames(&ctx, None, &[vec![moved(at(x50, y))]])[0]
+                    .hover_t
+                    .is_some()
+            })
+            .expect("the plot's top")
+            - 8.0;
+        // The brush paints from 20 px before 50 s to 60 px after it.
+        let got = track_frames(
+            &ctx,
+            Some("CD"),
+            &drag(at(x50 - 20.0, 200.0), at(x50 + 60.0, 200.0)),
+        );
+        let (a, b) = got.iter().find_map(|i| i.paint).expect("painted");
+        assert!(a < 50.0 && b > 55.0, "{a} {b}");
+        assert!(got
+            .iter()
+            .all(|i| i.time_shift_s == 0.0 && i.move_change.is_none()));
+        // The change in the track moves, the brush on or off.
+        for brush in [None, Some("CD")] {
+            let got = track_frames(&ctx, brush, &drag(at(x50, lane_y), at(x50 + 40.0, lane_y)));
+            let (was, now) = got
+                .iter()
+                .find_map(|i| i.move_change)
+                .expect("the change moved");
+            assert_eq!(was, 50.0);
+            assert!(now > 52.0, "{now}");
+            assert!(got
+                .iter()
+                .all(|i| i.paint.is_none() && i.time_shift_s == 0.0));
+        }
+        // Without the brush, a drag on the plot still moves the strip.
+        let got = track_frames(
+            &ctx,
+            None,
+            &drag(at(x50 - 100.0, 200.0), at(x50 - 40.0, 200.0)),
+        );
+        assert!(got.iter().any(|i| i.time_shift_s != 0.0));
+        assert!(got
+            .iter()
+            .all(|i| i.paint.is_none() && i.move_change.is_none()));
+    }
+
+    /// The track's strength: solid through the settling, then fading over
+    /// 40 s to its floor.
+    #[test]
+    fn the_track_fades_after_the_settling() {
+        use crate::theme::{TRACK_FADE_FROM, TRACK_FADE_TO, TRACK_SETTLING};
+        assert_eq!(track_density(5.0, 20.0), TRACK_SETTLING);
+        assert_eq!(track_density(20.0, 20.0), TRACK_FADE_FROM);
+        assert!((track_density(40.0, 20.0) - (TRACK_FADE_FROM + TRACK_FADE_TO) / 2.0).abs() < 1e-6);
+        assert_eq!(track_density(60.0, 20.0), TRACK_FADE_TO);
+        assert_eq!(track_density(600.0, 20.0), TRACK_FADE_TO);
+        assert_eq!(settled_from(50.0, 100.0, &[(50.0, 70.0, SETTLING)]), 70.0);
+        assert_eq!(settled_from(0.0, 50.0, &[(50.0, 70.0, SETTLING)]), 0.0);
     }
 
     /// The wheel zooms about the time under the pointer.

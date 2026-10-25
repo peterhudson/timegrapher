@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 78] = [
+const ALL: [Icon; 79] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -87,6 +87,7 @@ const ALL: [Icon; 78] = [
     Icon::NewPhoto,
     Icon::Funnel,
     Icon::Fit,
+    Icon::Highlighter,
 ];
 
 /// The drawing behind each icon, with the pun it makes.
@@ -388,6 +389,11 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Funnel => r#"<path d="M3.5 4.5h17l-6.5 8v6.5l-4-2v-4.5z"/>"#,
         // Arrows out to two edges: the whole take fits between them.
         Icon::Fit => r#"<path d="M3 5v14M21 5v14M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/>"#,
+        // A highlighter over the stroke it laid down: The Position Brush
+        // paints a stretch of the strip as one position.
+        Icon::Highlighter => {
+            r#"<path d="M15 3l6 6-8.5 8.5-6-6z"/><path d="M6.5 11.5L5 16l3 3 4.5-1.5"/><path d="M3 21.5h9" stroke-width="2.6"/>"#
+        }
     }
 }
 

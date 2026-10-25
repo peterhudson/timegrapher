@@ -154,6 +154,9 @@ struct AudioAnchor {
     advancing: bool,
 }
 
+/// The shortest stretch in one position a change can be dragged to leave.
+pub const MIN_STRETCH_S: f64 = 0.5;
+
 #[derive(Default)]
 pub struct Session {
     state: State,
@@ -449,6 +452,123 @@ impl Session {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The changes of position: the time and the position from then on,
+    /// oldest first, the first at the start; one while the watch stayed
+    /// put in `now`.
+    fn changes(&self, now: Position) -> Vec<(f64, Position)> {
+        let s = self.stretches();
+        if s.is_empty() {
+            vec![(0.0, now)]
+        } else {
+            s
+        }
+    }
+
+    /// Paint the stretch from `from` to `to` as position `pos`, the watch
+    /// being in `now` and the take reaching `end`: what the Position Brush
+    /// does. What came after `to` carries on there, unless the stretch
+    /// runs to the end, which puts the watch in `pos` from then on. A new
+    /// change of position settles as a move does, and a change painted
+    /// over goes with its settling. Returns the position at the end.
+    pub fn paint(
+        &mut self,
+        from: f64,
+        to: f64,
+        pos: Position,
+        now: Position,
+        end: f64,
+    ) -> Position {
+        let old = self.changes(now);
+        let at = |t: f64| {
+            old.iter()
+                .rev()
+                .find(|c| c.0 <= t)
+                .map_or(old[0].1, |c| c.1)
+        };
+        let from = from.max(0.0);
+        let to_end = to >= end - 1e-6;
+        let after = at(to);
+        let mut new: Vec<(f64, Position)> = old
+            .iter()
+            .copied()
+            .filter(|c| c.0 < from || !to_end && c.0 > to)
+            .collect();
+        new.push((from, pos));
+        if !to_end {
+            new.push((to, after));
+        }
+        self.set_changes(new, end)
+    }
+
+    /// Move the change of position at `was` to `to`, between the changes
+    /// either side of it, its settling with it; the take reaches `end`.
+    /// Returns the position at the end.
+    pub fn move_change(&mut self, was: f64, to: f64, now: Position, end: f64) -> Position {
+        let old = self.changes(now);
+        let Some(i) = (1..old.len()).find(|&i| (old[i].0 - was).abs() < 1e-6) else {
+            return old.last().map_or(now, |c| c.1);
+        };
+        let lo = old[i - 1].0 + MIN_STRETCH_S;
+        let hi = old.get(i + 1).map_or(end, |c| c.0 - MIN_STRETCH_S);
+        if hi < lo {
+            return old.last().map_or(now, |c| c.1);
+        }
+        let to = to.clamp(lo, hi);
+        let shift = to - old[i].0;
+        for e in &mut self.events {
+            if let Event::Settle { from_s, to_s } = e {
+                if (*from_s - was).abs() < 1e-6 {
+                    *from_s += shift;
+                    *to_s += shift;
+                }
+            }
+        }
+        let mut new = old;
+        new[i].0 = to;
+        self.set_changes(new, end)
+    }
+
+    /// Make `changes` the take's positions, the take reaching `end`: a
+    /// change to the position already in place goes, a settling stays
+    /// with the change it began at, and a change without one settles from
+    /// there. Returns the position at the end.
+    fn set_changes(&mut self, mut changes: Vec<(f64, Position)>, end: f64) -> Position {
+        changes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        changes.dedup_by(|b, a| a.1 == b.1);
+        let old = self.settles();
+        let mut settles = Vec::new();
+        for i in 1..changes.len() {
+            let t = changes[i].0;
+            let next = changes.get(i + 1).map_or(f64::INFINITY, |c| c.0);
+            let to = old
+                .iter()
+                .find(|s| (s.0 - t).abs() < 1e-6)
+                .map_or(t + self.settle_len(), |s| s.1);
+            settles.push((t, to.min(next)));
+        }
+        let audio = |s: &Self, t: f64| s.recorder.as_ref().and_then(|_| s.audio_of(t));
+        let positions: Vec<Event> = changes
+            .iter()
+            .map(|&(at_s, pos)| Event::Position {
+                at_s,
+                audio_s: audio(self, at_s),
+                pos,
+            })
+            .collect();
+        self.events
+            .retain(|e| !matches!(e, Event::Position { .. } | Event::Settle { .. }));
+        self.events.extend(positions);
+        self.events.extend(
+            settles
+                .iter()
+                .map(|&(from_s, to_s)| Event::Settle { from_s, to_s }),
+        );
+        // A settling still under way at the end goes on; one painted over
+        // ends.
+        self.settle_to = settles.iter().map(|s| s.1).find(|&to| to > end);
+        changes.last().map_or(Position::DialUp, |c| c.1)
     }
 
     /// The settling after each move: start and end, oldest first.
@@ -797,6 +917,58 @@ mod tests {
         s.move_to(100.0, Position::DialDown, Position::CrownUp)
             .unwrap();
         assert_eq!(s.settles(), [(30.0, 50.0), (100.0, 145.0)]);
+    }
+
+    /// The Position Brush: a stretch painted in the middle of a take
+    /// puts what was there back after it, each new change settling; one
+    /// painted to the end leaves the watch in the painted position; a
+    /// stretch painted over a change takes the change and its settling
+    /// away.
+    #[test]
+    fn painting_a_stretch_sets_its_position() {
+        use Position::*;
+        let mut s = ten();
+        s.listen();
+        // Never moved: painted in the middle.
+        assert_eq!(s.paint(100.0, 200.0, CrownDown, DialUp, 600.0), DialUp);
+        assert_eq!(
+            s.stretches(),
+            [(0.0, DialUp), (100.0, CrownDown), (200.0, DialUp)]
+        );
+        assert_eq!(s.settles(), [(100.0, 110.0), (200.0, 210.0)]);
+        // Painted over the change back to Dial Up and on to the end.
+        assert_eq!(s.paint(150.0, 600.0, CrownDown, DialUp, 600.0), CrownDown);
+        assert_eq!(s.stretches(), [(0.0, DialUp), (100.0, CrownDown)]);
+        assert_eq!(s.settles(), [(100.0, 110.0)]);
+        // Painted from the start: the first position changes, and painted
+        // the same as what follows, the change goes.
+        assert_eq!(s.paint(0.0, 100.0, CrownDown, CrownDown, 600.0), CrownDown);
+        assert_eq!(s.stretches(), [(0.0, CrownDown)]);
+        assert!(s.settles().is_empty());
+        assert!(s.position_bands(CrownDown).is_empty());
+    }
+
+    /// A change of position dragged moves with its settling, and stops
+    /// short of the changes either side.
+    #[test]
+    fn a_change_of_position_can_be_moved() {
+        use Position::*;
+        let mut s = ten();
+        s.listen();
+        s.paint(100.0, 200.0, CrownDown, DialUp, 600.0);
+        assert_eq!(s.move_change(100.0, 80.0, DialUp, 600.0), DialUp);
+        assert_eq!(
+            s.stretches(),
+            [(0.0, DialUp), (80.0, CrownDown), (200.0, DialUp)]
+        );
+        assert_eq!(s.settles(), [(80.0, 90.0), (200.0, 210.0)]);
+        // Past the next change: stops half a second before it.
+        s.move_change(200.0, 50.0, DialUp, 600.0);
+        assert_eq!(s.stretches()[2], (80.0 + MIN_STRETCH_S, DialUp));
+        assert_eq!(s.settles()[0], (80.0, 80.0 + MIN_STRETCH_S));
+        // The start of the take is not a change.
+        s.move_change(0.0, 30.0, DialUp, 600.0);
+        assert_eq!(s.stretches()[0], (0.0, DialUp));
     }
 
     // These are recorder/timeline tests only: no capture device or DSP.

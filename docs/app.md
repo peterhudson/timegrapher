@@ -481,7 +481,7 @@ again, after a knock for instance; **Pause** holds the test, leaving out
 what the position measured so far, and **Resume** settles and measures it
 again from the start; **Stop** ends the test and clears its table. Only
 the measured seconds in each position count. From the moment the test
-starts, the strip, its position ticker and the charts mark the test's
+starts, the strip, its track and the charts mark the test's
 phases, Dial Up included, each in its own grey: **Before Test** over the
 sound before the test began (left plain, with a line where the test
 begins), **Settling** over each settle (a light shade), each position's
@@ -823,7 +823,7 @@ cross over the strip and a two-way arrow within 8 points of an edge),
 dragging with the right button still looks back through the session, and clicking a
 masked stretch, or right-clicking one with Mask on or off, brings it
 back; **Unmask All** brings them all back. Stretches that overlap, by
-masking or by moving an edge, join into one and stay joined. Masked stretches are shaded and named on the strip,
+masking or by moving an edge, join into one and stay joined. Masked stretches are shaded on the strip and named on its track,
 and the toolbar says how many there are and how long they add up to.
 They are cut like a break in listening, at both ends: no reading reaches across one,
 nothing is read inside one, a chart's line breaks there and comes back
@@ -862,6 +862,51 @@ a session file that doesn't list what was opened. Report a Problem sends
 the masked stretches with its details. While Mask is on, dragging along
 the strip masks instead of sliding the trace. Mask turns off, and nothing
 is masked, when a new take, New Session or another recording starts.
+
+**Position Brush** (the highlighter, the brush's position code in teal,
+then ▾) marks a stretch of the strip as one position, on a live take or
+one opened:
+
+- Pick a position from its menu, then drag along the strip. While
+  dragging, a teal preview says the position and the times, such as
+  "CD 4:30 to 5:30".
+- A drag stops at the newest beat. A stretch painted up to the newest
+  beat (within a second) leaves the watch in that position from then on;
+  otherwise the position after the stretch carries on there.
+- Each new change of position settles as a move does (the pane's
+  **Settle**). A change painted over goes, with its settling.
+- **Stop Painting** at the end of its menu, or Esc, puts the brush down.
+  It and Mask turn each other off. It isn't offered during a Positions
+  Test, which sets each position itself.
+- Dragging a change of position along the track moves it, brush on or
+  off, with its settling; it stops half a second short of the changes
+  either side.
+- What the brush paints is the take's position record, the one the
+  Current Position card writes: the track, the charts' marks, the
+  Positions Test table and saved takes all read it. Times are
+  kept to a tenth of a second.
+- On a recording opened from disk it is saved as masks are: a change
+  marks it unsaved, and **Save** writes one entry per stretch in place of
+  the entries for what was opened, each keeping everything else the first
+  of them said (each later position starting after its settling, as a
+  saved take's do). It is refused where those entries list more than one
+  file.
+
+**The track** runs along the top of the strip (down its right side when
+the strip runs down):
+
+- Each stretch in one position is teal, named at its start ("Crown Up
+  (CU, 3H)"), or by its code where the name doesn't fit, or not at all.
+- It is solid through the settling after each change, then fades over
+  40 s and stays faint, so each change shows; a thin dark line marks
+  each change. The plot behind the beats takes the same at a sixth of
+  the strength.
+- Masked stretches are grey over it, named "Masked".
+- During and after a Positions Test, the time before the test and the
+  time it didn't use are left plain, with their names.
+- **Tick** and **Tock** are in the corner left of it; each line drawn
+  over the strip is named in its colour in the corner right of it, above
+  its scale. When the strip runs down they stay above it.
 
 **Charts.** Rate, amplitude (the average, from the ticks and from the tocks) and beat error (from the
 unlock and from the drop) over the whole take, one chart above the other
@@ -1329,11 +1374,9 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   The Positions Test's table names them the same way. A new position is a new
   measurement, so changing it while listening starts a new
   stretch, noted in the saved recording. The strip keeps its beats and
-  marks each stretch, shading every other one, with a ticker above the
-  plot (beside it, when the strip runs down) that names the position over
-  and over along its stretch, so it shows even with both ends of the
-  stretch scrolled out of sight; the Rate, Amplitude and Beat Error charts mark them the same way
-  over the session or the strip's length. The readings don't reach back
+  marks each stretch on its track (see **The track** under Paper
+  Strip); the Rate, Amplitude and Beat Error charts mark them too,
+  shading every other one, over the session or the strip's length. The readings don't reach back
   past the change, the tick and tock profile starts again, and the
   distributions and Steadiness take only the stretches in the position the
   watch is in now: dial up for 5 minutes, dial down for 10, then dial up
@@ -1341,8 +1384,8 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   one out. The first seconds in a new position are settling, as many as
   the Positions Test pane's **Settle** (20 s unless set otherwise), the
   one settling for every change of position, in a free take or the guided
-  test alike, from the next change on: the ticker says
-  Settling, the beats are drawn faintly, and they are left out of the
+  test alike, from the next change on: the track is solid teal through
+  it, the beats are drawn faintly, and they are left out of the
   readings, the charts' points, the distributions and Steadiness, but kept
   in the audio. A saved take's `session.toml` starts each later position
   after its settling, so `timegrapher session` reads the same seconds as
