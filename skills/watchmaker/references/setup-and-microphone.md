@@ -191,8 +191,13 @@ card's control, with a peak meter marked at the −10 dBFS target and the
 - *Audio MIDI Setup* (Applications › Utilities): select the USB microphone
   in the left list, choose the Input tab, set the format to 48,000 Hz and
   bring the input volume slider down until `doctor` stops reporting
-  clipping. Many cheap USB mics have no hardware AGC switch on macOS; if
-  `agc_suspected` persists, there's not much to do but reduce the level.
+  clipping. macOS shows no setting for a USB microphone's own automatic
+  gain (the C-Media stands turn it on at every plug-in);
+  `timegrapher devices --agc-off` turns it off over USB, and the desktop
+  app's Automatic Gain switch (Settings › Microphone) does the same each
+  time it opens the microphone. On the project's stand it took the Mac
+  from clipping on every beat at the lowest input volume to a clean
+  signal.
 - *System Settings › Sound › Input* has a second input level slider.
 - *System Settings › Privacy & Security › Microphone*: the Terminal (or
   whichever app runs `timegrapher`) must be allowed, or the input is
@@ -207,6 +212,9 @@ card's control, with a peak meter marked at the −10 dBFS target and the
   *Properties*. Set the input volume, and turn **off "Audio enhancements"**
   (on Windows 11 this is a drop-down; on older versions an "Enhancements"
   tab with "Disable all enhancements").
+- A USB microphone's own automatic gain is an "AGC" box on the *Levels*
+  or *Custom* tab below; `timegrapher devices --agc-off` and the desktop
+  app's Automatic Gain switch turn it off too.
 - In the older *Sound control panel* (`mmsys.cpl`), Recording tab ›
   device › Properties: the *Levels* tab (level and any "Microphone Boost"),
   *Enhancements* (disable all), *Advanced* (set 1 channel, 16 bit, 48000 Hz
