@@ -2,9 +2,11 @@
 //! scale, spacing, and a few widgets that egui doesn't have (cards, section
 //! headers, a segmented control, switches and chips).
 //!
-//! Colour carries meaning and nothing else: Tick is blue and Tock orange
-//! everywhere, red, amber and green are for the state of the input, and one
-//! accent marks what can be pressed or is selected. The rest is greys.
+//! Colour carries meaning and nothing else: each reading has its colour
+//! everywhere (rate magenta, amplitude violet, beat error amber, Tick blue,
+//! Tock deep orange) and the position is teal. Red is a failure's icon,
+//! green the Listening dot, and one accent marks what can be pressed or is
+//! selected. The rest is greys: a warning is a triangle in the text colour.
 
 use eframe::egui::{
     self, Align, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Frame,
@@ -32,13 +34,17 @@ pub struct Palette {
     pub text_secondary: Color32,
     pub text_tertiary: Color32,
     pub accent: Color32,
-    /// Text on the accent colour (and on red).
+    /// Text on the accent colour (and on Bad's red icon).
     pub on_accent: Color32,
     pub tick: Color32,
     pub tock: Color32,
-    pub warn: Color32,
+    /// The watch's position: the track, the brush and the Positions Test.
+    pub positions: Color32,
+    /// A failure's icon, never text.
     pub bad: Color32,
-    /// The marks on the tick tock profile.
+    /// The dot beside "Listening to …".
+    pub live: Color32,
+    /// The marks on the tick tock profile: greys, told apart by line style.
     pub unlock: Color32,
     pub drop: Color32,
     pub peak: Color32,
@@ -48,39 +54,49 @@ pub struct Palette {
     pub wheel: Color32,
     /// Amplitude, rate and beat error wherever they are drawn: over the
     /// strip, on their charts, in their distributions and in Steadiness.
-    /// Each colour means one thing across the app, so the profile's marks
-    /// and sounds use colours none of the readings do.
+    /// Each colour means one thing across the app, so nothing else on a
+    /// plot is coloured.
     pub trace_amplitude: Color32,
     pub trace_rate: Color32,
     pub trace_beat_error: Color32,
-    /// Two colours only the pane buttons use: the Paper Strip's dancer and
-    /// the Positions Test's die.
-    pub pink: Color32,
-    pub teal: Color32,
+    /// How strongly the paper strip's track shows the position, as
+    /// fractions of [`Palette::positions`]: `track[0]` through the settling
+    /// after each change, then fading over [`TRACK_FADE_S`] from
+    /// `track[1]` to `track[2]`, where it stays. Stronger in light mode,
+    /// where teal on white is fainter.
+    pub track: [f32; 3],
 }
 
-/// How strongly the paper strip's track shows the position, as fractions
-/// of the position colour (teal): solid through the settling after each
-/// change, then fading over [`TRACK_FADE_S`] from [`TRACK_FADE_FROM`] to
-/// [`TRACK_FADE_TO`], where it stays. The plot behind the beats takes the
-/// same at [`TRACK_WASH`] of the strength. Kept here so the palette can
-/// change them without touching the drawing.
-pub const TRACK_SETTLING: f32 = 0.62;
-pub const TRACK_FADE_FROM: f32 = 0.48;
-pub const TRACK_FADE_TO: f32 = 0.16;
 pub const TRACK_FADE_S: f64 = 40.0;
+/// The plot behind the beats takes the track at this much of its strength.
 pub const TRACK_WASH: f32 = 1.0 / 6.0;
-/// A masked stretch on the track and over the plot, as a fraction of the
-/// faint text colour.
-pub const MASK_TRACK: f32 = 0.42;
-pub const MASK_WASH: f32 = 0.14;
+/// The words on the solid part of the track: dark in both themes.
+pub const TRACK_LABEL: Color32 = Color32::from_rgb(0x1d, 0x1d, 0x1f);
+/// A masked stretch is hatched in the faint text colour: on the track at
+/// full strength, down the plot at [`MASK_WASH`] of it.
+pub const MASK_WASH: f32 = 0.35;
 
 const fn c(x: core_palette::Rgb) -> Color32 {
     Color32::from_rgb(x.r, x.g, x.b)
 }
 
+impl Palette {
+    /// The colour to write words in for something drawn in `c`: `c`
+    /// itself, except where it is too faint for small text (beat error's
+    /// amber and the position's teal in light mode), which take the text
+    /// colour beside a mark in their own.
+    pub fn ink(&self, c: Color32) -> Color32 {
+        let faint = self.text == LIGHT.text && (c == self.trace_beat_error || c == self.positions);
+        if faint {
+            self.text
+        } else {
+            c
+        }
+    }
+}
+
 /// The core palette (shared with the MCP server's charts) in egui's colours.
-const fn from_core(p: &core_palette::Palette, pink: Color32, teal: Color32) -> Palette {
+const fn from_core(p: &core_palette::Palette, track: [f32; 3]) -> Palette {
     Palette {
         window: c(p.window),
         card: c(p.card),
@@ -96,8 +112,9 @@ const fn from_core(p: &core_palette::Palette, pink: Color32, teal: Color32) -> P
         on_accent: c(p.on_accent),
         tick: c(p.tick),
         tock: c(p.tock),
-        warn: c(p.warn),
+        positions: c(p.positions),
         bad: c(p.bad),
+        live: c(p.live),
         unlock: c(p.unlock),
         drop: c(p.drop),
         peak: c(p.peak),
@@ -106,21 +123,12 @@ const fn from_core(p: &core_palette::Palette, pink: Color32, teal: Color32) -> P
         trace_amplitude: c(p.trace_amplitude),
         trace_rate: c(p.trace_rate),
         trace_beat_error: c(p.trace_beat_error),
-        pink,
-        teal,
+        track,
     }
 }
 
-pub const DARK: Palette = from_core(
-    &core_palette::DARK,
-    Color32::from_rgb(0xff, 0x37, 0x5f),
-    Color32::from_rgb(0x40, 0xc8, 0xe0),
-);
-pub const LIGHT: Palette = from_core(
-    &core_palette::LIGHT,
-    Color32::from_rgb(0xd3, 0x0f, 0x45),
-    Color32::from_rgb(0x0e, 0x7c, 0x86),
-);
+pub const DARK: Palette = from_core(&core_palette::DARK, [0.62, 0.48, 0.24]);
+pub const LIGHT: Palette = from_core(&core_palette::LIGHT, [0.80, 0.62, 0.36]);
 
 pub fn palette(dark: bool) -> &'static Palette {
     if dark {
@@ -247,7 +255,7 @@ fn visuals(p: &Palette, dark: bool) -> egui::Visuals {
     v.extreme_bg_color = p.card;
     v.text_edit_bg_color = Some(p.control);
     v.code_bg_color = p.control;
-    v.warn_fg_color = p.warn;
+    v.warn_fg_color = p.text;
     v.error_fg_color = p.bad;
     v.panel_fill = p.window;
     v.window_fill = p.card;
@@ -715,13 +723,10 @@ pub fn secondary(_ui: &Ui, text: &str) -> egui::Button<'static> {
         .min_size(Vec2::new(84.0, 26.0))
 }
 
-/// A filled red button, for stopping what is running.
+/// A button that stops, deletes or discards: a plain word button whose
+/// word says what is lost, never filled and never red.
 pub fn destructive(ui: &Ui, text: &str) -> egui::Button<'static> {
-    let p = pal(ui);
-    egui::Button::new(RichText::new(text).font(semibold(13.0)).color(p.on_accent))
-        .fill(p.bad)
-        .corner_radius(CornerRadius::same(CONTROL_RADIUS))
-        .min_size(Vec2::new(84.0, 26.0))
+    secondary(ui, text)
 }
 
 /// Grid marks for a plot, all of one step so every grid line and label is
@@ -1584,10 +1589,97 @@ pub enum Icon {
     Highlighter,
 }
 
+/// What an alert says about itself: a warning (a triangle in the text
+/// colour) or a failure (Bad's red, on the icon only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alert {
+    Warning,
+    Bad,
+}
+
+/// An alert's icon in `rect`: the words beside it stay in text colour.
+pub fn alert_icon(painter: &egui::Painter, rect: egui::Rect, kind: Alert, p: &Palette) {
+    let c = rect.center();
+    let r = rect.width().min(rect.height()) / 2.0;
+    let (ink, mark) = match kind {
+        Alert::Warning => {
+            let top = c + Vec2::new(0.0, -r * 0.95);
+            let left = c + Vec2::new(-r, r * 0.8);
+            let right = c + Vec2::new(r, r * 0.8);
+            painter.add(egui::Shape::closed_line(
+                vec![top, right, left],
+                Stroke::new(1.3_f32, p.text),
+            ));
+            (p.text, c + Vec2::new(0.0, r * 0.12))
+        }
+        Alert::Bad => {
+            painter.circle_filled(c, r, p.bad);
+            (p.on_accent, c)
+        }
+    };
+    let stem = r * 0.36;
+    painter.line_segment(
+        [
+            mark + Vec2::new(0.0, -stem),
+            mark + Vec2::new(0.0, stem * 0.45),
+        ],
+        Stroke::new(1.4_f32, ink),
+    );
+    painter.circle_filled(mark + Vec2::new(0.0, stem * 1.05), 0.85, ink);
+}
+
+/// An alert's icon, then its words in the text colour (`secondary` for a
+/// caption).
+pub fn alert_label(ui: &mut Ui, kind: Alert, words: &str, small: bool) -> Response {
+    let p = pal(ui);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 5.0;
+        let size = if small { 12.0 } else { 14.0 };
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+        alert_icon(ui.painter(), rect, kind, p);
+        let text = RichText::new(words).color(if small { p.text_secondary } else { p.text });
+        ui.add(egui::Label::new(if small { text.small() } else { text }).wrap());
+    })
+    .response
+}
+
+/// Diagonal hatching across `rect` (lines at 45°, `pitch` apart): how a
+/// masked stretch is drawn, so it can't be taken for a faint one.
+pub fn hatch(painter: &egui::Painter, rect: egui::Rect, color: Color32, width: f32, pitch: f32) {
+    if !rect.is_positive() {
+        return;
+    }
+    let painter = painter.with_clip_rect(rect.intersect(painter.clip_rect()));
+    let h = rect.height();
+    // Lines anchored to whole multiples of the pitch, so neighbouring
+    // rects' hatching lines up.
+    let mut x = ((rect.left() - h) / pitch).floor() * pitch;
+    while x <= rect.right() {
+        painter.line_segment(
+            [egui::pos2(x, rect.bottom()), egui::pos2(x + h, rect.top())],
+            Stroke::new(width, color),
+        );
+        x += pitch;
+    }
+}
+
 /// A square button with an icon. While `on` it is a chip tinted in `color`
 /// with the icon in full colour; while off the icon is a faint grey, so the
 /// panes that show stand out at a glance.
 pub fn icon_toggle(ui: &mut Ui, icon: Icon, on: bool, color: Color32) -> Response {
+    let off = pal(ui).text_tertiary.gamma_multiply(0.75);
+    icon_toggle_off(ui, icon, on, color, off)
+}
+
+/// [`icon_toggle`], with the icon in `off` while off: the pane buttons'
+/// icons are the secondary text colour, and the accent while shown.
+pub fn icon_toggle_off(
+    ui: &mut Ui,
+    icon: Icon,
+    on: bool,
+    color: Color32,
+    off: Color32,
+) -> Response {
     let p = pal(ui);
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
     let radius = CornerRadius::same(CONTROL_RADIUS);
@@ -1602,11 +1694,7 @@ pub fn icon_toggle(ui: &mut Ui, icon: Icon, on: bool, color: Color32) -> Respons
     } else if resp.hovered() {
         ui.painter().rect_filled(rect, radius, p.control_hover);
     }
-    let c = if on {
-        color
-    } else {
-        p.text_tertiary.gamma_multiply(0.75)
-    };
+    let c = if on { color } else { off };
     crate::icons::draw(ui.painter(), rect.shrink(4.0), icon, c);
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), on, "")

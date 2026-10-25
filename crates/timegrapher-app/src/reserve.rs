@@ -223,12 +223,11 @@ pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) ->
                             gb(need)
                         )
                     };
-                    let colour = if have >= need {
-                        pal.text_tertiary
+                    if have >= need {
+                        ui.label(RichText::new(line).small().color(pal.text_tertiary));
                     } else {
-                        pal.warn
-                    };
-                    ui.label(RichText::new(line).small().color(colour));
+                        theme::alert_label(ui, theme::Alert::Warning, &line, true);
+                    }
                 }
                 return;
             };

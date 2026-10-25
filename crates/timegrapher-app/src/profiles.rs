@@ -224,13 +224,21 @@ pub fn draw(
                     .style(LineStyle::dashed_dense()),
             );
             if opt.edges {
-                for (label, at, col, w) in [
-                    ("Unlock", p.unlock_ms, pal.unlock, 1.5_f32),
-                    ("Drop", p.drop_ms, pal.drop, 1.5),
-                    ("Drop Peak", p.peak_ms, pal.peak, 1.0),
+                // Greys, told apart by their lines: Unlock solid, Drop and
+                // Peak dashed, each named along the top.
+                for (label, at, col, w, style) in [
+                    ("Unlock", p.unlock_ms, pal.unlock, 1.5_f32, LineStyle::Solid),
+                    ("Drop", p.drop_ms, pal.drop, 1.5, LineStyle::dashed_dense()),
+                    (
+                        "Drop Peak",
+                        p.peak_ms,
+                        pal.peak,
+                        1.0,
+                        LineStyle::dashed_dense(),
+                    ),
                 ] {
                     if let Some(t) = at {
-                        pl.vline(VLine::new(label, t + dx).color(col).width(w));
+                        pl.vline(VLine::new(label, t + dx).color(col).width(w).style(style));
                     }
                 }
             }
@@ -245,7 +253,7 @@ pub fn draw(
                             VLine::new(label, t + dx)
                                 .color(pal.sound)
                                 .width(1.2_f32)
-                                .style(LineStyle::dashed_loose()),
+                                .style(LineStyle::dotted_dense()),
                         );
                     }
                 }

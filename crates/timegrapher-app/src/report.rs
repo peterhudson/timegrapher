@@ -348,34 +348,27 @@ impl ReportDialog {
         match &self.result {
             Some(Saved::Done { zip, bytes }) => {
                 let big = *bytes > 25_000_000;
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(format!(
-                            "Saved {} ({:.1} MB).{}",
-                            zip.display(),
-                            *bytes as f64 / 1e6,
-                            if big {
-                                " That is over GitHub's 25 MB limit: trim the sound and save \
-                                 again."
-                            } else {
-                                ""
-                            }
-                        ))
-                        .color(if big {
-                            pal.warn
-                        } else {
-                            pal.text_secondary
-                        }),
-                    )
-                    .wrap(),
-                );
+                let saved = format!("Saved {} ({:.1} MB).", zip.display(), *bytes as f64 / 1e6);
+                if big {
+                    theme::alert_label(
+                        ui,
+                        theme::Alert::Warning,
+                        &format!(
+                            "{saved} That is over GitHub's 25 MB limit: trim the sound and save \
+                             again."
+                        ),
+                        false,
+                    );
+                } else {
+                    ui.add(egui::Label::new(RichText::new(saved).color(pal.text_secondary)).wrap());
+                }
             }
             Some(Saved::Failed(e)) => {
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(format!("Couldn't save the report: {e}")).color(pal.bad),
-                    )
-                    .wrap(),
+                theme::alert_label(
+                    ui,
+                    theme::Alert::Bad,
+                    &format!("Couldn't save the report: {e}"),
+                    false,
                 );
             }
             None => {}
@@ -427,7 +420,12 @@ impl ReportDialog {
         let clip = match &self.clip {
             Some(Ok(c)) => c,
             Some(Err(e)) => {
-                ui.colored_label(pal.bad, format!("Can't read the sound: {e}"));
+                theme::alert_label(
+                    ui,
+                    theme::Alert::Bad,
+                    &format!("Can't read the sound: {e}"),
+                    false,
+                );
                 return;
             }
             None => return,
@@ -544,7 +542,12 @@ impl ReportDialog {
             );
         });
         if let Some(e) = &self.player_error {
-            ui.colored_label(pal.warn, format!("Can't play it here: {e}"));
+            theme::alert_label(
+                ui,
+                theme::Alert::Warning,
+                &format!("Can't play it here: {e}"),
+                false,
+            );
         }
         ui.add_space(4.0);
         // The boxes ringed, so they show on the card in the dark theme.

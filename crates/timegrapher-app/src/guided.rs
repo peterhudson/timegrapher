@@ -1320,7 +1320,7 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                         right(ui, table_duration(*duration), false, pal.text);
                         right(ui, signed(*rate, 1), false, pal.trace_rate);
                         right(ui, plain(*amp, 0), false, pal.trace_amplitude);
-                        right(ui, plain(*be, 2), false, pal.trace_beat_error);
+                        right(ui, plain(*be, 2), false, pal.ink(pal.trace_beat_error));
                     }
                 }
                 ui.end_row();

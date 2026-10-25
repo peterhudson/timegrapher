@@ -863,7 +863,6 @@ pub fn form(ctx: &egui::Context, f: &mut Form, cal: &mut Calibres) -> Option<For
     let mut act = None;
     let modal = egui::Modal::new(egui::Id::new("watch form")).show(ctx, |ui| {
         ui.set_width(440.0);
-        let pal = theme::pal(ui);
         ui.label(
             RichText::new(if f.new { "New Watch" } else { "Edit Watch" })
                 .font(theme::semibold(15.0)),
@@ -875,7 +874,7 @@ pub fn form(ctx: &egui::Context, f: &mut Form, cal: &mut Calibres) -> Option<For
                 ui.push_id("watch form fields", |ui| fields(ui, &mut f.watch, cal))
             });
         if let Some(e) = &f.error {
-            ui.label(RichText::new(e).color(pal.bad));
+            theme::alert_label(ui, theme::Alert::Bad, e, false);
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {

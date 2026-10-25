@@ -821,7 +821,7 @@ impl Calibres {
         // A load failure can leave no selected calibre; show the warning before
         // the details pane's early return, not only beside a selected entry.
         if let Some(problem) = &self.problem {
-            ui.label(RichText::new(problem).color(pal.bad));
+            crate::theme::alert_label(ui, crate::theme::Alert::Bad, problem, false);
         }
         // The rate the table started at, while its funnel is as it was set.
         if let Some((rate, from)) = self.rate_preset.clone() {
@@ -1616,7 +1616,7 @@ impl Calibres {
             if custom {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
-                        .button(RichText::new("Delete Calibre").color(pal.bad))
+                        .button("Delete Calibre")
                         .on_hover_text("Forget this calibre and the wheels typed for it")
                         .clicked()
                     {

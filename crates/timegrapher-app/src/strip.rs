@@ -388,14 +388,14 @@ fn settled_from(a: f64, b: f64, settles: &[(f64, f64, &str)]) -> f64 {
 }
 
 /// The track's strength at `t` in a stretch settled from `settled`: solid
-/// through the settling, then fading (see [`crate::theme::TRACK_SETTLING`]).
-fn track_density(t: f64, settled: f64) -> f32 {
-    use crate::theme::{TRACK_FADE_FROM, TRACK_FADE_S, TRACK_FADE_TO, TRACK_SETTLING};
+/// through the settling, then fading (see [`crate::theme::Palette::track`]).
+fn track_density(t: f64, settled: f64, track: [f32; 3]) -> f32 {
+    let [settling, fade_from, fade_to] = track;
     if t < settled {
-        TRACK_SETTLING
+        settling
     } else {
-        let k = ((t - settled) / TRACK_FADE_S).clamp(0.0, 1.0) as f32;
-        TRACK_FADE_FROM + (TRACK_FADE_TO - TRACK_FADE_FROM) * k
+        let k = ((t - settled) / crate::theme::TRACK_FADE_S).clamp(0.0, 1.0) as f32;
+        fade_from + (fade_to - fade_from) * k
     }
 }
 
@@ -410,6 +410,7 @@ fn paint_density(
     b: f64,
     settled: f64,
     color: Color32,
+    track: [f32; 3],
     scale: f32,
     at: &impl Fn(f64) -> Pos2,
     horizontal: bool,
@@ -420,7 +421,7 @@ fn paint_density(
             painter.rect_filled(
                 rect,
                 0.0,
-                color.gamma_multiply(track_density(t, settled) * scale),
+                color.gamma_multiply(track_density(t, settled, track) * scale),
             );
         }
     };
@@ -520,7 +521,16 @@ pub fn paint_track(
     for &(a, b, _, _) in track {
         let settled = settled_from(a, b, settles);
         paint_density(
-            &painter, lane, a, b, settled, pal.teal, 1.0, &at, horizontal,
+            &painter,
+            lane,
+            a,
+            b,
+            settled,
+            pal.positions,
+            pal.track,
+            1.0,
+            &at,
+            horizontal,
         );
     }
     // A test's time not used, and before it, stays plain.
@@ -539,6 +549,15 @@ pub fn paint_track(
     let ink = vis.text_color();
     for (i, &(a, b, name, code)) in track.iter().enumerate() {
         let start = along(at(a.max(0.0)));
+        // Dark words on the solid part, the text colour on the faded.
+        let settled = settled_from(a, b, settles);
+        let ink_at = |t: f64| {
+            if t < settled {
+                crate::theme::TRACK_LABEL
+            } else {
+                ink
+            }
+        };
         if i > 0 {
             if horizontal {
                 painter.vline(start, lane.y_range(), cut);
@@ -567,7 +586,7 @@ pub fn paint_track(
                         along(at(from.max(0.0))),
                         name,
                         code,
-                        ink,
+                        ink_at(from),
                         horizontal,
                     );
                 }
@@ -583,7 +602,7 @@ pub fn paint_track(
                     along(at(from.max(0.0))),
                     name,
                     code,
-                    ink,
+                    ink_at(from),
                     horizontal,
                 );
             }
@@ -606,7 +625,30 @@ pub fn paint_track(
     for &(a, b) in masked {
         if let Some(seg) = along_rect(lane, a, b, &at, horizontal) {
             painter.rect_filled(seg, 0.0, vis.extreme_bg_color);
-            painter.rect_filled(seg, 0.0, weak.gamma_multiply(crate::theme::MASK_TRACK));
+            crate::theme::hatch(&painter, seg, pal.text_tertiary, 2.5, 6.0);
+            // A backing under the word, so the hatching doesn't run
+            // through it.
+            let word = painter.layout_no_wrap("Masked".into(), FontId::proportional(11.0), ink);
+            let room = if horizontal {
+                seg.width()
+            } else {
+                seg.height()
+            } - 8.0;
+            if word.size().x <= room {
+                let (w, h) = (word.size().x + 4.0, word.size().y);
+                let back = if horizontal {
+                    Rect::from_min_size(
+                        Pos2::new(seg.left() + 2.0, lane.center().y - h / 2.0),
+                        Vec2::new(w, h),
+                    )
+                } else {
+                    Rect::from_min_size(
+                        Pos2::new(lane.center().x - h / 2.0, seg.bottom() - 2.0 - w),
+                        Vec2::new(h, w),
+                    )
+                };
+                painter.rect_filled(back, 2.0, vis.extreme_bg_color);
+            }
             track_label(
                 &painter,
                 lane,
@@ -770,8 +812,11 @@ fn paint_masked(
         }
     };
     let ink = vis.weak_text_color();
+    let hatch = crate::theme::palette(vis.dark_mode)
+        .text_tertiary
+        .gamma_multiply(crate::theme::MASK_WASH);
     for &(a, b) in masked.iter().filter(|m| m.1 > oldest && m.0 < end) {
-        painter.rect_filled(band(a, b), 0.0, ink.gamma_multiply(crate::theme::MASK_WASH));
+        crate::theme::hatch(&painter, band(a, b), hatch, 2.5, 6.0);
     }
     if let Some((a, b)) = dragging {
         let rect = band(a, b);
@@ -1163,7 +1208,8 @@ pub fn draw_strip(
                 a,
                 b,
                 settled,
-                pal.teal,
+                pal.positions,
+                pal.track,
                 crate::theme::TRACK_WASH,
                 &place,
                 view.horizontal,
@@ -1243,14 +1289,14 @@ pub fn draw_strip(
     // with the position and its times.
     if let (Some(code), Some((a, b))) = (extras.brush, painting_now) {
         if let Some(rect) = along_rect(r, a, b, &place, view.horizontal) {
-            painter.rect_filled(rect, 0.0, pal.teal.gamma_multiply(0.18));
+            painter.rect_filled(rect, 0.0, pal.positions.gamma_multiply(0.18));
         }
         if let Some(seg) = along_rect(lane, a, b, &place, view.horizontal) {
-            painter.rect_filled(seg, 0.0, pal.teal.gamma_multiply(0.85));
+            painter.rect_filled(seg, 0.0, pal.positions.gamma_multiply(0.85));
             painter.rect_stroke(
                 seg,
                 0.0,
-                Stroke::new(1.0_f32, pal.teal),
+                Stroke::new(1.0_f32, pal.positions),
                 egui::StrokeKind::Inside,
             );
             let words = format!("{code} {} to {}", fmt_time(a), fmt_time(b));
@@ -1274,7 +1320,7 @@ pub fn draw_strip(
             painter.rect_stroke(
                 back,
                 3.0,
-                Stroke::new(1.0_f32, pal.teal),
+                Stroke::new(1.0_f32, pal.positions),
                 egui::StrokeKind::Inside,
             );
             painter.galley(pos, galley, vis.strong_text_color());
@@ -1316,6 +1362,9 @@ pub fn draw_strip(
     // right of the strip under its name, or a row of its own above it.
     for (i, (o, (lo, hi))) in overlays.iter().enumerate() {
         let f = |v: f64| format!("{v:.*}{}", o.decimals, o.unit);
+        // Words in the text colour where the reading's own is too faint for
+        // small text (beat error's amber in light mode).
+        let ink = pal.ink(o.color);
         if view.horizontal {
             let x = r.right() + 6.0 + 58.0 * i as f32;
             painter.text(
@@ -1323,21 +1372,21 @@ pub fn draw_strip(
                 Align2::LEFT_TOP,
                 o.name,
                 font.clone(),
-                o.color,
+                ink,
             );
             painter.text(
                 Pos2::new(x, r.top()),
                 Align2::LEFT_TOP,
                 f(*hi),
                 font.clone(),
-                o.color,
+                ink,
             );
             painter.text(
                 Pos2::new(x, r.bottom()),
                 Align2::LEFT_BOTTOM,
                 f(*lo),
                 font.clone(),
-                o.color,
+                ink,
             );
         } else {
             let y = outer.top() + 3.0 + row_h * (1 + i) as f32;
@@ -1346,21 +1395,21 @@ pub fn draw_strip(
                 Align2::LEFT_TOP,
                 f(*lo),
                 font.clone(),
-                o.color,
+                ink,
             );
             painter.text(
                 Pos2::new(r.center().x, y),
                 Align2::CENTER_TOP,
                 format!("{} scale", o.name),
                 font.clone(),
-                o.color.gamma_multiply(0.8),
+                ink.gamma_multiply(0.8),
             );
             painter.text(
                 Pos2::new(r.right(), y),
                 Align2::RIGHT_TOP,
                 f(*hi),
                 font.clone(),
-                o.color,
+                ink,
             );
         }
     }
@@ -1833,12 +1882,17 @@ mod tests {
     /// 40 s to its floor.
     #[test]
     fn the_track_fades_after_the_settling() {
-        use crate::theme::{TRACK_FADE_FROM, TRACK_FADE_TO, TRACK_SETTLING};
-        assert_eq!(track_density(5.0, 20.0), TRACK_SETTLING);
-        assert_eq!(track_density(20.0, 20.0), TRACK_FADE_FROM);
-        assert!((track_density(40.0, 20.0) - (TRACK_FADE_FROM + TRACK_FADE_TO) / 2.0).abs() < 1e-6);
-        assert_eq!(track_density(60.0, 20.0), TRACK_FADE_TO);
-        assert_eq!(track_density(600.0, 20.0), TRACK_FADE_TO);
+        for track in [crate::theme::DARK.track, crate::theme::LIGHT.track] {
+            let [settling, fade_from, fade_to] = track;
+            assert_eq!(track_density(5.0, 20.0, track), settling);
+            assert_eq!(track_density(20.0, 20.0, track), fade_from);
+            assert!((track_density(40.0, 20.0, track) - (fade_from + fade_to) / 2.0).abs() < 1e-6);
+            assert_eq!(track_density(60.0, 20.0, track), fade_to);
+            assert_eq!(track_density(600.0, 20.0, track), fade_to);
+        }
+        // Stronger in light mode, where teal on white is fainter.
+        assert_eq!(crate::theme::DARK.track, [0.62, 0.48, 0.24]);
+        assert_eq!(crate::theme::LIGHT.track, [0.80, 0.62, 0.36]);
         assert_eq!(settled_from(50.0, 100.0, &[(50.0, 70.0, SETTLING)]), 70.0);
         assert_eq!(settled_from(0.0, 50.0, &[(50.0, 70.0, SETTLING)]), 0.0);
     }

@@ -7,12 +7,13 @@ pub const MICROPHONE: &[&str] = &[
      on (Settings > General): asking an input what it supports briefly opens it, which \
      could disturb another program recording from it.",
     "Input Level is the microphone's gain. The meter has plain marks at -10 and -6 dBFS \
-     for reference. At 0 dBFS the sound clips and the meter turns red.",
+     for reference. At 0 dBFS the sound clips, and the words beside it say so.",
     "For the system default input this is the sound server's input volume, which it \
      puts back on the microphone every time it opens it; for a direct device it is the \
      card's own capture level.",
     "The Peak meter shows the loudest sample in the last half second, in dBFS \
-     (decibels below the most the input can carry). It turns red when the sound clips.",
+     (decibels below the most the input can carry). The words beside it say when the \
+     sound clips.",
     "Quartz Correction lists the clock error kept for each input, by the name the system \
      gives it, with Forget beside each: the Rate card shows a rate read on that input \
      corrected as True Clock. Each input keeps its own, so changing the microphone \
@@ -64,7 +65,7 @@ pub const AMPLITUDE: &[&str] = &[
     "How far the balance swings each way from rest, in degrees, averaged over the \
      ticks and tocks of the averaging time.",
     "It is worked out from the time between the unlock and the drop of each beat (the \
-     solid green and indigo lines on the Tick Tock Profile) and the lift angle, so it is \
+     solid Unlock and dashed Drop lines on the Tick Tock Profile) and the lift angle, so it is \
      only as right as the lift angle, the Lift on the Calibre card.",
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
      its 2-second pieces alone. It is precision, not accuracy: the amplitude moves \
@@ -146,8 +147,8 @@ pub const STRIP: &[&str] = &[
      drift, the bigger the rate. Witschi and other timegraphers use the same words.",
     "The ticks and the tocks make two lines; the gap between them is the beat error. \
      A line that runs off one edge comes back on the other, so the width is a zoom.",
-    "The red rate line is the Rate reading drawn over the beats it was fitted to: if \
-     the dots follow it, the reading describes them well. The faint red lines beside it \
+    "The magenta rate line is the Rate reading drawn over the beats it was fitted to: if \
+     the dots follow it, the reading describes them well. The faint magenta lines beside it \
      (Parallel Guides) run at the same slope across the whole strip, one per grid step, \
      so you can see at a glance whether the dots everywhere run parallel to the rate \
      or bend away from it. Each can be shown without the other.",
@@ -180,7 +181,7 @@ pub const STRIP: &[&str] = &[
 ];
 
 pub const PROFILE: &[&str] = &[
-    "The typical sound of a tick (blue) and of a tock (orange) over the averaging \
+    "The typical sound of a tick (blue) and of a tock (deep orange) over the averaging \
      time, up to 60 s: the line is the beats' typical loudness at each moment, and the \
      shaded band is where the middle 80% of beats fall. Time runs from before the \
      unlock on the left to after the drop on the right, in milliseconds from the drop (see \
@@ -189,15 +190,15 @@ pub const PROFILE: &[&str] = &[
     "Each beat has three sounds: 1, the unlock, when the pallet stone lets go of the \
      escape wheel; 2, the impulse, when the escape wheel pushes the fork; 3, the drop, \
      when the next tooth lands on the other stone.",
-    "The solid lines are the edges the readings come from: unlock (green) where the \
-     beat first rises above the noise, drop (indigo) where the drop starts, and the \
-     drop's peak (a thinner indigo line). Amplitude comes from the time between unlock and drop; the beat \
+    "The grey lines named Unlock, Drop and Drop Peak are the edges the readings come \
+     from: unlock (solid) where the beat first rises above the noise, drop (dashed) where \
+     the drop starts, and the drop's peak (a thinner dashed line). Amplitude comes from the time between unlock and drop; the beat \
      error from the unlocks.",
-    "The dashed brown lines mark where each of the three sounds rises halfway up its own \
+    "The dotted grey lines mark where each of the three sounds rises halfway up its own \
      climb. They come from a separate measurement of the beat's shape, so they sit \
      near but not exactly on the edges. Both \
      are measured on the same averaged sound, not on single beats.",
-    "A dashed sound line is missing when that sound can't be told apart from its \
+    "A dotted sound line is missing when that sound can't be told apart from its \
      neighbour: a soft unlock that merges into the impulse, say.",
     "The flat dashed line is the noise floor: the level before the beat starts.",
     "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
@@ -260,9 +261,9 @@ pub const STEADINESS: &[&str] = &[
      the beat timing: a timing sine of a ms at period P swings the rate by \
      2 × a × 2π / P × 86.4 s/d, of which a 10 s reading keeps sin(x)/x, x = π × 10 / P). \
      Timing in its toolbar draws rate as the beat timing's own spectrum, in ms, at every \
-     period instead. In both, each wheel's period is a bold line, and half of \
-     it, twice a turn as an off-centre wheel shows, is a fainter dashed line marked \
-     ×2, in the wheels' own mint green; the STFT and Wavelet Maps dash the wheels' turns \
+     period instead. In both, each wheel's period is a bold dotted line, and half of \
+     it, twice a turn as an off-centre wheel shows, is a fainter line marked ×2, both \
+     grey and dotted; the STFT and Wavelet Maps dot the wheels' turns \
      across the map. With no calibre picked, or none of its wheels known, one minute \
      and one hour are marked in grey instead. Wheel Periods in the toolbar shows or \
      hides these marks.",

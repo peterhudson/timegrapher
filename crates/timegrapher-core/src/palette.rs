@@ -1,6 +1,8 @@
 //! The colours every view of a session is drawn in, so the app and the
 //! MCP server's charts agree: each reading has one colour wherever it is
 //! drawn, and none of the readings' colours is used for anything else.
+//! Only the readings (and the position) have colours: everything else on
+//! a plot is a grey.
 //! The app's theme is built from these.
 
 /// One colour, as 8-bit sRGB.
@@ -50,15 +52,21 @@ pub struct Palette {
     /// Tick (Side A, the even beats) and Tock (Side B, the odd beats).
     pub tick: Rgb,
     pub tock: Rgb,
-    /// The app's own warnings and errors (a banner, a failed save). Never
-    /// on a reading: readings carry no good or bad colour.
-    pub warn: Rgb,
+    /// The watch's position, wherever it is shown: the paper strip's
+    /// track, the brush and the Positions Test.
+    pub positions: Rgb,
+    /// Red means Bad, on an icon only: a failure's icon, with its words in
+    /// the text colour. Never on a reading, and never on text. A warning is
+    /// a triangle in the text colour, so it has no colour of its own.
     pub bad: Rgb,
-    /// The marks on the Tick Tock profile.
+    /// The dot beside "Listening to …".
+    pub live: Rgb,
+    /// The marks on the Tick Tock profile: greys, told apart by their
+    /// line styles and labels, so only the readings have colours on a plot.
     pub unlock: Rgb,
     pub drop: Rgb,
     pub peak: Rgb,
-    /// The three sounds on the Tick Tock profile.
+    /// The three sounds on the Tick Tock profile, a grey.
     pub sound: Rgb,
     /// Amplitude, rate and beat error wherever they are drawn: over the
     /// strip, on their charts, in their distributions and in Steadiness.
@@ -66,9 +74,8 @@ pub struct Palette {
     pub trace_rate: Rgb,
     pub trace_beat_error: Rgb,
     /// A calibre's wheels where their turns are marked on a period axis:
-    /// a colour of its own, so a wheel's line never reads as the grid or
-    /// as a reading. Kept well away from beat error's yellow (a mint, not
-    /// a lime): the lime it once was read too close to the yellow.
+    /// the faint grey, drawn dotted and named, so a wheel's line never
+    /// reads as a reading.
     pub wheel: Rgb,
 }
 
@@ -89,18 +96,19 @@ pub const DARK: Palette = Palette {
     text_tertiary: rgb(0x6e6e73),
     accent: rgb(0x0a84ff),
     on_accent: rgb(0xffffff),
-    tick: rgb(0x64d2ff),
-    tock: rgb(0xff9f0a),
-    warn: rgb(0xffb340),
+    tick: rgb(0x6eb9fe),
+    tock: rgb(0xca6b35),
+    positions: rgb(0x16f2c4),
     bad: rgb(0xff453a),
-    unlock: rgb(0x30d158),
-    drop: rgb(0x7d7aff),
-    peak: rgb(0x7d7aff),
-    sound: rgb(0xac8e68),
-    trace_amplitude: rgb(0xbf5af2),
-    trace_rate: rgb(0xff453a),
-    trace_beat_error: rgb(0xffd60a),
-    wheel: rgb(0x3ddcaa),
+    live: rgb(0x30d158),
+    unlock: rgb(0xa1a1a6),
+    drop: rgb(0xa1a1a6),
+    peak: rgb(0xa1a1a6),
+    sound: rgb(0xa1a1a6),
+    trace_amplitude: rgb(0x9e6bff),
+    trace_rate: rgb(0xe140a1),
+    trace_beat_error: rgb(0xf6b753),
+    wheel: rgb(0x6e6e73),
 };
 
 pub const LIGHT: Palette = Palette {
@@ -116,18 +124,19 @@ pub const LIGHT: Palette = Palette {
     text_tertiary: rgb(0x9a9aa0),
     accent: rgb(0x007aff),
     on_accent: rgb(0xffffff),
-    tick: rgb(0x0068c9),
-    tock: rgb(0xc45100),
-    warn: rgb(0xb25000),
+    tick: rgb(0x1476bf),
+    tock: rgb(0x8f3e03),
+    positions: rgb(0x03a483),
     bad: rgb(0xd70015),
-    unlock: rgb(0x248a3d),
-    drop: rgb(0x5856d6),
-    peak: rgb(0x5856d6),
-    sound: rgb(0x7f6545),
-    trace_amplitude: rgb(0x8944ab),
-    trace_rate: rgb(0xd70015),
-    trace_beat_error: rgb(0x8a6d00),
-    wheel: rgb(0x0b8466),
+    live: rgb(0x248a3d),
+    unlock: rgb(0x6e6e73),
+    drop: rgb(0x6e6e73),
+    peak: rgb(0x6e6e73),
+    sound: rgb(0x6e6e73),
+    trace_amplitude: rgb(0x8b3df8),
+    trace_rate: rgb(0xb80c7e),
+    trace_beat_error: rgb(0xbc8422),
+    wheel: rgb(0x9a9aa0),
 };
 
 pub fn palette(dark: bool) -> &'static Palette {
@@ -196,9 +205,60 @@ mod tests {
         );
     }
 
+    /// OKLab, from sRGB (Björn Ottosson's matrices).
+    fn oklab(c: Rgb) -> [f64; 3] {
+        let lin = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let (r, g, b) = (lin(c.r), lin(c.g), lin(c.b));
+        let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
+        let m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).cbrt();
+        let s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b).cbrt();
+        [
+            0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+        ]
+    }
+
+    /// OKLab ΔE × 100.
+    fn apart(a: Rgb, b: Rgb) -> f64 {
+        let (a, b) = (oklab(a), oklab(b));
+        100.0 * ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+    }
+
+    #[test]
+    fn the_data_colours_are_told_apart_in_both_themes() {
+        for (theme, p) in [("dark", &DARK), ("light", &LIGHT)] {
+            let data = [
+                ("rate", p.trace_rate),
+                ("amplitude", p.trace_amplitude),
+                ("beat error", p.trace_beat_error),
+                ("tick", p.tick),
+                ("tock", p.tock),
+                ("positions", p.positions),
+            ];
+            for (i, (an, a)) in data.iter().enumerate() {
+                for (bn, b) in &data[i + 1..] {
+                    let d = apart(*a, *b);
+                    assert!(d >= 15.0, "{theme}: {an} and {bn} are {d:.1} apart");
+                }
+                for (bn, b) in [("bad", p.bad), ("live", p.live), ("accent", p.accent)] {
+                    let d = apart(*a, b);
+                    assert!(d >= 8.0, "{theme}: {an} and {bn} are {d:.1} apart");
+                }
+            }
+        }
+    }
+
     #[test]
     fn colours_read_as_css() {
-        assert_eq!(DARK.trace_rate.css(), "#ff453a");
-        assert_eq!(LIGHT.tick.css(), "#0068c9");
+        assert_eq!(DARK.trace_rate.css(), "#e140a1");
+        assert_eq!(LIGHT.tick.css(), "#1476bf");
     }
 }
