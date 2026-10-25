@@ -251,6 +251,65 @@ fn list_pick_route(running: bool, quick: bool, asks: bool) -> ListPick {
     }
 }
 
+/// Set Up the Microphone's width, and its status line's height: two
+/// lines, whatever it says.
+const SHEET_W: f32 = 440.0;
+const SHEET_STATUS_H: f32 = 36.0;
+/// The sheet's steps' contents start this far in, under each title.
+const SHEET_INDENT: f32 = 30.0;
+/// The names in the sheet's third step, right-aligned in this width.
+const SHEET_LABEL_W: f32 = 104.0;
+
+/// A step of Set Up the Microphone: its number in a small grey circle,
+/// then its title.
+fn sheet_step(ui: &mut egui::Ui, n: u8, title: &str) {
+    let pal = theme::pal(ui);
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 22.0), egui::Sense::hover());
+        ui.painter()
+            .circle_filled(rect.center(), 11.0, pal.control_hover);
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            n.to_string(),
+            theme::semibold(12.0),
+            pal.text,
+        );
+        // The title starts where the step's contents do.
+        ui.add_space(SHEET_INDENT - 22.0 - 2.0 * ui.spacing().item_spacing.x);
+        ui.label(RichText::new(title).font(theme::semibold(13.5)));
+    });
+}
+
+/// A step's contents, in from its number.
+fn sheet_indent(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.add_space(SHEET_INDENT - ui.spacing().item_spacing.x);
+        ui.vertical(|ui| add(ui));
+    });
+}
+
+/// A row of the sheet's third step: its name right-aligned, its control
+/// after it on one left edge.
+fn sheet_field(ui: &mut egui::Ui, label: &str, hint: &str, add: impl FnOnce(&mut egui::Ui)) {
+    let pal = theme::pal(ui);
+    ui.horizontal_top(|ui| {
+        let (rect, resp) =
+            ui.allocate_exact_size(Vec2::new(SHEET_LABEL_W, 20.0), egui::Sense::hover());
+        if !label.is_empty() {
+            ui.painter().text(
+                egui::pos2(rect.right(), rect.center().y),
+                egui::Align2::RIGHT_CENTER,
+                label,
+                egui::FontId::proportional(13.0),
+                pal.text,
+            );
+            resp.on_hover_text(hint);
+        }
+        ui.vertical(|ui| add(ui));
+    });
+}
+
 /// What a question before throwing away unsaved sound is about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Confirm {
@@ -739,6 +798,26 @@ fn save_as_shortcut() -> egui::KeyboardShortcut {
         egui::Key::S,
     )
 }
+
+/// The Input Level's hover.
+const LEVEL_HINT: &str = "The microphone's gain. For the system default this is the sound \
+     server's input volume, which it puts back on the microphone each time it opens it; for a \
+     direct device it is the card's capture level. Aim for ticks peaking in the shaded band, \
+     around -10 dBFS, and never clipping.";
+
+/// The Peak meter's hover.
+const PEAK_HINT: &str = "Loudest sample in the last half second, over a shaded band from -10 \
+     to -6 dBFS. Clipping is said in words, not by colour.";
+
+/// Under the Peak meter.
+const BAND_WORDS: &str = "Shaded band: −10 to −6 dBFS.";
+
+/// What the sheet and Settings say while the sound clips.
+const CLIPPING_WORDS: &str = "Clipping: lower the Input Level.";
+
+/// Automatic Gain's standing warning, beside its switch.
+const AGC_WARNING: &str = "Keep this off. It raises the level between ticks and lowers it on \
+     each one, so the sound the readings come from keeps changing.";
 
 /// The Automatic Gain switch's hover, in Settings > Microphone.
 const AGC_HINT: &str = "The microphone's own automatic gain, which raises its level between \
@@ -1848,6 +1927,10 @@ pub struct TimegrapherApp {
     agc_read: Option<bool>,
     /// The microphone has been set up, or opened once.
     mic_set_up: bool,
+    /// Not Now was pressed on Set Up the Microphone: it doesn't come back
+    /// by itself, though the app still doesn't listen at launch until a
+    /// microphone is set up.
+    setup_declined: bool,
     /// Set Up the Microphone is open (the first launch).
     setup_sheet: bool,
     /// Quick Listen starts on the first frame (Listen When the App Opens).
@@ -1857,6 +1940,9 @@ pub struct TimegrapherApp {
     /// Why the computer isn't being kept awake although asked, set by the
     /// listening thread.
     pub(crate) awake_fault: Option<String>,
+    /// Why the input last failed to open, for its row in Settings; none
+    /// once one opens.
+    input_fault: Option<String>,
     /// Why the listening thread didn't start, if it didn't: then sound is
     /// only taken while the window draws.
     pub(crate) pump_fault: Option<String>,
@@ -2131,7 +2217,7 @@ impl TimegrapherApp {
     fn at_launch(&mut self) {
         if self.input != Input::File {
             self.listen_pending = self.mic_set_up && self.listen_at_open;
-            self.setup_sheet = !self.mic_set_up;
+            self.setup_sheet = !self.mic_set_up && !self.setup_declined;
         }
     }
 
@@ -2172,6 +2258,7 @@ impl TimegrapherApp {
             keep_awake: self.keep_awake,
             listen_at_open: self.listen_at_open,
             mic_set_up: self.mic_set_up,
+            setup_declined: self.setup_declined,
             show_readings: self.show_readings,
             library: self.library_dir.clone(),
             settings_section: self.settings_last.key().into(),
@@ -2218,6 +2305,7 @@ impl TimegrapherApp {
             keep_awake,
             listen_at_open,
             mic_set_up,
+            setup_declined,
             show_readings,
             library,
             settings_section,
@@ -2228,6 +2316,7 @@ impl TimegrapherApp {
         self.settings_last = Tab::from_key(&settings_section);
         self.listen_at_open = listen_at_open;
         self.mic_set_up = mic_set_up;
+        self.setup_declined = setup_declined;
         self.agc_on = agc_on;
         // A layout from before the panes moved starts afresh.
         let panes = panes.filter(|_| layout >= LAYOUT);
@@ -2367,10 +2456,12 @@ impl TimegrapherApp {
             keep_awake: true,
             listen_at_open: true,
             mic_set_up: false,
+            setup_declined: false,
             setup_sheet: false,
             listen_pending: false,
             setup_tried: false,
             awake_fault: None,
+            input_fault: None,
             pump_fault: None,
             check_pending: false,
             average_s: 10.0,
@@ -2712,13 +2803,15 @@ impl TimegrapherApp {
                         "Can't keep the sound for saving later: {e}. The readings still work."
                     )),
                 }
+                self.input_fault = None;
                 self.capture = Some(c);
                 self.apply_agc();
             }
-            Err(e) => self.error(format!(
-                "Can't open the input. {}",
-                capture::explain_error(&e)
-            )),
+            Err(e) => {
+                let m = format!("Can't open the input. {}", capture::explain_error(&e));
+                self.input_fault = Some(m.clone());
+                self.error(m);
+            }
         }
     }
 
@@ -2809,13 +2902,15 @@ impl TimegrapherApp {
                 self.strip_end = None;
                 self.message = None;
                 applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
+                self.input_fault = None;
                 self.capture = Some(c);
                 self.apply_agc();
             }
-            Err(e) => self.error(format!(
-                "Can't open the input. {}",
-                capture::explain_error(&e)
-            )),
+            Err(e) => {
+                let m = format!("Can't open the input. {}", capture::explain_error(&e));
+                self.input_fault = Some(m.clone());
+                self.error(m);
+            }
         }
     }
 
@@ -6723,11 +6818,10 @@ impl TimegrapherApp {
         }
     }
 
-    /// The microphone menu, the level, listening and saving.
-    fn microphone_card(&mut self, ui: &mut egui::Ui) {
-        let choices = self.input_choices();
+    /// The microphone picked, as its menu names it.
+    fn picked_label(&self) -> String {
         let listed = self.devices_listed;
-        let sel = choices
+        self.input_choices()
             .iter()
             .find(|c| Some(&c.id) == self.device.as_ref())
             .map_or_else(
@@ -6743,9 +6837,16 @@ impl TimegrapherApp {
                     _ => "Choose a Microphone".to_string(),
                 },
                 |c| c.label.clone(),
-            );
+            )
+    }
+
+    /// The microphone menu with Rescan after it, `w` wide.
+    fn device_menu(&mut self, ui: &mut egui::Ui, w: f32) {
+        let choices = self.input_choices();
+        let listed = self.devices_listed;
+        let sel = self.picked_label();
         let mut opened = false;
-        let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+        let row = egui::vec2(w, ui.spacing().interact_size.y);
         ui.allocate_ui_with_layout(
             row,
             egui::Layout::right_to_left(egui::Align::Center),
@@ -6754,7 +6855,7 @@ impl TimegrapherApp {
                 // combo box in a row is otherwise as wide as its words, and a
                 // long name (as macOS gives) widens the whole pane past its
                 // card. Rescan is laid first, from the right, so the box takes
-                // what is left of the row, less its own frame and arrow.
+                // what is left of the row.
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                 if ui
                     .add(egui::Button::new("Rescan").wrap_mode(egui::TextWrapMode::Extend))
@@ -6763,12 +6864,10 @@ impl TimegrapherApp {
                 {
                     self.rescan();
                 }
-                let sp = ui.spacing();
-                let frame = sp.icon_width + sp.icon_spacing + 2.0 * sp.button_padding.x;
                 let full = sel.clone();
                 egui::ComboBox::from_id_salt("device")
                     .selected_text(sel)
-                    .width((ui.available_width() - frame).max(60.0))
+                    .width(ui.available_width().max(60.0))
                     .show_ui(ui, |ui| {
                         opened = true;
                         if !listed {
@@ -6793,8 +6892,6 @@ impl TimegrapherApp {
             self.ensure_devices();
             ui.ctx().request_repaint();
         }
-        ui.add_space(2.0);
-        self.microphone_settings(ui);
     }
 
     /// A pane's toolbar: its settings in a row and its "?" at the right.
@@ -8540,51 +8637,23 @@ impl TimegrapherApp {
         !self.guided_unused.is_empty() || !self.guided_measured.is_empty()
     }
 
-    fn microphone_settings(&mut self, ui: &mut egui::Ui) {
-        if self.gain_device != self.device {
-            self.read_gain();
-        }
-        self.gain_controls(ui);
-        ui.add_space(2.0);
-        theme::switch_row(
-            ui,
-            "Show Every Input",
-            &mut self.all_inputs,
-            "List every device the system offers in the microphone menu, with its id",
-        );
-    }
-
-    /// Keep Awake, and what is wrong with keeping the computer awake or
-    /// taking sound in the background.
-    fn keep_awake_setting(&mut self, ui: &mut egui::Ui) {
-        theme::switch_row(
-            ui,
-            "Keep Awake",
-            &mut self.keep_awake,
-            "While listening, stop the computer going to sleep on its own, so a long take \
-             isn't cut short. The screen can still lock and switch off.",
-        );
-        if let (true, Some(e)) = (self.keep_awake, &self.awake_fault) {
-            theme::alert_label(
-                ui,
-                theme::Alert::Warning,
-                &format!(
-                    "The computer isn't being kept awake: {e}. It may sleep on its own \
-                     during a long take."
-                ),
-                true,
-            );
-        }
+    /// What is wrong with keeping the computer awake or taking sound in
+    /// the background, for Keep Awake's caption.
+    /// One plain line for the caption, and what the system said, for the
+    /// row's hover.
+    fn awake_words(&self) -> Option<(String, String)> {
         if let Some(e) = &self.pump_fault {
-            theme::alert_label(
-                ui,
-                theme::Alert::Warning,
-                &format!(
-                    "Sound is taken only while the window is showing, and the computer \
-                     isn't kept awake: the thread that does both didn't start ({e})."
-                ),
-                true,
-            );
+            return Some((
+                "Not kept awake, and sound is taken only while the window shows.".into(),
+                format!("The thread that does both didn't start: {e}"),
+            ));
+        }
+        match (self.keep_awake, &self.awake_fault) {
+            (true, Some(e)) => Some((
+                "Not being kept awake: the system didn't allow it.".into(),
+                format!("What the system said: {e}"),
+            )),
+            _ => None,
         }
     }
 
@@ -9322,70 +9391,129 @@ impl TimegrapherApp {
 
     /// The window Open asks in, while it is open.
     /// Set Up the Microphone, at the first launch: which microphone, and
-    /// its level set against the watch on the stand, listening all the
-    /// while so the meter moves. Done keeps listening; Not Now stops and
-    /// asks again at the next launch.
+    /// its level set against the watch on the stand, in three numbered
+    /// steps, listening all the while so the meter moves. Done keeps
+    /// listening; Not Now stops, and the sheet doesn't come back by itself.
     fn setup_sheet_dialog(&mut self, ctx: &egui::Context) {
         if !self.setup_sheet || self.open_ask.is_some() || self.confirm.is_some() {
             return;
         }
         // Listen as soon as the sheet shows, once: a failure says why in
-        // the banner, and choosing another microphone tries again.
+        // its status line, and choosing another microphone tries again.
         if !self.setup_tried && !self.running() {
             self.setup_tried = true;
             self.quick_listen(true);
         }
+        self.refresh_gain();
         let before = self.device.clone();
         let (mut done, mut later) = (false, false);
-        egui::Modal::new(egui::Id::new("set up the microphone")).show(ctx, |ui| {
-            ui.set_width(440.0);
+        let modal = egui::Modal::new(egui::Id::new("set up the microphone")).show(ctx, |ui| {
+            ui.set_width(SHEET_W);
             let pal = theme::pal(ui);
-            ui.label(RichText::new("Set Up the Microphone").font(theme::semibold(15.0)));
+            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.label(RichText::new("Set Up the Microphone").font(theme::semibold(16.0)));
             ui.add_space(4.0);
-            ui.label(
-                RichText::new(
-                    "Choose the microphone the watch sits on, put a ticking watch on it, and \
-                     set the Input Level while the Peak meter moves. The shaded band is \
-                     between -10 and -6 dBFS; at 0 dBFS the sound clips, and the words below \
-                     the meter say so. From then on the app listens as soon as it opens (Settings > \
-                     General), and Settings > Microphone changes these.",
-                )
-                .color(pal.text_secondary),
-            );
-            ui.add_space(8.0);
-            self.microphone_card(ui);
-            // Why the microphone didn't start, here rather than in the
-            // banner the sheet covers.
-            if let Some((m, true)) = &self.message {
-                ui.add_space(4.0);
-                theme::alert_label(ui, theme::Alert::Bad, m, false);
-            }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                done = ui
-                    .add(theme::primary(ui, "Done"))
-                    .on_hover_text("Keep listening to this microphone, with no watch picked")
-                    .clicked();
-                later = ui
-                    .add(theme::secondary(ui, "Not Now"))
-                    .on_hover_text(
-                        "Stop listening and close this; it asks again the next time the app \
-                         opens",
-                    )
-                    .clicked();
+            sheet_step(ui, 1, "Choose the microphone the watch sits on");
+            sheet_indent(ui, |ui| {
+                self.device_menu(ui, ui.available_width());
+                let hint =
+                    "List every device the system offers in the microphone menu, with its id";
+                theme::switch_row(ui, "Show Every Input", &mut self.all_inputs, hint);
             });
+            ui.add_space(4.0);
+            sheet_step(ui, 2, "Put a ticking watch on it");
+            sheet_indent(ui, |ui| {
+                ui.label(
+                    RichText::new("The Peak meter below moves with each tick.")
+                        .size(12.0)
+                        .color(pal.text_secondary),
+                );
+            });
+            ui.add_space(4.0);
+            sheet_step(
+                ui,
+                3,
+                "Set the Input Level so the peaks sit in the shaded band",
+            );
+            sheet_indent(ui, |ui| {
+                sheet_field(ui, "Input Level", LEVEL_HINT, |ui| {
+                    let w = ui.available_width();
+                    self.level_control(ui, w);
+                });
+                if self.agc_read.is_some() {
+                    sheet_field(ui, "Automatic Gain", AGC_HINT, |ui| {
+                        ui.horizontal_top(|ui| {
+                            self.agc_control(ui);
+                            // Always there, so the switch moves nothing.
+                            theme::alert_label(ui, theme::Alert::Warning, AGC_WARNING, true);
+                        });
+                    });
+                }
+                sheet_field(ui, "Peak", PEAK_HINT, |ui| {
+                    let w = ui.available_width();
+                    self.peak_control(ui, w);
+                });
+                sheet_field(ui, "", PEAK_HINT, |ui| {
+                    ui.label(
+                        RichText::new(BAND_WORDS)
+                            .size(12.0)
+                            .color(pal.text_secondary),
+                    );
+                });
+            });
+            ui.add_space(4.0);
+            self.sheet_status(ui);
+            ui.add_space(8.0);
+            let w = ui.available_width();
+            ui.allocate_ui_with_layout(
+                Vec2::new(w, 34.0),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    // Narrower than a dialog's, so the notes beside them
+                    // keep to a line each.
+                    let narrow = Vec2::new(64.0, 26.0);
+                    done = ui
+                        .add(theme::primary(ui, "Done").min_size(narrow))
+                        .on_hover_text("Keep listening to this microphone, with no watch picked")
+                        .clicked();
+                    later = ui
+                        .add(theme::secondary(ui, "Not Now").min_size(narrow))
+                        .on_hover_text(
+                            "Stop listening and close this. Set up the microphone later in \
+                             Settings > Microphone.",
+                        )
+                        .clicked();
+                    // What follows, in what is left at the left.
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        for line in [
+                            "From now on the app listens as soon as it opens.",
+                            "Change these in Settings > Microphone.",
+                        ] {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(format!("• {line}"))
+                                        .size(11.0)
+                                        .color(pal.text_secondary),
+                                )
+                                .wrap(),
+                            );
+                        }
+                    });
+                },
+            );
         });
+        // Return presses Done, the default; Esc presses Not Now.
+        if ctx.input(|i| i.key_pressed(egui::Key::Enter)) && ctx.memory(|m| m.focused().is_none()) {
+            done = true;
+        }
+        if modal.should_close() {
+            later = true;
+        }
         if self.device != before && self.running() && self.session.mic() {
             // Another microphone chosen: listen to that one instead.
             self.stop_listening();
             self.quick_listen(true);
-        }
-        if later {
-            self.setup_sheet = false;
-            self.message = None;
-            if self.running() && self.session.mic() {
-                self.stop_listening();
-            }
         }
         if done {
             self.setup_sheet = false;
@@ -9393,7 +9521,68 @@ impl TimegrapherApp {
             if !self.running() {
                 self.quick_listen(true);
             }
+        } else if later {
+            self.setup_sheet = false;
+            self.setup_declined = true;
+            self.message = None;
+            if self.running() && self.session.mic() {
+                self.stop_listening();
+            }
         }
+    }
+
+    /// The sheet's status line, two lines tall whatever it says: a
+    /// failure, a warning such as clipping, the Live dot while listening,
+    /// or "Not listening.".
+    fn sheet_status(&self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let failure = match &self.message {
+            Some((m, true)) => Some(m.clone()),
+            _ => self.gain_error.clone(),
+        };
+        let listening = self.running() && self.session.mic();
+        let w = ui.available_width();
+        ui.allocate_ui_with_layout(
+            Vec2::new(w, SHEET_STATUS_H),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_min_size(Vec2::new(w, SHEET_STATUS_H));
+                if let Some(m) = failure {
+                    // Two lines at most, the whole of it on hover.
+                    ui.horizontal_top(|ui| {
+                        ui.spacing_mut().item_spacing.x = 5.0;
+                        let (rect, _) =
+                            ui.allocate_exact_size(Vec2::splat(14.0), egui::Sense::hover());
+                        theme::alert_icon(ui.painter(), rect, theme::Alert::Bad, pal);
+                        let mut job = egui::text::LayoutJob::simple(
+                            m.clone(),
+                            egui::FontId::proportional(13.0),
+                            pal.text,
+                            ui.available_width(),
+                        );
+                        job.wrap.max_rows = 2;
+                        job.wrap.overflow_character = Some('…');
+                        // Laid out here, so the label keeps the two rows.
+                        let galley = ui.fonts_mut(|f| f.layout_job(job));
+                        ui.add(egui::Label::new(galley)).on_hover_text(m);
+                    });
+                } else if listening && self.clipping() {
+                    theme::alert_label(ui, theme::Alert::Warning, CLIPPING_WORDS, false);
+                } else if let Some(m) = self.agc_message() {
+                    theme::alert_label(ui, theme::Alert::Warning, &m, false);
+                } else if listening {
+                    ui.horizontal(|ui| {
+                        theme::dot(ui, pal.live);
+                        ui.label(
+                            RichText::new(format!("Listening to {}.", self.picked_label()))
+                                .color(pal.text_secondary),
+                        );
+                    });
+                } else {
+                    ui.label(RichText::new("Not listening.").color(pal.text_secondary));
+                }
+            },
+        );
     }
 
     /// A test that ended with no watch picked: Keep in Unsorted, Keep in a
@@ -10061,18 +10250,6 @@ impl TimegrapherApp {
             .is_some_and(|t| t.elapsed().as_secs_f64() < 3.0)
     }
 
-    /// The input level in words and the colour to show it in: the text
-    /// colour while the sound clips, which the words say.
-    fn level_text(&self, ui: &egui::Ui) -> (String, Color32) {
-        let pal = theme::pal(ui);
-        let peak = self.level.peak_dbfs.max(-99.0);
-        if self.clipping() {
-            (format!("peak {peak:.0} dBFS, clipping"), pal.text)
-        } else {
-            (format!("peak {peak:.0} dBFS"), pal.text_secondary)
-        }
-    }
-
     /// The level meter: a grey bar to the latest peak over a grey band
     /// between the plain reference marks at -10 and -6 dBFS. Clipping is
     /// said in words, not by colour.
@@ -10233,43 +10410,51 @@ impl TimegrapherApp {
         }
     }
 
-    /// The input level control and meter, in Settings > Microphone and Set Up the Microphone.
-    fn gain_controls(&mut self, ui: &mut egui::Ui) {
-        if self.gain_read_at.elapsed().as_secs_f64() > if self.running() { 2.0 } else { 10.0 } {
+    /// Read the picked input's level afresh when it changed or has not
+    /// been read for a while.
+    fn refresh_gain(&mut self) {
+        let every = if self.running() { 2.0 } else { 10.0 };
+        if self.gain_device != self.device || self.gain_read_at.elapsed().as_secs_f64() > every {
             self.read_gain();
         }
+    }
+
+    /// The Input Level slider and its value, `w` wide; where the system
+    /// sets the level, "Not adjustable here" (or, on macOS and Windows,
+    /// the way to the system's own page), at the same height.
+    fn level_control(&mut self, ui: &mut egui::Ui, w: f32) {
         let pal = theme::pal(ui);
-        let hint = "The microphone's gain. For the system default this is the sound server's \
-                    input volume, which it puts back on the microphone each time it opens it; \
-                    for a direct device it is the card's capture level. Aim for ticks peaking \
-                    around -10 dBFS, and never clipping.";
-        match (self.gain.clone(), self.gain_state.clone()) {
-            (Some(g), Some(st)) => {
-                theme::row(ui, "Input Level", Some(hint), |ui| {
-                    let mut pct = st.level * 100.0;
-                    ui.spacing_mut().slider_width = (ui.available_width() - 44.0).max(60.0);
-                    let r = ui.add(
-                        egui::Slider::new(&mut pct, 0.0..=100.0)
-                            .show_value(false)
-                            .step_by(1.0),
-                    );
-                    ui.label(RichText::new(&st.text).small().color(pal.text_secondary));
-                    // Set it once the drag ends (or on a click or key), not
-                    // on every pixel.
-                    if (r.changed() && !r.dragged()) || r.drag_stopped() {
-                        self.gain_error = g.set_level(pct / 100.0).err();
-                        applog::info(&format!("input level set to {pct:.0}%"));
-                        self.read_gain();
-                    } else if r.changed() {
-                        if let Some(s) = self.gain_state.as_mut() {
-                            s.level = pct / 100.0;
+        let h = ui.spacing().interact_size.y;
+        ui.allocate_ui_with_layout(
+            Vec2::new(w, h),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_size(Vec2::new(w, h));
+                match (self.gain.clone(), self.gain_state.clone()) {
+                    (Some(g), Some(st)) => {
+                        let mut pct = st.level * 100.0;
+                        ui.spacing_mut().slider_width = (w - 64.0).max(60.0);
+                        let r = ui
+                            .add(
+                                egui::Slider::new(&mut pct, 0.0..=100.0)
+                                    .show_value(false)
+                                    .step_by(1.0),
+                            )
+                            .on_hover_text(LEVEL_HINT);
+                        ui.label(RichText::new(&st.text).color(pal.text_secondary));
+                        // Set it once the drag ends (or on a click or key),
+                        // not on every pixel.
+                        if (r.changed() && !r.dragged()) || r.drag_stopped() {
+                            self.gain_error = g.set_level(pct / 100.0).err();
+                            applog::info(&format!("input level set to {pct:.0}%"));
+                            self.read_gain();
+                        } else if r.changed() {
+                            if let Some(s) = self.gain_state.as_mut() {
+                                s.level = pct / 100.0;
+                            }
                         }
                     }
-                });
-            }
-            _ => {
-                theme::row(ui, "Input Level", Some(hint), |ui| {
-                    if cfg!(any(target_os = "macos", target_os = "windows")) {
+                    _ if cfg!(any(target_os = "macos", target_os = "windows")) => {
                         // The system sets it: open the system's own page.
                         if ui
                             .button("Open Sound Settings…")
@@ -10280,62 +10465,74 @@ impl TimegrapherApp {
                                 .err()
                                 .map(|e| format!("Couldn't open the sound settings: {e}"));
                         }
-                    } else {
-                        // Wrapped, so a longer line doesn't widen the Watches view.
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new("not adjustable here").color(pal.text_secondary),
-                            )
-                            .wrap(),
-                        );
                     }
-                });
-            }
-        }
-        // Only for an input whose own automatic gain the app can reach.
-        if let Some(now) = self.agc_read {
-            let key = self.agc_key();
-            let mut on = self.agc_on.contains(&key);
-            if theme::switch_row(ui, "Automatic Gain", &mut on, AGC_HINT) {
-                self.agc_on.retain(|k| k != &key);
-                if on {
-                    self.agc_on.push(key);
+                    _ => {
+                        ui.label(RichText::new("Not adjustable here").color(pal.text_secondary))
+                            .on_hover_text(LEVEL_HINT);
+                    }
                 }
-                self.apply_agc();
-            }
-            // What the microphone says, where it isn't what was asked.
-            if now != on {
-                theme::alert_label(
-                    ui,
-                    theme::Alert::Warning,
-                    &format!(
-                        "The microphone reports its automatic gain {}.",
-                        if now { "on" } else { "off" }
-                    ),
-                    true,
-                );
-            }
+            },
+        );
+    }
+
+    /// The Automatic Gain switch, for an input whose own automatic gain
+    /// the app can reach; false (and nothing drawn) for any other.
+    fn agc_control(&mut self, ui: &mut egui::Ui) -> bool {
+        if self.agc_read.is_none() {
+            return false;
         }
-        let level_hint = "Loudest sample in the last half second, with plain marks at \
-                          -10 and -6 dBFS for reference. The words below it say when \
-                          the sound clips.";
-        theme::row(ui, "Peak", Some(level_hint), |ui| {
-            let w = ui.available_width();
-            self.meter(ui, w, 8.0).on_hover_text(level_hint);
-        });
-        let (txt, color) = if self.running() {
-            self.level_text(ui)
-        } else {
-            ("shows once the input starts".into(), pal.text_tertiary)
-        };
+        let key = self.agc_key();
+        let mut on = self.agc_on.contains(&key);
+        if theme::switch(ui, &mut on).on_hover_text(AGC_HINT).changed() {
+            self.agc_on.retain(|k| k != &key);
+            if on {
+                self.agc_on.push(key);
+            }
+            self.apply_agc();
+        }
+        true
+    }
+
+    /// What the microphone says of its automatic gain, where it isn't
+    /// what was asked.
+    fn agc_message(&self) -> Option<String> {
+        let now = self.agc_read?;
+        let on = self.agc_on.contains(&self.agc_key());
+        (now != on).then(|| {
+            format!(
+                "The microphone reports its automatic gain {}.",
+                if now { "on" } else { "off" }
+            )
+        })
+    }
+
+    /// The Peak meter, `w` wide, and its dBFS after it.
+    fn peak_control(&self, ui: &mut egui::Ui, w: f32) {
+        let pal = theme::pal(ui);
         ui.horizontal(|ui| {
-            ui.add_space(theme::LABEL_W + ui.spacing().item_spacing.x);
-            ui.label(RichText::new(txt).small().color(color));
+            self.meter(ui, (w - 72.0).max(60.0), 8.0)
+                .on_hover_text(PEAK_HINT);
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(64.0, 18.0), egui::Sense::hover());
+            ui.painter().text(
+                rect.right_center(),
+                egui::Align2::RIGHT_CENTER,
+                self.peak_words(),
+                egui::FontId::proportional(13.0),
+                pal.text_secondary,
+            );
         });
-        if let Some(e) = &self.gain_error {
-            theme::alert_label(ui, theme::Alert::Bad, e, true);
+    }
+
+    /// The latest peak, "−11 dBFS", or a dash while nothing is heard.
+    fn peak_words(&self) -> String {
+        if self.running() {
+            let peak = self.level.peak_dbfs.max(-99.0);
+            format!("{peak:.0} dBFS").replace('-', "−")
+        } else {
+            "–".into()
         }
     }
+
     /// The train the Steadiness tests name cycles after, when a calibre is
     /// picked; `None` leaves them to the beat rate's usual wheels.
     fn calibre_wheels(&self) -> Option<Vec<Wheel>> {
@@ -10642,7 +10839,6 @@ impl TimegrapherApp {
                     .id_salt("general settings")
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        ui.set_max_width(520.0);
                         self.general_settings(ui);
                     });
             }
@@ -10651,9 +10847,7 @@ impl TimegrapherApp {
                     .id_salt("microphone settings")
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        ui.set_max_width(520.0);
-                        self.microphone_card(ui);
-                        ui.add_space(12.0);
+                        self.microphone_page(ui);
                         let listening = self.clock_track.as_ref().map(|t| t.device.clone());
                         let timing = self.clock_timing();
                         match settings_window::quartz_section(
@@ -10678,7 +10872,6 @@ impl TimegrapherApp {
                     .id_salt("watches folder settings")
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        ui.set_max_width(620.0);
                         let root = self.library_root();
                         let act = settings_window::library_section(
                             ui,
@@ -10699,6 +10892,76 @@ impl TimegrapherApp {
                 self.calibre_changed(&name, out.change);
             }
         }
+    }
+
+    /// Settings > Microphone's groups: the microphone, then its level.
+    /// Quartz Correction follows.
+    fn microphone_page(&mut self, ui: &mut egui::Ui) {
+        self.refresh_gain();
+        let input_fault = self.input_fault.clone();
+        theme::group(ui, "Microphone", None, |g| {
+            let hint = "The microphone to listen to. Show Every Input lists every device the \
+                        system offers.";
+            g.row(
+                "Microphone",
+                match &input_fault {
+                    Some(f) => theme::Caption::Alert(theme::Alert::Warning, f),
+                    None => theme::Caption::Text("The input the watch sits on."),
+                },
+                hint,
+                |ui| {
+                    self.device_menu(ui, 300.0);
+                },
+            );
+            let hint = "List every device the system offers in the microphone menu, with its id";
+            g.row(
+                "Show Every Input",
+                theme::Caption::Text("Lists every device the system offers, with its id."),
+                hint,
+                |ui| theme::switch(ui, &mut self.all_inputs).on_hover_text(hint),
+            );
+        });
+        let gain_error = self.gain_error.clone();
+        let agc = self.agc_message();
+        let clipping = self.running() && self.clipping();
+        theme::group(ui, "Level", None, |g| {
+            g.row(
+                "Input Level",
+                match &gain_error {
+                    Some(e) => theme::Caption::Alert(theme::Alert::Bad, e),
+                    None => theme::Caption::Text("Set it so the peaks sit in the shaded band."),
+                },
+                LEVEL_HINT,
+                |ui| {
+                    self.level_control(ui, 240.0);
+                },
+            );
+            if self.agc_read.is_some() {
+                g.row(
+                    "Automatic Gain",
+                    theme::Caption::Alert(
+                        theme::Alert::Warning,
+                        agc.as_deref().unwrap_or(AGC_WARNING),
+                    ),
+                    AGC_HINT,
+                    |ui| {
+                        self.agc_control(ui);
+                    },
+                );
+            }
+            g.row(
+                "Peak",
+                if clipping {
+                    theme::Caption::Alert(theme::Alert::Warning, CLIPPING_WORDS)
+                } else {
+                    theme::Caption::Text(BAND_WORDS)
+                },
+                PEAK_HINT,
+                |ui| {
+                    self.peak_control(ui, 240.0);
+                },
+            );
+        });
     }
 
     /// Forget asks first, saying what is lost: the kept clock took 20
@@ -10757,50 +11020,81 @@ impl TimegrapherApp {
         }
     }
 
-    /// Settings' General section: how the app looks and whether it asks
-    /// about updates.
+    /// Settings' General section: how the app looks, listening, and
+    /// whether it asks about updates, as grouped rows.
     fn general_settings(&mut self, ui: &mut egui::Ui) {
-        ui.label(RichText::new("Appearance").strong());
         let mut t = ui.ctx().options(|o| o.theme_preference);
-        ui.horizontal(|ui| {
-            theme::segmented(
-                ui,
-                &mut t,
-                &[
-                    (
-                        egui::ThemePreference::System,
-                        "Auto",
-                        "Follow the system's light or dark setting",
-                    ),
-                    (egui::ThemePreference::Light, "Light", "Always light"),
-                    (egui::ThemePreference::Dark, "Dark", "Always dark"),
-                ],
+        theme::group(ui, "Appearance", None, |g| {
+            g.row(
+                "Appearance",
+                theme::Caption::Text("Auto follows the system's light or dark mode."),
+                "How the app looks: light, dark, or as the system is set",
+                |ui| {
+                    theme::segmented(
+                        ui,
+                        &mut t,
+                        &[
+                            (
+                                egui::ThemePreference::System,
+                                "Auto",
+                                "Follow the system's light or dark setting",
+                            ),
+                            (egui::ThemePreference::Light, "Light", "Always light"),
+                            (egui::ThemePreference::Dark, "Dark", "Always dark"),
+                        ],
+                    );
+                },
             );
         });
         if t != ui.ctx().options(|o| o.theme_preference) {
             ui.ctx().set_theme(t);
             self.theme = t;
         }
-        ui.add_space(12.0);
-        ui.label(RichText::new("Updates").strong());
-        theme::switch_row(
-            ui,
-            "Check for Updates at Start",
-            &mut self.check_at_start,
-            "Ask GitHub whether a newer Timegrapher is published each time the app starts, \
-             and say so if there is. It sends no account or identifier, and nothing installs \
-             itself. Help > Check for Updates… asks now.",
-        );
-        ui.add_space(12.0);
-        ui.label(RichText::new("Listening").strong());
-        theme::switch_row(
-            ui,
-            "Listen When the App Opens",
-            &mut self.listen_at_open,
-            "Start listening to the microphone as soon as the app opens, for the watch on the \
-             stand. Off, Listen on the Listen card starts it.",
-        );
-        self.keep_awake_setting(ui);
+        let awake = self.awake_words();
+        theme::group(ui, "Listening", None, |g| {
+            let hint = "Start listening to the microphone as soon as the app opens, for the \
+                        watch on the stand. Off, Listen on the Listen card starts it.";
+            g.row(
+                "Listen When the App Opens",
+                theme::Caption::Text("Off: press Listen on the Listen card to start."),
+                hint,
+                |ui| theme::switch(ui, &mut self.listen_at_open).on_hover_text(hint),
+            );
+            let mut hint = "While listening, stop the computer going to sleep on its own, so \
+                            a long take isn't cut short. The screen can still lock and switch \
+                            off."
+                .to_string();
+            if let Some((_, said)) = &awake {
+                hint = format!("{hint}\n\n{said}");
+            }
+            let hint = hint.as_str();
+            g.row(
+                "Keep Awake",
+                match &awake {
+                    Some((w, _)) => theme::Caption::Alert(theme::Alert::Warning, w),
+                    None => theme::Caption::Text(
+                        "While listening, the computer doesn't sleep on its own. The screen \
+                         can still lock.",
+                    ),
+                },
+                hint,
+                |ui| theme::switch(ui, &mut self.keep_awake).on_hover_text(hint),
+            );
+        });
+        theme::group(ui, "Updates", None, |g| {
+            let hint = "Ask GitHub whether a newer Timegrapher is published each time the app \
+                        starts, and say so if there is. It sends no account or identifier, and \
+                        nothing installs itself. Help > Check for Updates… asks now.";
+            g.row(
+                "Check for Updates at Start",
+                theme::Caption::Text(
+                    "Asks GitHub once per start. Sends no account or identifier; installs \
+                     nothing.",
+                ),
+                hint,
+                |ui| theme::switch(ui, &mut self.check_at_start).on_hover_text(hint),
+            );
+        });
     }
 
     /// Forget the kept clock of `device`: its rates are read on its own
@@ -22545,11 +22839,161 @@ mod tests {
             }),
             (false, false)
         );
+        // Not Now: the sheet doesn't come back, and the app doesn't listen
+        // by itself until a microphone is set up.
+        assert_eq!(
+            launch(Settings {
+                setup_declined: true,
+                ..Settings::default()
+            }),
+            (false, false),
+            "after Not Now"
+        );
         let mut opening = TimegrapherApp::with_devices(Vec::new(), None);
         opening.apply_settings(set_up);
         opening.input = Input::File;
         opening.at_launch();
         assert!(!opening.setup_sheet && !opening.listen_pending);
+    }
+
+    /// Where each text is painted, its top left.
+    fn painted_at(out: &egui::FullOutput) -> Vec<(String, egui::Pos2)> {
+        out.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some((t.galley.text().to_string(), t.pos)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Set Up the Microphone's status line holds a failure in its own two
+    /// lines: the buttons below it don't move, and the failure is said
+    /// there, not in a paragraph under the controls. Before anything
+    /// starts it says "Not listening.".
+    #[test]
+    fn the_sheets_status_line_holds_a_failure_without_moving_the_buttons() {
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.setup_sheet = true;
+        // Already tried: a test never opens an input.
+        app.setup_tried = true;
+        let draw = |app: &mut TimegrapherApp| {
+            let mut out = None;
+            for _ in 0..3 {
+                out = Some(ctx.run(screen(), |ctx| app.setup_sheet_dialog(ctx)));
+            }
+            painted_at(&out.unwrap())
+        };
+        let quiet = draw(&mut app);
+        let at = |drawn: &[(String, egui::Pos2)], t: &str| {
+            drawn
+                .iter()
+                .find(|(s, _)| s == t)
+                .map(|d| d.1)
+                .unwrap_or_else(|| panic!("no {t}: {drawn:?}"))
+        };
+        assert!(quiet.iter().any(|(t, _)| t == "Not listening."));
+        app.message = Some((
+            "Can't open the input. This input is busy or missing. If the desktop sound \
+             server is running it is probably holding it: choose the system default instead, \
+             or close what is using it. Otherwise check the microphone is plugged in. (The \
+             requested device is no longer available. For example, it has been unplugged.)"
+                .into(),
+            true,
+        ));
+        let failed = draw(&mut app);
+        assert!(failed
+            .iter()
+            .any(|(t, _)| t.starts_with("Can't open the input")));
+        assert!(!failed.iter().any(|(t, _)| t == "Not listening."));
+        for button in ["Done", "Not Now"] {
+            assert_eq!(at(&quiet, button), at(&failed, button), "{button} moved");
+        }
+        assert!(app.setup_sheet, "still open");
+    }
+
+    /// A message about a setting takes its row's caption: Keep Awake's
+    /// fault replaces "While listening…", and the rows below it stay put.
+    #[test]
+    fn a_settings_message_takes_its_rows_caption() {
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let draw = |app: &mut TimegrapherApp| {
+            let mut out = None;
+            for _ in 0..2 {
+                out = Some(ctx.run(screen(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| app.general_settings(ui));
+                }));
+            }
+            painted_at(&out.unwrap())
+        };
+        let fine = draw(&mut app);
+        app.keep_awake = true;
+        // As a desktop with no session bus says it: plain words in the
+        // caption, on one line, and the system's own words in the hover.
+        app.awake_fault = Some(
+            "Failed to connect to address `unix:path=/run/user/0/bus`: No such file or \
+             directory (os error 2)"
+                .into(),
+        );
+        let fault = draw(&mut app);
+        let y = |drawn: &[(String, egui::Pos2)], t: &str| {
+            drawn
+                .iter()
+                .find(|(s, _)| s == t)
+                .map(|d| d.1.y)
+                .unwrap_or_else(|| panic!("no {t}: {drawn:?}"))
+        };
+        assert!(fault
+            .iter()
+            .any(|(t, _)| t == "Not being kept awake: the system didn't allow it."));
+        assert!(!fault.iter().any(|(t, _)| t.contains("unix:path")));
+        assert!(!fault.iter().any(|(t, _)| t.starts_with("While listening")));
+        assert_eq!(
+            y(&fine, "Check for Updates at Start"),
+            y(&fault, "Check for Updates at Start")
+        );
+        for title in ["Appearance", "Listening", "Updates"] {
+            assert!(fine.iter().any(|(t, _)| t == title), "{title}");
+        }
+    }
+
+    /// An input that won't open says so in the Microphone row's caption,
+    /// on one line, and the row below stays put.
+    #[test]
+    fn an_input_that_wont_open_says_so_in_its_rows_caption() {
+        let ctx = themed();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let draw = |app: &mut TimegrapherApp| {
+            let mut out = None;
+            for _ in 0..2 {
+                out = Some(ctx.run(screen(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| app.microphone_page(ui));
+                }));
+            }
+            painted_at(&out.unwrap())
+        };
+        let fine = draw(&mut app);
+        assert!(fine
+            .iter()
+            .any(|(t, _)| t == "The input the watch sits on."));
+        let m = "Can't open the input. A backend-specific error has occurred: ALSA \
+                 function 'snd_pcm_open' failed with error 'Connection refused (111)'";
+        app.input_fault = Some(m.into());
+        let failed = draw(&mut app);
+        assert!(failed.iter().any(|(t, _)| t == m), "{failed:?}");
+        assert!(!failed
+            .iter()
+            .any(|(t, _)| t == "The input the watch sits on."));
+        let y = |drawn: &[(String, egui::Pos2)]| {
+            drawn
+                .iter()
+                .find(|(s, _)| s == "Show Every Input")
+                .map(|d| d.1.y)
+                .unwrap()
+        };
+        assert_eq!(y(&fine), y(&failed));
     }
 
     /// The panes start below the readings' cards, whatever the cards'
