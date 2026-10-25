@@ -115,13 +115,16 @@ pub const LISTEN: &[&str] = &[
 ];
 
 pub const CALIBRE: &[&str] = &[
+    "The title is the watch on the microphone, or No Watch (Quick Listen). Click it to pick \
+     another, add one, or find one in Watches; the figure under it is its calibre.",
     "What the readings are worked out for: the watch's calibre, its beat rate and its \
      lift angle, the three in one place.",
     "Pick the calibre from the table and it sets the beat rate and the lift angle, \
      which then show here as text. With no calibre set, Beat Rate is Auto (the standard \
      rate nearest to the beats of the first few seconds, shown beside it) and \
      Lift is the default 52°; set either here, for a watch that beats at an unusual rate \
-     or runs far off, or whose lift angle you know.",
+     or runs far off, or whose lift angle you know. For a watch with no calibre, what you \
+     set here is saved to the watch.",
     "A beat rate is how many beats the watch makes an hour, ticks and tocks counted \
      alike: 28,800 for a balance swinging 4 times a second each way, 21,600 for 3, \
      18,000 for 2.5. The lift angle is what Amplitude is worked out from.",

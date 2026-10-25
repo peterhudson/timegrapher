@@ -51,6 +51,8 @@ struct Readouts {
     /// narrow for their full width.
     position_compact: bool,
     listen_compact: bool,
+    /// The Calibre card's limits, for its chip beside the Watch line.
+    calibre_limits: Vec<(String, String)>,
 }
 
 /// The controls the readings' cards carry, each in a strip at its card's
@@ -61,6 +63,9 @@ enum Slot {
     Position,
     /// Listen or Stop, Save, and Average Over.
     Listen,
+    /// The Watch line: the Calibre card's title, the watch on the
+    /// microphone, with its menu.
+    WatchLine,
     /// The calibre, on the Calibre card's figure row.
     Calibre,
     /// The beat rate and the lift angle, under the calibre.
@@ -137,6 +142,17 @@ const VIEWS: [(View, &str, &str); 2] = [
          Power Reserve Test, or open one of its takes",
     ),
 ];
+
+/// The Watch line's words with no watch picked.
+const NO_WATCH: &str = "No Watch (Quick Listen)";
+/// The Watch line's title on the narrowest card.
+const NO_WATCH_SHORT: &str = "No Watch";
+/// Below this width the Calibre card's title steps down to 12 pt.
+const NARROW_TITLE_W: f32 = 160.0;
+/// The Watch line's menu's width at least.
+const WATCH_MENU_W: f32 = 220.0;
+/// How many recent watches the Watch line's menu lists.
+const RECENT_WATCHES: usize = 5;
 
 /// The day of a UTC timestamp kept as text ("2026-10-12T…").
 fn day_of(utc: &str) -> &str {
@@ -220,6 +236,9 @@ enum Confirm {
     NewSession,
     /// A new take of the watch picked, of the kind asked for.
     NewTake(NewTake),
+    /// Another watch, or No Watch (`None`), picked on the Watch line
+    /// while a take is on show: the take is put away.
+    PickWatch(Option<String>),
     Quit,
     /// Start listening to the microphone, over a recording whose masks
     /// changed.
@@ -916,11 +935,18 @@ struct ClockWords {
 
 /// A reading's limit in short in Title Case, for its chip: "9 s of Beats",
 /// "3% Clipped", "28800 bph Heard".
-/// The beat rate's choices: Auto, then the standard rates.
+/// The beat rate's choices: Auto, then the standard rates, the one in use
+/// ticked.
 fn bph_choices(ui: &mut egui::Ui, bph: &mut Option<u32>) {
-    ui.selectable_value(bph, None, "Auto: found from the beats");
-    for b in STANDARD_BPH {
-        ui.selectable_value(bph, Some(b), format!("{b} bph"));
+    let choices = std::iter::once((None, "Auto: found from the beats".to_string())).chain(
+        STANDARD_BPH
+            .into_iter()
+            .map(|b| (Some(b), format!("{b} bph"))),
+    );
+    for (v, words) in choices {
+        if theme::menu_item(ui, *bph == v, words).clicked() {
+            *bph = v;
+        }
     }
 }
 
@@ -1045,6 +1071,59 @@ fn figure_row(
         )
         .on_hover_text(hover);
     }
+}
+
+/// `text` then `tail`, the text cut short with "…" where the two are
+/// wider than `room`, so the tail always shows.
+fn elide(ui: &egui::Ui, text: &str, tail: &str, font: &egui::FontId, room: f32) -> String {
+    let wide = |t: &str| {
+        ui.fonts_mut(|f| {
+            f.layout_no_wrap(t.to_string(), font.clone(), Color32::WHITE)
+                .size()
+                .x
+        })
+    };
+    let whole = format!("{text}{tail}");
+    if wide(&whole) <= room {
+        return whole;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let cut = |n: usize| {
+        format!(
+            "{}…{tail}",
+            chars[..n].iter().collect::<String>().trim_end()
+        )
+    };
+    let (mut lo, mut hi) = (0, chars.len());
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        if wide(&cut(mid)) <= room {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    cut(lo)
+}
+
+/// The Calibre card's figure, when it is words and not the pop-up: the
+/// calibre, or "No Calibre", at the readings' figure size, smaller where
+/// the card is too narrow for it, as a figure is.
+fn calibre_figure(ui: &mut egui::Ui, text: &str, colour: Color32) -> egui::Response {
+    let room = ui.available_width();
+    let wide = ui
+        .painter()
+        .layout_no_wrap(text.to_string(), theme::display(theme::FIGURE_PT), colour)
+        .size()
+        .x;
+    let size = if wide > room {
+        (theme::FIGURE_PT * room / wide).floor().max(12.0)
+    } else {
+        theme::FIGURE_PT
+    };
+    ui.add(
+        egui::Label::new(RichText::new(text).font(theme::display(size)).color(colour)).truncate(),
+    )
 }
 
 /// The USB microphone behind an input, for its automatic gain switch on
@@ -1636,6 +1715,9 @@ pub struct TimegrapherApp {
     view: View,
     /// Find in Watches… asked for the search field's focus.
     watch_search_focus: bool,
+    /// The watch the New Watch form adds goes on the microphone, as the
+    /// Watch line picks it: New Watch… there opened the form.
+    new_watch_on_mic: bool,
     /// The Watches view: the watch picked (its id), the list's search,
     /// order, and the details form.
     watch_open: Option<String>,
@@ -2230,6 +2312,7 @@ impl TimegrapherApp {
             library_moving: None,
             view: View::Bench,
             watch_search_focus: false,
+            new_watch_on_mic: false,
             watch_open: None,
             unsorted_open: false,
             list_for: None,
@@ -4980,7 +5063,11 @@ impl TimegrapherApp {
         if self.saving.is_some() {
             return self.confirm_saving_dialog(ctx);
         }
-        if !self.needs_save_confirmation() {
+        let ask = match what {
+            Confirm::PickWatch(_) => self.line_pick_asks(),
+            _ => self.needs_save_confirmation(),
+        };
+        if !ask {
             self.confirm = None;
             return self.confirmed(what, ctx);
         }
@@ -4995,6 +5082,8 @@ impl TimegrapherApp {
                 RichText::new(match what {
                     Confirm::NewSession => "Start a new session?",
                     Confirm::NewTake(_) => "Start a new take without saving?",
+                    // A watch picked on the Watch line is the next take's.
+                    Confirm::PickWatch(_) => "Start a new take without saving?",
                     Confirm::Quit => "Quit without saving?",
                     Confirm::Open { .. } => "Open the recording without saving?",
                     Confirm::Microphone | Confirm::QuickListen => {
@@ -5030,6 +5119,7 @@ impl TimegrapherApp {
                         None,
                         Confirm::NewSession
                         | Confirm::NewTake(_)
+                        | Confirm::PickWatch(_)
                         | Confirm::Open { .. }
                         | Confirm::Microphone
                         | Confirm::QuickListen,
@@ -5111,6 +5201,7 @@ impl TimegrapherApp {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::NewTake(kind) => self.new_take(kind, true),
+            Confirm::PickWatch(id) => self.line_pick(id, true),
             Confirm::Open { path } => self.open_recording(&path, false),
             Confirm::Microphone => self.listen_after_ask(),
             Confirm::QuickListen => self.quick_listen(true),
@@ -6086,6 +6177,7 @@ impl TimegrapherApp {
 
     /// The form for a new watch: only its name is needed.
     fn open_new_watch_form(&mut self) {
+        self.new_watch_on_mic = false;
         let mut w = library::Watch::new("");
         w.calibre = Some(String::new());
         w.notes = Some(String::new());
@@ -6215,6 +6307,8 @@ impl TimegrapherApp {
                         Some(kind) => self.keep_test(kind, Some(&w.id)),
                         None => self.keep_into(&w.id),
                     }
+                } else if f.new && std::mem::take(&mut self.new_watch_on_mic) {
+                    self.line_pick(Some(w.id.clone()), false);
                 } else if f.new {
                     self.pick_watch(&w.id);
                 } else if self.watch_open.as_ref() == Some(&w.id)
@@ -6828,6 +6922,7 @@ impl TimegrapherApp {
             match slot {
                 Slot::Position => self.position_card(&mut ui, out.position_compact),
                 Slot::Listen => self.listen_buttons(&mut ui, out.listen_compact),
+                Slot::WatchLine => self.watch_line(&mut ui, &out.calibre_limits),
                 Slot::Calibre => self.calibre_control(&mut ui),
                 Slot::RateAndLift => self.rate_and_lift(&mut ui),
             }
@@ -7144,8 +7239,8 @@ impl TimegrapherApp {
             let mut hint = match &watch {
                 Some(name) => format!(
                     "Listen to {name}: a new take, saved into it at Stop. For a Quick \
-                     Listen with no watch, pick Unsorted Takes in the Watches view, or \
-                     Quick Listen (No Watch) in the Watches menu."
+                     Listen with no watch, pick No Watch (Quick Listen) on the Calibre \
+                     card's title."
                 ),
                 None => QUICK_LISTEN_HINT.to_string(),
             };
@@ -7246,12 +7341,9 @@ impl TimegrapherApp {
     fn save_menu(&mut self, ui: &mut egui::Ui, size: f32) {
         let pal = theme::pal(ui);
         let can = self.session.allows(Action::Save) && self.saving.is_none();
+        // The watch with the newest take first.
         let watches: Vec<(String, String)> = match &self.library {
-            Ok(Some(l)) if l.read_only.is_none() => l
-                .watches
-                .iter()
-                .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
-                .collect(),
+            Ok(Some(l)) if l.read_only.is_none() => self.recent_watches(),
             _ => Vec::new(),
         };
         let into_watch = self.addable_take().is_some() || self.quick_listen;
@@ -7337,10 +7429,200 @@ impl TimegrapherApp {
         }
     }
 
+    /// The Calibre card's title: the watch on the microphone, or No Watch
+    /// (Quick Listen), with ▾, the one place on the Bench that says which
+    /// watch a take is of. Its menu picks No Watch, a recent watch, a new
+    /// one, or finds one in Watches. The card's limits and its "?" (still
+    /// "Calibre") are at the right.
+    fn watch_line(&mut self, ui: &mut egui::Ui, limits: &[(String, String)]) {
+        let pal = theme::pal(ui);
+        // The card at its narrowest (800 × 600): the title a step smaller,
+        // No Watch without its "(Quick Listen)".
+        let narrow = ui.available_width() < NARROW_TITLE_W;
+        // A watch with no calibre whose Beat Rate field is hidden for
+        // width: the beat rates head this menu.
+        let rates_here = ui.available_width() < TWO_FIELDS_W
+            && self.watch_sets_here()
+            && !self.bph_set_by_calibre();
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            theme::help(ui, "Calibre", help::CALIBRE);
+            if let Some(first) = limits.first() {
+                let sentences: Vec<String> = limits.iter().map(|l| l.1.clone()).collect();
+                // The watch's name keeps the room; the chip says how many.
+                let text = if limits.len() > 1 || ui.available_width() < 180.0 {
+                    limits.len().to_string()
+                } else {
+                    chip_words(&first.0)
+                };
+                theme::chip(ui, &text, "Calibre", &sentences, ui.available_width());
+            }
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                // Level with the other cards' captions: no padding, and
+                // only the title row's height, not a control's.
+                ui.spacing_mut().button_padding = Vec2::new(0.0, 0.0);
+                ui.spacing_mut().interact_size.y = theme::TITLE_ROW_H;
+                let name = self
+                    .open_watch()
+                    .map_or_else(|| NO_WATCH.to_string(), |e| e.watch.name.clone());
+                let title = match self.open_watch() {
+                    None if narrow => NO_WATCH_SHORT,
+                    _ => name.as_str(),
+                };
+                // The name is cut, never the ⏷.
+                let font = theme::semibold(if narrow { 12.0 } else { 13.0 });
+                let title = elide(ui, title, " ⏷", &font, ui.available_width());
+                let button = ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(title).font(font).color(pal.text_secondary),
+                        )
+                        .frame_when_inactive(false),
+                    )
+                    .on_hover_text(format!(
+                        "Calibre: the watch on the microphone, {name}. Click to pick \
+                         another, No Watch for a Quick Listen, or find one in Watches."
+                    ));
+                egui::Popup::menu(&button)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+                    .show(|ui| self.watch_line_menu(ui, rates_here));
+            });
+        });
+    }
+
+    /// The Watch line's menu: No Watch (Quick Listen), up to five recent
+    /// watches, New Watch… and Find in Watches…. Another watch can't be
+    /// picked while listening: the readings so far are of this one.
+    fn watch_line_menu(&mut self, ui: &mut egui::Ui, rates_here: bool) {
+        let pal = theme::pal(ui);
+        // As wide as its longest line, not the title's button.
+        ui.set_min_width(WATCH_MENU_W);
+        if rates_here {
+            ui.label(
+                RichText::new("Beat Rate (hidden at this width)")
+                    .small()
+                    .color(pal.text_tertiary),
+            )
+            .on_hover_text(self.bph_hint());
+            // Short, as the menu is the watch's: the rate set, Auto, and
+            // the other standard rates one level down.
+            let mut bph = self.bph;
+            let item = |ui: &mut egui::Ui, bph: &mut Option<u32>, v: Option<u32>, words: &str| {
+                let r = theme::menu_item(ui, v == self.bph, words);
+                if r.clicked() {
+                    *bph = v;
+                }
+                r
+            };
+            if let Some(b) = self.bph {
+                item(ui, &mut bph, Some(b), &format!("{b} bph"));
+            }
+            item(ui, &mut bph, None, "Auto").on_hover_text("Found from the first seconds of beats");
+            ui.menu_button("Other Rates", |ui| {
+                for b in STANDARD_BPH.into_iter().filter(|&b| Some(b) != self.bph) {
+                    item(ui, &mut bph, Some(b), &format!("{b} bph"));
+                }
+            });
+            if bph != self.bph {
+                self.change_bph(bph);
+                self.save_card_to_watch();
+            }
+            ui.separator();
+        }
+        let free = !self.running();
+        if !free {
+            // Said once, above what it dims, so no hint covers a row.
+            ui.label(
+                RichText::new("Stop listening to pick another watch")
+                    .small()
+                    .color(pal.text_tertiary),
+            );
+        }
+        let none = self.open_watch().is_none();
+        if ui
+            .add_enabled_ui(free, |ui| theme::menu_item(ui, none, NO_WATCH))
+            .inner
+            .on_hover_text(QUICK_LISTEN_HINT)
+            .clicked()
+        {
+            self.line_pick(None, false);
+        }
+        let recent = self.recent_watches();
+        if !recent.is_empty() {
+            ui.separator();
+            ui.label(RichText::new("Recent").small().color(pal.text_tertiary));
+        }
+        for (id, name) in recent.into_iter().take(RECENT_WATCHES) {
+            let on = self.watch_open.as_deref() == Some(id.as_str());
+            if ui
+                .add_enabled_ui(free, |ui| theme::menu_item(ui, on, &name))
+                .inner
+                .on_hover_text("Listen and the tests take this watch, saved into it")
+                .clicked()
+            {
+                self.line_pick(Some(id), false);
+            }
+        }
+        ui.separator();
+        if ui
+            .button("New Watch…")
+            .on_hover_text("Add a watch: its name, calibre, lift angle and beat rate")
+            .clicked()
+        {
+            self.open_new_watch_form();
+            self.new_watch_on_mic = true;
+        }
+        if ui
+            .button("Find in Watches…")
+            .on_hover_text("Show the Watches view with its search field ready to type in")
+            .clicked()
+        {
+            self.find_in_watches();
+        }
+    }
+
+    /// A watch, or No Watch (`None`), picked on the Watch line: the watch
+    /// on the microphone, so a take on show is put away first and the card
+    /// shows the watch picked at once. Unsaved sound is asked about first,
+    /// Quick Listen's too: sound never goes without a question here.
+    fn line_pick(&mut self, id: Option<String>, asked: bool) {
+        if self.running() || self.saving_busy() {
+            return;
+        }
+        if self.live.is_some() || self.session.recorder.is_some() {
+            if !asked && self.line_pick_asks() {
+                self.confirm = Some(Confirm::PickWatch(id));
+                return;
+            }
+            self.new_session();
+        }
+        match id {
+            Some(id) => self.pick_watch(&id),
+            None => self.pick_unsorted(),
+        }
+    }
+
+    /// Whether the Watch line asks before putting the take on show away:
+    /// what any new take asks about, and Quick Listen's unsaved sound too.
+    fn line_pick_asks(&self) -> bool {
+        self.needs_save_confirmation() || self.quick_unsaved() && self.unsaved_s() > 5.0
+    }
+
+    /// The library's watches, the one with the newest take first.
+    fn recent_watches(&self) -> Vec<(String, String)> {
+        match &self.library {
+            Ok(Some(l)) => watches::shown(l, "", watches::Sort::LastTake)
+                .into_iter()
+                .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     /// The Calibre card's figure row: the Calibre pop-up, or a watch's
     /// calibre named where the watch sets it. Where the controls row is
     /// too narrow for the beat rate beside the lift, the beat rates head
-    /// the Calibre menu.
+    /// the Calibre menu, or for a watch with no calibre the title's menu.
     fn calibre_control(&mut self, ui: &mut egui::Ui) {
         if !self.take_shows_rate_and_lift() {
             return self.calibre_line(ui);
@@ -7348,15 +7630,7 @@ impl TimegrapherApp {
         let pal = theme::pal(ui);
         if self.open_watch().is_some() {
             // A watch's calibre is the watch's to set.
-            ui.add(
-                egui::Label::new(
-                    RichText::new("No Calibre")
-                        .size(15.0)
-                        .color(pal.text_secondary),
-                )
-                .truncate(),
-            )
-            .on_hover_text(
+            calibre_figure(ui, "No Calibre", pal.text_tertiary).on_hover_text(
                 "This watch has no calibre the table knows. Edit… on the watch sets it, and \
                  with it the beat rate and lift angle.",
             );
@@ -7499,6 +7773,11 @@ impl TimegrapherApp {
         } else {
             ui.available_width()
         };
+        // A watch with no calibre keeps what is set here.
+        let saved_to = match self.open_watch() {
+            Some(e) if self.watch_sets_here() => format!(" Saved to {}.", e.watch.name),
+            _ => String::new(),
+        };
         if self.lift_settable() {
             let mut lift = self.lift_deg;
             let (resp, changed) = fields::combo(
@@ -7512,13 +7791,20 @@ impl TimegrapherApp {
                 "Lift",
                 lift_w,
             );
-            resp.on_hover_text(if self.lift_known() {
-                "The lift angle: type it, or pick one with ▾".to_string()
+            let mut hint = if self.lift_known() {
+                "The lift angle: type it, or pick one with ⏷.".to_string()
             } else {
                 LIFT_HINT.to_string()
-            });
+            };
+            hint += &saved_to;
+            if !both && !self.bph_set_by_calibre() && self.watch_sets_here() {
+                hint += " Beat Rate is hidden at this width: it heads the menu on the card's \
+                         title.";
+            }
+            resp.on_hover_text(hint);
             if changed {
                 self.set_lift(lift);
+                self.save_card_to_watch();
             }
         } else {
             fact(
@@ -7539,13 +7825,45 @@ impl TimegrapherApp {
         let mut bph = self.bph;
         egui::ComboBox::from_id_salt("bph")
             .width(text_w + 8.0)
-            .height(320.0)
+            // Tall enough for every rate, as in the menus that list them.
+            .height(480.0)
             .selected_text(shown)
             .show_ui(ui, |ui| bph_choices(ui, &mut bph))
             .response
-            .on_hover_text(self.bph_hint());
+            .on_hover_text(format!("{}{saved_to}", self.bph_hint()));
         if bph != self.bph {
             self.change_bph(bph);
+            self.save_card_to_watch();
+        }
+    }
+
+    /// Whether the card's Lift and Beat Rate belong to the watch picked: a
+    /// watch with no calibre the table knows, so what is set here is
+    /// saved to it, as Edit Watch would.
+    fn watch_sets_here(&self) -> bool {
+        self.open_watch().is_some() && self.cal.find(&self.calibre).is_none()
+    }
+
+    /// The card's lift angle and beat rate saved to the watch picked, when
+    /// they are its to keep (see [`Self::watch_sets_here`]).
+    fn save_card_to_watch(&mut self) {
+        if !self.watch_sets_here() {
+            return;
+        }
+        let Some(mut w) = self.open_watch().map(|e| e.watch.clone()) else {
+            return;
+        };
+        if w.lift == Some(self.lift_deg) && w.bph == self.bph {
+            return;
+        }
+        w.lift = Some(self.lift_deg);
+        w.bph = self.bph;
+        let saved = match &mut self.library {
+            Ok(Some(lib)) => lib.update(&w),
+            _ => Err("there is no Watches folder".into()),
+        };
+        if let Err(e) = saved {
+            self.error(format!("Couldn't save to {}: {e}", w.name));
         }
     }
 
@@ -7680,8 +7998,7 @@ impl TimegrapherApp {
                 self.calibre
             );
         }
-        ui.add(egui::Label::new(RichText::new(line).color(pal.text_secondary)).truncate())
-            .on_hover_text(hover);
+        calibre_figure(ui, &line, pal.text).on_hover_text(hover);
     }
 
     /// The position picked: a new stretch, noted in the recording.
@@ -8198,19 +8515,16 @@ impl TimegrapherApp {
             ui.menu_button("View", |ui| self.view_menu(ui));
             ui.menu_button("Watches", |ui| self.watches_menu(ui));
             ui.menu_button("Help", |ui| self.help_menu(ui));
-            // The pane icons are the Bench's: hidden in Watches, where the
-            // bar keeps their height so nothing below moves.
-            if self.view == View::Bench {
-                ui.add_space(16.0);
-                self.pane_icons(ui);
-            } else {
-                ui.allocate_exact_size(Vec2::new(0.0, 26.0), egui::Sense::hover());
-            }
+            // The pane icons are the Bench's: in Watches they hide and
+            // leave their room, so the gear stays where it is.
+            ui.add_space(16.0);
+            self.pane_icons(ui, self.view == View::Bench);
         });
     }
 
-    /// The Watches menu: New Watch…, Find in Watches… and Quick Listen
-    /// (No Watch). Going to the Watches view is View ▸ Watches (Cmd+2).
+    /// The Watches menu: New Watch… and Find in Watches…. Going to the
+    /// Watches view is View ▸ Watches (Cmd+2); No Watch (Quick Listen) is
+    /// on the Calibre card's Watch line.
     fn watches_menu(&mut self, ui: &mut egui::Ui) {
         if ui
             .button("New Watch…")
@@ -8227,19 +8541,6 @@ impl TimegrapherApp {
         {
             ui.close();
             self.find_in_watches();
-        }
-        ui.separator();
-        if ui
-            .add_enabled(
-                !self.running(),
-                egui::Button::new("Quick Listen (No Watch)"),
-            )
-            .on_hover_text(QUICK_LISTEN_HINT)
-            .on_disabled_hover_text("Stop listening first")
-            .clicked()
-        {
-            ui.close();
-            self.quick_listen(false);
         }
     }
 
@@ -9200,7 +9501,23 @@ impl TimegrapherApp {
     }
 
     /// A button for each pane, its icon pressed while the pane shows.
-    fn pane_icons(&mut self, ui: &mut egui::Ui) {
+    /// The icon bar: the pane icons under their groups' names, then the
+    /// Settings gear. With `shown` false (the Watches view) the pane icons
+    /// and names hide but keep their room, so the gear never moves.
+    fn pane_icons(&mut self, ui: &mut egui::Ui, shown: bool) {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        ui.scope(|ui| {
+            if !shown {
+                ui.set_invisible();
+            }
+            self.pane_icon_groups(ui);
+        });
+        ui.add_space(6.0);
+        ui.separator();
+        self.settings_gear(ui);
+    }
+
+    fn pane_icon_groups(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.x = 2.0;
         let pal = theme::pal(ui);
         // The readings' cards, which are no pane, then the core panes,
@@ -9328,8 +9645,11 @@ impl TimegrapherApp {
                 }
             }
         }
-        ui.add_space(6.0);
-        ui.separator();
+    }
+
+    /// The gear at the end of the icon bar, in both views: Settings.
+    fn settings_gear(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
         if theme::icon_toggle(
             ui,
             theme::Icon::Settings,
@@ -10358,6 +10678,7 @@ impl TimegrapherApp {
             )
         };
         let mut slots = vec![(Slot::Position, cards[0].inner)];
+        let calibre_limits;
         // Listen: its caption here, its buttons and Average Over in the
         // rows under it.
         // A compact Listen card has no room beside its buttons for the
@@ -10606,7 +10927,9 @@ impl TimegrapherApp {
                 })
                 .into_iter()
                 .collect();
-            title(ui, cards[5].title, "Calibre", help::CALIBRE, &other, None);
+            // Its title is the Watch line, drawn with the controls.
+            calibre_limits = other;
+            slots.push((Slot::WatchLine, cards[5].title));
             slots.push((Slot::Calibre, cards[5].figure));
             slots.push((Slot::RateAndLift, cards[5].controls));
         }
@@ -10614,6 +10937,7 @@ impl TimegrapherApp {
             slots,
             position_compact,
             listen_compact,
+            calibre_limits,
         }
     }
 
@@ -11176,9 +11500,10 @@ impl TimegrapherApp {
         line(
             ui,
             "Listen, on the Listen card, listens to the watch on the microphone without \
-             picking a watch; Save keeps what it heard. For a watch's history, Watches (at \
-             the top) lists your watches: pick one, then Listen, Positions Test or Power \
-             Reserve Test, and each take is saved into it. New Watch… adds one.",
+             picking a watch; Save keeps what it heard. For a watch's history, pick it on \
+             the Calibre card's title, or in the Watches view, then Listen, \
+             Positions Test or Power Reserve Test, and each take is saved into it. New \
+             Watch… adds one.",
         );
         line(
             ui,
@@ -19801,7 +20126,12 @@ mod tests {
                 at(&found, "DU");
                 assert!(!found.iter().any(|(t, _)| t == "CR"), "{w}: {found:?}");
             }
-            let calibre = at(&found, "Calibre");
+            // The Calibre card's title, its Watch line.
+            let calibre = found
+                .iter()
+                .find(|(t, _)| t.starts_with(NO_WATCH_SHORT))
+                .map(|(_, r)| *r)
+                .unwrap_or_else(|| panic!("the Watch line: {found:?}"));
             assert!(calibre.right() <= w - 12.0, "{w}: {calibre:?}");
         }
     }
@@ -19928,7 +20258,9 @@ mod tests {
         let mid = window_texts(&mut app, &ctx, 1000.0);
         assert!(mid.iter().any(|t| t == "Analysis"), "{mid:?}");
         assert!(mid.iter().any(|t| t == "Tests"), "{mid:?}");
-        assert!(!mid.iter().any(|t| t.contains('⏷')), "{mid:?}");
+        // No group folded (the Watch line's ⏷ aside).
+        let folded = |t: &String| t.contains('⏷') && !t.starts_with(NO_WATCH_SHORT);
+        assert!(!mid.iter().any(folded), "{mid:?}");
         let narrow = window_texts(&mut app, &ctx, 760.0);
         assert!(
             narrow
@@ -20197,7 +20529,14 @@ mod tests {
         let ctx = themed();
         for w in [800.0, 1000.0, 1610.0] {
             let texts = window_texts(&mut app, &ctx, w);
-            let mut wants = vec!["DU", "Listen", "Not Set", "Watches", "Lift"];
+            // The Calibre card's title is its Watch line, No Watch while
+            // none is picked.
+            let line = if w > 800.0 {
+                format!("{NO_WATCH} ⏷")
+            } else {
+                format!("{NO_WATCH_SHORT} ⏷")
+            };
+            let mut wants = vec!["DU", "Listen", "Not Set", "Watches", "Lift", line.as_str()];
             if w > 800.0 {
                 // At 800 the beat rate heads the Calibre menu, and the lift
                 // has the row: nothing finds the lift, Auto finds the rate.
@@ -20209,7 +20548,7 @@ mod tests {
                 // The length is in Listen's hover here, leaving the reading
                 // cards room for their captions.
                 assert!(!texts.iter().any(|t| t == "0:00"), "0:00 at {w}: {texts:?}");
-                wants.extend(["Position", "Avg 10 s", "Calibre"]);
+                wants.extend(["Position", "Avg 10 s"]);
             }
             if w > 1000.0 {
                 wants.extend([
@@ -20221,14 +20560,13 @@ mod tests {
                     "0:00",
                     "Not Started",
                     "Average Over",
-                    "Calibre",
                     "Auto",
                 ]);
             } else if w > 800.0 {
                 // The take's length in the compact Listen card's title row,
                 // Average Over's pop-up saying what it is, and the beat
                 // rate beside the lift on the Calibre card.
-                wants.extend(["Position", "Avg 10 s", "Calibre", "Auto"]);
+                wants.extend(["Position", "Avg 10 s", "Auto"]);
             }
             for want in wants {
                 assert!(texts.iter().any(|t| t == want), "{want} at {w}: {texts:?}");
@@ -20287,9 +20625,15 @@ mod tests {
             } else {
                 "Position"
             };
+            // The Calibre card's title is its Watch line.
+            let line = if w > 800.0 {
+                format!("{NO_WATCH} ⏷")
+            } else {
+                format!("{NO_WATCH_SHORT} ⏷")
+            };
             let order = [
                 position,
-                "Calibre",
+                line.as_str(),
                 "Listen",
                 "Rate",
                 "Amplitude",
@@ -20493,6 +20837,329 @@ mod tests {
         let missing = std::env::temp_dir().join("tg-app-no-such-take");
         app.take_action(Some(watches::TakeAction::Open(missing)));
         assert_eq!(app.view, View::Bench);
+    }
+
+    /// A library in a folder of its own holding these watches, the first
+    /// with `calibre`, for the Watch line's tests.
+    fn line_app(tag: &str, names: &[&str], calibre: Option<&str>) -> (TimegrapherApp, PathBuf) {
+        let base = std::env::temp_dir().join(format!("tg-app-line-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(base.join("Timegrapher Data")));
+        for (i, name) in names.iter().enumerate() {
+            let mut w = library::Watch::new(name);
+            if i == 0 {
+                w.calibre = calibre.map(str::to_string);
+            }
+            app.watch_form = Some(watches::Form {
+                watch: w,
+                new: true,
+                error: None,
+            });
+            app.save_watch_form();
+        }
+        // Saving a new watch picks it: start from No Watch.
+        app.pick_unsorted();
+        (app, base)
+    }
+
+    fn watch_id(app: &TimegrapherApp, name: &str) -> String {
+        match &app.library {
+            Ok(Some(l)) => l
+                .watches
+                .iter()
+                .find(|e| e.watch.name == name)
+                .unwrap()
+                .watch
+                .id
+                .clone(),
+            _ => panic!("no library"),
+        }
+    }
+
+    /// What the Watch line's menu draws, in order.
+    fn line_menu(app: &mut TimegrapherApp, rates_here: bool) -> Vec<String> {
+        let ctx = themed();
+        let mut text = String::new();
+        for _ in 0..2 {
+            text = painted_text(&ctx.run(screen(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.watch_line_menu(ui, rates_here));
+            }));
+        }
+        text.lines().map(str::to_string).collect()
+    }
+
+    /// The Calibre card's title menu: No Watch (Quick Listen), then the
+    /// watches under Recent, the newest take first, then New Watch… and
+    /// Find in Watches…. Quick Listen is no longer in the Watches menu.
+    #[test]
+    fn the_watch_line_menu_offers_no_watch_the_recent_watches_new_and_find() {
+        let (mut app, base) = line_app("menu", &["Alpha", "Beta", "Gamma"], None);
+        if let Ok(Some(l)) = &mut app.library {
+            let take = |when: &str| library::Take {
+                name: when.into(),
+                bytes: 0,
+                audio: true,
+                incomplete: false,
+                started_utc: Some(when.into()),
+                duration_s: None,
+                positions: Vec::new(),
+                at_end: None,
+                power_reserve: None,
+            };
+            for e in &mut l.watches {
+                match e.watch.name.as_str() {
+                    "Gamma" => e.takes.push(take("2026-10-20T10:00:00Z")),
+                    "Beta" => e.takes.push(take("2026-10-24T10:00:00Z")),
+                    _ => {}
+                }
+            }
+        }
+        let menu = line_menu(&mut app, false);
+        assert_eq!(
+            menu,
+            [
+                format!("✓ {NO_WATCH}").as_str(),
+                "Recent",
+                "Beta",
+                "Gamma",
+                "Alpha",
+                "New Watch…",
+                "Find in Watches…"
+            ],
+        );
+        let ctx = themed();
+        let mut watches = String::new();
+        for _ in 0..2 {
+            watches = painted_text(&ctx.run(screen(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.watches_menu(ui));
+            }));
+        }
+        assert!(!watches.contains("Quick Listen"), "{watches}");
+        assert!(watches.contains("Find in Watches…"), "{watches}");
+        app.pick_watch(&watch_id(&app, "Gamma"));
+        assert_eq!(app.open_watch().unwrap().watch.name, "Gamma");
+        let menu = line_menu(&mut app, false);
+        assert_eq!(menu[0], NO_WATCH);
+        assert!(menu.contains(&"✓ Gamma".to_string()), "{menu:?}");
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// For a watch with no calibre on a card too narrow for its Beat Rate,
+    /// the beat rates head the title menu, the one in use ticked; a rate
+    /// picked there is the card's and saved to the watch.
+    #[test]
+    fn the_title_menu_leads_with_the_hidden_beat_rate_for_a_watch_with_no_calibre() {
+        let (mut app, base) = line_app("rates", &["Seiko"], None);
+        app.pick_watch(&watch_id(&app, "Seiko"));
+        assert!(app.watch_sets_here());
+        let menu = line_menu(&mut app, true);
+        assert_eq!(
+            menu[..4],
+            [
+                "Beat Rate (hidden at this width)",
+                "✓ Auto",
+                "Other Rates",
+                NO_WATCH
+            ]
+        );
+        app.bph = Some(21600);
+        let menu = line_menu(&mut app, true);
+        assert_eq!(menu[1..3], ["✓ 21600 bph", "Auto"]);
+        assert_eq!(
+            line_menu(&mut app, false)[0],
+            NO_WATCH,
+            "only where it is hidden"
+        );
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A watch picked on the Watch line while a stopped take is on show
+    /// puts the take away, so the card shows the watch picked at once:
+    /// its calibre, lift and beat rate, never the old take's.
+    #[test]
+    fn picking_on_the_watch_line_over_a_take_shows_the_watch_picked() {
+        let c = timegrapher_core::calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        let (mut app, base) = line_app("over", &["Pepsi", "Seiko"], Some(&c.calibre));
+        let seiko = watch_id(&app, "Seiko");
+        if let Ok(Some(l)) = &mut app.library {
+            let e = l.watches.iter().find(|e| e.watch.id == seiko).unwrap();
+            let mut w = e.watch.clone();
+            w.lift = Some(53.0);
+            l.update(&w).unwrap();
+        }
+        // A take on show measured with other settings.
+        let on_show = |app: &mut TimegrapherApp| {
+            app.set_lift(56.0);
+            app.change_bph(Some(19800));
+            app.reset_session(48000, "syn".into());
+            let audio = generate(
+                &SynthConfig {
+                    duration_s: 4.0,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            let live = app.live.as_mut().unwrap();
+            for b in audio.samples.chunks(960) {
+                live.push(b);
+            }
+            assert!(app.live.is_some() && !app.running());
+        };
+        on_show(&mut app);
+        app.line_pick(Some(watch_id(&app, "Pepsi")), false);
+        assert!(app.live.is_none(), "the take is put away");
+        assert_eq!(app.calibre, c.calibre);
+        assert_eq!(app.lift_deg, c.lift_angle_deg.unwrap());
+        assert_eq!(app.bph, c.bph);
+        on_show(&mut app);
+        app.line_pick(Some(seiko.clone()), false);
+        assert!(app.calibre.is_empty());
+        assert_eq!((app.lift_deg, app.bph), (53.0, None));
+        assert!(app.watch_sets_here());
+        on_show(&mut app);
+        app.line_pick(None, false);
+        assert!(app.open_watch().is_none() && app.live.is_none());
+        assert_eq!((app.lift_deg, app.bph), (DEFAULT_LIFT_DEG, None));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Unsaved sound, Quick Listen's included, is asked about before the
+    /// Watch line puts its take away: Cancel leaves everything as it was,
+    /// Don't Save picks the watch.
+    #[test]
+    fn the_watch_line_asks_before_putting_away_unsaved_sound() {
+        let (mut app, base) = line_app("ask", &["Pepsi"], None);
+        let pepsi = watch_id(&app, "Pepsi");
+        app.quick_listen = true;
+        app.session.listen();
+        let info = app.info("", 48000, 16);
+        let mut r = Recorder::start(&base.join("unsaved"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 20],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        app.session.set_state(session::State::Listening);
+        // Stopped as the Listen card's Stop does.
+        app.stop_listening();
+        app.wait_for_save();
+        assert!(app.quick_unsaved() && !app.needs_save_confirmation());
+        app.line_pick(Some(pepsi.clone()), false);
+        assert_eq!(app.confirm, Some(Confirm::PickWatch(Some(pepsi.clone()))));
+        // The question shows, and stays until answered.
+        let ctx = themed();
+        for _ in 0..2 {
+            let _ = ctx.run(screen(), |ctx| app.confirm_dialog(ctx));
+        }
+        assert_eq!(app.confirm, Some(Confirm::PickWatch(Some(pepsi.clone()))));
+        assert!(app.open_watch().is_none() && app.session.recorder.is_some());
+        // Cancel: nothing changes.
+        app.confirm = None;
+        assert!(app.open_watch().is_none() && app.session.recorder.is_some());
+        // Don't Save.
+        app.line_pick(Some(pepsi), true);
+        assert!(
+            app.session.recorder.is_none(),
+            "the sound went, as answered"
+        );
+        assert_eq!(app.open_watch().unwrap().watch.name, "Pepsi");
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The lift and beat rate set on the card are saved to a watch with no
+    /// calibre, as Edit Watch would, and never to one whose calibre sets
+    /// them.
+    #[test]
+    fn the_card_saves_its_lift_and_beat_rate_to_a_watch_with_no_calibre() {
+        let c = timegrapher_core::calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        let (mut app, base) = line_app("save", &["Pepsi", "Seiko"], Some(&c.calibre));
+        let saved = |name: &str| {
+            let lib = library::Library::open(&base.join("Timegrapher Data")).unwrap();
+            let w = lib.watches.iter().find(|e| e.watch.name == name).unwrap();
+            (w.watch.lift, w.watch.bph)
+        };
+        app.pick_watch(&watch_id(&app, "Seiko"));
+        app.set_lift(47.0);
+        app.change_bph(Some(21600));
+        app.save_card_to_watch();
+        assert_eq!(saved("Seiko"), (Some(47.0), Some(21600)));
+        app.pick_watch(&watch_id(&app, "Pepsi"));
+        assert!(!app.watch_sets_here());
+        let before = saved("Pepsi");
+        app.lift_deg = 44.0;
+        app.save_card_to_watch();
+        assert_eq!(saved("Pepsi"), before, "the calibre's to set");
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The title is cut before its ⏷, never the ⏷, and the narrowest card
+    /// says No Watch.
+    #[test]
+    fn the_watch_line_cuts_the_name_and_keeps_its_arrow() {
+        let (mut app, base) = line_app("cut", &["Seiko 6R15 Diver Bench Movement"], None);
+        let ctx = themed();
+        let title = |app: &mut TimegrapherApp, w: f32| {
+            let mut text = String::new();
+            for _ in 0..2 {
+                text = painted_text(&ctx.run(screen(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.allocate_ui(Vec2::new(w, theme::TITLE_ROW_H), |ui| {
+                            ui.set_max_width(w);
+                            app.watch_line(ui, &[]);
+                        });
+                    });
+                }));
+            }
+            let line = text.lines().find(|l| l.ends_with('⏷'));
+            line.unwrap_or_default().to_string()
+        };
+        assert_eq!(title(&mut app, 100.0), "No Watch ⏷");
+        assert_eq!(title(&mut app, 230.0), format!("{NO_WATCH} ⏷"));
+        app.pick_watch(&watch_id(&app, "Seiko 6R15 Diver Bench Movement"));
+        let cut = title(&mut app, 100.0);
+        assert!(cut.starts_with("Seiko") && cut.ends_with("… ⏷"), "{cut}");
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The Settings gear is in the same place in both views: in Watches
+    /// the pane icons hide but keep their room.
+    #[test]
+    fn the_gear_stays_where_it_is_in_the_watches_view() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let ctx = themed();
+        let wide = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(2560.0, 1440.0),
+            )),
+            ..Default::default()
+        };
+        let bar = |app: &mut TimegrapherApp| {
+            let (mut right, mut text) = (0.0, String::new());
+            for _ in 0..2 {
+                text = painted_text(&ctx.run(wide(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        app.menu_bar(ui);
+                        right = ui.min_rect().right();
+                    });
+                }));
+            }
+            (right, text)
+        };
+        let (bench, shown) = bar(&mut app);
+        app.view = View::Watches;
+        let (watches, hidden) = bar(&mut app);
+        assert_eq!(bench, watches);
+        assert!(shown.contains("Analysis") && !hidden.contains("Analysis"));
     }
 
     /// A layout saved while Watches was a pane comes back without it, the

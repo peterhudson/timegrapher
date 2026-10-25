@@ -35,8 +35,8 @@ Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 and **Watches** (Ctrl+2), then a tick for the readings and for each pane,
 and Reset Panes (dimmed in Watches, as the panes are the Bench's).
 **Watches**: **New Watch…**, **Find in Watches…**, which shows the
-Watches view's list with its search ready to type in, and **Quick Listen
-(No Watch)**, which lets go of a picked watch and starts Quick Listen
+Watches view's list with its search ready to type in. Going back to
+Quick Listen is **No Watch (Quick Listen)** on the Calibre card's title
 (below). **Help**: Check for
 Updates…, Report a Problem… and, on Linux, **Add to Applications Menu**,
 which puts the app
@@ -45,6 +45,8 @@ window shows that icon too (it writes `timegrapher.desktop` and the icon
 under `~/.local/share`, pointing at the program running now). Beside the
 menus, on the Bench, one icon for each pane that shows or hides it (resting the pointer
 on an icon names its pane), and a gear at the end that opens Settings.
+In Watches the pane icons hide and leave their room, so the gear stays
+exactly where it is on the Bench.
 The icons come in groups: the core panes first (the Paper
 Strip, the Tick Tock Profile and the Scope), then **Analysis** (Charts,
 Distributions, the Steadiness views and Isochronism) and **Tests** (the Positions Test and the Power Reserve Test), each
@@ -113,8 +115,17 @@ opened, and its state under it (Listening, Stopped, Opened, or 0:00 and
 Not Started). The status bar no longer gives the length. Under them
 **Average Over** and its pop-up ("10 s"), the time the readings are
 fitted over. **Rate**, **Amplitude** and **Beat Error** have no
-controls: each is its figure. **Calibre** holds what the readings are
-worked out for, in one place: the **Calibre** pop-up on its figure row
+controls: each is its figure.
+
+**Calibre** says which watch is on the microphone, and holds what the
+readings are worked out for, in one place. Its title is the **Watch
+line**: the watch picked, or **No Watch (Quick Listen)**, with ⏷. It is
+the one place on the Bench that says which watch a take goes into. Its
+menu has **No Watch (Quick Listen)**, then under **Recent** up to five
+watches, the one with the newest take first, then **New Watch…** and
+**Find in Watches…**. Another watch can't be picked while listening. The
+card is still the Calibre card: its hover and its **?** say so. With No
+Watch, the **Calibre** pop-up is on its figure row
 (its search covers the whole table, with **Manage Calibres…** at its
 foot; see Calibre, below), and under it **Lift**, the lift angle, one
 field typed in or picked from the common ones with its ▾ (52° by
@@ -126,10 +137,12 @@ picked that beats at another rate than the one heard says so in a chip
 ("Peacock SL1258 is 28800 bph"). With a watch whose calibre the table
 knows, the card names the calibre (as "Peacock SL1258 is 28800 bph" when
 the watch is heard at another rate), with the beat rate and lift angle
-it sets as text (Edit… on the watch changes them); a watch with no
-calibre the table knows reads "No Calibre" there, its beat rate and lift
-still set on the card. Lines too long for the card end in
-"…", with the whole sentence on hover.
+it sets as text (Edit… on the watch changes them), the calibre in the
+figure's size. A watch with no calibre the table knows reads "No
+Calibre" there, its Lift and beat rate set on the card, and what is set
+there is saved to the watch, as Edit Watch would ("Saved to Seiko 6R15
+Diver." in their hovers). Lines too long for the card end in "…", with
+the whole sentence on hover.
 
 **Narrower windows.** Current Position, Listen and Calibre keep their
 full width first, since Rate, Amplitude and Beat Error need room only
@@ -146,7 +159,12 @@ its two icons, gives the take's length beside its caption ("Listen
 and shows Average Over's pop-up as **Avg 10 s**. Compact, Calibre keeps
 its pop-up with the lift and beat rate under it; on the narrowest
 windows the lift alone, since nothing finds the lift while Auto finds the
-beat rate, with the beat rates heading the Calibre menu.
+beat rate, with the beat rates heading the Calibre menu. For a watch
+with no calibre they head the title's menu instead, under **Beat Rate
+(hidden at this width)**: the rate set, Auto and Other Rates, a change
+saved to the watch. On the narrowest windows the title is a step
+smaller, a long name ends in "…", and No Watch (Quick Listen) reads
+**No Watch**.
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed

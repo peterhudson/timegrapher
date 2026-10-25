@@ -159,7 +159,7 @@ pub fn combo(
     width: f32,
 ) -> (egui::Response, bool) {
     let pal = crate::theme::pal(ui);
-    let (rect, resp) = ui.allocate_exact_size(
+    let (rect, _) = ui.allocate_exact_size(
         egui::vec2(width, crate::theme::CONTROL_H),
         egui::Sense::hover(),
     );
@@ -224,7 +224,14 @@ pub fn combo(
     if changed {
         *value = typed;
     }
-    (resp.union(arrow_resp), changed)
+    // The hover covers the whole field, the typed number included: the
+    // space it took lies under the text field and its ▾.
+    let whole = ui.interact(
+        rect,
+        ui.make_persistent_id((id_salt, "hover")),
+        egui::Sense::hover(),
+    );
+    (whole.union(arrow_resp), changed)
 }
 
 #[cfg(test)]
