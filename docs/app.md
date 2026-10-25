@@ -19,21 +19,33 @@ Where today's app differs from them, the app changes.
 
 ## The screen
 
+The window has two views, the **Bench** and **Watches**, picked with the
+**Bench | Watches** switch at the left of the row under the menus, or
+with Ctrl+1 and Ctrl+2 (Cmd+1 and Cmd+2 on a Mac). The Bench is the take
+on the microphone or opened: the readings cards and the panes. Watches
+is your watches and their takes (below). The app always opens on the
+Bench. Switching views never stops, pauses or saves a take, and the
+status bar shows the take's state in both. Open on a take, or starting
+Listen or a test from a watch, goes to the Bench.
+
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 (Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q).
-**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: a tick for the
-readings and for each pane, and Reset Panes. **Watches**: Show Watches
-or Hide Watches, **New Watch…**, **Quick Listen (No Watch)**, which lets
-go of a picked watch and starts Quick Listen (below), then each watch; picking one shows the Watches pane with that watch. **Help**: Check for
+**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: **Bench** (Ctrl+1)
+and **Watches** (Ctrl+2), then a tick for the readings and for each pane,
+and Reset Panes (dimmed in Watches, as the panes are the Bench's).
+**Watches**: **New Watch…**, **Find in Watches…**, which shows the
+Watches view's list with its search ready to type in, and **Quick Listen
+(No Watch)**, which lets go of a picked watch and starts Quick Listen
+(below). **Help**: Check for
 Updates…, Report a Problem… and, on Linux, **Add to Applications Menu**,
 which puts the app
 and its icon (a black dial with red lines) in the desktop's menu, so the
 window shows that icon too (it writes `timegrapher.desktop` and the icon
 under `~/.local/share`, pointing at the program running now). Beside the
-menus, one icon for each pane that shows or hides it (resting the pointer
+menus, on the Bench, one icon for each pane that shows or hides it (resting the pointer
 on an icon names its pane), and a gear at the end that opens Settings.
-The icons come in groups: the core panes first (Watches, the Paper
+The icons come in groups: the core panes first (the Paper
 Strip, the Tick Tock Profile and the Scope), then **Analysis** (Charts,
 Distributions, the Steadiness views and Isochronism) and **Tests** (the Positions Test and the Power Reserve Test), each
 under its name. The window is never smaller than 800 by 600 points, so
@@ -83,8 +95,9 @@ settled and not masked, each position's own time only. It is full at the
 Positions Test pane's Each Position (60 s unless set otherwise; at 120 s, 60 s
 heard fills half), so a free-form test shows which positions still need
 time; the hover gives the seconds. While you listen, or before anything
-is on show, a button sets the position; keys 1 to 6 do the same, except
-while typing in a field. With a take on show, and during a Positions Test
+is on show, a button sets the position; keys 1 to 6 do the same, on the Bench,
+alone (never with Ctrl, Cmd, Alt or Shift held) and not while typing in
+a field. With a take on show, and during a Positions Test
 or a Power Reserve Test, the buttons only show the position, the take's
 latest or the one the test set: a take's positions can't be changed
 afterwards. **Listen** has a **Listen** icon, which starts Quick Listen
@@ -138,7 +151,7 @@ beat rate, with the beat rates heading the Calibre menu.
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
 over the counter: it clears the take's name, shows **Unsorted Takes** in the
-Watches pane and starts a new session. It asks first only about what
+Watches view and starts a new session. It asks first only about what
 isn't Quick Listen's: changed masks on a recording opened, or a watch's
 unsaved details. One icon starts and stops it; there
 is no pause, and listening again starts a new take. Its take is not kept
@@ -155,16 +168,15 @@ is kept, its sound goes without a question when you quit, start another
 take or open a recording, and is not kept for the next start to offer
 back. Starting a take of a watch ends Quick Listen.
 
-**The Watches pane** is hidden to begin with: the **Watches** icon at
-the top, the Watches menu or the View menu shows it, at the left. It is a
-pane like the others: drag it by its tab, or hide it. At its top, under
+**The Watches view** fills the window below the switch, with its
+toolbar on the switch's row. At its top, under
 **Watches**, **Unsorted Takes**, always first, then one row per watch
 (see The Watches folder, below): its first photo (by name; a tile with
 its initial while it has none, or one that can't be read), its name, its
 calibre, how many takes it has and the date of the last, and the space
 they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (a loupe; in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
-and **New Watch…** (a watch and a plus). In a narrow pane, Sort folds
+and **New Watch…** (a watch and a plus). In a narrow window, Sort folds
 into the "…" menu first; New Watch… and the search always stay
 in the row. The Watches folder's location, and Show in Finder for it, are
 in Settings. Clicking **Unsorted Takes** goes back to Quick Listen: no
@@ -264,11 +276,11 @@ session.toml as it was, comments too; a recording with no session file gets
 one, as a take recorded here would have, named by when it started.
 
 Opening a recording, by **Open Recording…** or **Open Folder…** in the File menu,
-a take's **Open** in the Watches pane, or the command line, analyses it whole,
+a take's **Open** in the Watches view, or the command line, analyses it whole,
 all at once, which is how a watchmaker looks back through a take.
 Dropping a file or folder on the window opens it too where the desktop
 passes drops to the app (Windows, macOS and X11; not Wayland). Clicking a
-group's name in the Watches pane, such as Watches or Takes, folds it away
+group's name in the Watches view, such as Watches or Takes, folds it away
 to its caption, and clicking it again opens it.
 
 When viewing a recording analysed as a whole, known jumps in its beat log also
@@ -598,7 +610,7 @@ is kept in the picked watch's history, named by its local start time and
 "Power Reserve", with
 `power-reserve.json` beside the standard files; with Analysis Only it is
 then kept as its analysis alone, as Keep Analysis Only does, and its sound
-deleted. The Watches pane lists it as "Power Reserve 46 h 12 min", adding
+deleted. The Watches view lists it as "Power Reserve 46 h 12 min", adding
 "(still running at the end)" when it was stopped by hand or at the limit.
 Every pane reads the take as any other.
 
@@ -672,7 +684,7 @@ longer count against the signal.
 
 **Panes.** Below the readings, to begin with, are the paper strip (with
 Rate Line and Parallel Guides on) and under it the tick tock profile,
-with the Scope as a tab behind it. Every other pane, the Watches pane
+with the Scope as a tab behind it. Every other pane, the Watches view
 included, starts hidden, and its icon at the top or the View menu shows
 it: the charts of rate, amplitude and beat error over the session, the
 distributions, the Steadiness views, Isochronism, the Positions Test and
@@ -1066,7 +1078,7 @@ pointer.
 direction, width and length and what is drawn over it, the profile's
 layout, scale and Time From, the panes shown and their arrangement,
 whether the Readings show, the distribution settings, the averaging time,
-folded groups in the Watches pane, the appearance, Keep Awake, Listen
+folded groups in the Watches view, the appearance, Keep Awake, Listen
 When the App Opens and whether the microphone has been set up, the last
 microphone (used again when it is plugged in) and the window's size and
 place. Nothing about the watch is kept: the lift angle, beat rate and
@@ -1213,7 +1225,7 @@ is not a Watches folder and can be deleted),
 for a new one; nothing is moved) and, once another is chosen, **Use the
 Default**. Only one copy of the app at a time can change your watches: a
 second copy opens them to read only and says so in Settings, and the
-folder can't be moved while another copy has it open. The Watches pane adds watches to it and saves takes into them.
+folder can't be moved while another copy has it open. The Watches view adds watches to it and saves takes into them.
 
 - **Input.** The microphone, chosen in Settings under Microphone or on
   the Set Up the Microphone sheet, or a WAV or FLAC file
@@ -1419,7 +1431,7 @@ listening starts. When another program records from the same microphone
 take, and press Stop before one begins.
 
 **Listen** on the Listen card (Quick Listen), or **Listen**, **Positions
-Test** or **Power Reserve Test** for a watch picked in the Watches pane,
+Test** or **Power Reserve Test** for a watch picked in the Watches view,
 begins a session from the microphone. **Stop** stops
 listening and lets go of the microphone, so another program can use it,
 and keeps everything on show: the

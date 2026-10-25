@@ -113,6 +113,31 @@ fn settings_shortcut() -> egui::KeyboardShortcut {
     egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Comma)
 }
 
+/// Each view's key: Cmd+1 for the Bench, Cmd+2 for Watches (Ctrl off a
+/// Mac).
+fn view_shortcut(view: View) -> egui::KeyboardShortcut {
+    let key = match view {
+        View::Bench => egui::Key::Num1,
+        View::Watches => egui::Key::Num2,
+    };
+    egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key)
+}
+
+/// The two views, as the mode switch and the View menu name them.
+const VIEWS: [(View, &str, &str); 2] = [
+    (
+        View::Bench,
+        "Bench",
+        "The take on the microphone or opened: the readings cards and the panes",
+    ),
+    (
+        View::Watches,
+        "Watches",
+        "Your watches and their takes: pick a watch to start Listen, a Positions Test or a \
+         Power Reserve Test, or open one of its takes",
+    ),
+];
+
 /// The day of a UTC timestamp kept as text ("2026-10-12T…").
 fn day_of(utc: &str) -> &str {
     utc.get(..10).unwrap_or(utc)
@@ -439,14 +464,25 @@ enum Input {
     File,
 }
 
+/// The window's two views: the Bench, one take in the readings and the
+/// panes, and Watches, the library of watches and their takes. They take
+/// turns filling the window between the mode row and the status bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum View {
+    #[default]
+    Bench,
+    Watches,
+}
+
 /// The panes below the readings. Tick shape and the periodicity (FFT)
 /// views will join these.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum Pane {
-    /// Layouts saved with the Microphone pane, gone since, read as
-    /// another Watches pane and so replaced by the default.
+    /// The Watches view's content and toolbar. Once a pane: a layout saved
+    /// with it (or with the Microphone pane, gone since) has it taken out
+    /// as it is read, and it is never in the pane tree.
     #[serde(alias = "Microphone")]
     Watch,
     Strip,
@@ -484,8 +520,7 @@ pub enum Pane {
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 18] = [
-        Pane::Watch,
+    const ALL: [Pane; 17] = [
         Pane::PositionsTest,
         Pane::PowerReserve,
         Pane::Strip,
@@ -517,7 +552,7 @@ impl Pane {
         Pane::SteadyWavelet,
     ];
     /// The core panes, first in the icon bar.
-    const CORE: [Pane; 4] = [Pane::Watch, Pane::Strip, Pane::Sound, Pane::Scope];
+    const CORE: [Pane; 3] = [Pane::Strip, Pane::Sound, Pane::Scope];
     /// The analysis views: the charts, the distributions, the Steadiness
     /// views and Isochronism.
     const ANALYSIS: [Pane; 12] = [
@@ -729,7 +764,7 @@ const NEW_SESSION_HINT: &str = "Clear everything and start again with the next w
      position. Listening carries on into the new session, unless closing the kept sound \
      fails. Unsaved sound is asked about first.";
 const SAVE_HINT: &str = "Save the sound of this session so far, with its clock log and \
-     settings, to analyse again later. With a watch picked in the Watches pane, the take is \
+     settings, to analyse again later. With a watch picked in the Watches view, the take is \
      saved into that watch, named for when it started; after Quick Listen, into Unsorted. \
      Otherwise the first time it asks \
      where: the take goes in a folder of its own, named for its time and watch, inside the \
@@ -761,7 +796,6 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         let pane = tiles.insert_pane(p);
         tiles.insert_tab_tile(vec![pane])
     };
-    let watch = tabbed(Pane::Watch);
     let strip = tabbed(Pane::Strip);
     let sound = tabbed(Pane::Sound);
     // The charts and distributions are tabs beside the profile, as the
@@ -795,13 +829,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     };
     let mut middle = Linear::new(dir, vec![strip, sound]);
     middle.shares.set_share(strip, 1.6);
-    let middle = tiles.insert_container(middle);
-    // The Watches pane at the left when it is shown.
-    let root = tiles.insert_container(Linear::new_binary(
-        LinearDir::Horizontal,
-        [watch, middle],
-        WATCH_SHARE,
-    ));
+    let root = tiles.insert_container(middle);
     let mut tree = Tree::new("panes", root, tiles);
     for p in Pane::ALL {
         if !matches!(p, Pane::Strip | Pane::Sound | Pane::Scope) {
@@ -811,9 +839,8 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     tree
 }
 
-/// How much of the window's width the Watches pane takes, at the left, when
-/// it is shown.
-const WATCH_SHARE: f32 = 0.34;
+/// The mode row's height, in both views.
+const MODE_ROW_H: f32 = 28.0;
 
 /// The readings cards' widths: Current Position, Listen and Calibre keep
 /// these while the three reading cards share the rest; on a narrower
@@ -1605,7 +1632,11 @@ pub struct TimegrapherApp {
     kept: Vec<KeptSound>,
     /// The kept sound Delete… is asking about.
     kept_delete_ask: Option<PathBuf>,
-    /// The Watches pane: the watch picked (its id), the list's search,
+    /// Which view fills the window. The app always opens on the Bench.
+    view: View,
+    /// Find in Watches… asked for the search field's focus.
+    watch_search_focus: bool,
+    /// The Watches view: the watch picked (its id), the list's search,
     /// order, and the details form.
     watch_open: Option<String>,
     /// The pane shows Unsorted's takes instead of the list.
@@ -1756,7 +1787,7 @@ pub struct TimegrapherApp {
     /// The recording last opened, which the path box goes back to when
     /// another can't be opened.
     opened_path: String,
-    /// The take picked in the Watches pane's list.
+    /// The take picked in the Watches view's list.
     take_picked: Option<PathBuf>,
     /// The watch set up for the microphone, kept while a recording with
     /// its own (or no) settings is open, and put back on listening again.
@@ -1826,7 +1857,7 @@ pub struct TimegrapherApp {
     cursor_next: Option<f64>,
     /// Light, dark or following the system, kept for the next start.
     theme: egui::ThemePreference,
-    /// Watches pane groups folded down to their caption.
+    /// Watches view groups folded down to their caption.
     folded: std::collections::BTreeSet<String>,
     /// The rate, amplitude and beat error figures above the panes.
     show_readings: bool,
@@ -2106,6 +2137,10 @@ impl TimegrapherApp {
             });
         self.scope_view = scope;
         self.panes = match panes.map(|mut p| {
+            // Watches is a view of the window now, not a pane.
+            if let Some(w) = p.tiles.find_pane(&Pane::Watch) {
+                p.remove_recursively(w);
+            }
             add_missing(&mut p, Pane::SteadyReadings);
             // The views that were choices in the one Steadiness pane join
             // it hidden, each to be shown from its icon.
@@ -2193,6 +2228,8 @@ impl TimegrapherApp {
             library: Ok(None),
             library_move_ask: None,
             library_moving: None,
+            view: View::Bench,
+            watch_search_focus: false,
             watch_open: None,
             unsorted_open: false,
             list_for: None,
@@ -2895,7 +2932,7 @@ impl TimegrapherApp {
 
     /// Save Again: the sound so far into the take saved before, with no
     /// question. The first time, Save… saves into the watch picked in the
-    /// Watches pane, else asks where.
+    /// Watches view, else asks where.
     fn save_again(&mut self) {
         if self.refuse_faulted_recording() || self.saving_busy() {
             return;
@@ -5084,7 +5121,7 @@ impl TimegrapherApp {
         }
     }
 
-    /// The Watches pane: where the sound comes from and what to do with it,
+    /// The Watches view: where the sound comes from and what to do with it,
     /// then the watch itself. Before anything is open it stands beside
     /// the ways in, so the microphone and the watch can be set first.
     fn watch_pane(&mut self, ui: &mut egui::Ui) {
@@ -5138,13 +5175,14 @@ impl TimegrapherApp {
                     .on_disabled_hover_text("Stop listening first")
                     .clicked()
                 {
+                    self.view = View::Bench;
                     self.new_take(kind, false);
                 }
             }
         });
     }
 
-    /// The watch picked in the Watches pane, as the library last read it.
+    /// The watch picked in the Watches view, as the library last read it.
     fn open_watch(&self) -> Option<&library::WatchEntry> {
         let id = self.watch_open.as_ref()?;
         match &self.library {
@@ -5349,15 +5387,17 @@ impl TimegrapherApp {
         self.take_action(act);
     }
 
-    /// Do what was asked of a take in the Watches pane's list.
+    /// Do what was asked of a take in the Watches view's list.
     fn take_action(&mut self, act: Option<watches::TakeAction>) {
         match act {
             Some(watches::TakeAction::Pick(dir)) => self.take_picked = Some(dir),
             // The take on show is not read again.
             Some(watches::TakeAction::Open(dir)) if self.take_on_show().as_ref() == Some(&dir) => {
                 self.take_picked = Some(dir);
+                self.view = View::Bench;
             }
             Some(watches::TakeAction::Open(dir)) => {
+                self.view = View::Bench;
                 self.take_picked = Some(dir.clone());
                 self.input = Input::File;
                 self.file_path = dir.display().to_string();
@@ -5924,7 +5964,7 @@ impl TimegrapherApp {
         self.note_settings();
     }
 
-    /// The Watches pane's toolbar: the list's search, order and New
+    /// The Watches view's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
     fn watches_tools(&mut self, ui: &mut egui::Ui) {
         let read_only = "This copy of the app can only read your watches";
@@ -6007,12 +6047,18 @@ impl TimegrapherApp {
             |ui| {
                 // Narrower in a narrow pane, leaving room for "…" after it.
                 let w = (ui.available_width() - 48.0).clamp(72.0, 120.0);
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.watch_search)
-                        .hint_text("Search")
-                        .desired_width(w),
-                )
-                .on_hover_text("Show the watches whose name, calibre, notes or fields hold this");
+                let field = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.watch_search)
+                            .hint_text("Search")
+                            .desired_width(w),
+                    )
+                    .on_hover_text(
+                        "Show the watches whose name, calibre, notes or fields hold this",
+                    );
+                if std::mem::take(&mut self.watch_search_focus) {
+                    field.request_focus();
+                }
             },
         );
         let mut sort = self.watch_sort;
@@ -6119,7 +6165,7 @@ impl TimegrapherApp {
         }
         self.watch_open = None;
         self.unsorted_open = true;
-        // The Watches pane shows the list, Unsorted Takes marked.
+        // The Watches view shows the list, Unsorted Takes marked.
         self.list_for = Some((None, true));
         self.quick_listen = true;
         self.input = Input::Microphone;
@@ -6251,7 +6297,7 @@ impl TimegrapherApp {
         self.microphone_settings(ui);
     }
 
-    /// A group of settings in the Watches pane under its caption, which
+    /// A group of settings in the Watches view under its caption, which
     /// folds it away.
     fn section(
         &mut self,
@@ -7088,7 +7134,7 @@ impl TimegrapherApp {
             let mut hint = match &watch {
                 Some(name) => format!(
                     "Listen to {name}: a new take, saved into it at Stop. For a Quick \
-                     Listen with no watch, pick Unsorted Takes in the Watches pane, or \
+                     Listen with no watch, pick Unsorted Takes in the Watches view, or \
                      Quick Listen (No Watch) in the Watches menu."
                 ),
                 None => QUICK_LISTEN_HINT.to_string(),
@@ -7212,7 +7258,7 @@ impl TimegrapherApp {
                         if ui
                             .button("Unsorted Takes")
                             .on_hover_text(
-                                "Keep this in Unsorted Takes, in the Watches pane, to file \
+                                "Keep this in Unsorted Takes, in the Watches view, to file \
                                  under a watch later",
                             )
                             .clicked()
@@ -8142,39 +8188,36 @@ impl TimegrapherApp {
             ui.menu_button("View", |ui| self.view_menu(ui));
             ui.menu_button("Watches", |ui| self.watches_menu(ui));
             ui.menu_button("Help", |ui| self.help_menu(ui));
-            ui.add_space(16.0);
-            self.pane_icons(ui);
+            // The pane icons are the Bench's: hidden in Watches, where the
+            // bar keeps their height so nothing below moves.
+            if self.view == View::Bench {
+                ui.add_space(16.0);
+                self.pane_icons(ui);
+            } else {
+                ui.allocate_exact_size(Vec2::new(0.0, 26.0), egui::Sense::hover());
+            }
         });
     }
 
-    /// The Watches menu: the pane, New Watch…, and each watch, to pick.
+    /// The Watches menu: New Watch…, Find in Watches… and Quick Listen
+    /// (No Watch). Going to the Watches view is View ▸ Watches (Cmd+2).
     fn watches_menu(&mut self, ui: &mut egui::Ui) {
-        let on = pane_visible(&self.panes.tiles, Pane::Watch);
-        if ui
-            .button(if on { "Hide Watches" } else { "Show Watches" })
-            .on_hover_text(Pane::Watch.hint())
-            .clicked()
-        {
-            ui.close();
-            set_pane_visible(&mut self.panes.tiles, Pane::Watch, !on);
-        }
         if ui
             .button("New Watch…")
             .on_hover_text("Add a watch: its name, calibre, lift angle and beat rate")
             .clicked()
         {
             ui.close();
-            set_pane_visible(&mut self.panes.tiles, Pane::Watch, true);
             self.open_new_watch_form();
         }
-        let watches: Vec<(String, String)> = match &self.library {
-            Ok(Some(l)) => l
-                .watches
-                .iter()
-                .map(|e| (e.watch.id.clone(), e.watch.name.clone()))
-                .collect(),
-            _ => Vec::new(),
-        };
+        if ui
+            .button("Find in Watches…")
+            .on_hover_text("Show the Watches view with its search field ready to type in")
+            .clicked()
+        {
+            ui.close();
+            self.find_in_watches();
+        }
         ui.separator();
         if ui
             .add_enabled(
@@ -8188,18 +8231,15 @@ impl TimegrapherApp {
             ui.close();
             self.quick_listen(false);
         }
-        for (id, name) in watches {
-            let picked = self.watch_open.as_deref() == Some(id.as_str());
-            if ui
-                .selectable_label(picked, &name)
-                .on_hover_text("Show this watch and its takes in the Watches pane")
-                .clicked()
-            {
-                ui.close();
-                set_pane_visible(&mut self.panes.tiles, Pane::Watch, true);
-                self.pick_watch(&id);
-            }
+    }
+
+    /// The Watches view's list, its search field ready to type in.
+    fn find_in_watches(&mut self) {
+        self.view = View::Watches;
+        if !self.list_shown() {
+            self.list_for = Some((self.watch_open.clone(), self.unsorted_open));
         }
+        self.watch_search_focus = true;
     }
 
     fn file_menu(&mut self, ui: &mut egui::Ui) {
@@ -8342,13 +8382,36 @@ impl TimegrapherApp {
     }
 
     fn view_menu(&mut self, ui: &mut egui::Ui) {
+        for (view, name, hint) in VIEWS {
+            if ui
+                .add(
+                    egui::Button::selectable(self.view == view, name)
+                        .shortcut_text(ui.ctx().format_shortcut(&view_shortcut(view))),
+                )
+                .on_hover_text(hint)
+                .clicked()
+            {
+                ui.close();
+                self.view = view;
+            }
+        }
+        ui.separator();
+        // The panes are the Bench's: dimmed in Watches.
+        let bench = self.view == View::Bench;
+        ui.add_enabled_ui(bench, |ui| self.view_menu_panes(ui));
+    }
+
+    fn view_menu_panes(&mut self, ui: &mut egui::Ui) {
+        let off = "The panes are on the Bench: View ▸ Bench first";
         ui.checkbox(&mut self.show_readings, "Readings")
-            .on_hover_text("The rate, amplitude and beat error cards");
+            .on_hover_text("The rate, amplitude and beat error cards")
+            .on_disabled_hover_text(off);
         let mut pane_box = |ui: &mut egui::Ui, pane: Pane| {
             let mut on = pane_visible(&self.panes.tiles, pane);
             if ui
                 .checkbox(&mut on, pane.title())
                 .on_hover_text(pane.hint())
+                .on_disabled_hover_text(off)
                 .changed()
             {
                 self.show_pane(pane, on);
@@ -8371,6 +8434,7 @@ impl TimegrapherApp {
         if ui
             .button("Reset Panes")
             .on_hover_text("Put the panes back as the app starts: the readings, the Paper Strip and the Tick Tock Profile, every other pane hidden")
+            .on_disabled_hover_text(off)
             .clicked()
         {
             ui.close();
@@ -8687,7 +8751,7 @@ impl TimegrapherApp {
                     if ui
                         .add(theme::primary(ui, "Keep in Unsorted"))
                         .on_hover_text(
-                            "Keep the take in Unsorted, in the Watches pane, to file under a \
+                            "Keep the take in Unsorted, in the Watches view, to file under a \
                          watch later",
                         )
                         .clicked()
@@ -8854,7 +8918,7 @@ impl TimegrapherApp {
                         "Name",
                         Some(
                             "The new watch's name. Its other details can be added later \
-                             with Edit… in the Watches pane.",
+                             with Edit… in the Watches view.",
                         ),
                         |ui| {
                             ui.add(
@@ -9494,7 +9558,7 @@ impl TimegrapherApp {
                                 .map(|e| format!("Couldn't open the sound settings: {e}"));
                         }
                     } else {
-                        // Wrapped, so a longer line doesn't widen the Watches pane.
+                        // Wrapped, so a longer line doesn't widen the Watches view.
                         ui.add(
                             egui::Label::new(
                                 RichText::new("not adjustable here").color(pal.text_secondary),
@@ -11084,7 +11148,7 @@ impl TimegrapherApp {
         self.input == Input::File && self.session.mic() && !self.running()
     }
 
-    /// Before anything is open: where to start, since the Watches pane
+    /// Before anything is open: where to start, since the Watches view
     /// and the File menu hold the ways in.
     fn ways_in(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
@@ -12085,6 +12149,39 @@ impl TimegrapherApp {
         if dismiss {
             self.message = None;
         }
+    }
+
+    /// The row under the menus: the Bench | Watches switch at the left, and
+    /// in Watches the view's toolbar after it. The same height in both, so
+    /// nothing below moves when the view changes.
+    fn mode_row(&mut self, ui: &mut egui::Ui) {
+        let size = Vec2::new(ui.available_width(), MODE_ROW_H);
+        let row = egui::Layout::left_to_right(egui::Align::Center);
+        ui.allocate_ui_with_layout(size, row, |ui| {
+            ui.set_min_size(size);
+            let mut view = self.view;
+            theme::segmented(ui, &mut view, &VIEWS);
+            self.view = view;
+            if self.view == View::Watches {
+                ui.add_space(theme::GAP);
+                ui.vertical(|ui| {
+                    self.pane_tools(ui, Pane::Watch);
+                });
+            }
+        });
+    }
+
+    /// The Watches view: the watches and their takes, filling the window
+    /// below the mode row, as a card.
+    fn watches_view(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let rect = ui.max_rect();
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(theme::CARD_RADIUS), pal.card);
+        let inner = rect.shrink2(Vec2::new(8.0, 6.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+            self.watch_pane(ui);
+        });
     }
 
     fn main_view(&mut self, ui: &mut egui::Ui) {
@@ -14404,6 +14501,15 @@ impl TimegrapherApp {
         egui::TopBottomPanel::top("menus")
             .frame(bar.inner_margin(egui::Margin::symmetric(10, 4)))
             .show(ctx, |ui| self.menu_bar(ui));
+        egui::TopBottomPanel::top("mode")
+            .exact_height(MODE_ROW_H + 4.0)
+            .frame(bar.inner_margin(egui::Margin {
+                left: 12,
+                right: 12,
+                top: 4,
+                bottom: 0,
+            }))
+            .show(ctx, |ui| self.mode_row(ui));
         egui::TopBottomPanel::bottom("status")
             .frame(bar.inner_margin(egui::Margin::symmetric(14, 5)))
             .show(ctx, |ui| self.status_bar(ui));
@@ -14435,9 +14541,18 @@ impl TimegrapherApp {
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::Q))) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        // Keys 1 to 6 put the watch in a position, unless a field is
+        // Cmd+1 and Cmd+2 pick the view, before the bare digits are read.
+        if ctx.input_mut(|i| i.consume_shortcut(&view_shortcut(View::Bench))) {
+            self.view = View::Bench;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&view_shortcut(View::Watches))) {
+            self.view = View::Watches;
+        }
+        // Keys 1 to 6, alone, put the watch in a position: never with a
+        // modifier held, nor in the Watches view, nor while a field is
         // being typed in.
-        if !ctx.wants_keyboard_input() {
+        let bare = ctx.input(|i| i.modifiers.is_none());
+        if self.view == View::Bench && bare && !ctx.wants_keyboard_input() {
             let keys = [
                 egui::Key::Num1,
                 egui::Key::Num2,
@@ -14466,7 +14581,10 @@ impl TimegrapherApp {
                 top: 8,
                 bottom: 12,
             }))
-            .show(ctx, |ui| self.main_view(ui));
+            .show(ctx, |ui| match self.view {
+                View::Bench => self.main_view(ui),
+                View::Watches => self.watches_view(ui),
+            });
         self.settings_window(ctx);
     }
 }
@@ -16389,7 +16507,7 @@ mod tests {
     /// Quit in the app menu or the Dock) keeps the unsaved sound, and the
     /// next start offers it back; a quit the user answered throws it away
     /// as before. A folder another copy is recording into is never offered.
-    /// The Watches pane lists the library's watches, adds one (making
+    /// The Watches view lists the library's watches, adds one (making
     /// the library for the first), shows a watch's details and takes, and
     /// Save… then saves into that watch with no question.
     #[test]
@@ -17168,7 +17286,7 @@ mod tests {
     }
 
     /// A watch's takes are kept as their analysis alone, moved
-    /// and deleted from the Watches pane, and a take from outside is added
+    /// and deleted from the Watches view, and a take from outside is added
     /// to a watch; the recording opened follows a take that moves.
     #[test]
     fn a_watchs_takes_are_kept_moved_deleted_and_added() {
@@ -19462,8 +19580,8 @@ mod tests {
 
     /// The app opens on Quick Listen's layout: the readings, the Paper
     /// Strip with its Rate Line and Parallel Guides, and the Tick Tock
-    /// Profile with the Scope behind it. Every other pane is hidden, the
-    /// Watches pane too, and there is no Take or Microphone pane.
+    /// Profile with the Scope behind it. Every other pane is hidden, there
+    /// is no Take or Microphone pane, and Watches is a view, not a pane.
     #[test]
     fn the_app_opens_on_the_quick_listen_layout() {
         let app = TimegrapherApp::with_devices(Vec::new(), None);
@@ -19472,7 +19590,7 @@ mod tests {
             .filter(|&p| pane_visible(&app.panes.tiles, p))
             .collect();
         assert_eq!(shown, [Pane::Strip, Pane::Sound, Pane::Scope]);
-        assert!(app.panes.tiles.find_pane(&Pane::Watch).is_some());
+        assert!(app.panes.tiles.find_pane(&Pane::Watch).is_none());
         assert!(app.rate_line && app.rate_guides);
         // The Scope shares the profile's tabs, behind it.
         let sound = app.panes.tiles.find_pane(&Pane::Sound).unwrap();
@@ -19591,19 +19709,19 @@ mod tests {
     #[test]
     fn an_old_layout_starts_afresh_on_the_quick_listen_layout() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        set_pane_visible(&mut app.panes.tiles, Pane::Watch, true);
+        set_pane_visible(&mut app.panes.tiles, Pane::Charts, true);
         let mut before = app.settings();
         assert_eq!(before.layout, LAYOUT);
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.apply_settings(before.clone());
-        assert!(pane_visible(&again.panes.tiles, Pane::Watch), "kept");
+        assert!(pane_visible(&again.panes.tiles, Pane::Charts), "kept");
         // A file from before the version was kept reads as the oldest.
         let none: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(none.layout, 0);
         before.layout = LAYOUT - 1;
         let mut old = TimegrapherApp::with_devices(Vec::new(), None);
         old.apply_settings(before);
-        assert!(!pane_visible(&old.panes.tiles, Pane::Watch), "afresh");
+        assert!(!pane_visible(&old.panes.tiles, Pane::Charts), "afresh");
     }
 
     /// The Current Position card's six buttons stay big enough to read and
@@ -19774,7 +19892,8 @@ mod tests {
     #[test]
     fn every_pane_has_one_place_in_the_icon_bar() {
         let mut all: Vec<Pane> = [&Pane::CORE[..], &Pane::ANALYSIS, &Pane::TESTS].concat();
-        assert_eq!(Pane::CORE[0], Pane::Watch);
+        assert_eq!(Pane::CORE[0], Pane::Strip);
+        assert!(!Pane::ALL.contains(&Pane::Watch), "Watches is a view");
         assert!(Pane::ANALYSIS.contains(&Pane::Isochronism));
         assert_eq!(Pane::ANALYSIS[..2], [Pane::Charts, Pane::Distributions]);
         assert_eq!(all.len(), Pane::ALL.len());
@@ -20192,6 +20311,170 @@ mod tests {
             );
             assert_eq!(app.position, Position::ALL[n], "key {}", n + 1);
         }
+    }
+
+    /// A key press, alone or with modifiers held, for one frame.
+    fn key_frame(key: egui::Key, modifiers: egui::Modifiers) -> egui::RawInput {
+        let press = |pressed| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers,
+        };
+        egui::RawInput {
+            modifiers,
+            events: vec![press(true), press(false)],
+            ..screen()
+        }
+    }
+
+    /// Cmd+1 and Cmd+2 pick the view and never move the watch. The digits
+    /// alone still pick a position on the Bench, but not in Watches, nor
+    /// with a modifier held. The app opens on the Bench.
+    #[test]
+    fn cmd_1_and_2_pick_the_view_and_the_digits_alone_the_position() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let ctx = themed();
+        let _ = ctx.run(screen(), |ctx| app.panels(ctx));
+        assert_eq!(app.view, View::Bench);
+        let start = app.position;
+        assert_ne!(start, Position::ALL[2]);
+        let press = |app: &mut TimegrapherApp, key, m| {
+            let _ = ctx.run(key_frame(key, m), |ctx| app.panels(ctx));
+        };
+        press(&mut app, egui::Key::Num2, egui::Modifiers::COMMAND);
+        assert_eq!((app.view, app.position), (View::Watches, start));
+        press(&mut app, egui::Key::Num3, egui::Modifiers::NONE);
+        assert_eq!(app.position, start, "no positions in Watches");
+        press(&mut app, egui::Key::Num1, egui::Modifiers::COMMAND);
+        assert_eq!((app.view, app.position), (View::Bench, start));
+        for held in [
+            egui::Modifiers::SHIFT,
+            egui::Modifiers::ALT,
+            egui::Modifiers::CTRL,
+        ] {
+            press(&mut app, egui::Key::Num3, held);
+            assert_eq!((app.view, app.position), (View::Bench, start), "{held:?}");
+        }
+        press(&mut app, egui::Key::Num3, egui::Modifiers::NONE);
+        assert_eq!(app.position, Position::ALL[2]);
+    }
+
+    /// The Watches view is the Watches view's toolbar and content, moved
+    /// whole: everything the pane drew, the view draws, and the view adds
+    /// only the window's own frame (the menus, the mode switch and the
+    /// status bar). The pane icons and the readings cards are the Bench's
+    /// and don't show.
+    #[test]
+    fn the_watches_view_is_the_watches_content_in_the_whole_window() {
+        let base = std::env::temp_dir().join(format!("tg-app-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(base.join("Timegrapher Data")));
+        let mut w = library::Watch::new("Pepsi");
+        w.notes = Some(String::new());
+        app.watch_form = Some(watches::Form {
+            watch: w,
+            new: true,
+            error: None,
+        });
+        app.save_watch_form();
+        let ctx = themed();
+        let wide = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(2560.0, 1440.0),
+            )),
+            ..Default::default()
+        };
+        let lines = |t: String| -> std::collections::BTreeSet<String> {
+            t.lines().map(str::to_string).collect()
+        };
+        for listed in [false, true] {
+            if listed {
+                app.list_for = Some((app.watch_open.clone(), false));
+            }
+            let mut content = String::new();
+            for _ in 0..3 {
+                content = painted_text(&ctx.run(wide(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        app.pane_tools(ui, Pane::Watch);
+                        app.watch_pane(ui);
+                    });
+                }));
+            }
+            let mut status = String::new();
+            for _ in 0..2 {
+                status = painted_text(&ctx.run(wide(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| app.status_bar(ui));
+                }));
+            }
+            app.view = View::Watches;
+            let mut window = String::new();
+            for _ in 0..3 {
+                window = painted_text(&ctx.run(wide(), |ctx| app.panels(ctx)));
+            }
+            let (content, status, window) = (lines(content), lines(status), lines(window));
+            let missing: Vec<_> = content.difference(&window).collect();
+            assert!(missing.is_empty(), "lost {missing:?}");
+            let frame: std::collections::BTreeSet<String> =
+                ["File", "Edit", "View", "Watches", "Help", "Bench"]
+                    .map(str::to_string)
+                    .into_iter()
+                    .chain(status)
+                    .collect();
+            let added: Vec<_> = window
+                .difference(&content)
+                .filter(|t| !frame.contains(*t))
+                .collect();
+            assert!(added.is_empty(), "added {added:?}");
+            assert!(!window.contains("Analysis"), "pane icons shown");
+            assert!(!window.contains("Average Over"), "cards shown");
+            assert_eq!(app.view, View::Watches, "the view stays put");
+            app.view = View::Bench;
+        }
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Find in Watches… shows the Watches view's list with the search
+    /// field ready to type in; Open on a take there goes to the Bench.
+    #[test]
+    fn find_in_watches_readies_the_search_and_open_goes_to_the_bench() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let ctx = themed();
+        let _ = ctx.run(screen(), |ctx| app.panels(ctx));
+        app.find_in_watches();
+        assert_eq!(app.view, View::Watches);
+        assert!(app.list_shown());
+        for _ in 0..2 {
+            let _ = ctx.run(screen(), |ctx| app.panels(ctx));
+        }
+        assert!(!app.watch_search_focus);
+        assert!(ctx.wants_keyboard_input(), "search field focused");
+        let missing = std::env::temp_dir().join("tg-app-no-such-take");
+        app.take_action(Some(watches::TakeAction::Open(missing)));
+        assert_eq!(app.view, View::Bench);
+    }
+
+    /// A layout saved while Watches was a pane comes back without it, the
+    /// rest as it was left.
+    #[test]
+    fn a_layout_saved_with_the_watches_pane_comes_back_without_it() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        set_pane_visible(&mut app.panes.tiles, Pane::Charts, true);
+        let mut saved = app.settings();
+        let mut panes = saved.panes.take().unwrap();
+        add_missing(&mut panes, Pane::Watch);
+        let w = panes.tiles.find_pane(&Pane::Watch).unwrap();
+        assert!(panes.tiles.is_visible(w));
+        saved.panes = Some(panes);
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+        again.apply_settings(saved);
+        assert!(again.panes.tiles.find_pane(&Pane::Watch).is_none());
+        assert!(layout_is_whole(&again.panes));
+        assert!(pane_visible(&again.panes.tiles, Pane::Charts), "kept");
     }
 
     /// Quick Listen's sound that wasn't saved goes without a question at a
