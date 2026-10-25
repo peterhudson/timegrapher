@@ -112,7 +112,7 @@ jobs:
       # As in the test job: no debug info in CI's release builds.
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       # Reviewed with the engine baseline; update through docs/regress.md.
-      CORPUS_REVISION: 224b6032b831e120277e8e58ded4449b57706794
+      CORPUS_REVISION: 692c7bcaa2c072d4075f4a85ce75564df962ab60
     steps:
       # Two commits: on a pull request, GitHub's merge commit and its base.
       - uses: actions/checkout@v7
