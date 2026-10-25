@@ -33,6 +33,13 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use timegrapher_core::recorder::Recorder;
 
+/// A layer of positions: the changes, oldest first, and the settling.
+pub type Layer = (Vec<(f64, Position)>, Vec<(f64, f64)>);
+
+/// A stretch in one position as a session file lists it: start, end and
+/// the position's code.
+pub type Range = (Option<f64>, Option<f64>, String);
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     /// The watch is in `pos` from `at_s`; `audio_s` is the saved sound's
@@ -170,6 +177,10 @@ pub struct Session {
     /// Positions Test pane's Settle, for free takes and guided tests alike.
     settle_s: Option<f64>,
     events: Vec<Event>,
+    /// The positions and settling as recorded, kept under what the
+    /// Position Brush painted over them: `None` while nothing painted
+    /// shows, when they are the positions in `events`.
+    recorded: Option<Vec<Event>>,
     audio_timeline: Vec<AudioAnchor>,
     saved_metadata: Option<MetadataSnapshot>,
     notes_revision: u64,
@@ -192,6 +203,7 @@ impl Session {
         self.settle_pending = false;
         self.settle_to = None;
         self.events.clear();
+        self.recorded = None;
         self.audio_timeline.clear();
         self.saved_metadata = None;
         self.notes_revision = 0;
@@ -337,31 +349,14 @@ impl Session {
     /// replaying or paused.
     pub fn move_to(&mut self, at: f64, old: Position, pos: Position) -> Result<(), Refused> {
         self.check(Action::Move)?;
-        if !self
-            .events
-            .iter()
-            .any(|e| matches!(e, Event::Position { .. }))
-        {
-            self.events.push(Event::Position {
-                at_s: 0.0,
-                audio_s: self.recorder.as_ref().map(|_| 0.0),
-                pos: old,
-            });
-        }
-        // A position changed back before any beats came is undone.
-        if let Some(i) = self.last_position_index() {
-            if let Event::Position { at_s, .. } = self.events[i] {
-                if at_s >= at {
-                    self.events.remove(i);
-                }
-            }
-        }
-        if self.stretches().last().is_none_or(|s| s.1 != pos) {
-            self.events.push(Event::Position {
-                at_s: at,
-                audio_s: self.recorder.as_ref().map(Recorder::duration_s),
-                pos,
-            });
+        let audio = (
+            self.recorder.as_ref().map(|_| 0.0),
+            self.recorder.as_ref().map(Recorder::duration_s),
+        );
+        record_move(&mut self.events, at, audio, old, pos);
+        // A move is recorded under any painting, too.
+        if let Some(r) = self.recorded.as_mut() {
+            record_move(r, at, audio, old, pos);
         }
         // The watch settles in its new position, from now while
         // listening, else from Resume.
@@ -373,37 +368,40 @@ impl Session {
         Ok(())
     }
 
-    fn last_position_index(&self) -> Option<usize> {
-        self.events
-            .iter()
-            .rposition(|e| matches!(e, Event::Position { .. }))
-    }
-
     /// Start the settling at `t`.
     pub fn start_settle(&mut self, t: f64) {
         self.settle_pending = false;
-        // A move during a settling starts it again: the first ends there.
-        for e in self.events.iter_mut().rev() {
-            if let Event::Settle { from_s, to_s } = e {
-                if *to_s > t {
-                    *to_s = t.max(*from_s);
-                }
-                break;
-            }
+        let len = self.settle_len();
+        record_settle(&mut self.events, t, len);
+        if let Some(r) = self.recorded.as_mut() {
+            record_settle(r, t, len);
         }
-        self.events
-            .retain(|e| !matches!(e, Event::Settle { from_s, to_s } if to_s <= from_s));
-        self.events.push(Event::Settle {
-            from_s: t,
-            to_s: t + self.settle_len(),
-        });
-        self.settle_to = Some(t + self.settle_len());
+        self.settle_to = Some(t + len);
     }
 
     /// Set how long the watch settles after a change of position, from the
     /// next change on.
     pub fn set_settle_s(&mut self, s: f64) {
         self.settle_s = Some(s);
+    }
+
+    /// Settle set to `s` on the Positions Test pane: from the next change
+    /// on, and every settling already marked redrawn to it, each still
+    /// ending by the next change of position.
+    pub fn resettle(&mut self, s: f64) {
+        self.set_settle_s(s);
+        let under_way = self.settle_to.is_some();
+        match self.recorded.as_mut() {
+            Some(r) => {
+                redraw_settles(r, s);
+                self.compose();
+            }
+            None => redraw_settles(&mut self.events, s),
+        }
+        // A settling under way ends where its band now does.
+        if under_way {
+            self.settle_to = self.settles().last().map(|x| x.1);
+        }
     }
 
     /// How long the watch settles after a change of position.
@@ -445,13 +443,7 @@ impl Session {
     /// Where the watch was put in a new position: the time and the
     /// position from then on, oldest first. Empty while it has stayed put.
     pub fn stretches(&self) -> Vec<(f64, Position)> {
-        self.events
-            .iter()
-            .filter_map(|e| match e {
-                Event::Position { at_s, pos, .. } => Some((*at_s, *pos)),
-                _ => None,
-            })
-            .collect()
+        changes_in(&self.events)
     }
 
     /// The changes of position: the time and the position from then on,
@@ -469,9 +461,11 @@ impl Session {
     /// Paint the stretch from `from` to `to` as position `pos`, the watch
     /// being in `now` and the take reaching `end`: what the Position Brush
     /// does. What came after `to` carries on there, unless the stretch
-    /// runs to the end, which puts the watch in `pos` from then on. A new
-    /// change of position settles as a move does, and a change painted
-    /// over goes with its settling. Returns the position at the end.
+    /// runs to the end, which puts the watch in `pos` from then on.
+    /// Painting is a correction, so it starts no settling; a change painted
+    /// over goes with its settling, and one painted from inside a settling
+    /// cuts it short. What was recorded stays underneath, for
+    /// [`Session::remove_painting`]. Returns the position at the end.
     pub fn paint(
         &mut self,
         from: f64,
@@ -480,13 +474,9 @@ impl Session {
         now: Position,
         end: f64,
     ) -> Position {
+        self.keep_recorded(now);
         let old = self.changes(now);
-        let at = |t: f64| {
-            old.iter()
-                .rev()
-                .find(|c| c.0 <= t)
-                .map_or(old[0].1, |c| c.1)
-        };
+        let at = |t: f64| position_at(&old, t);
         let from = from.max(0.0);
         let to_end = to >= end - 1e-6;
         let after = at(to);
@@ -510,18 +500,35 @@ impl Session {
         let Some(i) = (1..old.len()).find(|&i| (old[i].0 - was).abs() < 1e-6) else {
             return old.last().map_or(now, |c| c.1);
         };
-        let lo = old[i - 1].0 + MIN_STRETCH_S;
-        let hi = old.get(i + 1).map_or(end, |c| c.0 - MIN_STRETCH_S);
+        self.keep_recorded(now);
+        let recorded = changes_in(self.recorded.as_deref().unwrap_or_default());
+        // A recorded change moves in both layers, so it stays short of the
+        // recorded changes either side as well.
+        let j = (1..recorded.len()).find(|&j| (recorded[j].0 - was).abs() < 1e-6);
+        let mut lo = old[i - 1].0 + MIN_STRETCH_S;
+        let mut hi = old.get(i + 1).map_or(end, |c| c.0 - MIN_STRETCH_S);
+        if let Some(j) = j {
+            lo = lo.max(recorded[j - 1].0 + MIN_STRETCH_S);
+            hi = hi.min(recorded.get(j + 1).map_or(end, |c| c.0 - MIN_STRETCH_S));
+        }
         if hi < lo {
             return old.last().map_or(now, |c| c.1);
         }
         let to = to.clamp(lo, hi);
         let shift = to - old[i].0;
-        for e in &mut self.events {
-            if let Event::Settle { from_s, to_s } = e {
-                if (*from_s - was).abs() < 1e-6 {
-                    *from_s += shift;
-                    *to_s += shift;
+        if j.is_some() {
+            let audio = self.recorder.as_ref().and_then(|_| self.audio_of(to));
+            for e in self.recorded.iter_mut().flatten() {
+                match e {
+                    Event::Position { at_s, audio_s, .. } if (*at_s - was).abs() < 1e-6 => {
+                        *at_s = to;
+                        *audio_s = audio;
+                    }
+                    Event::Settle { from_s, to_s } if (*from_s - was).abs() < 1e-6 => {
+                        *from_s += shift;
+                        *to_s += shift;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -530,24 +537,157 @@ impl Session {
         self.set_changes(new, end)
     }
 
-    /// Make `changes` the take's positions, the take reaching `end`: a
-    /// change to the position already in place goes, a settling stays
-    /// with the change it began at, and a change without one settles from
-    /// there. Returns the position at the end.
+    /// Take the painting off the painted stretch over `t`, the watch being
+    /// in `now` and the take reaching `end`: the positions recorded there
+    /// come back, with their changes and settling. Returns the position at
+    /// the end, or `None` where nothing painted shows at `t`.
+    pub fn remove_painting(&mut self, t: f64, now: Position, end: f64) -> Option<Position> {
+        let (from, to) = self
+            .painted_spans(now)
+            .into_iter()
+            .find(|&(a, b, _)| t >= a && t < b)
+            .map(|(a, b, _)| (a, b))?;
+        let shown = self.changes(now);
+        let recorded = changes_in(self.recorded.as_deref()?);
+        let mut times: Vec<f64> = shown
+            .iter()
+            .chain(&recorded)
+            .map(|c| c.0)
+            .chain([from, to])
+            .filter(|t| t.is_finite())
+            .collect();
+        times.sort_by(f64::total_cmp);
+        times.dedup();
+        let new = times
+            .into_iter()
+            .map(|x| {
+                let layer = if x >= from && x < to {
+                    &recorded
+                } else {
+                    &shown
+                };
+                (x, position_at(layer, x))
+            })
+            .collect();
+        Some(self.set_changes(new, end))
+    }
+
+    /// Where painting shows over what was recorded: start, end and the
+    /// position painted, oldest first; a stretch painted to the end ends
+    /// at infinity.
+    pub fn painted_spans(&self, now: Position) -> Vec<(f64, f64, Position)> {
+        let Some(r) = self.recorded.as_deref() else {
+            return Vec::new();
+        };
+        let shown = self.changes(now);
+        let recorded = changes_in(r);
+        let mut times: Vec<f64> = shown.iter().chain(&recorded).map(|c| c.0).collect();
+        times.sort_by(f64::total_cmp);
+        times.dedup();
+        let mut spans: Vec<(f64, f64, Position)> = Vec::new();
+        for (k, &a) in times.iter().enumerate() {
+            let b = times.get(k + 1).copied().unwrap_or(f64::INFINITY);
+            let p = position_at(&shown, a);
+            if p == position_at(&recorded, a) {
+                continue;
+            }
+            match spans.last_mut() {
+                Some(last) if last.1 == a && last.2 == p => last.1 = b,
+                _ => spans.push((a, b, p)),
+            }
+        }
+        spans
+    }
+
+    /// The positions and settling as recorded, under any painting: the
+    /// changes and the settling, as [`Session::stretches`] and
+    /// [`Session::settles`] give them; `None` while nothing painted shows.
+    pub fn recorded(&self) -> Option<Layer> {
+        let r = self.recorded.as_deref()?;
+        Some((changes_in(r), settles_in(r)))
+    }
+
+    /// Before painting: what was recorded, kept to paint over, the watch
+    /// being in `now`.
+    fn keep_recorded(&mut self, now: Position) {
+        if self.recorded.is_some() {
+            return;
+        }
+        let mut r: Vec<Event> = self
+            .events
+            .iter()
+            .filter(|e| matches!(e, Event::Position { .. } | Event::Settle { .. }))
+            .cloned()
+            .collect();
+        if self.stretches().is_empty() {
+            r.insert(
+                0,
+                Event::Position {
+                    at_s: 0.0,
+                    audio_s: self.recorder.as_ref().map(|_| 0.0),
+                    pos: now,
+                },
+            );
+        }
+        self.recorded = Some(r);
+    }
+
+    /// The settling shown, from what was recorded: a recorded settling
+    /// stays where the change that began it still shows and nothing is
+    /// painted where it starts, cut short at the next change shown. Where
+    /// the positions shown are the recorded ones, the painting is gone.
+    fn compose(&mut self) {
+        let Some(r) = self.recorded.as_deref() else {
+            return;
+        };
+        let shown = self.stretches();
+        let recorded = changes_in(r);
+        let settles: Vec<(f64, f64)> = settles_in(r)
+            .into_iter()
+            .filter_map(|(a, b)| {
+                let began = recorded.iter().rposition(|c| c.0 <= a + 1e-9);
+                let kept = began.is_none_or(|j| {
+                    j == 0
+                        || shown
+                            .iter()
+                            .skip(1)
+                            .any(|c| (c.0 - recorded[j].0).abs() < 1e-6)
+                });
+                let unpainted =
+                    shown.is_empty() || position_at(&shown, a) == position_at(&recorded, a);
+                let next = shown
+                    .iter()
+                    .map(|c| c.0)
+                    .find(|&c| c > a + 1e-9)
+                    .unwrap_or(f64::INFINITY);
+                let b = b.min(next);
+                (kept && unpainted && b > a).then_some((a, b))
+            })
+            .collect();
+        let same = |x: &[(f64, Position)]| {
+            let mut x = x.to_vec();
+            x.dedup_by(|b, a| a.1 == b.1);
+            x
+        };
+        let back = same(&shown) == same(&recorded);
+        self.events.retain(|e| !matches!(e, Event::Settle { .. }));
+        self.events.extend(
+            settles
+                .iter()
+                .map(|&(from_s, to_s)| Event::Settle { from_s, to_s }),
+        );
+        if back {
+            self.recorded = None;
+        }
+    }
+
+    /// Make `changes` the positions shown over what was recorded, the take
+    /// reaching `end`: a change to the position already in place goes, and
+    /// the settling is what [`Session::compose`] keeps of the recorded
+    /// settling. Returns the position at the end.
     fn set_changes(&mut self, mut changes: Vec<(f64, Position)>, end: f64) -> Position {
         changes.sort_by(|a, b| a.0.total_cmp(&b.0));
         changes.dedup_by(|b, a| a.1 == b.1);
-        let old = self.settles();
-        let mut settles = Vec::new();
-        for i in 1..changes.len() {
-            let t = changes[i].0;
-            let next = changes.get(i + 1).map_or(f64::INFINITY, |c| c.0);
-            let to = old
-                .iter()
-                .find(|s| (s.0 - t).abs() < 1e-6)
-                .map_or(t + self.settle_len(), |s| s.1);
-            settles.push((t, to.min(next)));
-        }
         let audio = |s: &Self, t: f64| s.recorder.as_ref().and_then(|_| s.audio_of(t));
         let positions: Vec<Event> = changes
             .iter()
@@ -557,29 +697,18 @@ impl Session {
                 pos,
             })
             .collect();
-        self.events
-            .retain(|e| !matches!(e, Event::Position { .. } | Event::Settle { .. }));
+        self.events.retain(|e| !matches!(e, Event::Position { .. }));
         self.events.extend(positions);
-        self.events.extend(
-            settles
-                .iter()
-                .map(|&(from_s, to_s)| Event::Settle { from_s, to_s }),
-        );
+        self.compose();
         // A settling still under way at the end goes on; one painted over
         // ends.
-        self.settle_to = settles.iter().map(|s| s.1).find(|&to| to > end);
+        self.settle_to = self.settles().iter().map(|s| s.1).find(|&to| to > end);
         changes.last().map_or(Position::DialUp, |c| c.1)
     }
 
     /// The settling after each move: start and end, oldest first.
     pub fn settles(&self) -> Vec<(f64, f64)> {
-        self.events
-            .iter()
-            .filter_map(|e| match e {
-                Event::Settle { from_s, to_s } => Some((*from_s, *to_s)),
-                _ => None,
-            })
-            .collect()
+        settles_in(&self.events)
     }
 
     /// The positions and settling a take's session file gives, for a
@@ -588,6 +717,7 @@ impl Session {
         self.imported_context = !stretches.is_empty() || !settles.is_empty();
         self.settle_pending = false;
         self.settle_to = None;
+        self.recorded = None;
         self.events.retain(|e| matches!(e, Event::Saved { .. }));
         for &(at_s, pos) in stretches {
             self.events.push(Event::Position {
@@ -598,6 +728,44 @@ impl Session {
         }
         for &(from_s, to_s) in settles {
             self.events.push(Event::Settle { from_s, to_s });
+        }
+    }
+
+    /// The positions and settling a take's session file gives as recorded,
+    /// under the painting [`Session::load`] loaded, the watch being in
+    /// `now`.
+    pub fn load_recorded(
+        &mut self,
+        stretches: &[(f64, Position)],
+        settles: &[(f64, f64)],
+        now: Position,
+    ) {
+        let mut r: Vec<Event> = stretches
+            .iter()
+            .map(|&(at_s, pos)| Event::Position {
+                at_s,
+                audio_s: None,
+                pos,
+            })
+            .collect();
+        r.extend(
+            settles
+                .iter()
+                .map(|&(from_s, to_s)| Event::Settle { from_s, to_s }),
+        );
+        if r.is_empty() {
+            return;
+        }
+        self.recorded = Some(r);
+        // Kept only where it differs from what shows.
+        let shown = self.changes(now);
+        let same = |x: Vec<(f64, Position)>| {
+            let mut x = x;
+            x.dedup_by(|b, a| a.1 == b.1);
+            x
+        };
+        if same(shown) == same(stretches.to_vec()) && settles == self.settles() {
+            self.recorded = None;
         }
     }
 
@@ -842,12 +1010,24 @@ impl Session {
     /// out the pauses): start, end and position code. Each later position
     /// starts once it has settled; one entry with no times while the watch
     /// stayed put.
-    pub fn take_ranges(&self) -> Vec<(Option<f64>, Option<f64>, String)> {
+    pub fn take_ranges(&self) -> Vec<Range> {
+        self.ranges_of(&self.events)
+    }
+
+    /// The positions as recorded under the painting, as
+    /// [`Session::take_ranges`] gives those shown; `None` while nothing
+    /// painted shows.
+    pub fn recorded_ranges(&self) -> Option<Vec<Range>> {
+        Some(self.ranges_of(self.recorded.as_deref()?))
+    }
+
+    fn ranges_of(&self, events: &[Event]) -> Vec<Range> {
         let Some(r) = self.recorder.as_ref() else {
             return Vec::new();
         };
+        let settles = settles_in(events);
         let mut stretches = vec![(0.0, 0.0, r.first_position().to_string())];
-        for e in &self.events {
+        for e in events {
             if let Event::Position {
                 at_s,
                 audio_s: Some(a),
@@ -875,8 +1055,7 @@ impl Session {
                     let until = next.map_or(f64::INFINITY, |s| s.0);
                     // The settling that began this position may start at
                     // Resume, or finish during a pause. Map its real end.
-                    let settled = self
-                        .settles()
+                    let settled = settles
                         .iter()
                         .find(|s| s.0 >= *at && s.0 < until)
                         .map_or(*at, |s| s.1);
@@ -886,6 +1065,109 @@ impl Session {
                 ((!one).then_some(start), end, code.clone())
             })
             .collect()
+    }
+}
+
+/// The changes of position in `events`, oldest first.
+fn changes_in(events: &[Event]) -> Vec<(f64, Position)> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Position { at_s, pos, .. } => Some((*at_s, *pos)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The settling in `events`, oldest first.
+fn settles_in(events: &[Event]) -> Vec<(f64, f64)> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Settle { from_s, to_s } => Some((*from_s, *to_s)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The position at `t` given `changes`, oldest first, the first from the
+/// start.
+fn position_at(changes: &[(f64, Position)], t: f64) -> Position {
+    changes
+        .iter()
+        .rev()
+        .find(|c| c.0 <= t)
+        .or(changes.first())
+        .map_or(Position::DialUp, |c| c.1)
+}
+
+/// The watch put in `pos` at `at` (it was in `old`), in `events`; `audio`
+/// is the sound's length at the start and now.
+fn record_move(
+    events: &mut Vec<Event>,
+    at: f64,
+    audio: (Option<f64>, Option<f64>),
+    old: Position,
+    pos: Position,
+) {
+    if !events.iter().any(|e| matches!(e, Event::Position { .. })) {
+        events.push(Event::Position {
+            at_s: 0.0,
+            audio_s: audio.0,
+            pos: old,
+        });
+    }
+    // A position changed back before any beats came is undone.
+    if let Some(i) = events
+        .iter()
+        .rposition(|e| matches!(e, Event::Position { .. }))
+    {
+        if let Event::Position { at_s, .. } = events[i] {
+            if at_s >= at {
+                events.remove(i);
+            }
+        }
+    }
+    if changes_in(events).last().is_none_or(|s| s.1 != pos) {
+        events.push(Event::Position {
+            at_s: at,
+            audio_s: audio.1,
+            pos,
+        });
+    }
+}
+
+/// A settling `len` long from `t`, in `events`: a move during a settling
+/// starts it again, the first ending there.
+fn record_settle(events: &mut Vec<Event>, t: f64, len: f64) {
+    for e in events.iter_mut().rev() {
+        if let Event::Settle { from_s, to_s } = e {
+            if *to_s > t {
+                *to_s = t.max(*from_s);
+            }
+            break;
+        }
+    }
+    events.retain(|e| !matches!(e, Event::Settle { from_s, to_s } if to_s <= from_s));
+    events.push(Event::Settle {
+        from_s: t,
+        to_s: t + len,
+    });
+}
+
+/// Every settling in `events` redrawn `s` long, each still ending by the
+/// next change of position.
+fn redraw_settles(events: &mut [Event], s: f64) {
+    let changes: Vec<f64> = changes_in(events).iter().map(|c| c.0).collect();
+    for e in events.iter_mut() {
+        if let Event::Settle { from_s, to_s } = e {
+            let next = changes
+                .iter()
+                .copied()
+                .find(|&c| c > *from_s + 1e-9)
+                .unwrap_or(f64::INFINITY);
+            *to_s = (*from_s + s).min(next);
+        }
     }
 }
 
@@ -919,10 +1201,29 @@ mod tests {
         assert_eq!(s.settles(), [(30.0, 50.0), (100.0, 145.0)]);
     }
 
+    /// Settle changed on the pane redraws every settle band already
+    /// marked, each still ending by the next change of position.
+    #[test]
+    fn a_new_settle_redraws_every_settle_band() {
+        let mut s = Session::default();
+        s.listen();
+        s.move_to(30.0, Position::DialUp, Position::DialDown)
+            .unwrap();
+        s.move_to(60.0, Position::DialDown, Position::CrownUp)
+            .unwrap();
+        assert_eq!(s.settles(), [(30.0, 50.0), (60.0, 80.0)]);
+        s.resettle(10.0);
+        assert_eq!(s.settles(), [(30.0, 40.0), (60.0, 70.0)]);
+        // Longer than the time to the next change: it ends at the change.
+        s.resettle(45.0);
+        assert_eq!(s.settles(), [(30.0, 60.0), (60.0, 105.0)]);
+        assert_eq!(s.settle_len(), 45.0);
+    }
+
     /// The Position Brush: a stretch painted in the middle of a take
-    /// puts what was there back after it, each new change settling; one
-    /// painted to the end leaves the watch in the painted position; a
-    /// stretch painted over a change takes the change and its settling
+    /// puts what was there back after it, with no settling, since painting
+    /// is a correction; one painted to the end leaves the watch in the
+    /// painted position; a stretch painted over a change takes the change
     /// away.
     #[test]
     fn painting_a_stretch_sets_its_position() {
@@ -935,11 +1236,11 @@ mod tests {
             s.stretches(),
             [(0.0, DialUp), (100.0, CrownDown), (200.0, DialUp)]
         );
-        assert_eq!(s.settles(), [(100.0, 110.0), (200.0, 210.0)]);
+        assert!(s.settles().is_empty());
         // Painted over the change back to Dial Up and on to the end.
         assert_eq!(s.paint(150.0, 600.0, CrownDown, DialUp, 600.0), CrownDown);
         assert_eq!(s.stretches(), [(0.0, DialUp), (100.0, CrownDown)]);
-        assert_eq!(s.settles(), [(100.0, 110.0)]);
+        assert!(s.settles().is_empty());
         // Painted from the start: the first position changes, and painted
         // the same as what follows, the change goes.
         assert_eq!(s.paint(0.0, 100.0, CrownDown, CrownDown, 600.0), CrownDown);
@@ -955,7 +1256,8 @@ mod tests {
         use Position::*;
         let mut s = ten();
         s.listen();
-        s.paint(100.0, 200.0, CrownDown, DialUp, 600.0);
+        s.move_to(100.0, DialUp, CrownDown).unwrap();
+        s.move_to(200.0, CrownDown, DialUp).unwrap();
         assert_eq!(s.move_change(100.0, 80.0, DialUp, 600.0), DialUp);
         assert_eq!(
             s.stretches(),
@@ -969,6 +1271,90 @@ mod tests {
         // The start of the take is not a change.
         s.move_change(0.0, 30.0, DialUp, 600.0);
         assert_eq!(s.stretches()[0], (0.0, DialUp));
+    }
+
+    /// Painting over recorded switches (the design guide's marks 49 to
+    /// 51): a recorded switch keeps its settling unless painting covers
+    /// it, painting from inside a settling cuts it short, painting the
+    /// position already recorded changes nothing, and Remove Painting
+    /// brings back what was recorded.
+    #[test]
+    fn painting_keeps_the_recorded_positions_underneath() {
+        use Position::*;
+        let recorded = || {
+            let mut s = ten();
+            s.listen();
+            s.move_to(60.0, DialUp, DialDown).unwrap();
+            s.move_to(120.0, DialDown, CrownUp).unwrap();
+            s
+        };
+        let mut s = recorded();
+        let was = (s.stretches(), s.settles());
+        assert_eq!(was.1, [(60.0, 70.0), (120.0, 130.0)]);
+        assert!(s.recorded().is_none());
+        // (50) Across the switch at 120 s: its settling goes, and nothing
+        // painted settles.
+        s.paint(90.0, 150.0, CrownLeft, CrownUp, 300.0);
+        assert_eq!(
+            s.stretches(),
+            [
+                (0.0, DialUp),
+                (60.0, DialDown),
+                (90.0, CrownLeft),
+                (150.0, CrownUp)
+            ]
+        );
+        assert_eq!(s.settles(), [(60.0, 70.0)]);
+        assert_eq!(s.painted_spans(CrownUp), [(90.0, 150.0, CrownLeft)]);
+        assert_eq!(s.recorded(), Some(was.clone()));
+        // Remove Painting: the switch and its settling come back.
+        assert_eq!(s.remove_painting(100.0, CrownUp, 300.0), Some(CrownUp));
+        assert_eq!((s.stretches(), s.settles()), was);
+        assert!(s.recorded().is_none() && s.painted_spans(CrownUp).is_empty());
+        assert_eq!(s.remove_painting(100.0, CrownUp, 300.0), None);
+        // (51) From inside a settling: the band is cut where the paint
+        // begins.
+        s.paint(65.0, 100.0, CrownRight, CrownUp, 300.0);
+        assert_eq!(s.settles(), [(60.0, 65.0), (120.0, 130.0)]);
+        // (49) Inside a recorded stretch: neither painted edge settles.
+        let mut s = recorded();
+        s.paint(20.0, 40.0, CrownDown, CrownUp, 300.0);
+        assert_eq!(
+            s.stretches()[..3],
+            [(0.0, DialUp), (20.0, CrownDown), (40.0, DialUp)]
+        );
+        assert_eq!(s.settles(), [(60.0, 70.0), (120.0, 130.0)]);
+        // The position already recorded, painted: nothing changes.
+        let mut s = recorded();
+        s.paint(70.0, 110.0, DialDown, CrownUp, 300.0);
+        assert_eq!((s.stretches(), s.settles()), was);
+        assert!(s.recorded().is_none());
+        // A move while a painting shows is recorded under it too.
+        let mut s = recorded();
+        s.paint(130.0, 300.0, CrownLeft, CrownUp, 300.0);
+        s.move_to(310.0, CrownLeft, DialUp).unwrap();
+        let (under, settles) = s.recorded().expect("still painted");
+        assert_eq!(under.last(), Some(&(310.0, DialUp)));
+        assert_eq!(settles.last(), Some(&(310.0, 320.0)));
+        assert_eq!(s.settles().last(), Some(&(310.0, 320.0)));
+    }
+
+    /// The positions recorded, from a session file, load under the
+    /// painting; where they are what shows, nothing is kept.
+    #[test]
+    fn the_positions_recorded_load_under_the_painting() {
+        use Position::*;
+        let mut s = ten();
+        let shown = [(0.0, DialUp), (20.0, CrownDown), (40.0, DialUp)];
+        s.load(&shown, &[]);
+        s.load_recorded(&[(0.0, DialUp)], &[], DialUp);
+        assert_eq!(s.painted_spans(DialUp), [(20.0, 40.0, CrownDown)]);
+        assert_eq!(s.remove_painting(30.0, DialUp, 60.0), Some(DialUp));
+        assert_eq!(s.stretches(), [(0.0, DialUp)]);
+        let mut s = ten();
+        s.load(&shown, &[]);
+        s.load_recorded(&shown, &[], DialUp);
+        assert!(s.recorded().is_none());
     }
 
     // These are recorder/timeline tests only: no capture device or DSP.
