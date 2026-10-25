@@ -641,6 +641,14 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
 /// With two choices a click anywhere on it switches to the other, so it can
 /// be flipped back and forth without moving the pointer. True when the
 /// choice changed.
+/// A pop-up menu's item: the one in use carries a ✓ before its words,
+/// and the highlight is the pointer's alone, as in a macOS pop-up.
+pub fn menu_item(ui: &mut Ui, on: bool, words: impl Into<String>) -> Response {
+    let words = words.into();
+    let text = if on { format!("✓ {words}") } else { words };
+    ui.add(egui::Button::new(text).frame_when_inactive(false))
+}
+
 pub fn segmented<T: PartialEq + Copy>(
     ui: &mut Ui,
     value: &mut T,

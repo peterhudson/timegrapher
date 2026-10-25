@@ -480,8 +480,7 @@ impl Calibres {
                         before(ui);
                     }
                     let line = |ui: &mut egui::Ui, e: Entry<'_>, text: String| {
-                        if ui
-                            .selectable_label(e.name() == current, text)
+                        if theme::menu_item(ui, e.name() == current, text)
                             .on_hover_text(hint(e))
                             .clicked()
                         {
@@ -545,8 +544,7 @@ impl Calibres {
                                 }
                                 return;
                             }
-                            if ui
-                                .selectable_label(current.is_empty(), "Not Set")
+                            if theme::menu_item(ui, current.is_empty(), "Not Set")
                                 .on_hover_text(
                                     "Name cycles after the wheels most calibres at this beat rate \
                              share, with the default lift angle",
