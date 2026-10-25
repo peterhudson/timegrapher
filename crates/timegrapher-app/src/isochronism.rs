@@ -233,7 +233,7 @@ fn table(ui: &mut egui::Ui, wind: Option<&WindDown>) {
             ui.label(small("Change"));
             ui.end_row();
             for (name, colour, a, b, d) in rows {
-                ui.label(RichText::new(name).color(colour));
+                ui.label(RichText::new(name).color(pal.ink(colour)));
                 ui.label(a);
                 ui.label(b);
                 ui.label(d);

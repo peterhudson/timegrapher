@@ -215,10 +215,14 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
         for &(ms, color, name) in &row.marks {
             let x = x_of(ms);
             if x >= r.left() && x <= r.right() {
-                painter.line_segment(
-                    [egui::pos2(x, r.top()), egui::pos2(x, r.bottom())],
-                    egui::Stroke::new(1.0_f32, color),
-                );
+                // Unlock solid, Drop dashed: both grey, named beside.
+                let line = [egui::pos2(x, r.top()), egui::pos2(x, r.bottom())];
+                let stroke = egui::Stroke::new(1.0_f32, color);
+                if name == "Unlock" {
+                    painter.line_segment(line, stroke);
+                } else {
+                    painter.extend(egui::Shape::dashed_line(&line, stroke, 4.0, 3.0));
+                }
                 painter.text(
                     egui::pos2(x + 3.0, r.top() + 1.0),
                     egui::Align2::LEFT_TOP,

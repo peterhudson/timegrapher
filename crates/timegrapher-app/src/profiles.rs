@@ -224,29 +224,21 @@ pub fn draw(
                     .style(LineStyle::dashed_dense()),
             );
             if opt.edges {
-                for (label, at, col, w) in [
-                    ("Unlock", p.unlock_ms, pal.unlock, 1.5_f32),
-                    ("Drop", p.drop_ms, pal.drop, 1.5),
-                    ("Drop Peak", p.peak_ms, pal.peak, 1.0),
+                // Greys, told apart by their lines: Unlock solid, Drop and
+                // Peak dashed, each named along the top.
+                for (label, at, col, w, style) in [
+                    ("Unlock", p.unlock_ms, pal.unlock, 1.5_f32, LineStyle::Solid),
+                    ("Drop", p.drop_ms, pal.drop, 1.5, LineStyle::dashed_dense()),
+                    (
+                        "Drop Peak",
+                        p.peak_ms,
+                        pal.peak,
+                        1.0,
+                        LineStyle::dashed_dense(),
+                    ),
                 ] {
                     if let Some(t) = at {
-                        pl.vline(VLine::new(label, t + dx).color(col).width(w));
-                    }
-                }
-            }
-            if opt.sounds {
-                for (label, at) in [
-                    ("Sound 1", p.sound1_ms),
-                    ("Sound 2", p.sound2_ms),
-                    ("Sound 3", p.sound3_ms),
-                ] {
-                    if let Some(t) = at {
-                        pl.vline(
-                            VLine::new(label, t + dx)
-                                .color(pal.sound)
-                                .width(1.2_f32)
-                                .style(LineStyle::dashed_loose()),
-                        );
+                        pl.vline(VLine::new(label, t + dx).color(col).width(w).style(style));
                     }
                 }
             }
@@ -292,37 +284,21 @@ fn label_marks(
     let painter = ui.painter_at(frame);
     let font = egui::FontId::proportional(11.0);
     let pal = theme::pal(ui);
-    let snd = pal.sound;
     let mut ends: Vec<f32> = Vec::new();
-    let mut groups = Vec::new();
     if opt.edges {
-        groups.push([
+        let mut marks: Vec<(f32, &str, Color32)> = [
             ("Unlock", p.unlock_ms, pal.unlock),
             ("Drop", p.drop_ms, pal.drop),
             ("Peak", p.peak_ms, pal.peak),
-        ]);
-    }
-    if opt.sounds {
-        groups.push([
-            ("1 Unlock", p.sound1_ms, snd),
-            ("2 Impulse", p.sound2_ms, snd),
-            ("3 Drop", p.sound3_ms, snd),
-        ]);
-    }
-    for group in groups {
-        let mut marks: Vec<(f32, &str, Color32)> = group
-            .into_iter()
-            .filter_map(|(l, at, c)| at.map(|v| (t.position_from_point_x(v + dx), l, c)))
-            .filter(|(x, _, _)| *x >= frame.left() && *x <= frame.right())
-            .collect();
+        ]
+        .into_iter()
+        .filter_map(|(l, at, c)| at.map(|v| (t.position_from_point_x(v + dx), l, c)))
+        .filter(|(x, _, _)| *x >= frame.left() && *x <= frame.right())
+        .collect();
         marks.sort_by(|a, b| a.0.total_cmp(&b.0));
-        // The sounds start on the row below the edges' lowest.
-        let first = ends.len();
         for (x, label, c) in marks {
             let galley = painter.layout_no_wrap(label.to_string(), font.clone(), c);
-            let row = (first..ends.len())
-                .find(|&r| ends[r] + 4.0 < x)
-                .unwrap_or(ends.len());
+            let row = ends.iter().position(|&e| e + 4.0 < x).unwrap_or(ends.len());
             let end = x + 3.0 + galley.size().x;
             if row == ends.len() {
                 ends.push(end);
@@ -333,7 +309,46 @@ fn label_marks(
             painter.galley(egui::pos2(x + 3.0, y), galley, c);
         }
     }
+    // The three sounds: a short dotted stub up from the foot of the plot,
+    // its number at the foot, the whole name in its hover, so they never
+    // stack under the edges' names.
+    if opt.sounds {
+        let ink = pal.sound;
+        for (n, name, at) in [
+            ("1", "the unlock", p.sound1_ms),
+            ("2", "the impulse", p.sound2_ms),
+            ("3", "the drop", p.sound3_ms),
+        ] {
+            let Some(v) = at else { continue };
+            let x = t.position_from_point_x(v + dx);
+            if x < frame.left() || x > frame.right() {
+                continue;
+            }
+            let foot = frame.bottom() - 1.0;
+            painter.extend(egui::Shape::dashed_line(
+                &[egui::pos2(x, foot), egui::pos2(x, foot - SOUND_STUB)],
+                egui::Stroke::new(1.2_f32, ink),
+                2.0,
+                2.0,
+            ));
+            let galley = painter.layout_no_wrap(n.to_string(), font.clone(), ink);
+            let at = egui::pos2(x + 3.0, foot - galley.size().y);
+            let rect = egui::Rect::from_min_size(at, galley.size()).union(
+                egui::Rect::from_x_y_ranges(x - 3.0..=x + 3.0, foot - SOUND_STUB..=foot),
+            );
+            painter.galley(at, galley, ink);
+            ui.interact(
+                rect,
+                ui.id().with(("sound", n, dx.to_bits())),
+                egui::Sense::hover(),
+            )
+            .on_hover_text(format!("Sound {n}, {name}: {v:.2} ms"));
+        }
+    }
 }
+
+/// How far a sound's stub reaches up from the foot of the profile.
+const SOUND_STUB: f32 = 22.0;
 
 #[cfg(test)]
 mod tests {

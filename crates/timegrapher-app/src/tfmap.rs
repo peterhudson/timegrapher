@@ -237,7 +237,7 @@ fn wheel_rows(
         p.hline(
             egui_plot::HLine::new(name.clone(), y)
                 .color(colour)
-                .style(LineStyle::Dashed { length: 4.0 })
+                .style(LineStyle::dotted_dense())
                 .width(1.25_f32),
         );
         p.text(

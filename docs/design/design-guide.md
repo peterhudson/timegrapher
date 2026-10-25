@@ -195,7 +195,7 @@ The figures meet four tests:
 1. **The floor must differ from an unmarked track.** Today's 16% floor is 9.2 from the empty track in dark mode and 7.8 in light, too close to read at a glance. The new floors are 16.5 and 15.5.
 2. **The solid start must stand out from the floor,** so every change of position shows: 23.7 in dark mode, 16.6 in light. Light mode needs the stronger solid for this.
 3. **The track must not read as Tick.** Teal is 20.2 from Tick blue in dark mode and 18.6 in light, against 5.6 today.
-4. **Labels on the solid part are dark text in both modes:** 5.3:1 in dark mode and 6.7:1 in light. White would be 3.2:1 and 2.5:1.
+4. **Labels must read wherever they fall.** The solid part lasts only the settling time, so a label usually runs from the solid into the fade. Each label is in text colour on a small card-coloured plate, as "Masked" is: 12:1 or more in both modes. Plain text on the solid would be only 3.2:1 (white, dark mode) or 2.5:1 (white, light mode).
 
 Masks are hatched (section 11), so a masked stretch can't be taken for a faint one. Over the wash, at its strongest (a sixth of the solid), Tick dots are 5.9:1 in dark mode and 4.2:1 in light, and Tock dots 3.4:1 and 6.3:1. All stay above the 3:1 needed for a mark, and the wash is that strong only in the first seconds of a stretch.
 

@@ -1342,7 +1342,7 @@ pub struct Opts {
 
 /// What Wheel Periods does, for its hint.
 pub const WHEELS_HINT: &str = "Mark the period each of the calibre's wheels turns in, in \
-     green and named beside its line, and half of it dashed, where a wheel that is off centre \
+     a grey dotted line named beside it, and half of it fainter, where a wheel that is off centre \
      shows twice a turn. With no calibre picked, or none of its wheels known, one minute and \
      one hour are marked in grey instead: periods alone, named after no wheel.";
 
@@ -1398,6 +1398,7 @@ fn wheel_marks(
             p.vline(
                 VLine::new(w.name.clone(), x)
                     .color(pal.wheel)
+                    .style(LineStyle::dotted_dense())
                     .width(2.0_f32),
             );
             p.text(
@@ -1420,7 +1421,7 @@ fn wheel_marks(
             p.vline(
                 VLine::new(format!("{} ×2", w.name), x2)
                     .color(pal.wheel.gamma_multiply(0.6))
-                    .style(LineStyle::Dashed { length: 4.0 })
+                    .style(LineStyle::dotted_loose())
                     .width(1.25_f32),
             );
             p.text(
@@ -1807,15 +1808,17 @@ mod tests {
         let named = |texts: &[(String, Color32)], name: &str| {
             texts.iter().filter(|(t, _)| t == name).count()
         };
-        let (on, shapes) = drawn(&state, true);
+        // The wheel's grey is the faint text colour, which the plot uses
+        // too: the wheel's line and name add to what is drawn in it.
+        let in_wheel = |shapes: &str| shapes.matches(&format!("{wheel:?}")).count();
+        let (on, shapes_on) = drawn(&state, true);
         assert_eq!(named(&on, "Fourth Wheel"), 1, "{on:?}");
+        let (off, shapes_off) = drawn(&state, false);
+        assert_eq!(named(&off, "Fourth Wheel"), 0, "{off:?}");
         assert!(
-            shapes.contains(&format!("{wheel:?}")),
+            in_wheel(&shapes_on) > in_wheel(&shapes_off),
             "the wheel's line and name in its colour"
         );
-        let (off, shapes) = drawn(&state, false);
-        assert_eq!(named(&off, "Fourth Wheel"), 0, "{off:?}");
-        assert!(!shapes.contains(&format!("{wheel:?}")));
         // No wheel known: one minute marked, beside the axis's own "1 min".
         state.wheels.clear();
         let (on, _) = drawn(&state, true);

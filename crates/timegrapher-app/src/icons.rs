@@ -101,7 +101,7 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Watch => {
             r#"<path d="M8.6 7.2L9.4 2h5.2l.8 5.2M8.6 16.8L9.4 22h5.2l.8-5.2"/><circle cx="12" cy="12" r="5.6"/><path d="M17.6 11h1.4v2h-1.4"/><path d="M12 12V8.8M12 12l2.2 1.2"/>"#
         }
-        // A pole dancer: The strip, as in stripper. Family friendly: long hair, a dress, and a pole. In pink.
+        // A pole dancer: The strip, as in stripper. Family friendly: long hair, a dress, and a pole.
         Icon::Strip => {
             r#"<path d="M5 2v20"/><circle cx="12.6" cy="4.4" r="1.9"/><path d="M14.3 3.3c2.4-.2 4 1.4 4.8 3.6-.8-.3-1.6-.2-2.2.2 1.4.8 2.2 2.4 2.4 4.2-1.2-.8-2.4-1-3.4-.8.6 1 .8 2 .6 3"/><path d="M11.6 6.4L5 3.6"/><path d="M11.6 8.6L5 10.6"/><path d="M12.2 6.4l-.2 3.2"/><path d="M11.4 9.4L7.6 16.6c3 1.2 6.4 1.1 9.4-.4L13 9.4z"/><path d="M9.4 17.3L5 20"/><path d="M14.4 17.1l2 4.9"/>"#
         }
@@ -117,7 +117,7 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Isochronism => {
             r#"<path d="M7.5 21h9L14 4h-4z"/><path d="M12 17.5L16.5 6"/><circle cx="15.2" cy="9.4" r="1.4" fill="currentColor"/>"#
         }
-        // A die showing six: Six faces, six positions: DU, DD, CU, CD, CL and CR. In teal.
+        // A die showing six: Six faces, six positions: DU, DD, CU, CD, CL and CR.
         Icon::Positions => {
             r#"<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8" r="1.4"/><circle cx="8.5" cy="12" r="1.4"/><circle cx="8.5" cy="16" r="1.4"/><circle cx="15.5" cy="8" r="1.4"/><circle cx="15.5" cy="12" r="1.4"/><circle cx="15.5" cy="16" r="1.4"/></g>"#
         }
@@ -976,8 +976,8 @@ pub enum Lying {
 }
 
 /// The watch itself, no stand, filling the square `r`: the case in
-/// `teal` with its crown at 3 in the dial's own frame, the numbers 12, 3,
-/// 6 and 9 and the hour ticks in `teal`, the hands at 10:10 in `ink`.
+/// `position_ink` with its crown at 3 in the dial's own frame, the numbers 12, 3,
+/// 6 and 9 and the hour ticks in `position_ink`, the hands at 10:10 in `ink`.
 /// Standing, the whole watch is turned so the hour named is at the top,
 /// numbers and all, as the watch in the hand would be. Lying, it is
 /// squashed to 60% with a side wall below in `card`; dial down shows
@@ -986,7 +986,7 @@ pub fn watch(
     painter: &egui::Painter,
     r: Rect,
     lying: Lying,
-    teal: Color32,
+    position_ink: Color32,
     ink: Color32,
     card: Color32,
 ) {
@@ -1027,7 +1027,7 @@ pub fn watch(
         }
         edge.push(wall(90.0, 50.0));
         painter.add(Shape::convex_polygon(edge.clone(), card, Stroke::NONE));
-        painter.add(Shape::line(edge, Stroke::new(3.0 * k, teal)));
+        painter.add(Shape::line(edge, Stroke::new(3.0 * k, position_ink)));
     }
     let back = lying == Lying::DialDown;
     // The crown, a solid block just outside the case: at 3, or at 9 for
@@ -1040,20 +1040,20 @@ pub fn watch(
             at(x0 + 7.0, 56.0),
             at(x0, 56.0),
         ],
-        teal,
+        position_ink,
         Stroke::NONE,
     ));
     let case = ring(50.0, 50.0, 40.0, 72);
     painter.add(Shape::convex_polygon(
         case.clone(),
-        teal.gamma_multiply(0.07),
+        position_ink.gamma_multiply(0.07),
         Stroke::NONE,
     ));
-    painter.add(Shape::closed_line(case, Stroke::new(4.5 * k, teal)));
+    painter.add(Shape::closed_line(case, Stroke::new(4.5 * k, position_ink)));
     if back {
         // One plain fluted ring and nothing else that could read as a
         // dial's mark.
-        let fine = teal.gamma_multiply(0.85);
+        let fine = position_ink.gamma_multiply(0.85);
         let n = 80;
         for i in 0..n {
             let a0 = i as f32 / n as f32 * std::f32::consts::TAU;
@@ -1073,14 +1073,16 @@ pub fn watch(
         let (s, c) = a.sin_cos();
         if h % 3 == 0 {
             let size = if h == 12 { 15.0 } else { 13.0 } * k * if flat { 0.8 } else { 1.0 };
-            let galley = painter.layout_no_wrap(h.to_string(), crate::theme::semibold(size), teal);
+            let galley =
+                painter.layout_no_wrap(h.to_string(), crate::theme::semibold(size), position_ink);
             let centre = at(50.0 + c * 26.0, 50.0 + s * 26.0);
             let angle = if flat { 0.0 } else { turn };
             let half = galley.size() / 2.0;
             // Top-left of the text, turned about its centre.
             let (sa, ca) = angle.sin_cos();
             let off = egui::vec2(-half.x * ca + half.y * sa, -half.x * sa - half.y * ca);
-            painter.add(epaint::TextShape::new(centre + off, galley, teal).with_angle(angle));
+            painter
+                .add(epaint::TextShape::new(centre + off, galley, position_ink).with_angle(angle));
         } else {
             let r0 = 33.0;
             painter.line_segment(
@@ -1088,7 +1090,7 @@ pub fn watch(
                     at(50.0 + c * r0, 50.0 + s * r0),
                     at(50.0 + c * 36.0, 50.0 + s * 36.0),
                 ],
-                Stroke::new(1.6 * k, teal),
+                Stroke::new(1.6 * k, position_ink),
             );
         }
     }

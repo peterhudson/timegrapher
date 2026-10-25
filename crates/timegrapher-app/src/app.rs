@@ -631,29 +631,29 @@ impl Pane {
     }
 }
 
-/// A pane's icon and the colour it is drawn in: one green for the charts,
-/// the distributions and the Steadiness views so they read as a family,
-/// and a colour of its own for each of the rest.
-fn pane_icon(pane: Pane, pal: &theme::Palette) -> (theme::Icon, Color32) {
+/// A pane's icon. Every pane button is drawn in the secondary text
+/// colour, and in the accent while its pane is shown: none takes a
+/// reading's colour.
+fn pane_icon(pane: Pane) -> theme::Icon {
     match pane {
-        Pane::Watch => (Icon::Watch, pal.sound),
-        Pane::Strip => (Icon::Strip, pal.pink),
-        Pane::Sound => (Icon::Profile, pal.tick),
-        Pane::Scope => (Icon::Scope, pal.tock),
-        Pane::SteadyReadings => (Icon::Steadiness, pal.unlock),
-        Pane::SteadyPeriods => (Icon::Periods, pal.unlock),
-        Pane::SteadyCycle => (Icon::Cycle, pal.unlock),
-        Pane::SteadyAutocorrelation => (Icon::Autocorrelation, pal.unlock),
-        Pane::SteadyAllan => (Icon::Allan, pal.unlock),
-        Pane::SteadyCusum => (Icon::Cusum, pal.unlock),
-        Pane::SteadyFft => (Icon::Fft, pal.unlock),
-        Pane::SteadyStft => (Icon::Stft, pal.unlock),
-        Pane::SteadyWavelet => (Icon::Wavelet, pal.unlock),
-        Pane::Isochronism => (Icon::Isochronism, pal.unlock),
-        Pane::PositionsTest => (Icon::Positions, pal.teal),
-        Pane::PowerReserve => (Icon::Reserve, pal.teal),
-        Pane::Charts => (Icon::Charts, pal.unlock),
-        Pane::Distributions => (Icon::Distributions, pal.unlock),
+        Pane::Watch => Icon::Watch,
+        Pane::Strip => Icon::Strip,
+        Pane::Sound => Icon::Profile,
+        Pane::Scope => Icon::Scope,
+        Pane::SteadyReadings => Icon::Steadiness,
+        Pane::SteadyPeriods => Icon::Periods,
+        Pane::SteadyCycle => Icon::Cycle,
+        Pane::SteadyAutocorrelation => Icon::Autocorrelation,
+        Pane::SteadyAllan => Icon::Allan,
+        Pane::SteadyCusum => Icon::Cusum,
+        Pane::SteadyFft => Icon::Fft,
+        Pane::SteadyStft => Icon::Stft,
+        Pane::SteadyWavelet => Icon::Wavelet,
+        Pane::Isochronism => Icon::Isochronism,
+        Pane::PositionsTest => Icon::Positions,
+        Pane::PowerReserve => Icon::Reserve,
+        Pane::Charts => Icon::Charts,
+        Pane::Distributions => Icon::Distributions,
     }
 }
 
@@ -847,8 +847,6 @@ const TWO_FIELDS_W: f32 = CALIBRE_ROOMY_W - 2.0 * 16.0;
 /// The Current Position card's picture, and on a compact card.
 const POSITION_PIC: f32 = 66.0;
 const POSITION_PIC_COMPACT: f32 = 40.0;
-/// Dark text on the teal of the current position's button.
-const POSITION_ON_INK: Color32 = Color32::from_rgb(0x0d, 0x26, 0x29);
 /// The Listen card's buttons.
 const LISTEN_BUTTON: f32 = 40.0;
 
@@ -1362,7 +1360,7 @@ struct ChartLine {
     /// The swatch beside its value under the pointer.
     key: Color32,
     /// A colour drawn solid under the dashed line, showing in its gaps:
-    /// Tick's and Tock's amplitude dash purple with blue or orange.
+    /// Tick's and Tock's amplitude dash violet with blue or deep orange.
     under: Option<Color32>,
     /// The reading itself, drawn heavier than the lines beside it.
     main: bool,
@@ -4352,7 +4350,7 @@ impl TimegrapherApp {
     }
 
     /// The Position Brush's menu button in the Paper Strip toolbar: its
-    /// position's code in teal, and a menu of the six positions, then Stop
+    /// position's code on a teal swatch, and a menu of the six positions, then Stop
     /// Painting while it is on. In the toolbar's "…" menu, a menu of the
     /// same.
     fn brush_control(&mut self, ui: &mut egui::Ui, live: bool) {
@@ -4373,7 +4371,7 @@ impl TimegrapherApp {
             let font = egui::FontId::proportional(13.0);
             let widths = Position::ALL.map(|p| {
                 ui.painter()
-                    .layout_no_wrap(p.code().to_string(), font.clone(), pal.teal)
+                    .layout_no_wrap(p.code().to_string(), font.clone(), pal.text)
                     .size()
                     .x
             });
@@ -4381,17 +4379,22 @@ impl TimegrapherApp {
             let column = widths.iter().copied().fold(0.0, f32::max);
             for (p, w) in Position::ALL.into_iter().zip(widths) {
                 let mut job = egui::text::LayoutJob::default();
+                // The code in dark text on a teal swatch, readable in both
+                // themes.
                 job.append(
                     p.code(),
                     0.0,
-                    egui::TextFormat::simple(font.clone(), pal.teal),
+                    egui::TextFormat {
+                        background: pal.positions,
+                        ..egui::TextFormat::simple(font.clone(), theme::ON_TEAL)
+                    },
                 );
                 job.append(
                     p.name(),
                     8.0 + column - w,
                     egui::TextFormat::simple(font.clone(), pal.text),
                 );
-                // The one in use framed, its teal code still readable.
+                // The one in use framed, its code still readable.
                 let picked = app.brush == Some(p);
                 if ui
                     .add(egui::Button::new(job).frame_when_inactive(picked))
@@ -4432,8 +4435,8 @@ impl TimegrapherApp {
             let font = egui::FontId::proportional(12.0);
             let code = ui
                 .painter()
-                .layout_no_wrap(shown.code().to_string(), font, pal.teal);
-            let w = 4.0 + 18.0 + 4.0 + code.size().x + 4.0 + 10.0 + 4.0;
+                .layout_no_wrap(shown.code().to_string(), font, theme::ON_TEAL);
+            let w = 4.0 + 18.0 + 4.0 + 3.0 + code.size().x + 3.0 + 4.0 + 10.0 + 4.0;
             let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 26.0), egui::Sense::click());
             let on = self.brush.is_some();
             let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp));
@@ -4442,8 +4445,8 @@ impl TimegrapherApp {
                 ui.painter().rect(
                     rect.shrink(0.5),
                     radius,
-                    pal.teal.gamma_multiply(0.16),
-                    egui::Stroke::new(1.0_f32, pal.teal.gamma_multiply(0.45)),
+                    pal.positions.gamma_multiply(0.16),
+                    egui::Stroke::new(1.0_f32, pal.positions.gamma_multiply(0.45)),
                     egui::StrokeKind::Inside,
                 );
             } else if resp.hovered() || open {
@@ -4451,20 +4454,24 @@ impl TimegrapherApp {
             }
             let enabled = ui.is_enabled();
             let ink = if on {
-                pal.teal
+                pal.positions
             } else {
                 pal.text_tertiary.gamma_multiply(0.75)
             };
             let icon = egui::Rect::from_min_size(rect.min + Vec2::new(4.0, 4.0), Vec2::splat(18.0));
             crate::icons::draw(ui.painter(), icon, Icon::Highlighter, ink);
-            let code_at =
-                egui::Pos2::new(icon.right() + 4.0, rect.center().y - code.size().y / 2.0);
-            let code_ink = if enabled {
-                pal.teal
-            } else {
-                pal.teal.gamma_multiply(0.4)
-            };
-            ui.painter().galley(code_at, code, code_ink);
+            // The code in dark text on a teal swatch.
+            let code_at = egui::Pos2::new(
+                icon.right() + 4.0 + 3.0,
+                rect.center().y - code.size().y / 2.0,
+            );
+            let swatch =
+                egui::Rect::from_min_size(code_at, code.size()).expand2(Vec2::new(3.0, 1.0));
+            let fade = if enabled { 1.0 } else { 0.4 };
+            ui.painter()
+                .rect_filled(swatch, 3.0, pal.positions.gamma_multiply(fade));
+            ui.painter()
+                .galley(code_at, code, theme::ON_TEAL.gamma_multiply(fade));
             // The ▾, drawn as the pop-ups' is.
             let c = egui::Pos2::new(rect.right() - 9.0, rect.center().y + 1.0);
             ui.painter().add(egui::Shape::convex_polygon(
@@ -5222,7 +5229,12 @@ impl TimegrapherApp {
                 None
             }
             Err(e) => {
-                ui.label(RichText::new(format!("Your watches can't be read: {e}")).color(pal.bad));
+                theme::alert_label(
+                    ui,
+                    theme::Alert::Bad,
+                    &format!("Your watches can't be read: {e}"),
+                    false,
+                );
                 None
             }
         };
@@ -6862,7 +6874,7 @@ impl TimegrapherApp {
             ui.painter(),
             pic,
             here.lying(),
-            pal.teal,
+            pal.positions,
             pal.text,
             pal.card,
         );
@@ -6973,7 +6985,7 @@ impl TimegrapherApp {
             let resp = ui.interact(r, ui.id().with(("position", n)), sense);
             let on = p == here;
             let fill = if on {
-                pal.teal
+                pal.positions
             } else if editable && resp.hovered() {
                 pal.control_hover
             } else {
@@ -6981,11 +6993,7 @@ impl TimegrapherApp {
             };
             painter.rect_filled(r, egui::CornerRadius::same(theme::CONTROL_RADIUS - 1), fill);
             let ink = if on {
-                if ui.visuals().dark_mode {
-                    POSITION_ON_INK
-                } else {
-                    Color32::WHITE
-                }
+                theme::ON_TEAL
             } else if editable {
                 pal.text
             } else {
@@ -7008,7 +7016,7 @@ impl TimegrapherApp {
                     egui::pos2(r.left() + 4.0, r.bottom() - 5.5),
                     egui::pos2(r.right() - 4.0, r.bottom() - 2.0),
                 );
-                let fill_ink = if on { ink } else { pal.teal };
+                let fill_ink = if on { ink } else { pal.positions };
                 painter.rect_filled(bar, 1.5, fill_ink.gamma_multiply(0.2));
                 let mut done = bar;
                 done.set_width(bar.width() * full.min(1.0) as f32);
@@ -7775,25 +7783,26 @@ impl TimegrapherApp {
             "While listening, stop the computer going to sleep on its own, so a long take \
              isn't cut short. The screen can still lock and switch off.",
         );
-        let pal = theme::pal(ui);
         if let (true, Some(e)) = (self.keep_awake, &self.awake_fault) {
-            ui.label(
-                RichText::new(format!(
+            theme::alert_label(
+                ui,
+                theme::Alert::Warning,
+                &format!(
                     "The computer isn't being kept awake: {e}. It may sleep on its own \
                      during a long take."
-                ))
-                .small()
-                .color(pal.warn),
+                ),
+                true,
             );
         }
         if let Some(e) = &self.pump_fault {
-            ui.label(
-                RichText::new(format!(
+            theme::alert_label(
+                ui,
+                theme::Alert::Warning,
+                &format!(
                     "Sound is taken only while the window is showing, and the computer \
                      isn't kept awake: the thread that does both didn't start ({e})."
-                ))
-                .small()
-                .color(pal.warn),
+                ),
+                true,
             );
         }
     }
@@ -7875,7 +7884,7 @@ impl TimegrapherApp {
             pal.trace_rate,
             "Rate Line",
             &mut self.rate_line,
-            "Draw the Rate reading as a red line over the beats it was fitted to, to check \
+            "Draw the Rate reading as a magenta line over the beats it was fitted to, to check \
              that it follows the dots",
         );
         theme::tool_switch(
@@ -7998,7 +8007,7 @@ impl TimegrapherApp {
                     Icon::Rate,
                     pal.trace_rate,
                     "Rate",
-                    "The rate readings as a red line against the same time, on their own \
+                    "The rate readings as a magenta line against the same time, on their own \
                      scale",
                 ),
                 (
@@ -8006,7 +8015,7 @@ impl TimegrapherApp {
                     Icon::Amplitude,
                     pal.trace_amplitude,
                     "Amplitude",
-                    "The amplitude readings as a purple line against the same time, on \
+                    "The amplitude readings as a violet line against the same time, on \
                      their own scale",
                 ),
                 (
@@ -8014,7 +8023,7 @@ impl TimegrapherApp {
                     Icon::BeatError,
                     pal.trace_beat_error,
                     "Beat Error",
-                    "The beat error readings, from the unlock, as a yellow line against the \
+                    "The beat error readings, from the unlock, as an amber line against the \
                      same time, on their own scale",
                 ),
             ];
@@ -8095,7 +8104,7 @@ impl TimegrapherApp {
             accent,
             "Sounds 1, 2 and 3",
             &mut o.sounds,
-            "The dashed brown lines where the three sounds of each beat rise: unlock, \
+            "The dotted grey lines where the three sounds of each beat rise: unlock, \
              impulse and drop",
         );
         theme::bar_gap(ui);
@@ -8569,8 +8578,8 @@ impl TimegrapherApp {
                 RichText::new(
                     "Choose the microphone the watch sits on, put a ticking watch on it, and \
                      set the Input Level while the Peak meter moves. The shaded band is \
-                     between -10 and -6 dBFS; at 0 dBFS the sound clips and the meter turns \
-                     red. From then on the app listens as soon as it opens (Settings > \
+                     between -10 and -6 dBFS; at 0 dBFS the sound clips, and the words below \
+                     the meter say so. From then on the app listens as soon as it opens (Settings > \
                      General), and Settings > Microphone changes these.",
                 )
                 .color(pal.text_secondary),
@@ -8581,7 +8590,7 @@ impl TimegrapherApp {
             // banner the sheet covers.
             if let Some((m, true)) = &self.message {
                 ui.add_space(4.0);
-                ui.label(RichText::new(m).color(pal.bad));
+                theme::alert_label(ui, theme::Alert::Bad, m, false);
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -8953,7 +8962,7 @@ impl TimegrapherApp {
                 }
             }
             if let Some(e) = &a.error {
-                ui.label(RichText::new(e).color(pal.bad));
+                theme::alert_label(ui, theme::Alert::Bad, e, false);
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -9236,8 +9245,8 @@ impl TimegrapherApp {
             }
             for &pane in panes {
                 let on = pane_visible(&self.panes.tiles, pane);
-                let (icon, color) = pane_icon(pane, pal);
-                if theme::icon_toggle(ui, icon, on, color)
+                let icon = pane_icon(pane);
+                if theme::icon_toggle_off(ui, icon, on, pal.accent, pal.text_secondary)
                     .on_hover_text(format!("{}: {}", pane.title(), pane.hint()))
                     .clicked()
                 {
@@ -9265,20 +9274,21 @@ impl TimegrapherApp {
             .is_some_and(|t| t.elapsed().as_secs_f64() < 3.0)
     }
 
-    /// The input level in words and the colour to show it in: red only
-    /// while the sound clips.
+    /// The input level in words and the colour to show it in: the text
+    /// colour while the sound clips, which the words say.
     fn level_text(&self, ui: &egui::Ui) -> (String, Color32) {
         let pal = theme::pal(ui);
         let peak = self.level.peak_dbfs.max(-99.0);
         if self.clipping() {
-            (format!("peak {peak:.0} dBFS, clipping"), pal.bad)
+            (format!("peak {peak:.0} dBFS, clipping"), pal.text)
         } else {
             (format!("peak {peak:.0} dBFS"), pal.text_secondary)
         }
     }
 
-    /// The level meter: a bar to the latest peak, red while the sound
-    /// clips, with plain reference marks at -10 and -6 dBFS.
+    /// The level meter: a grey bar to the latest peak over a grey band
+    /// between the plain reference marks at -10 and -6 dBFS. Clipping is
+    /// said in words, not by colour.
     fn meter(&self, ui: &mut egui::Ui, width: f32, height: f32) -> egui::Response {
         let pal = theme::pal(ui);
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
@@ -9293,19 +9303,14 @@ impl TimegrapherApp {
                 rect.y_range(),
             ),
             0.0,
-            pal.accent.gamma_multiply(0.25),
+            pal.text_tertiary.gamma_multiply(0.35),
         );
         if self.running() {
             let peak = self.level.peak_dbfs.max(-60.0);
             let frac = ((peak + 60.0) / 60.0).clamp(0.0, 1.0) as f32;
-            let color = if self.clipping() {
-                pal.bad
-            } else {
-                pal.text_secondary
-            };
             let mut fill = rect;
             fill.set_width((rect.width() * frac).max(height));
-            p.rect_filled(fill, r, color);
+            p.rect_filled(fill, r, pal.text_secondary);
         }
         for db in REFERENCE_DBFS {
             let x = rect.left() + rect.width() * ((db + 60.0) / 60.0) as f32;
@@ -9513,19 +9518,20 @@ impl TimegrapherApp {
             }
             // What the microphone says, where it isn't what was asked.
             if now != on {
-                ui.label(
-                    RichText::new(format!(
+                theme::alert_label(
+                    ui,
+                    theme::Alert::Warning,
+                    &format!(
                         "The microphone reports its automatic gain {}.",
                         if now { "on" } else { "off" }
-                    ))
-                    .small()
-                    .color(pal.warn),
+                    ),
+                    true,
                 );
             }
         }
         let level_hint = "Loudest sample in the last half second, with plain marks at \
-                          -10 and -6 dBFS for reference. The bar turns red when the \
-                          sound clips.";
+                          -10 and -6 dBFS for reference. The words below it say when \
+                          the sound clips.";
         theme::row(ui, "Peak", Some(level_hint), |ui| {
             let w = ui.available_width();
             self.meter(ui, w, 8.0).on_hover_text(level_hint);
@@ -9540,7 +9546,7 @@ impl TimegrapherApp {
             ui.label(RichText::new(txt).small().color(color));
         });
         if let Some(e) = &self.gain_error {
-            ui.label(RichText::new(e).small().color(pal.bad));
+            theme::alert_label(ui, theme::Alert::Bad, e, true);
         }
     }
     /// The train the Steadiness tests name cycles after, when a calibre is
@@ -10717,12 +10723,41 @@ impl TimegrapherApp {
     /// window. The bar keeps its height whatever it shows.
     fn status_notices(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        let item = |ui: &mut egui::Ui, text: &str, color: Color32, hint: &str| {
-            ui.add(
-                egui::Button::new(RichText::new(text).small().color(color))
-                    .frame_when_inactive(false),
-            )
-            .on_hover_text(hint)
+        // A warning or a failure starts with its icon; the words are in the
+        // text colour.
+        let item = |ui: &mut egui::Ui, text: &str, alert: Option<theme::Alert>, hint: &str| {
+            let color = if alert.is_some() {
+                pal.text
+            } else {
+                pal.accent
+            };
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                let icon = |ui: &mut egui::Ui| {
+                    if let Some(kind) = alert {
+                        let (icon, _) =
+                            ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
+                        theme::alert_icon(ui.painter(), icon, kind, pal);
+                    }
+                };
+                // The bar's right side runs right to left: the icon still
+                // reads first.
+                let rtl = ui.layout().prefer_right_to_left();
+                if !rtl {
+                    icon(ui);
+                }
+                let resp = ui
+                    .add(
+                        egui::Button::new(RichText::new(text).small().color(color))
+                            .frame_when_inactive(false),
+                    )
+                    .on_hover_text(hint);
+                if rtl {
+                    icon(ui);
+                }
+                resp
+            })
+            .inner
         };
         let popover = |resp: &egui::Response, body: &mut dyn FnMut(&mut egui::Ui)| {
             egui::Popup::menu(resp)
@@ -10736,7 +10771,7 @@ impl TimegrapherApp {
             let resp = item(
                 ui,
                 &format!("Timegrapher {} Available…", r.version),
-                pal.accent,
+                None,
                 "A newer release is published: click for its page",
             );
             popover(&resp, &mut |ui| self.update_notice(ui));
@@ -10745,7 +10780,7 @@ impl TimegrapherApp {
             let resp = item(
                 ui,
                 "Unsaved Sound Found…",
-                pal.warn,
+                Some(theme::Alert::Warning),
                 "Sound from an earlier session was never saved: click to open, move or delete it",
             );
             popover(&resp, &mut |ui| self.kept_notice(ui));
@@ -10754,7 +10789,7 @@ impl TimegrapherApp {
             let resp = item(
                 ui,
                 "Closed Unexpectedly…",
-                pal.warn,
+                Some(theme::Alert::Warning),
                 "The timegrapher closed unexpectedly last time: click to make a report",
             );
             popover(&resp, &mut |ui| self.crash_notice(ui));
@@ -10774,7 +10809,12 @@ impl TimegrapherApp {
                 }
                 _ => String::new(),
             };
-            let resp = item(ui, &short, pal.bad, "Click for the whole message");
+            let resp = item(
+                ui,
+                &short,
+                Some(theme::Alert::Bad),
+                "Click for the whole message",
+            );
             popover(&resp, &mut |ui| self.error_notice(ui));
         }
     }
@@ -10858,7 +10898,7 @@ impl TimegrapherApp {
             let (text, color, hint) = if let Some(fault) = self.session.recording_fault() {
                 (
                     "Recording stopped; recovery files retained".to_string(),
-                    pal.bad,
+                    pal.text,
                     fault.description(),
                 )
             } else {
@@ -10915,16 +10955,22 @@ impl TimegrapherApp {
                     ),
                 }
             };
+            let failed = self.session.recording_fault().is_some();
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                theme::dot(
-                    ui,
-                    if self.running() {
-                        pal.bad
-                    } else {
-                        pal.text_tertiary
-                    },
-                );
+                if failed {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
+                    theme::alert_icon(ui.painter(), rect, theme::Alert::Bad, pal);
+                } else {
+                    theme::dot(
+                        ui,
+                        if self.running() {
+                            pal.live
+                        } else {
+                            pal.text_tertiary
+                        },
+                    );
+                }
                 ui.label(RichText::new(text).small().color(color));
             })
             .response
@@ -11113,7 +11159,7 @@ impl TimegrapherApp {
             );
         }
         if let Some(n) = &b.order_note {
-            ui.label(RichText::new(n).small().color(pal.warn));
+            theme::alert_label(ui, theme::Alert::Warning, n, true);
         }
         if ui
             .add(theme::secondary(ui, "Cancel"))
@@ -11810,11 +11856,10 @@ impl TimegrapherApp {
         let Some(r) = self.updates.notice.clone() else {
             return;
         };
-        let pal = theme::pal(ui);
         let (mut download, mut dismiss) = (false, false);
         notice(
             ui,
-            pal.accent,
+            None,
             &format!("Timegrapher {} is available", r.version),
             |ui| {
                 dismiss = ui
@@ -11846,7 +11891,6 @@ impl TimegrapherApp {
         let Some(k) = self.kept.first().cloned() else {
             return;
         };
-        let pal = theme::pal(ui);
         let (mut open, mut move_to, mut delete, mut later) = (false, false, false, false);
         let what = format!(
             "Sound from an earlier session wasn't saved{}{}, {}. Open it, move it into a \
@@ -11858,7 +11902,7 @@ impl TimegrapherApp {
                 .map_or(String::new(), |d| format!(", {} long", strip::fmt_time(d))),
             fmt_bytes(k.bytes),
         );
-        notice(ui, pal.warn, &what, |ui| {
+        notice(ui, Some(theme::Alert::Warning), &what, |ui| {
             later = ui
                 .add(egui::Button::new("Later").frame_when_inactive(false))
                 .on_hover_text("Leave it where it is: it is offered again next time")
@@ -11953,12 +11997,11 @@ impl TimegrapherApp {
         let Some(path) = self.crash.clone() else {
             return;
         };
-        let pal = theme::pal(ui);
         let text = std::fs::read_to_string(&path).unwrap_or_default();
         let (mut report, mut show, mut dismiss) = (false, false, false);
         notice(
             ui,
-            pal.warn,
+            Some(theme::Alert::Warning),
             "The timegrapher closed unexpectedly last time. Make a report?",
             |ui| {
                 dismiss = ui
@@ -12031,9 +12074,8 @@ impl TimegrapherApp {
             (None, Some((message, true))) => message.clone(),
             _ => return,
         };
-        let pal = theme::pal(ui);
         let mut dismiss = false;
-        notice(ui, pal.bad, &m, |ui| {
+        notice(ui, Some(theme::Alert::Bad), &m, |ui| {
             dismiss = fault.is_none()
                 && ui
                     .add(egui::Button::new("Dismiss").frame_when_inactive(false))
@@ -13010,9 +13052,9 @@ impl TimegrapherApp {
                 .collect()
         };
         // Each line in its reading's colour, as on the strip and in the
-        // distributions. Tick's amplitude dashes purple over blue and Tock's
-        // purple over orange, the key drawn the same; beat error from the
-        // drop is a fainter dashed yellow.
+        // distributions. Tick's amplitude dashes violet over blue and Tock's
+        // violet over deep orange, the key drawn the same; beat error from the
+        // drop is a fainter dashed amber.
         let solid = LineStyle::Solid;
         let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match reading {
             SeriesKind::Rate => (
@@ -14569,42 +14611,31 @@ impl eframe::App for TimegrapherApp {
     }
 }
 
-/// A note in a tint of `color`, with a bar of it down the left edge, for a
-/// status-bar notice's pop-over: its words, then its buttons as they fit.
+/// A status-bar notice's pop-over: the alert's icon and its words in
+/// the text colour, then its buttons as they fit.
 fn notice(
     ui: &mut egui::Ui,
-    color: Color32,
+    kind: Option<theme::Alert>,
     words: &str,
     buttons: impl FnOnce(&mut egui::Ui),
 ) -> egui::Response {
-    let resp = theme::card()
-        .fill(color.gamma_multiply(0.14))
-        .inner_margin(egui::Margin {
-            left: 18,
-            right: 10,
-            top: 10,
-            bottom: 10,
-        })
+    theme::card()
+        .fill(theme::pal(ui).control)
+        .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             let text = theme::pal(ui).text;
-            ui.add(egui::Label::new(RichText::new(words).color(text)).wrap());
+            ui.horizontal_top(|ui| {
+                if let Some(kind) = kind {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
+                    theme::alert_icon(ui.painter(), rect, kind, theme::pal(ui));
+                }
+                ui.add(egui::Label::new(RichText::new(words).color(text)).wrap());
+            });
             ui.add_space(6.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), buttons);
-        });
-    let r = resp.response.rect;
-    let bar = egui::Rect::from_min_size(r.left_top(), Vec2::new(4.0, r.height()));
-    ui.painter().rect_filled(
-        bar,
-        egui::CornerRadius {
-            nw: theme::CARD_RADIUS,
-            sw: theme::CARD_RADIUS,
-            ne: 0,
-            se: 0,
-        },
-        color,
-    );
-    resp.response
+        })
+        .response
 }
 
 /// A beat on the Scope: its index, its time's bits (so a new session's

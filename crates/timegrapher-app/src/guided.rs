@@ -716,6 +716,19 @@ fn position_head(ui: &mut egui::Ui) {
 
 /// A figure column's heading, at the right like its figures.
 fn column_head(ui: &mut egui::Ui, w: f32, text: &str, hint: &str) {
+    column_head_swatch(ui, w, text, hint, None);
+}
+
+/// [`column_head`], with a swatch of `swatch` before the words: for a
+/// column whose figures are in the text colour because the reading's own
+/// is too faint for small text (beat error's amber in light mode).
+fn column_head_swatch(
+    ui: &mut egui::Ui,
+    w: f32,
+    text: &str,
+    hint: &str,
+    swatch: Option<egui::Color32>,
+) {
     let pal = theme::pal(ui);
     let size = Vec2::new(w, ui.spacing().interact_size.y);
     ui.allocate_ui_with_layout(
@@ -723,8 +736,13 @@ fn column_head(ui: &mut egui::Ui, w: f32, text: &str, hint: &str) {
         egui::Layout::right_to_left(egui::Align::Center),
         |ui| {
             ui.set_min_size(size);
+            ui.spacing_mut().item_spacing.x = 4.0;
             ui.label(theme::caption(text).color(pal.text_secondary))
                 .on_hover_text(hint);
+            if let Some(c) = swatch {
+                let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), egui::Sense::hover());
+                ui.painter().rect_filled(r, 2.0, c);
+            }
         },
     );
 }
@@ -1295,7 +1313,11 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                 ),
                 ("Beat Error, ms", "From the unlock, as a size"),
             ] {
-                column_head(ui, FIGURE_W, h, hint);
+                // Beat error's figures are in the text colour in light
+                // mode: its swatch beside the heading says whose they are.
+                let be = pal.trace_beat_error;
+                let swatch = (h == "Beat Error, ms" && pal.ink(be) != be).then_some(be);
+                column_head_swatch(ui, FIGURE_W, h, hint, swatch);
             }
             ui.end_row();
             for (label, duration, cell) in &t.rows {
@@ -1320,7 +1342,7 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                         right(ui, table_duration(*duration), false, pal.text);
                         right(ui, signed(*rate, 1), false, pal.trace_rate);
                         right(ui, plain(*amp, 0), false, pal.trace_amplitude);
-                        right(ui, plain(*be, 2), false, pal.trace_beat_error);
+                        right(ui, plain(*be, 2), false, pal.ink(pal.trace_beat_error));
                     }
                 }
                 ui.end_row();

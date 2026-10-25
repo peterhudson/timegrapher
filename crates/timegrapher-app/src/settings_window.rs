@@ -218,8 +218,10 @@ pub fn library_section(
                 ui.label(RichText::new(format!("{why}.")).color(pal.text_secondary));
             }
             if !l.unreadable.is_empty() {
-                ui.label(
-                    RichText::new(format!(
+                theme::alert_label(
+                    ui,
+                    theme::Alert::Warning,
+                    &format!(
                         "{} can't be read and {} left as {}:",
                         count(l.unreadable.len(), "folder", "folders"),
                         if l.unreadable.len() == 1 { "is" } else { "are" },
@@ -228,8 +230,8 @@ pub fn library_section(
                         } else {
                             "they are"
                         },
-                    ))
-                    .color(pal.bad),
+                    ),
+                    false,
                 );
                 for e in &l.unreadable {
                     ui.label(RichText::new(e).small().color(pal.text_secondary));
@@ -240,7 +242,12 @@ pub fn library_section(
             ui.label(RichText::new("No watches are kept here yet.").color(pal.text_secondary));
         }
         Err(e) => {
-            ui.label(RichText::new(format!("Your watches can't be read: {e}")).color(pal.bad));
+            theme::alert_label(
+                ui,
+                theme::Alert::Bad,
+                &format!("Your watches can't be read: {e}"),
+                false,
+            );
         }
     }
     ui.add_space(8.0);
@@ -437,8 +444,11 @@ pub fn quartz_section(
     let store = match store {
         Ok(s) => s,
         Err(e) => {
-            ui.label(
-                RichText::new(format!("The kept corrections can't be read: {e}")).color(pal.bad),
+            theme::alert_label(
+                ui,
+                theme::Alert::Bad,
+                &format!("The kept corrections can't be read: {e}"),
+                false,
             );
             return None;
         }

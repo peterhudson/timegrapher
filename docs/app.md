@@ -45,9 +45,9 @@ its pane: a pole dancer for the Paper Strip, a stethoscope for the Tick
 Tock Profile, a die showing six for the Positions Test, a camel for
 Charts (it charts a course across the take, as across a desert), a
 jellyfish for Distributions (its body is called its bell), an Allen key
-for Allan, and so on. A pane showing has its icon in colour on a tinted
-chip; a hidden one is faint grey. Charts, Distributions and the
-Steadiness views share one green. The readings have pictures of their
+for Allan, and so on. A pane showing has its icon in the accent blue on a
+tinted chip; a hidden one is grey. No pane icon takes a reading's colour.
+The readings have pictures of their
 own wherever the app shows or switches one: a hare for the rate, a swing
 for the amplitude and a seesaw for the beat error, in their colours.
 
@@ -313,7 +313,8 @@ and then Listen, Positions Test or Power Reserve Test, each take saved
 into it, or to add one with New Watch…; and recordings and folders open
 from the File menu, analysed all at once. While a recording is being
 analysed the Paper Strip shows how far the analysis has got, in hours of sound and time
-left, with **Cancel**; a problem shows in red in the status bar, its
+left, with **Cancel**; a problem shows in the status bar behind a red
+failure icon, its
 whole message and Dismiss a click away, so nothing in the window moves. A recording that can't be opened leaves the one
 shown in place. The app follows the
 desktop's light or dark setting (Appearance, in Settings, overrides it),
@@ -504,8 +505,8 @@ table for the take on show or under way, filling in as the Current
 Position card is pressed, so a free take becomes a partial or full
 positions test:
 
-- **Columns:** Position, Duration, Rate (red), Amplitude (purple) and
-  Beat Error (yellow).
+- **Columns:** Position, Duration, Rate (magenta), Amplitude (violet) and
+  Beat Error (amber).
 - **Duration** is the time marked in the position, less the Settle at
   the start of each stretch and less masked time.
 - **Readings** show once a position has 10 s. Under that it reads
@@ -663,7 +664,7 @@ why it matters. Clipping flattens the loudest part of each tick, which
 moves the drop and so the amplitude and the beat error; the rate is
 unaffected. The chip follows the readings: it shows while the beats
 being averaged clip and goes when they no longer do. The peak meter, in
-Settings under Microphone, turns red on any clipped sample at once; the
+Settings under Microphone, says "clipping" on any clipped sample at once; the
 chip counts the beats in the readings. Even a watch driven several times
 past full scale is still read, with the chip, rather than taken for
 silence: when most of the beats found clip, the flattened peaks no
@@ -696,16 +697,18 @@ shown. Periodicity views will join
 them.
 
 **Tick Tock Profile.** The typical sound of the ticks (blue) and of
-the tocks (orange) over the averaging time (Average Over, up to 60 s, so
+the tocks (deep orange) over the averaging time (Average Over, up to 60 s, so
 it describes the same beats as the readings; a longer time gives a
 steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
-and the marks the engine read: unlock (green) and drop (indigo), from which
+and the marks the engine read, all grey and told apart by their lines:
+unlock (solid) and drop (dashed), from which
 amplitude and the unlock-based beat error come, the drop's peak (a thinner
-indigo line), the three sounds where the engine tells them apart (dashed brown: 1 unlock,
-2 impulse, 3 drop) and the noise floor. Each line is named on the plot.
-The solid edges and the dashed sounds are two different measurements of
+dashed line), the three sounds where the engine tells them apart (short dotted stubs up
+from the foot, numbered 1 unlock, 2 impulse, 3 drop, the whole name and
+time in each one's hover) and the noise floor. The edges are named at the top.
+The edges and the dotted sounds are two different measurements of
 the same averaged sound, not single beats: the edges are where the
 readings come from, and the sounds are where each of the three sounds
 rises halfway up its own climb, from a separate measurement of the
@@ -763,14 +766,14 @@ beat before that clock's beat is early, after it late, the words Witschi's
 training course uses (doc. 71.1010D35e p. 6). Along it is time; both axes
 are labelled, in ms across and in minutes and seconds along, and every
 grid line is drawn alike. **Rate Line** (on by default) draws the Rate
-reading as a thin solid red line over the beats it was fitted to, on top
+reading as a thin solid magenta line over the beats it was fitted to, on top
 of them, as tg does: if the dots follow it, the reading describes them
-well. **Parallel Guides** (on by default) adds faint red lines at the same
+well. **Parallel Guides** (on by default) adds faint magenta lines at the same
 slope across the whole strip, one per grid step, since the eye judges
 whether lines are parallel far better than it judges a slope; dots that
 bend away from the guides show the rate changing. The guides show with or
-without the Rate Line. Under **Draw Over the Strip**, rate (red), amplitude
-(purple, on by default) and beat error (yellow) readings, in that order
+without the Rate Line. Under **Draw Over the Strip**, rate (magenta), amplitude
+(violet, on by default) and beat error (amber) readings, in that order
 as everywhere in the app, can be drawn
 as lines against the same time, each on its own scale, whose ends are
 written in its colour above the strip (beside it when the strip lies
@@ -905,7 +908,9 @@ the strip runs down):
   40 s and stays faint, so each change shows; a thin dark line marks
   each change. The plot behind the beats takes the same at a sixth of
   the strength.
-- Masked stretches are grey over it, named "Masked".
+- Masked stretches are grey hatching over it, named "Masked".
+- Each name sits on a small plate of the card's colour, in the text
+  colour, so it reads over solid teal, faded teal or hatching.
 - During and after a Positions Test, the time before the test and the
   time it didn't use are left plain, with their names.
 - **Tick** and **Tock** are in the corner left of it; each line drawn
@@ -921,10 +926,10 @@ height, and at least one stays on. A pane too short for every chart draws
 the first ones at a readable height and names the rest at its foot ("Beat
 Error not shown: no room"); the Distributions pane does the same. Each
 reading keeps its colour across
-the app (rate red, amplitude purple, beat error yellow), so a second line
+the app (rate magenta, amplitude violet, beat error amber), so a second line
 of the same reading is told apart by its dashes: amplitude from the ticks
-dashes purple over blue and from the tocks purple over orange, and beat
-error from the drop is a fainter dashed yellow; the key and the box at the
+dashes violet over blue and from the tocks violet over deep orange, and beat
+error from the drop is a fainter dashed amber; the key and the box at the
 pointer draw them the same way. The Amplitude and Beat Error charts
 each carry the key to their own lines at their top right. Each chart labels its vertical scale at two marks or more,
 in small text, however short the chart; a long time at the right end of
@@ -1038,12 +1043,12 @@ for the smallest size to yellow for the size 99.5% of the cells read stay
 under and above; a cell nothing was read for, such as a window with a
 reading missing or a stretch's ends the wavelet can't reach, is left
 empty and shown as "not read" in the key under the map; the wheels' turns are
-dashed across it and named at the right; **Log Scale** in the toolbar
+dotted across it and named at the right; **Log Scale** in the toolbar
 colours the sizes on a log scale over a range of 300 to 1; the pointer
 over a cell shows its time, period and size). In Periods and FFT each wheel's
-period is a bold line and half of it, twice a turn as an off-centre wheel
-shows, a fainter dashed line marked ×2; the grid behind is pale. The
-wheels' lines and names are drawn in a mint green of their own, so they never
+period is a bold dotted line and half of it, twice a turn as an off-centre wheel
+shows, a fainter dotted line marked ×2; the grid behind is pale. The
+wheels' lines are grey and dotted, and named, so they never
 read as the grid or a reading. With no calibre picked, or none of its
 wheels known, one minute and one hour are marked in grey instead, periods
 alone named after no wheel. **Wheel Periods**, in the toolbars of
@@ -1123,8 +1128,8 @@ opens (see Sessions, below), unless Listen When the App Opens is off.
 
 **Level meter.** In Settings under Microphone, and on the Set Up the
 Microphone sheet, while listening to a microphone: a bar to
-the loudest sample of the last half second, grey, or red while the input
-clips, with plain reference marks at −10 and −6 dBFS, and the peak in
+the loudest sample of the last half second, grey, over a grey band between
+plain reference marks at −10 and −6 dBFS, and the peak in
 dBFS beside it ("peak −14 dBFS", with ", clipping" while it clips).
 
 **Status bar.** First what the strip shows: the take's name (Quick
@@ -1140,7 +1145,7 @@ loudness, not the shape of the tick, so hum, knocks or a holder that
 smears the sound aren't caught by it. Then how much sound the session
 holds and whether it is saved, and the latest message. It repeats
 nothing the cards show. On the right are its notices, one short word
-each for what needs you: an error, in red; **Closed Unexpectedly…**
+each for what needs you: an error, behind a red failure icon; **Closed Unexpectedly…**
 after a crash; **Unsaved Sound Found…** for sound kept from an earlier
 session; **Timegrapher 0.2.0 Available…**. A click opens the whole
 message over the window with its buttons. Nothing ever appears above the
@@ -1401,7 +1406,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
 At the first launch the app shows **Set Up the Microphone**, and listens
 while it is open: the microphone menu, the input level and the peak meter,
 with a shaded band from -10 to -6 dBFS to set the peak in (at 0 dBFS the
-sound clips and the meter turns red), then **Done** and **Not Now**.
+sound clips, which the words beside the meter say), then **Done** and **Not Now**.
 Choosing another microphone listens to that one instead; if a microphone
 won't start, the sheet says why. Done keeps Quick Listen running; Not Now
 stops it and closes the sheet, which shows again at the next launch. Once
