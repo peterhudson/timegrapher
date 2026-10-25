@@ -19844,6 +19844,13 @@ mod tests {
         assert_eq!((w.lift, w.bph), (Some(lift), Some(bph)), "the calibre's");
 
         let mut bare = library::Watch::new("Pepsi");
+        app.watch_form = Some(watches::Form {
+            watch: bare.clone(),
+            new: true,
+            error: None,
+        });
+        let d = drawn(&mut app);
+        assert!(d.contains("52°") && d.contains("(default)"), "{d}");
         bare.lift = Some(48.0);
         app.watch_form = Some(watches::Form {
             watch: bare,

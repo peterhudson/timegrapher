@@ -905,6 +905,10 @@ pub fn form(ctx: &egui::Context, f: &mut Form, cal: &mut Calibres) -> Option<For
     act
 }
 
+/// The hover of a figure the calibre sets.
+const FROM_CALIBRE: &str =
+    "Set by the calibre: pick another calibre, or change it in Manage Calibres…";
+
 fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
     let pal = theme::pal(ui);
     theme::row(
@@ -952,19 +956,25 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         |ui| match cal_lift {
             Some(l) => {
                 w.lift = Some(l);
-                ui.label(format!("{}° from the calibre", fields::plain(l)));
+                ui.label(format!("{}° from the calibre", fields::plain(l)))
+                    .on_hover_text(FROM_CALIBRE);
             }
             None => {
                 let mut lift = w.lift.unwrap_or(DEFAULT_LIFT_DEG);
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut lift)
-                            .range(10.0..=90.0)
-                            .suffix("°"),
-                    )
-                    .changed()
-                {
+                let field = ui.add(
+                    egui::DragValue::new(&mut lift)
+                        .range(10.0..=90.0)
+                        .suffix("°"),
+                );
+                if field.changed() {
                     w.lift = Some(lift);
+                }
+                if w.lift.is_none() {
+                    ui.label(RichText::new("(default)").color(theme::pal(ui).text_tertiary));
+                    field.on_hover_text(
+                        "The app's starting figure, not this watch's: set the lift angle its \
+                         movement has",
+                    );
                 }
             }
         },
@@ -979,7 +989,8 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         |ui| match cal_bph {
             Some(b) => {
                 w.bph = Some(b);
-                ui.label(format!("{b} bph from the calibre"));
+                ui.label(format!("{b} bph from the calibre"))
+                    .on_hover_text(FROM_CALIBRE);
             }
             None => {
                 egui::ComboBox::from_id_salt("form bph")
