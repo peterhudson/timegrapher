@@ -835,7 +835,7 @@ const CAPTION_FIT_W: f32 = 118.0;
 /// The compact Calibre card: wide enough for the beat rate and the lift
 /// side by side where the reading cards keep their captions whole beside
 /// it, else narrower, the beat rates then in the Calibre menu.
-const CALIBRE_ROOMY_W: f32 = 176.0;
+const CALIBRE_ROOMY_W: f32 = 240.0;
 const CALIBRE_COMPACT_W: f32 = 130.0;
 /// The narrowest Calibre card's controls row that holds the beat rate
 /// and the lift side by side.
@@ -3615,13 +3615,13 @@ impl TimegrapherApp {
         }
         self.open_note = Some(match from_name {
             Some(p) => format!(
-                "Position {} from the file name. The file has no watch settings, so the \
-                 calibre is Not Set and the lift angle {DEFAULT_LIFT_DEG}°: set them on the readings' cards.",
+                "No watch settings in the file: Calibre Not Set, Lift {DEFAULT_LIFT_DEG}°, \
+                 {} from the file name.",
                 p.label()
             ),
             None => format!(
-                "The file has no watch settings, so the calibre is Not Set, the lift angle \
-                 {DEFAULT_LIFT_DEG}° and the position Dial Up: set them on the readings' cards."
+                "No watch settings in the file: Calibre Not Set, Lift {DEFAULT_LIFT_DEG}°, \
+                 Dial Up."
             ),
         });
     }
@@ -4239,8 +4239,9 @@ impl TimegrapherApp {
         } else {
             "Analysed the whole recording. Drag the strip to look back."
         };
+        // The note first: the status bar cuts a long message at its end.
         let m = match self.open_note.take() {
-            Some(n) => format!("{done} {n}"),
+            Some(n) => format!("{n} {done}"),
             None => done.to_string(),
         };
         self.info_msg(m);
@@ -6627,9 +6628,11 @@ impl TimegrapherApp {
             child.spacing_mut().interact_size.y = theme::CONTROL_H;
             child
                 .add_enabled_ui(editable, |ui| {
+                    // The code is beside the picture already: the pop-up
+                    // says what it does instead.
                     egui::ComboBox::from_id_salt("position")
                         .width(ui.available_width())
-                        .selected_text(here.code())
+                        .selected_text(if editable { "Set" } else { "" })
                         .show_ui(ui, |ui| {
                             for (n, p) in Position::ALL.into_iter().enumerate() {
                                 ui.selectable_value(
@@ -7027,20 +7030,31 @@ impl TimegrapherApp {
             None => heard.map(|b| (b, "the rate found from the beats")),
         };
         let current = self.calibre.clone();
-        let mut bph = self.bph;
-        let picked = if ui.available_width() >= TWO_FIELDS_W || self.bph_set_by_calibre() {
+        let mut lift = self.lift_deg;
+        let picked = if ui.available_width() >= TWO_FIELDS_W {
             self.cal.picker(ui, &current, rate)
         } else {
-            let how = self.bph_hint();
+            // Too narrow for both under the picker: the beat rate keeps
+            // the controls row and the lift heads this menu.
+            let settable = self.lift_settable();
             let mut first = |ui: &mut egui::Ui| {
-                let found = match (bph, heard) {
-                    (None, Some(h)) => format!("Beat Rate: Auto, {h} found"),
-                    (Some(b), _) => format!("Beat Rate: {b}"),
-                    _ => "Beat Rate: Auto".to_string(),
+                let words = if settable {
+                    format!("Lift: {}", show_degrees(lift))
+                } else {
+                    format!("Lift: {}, set by the calibre", show_degrees(lift))
                 };
-                ui.label(RichText::new(found).small().color(pal.text_tertiary))
-                    .on_hover_text(how);
-                bph_choices(ui, &mut bph);
+                ui.label(RichText::new(words).small().color(pal.text_tertiary))
+                    .on_hover_text(LIFT_HINT);
+                if settable {
+                    for o in LIFTS {
+                        if ui
+                            .selectable_label(o == lift, format!("Lift {}", show_degrees(o)))
+                            .clicked()
+                        {
+                            lift = o;
+                        }
+                    }
+                }
                 ui.separator();
             };
             self.cal
@@ -7048,8 +7062,8 @@ impl TimegrapherApp {
         };
         if let Some(p) = picked {
             self.set_calibre(p);
-        } else if bph != self.bph {
-            self.change_bph(bph);
+        } else if lift != self.lift_deg {
+            self.set_lift(lift);
         }
     }
 
@@ -7081,7 +7095,7 @@ impl TimegrapherApp {
 
     /// The Calibre card's controls row: the beat rate and the lift angle
     /// side by side, each as text where the calibre sets it. Where the
-    /// row is too narrow for both, the lift alone, the beat rates heading
+    /// row is too narrow for both, the beat rate alone, the lift heading
     /// the Calibre menu.
     fn rate_and_lift(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
@@ -7115,22 +7129,21 @@ impl TimegrapherApp {
                 )
             }
         };
-        if both {
+        let bph_w = if both { half } else { ui.available_width() };
+        {
             if self.bph_set_by_calibre() {
                 let b = self
                     .bph
                     .or_else(|| self.cal.bph(&self.calibre))
                     .or(heard)
                     .map_or_else(|| "Found When Heard".to_string(), |b| format!("{b} bph"));
-                fact(ui, "", b, &set_by("beat rate"), half);
+                fact(ui, "", b, &set_by("beat rate"), bph_w);
             } else {
                 let mut bph = self.bph;
+                // Words that say whether it was found or set.
                 let shown = match (bph, heard) {
-                    (Some(b), _) => b.to_string(),
-                    (None, Some(h)) if half >= 100.0 => format!("Auto · {h}"),
-                    // Found, on a narrow card: the rate, its hover saying
-                    // it is Auto.
-                    (None, Some(h)) => h.to_string(),
+                    (Some(b), _) => format!("{b} bph"),
+                    (None, Some(h)) => format!("Auto {h}"),
                     _ => "Auto".to_string(),
                 };
                 // As wide as its words, the lift taking the rest of the row.
@@ -7139,8 +7152,16 @@ impl TimegrapherApp {
                         .size()
                         .x
                 });
+                if !both {
+                    // Alone in a narrow row: less padding, so its words fit.
+                    ui.spacing_mut().button_padding.x = 4.0;
+                }
+                // ComboBox's width leaves out its padding and ▾.
+                let sp = ui.spacing();
+                let chrome = 2.0 * sp.button_padding.x + sp.icon_width + sp.icon_spacing;
+                let combo_w = if both { words_w + 8.0 } else { bph_w - chrome };
                 egui::ComboBox::from_id_salt("bph")
-                    .width(words_w + 8.0)
+                    .width(combo_w)
                     .height(320.0)
                     .selected_text(shown)
                     .show_ui(ui, |ui| bph_choices(ui, &mut bph))
@@ -7151,12 +7172,14 @@ impl TimegrapherApp {
                 }
             }
         }
+        if !both {
+            return;
+        }
         let w = ui.available_width();
         if !self.lift_settable() {
-            let label = if w >= 70.0 { "Lift" } else { "" };
             fact(
                 ui,
-                label,
+                "Lift",
                 format!("{}°", fields::plain(self.lift_deg)),
                 &set_by("lift angle"),
                 w,
@@ -7164,7 +7187,7 @@ impl TimegrapherApp {
             return;
         }
         let mut lift = self.lift_deg;
-        let prefix = if w >= 84.0 { "Lift" } else { "" };
+        let prefix = "Lift";
         let (resp, changed) = fields::combo(
             ui,
             "lift",
@@ -18841,14 +18864,11 @@ mod tests {
                 p.code()
             );
         }
-        // Compact, the two-letter code beside the picture (and on the
-        // pop-up), not the name, which a compact card cuts short.
+        // Compact, the two-letter code beside the picture, once, not the
+        // name, which a compact card cuts short.
         let texts = window_texts(&mut app, &ctx, 1000.0);
         assert!(texts.iter().any(|t| t == "Position"), "{texts:?}");
-        assert!(
-            texts.iter().filter(|t| *t == "DU").count() >= 2,
-            "{texts:?}"
-        );
+        assert_eq!(texts.iter().filter(|t| *t == "DU").count(), 1, "{texts:?}");
         for gone in ["Dial", "Up", "Dial Up"] {
             assert!(!texts.iter().any(|t| t == gone), "{gone}: {texts:?}");
         }
@@ -19178,10 +19198,10 @@ mod tests {
         let ctx = themed();
         for w in [800.0, 1000.0, 1610.0] {
             let texts = window_texts(&mut app, &ctx, w);
-            let mut wants = vec!["DU", "Listen", "Not Set", "Watches"];
-            if w != 1000.0 {
-                // At 1000 the lift's field is too narrow for its word,
-                // which its hover gives.
+            let mut wants = vec!["DU", "Listen", "Not Set", "Watches", "Auto"];
+            if w > 800.0 {
+                // At 800 the lift heads the Calibre menu, and the beat
+                // rate has the row.
                 wants.push("Lift");
             }
             if w > 800.0 {

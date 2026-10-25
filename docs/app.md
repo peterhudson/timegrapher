@@ -100,8 +100,8 @@ controls: each is its figure. **Calibre** holds what the readings are
 worked out for, in one place: the **Calibre** pop-up on its figure row
 (its search covers the whole table, with **Manage Calibres…** at its
 foot; see Calibre, below), and under it the beat rate's pop-up (**Auto**,
-found from the beats and given beside it, "Auto · 28800", or a standard
-rate) and **Lift**, the lift angle, one field typed in or picked from
+found from the beats and given beside it, "Auto 28800", or a standard
+rate, "21600 bph") and **Lift**, the lift angle, one field typed in or picked from
 the common ones with its ▾ (52° by default). A calibre picked in Quick
 Listen sets the beat rate, and the lift angle where the table has one,
 which then show as text; Not Set puts back Auto and 52°. A calibre
@@ -122,14 +122,14 @@ Calibre take compact forms in turn, down to the 800-point minimum, the
 reading cards always keeping room for their captions whole. Compact,
 Current Position is captioned **Position**, with a smaller picture, the
 position's two-letter code beside it ("CR"; the name is in its hover),
-and one pop-up of the six positions (with their keys) instead of the
-buttons; keys 1 to 6 still work, and the bars aren't shown. Listen keeps
+and under it one pop-up, **Set**, of the six positions (with their keys)
+instead of the buttons; keys 1 to 6 still work, and the bars aren't shown. Listen keeps
 its two icons, gives the take's length beside its caption ("Listen
 12:48"; on the narrowest windows in the Listen icon's hover instead),
 and shows Average Over's pop-up as **Avg 10 s**. Compact, Calibre keeps
-its pop-up with the beat rate and lift under it, the lift's field without
-its word where it is narrow; on the narrowest windows the lift alone,
-the beat rates heading the Calibre menu.
+its pop-up with the beat rate and lift under it; on the narrowest
+windows the beat rate alone ("Auto 28800"), with the lift heading the
+Calibre menu (its value, then the common lift angles to pick).
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
@@ -325,7 +325,7 @@ window shows the hours done, the time left and the files in order, and
 Steadiness then covers the whole night.
 
 **Readings.** The **Calibre** card gives the beats per hour the
-readings use: found from the beats while its beat rate is Auto ("Auto ·
+readings use: found from the beats while its beat rate is Auto ("Auto
 28800"), or the one set there or by the calibre. Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default, or 2, 4, 20, 30
 or 60 s; the setting is Average Over, on the Listen card). Early in a session, or after a break in listening or a gap of
@@ -1191,7 +1191,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     and selected whatever the filters hide. Under the heading, every
     calibre in a table on the left and, level with it on the right,
     the one selected in full (see **The details** below). Opened
-    from the Calibre menu while a beat rate is known (set on the Beat Rate
+    from the Calibre menu while a beat rate is known (set on the Calibre
     card, found from the beats, or the watch's in its form), the table
     starts with the Beat Rate funnel at that rate and says so above it
     ("Showing 28800 bph, the rate found from the beats"), with **Show
