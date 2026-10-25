@@ -857,6 +857,122 @@ pub fn destructive(ui: &Ui, text: &str) -> egui::Button<'static> {
     secondary(ui, text)
 }
 
+/// What a button in a dialog's button row does, which says where it sits
+/// (as a Mac dialog lays them out): the default rightmost, Cancel to its
+/// left, others to the left of Cancel, and a button that throws something
+/// away at the far left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// Filled; Return presses it.
+    Default,
+    /// Escape presses it.
+    Cancel,
+    Other,
+    /// Throws something away: far from the default.
+    Destructive,
+}
+
+/// One button in a dialog's button row.
+#[derive(Debug, Clone, Copy)]
+pub struct DialogButton<'a> {
+    pub role: Role,
+    pub label: &'a str,
+    pub hint: &'a str,
+    /// Greyed out, saying why on hover, when not.
+    pub enabled: Result<(), &'a str>,
+}
+
+impl<'a> DialogButton<'a> {
+    pub fn new(role: Role, label: &'a str, hint: &'a str) -> Self {
+        Self {
+            role,
+            label,
+            hint,
+            enabled: Ok(()),
+        }
+    }
+
+    /// Greyed out, with `why` on hover, unless `on`.
+    pub fn enabled_unless(mut self, on: bool, why: &'a str) -> Self {
+        self.enabled = if on { Ok(()) } else { Err(why) };
+        self
+    }
+}
+
+/// A dialog's button row along its foot: each button where its role puts
+/// it, all of one height. Return presses the default button (when it is
+/// enabled and no field has the keyboard), Escape the Cancel button.
+/// Returns the index in `buttons` of the one pressed.
+pub fn dialog_buttons(ui: &mut Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let mut hit = None;
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 26.0),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            hit = dialog_buttons_right(ui, buttons);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                for (i, b) in buttons.iter().enumerate() {
+                    if b.role == Role::Destructive && dialog_button(ui, b) {
+                        hit = Some(i);
+                    }
+                }
+            });
+        },
+    );
+    hit.or_else(|| dialog_keys(ui, buttons))
+}
+
+/// The right-hand part of a dialog's button row, for a row with more in
+/// it, inside a right-to-left layout: the default, then Cancel, then the
+/// others. Destructive buttons are left to the caller's left side.
+pub fn dialog_buttons_right(ui: &mut Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let mut hit = None;
+    for role in [Role::Default, Role::Cancel, Role::Other] {
+        for (i, b) in buttons.iter().enumerate() {
+            if b.role == role && dialog_button(ui, b) {
+                hit = Some(i);
+            }
+        }
+    }
+    hit
+}
+
+/// Return and Escape on a dialog's button row.
+pub fn dialog_keys(ui: &Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let free = ui.memory(|m| m.focused().is_none());
+    let find = |role| {
+        buttons
+            .iter()
+            .position(|b| b.role == role && b.enabled.is_ok())
+    };
+    if free && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        return find(Role::Default);
+    }
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        return find(Role::Cancel);
+    }
+    None
+}
+
+fn dialog_button(ui: &mut Ui, b: &DialogButton<'_>) -> bool {
+    let button = match b.role {
+        Role::Default => primary(ui, b.label),
+        Role::Destructive => destructive(ui, b.label),
+        Role::Cancel | Role::Other => secondary(ui, b.label),
+    };
+    let r = ui.add_enabled(b.enabled.is_ok(), button);
+    let r = if b.hint.is_empty() {
+        r
+    } else {
+        r.on_hover_text(b.hint)
+    };
+    match b.enabled {
+        Err(why) => r.on_disabled_hover_text(why).clicked(),
+        Ok(()) => r.clicked(),
+    }
+}
+
 /// Grid marks for a plot, all of one step so every grid line and label is
 /// drawn alike: the first step of `ladder` (1, 2 and 5 times powers of ten
 /// when empty) at least `min_px` points apart. 80 points is what the plot
@@ -962,6 +1078,67 @@ pub fn dash(ui: &mut Ui, a: Color32, b: Color32) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A dialog's button row as on a Mac, whatever order the buttons are
+    /// given in: the default rightmost, Cancel to its left, others left of
+    /// Cancel, a button that throws something away at the far left. Return
+    /// presses the default (not while greyed out), Escape Cancel.
+    #[test]
+    fn a_dialog_row_puts_each_button_where_its_role_says() {
+        let ctx = egui::Context::default();
+        install(&ctx);
+        let buttons = [
+            DialogButton::new(Role::Destructive, "Don't Save", ""),
+            DialogButton::new(Role::Cancel, "Cancel", ""),
+            DialogButton::new(Role::Other, "Elsewhere…", ""),
+            DialogButton::new(Role::Default, "Save…", ""),
+        ];
+        let run = |keys: &[egui::Key], buttons: &[DialogButton]| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(600.0, 200.0),
+                )),
+                events: keys
+                    .iter()
+                    .map(|&key| egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            let mut hit = None;
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    hit = dialog_buttons(ui, buttons);
+                });
+            });
+            let mut at = std::collections::HashMap::new();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    at.insert(t.galley.text().to_string(), t.pos.x);
+                }
+            }
+            (hit, at)
+        };
+        let (hit, at) = run(&[], &buttons);
+        assert_eq!(hit, None);
+        let x = |n: &str| at[n];
+        assert!(x("Don't Save") < 100.0, "{at:?}");
+        assert!(x("Don't Save") < x("Elsewhere…"));
+        assert!(x("Elsewhere…") < x("Cancel"));
+        assert!(x("Cancel") < x("Save…"));
+        assert!(x("Save…") > 450.0, "{at:?}");
+        assert_eq!(run(&[egui::Key::Enter], &buttons).0, Some(3));
+        assert_eq!(run(&[egui::Key::Escape], &buttons).0, Some(1));
+        let mut greyed = buttons;
+        greyed[3] = greyed[3].enabled_unless(false, "Fill it in first");
+        assert_eq!(run(&[egui::Key::Enter], &greyed).0, None);
+    }
 
     #[test]
     fn fonts_load_and_lay_out() {

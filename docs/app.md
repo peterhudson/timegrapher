@@ -1548,6 +1548,13 @@ folder can't be moved while another copy has it open. The Watches view adds watc
 
 ## Sessions
 
+Every question the app asks lays its buttons out as a Mac dialog does:
+the default, filled, at the right, which Return presses; **Cancel** to its
+left, which Escape presses; and a button that throws something away
+(**Don't Save**, **Throw Away**, **Delete**) at the far left. Where
+throwing away is all the question offers, nothing is the default and
+Return does nothing.
+
 At the first launch the app shows **Set Up the Microphone**, and listens
 while it is open. It is three numbered steps: **1, Choose the microphone
 the watch sits on** (the microphone menu with Rescan, and Show Every

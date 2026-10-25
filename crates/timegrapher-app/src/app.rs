@@ -18,7 +18,7 @@ use crate::settings::{Settings, RATE_ONLY};
 use crate::settings_window::{self, Tab};
 use crate::steady::{self, Steadiness};
 use crate::strip::{self, Anchor, StripInput, StripView};
-use crate::theme::{self, Icon};
+use crate::theme::{self, DialogButton, Icon, Role};
 use crate::watches;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{GridMark, Line, LineStyle, Plot, Points};
@@ -4693,17 +4693,14 @@ impl TimegrapherApp {
                 self.masked_words()
             ));
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.add(theme::primary(ui, "Remove All Masks")).clicked() {
-                    choice = Some(true);
-                }
-                if ui
-                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
-                    .clicked()
-                {
-                    choice = Some(false);
-                }
-            });
+            choice = theme::dialog_buttons(
+                ui,
+                &[
+                    DialogButton::new(Role::Default, "Remove All Masks", ""),
+                    DialogButton::new(Role::Cancel, "Cancel", ""),
+                ],
+            )
+            .map(|i| i == 0);
         });
         if let Some(yes) = choice {
             self.remove_masks_asked = false;
@@ -5461,11 +5458,8 @@ impl TimegrapherApp {
                 format!("This session's {unsaved} of sound hasn't been saved and will be thrown away.")
             });
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
+            {
                 let save = if masks { "Save" } else { "Save…" };
-                if fault.is_none() && ui.add(theme::primary(ui, save)).clicked() {
-                    choice = Some(0);
-                }
                 let go = match (&fault, &what) {
                     (Some(_), Confirm::Quit) => "Leave Files and Quit",
                     (Some(_), _) => "Leave Files and Continue",
@@ -5480,19 +5474,23 @@ impl TimegrapherApp {
                     ) => "Don't Save",
                     (None, Confirm::Quit) => "Quit Without Saving",
                 };
-                if ui
-                    .add(egui::Button::new(go).min_size(Vec2::new(0.0, 26.0)))
-                    .clicked()
-                {
-                    choice = Some(1);
-                }
-                if ui
-                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
-                    .clicked()
-                {
-                    choice = Some(2);
-                }
-            });
+                // With the files at fault there is nothing to save:
+                // carrying on is the default.
+                let buttons: Vec<DialogButton> = if fault.is_none() {
+                    vec![
+                        DialogButton::new(Role::Default, save, ""),
+                        DialogButton::new(Role::Destructive, go, ""),
+                        DialogButton::new(Role::Cancel, "Cancel", ""),
+                    ]
+                } else {
+                    vec![
+                        DialogButton::new(Role::Default, go, ""),
+                        DialogButton::new(Role::Cancel, "Cancel", ""),
+                    ]
+                };
+                let skip = usize::from(fault.is_some());
+                choice = theme::dialog_buttons(ui, &buttons).map(|i| i + skip);
+            }
         });
         match choice {
             Some(0) if masks => {
@@ -5538,10 +5536,15 @@ impl TimegrapherApp {
                 "The sound so far is being copied into its take. This carries on once it is saved.",
             );
             ui.add_space(8.0);
-            cancel = ui
-                .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
-                .on_hover_text("Stay here; the save carries on")
-                .clicked();
+            cancel = theme::dialog_buttons(
+                ui,
+                &[DialogButton::new(
+                    Role::Cancel,
+                    "Cancel",
+                    "Stay here; the save carries on",
+                )],
+            )
+            .is_some();
         });
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
         if cancel {
@@ -9678,48 +9681,66 @@ impl TimegrapherApp {
                     .color(pal.text_secondary),
                 );
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(theme::primary(ui, "Keep in Unsorted"))
-                        .on_hover_text(
-                            "Keep the take in Unsorted, in the Watches view, to file under a \
-                         watch later",
-                        )
-                        .clicked()
-                    {
-                        answer = Some(Some(None));
-                    }
-                    let keep = ui
-                        .add(theme::secondary(ui, "Keep in a Watch…"))
-                        .on_hover_text(
-                            "Keep the take in one of your watches. It keeps the settings it ran \
-                         with; the watch's own apply to its next take.",
-                        );
-                    egui::Popup::menu(&keep).show(|ui| {
-                        for (id, name) in &watches {
-                            if ui.button(name).clicked() {
-                                answer = Some(Some(Some(id.clone())));
-                            }
-                        }
-                        if !watches.is_empty() {
-                            ui.separator();
-                        }
+                // As a dialog's button row (see theme::dialog_buttons), with
+                // a menu on Keep in a Watch…: the default at the right,
+                // Throw Away at the far left.
+                let w = ui.available_width();
+                ui.allocate_ui_with_layout(
+                    Vec2::new(w, 26.0),
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
                         if ui
-                            .button("New Watch…")
-                            .on_hover_text("Add a watch, and keep the take in it when you add it")
+                            .add(theme::primary(ui, "Keep in Unsorted"))
+                            .on_hover_text(
+                                "Keep the take in Unsorted, in the Watches view, to file under \
+                                 a watch later",
+                            )
                             .clicked()
                         {
-                            new = true;
+                            answer = Some(Some(None));
                         }
-                    });
-                    if ui
-                        .add(theme::secondary(ui, "Throw Away"))
-                        .on_hover_text("Delete the take: its sound and its readings")
-                        .clicked()
-                    {
-                        answer = Some(None);
-                    }
-                });
+                        let keep = ui
+                            .add(theme::secondary(ui, "Keep in a Watch…"))
+                            .on_hover_text(
+                                "Keep the take in one of your watches. It keeps the settings it \
+                                 ran with; the watch's own apply to its next take.",
+                            );
+                        egui::Popup::menu(&keep).show(|ui| {
+                            for (id, name) in &watches {
+                                if ui.button(name).clicked() {
+                                    answer = Some(Some(Some(id.clone())));
+                                }
+                            }
+                            if !watches.is_empty() {
+                                ui.separator();
+                            }
+                            if ui
+                                .button("New Watch…")
+                                .on_hover_text(
+                                    "Add a watch, and keep the take in it when you add it",
+                                )
+                                .clicked()
+                            {
+                                new = true;
+                            }
+                        });
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            if ui
+                                .add(theme::destructive(ui, "Throw Away"))
+                                .on_hover_text("Delete the take: its sound and its readings")
+                                .clicked()
+                            {
+                                answer = Some(None);
+                            }
+                        });
+                    },
+                );
+                // Return keeps it in Unsorted, the default.
+                if answer.is_none()
+                    && theme::dialog_keys(ui, &[DialogButton::new(Role::Default, "", "")]).is_some()
+                {
+                    answer = Some(Some(None));
+                }
             });
         if new {
             self.open_new_watch_form();
@@ -9956,28 +9977,26 @@ impl TimegrapherApp {
                 theme::alert_label(ui, theme::Alert::Bad, e, false);
             }
             ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                let go = match (a.keeping, a.add) {
-                    (true, _) => "Keep",
-                    (false, true) => "Add and Open",
-                    (false, false) => "Open",
-                };
-                if ui
-                    .add_enabled(ready, theme::primary(ui, go))
-                    .on_hover_text("Go ahead")
-                    .on_disabled_hover_text("Fill in what is asked for first")
-                    .clicked()
-                {
-                    answer = Some(true);
-                }
-                if ui
-                    .add(theme::secondary(ui, "Cancel"))
-                    .on_hover_text("Close without opening anything")
-                    .clicked()
-                {
-                    answer = Some(false);
-                }
-            });
+            let go = match (a.keeping, a.add) {
+                (true, _) => "Keep",
+                (false, true) => "Add and Open",
+                (false, false) => "Open",
+            };
+            let cancel_hint = if a.keeping {
+                "Close without keeping it"
+            } else {
+                "Close without opening anything"
+            };
+            if let Some(i) = theme::dialog_buttons(
+                ui,
+                &[
+                    DialogButton::new(Role::Default, go, "")
+                        .enabled_unless(ready, "Fill in what is asked for first"),
+                    DialogButton::new(Role::Cancel, "Cancel", cancel_hint),
+                ],
+            ) {
+                answer = Some(i == 0);
+            }
         });
         if modal.should_close() && answer.is_none() {
             answer = Some(false);
@@ -10718,17 +10737,15 @@ impl TimegrapherApp {
                 from.display()
             ));
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.add(theme::primary(ui, "Move")).clicked() {
-                    choice = Some(true);
-                }
-                if ui
-                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
-                    .clicked()
-                {
-                    choice = Some(false);
-                }
-            });
+            if let Some(i) = theme::dialog_buttons(
+                ui,
+                &[
+                    DialogButton::new(Role::Default, "Move", ""),
+                    DialogButton::new(Role::Cancel, "Cancel", ""),
+                ],
+            ) {
+                choice = Some(i == 0);
+            }
         });
         if choice.is_none() && modal.should_close() {
             choice = Some(false);
@@ -11028,17 +11045,17 @@ impl TimegrapherApp {
                  minutes or more of listening and Keep.",
             );
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.add(theme::destructive(ui, "Forget")).clicked() {
-                    choice = Some(true);
-                }
-                if ui
-                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
-                    .clicked()
-                {
-                    choice = Some(false);
-                }
-            });
+            // Nothing that can't be got back is the default: Return does
+            // nothing, and the button that throws it away is far from Cancel.
+            if let Some(i) = theme::dialog_buttons(
+                ui,
+                &[
+                    DialogButton::new(Role::Destructive, "Forget", ""),
+                    DialogButton::new(Role::Cancel, "Cancel", ""),
+                ],
+            ) {
+                choice = Some(i == 0);
+            }
         });
         if choice.is_none() && modal.should_close() {
             choice = Some(false);
@@ -13109,17 +13126,17 @@ impl TimegrapherApp {
             ui.add_space(4.0);
             ui.label("It was never saved anywhere else, so it can't be got back.");
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.add(theme::destructive(ui, "Delete")).clicked() {
-                    choice = Some(true);
-                }
-                if ui
-                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
-                    .clicked()
-                {
-                    choice = Some(false);
-                }
-            });
+            // Nothing that can't be got back is the default: Return does
+            // nothing, and the button that throws it away is far from Cancel.
+            if let Some(i) = theme::dialog_buttons(
+                ui,
+                &[
+                    DialogButton::new(Role::Destructive, "Delete", ""),
+                    DialogButton::new(Role::Cancel, "Cancel", ""),
+                ],
+            ) {
+                choice = Some(i == 0);
+            }
         });
         if choice.is_none() && modal.should_close() {
             choice = Some(false);
