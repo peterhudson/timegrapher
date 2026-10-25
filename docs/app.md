@@ -121,8 +121,10 @@ compact form; below about 1320 points every card does, down to the
 with a smaller picture, the name on two lines beside it, and one pop-up
 of the six positions (with their keys) instead of the buttons; keys 1 to
 6 still work, and the bars aren't shown. Listen keeps its two icons, gives
-the take's length beside its caption ("Listen 12:48"), and shows Average
-Over's pop-up as **Avg 10 s**. The reading cards' figures are smaller,
+the take's length beside its caption ("Listen 12:48"; on the narrowest
+windows, below about 820 points, in the Listen icon's hover instead, so
+the other cards keep their captions whole), and shows Average Over's
+pop-up as **Avg 10 s**. The reading cards' figures are smaller,
 with the ± over the unit beside them, and each card keeps one control:
 **Input Clock** (**Clock** on the narrowest cards), with the input clock
 and Keep in its menu, **Lift 52°** (the same field), none on Beat

@@ -825,7 +825,13 @@ const POSITION_W: f32 = 250.0;
 const LISTEN_W: f32 = 190.0;
 const FULL_FIGURE_W: f32 = 250.0;
 const POSITION_COMPACT_W: f32 = 112.0;
+/// A compact Listen card gives the take's length beside its caption; on
+/// the narrowest windows it drops to `LISTEN_NARROWEST_W` and the length
+/// is in the Listen button's hover, so the reading cards keep
+/// `CAPTION_FIT_W`, room for their captions whole.
 const LISTEN_COMPACT_W: f32 = 140.0;
+const LISTEN_NARROWEST_W: f32 = 120.0;
+const CAPTION_FIT_W: f32 = 118.0;
 const BEAT_RATE_COMPACT_W: f32 = 130.0;
 /// The Current Position card's picture, and on a compact card.
 const POSITION_PIC: f32 = 66.0;
@@ -9732,13 +9738,18 @@ impl TimegrapherApp {
         };
         let compact = share(lead) < FULL_FIGURE_W;
         let widths = if compact {
-            let rest =
-                ((total - POSITION_COMPACT_W - LISTEN_COMPACT_W - BEAT_RATE_COMPACT_W - 5.0 * gap)
-                    / 3.0)
-                    .max(60.0);
+            let rest = |listen: f32| {
+                (total - POSITION_COMPACT_W - listen - BEAT_RATE_COMPACT_W - 5.0 * gap) / 3.0
+            };
+            let listen = if rest(LISTEN_COMPACT_W) >= CAPTION_FIT_W {
+                LISTEN_COMPACT_W
+            } else {
+                LISTEN_NARROWEST_W
+            };
+            let rest = rest(listen).max(60.0);
             [
                 POSITION_COMPACT_W,
-                LISTEN_COMPACT_W,
+                listen,
                 rest,
                 rest,
                 rest,
@@ -9896,7 +9907,9 @@ impl TimegrapherApp {
             "Listen",
             help::LISTEN,
             &[],
-            length.as_ref(),
+            length.as_ref().filter(|_| {
+                cards[1].inner.width() >= LISTEN_COMPACT_W - 2.0 * f32::from(theme::CARD_PADDING)
+            }),
         );
         slots.push((Slot::Listen, cards[1].figure.union(cards[1].controls)));
         let keep_clock = std::cell::Cell::new(false);
@@ -19176,8 +19189,9 @@ mod tests {
     }
 
     /// The readings' cards carry what a take needs: the position, Listen
-    /// and Save with the take's length (at every width) and Average Over
-    /// on a card of their own, the lift angle, and the beat rate's menu with the calibre: in
+    /// and Save with the take's length (on the card from 1000 up; on the
+    /// narrowest window in Listen's hover, so the reading cards keep their
+    /// captions whole) and Average Over on a card of their own, the lift angle, and the beat rate's menu with the calibre: in
     /// full where the window has room (1610), one control each where it
     /// hasn't (1000). Nothing says Take, Pause or Resume, and no Replay is
     /// offered.
@@ -19185,9 +19199,17 @@ mod tests {
     fn the_readings_cards_carry_the_take_controls() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let ctx = themed();
-        for w in [1000.0, 1610.0] {
+        for w in [800.0, 1000.0, 1610.0] {
             let texts = window_texts(&mut app, &ctx, w);
-            let mut wants = vec!["DU", "Listen", "Lift", "Not Set", "Watches", "bph", "0:00"];
+            let mut wants = vec!["DU", "Listen", "Lift", "Not Set", "Watches", "bph"];
+            if w > 800.0 {
+                wants.push("0:00");
+            } else {
+                // The length is in Listen's hover here, leaving the reading
+                // cards room for their captions.
+                assert!(!texts.iter().any(|t| t == "0:00"), "0:00 at {w}: {texts:?}");
+                wants.extend(["Position", "Avg 10 s", "Clock"]);
+            }
             if w > 1000.0 {
                 wants.extend([
                     "Current Position",
@@ -19203,7 +19225,7 @@ mod tests {
                     "Input Clock",
                     "Default",
                 ]);
-            } else {
+            } else if w > 800.0 {
                 // The take's length in the compact Listen card's title row,
                 // and Average Over's pop-up saying what it is.
                 wants.extend(["Position", "Dial", "Up", "Input Clock", "Avg 10 s"]);
