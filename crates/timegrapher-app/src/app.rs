@@ -4391,9 +4391,10 @@ impl TimegrapherApp {
                     8.0 + column - w,
                     egui::TextFormat::simple(font.clone(), pal.text),
                 );
+                // The one in use framed, its teal code still readable.
                 let picked = app.brush == Some(p);
                 if ui
-                    .add(egui::Button::selectable(picked, job))
+                    .add(egui::Button::new(job).frame_when_inactive(picked))
                     .on_hover_text(format!(
                         "Drag along the strip to mark a stretch {}",
                         p.name()
@@ -4408,7 +4409,11 @@ impl TimegrapherApp {
             if app.brush.is_some() {
                 ui.separator();
                 if ui
-                    .add(egui::Button::new("Stop Painting").shortcut_text("Esc"))
+                    .add(
+                        egui::Button::new("Stop Painting")
+                            .shortcut_text("Esc")
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                    )
                     .clicked()
                 {
                     app.brush = None;

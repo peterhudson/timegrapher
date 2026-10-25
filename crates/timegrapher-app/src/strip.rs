@@ -506,6 +506,7 @@ pub fn paint_track(
     track: &[(f64, f64, &str, &str)],
     settles: &[(f64, f64, &str)],
     masked: &[(f64, f64)],
+    covered: Option<(f64, f64)>,
     at: impl Fn(f64) -> Pos2,
     horizontal: bool,
     vis: &egui::Visuals,
@@ -545,9 +546,18 @@ pub fn paint_track(
                 painter.hline(lane.x_range(), start, cut);
             }
         }
-        // Named in the part of it the test used, or all of it.
+        // Named in each part of it left showing: not the time a test
+        // didn't use, nor masked, nor being painted over.
+        let mut cuts: Vec<(f64, f64)> = plain_parts
+            .iter()
+            .map(|p| (p.0, p.1))
+            .chain(masked.iter().copied())
+            .chain(covered)
+            .filter(|p| p.1 > a && p.0 < b)
+            .collect();
+        cuts.sort_by(|x, y| x.0.total_cmp(&y.0));
         let mut from = a;
-        for &(p0, p1, _) in plain_parts.iter().filter(|p| p.1 > a && p.0 < b) {
+        for &(p0, p1) in &cuts {
             if p0 > from {
                 if let Some(seg) = along_rect(lane, from, p0, &at, horizontal) {
                     track_label(
@@ -1223,6 +1233,7 @@ pub fn draw_strip(
         &track,
         extras.settles,
         &track_masked,
+        painting_now.filter(|_| extras.brush.is_some()),
         place,
         view.horizontal,
         &vis,
@@ -1752,6 +1763,70 @@ mod tests {
         assert!(got
             .iter()
             .all(|i| i.paint.is_none() && i.move_change.is_none()));
+    }
+
+    /// A position's name on the track is never cut through by a masked
+    /// stretch drawn over it: it is written in the parts left showing,
+    /// or shortened to the code.
+    #[test]
+    fn a_mask_does_not_cut_through_a_positions_name() {
+        let ctx = egui::Context::default();
+        let view = StripView {
+            half_width_ms: 10.0,
+            span_s: 100.0,
+            horizontal: true,
+        };
+        let track = [(0.0, f64::INFINITY, "Crown Up (CU, 3H)", "CU")];
+        let masked = [(12.0, 20.0)];
+        let extras = Extras {
+            track: &track,
+            masked: &masked,
+            ..Default::default()
+        };
+        let mut mask_x = None;
+        let out = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 300.0))),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let origin = ui.cursor().min;
+                    draw_strip(
+                        ui,
+                        &[],
+                        0.125,
+                        None,
+                        100.0,
+                        &view,
+                        &extras,
+                        Vec2::new(460.0, 260.0),
+                    );
+                    // Where 12 s and 20 s fall: the plot spans the width
+                    // between the gutter and the right margin.
+                    let left = origin.x + 46.0;
+                    let right = origin.x + 460.0 - 4.0;
+                    let x = |t: f64| right - ((100.0 - t) / 100.0) as f32 * (right - left);
+                    mask_x = Some((x(12.0), x(20.0)));
+                });
+            },
+        );
+        let (m0, m1) = mask_x.unwrap();
+        let mut names = 0;
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                let text = t.galley.text();
+                if text == "Crown Up (CU, 3H)" || text == "CU" {
+                    names += 1;
+                    let r = c.shape.visual_bounding_rect();
+                    assert!(
+                        r.right() <= m0 + 0.5 || r.left() >= m1 - 0.5,
+                        "{text} at {r:?} under the mask {m0}..{m1}"
+                    );
+                }
+            }
+        }
+        assert!(names >= 1, "the position is named");
     }
 
     /// The track's strength: solid through the settling, then fading over
