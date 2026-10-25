@@ -535,9 +535,6 @@ impl Pane {
         Pane::Isochronism,
     ];
     const TESTS: [Pane; 2] = [Pane::PositionsTest, Pane::PowerReserve];
-    /// The panes that average the beats, each over Readings' Average Over
-    /// or a time of its own.
-    const AVERAGING: [Pane; 4] = [Pane::Strip, Pane::Sound, Pane::Charts, Pane::Distributions];
 
     fn title(self) -> &'static str {
         match self {
@@ -838,7 +835,7 @@ const CAPTION_FIT_W: f32 = 118.0;
 /// The compact Calibre card: wide enough for the beat rate and the lift
 /// side by side where the reading cards keep their captions whole beside
 /// it, else narrower, the beat rates then in the Calibre menu.
-const CALIBRE_ROOMY_W: f32 = 240.0;
+const CALIBRE_ROOMY_W: f32 = 250.0;
 const CALIBRE_COMPACT_W: f32 = 130.0;
 /// The narrowest Calibre card's controls row that holds the beat rate
 /// and the lift side by side.
@@ -1317,25 +1314,11 @@ const WIDTHS: [f64; 16] = [
     30_000.0, 60_000.0,
 ];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
-/// run.
-/// The strip's lengths, then Fit, which stands for the whole session.
-const SPANS: [f64; 8] = [
-    10.0,
-    30.0,
-    60.0,
-    300.0,
-    1800.0,
-    3600.0,
-    7200.0,
-    f64::INFINITY,
-];
+/// run. Fit, the whole session, is a switch of its own beside them.
+const SPANS: [f64; 7] = [10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 7200.0];
 
 fn span_label(v: f64) -> String {
-    if v.is_infinite() {
-        "Fit".into()
-    } else {
-        fields::duration(v)
-    }
+    fields::duration(v)
 }
 /// Settle times offered on the Positions Test pane, seconds.
 const SETTLES: [f64; 4] = [10.0, 20.0, 30.0, 60.0];
@@ -1737,12 +1720,6 @@ pub struct TimegrapherApp {
     library_move_ask: Option<PathBuf>,
     /// A move under way: where to, and its outcome when done.
     library_moving: Option<(PathBuf, LibraryMove)>,
-    /// Panes that average over their own time rather than Readings'
-    /// Average Over, and that time in seconds.
-    pane_average: std::collections::BTreeMap<Pane, f64>,
-    /// The readings over the session at each averaging time a pane uses
-    /// other than Readings' (whose are `trend`), by milliseconds.
-    other_trends: std::collections::BTreeMap<u64, Vec<TrendPoint>>,
     /// Readings worked out afresh over the strip's window when the run kept
     /// for the whole take is too sparse there, with what they were for.
     strip_points: Option<(StripKey, Vec<TrendPoint>)>,
@@ -1865,6 +1842,12 @@ pub struct TimegrapherApp {
     /// it, and the fitted view: Listen brings the first back, unless the
     /// strip was changed by hand since.
     live_strip: Option<(StripView, StripView)>,
+    /// Fit, on the Paper Strip: while on, the strip's length is the whole
+    /// session so far, growing as beats arrive. Any zoom or pan of the
+    /// strip's time turns it off.
+    strip_fit: bool,
+    /// Whether Fit was on before an opened take was fitted.
+    live_fit: bool,
     trend: Vec<TrendPoint>,
     /// The last [`Self::whole_take`] and what it was read from.
     whole_take: std::cell::RefCell<Option<(WholeKey, Option<WholeTake>)>>,
@@ -1987,7 +1970,6 @@ impl TimegrapherApp {
             recent_calibres: self.cal.recent.clone(),
             short_added: self.cal.short_added.clone(),
             short_removed: self.cal.short_removed.clone(),
-            pane_average: self.pane_average.iter().map(|(&p, &s)| (p, s)).collect(),
             check_updates: self.check_at_start,
             keep_awake: self.keep_awake,
             listen_at_open: self.listen_at_open,
@@ -2033,7 +2015,6 @@ impl TimegrapherApp {
             recent_calibres,
             short_added,
             short_removed,
-            pane_average,
             check_updates,
             keep_awake,
             listen_at_open,
@@ -2053,16 +2034,11 @@ impl TimegrapherApp {
         self.check_at_start = check_updates;
         self.keep_awake = keep_awake;
         self.show_readings = show_readings;
-        // Readings' time first: setting it drops every pane's own.
+        // One Average Over for every pane; a pane's own time, saved by an
+        // older app, is read and left out.
         if AVERAGES.contains(&average_s) {
             self.set_average(average_s);
         }
-        self.pane_average = pane_average
-            .into_iter()
-            .filter(|(p, s)| Pane::AVERAGING.contains(p) && AVERAGES.contains(s))
-            .filter(|&(_, s)| s != self.average_s)
-            .collect();
-        self.sync_trends();
         self.cal.migrate(custom_calibres);
         self.cal
             .restore(recent_calibres, short_added, short_removed);
@@ -2217,8 +2193,6 @@ impl TimegrapherApp {
             take_ask: None,
             take_keep: None,
             thumbs: Default::default(),
-            pane_average: Default::default(),
-            other_trends: Default::default(),
             strip_points: None,
             masked: Vec::new(),
             opened_masks: None,
@@ -2277,6 +2251,8 @@ impl TimegrapherApp {
             anchor: None,
             reread_with: None,
             live_strip: None,
+            strip_fit: false,
+            live_fit: false,
             trend: Vec::new(),
             whole_take: Default::default(),
             level: Level::default(),
@@ -2330,16 +2306,14 @@ impl TimegrapherApp {
     /// so it describes the same beats as the readings, up to the engine's
     /// limit.
     fn sound_span(&self) -> f64 {
-        self.average_for(Pane::Sound).clamp(0.5, MAX_PROFILE_S)
+        self.average_s.clamp(0.5, MAX_PROFILE_S)
     }
 
-    /// A new averaging time: the readings over the whole session are worked
-    /// out again, and the tick and tock sound follows it.
-    /// A new Average Over for Readings, which every pane follows again:
-    /// a pane's own time is dropped.
+    /// A new averaging time, for the readings and every pane: the readings
+    /// over the whole session are worked out again, and the tick and tock
+    /// sound follows it.
     fn set_average(&mut self, seconds: f64) {
         self.average_s = seconds;
-        self.pane_average.clear();
         let span = self.sound_span();
         if let Some(l) = self.live.as_mut() {
             l.set_profile_span(span);
@@ -2349,66 +2323,11 @@ impl TimegrapherApp {
         self.rebuild_trend();
     }
 
-    /// The time a pane averages over: its own, or Readings' Average Over.
-    fn average_for(&self, pane: Pane) -> f64 {
-        self.pane_average
-            .get(&pane)
-            .copied()
-            .unwrap_or(self.average_s)
-    }
-
-    /// Give a pane its own averaging time, or `None` to follow Readings'.
-    fn set_pane_average(&mut self, pane: Pane, seconds: Option<f64>) {
-        match seconds {
-            Some(s) if s != self.average_s => self.pane_average.insert(pane, s),
-            _ => self.pane_average.remove(&pane),
-        };
-        if pane == Pane::Sound {
-            let span = self.sound_span();
-            if let Some(l) = self.live.as_mut() {
-                l.set_profile_span(span);
-            }
-            self.sound_at = None;
-        }
-        self.sync_trends();
-    }
-
-    /// The readings over the session at an averaging time.
-    fn trend_for(&self, seconds: f64) -> &[TrendPoint] {
-        if seconds == self.average_s {
-            return &self.trend;
-        }
-        self.other_trends
-            .get(&trend_key(seconds))
-            .map_or(&[][..], Vec::as_slice)
-    }
-
-    /// Keep a run of readings for each averaging time a pane uses, and no
-    /// others: a new one is worked out over the session so far.
-    fn sync_trends(&mut self) {
-        let wanted: std::collections::BTreeSet<u64> = self
-            .pane_average
-            .values()
-            .filter(|&&s| s != self.average_s)
-            .map(|&s| trend_key(s))
-            .collect();
-        self.other_trends.retain(|k, _| wanted.contains(k));
-        for k in wanted {
-            if !self.other_trends.contains_key(&k) {
-                let pts = self.context_trend(k as f64 / 1000.0);
-                self.other_trends.insert(k, pts);
-            }
-        }
-    }
-
     /// Clear every run of readings, for a new session or a change that
     /// makes them all out of date; new readings fill them again.
     fn clear_trends(&mut self) {
         self.strip_points = None;
         self.trend.clear();
-        for t in self.other_trends.values_mut() {
-            t.clear();
-        }
     }
 
     fn info(&self, device: &str, sample_rate: u32, bits: u16) -> SessionInfo {
@@ -2517,6 +2436,9 @@ impl TimegrapherApp {
         }
         // A take's fitted view is for the take: listening goes back to the
         // strip as it was.
+        if matches!(self.live_strip, Some((_, fitted)) if fitted == self.strip) {
+            self.strip_fit = self.live_fit;
+        }
         self.strip = self.live_view();
         self.live_strip = None;
         let clocks = match clockstore::ClockStore::load() {
@@ -4031,9 +3953,6 @@ impl TimegrapherApp {
                                     .reduce(f64::min);
                                 if let Some(j) = new {
                                     self.trend.retain(|p| p.t <= j);
-                                    for t in self.other_trends.values_mut() {
-                                        t.retain(|p| p.t <= j);
-                                    }
                                     self.sound_history.retain(|h| h.0 <= j);
                                 }
                                 self.jumps_seen = jumps.to_vec();
@@ -4053,10 +3972,6 @@ impl TimegrapherApp {
                                 continue;
                             }
                             self.trend.push(TrendPoint::of(r.time_s, &r));
-                            for (&k, t) in self.other_trends.iter_mut() {
-                                let o = live.reading(k as f64 / 1000.0);
-                                t.push(TrendPoint::of(o.time_s, &o));
-                            }
                             let p = live.tick_profiles();
                             let due = self
                                 .sound_history
@@ -4255,9 +4170,7 @@ impl TimegrapherApp {
     /// averaging time or lift angle.
     fn rebuild_trend(&mut self) {
         self.strip_points = None;
-        self.other_trends.clear();
         self.trend = self.context_trend(self.average_s);
-        self.sync_trends();
     }
 
     fn context_trend(&self, seconds: f64) -> Vec<TrendPoint> {
@@ -4418,10 +4331,18 @@ impl TimegrapherApp {
     }
 
     /// Show the whole session so far along the strip, ending at its latest
-    /// beat.
+    /// beat, and keep it so as beats arrive: Fit on.
     fn fit_strip(&mut self) {
-        self.strip_end = None;
-        self.strip.set_span(self.latest_s());
+        self.strip_fit = true;
+        self.follow_fit();
+    }
+
+    /// With Fit on, the strip's length is the session so far.
+    fn follow_fit(&mut self) {
+        if self.strip_fit {
+            self.strip_end = None;
+            self.strip.set_span(self.latest_s());
+        }
     }
 
     /// An opened take shows whole: the strip's length fits all of it, and
@@ -4434,6 +4355,9 @@ impl TimegrapherApp {
     /// next Listen.
     fn fit_take(&mut self) {
         let before = self.strip;
+        if self.live_strip.is_none() {
+            self.live_fit = self.strip_fit;
+        }
         self.fit_view();
         let live = self.live_strip.map_or(before, |(live, _)| live);
         self.live_strip = Some((live, self.strip));
@@ -5991,13 +5915,11 @@ impl TimegrapherApp {
                 steady::series_switches(ui, &mut self.dist_series);
                 theme::bar_gap(ui);
                 self.histogram_settings(ui);
-                self.pane_average_setting(ui, pane);
                 self.export_button(ui, pane);
             }),
             Pane::Charts => theme::pane_toolbar(ui, title, help::CHARTS, |ui| {
                 steady::series_switches(ui, &mut self.chart_series);
                 theme::bar_gap(ui);
-                self.pane_average_setting(ui, pane);
                 self.export_button(ui, pane);
             }),
             _ => return false,
@@ -6032,21 +5954,13 @@ impl TimegrapherApp {
         });
     }
 
-    /// A pane's name as its tab shows it, with its own averaging time.
-    fn pane_heading(&self, pane: Pane) -> String {
-        match self.pane_average.get(&pane) {
-            Some(&s) => format!("{} · {}", pane.title(), fields::duration(s)),
-            None => pane.title().to_string(),
-        }
-    }
-
     /// Where a picture of a pane has its toolbar: the pane's name, and a
     /// chart's key, since the tab bar isn't in the picture.
     fn export_heading(&self, ui: &mut egui::Ui, pane: Pane) {
         let pal = theme::pal(ui);
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(self.pane_heading(pane))
+                RichText::new(pane.title())
                     .font(theme::semibold(13.0))
                     .color(pal.text),
             );
@@ -6144,37 +6058,6 @@ impl TimegrapherApp {
                 pane.title(),
                 path.display()
             )),
-        }
-    }
-
-    /// Average Over for one pane: Readings' time, or one of its own.
-    fn pane_average_setting(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        theme::tool_field(ui, "Average Over", PANE_AVERAGE_HINT, |ui| {
-            self.pane_average_choice(ui, pane);
-        });
-    }
-
-    /// The list behind a pane's Average Over: As Readings, or a time of
-    /// its own.
-    fn pane_average_choice(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        let own = self.pane_average.get(&pane).copied();
-        let readings = fields::duration(self.average_s);
-        let mut choice = own;
-        egui::ComboBox::from_id_salt(("pane average", pane))
-            .selected_text(match own {
-                Some(s) => fields::duration(s),
-                None => format!("{readings} as Readings"),
-            })
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut choice, None, format!("As Readings ({readings})"));
-                for a in AVERAGES {
-                    ui.selectable_value(&mut choice, Some(a), fields::duration(a));
-                }
-            })
-            .response
-            .on_hover_text(PANE_AVERAGE_HINT);
-        if choice != own {
-            self.set_pane_average(pane, choice);
         }
     }
 
@@ -7039,31 +6922,23 @@ impl TimegrapherApp {
             None => heard.map(|b| (b, "the rate found from the beats")),
         };
         let current = self.calibre.clone();
-        let mut lift = self.lift_deg;
-        let picked = if ui.available_width() >= TWO_FIELDS_W {
+        let mut bph = self.bph;
+        let picked = if ui.available_width() >= TWO_FIELDS_W || self.bph_set_by_calibre() {
             self.cal.picker(ui, &current, rate)
         } else {
-            // Too narrow for both under the picker: the beat rate keeps
-            // the controls row and the lift heads this menu.
-            let settable = self.lift_settable();
+            // Too narrow for both under the picker: the lift keeps the
+            // controls row, since Auto finds the beat rate and nothing
+            // finds the lift, and the beat rates head this menu.
+            let how = self.bph_hint();
             let mut first = |ui: &mut egui::Ui| {
-                let words = if settable {
-                    format!("Lift: {}", show_degrees(lift))
-                } else {
-                    format!("Lift: {}, set by the calibre", show_degrees(lift))
+                let found = match (bph, heard) {
+                    (None, Some(h)) => format!("Beat Rate: Auto, {h} found"),
+                    (Some(b), _) => format!("Beat Rate: {b} bph"),
+                    _ => "Beat Rate: Auto".to_string(),
                 };
-                ui.label(RichText::new(words).small().color(pal.text_tertiary))
-                    .on_hover_text(LIFT_HINT);
-                if settable {
-                    for o in LIFTS {
-                        if ui
-                            .selectable_label(o == lift, format!("Lift {}", show_degrees(o)))
-                            .clicked()
-                        {
-                            lift = o;
-                        }
-                    }
-                }
+                ui.label(RichText::new(found).small().color(pal.text_tertiary))
+                    .on_hover_text(how);
+                bph_choices(ui, &mut bph);
                 ui.separator();
             };
             self.cal
@@ -7071,8 +6946,8 @@ impl TimegrapherApp {
         };
         if let Some(p) = picked {
             self.set_calibre(p);
-        } else if lift != self.lift_deg {
-            self.set_lift(lift);
+        } else if bph != self.bph {
+            self.change_bph(bph);
         }
     }
 
@@ -7102,15 +6977,14 @@ impl TimegrapherApp {
         }
     }
 
-    /// The Calibre card's controls row: the beat rate and the lift angle
-    /// side by side, each as text where the calibre sets it. Where the
-    /// row is too narrow for both, the beat rate alone, the lift heading
-    /// the Calibre menu.
+    /// The Calibre card's controls row: the lift angle, then the beat
+    /// rate, each as text where the calibre sets it. Where the row is too
+    /// narrow for both, the lift alone (nothing finds it, while Auto finds
+    /// the beat rate), the beat rates heading the Calibre menu.
     fn rate_and_lift(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let heard = self.live.as_ref().and_then(|l| l.bph());
         let both = ui.available_width() >= TWO_FIELDS_W;
-        let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
         let fact = |ui: &mut egui::Ui, label: &str, value: String, why: &str, w: f32| {
             ui.allocate_ui_with_layout(
                 Vec2::new(w, theme::CONTROL_H),
@@ -7138,83 +7012,93 @@ impl TimegrapherApp {
                 )
             }
         };
-        let bph_w = if both { half } else { ui.available_width() };
-        {
-            if self.bph_set_by_calibre() {
-                let b = self
-                    .bph
-                    .or_else(|| self.cal.bph(&self.calibre))
-                    .or(heard)
-                    .map_or_else(|| "Found When Heard".to_string(), |b| format!("{b} bph"));
-                fact(ui, "", b, &set_by("beat rate"), bph_w);
-            } else {
-                let mut bph = self.bph;
-                // Words that say whether it was found or set.
-                let shown = match (bph, heard) {
-                    (Some(b), _) => format!("{b} bph"),
-                    (None, Some(h)) => format!("Auto {h}"),
-                    _ => "Auto".to_string(),
-                };
-                // As wide as its words, the lift taking the rest of the row.
-                let words_w = ui.fonts_mut(|f| {
-                    f.layout_no_wrap(shown.clone(), egui::FontId::proportional(13.0), pal.text)
-                        .size()
-                        .x
-                });
-                if !both {
-                    // Alone in a narrow row: less padding, so its words fit.
-                    ui.spacing_mut().button_padding.x = 4.0;
-                }
-                // ComboBox's width leaves out its padding and ▾.
-                let sp = ui.spacing();
-                let chrome = 2.0 * sp.button_padding.x + sp.icon_width + sp.icon_spacing;
-                let combo_w = if both { words_w + 8.0 } else { bph_w - chrome };
-                egui::ComboBox::from_id_salt("bph")
-                    .width(combo_w)
-                    .height(320.0)
-                    .selected_text(shown)
-                    .show_ui(ui, |ui| bph_choices(ui, &mut bph))
-                    .response
-                    .on_hover_text(self.bph_hint());
-                if bph != self.bph {
-                    self.change_bph(bph);
-                }
+        let words_w = |ui: &mut egui::Ui, words: &str| {
+            ui.fonts_mut(|f| {
+                f.layout_no_wrap(
+                    words.to_string(),
+                    egui::FontId::proportional(13.0),
+                    pal.text,
+                )
+                .size()
+                .x
+            })
+        };
+        // The beat rate in words that say whether it was found or set, and
+        // the room it takes at the end of the row: as wide as its words.
+        let bph_set = self.bph_set_by_calibre();
+        let shown = if bph_set {
+            self.bph
+                .or_else(|| self.cal.bph(&self.calibre))
+                .or(heard)
+                .map_or_else(|| "Found When Heard".to_string(), |b| format!("{b} bph"))
+        } else {
+            match (self.bph, heard) {
+                (Some(b), _) => format!("{b} bph"),
+                (None, Some(h)) => format!("Auto {h}"),
+                _ => "Auto".to_string(),
             }
-        }
-        if !both {
-            return;
-        }
-        let w = ui.available_width();
-        if !self.lift_settable() {
+        };
+        let text_w = words_w(ui, &shown);
+        let sp = ui.spacing();
+        // ComboBox's width leaves out its padding and ▾.
+        let chrome = 2.0 * sp.button_padding.x + sp.icon_width + sp.icon_spacing;
+        let bph_w = if bph_set {
+            text_w + 4.0
+        } else {
+            text_w + 8.0 + chrome
+        };
+        let lift_w = if both {
+            ui.available_width() - bph_w - sp.item_spacing.x
+        } else {
+            ui.available_width()
+        };
+        if self.lift_settable() {
+            let mut lift = self.lift_deg;
+            let (resp, changed) = fields::combo(
+                ui,
+                "lift",
+                &mut lift,
+                10.0..=90.0,
+                &DEGREES,
+                &LIFTS,
+                show_degrees,
+                "Lift",
+                lift_w,
+            );
+            resp.on_hover_text(if self.lift_known() {
+                "The lift angle: type it, or pick one with ▾".to_string()
+            } else {
+                LIFT_HINT.to_string()
+            });
+            if changed {
+                self.set_lift(lift);
+            }
+        } else {
             fact(
                 ui,
                 "Lift",
                 format!("{}°", fields::plain(self.lift_deg)),
                 &set_by("lift angle"),
-                w,
+                lift_w,
             );
+        }
+        if !both {
             return;
         }
-        let mut lift = self.lift_deg;
-        let prefix = "Lift";
-        let (resp, changed) = fields::combo(
-            ui,
-            "lift",
-            &mut lift,
-            10.0..=90.0,
-            &DEGREES,
-            &LIFTS,
-            show_degrees,
-            prefix,
-            w,
-        );
-        resp.on_hover_text(if self.lift_known() {
-            "The lift angle: type it, or pick one with ▾".to_string()
-        } else {
-            LIFT_HINT.to_string()
-        });
-        if changed {
-            self.set_lift(lift);
+        if bph_set {
+            fact(ui, "", shown, &set_by("beat rate"), ui.available_width());
+            return;
+        }
+        let mut bph = self.bph;
+        egui::ComboBox::from_id_salt("bph")
+            .width(text_w + 8.0)
+            .height(320.0)
+            .selected_text(shown)
+            .show_ui(ui, |ui| bph_choices(ui, &mut bph))
+            .response
+            .on_hover_text(self.bph_hint());
+        if bph != self.bph {
+            self.change_bph(bph);
         }
     }
 
@@ -7537,9 +7421,8 @@ impl TimegrapherApp {
         theme::tool_field(
             ui,
             "Length",
-            "Time shown along the strip, such as 30 s, 5 min or 2 h. Fit shows the whole \
-             session so far, up to its latest beat, or its last 24 hours when it is longer. \
-             The mouse wheel on the strip changes it too.",
+            "Time shown along the strip, such as 30 s, 5 min or 2 h. The mouse wheel on the \
+             strip changes it too.",
             |ui| {
                 let mut s = self.strip.span_s;
                 let a = fields::entry(
@@ -7551,24 +7434,29 @@ impl TimegrapherApp {
                     48.0,
                 );
                 let b = fields::presets(ui, "span-presets", &mut s, &SPANS, span_label);
-                // Fitted to the take on show: a length for the take only.
-                if self
-                    .live_strip
-                    .is_some_and(|(_, fitted)| fitted == self.strip)
-                {
-                    ui.label(RichText::new("Fit").small().color(pal.text_secondary))
-                        .on_hover_text(
-                            "Fitted to the take on show. Listen brings back the strip's own \
-                             width and length.",
-                        );
-                }
-                if b && s.is_infinite() {
-                    self.fit_strip();
-                } else if a || b {
+                if a || b {
+                    self.strip_fit = false;
                     self.strip.set_span(s);
                 }
             },
         );
+        let mut fit = self.strip_fit;
+        if theme::tool_switch(
+            ui,
+            Icon::Fit,
+            pal.accent,
+            "Fit",
+            &mut fit,
+            "Show the whole session along the strip, up to its latest beat (its last 24 hours \
+             when it is longer), and keep it in view as beats arrive. Zooming or dragging the \
+             strip's time turns it off.",
+        ) {
+            if fit {
+                self.fit_strip();
+            } else {
+                self.strip_fit = false;
+            }
+        }
         theme::bar_gap(ui);
         theme::tool_switch(
             ui,
@@ -7728,8 +7616,7 @@ impl TimegrapherApp {
                 }
             }
         });
-        // Average Over's name in words sets it apart: no line before it.
-        self.pane_average_setting(ui, Pane::Strip);
+        theme::bar_gap(ui);
         self.export_button(ui, Pane::Strip);
     }
 
@@ -7814,7 +7701,6 @@ impl TimegrapherApp {
             ],
         );
         theme::bar_gap(ui);
-        self.pane_average_setting(ui, Pane::Sound);
         self.export_button(ui, Pane::Sound);
     }
 
@@ -11779,7 +11665,7 @@ impl TimegrapherApp {
     fn strip_trend(&mut self, from: f64, end: f64, seconds: f64) -> (Vec<TrendPoint>, f64) {
         let step = strip_step(end - from);
         let kept: Vec<TrendPoint> = self
-            .trend_for(seconds)
+            .trend
             .iter()
             .filter(|p| p.t >= from && p.t <= end)
             .copied()
@@ -11834,6 +11720,7 @@ impl TimegrapherApp {
         if guessing && candidates.is_empty() {
             return self.no_watch(ui);
         }
+        self.follow_fit();
         if self.follow {
             self.centre();
         }
@@ -11853,14 +11740,13 @@ impl TimegrapherApp {
             })
         };
         let from = end - self.strip.span_s - 5.0;
-        let (trend, step) = self.strip_trend(from, end, self.average_for(Pane::Strip));
+        let (trend, step) = self.strip_trend(from, end, self.average_s);
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
-        // The strip's own Average Over, as its overlays use.
         // The guides follow the rate line's slope, so it is worked out for
         // either.
         let rate_line = (self.rate_line || self.rate_guides)
-            .then(|| self.reading_over(self.average_for(Pane::Strip)))
+            .then(|| self.reading_over(self.average_s))
             .flatten()
             .and_then(|r| {
                 Some(strip::RateLine {
@@ -12323,6 +12209,10 @@ impl TimegrapherApp {
         if let Some((was, now)) = input.reshape {
             self.reshape_mask(was, now);
         }
+        if input.span_factor != 1.0 || input.time_shift_s != 0.0 {
+            // Zooming or panning time is the strip by hand: Fit goes off.
+            self.strip_fit = false;
+        }
         if input.span_factor != 1.0 {
             let was = self.strip.span_s;
             self.strip.set_span(was * input.span_factor);
@@ -12396,7 +12286,6 @@ impl TimegrapherApp {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
         let short = !self.hist_readings;
-        let pane = Pane::Distributions;
         if reading == SeriesKind::Rate && short {
             match self.live.as_ref() {
                 Some(live) => self.rate_2s.refresh(live, &self.masked),
@@ -12410,8 +12299,8 @@ impl TimegrapherApp {
         // One reading per averaging time: a new reading comes every half
         // second, and the ones between share most of their beats, so counting
         // them all would stack up repeats and look surer than it is.
-        let every = self.average_for(pane);
-        let trend = self.trend_for(every);
+        let every = self.average_s;
+        let trend = &self.trend;
         let readings = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<f64> {
             let mut last = f64::NEG_INFINITY;
             trend
@@ -12672,8 +12561,8 @@ impl TimegrapherApp {
     fn chart(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
         let pal = theme::pal(ui);
         let weak = pal.text_tertiary;
-        let average = self.average_for(Pane::Charts);
-        let trend = self.trend_for(average);
+        let average = self.average_s;
+        let trend = &self.trend;
         let pick = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
             trend
                 .iter()
@@ -12952,6 +12841,7 @@ impl TimegrapherApp {
         }
         if let Some(at) = click {
             if at.x > 0.0 {
+                self.strip_fit = false;
                 self.strip_end = Some(at.x);
             }
         }
@@ -13358,7 +13248,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
 
     /// A pane averaging over a time of its own names it.
     fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
-        RichText::new(self.app.pane_heading(*pane))
+        RichText::new(pane.title())
             .font(theme::semibold(12.5))
             .into()
     }
@@ -14161,12 +14051,6 @@ fn notice(
 /// A beat on the Scope: its index, its time's bits (so a new session's
 /// beat of the same index is another) and the span drawn.
 type ScopeKey = (i64, u64, scope::Zoom, u64);
-
-/// What a pane's Average Over does.
-const PANE_AVERAGE_HINT: &str = "How much of the beats each point in this pane is averaged over. \
-     As Readings follows Average Over on the Listen card. A time of its own sets \
-     everything in this pane that Average Over sets, and is named on the pane's tab, until \
-     Average Over on the Listen card is changed: then every pane follows that again.";
 
 /// Everything Average Over sets, and what it leaves alone.
 const AVERAGE_REACH: &str = "How much of the latest beats each reading is fitted over. It sets: \
@@ -17329,9 +17213,80 @@ mod tests {
         let mut app = synthetic(40.0, 0.0);
         app.strip_end = Some(10.0);
         app.fit_strip();
+        assert!(app.strip_fit);
         assert_eq!(app.strip_end, None);
         assert!((app.strip.span_s - app.latest_s()).abs() < 1e-9);
         assert!(app.latest_s() > 35.0);
+    }
+
+    /// Fit stays on and keeps the whole session in view frame by frame;
+    /// zooming or panning the strip's time turns it off, its width doesn't.
+    #[test]
+    fn fit_follows_the_take_until_the_strip_is_zoomed_or_panned() {
+        let mut app = synthetic(40.0, 0.0);
+        app.fit_strip();
+        // As if the session had grown since the last frame.
+        app.strip.set_span(10.0);
+        app.follow_fit();
+        assert!((app.strip.span_s - app.latest_s()).abs() < 1e-9);
+        let end = app.latest_s();
+        app.apply_strip_input(
+            StripInput {
+                width_factor: 2.0,
+                ..Default::default()
+            },
+            end,
+        );
+        assert!(app.strip_fit, "the width is not the strip's time");
+        app.apply_strip_input(
+            StripInput {
+                span_factor: 0.5,
+                ..Default::default()
+            },
+            end,
+        );
+        assert!(!app.strip_fit);
+        let zoomed = app.strip.span_s;
+        app.follow_fit();
+        assert_eq!(app.strip.span_s, zoomed, "off, it leaves the length alone");
+        app.fit_strip();
+        app.apply_strip_input(
+            StripInput {
+                time_shift_s: -5.0,
+                ..Default::default()
+            },
+            end,
+        );
+        assert!(!app.strip_fit);
+    }
+
+    /// Fit is one fixed switch: the strip's toolbar is as wide with it on
+    /// as off, so nothing after it moves.
+    #[test]
+    fn the_fit_switch_never_moves_the_strip_toolbar() {
+        let mut app = synthetic(40.0, 0.0);
+        let ctx = themed();
+        let width = |app: &mut TimegrapherApp| {
+            let mut w = 0.0;
+            for _ in 0..2 {
+                let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        w = ui
+                            .horizontal(|ui| app.strip_settings(ui))
+                            .response
+                            .rect
+                            .width();
+                    });
+                });
+            }
+            w
+        };
+        app.strip_fit = false;
+        let off = width(&mut app);
+        app.fit_take();
+        assert!(app.strip_fit, "an opened take is fitted");
+        let on = width(&mut app);
+        assert_eq!(off, on);
     }
 
     /// A recording of `seconds` written to `dir/name`, opened and analysed
@@ -18337,7 +18292,6 @@ mod tests {
             .unwrap()
             .set_breaks(app.session.replay_breaks().unwrap());
         app.clear_trends();
-        app.other_trends.insert(trend_key(5.0), Vec::new());
         let tx = queued_capture(&mut app, &base);
         app.capture.as_mut().unwrap().is_file = true;
         tx.send(Event::Audio(timegrapher_core::capture::Block {
@@ -18352,7 +18306,6 @@ mod tests {
             "fixture must read within the saved settle: {at}"
         );
         assert!(app.trend.is_empty());
-        assert!(app.other_trends.values().all(Vec::is_empty));
         assert!(app.reading().is_none());
         assert_eq!(app.live.as_ref().unwrap().breaks(), &[8.0, 14.0]);
         app.stop();
@@ -18393,16 +18346,9 @@ mod tests {
             .as_mut()
             .unwrap()
             .set_breaks(app.session.replay_breaks().unwrap());
-        app.pane_average.insert(Pane::Charts, 5.0);
         app.rebuild_trend();
         assert!(!app.trend.is_empty());
-        assert!(!app.other_trends[&trend_key(5.0)].is_empty());
         assert!(app.trend.iter().all(|p| p.t <= 30.0 || p.t > 40.0));
-        assert!(app
-            .other_trends
-            .values()
-            .flatten()
-            .all(|p| p.t <= 30.0 || p.t > 40.0));
         assert!(app.reading_at_time(35.0).is_none());
         let after = app.reading_at_time(41.0).unwrap();
         assert!(
@@ -19203,11 +19149,11 @@ mod tests {
         let ctx = themed();
         for w in [800.0, 1000.0, 1610.0] {
             let texts = window_texts(&mut app, &ctx, w);
-            let mut wants = vec!["DU", "Listen", "Not Set", "Watches", "Auto"];
+            let mut wants = vec!["DU", "Listen", "Not Set", "Watches", "Lift"];
             if w > 800.0 {
-                // At 800 the lift heads the Calibre menu, and the beat
-                // rate has the row.
-                wants.push("Lift");
+                // At 800 the beat rate heads the Calibre menu, and the lift
+                // has the row: nothing finds the lift, Auto finds the rate.
+                wants.push("Auto");
             }
             if w > 800.0 {
                 wants.push("0:00");
@@ -20428,57 +20374,41 @@ mod tests {
         assert_eq!(day_of("2026-10-12T20:00:00Z"), "2026-10-12");
     }
 
-    /// A pane follows Readings' Average Over until given a time of its
-    /// own, which keeps its own readings until Readings' Average Over is
-    /// changed: then every pane follows it again.
+    /// One Average Over, on the Listen card, for the readings and every
+    /// pane: a pane's own time, saved by an older app, is read and left
+    /// out.
     #[test]
-    fn a_pane_follows_readings_unless_set() {
+    fn one_average_over_sets_every_pane() {
         let mut app = synthetic(40.0, 0.0);
-        assert_eq!(app.average_for(Pane::Charts), 10.0);
-        app.set_pane_average(Pane::Charts, Some(30.0));
-        assert_eq!(app.average_for(Pane::Charts), 30.0);
-        assert_eq!(app.average_for(Pane::Distributions), 10.0);
-        let own = app.trend_for(30.0);
-        assert!(!own.is_empty());
-        assert!(own.last().unwrap().t > 30.0);
-        // Back to following: its own readings are dropped.
-        app.set_pane_average(Pane::Charts, None);
-        assert_eq!(app.average_for(Pane::Charts), 10.0);
-        assert!(app.other_trends.is_empty());
-        // A new time for Readings takes over every pane's own.
-        app.set_pane_average(Pane::Charts, Some(30.0));
-        app.set_pane_average(Pane::Strip, Some(60.0));
-        app.set_average(5.0);
-        assert_eq!(app.average_for(Pane::Charts), 5.0);
-        assert_eq!(app.average_for(Pane::Strip), 5.0);
-        assert_eq!(app.average_for(Pane::Distributions), 5.0);
-        assert!(app.pane_average.is_empty() && app.other_trends.is_empty());
-        // Picking Readings' own time is the same as following it.
-        app.set_pane_average(Pane::Charts, Some(5.0));
-        assert!(app.pane_average.is_empty());
+        app.set_average(30.0);
+        assert!(!app.trend.is_empty());
+        assert!(app.trend.last().unwrap().t > 30.0);
+        let mut s = app.settings();
+        let mut json = serde_json::to_value(&s).unwrap();
+        json["pane_average"] = serde_json::json!([["Charts", 5.0]]);
+        s = serde_json::from_value(json).unwrap();
+        let mut back = TimegrapherApp::with_devices(Vec::new(), None);
+        back.apply_settings(s);
+        assert_eq!(back.average_s, 30.0);
     }
 
-    /// The per-pane times and each Steadiness pane's series come back next
-    /// time, with every series off read as all on, and the one choice an
-    /// older app kept for its single Steadiness pane given to every view.
+    /// Each Steadiness pane's series come back next time, with every
+    /// series off read as all on, and the one choice an older app kept for
+    /// its single Steadiness pane given to every view.
     #[test]
-    fn pane_times_and_series_are_kept() {
+    fn each_steady_panes_series_are_kept() {
         use steady::View;
         let mut app = synthetic(5.0, 0.0);
-        app.set_pane_average(Pane::Strip, Some(60.0));
         app.steady_series.insert(View::Fft, [false, true, false]);
         let s = app.settings();
         let mut back = TimegrapherApp::with_devices(Vec::new(), None);
         back.apply_settings(s.clone());
-        assert_eq!(back.average_for(Pane::Strip), 60.0);
         assert_eq!(back.steady_series[&View::Fft], [false, true, false]);
         assert_eq!(back.steady_series[&View::Cycle], [true; 3]);
         let mut none = s;
         none.steady_shown = vec![(View::Fft, [false; 3])];
-        none.pane_average = vec![(Pane::Watch, 30.0), (Pane::Charts, 7.0)];
         back.apply_settings(none);
         assert_eq!(back.steady_series[&View::Fft], [true; 3]);
-        assert!(back.pane_average.is_empty());
         let mut older = app.settings();
         older.steady_shown.clear();
         older.steady_series = [true, false, false];

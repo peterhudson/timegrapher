@@ -524,8 +524,9 @@ fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
             }
         }
     }
-    // The panes with the most settings fold some at 420 pt.
-    for p in [Pane::Strip, Pane::Sound] {
+    // The pane with the most settings folds some at 420 pt. (The Tick Tock
+    // Profile's fit at 420 since its own Average Over went.)
+    for p in [Pane::Strip] {
         if !folded_at_narrow.contains(&p) {
             wrong.push(format!("{} at 420 pt: no \"…\" menu", p.title()));
         }

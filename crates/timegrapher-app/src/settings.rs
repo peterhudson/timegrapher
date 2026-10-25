@@ -69,9 +69,6 @@ pub struct Settings {
     /// short list's ones taken off it.
     pub short_added: Vec<String>,
     pub short_removed: Vec<String>,
-    /// Panes averaged over their own time rather than Readings' Average
-    /// Over.
-    pub pane_average: Vec<(Pane, f64)>,
     /// Look for a newer release each time the app starts.
     pub check_updates: bool,
     /// Keep the computer from sleeping on its own while listening.
@@ -146,7 +143,6 @@ impl Default for Settings {
             recent_calibres: Vec::new(),
             short_added: Vec::new(),
             short_removed: Vec::new(),
-            pane_average: Vec::new(),
             check_updates: true,
             keep_awake: true,
             listen_at_open: true,

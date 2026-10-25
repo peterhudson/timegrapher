@@ -99,10 +99,10 @@ fitted over. **Rate**, **Amplitude** and **Beat Error** have no
 controls: each is its figure. **Calibre** holds what the readings are
 worked out for, in one place: the **Calibre** pop-up on its figure row
 (its search covers the whole table, with **Manage Calibres…** at its
-foot; see Calibre, below), and under it the beat rate's pop-up (**Auto**,
-found from the beats and given beside it, "Auto 28800", or a standard
-rate, "21600 bph") and **Lift**, the lift angle, one field typed in or picked from
-the common ones with its ▾ (52° by default). A calibre picked in Quick
+foot; see Calibre, below), and under it **Lift**, the lift angle, one
+field typed in or picked from the common ones with its ▾ (52° by
+default), then the beat rate's pop-up (**Auto**, found from the beats and
+given beside it, "Auto 28800", or a standard rate, "21600 bph"). A calibre picked in Quick
 Listen sets the beat rate, and the lift angle where the table has one,
 which then show as text; Not Set puts back Auto and 52°. A calibre
 picked that beats at another rate than the one heard says so in a chip
@@ -127,9 +127,9 @@ instead of the buttons (none while a take is on show or a test runs); keys 1 to 
 its two icons, gives the take's length beside its caption ("Listen
 12:48"; on the narrowest windows in the Listen icon's hover instead),
 and shows Average Over's pop-up as **Avg 10 s**. Compact, Calibre keeps
-its pop-up with the beat rate and lift under it; on the narrowest
-windows the beat rate alone ("Auto 28800"), with the lift heading the
-Calibre menu (its value, then the common lift angles to pick).
+its pop-up with the lift and beat rate under it; on the narrowest
+windows the lift alone, since nothing finds the lift while Auto finds the
+beat rate, with the beat rates heading the Calibre menu.
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
@@ -269,7 +269,7 @@ setting in use, and a click changes to the other (Direction shows a
 down arrow while the strip runs down and an across arrow while it runs
 across); a choice of more is a row of icons with the picked one tinted.
 Icons are for what can be clicked: a setting that holds a value (Width,
-Length, Average Over, Settle, Span, Beats) shows its name in words before
+Length, Settle, Span, Beats) shows its name in words before
 its field, with the same hover; a search box keeps the magnifying glass
 beside it. **Start Test**, **Start a New Test** and **Copy** keep their words
 beside their icons. When the pane is too narrow for every icon, the last
@@ -332,14 +332,10 @@ or 60 s; the setting is Average Over, on the Listen card). Early in a session, o
 more than 2 s with no beats, there are fewer seconds of beats than asked
 for: the readings use what there is and say so in the rate's hover
 ("190 beats in 24 s of 180 s"); they never fit across a break or gap, since the watch may have
-been moved or have drifted meanwhile. The panes that average (the Paper Strip's
-Rate Line, guides and overlays, the Tick Tock Profile, Charts and
-Distributions) follow Readings' Average Over unless set otherwise: each has
-its own **Average Over** in its toolbar,
-"As Readings" by default or one of the presets, and a pane with its own
-time names it in its tab ("Charts · 30 s"). A pane's own time sets everything
-in it that Average Over would. Changing Readings' Average Over puts every
-pane back on it, dropping their own times. The big amplitude is the average of the two
+been moved or have drifted meanwhile. Average Over is one setting for the
+whole app: the panes that average (the Paper Strip's Rate Line, guides
+and overlays, the Tick Tock Profile, Charts and Distributions) all
+average over it, and have no time of their own. The big amplitude is the average of the two
 swings, in whole degrees, with a ± figure: the standard error of the
 median of its 2 s windows, estimated from successive window differences
 and widened for the windows' lag-one correlation.
@@ -765,13 +761,21 @@ run from ±1 ms, for a good watch's beat error, through ±62.5 ms, half a
 beat at 28,800 bph and the widest view in which tick and tock can't wrap
 onto each other, up to ±60 s, so a long run-down take that drifts by many
 seconds can be shown without wrapping; the lengths run from 10 s of beats
-to a two-hour run, then **Fit**, which sets the length to the whole
-session so far, or its last 24 hours when it is longer, and shows it up
-to its latest beat. Opening a take sets the length to **Fit** and the
-width to the narrowest of the listed widths that holds all its beats
-without wrapping (leaving out one stray dot in a thousand at each end),
-so the whole take shows at once. Listen then brings back the width and
-length the strip had before, unless they were changed by hand meanwhile.
+to a two-hour run.
+
+**Fit**, the switch beside Length (arrows out to two edges, lit while
+on), shows the whole session so far along the strip, up to its latest
+beat (its last 24 hours when it is longer):
+
+- While it is on, the length keeps growing with the take as beats arrive.
+- Zooming the strip's time (the wheel, or a length typed or picked) or
+  looking back through it (dragging, or a click on a chart) turns it off.
+  Changing the width leaves it on.
+- Opening a take turns it on and sets the width to the narrowest of the
+  listed widths that holds all its beats without wrapping (leaving out
+  one stray dot in a thousand at each end), so the whole take shows at
+  once. Listen then brings back the width, length and Fit the strip had
+  before, unless they were changed by hand meanwhile.
 
 On the strip, the mouse wheel changes the length about the time under the
 pointer, which stays where it is, Shift or Ctrl and the wheel (or a
