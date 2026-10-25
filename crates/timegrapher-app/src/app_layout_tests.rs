@@ -676,7 +676,7 @@ fn the_maps_show_one_map_at_a_time_and_share_it() {
     let mut app = TimegrapherApp::with_devices(mac_devices(), None);
     assert_eq!(app.series_shown(View::Stft), [true, false, false]);
     assert_eq!(app.series_shown(View::Wavelet), [true, false, false]);
-    assert_eq!(app.series_shown(View::Fft), [true; 3]);
+    assert_eq!(app.series_shown(View::Fft), [true, false, false]);
     app.steady_series.insert(View::Stft, [false, true, false]);
     assert_eq!(app.series_shown(View::Wavelet), [false, true, false]);
     let ctx = egui::Context::default();

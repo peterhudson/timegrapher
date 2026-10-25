@@ -14,6 +14,10 @@ use serde::{Deserialize, Serialize};
 /// Where the settings sit in eframe's storage.
 const KEY: &str = "timegrapher-settings";
 
+/// A pane of several plots shows Rate alone until its switches are
+/// changed: rate, amplitude, beat error.
+pub const RATE_ONLY: [bool; 3] = [true, false, false];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -124,14 +128,14 @@ impl Default for Settings {
             rate_guides: true,
             overlays: [true, false, false],
             follow: false,
-            chart_series: [true; 3],
-            dist_series: [true; 3],
+            chart_series: RATE_ONLY,
+            dist_series: RATE_ONLY,
             hist_cumulative: false,
             hist_readings: true,
             sound: profiles::Options::default(),
             folded: Vec::new(),
             theme: ThemePreference::System,
-            steady_series: [true; 3],
+            steady_series: RATE_ONLY,
             steady_shown: Vec::new(),
             periods_log: false,
             fft_timing: false,
