@@ -6057,7 +6057,17 @@ impl TimegrapherApp {
                         "Show the watches whose name, calibre, notes or fields hold this",
                     );
                 if std::mem::take(&mut self.watch_search_focus) {
+                    // Its text selected, as Find does, so typing replaces it.
                     field.request_focus();
+                    let mut state =
+                        egui::TextEdit::load_state(ui.ctx(), field.id).unwrap_or_default();
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::two(
+                            egui::text::CCursor::default(),
+                            egui::text::CCursor::new(self.watch_search.chars().count()),
+                        )));
+                    state.store(ui.ctx(), field.id);
                 }
             },
         );
@@ -14550,9 +14560,10 @@ impl TimegrapherApp {
         }
         // Keys 1 to 6, alone, put the watch in a position: never with a
         // modifier held, nor in the Watches view, nor while a field is
-        // being typed in.
-        let bare = ctx.input(|i| i.modifiers.is_none());
-        if self.view == View::Bench && bare && !ctx.wants_keyboard_input() {
+        // being typed in. The modifiers are the key event's own, as a
+        // shortcut's are: one pressed and let go within a frame is gone
+        // from the frame's by the time it is read.
+        if self.view == View::Bench && !ctx.wants_keyboard_input() {
             let keys = [
                 egui::Key::Num1,
                 egui::Key::Num2,
@@ -14561,7 +14572,17 @@ impl TimegrapherApp {
                 egui::Key::Num5,
                 egui::Key::Num6,
             ];
-            let pressed = ctx.input(|i| keys.iter().position(|&k| i.key_pressed(k)));
+            let pressed = ctx.input(|i| {
+                i.events.iter().find_map(|e| match e {
+                    egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.is_none() => keys.iter().position(|k| k == key),
+                    _ => None,
+                })
+            });
             if let Some(p) = pressed
                 .map(|n| Position::ALL[n])
                 .filter(|_| self.position_editable())
@@ -20356,6 +20377,14 @@ mod tests {
         ] {
             press(&mut app, egui::Key::Num3, held);
             assert_eq!((app.view, app.position), (View::Bench, start), "{held:?}");
+            // Pressed and let go within the frame: only the key event
+            // carries the modifier, the frame's are none.
+            let quick = egui::RawInput {
+                modifiers: egui::Modifiers::NONE,
+                ..key_frame(egui::Key::Num3, held)
+            };
+            let _ = ctx.run(quick, |ctx| app.panels(ctx));
+            assert_eq!(app.position, start, "{held:?} on the event only");
         }
         press(&mut app, egui::Key::Num3, egui::Modifiers::NONE);
         assert_eq!(app.position, Position::ALL[2]);
@@ -20439,12 +20468,14 @@ mod tests {
     }
 
     /// Find in Watches… shows the Watches view's list with the search
-    /// field ready to type in; Open on a take there goes to the Bench.
+    /// field ready to type in, what it held selected so typing replaces
+    /// it; Open on a take there goes to the Bench.
     #[test]
     fn find_in_watches_readies_the_search_and_open_goes_to_the_bench() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let ctx = themed();
         let _ = ctx.run(screen(), |ctx| app.panels(ctx));
+        app.watch_search = "Pepsi".into();
         app.find_in_watches();
         assert_eq!(app.view, View::Watches);
         assert!(app.list_shown());
@@ -20453,6 +20484,12 @@ mod tests {
         }
         assert!(!app.watch_search_focus);
         assert!(ctx.wants_keyboard_input(), "search field focused");
+        let typed = egui::RawInput {
+            events: vec![egui::Event::Text("S".into())],
+            ..screen()
+        };
+        let _ = ctx.run(typed, |ctx| app.panels(ctx));
+        assert_eq!(app.watch_search, "S", "the old search was selected");
         let missing = std::env::temp_dir().join("tg-app-no-such-take");
         app.take_action(Some(watches::TakeAction::Open(missing)));
         assert_eq!(app.view, View::Bench);
