@@ -236,6 +236,9 @@ enum Confirm {
     NewSession,
     /// A new take of the watch picked, of the kind asked for.
     NewTake(NewTake),
+    /// Another watch, or No Watch (`None`), picked on the Watch line
+    /// while a take is on show: the take is put away.
+    PickWatch(Option<String>),
     Quit,
     /// Start listening to the microphone, over a recording whose masks
     /// changed.
@@ -1712,6 +1715,9 @@ pub struct TimegrapherApp {
     view: View,
     /// Find in Watches… asked for the search field's focus.
     watch_search_focus: bool,
+    /// The watch the New Watch form adds goes on the microphone, as the
+    /// Watch line picks it: New Watch… there opened the form.
+    new_watch_on_mic: bool,
     /// The Watches view: the watch picked (its id), the list's search,
     /// order, and the details form.
     watch_open: Option<String>,
@@ -2306,6 +2312,7 @@ impl TimegrapherApp {
             library_moving: None,
             view: View::Bench,
             watch_search_focus: false,
+            new_watch_on_mic: false,
             watch_open: None,
             unsorted_open: false,
             list_for: None,
@@ -5071,6 +5078,7 @@ impl TimegrapherApp {
                 RichText::new(match what {
                     Confirm::NewSession => "Start a new session?",
                     Confirm::NewTake(_) => "Start a new take without saving?",
+                    Confirm::PickWatch(_) => "Pick another watch without saving?",
                     Confirm::Quit => "Quit without saving?",
                     Confirm::Open { .. } => "Open the recording without saving?",
                     Confirm::Microphone | Confirm::QuickListen => {
@@ -5106,6 +5114,7 @@ impl TimegrapherApp {
                         None,
                         Confirm::NewSession
                         | Confirm::NewTake(_)
+                        | Confirm::PickWatch(_)
                         | Confirm::Open { .. }
                         | Confirm::Microphone
                         | Confirm::QuickListen,
@@ -5187,6 +5196,7 @@ impl TimegrapherApp {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::NewTake(kind) => self.new_take(kind, true),
+            Confirm::PickWatch(id) => self.line_pick(id, true),
             Confirm::Open { path } => self.open_recording(&path, false),
             Confirm::Microphone => self.listen_after_ask(),
             Confirm::QuickListen => self.quick_listen(true),
@@ -6162,6 +6172,7 @@ impl TimegrapherApp {
 
     /// The form for a new watch: only its name is needed.
     fn open_new_watch_form(&mut self) {
+        self.new_watch_on_mic = false;
         let mut w = library::Watch::new("");
         w.calibre = Some(String::new());
         w.notes = Some(String::new());
@@ -6291,6 +6302,8 @@ impl TimegrapherApp {
                         Some(kind) => self.keep_test(kind, Some(&w.id)),
                         None => self.keep_into(&w.id),
                     }
+                } else if f.new && std::mem::take(&mut self.new_watch_on_mic) {
+                    self.line_pick(Some(w.id.clone()), false);
                 } else if f.new {
                     self.pick_watch(&w.id);
                 } else if self.watch_open.as_ref() == Some(&w.id)
@@ -7512,16 +7525,22 @@ impl TimegrapherApp {
             ui.separator();
         }
         let free = !self.running();
-        let busy = "Stop listening before picking another watch";
+        if !free {
+            // Said once, above what it dims, so no hint covers a row.
+            ui.label(
+                RichText::new("Stop listening to pick another watch")
+                    .small()
+                    .color(pal.text_tertiary),
+            );
+        }
         let none = self.open_watch().is_none();
         if ui
             .add_enabled_ui(free, |ui| theme::menu_item(ui, none, NO_WATCH))
             .inner
             .on_hover_text(QUICK_LISTEN_HINT)
-            .on_disabled_hover_text(busy)
             .clicked()
         {
-            self.pick_unsorted();
+            self.line_pick(None, false);
         }
         let recent = self.recent_watches();
         if !recent.is_empty() {
@@ -7534,10 +7553,9 @@ impl TimegrapherApp {
                 .add_enabled_ui(free, |ui| theme::menu_item(ui, on, &name))
                 .inner
                 .on_hover_text("Listen and the tests take this watch, saved into it")
-                .on_disabled_hover_text(busy)
                 .clicked()
             {
-                self.pick_watch(&id);
+                self.line_pick(Some(id), false);
             }
         }
         ui.separator();
@@ -7547,6 +7565,7 @@ impl TimegrapherApp {
             .clicked()
         {
             self.open_new_watch_form();
+            self.new_watch_on_mic = true;
         }
         if ui
             .button("Find in Watches…")
@@ -7554,6 +7573,26 @@ impl TimegrapherApp {
             .clicked()
         {
             self.find_in_watches();
+        }
+    }
+
+    /// A watch, or No Watch (`None`), picked on the Watch line: the watch
+    /// on the microphone, so a take on show is put away first (asking when
+    /// it has unsaved sound) and the card shows the watch picked at once.
+    fn line_pick(&mut self, id: Option<String>, asked: bool) {
+        if self.running() || self.saving_busy() {
+            return;
+        }
+        if self.live.is_some() || self.session.recorder.is_some() {
+            if !asked && self.needs_save_confirmation() {
+                self.confirm = Some(Confirm::PickWatch(id));
+                return;
+            }
+            self.new_session();
+        }
+        match id {
+            Some(id) => self.pick_watch(&id),
+            None => self.pick_unsorted(),
         }
     }
 
@@ -7741,7 +7780,7 @@ impl TimegrapherApp {
                 lift_w,
             );
             let mut hint = if self.lift_known() {
-                "The lift angle: type it, or pick one with ▾".to_string()
+                "The lift angle: type it, or pick one with ⏷.".to_string()
             } else {
                 LIFT_HINT.to_string()
             };
@@ -7774,7 +7813,8 @@ impl TimegrapherApp {
         let mut bph = self.bph;
         egui::ComboBox::from_id_salt("bph")
             .width(text_w + 8.0)
-            .height(320.0)
+            // Tall enough for every rate, as in the menus that list them.
+            .height(480.0)
             .selected_text(shown)
             .show_ui(ui, |ui| bph_choices(ui, &mut bph))
             .response
@@ -20920,6 +20960,58 @@ mod tests {
             NO_WATCH,
             "only where it is hidden"
         );
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A watch picked on the Watch line while a stopped take is on show
+    /// puts the take away, so the card shows the watch picked at once:
+    /// its calibre, lift and beat rate, never the old take's.
+    #[test]
+    fn picking_on_the_watch_line_over_a_take_shows_the_watch_picked() {
+        let c = timegrapher_core::calibres::find("2824-2").expect("ETA 2824-2 in the table");
+        let (mut app, base) = line_app("over", &["Pepsi", "Seiko"], Some(&c.calibre));
+        let seiko = watch_id(&app, "Seiko");
+        if let Ok(Some(l)) = &mut app.library {
+            let e = l.watches.iter().find(|e| e.watch.id == seiko).unwrap();
+            let mut w = e.watch.clone();
+            w.lift = Some(53.0);
+            l.update(&w).unwrap();
+        }
+        // A take on show measured with other settings.
+        let on_show = |app: &mut TimegrapherApp| {
+            app.set_lift(56.0);
+            app.change_bph(Some(19800));
+            app.reset_session(48000, "syn".into());
+            let audio = generate(
+                &SynthConfig {
+                    duration_s: 4.0,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            let live = app.live.as_mut().unwrap();
+            for b in audio.samples.chunks(960) {
+                live.push(b);
+            }
+            assert!(app.live.is_some() && !app.running());
+        };
+        on_show(&mut app);
+        app.line_pick(Some(watch_id(&app, "Pepsi")), false);
+        assert!(app.live.is_none(), "the take is put away");
+        assert_eq!(app.calibre, c.calibre);
+        assert_eq!(app.lift_deg, c.lift_angle_deg.unwrap());
+        assert_eq!(app.bph, c.bph);
+        on_show(&mut app);
+        app.line_pick(Some(seiko.clone()), false);
+        assert!(app.calibre.is_empty());
+        assert_eq!((app.lift_deg, app.bph), (53.0, None));
+        assert!(app.watch_sets_here());
+        on_show(&mut app);
+        app.line_pick(None, false);
+        assert!(app.open_watch().is_none() && app.live.is_none());
+        assert_eq!((app.lift_deg, app.bph), (DEFAULT_LIFT_DEG, None));
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }
