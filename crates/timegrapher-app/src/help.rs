@@ -190,19 +190,19 @@ pub const PROFILE: &[&str] = &[
      unlock on the left to after the drop on the right, in milliseconds from the drop (see \
      Time From). Both sides share one scale, so a quieter side \
      shows as smaller.",
-    "Each beat has three sounds: 1, the unlock, when the pallet stone lets go of the \
-     escape wheel; 2, the impulse, when the escape wheel pushes the fork; 3, the drop, \
+    "Each beat has three sounds: the unlock, when the pallet stone lets go of the \
+     escape wheel; the impulse, when the escape wheel pushes the fork; and the drop, \
      when the next tooth lands on the other stone.",
-    "The grey lines named Unlock, Drop and Drop Peak are the edges the readings come \
-     from: unlock (solid) where the beat first rises above the noise, drop (dashed) where \
-     the drop starts, and the drop's peak (a thinner dashed line). Amplitude comes from the time between unlock and drop; the beat \
-     error from the unlocks.",
-    "The short dotted grey stubs at the foot, numbered 1, 2 and 3, mark where each of the \
-     three sounds rises halfway up its own climb. Hover over one for its name and time. They come from a separate measurement of the beat's shape, so they sit \
-     near but not exactly on the edges. Both \
-     are measured on the same averaged sound, not on single beats.",
-    "A sound's stub is missing when that sound can't be told apart from its \
-     neighbour: a soft unlock that merges into the impulse, say.",
+    "A line from the top is an edge, a dot on the curve is a sound. The edges, Unlock, \
+     Drop and Peak, are named above the plot: where the beat first rises above the noise, \
+     where the drop starts, and the drop's peak. Amplitude comes from the time between \
+     unlock and drop; the beat error from the unlocks.",
+    "The sounds, Unlock Sound, Impulse Sound and Drop Sound, are dots where each rises \
+     halfway up its own climb, named below the plot. They come from a separate measurement \
+     of the beat's shape, so they sit near but not exactly on the edges. A sound is missing \
+     when it can't be told apart from its neighbour. Hover over a name for its time.",
+    "The table above the plots gives each side's beats, unlock and drop times, the time \
+     from unlock to drop, and amplitude, Tick above Tock.",
     "The flat dashed line is the noise floor: the level before the beat starts.",
     "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
      in beat would drop, and each side sits half the beat error from it, so the two \

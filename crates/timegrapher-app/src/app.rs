@@ -8672,10 +8672,10 @@ impl TimegrapherApp {
             ui,
             Icon::Notes,
             accent,
-            "Sounds 1, 2 and 3",
+            "Sounds",
             &mut o.sounds,
-            "The dotted grey lines where the three sounds of each beat rise: unlock, \
-             impulse and drop",
+            "The dots where the three sounds of each beat rise, Unlock Sound, Impulse \
+             Sound and Drop Sound, named below the plot",
         );
         theme::bar_gap(ui);
         theme::tool_choice(
@@ -13028,21 +13028,21 @@ impl TimegrapherApp {
             let i = self.sound_history.partition_point(|h| h.0 <= end + 1e-9);
             match i.checked_sub(1).map(|i| &self.sound_history[i]) {
                 Some((t, p)) if end - t <= SOUND_EVERY_S + 0.5 => {
-                    note = Some(format!("at {}", strip::fmt_time(*t)));
+                    note = Some(format!("At {}", strip::fmt_time(*t)));
                     p.clone()
                 }
                 _ => {
                     self.poll_sound_job();
                     match &self.sound_at {
                         Some((t, p)) if (t - end).abs() < 0.5 => {
-                            note = Some(format!("at {}", strip::fmt_time(*t)));
+                            note = Some(format!("At {}", strip::fmt_time(*t)));
                             p.clone()
                         }
                         _ => {
                             note = Some(if self.start_sound_job(end) {
-                                "working it out from the recording...".to_string()
+                                "Working It Out from the Recording…".to_string()
                             } else {
-                                "not kept for this moment".to_string()
+                                "Not Kept for This Moment".to_string()
                             });
                             [None, None]
                         }
