@@ -120,11 +120,12 @@ compact form; below about 1320 points every card does, down to the
 800-point minimum. Compact, Current Position is captioned **Position**,
 with a smaller picture, the name on two lines beside it, and one pop-up
 of the six positions (with their keys) instead of the buttons; keys 1 to
-6 still work, and the bars aren't shown. Listen keeps its two icons, its
-take length in the Listen icon's hover, and Average Over's pop-up without
-its label. The reading cards' figures are smaller, with the ± over the
-unit beside them, and each card keeps one control: **Clock** (the input
-clock and Keep in its menu), **Lift 52°** (the same field), none on Beat
+6 still work, and the bars aren't shown. Listen keeps its two icons, gives
+the take's length beside its caption ("Listen 12:48"), and shows Average
+Over's pop-up as **Avg 10 s**. The reading cards' figures are smaller,
+with the ± over the unit beside them, and each card keeps one control:
+**Input Clock** (**Clock** on the narrowest cards), with the input clock
+and Keep in its menu, **Lift 52°** (the same field), none on Beat
 Error, and the **Calibre** pop-up on Beat Rate with the beat rates first
 in its menu. A reading card too narrow for its labels drops them: Input
 Clock goes into the value's hover, and the Calibre pop-up reads "No

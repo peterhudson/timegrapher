@@ -825,7 +825,7 @@ const POSITION_W: f32 = 250.0;
 const LISTEN_W: f32 = 190.0;
 const FULL_FIGURE_W: f32 = 250.0;
 const POSITION_COMPACT_W: f32 = 112.0;
-const LISTEN_COMPACT_W: f32 = 120.0;
+const LISTEN_COMPACT_W: f32 = 140.0;
 const BEAT_RATE_COMPACT_W: f32 = 130.0;
 /// The Current Position card's picture, and on a compact card.
 const POSITION_PIC: f32 = 66.0;
@@ -6874,7 +6874,12 @@ impl TimegrapherApp {
         let mut avg = self.average_s;
         egui::ComboBox::from_id_salt("card average")
             .width(row.available_width())
-            .selected_text(fields::duration(avg))
+            // Compact, "Avg" says it isn't a timer.
+            .selected_text(if compact {
+                format!("Avg {}", fields::duration(avg))
+            } else {
+                fields::duration(avg)
+            })
             .show_ui(&mut row, |ui| {
                 for a in AVERAGES {
                     ui.selectable_value(&mut avg, a, fields::duration(a));
@@ -9787,11 +9792,17 @@ impl TimegrapherApp {
                      rect: egui::Rect,
                      caption: &str,
                      help: &[&str],
-                     limits: &[(String, String)]| {
+                     limits: &[(String, String)],
+                     note: Option<&(String, String)>| {
             let mut child = row(ui, rect, caption);
             child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 theme::help(ui, caption, help);
+                // A short fact in plain small text before the "?".
+                if let Some((text, hover)) = note {
+                    ui.label(RichText::new(text).size(12.0).color(pal.text_secondary))
+                        .on_hover_text(hover);
+                }
                 if let Some(first) = limits.first() {
                     let more = if limits.len() > 1 {
                         format!(" +{}", limits.len() - 1)
@@ -9866,7 +9877,27 @@ impl TimegrapherApp {
         let mut slots = vec![(Slot::Position, cards[0].inner)];
         // Listen: its caption here, its buttons and Average Over in the
         // rows under it.
-        title(ui, cards[1].title, "Listen", help::LISTEN, &[]);
+        // A compact Listen card has no room beside its buttons for the
+        // take's length: it goes in the title row, before the "?".
+        let length = lead_compact.then(|| {
+            let length = strip::fmt_time(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
+            (
+                length.clone(),
+                format!(
+                    "{length} · {}: the take's length, the sound heard so far while \
+                     listening, or the whole take opened",
+                    self.state_words()
+                ),
+            )
+        });
+        title(
+            ui,
+            cards[1].title,
+            "Listen",
+            help::LISTEN,
+            &[],
+            length.as_ref(),
+        );
         slots.push((Slot::Listen, cards[1].figure.union(cards[1].controls)));
         let keep_clock = std::cell::Cell::new(false);
         let measured = self.clock_offer();
@@ -9880,7 +9911,7 @@ impl TimegrapherApp {
                 .into_iter()
                 .filter(|f| f.0 != CLOCK_UNKNOWN)
                 .collect();
-            title(ui, cards[2].title, "Rate", help::RATE, &rate_facts);
+            title(ui, cards[2].title, "Rate", help::RATE, &rate_facts, None);
             let unit = match pm {
                 Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
                 _ => "s/d".to_string(),
@@ -9970,9 +10001,11 @@ impl TimegrapherApp {
             let labelled = widths[2] >= LABELLED_W;
             let mut child = row(ui, cards[2].controls, "rate controls");
             if compact {
+                // "Input Clock" where it fits, else "Clock".
+                let w = child.available_width().min(COMPACT_CONTROL_W);
                 egui::ComboBox::from_id_salt("card clock")
-                    .width(child.available_width().min(COMPACT_CONTROL_W))
-                    .selected_text("Clock")
+                    .width(w)
+                    .selected_text(if w >= 120.0 { "Input Clock" } else { "Clock" })
                     .show_ui(&mut child, |ui| {
                         ui.label(RichText::new(format!("Input Clock {}", clock.value)))
                             .on_hover_text(&clock.hint);
@@ -10031,7 +10064,14 @@ impl TimegrapherApp {
                 .into_iter()
                 .filter(|f| !f.0.starts_with("lift angle "))
                 .collect();
-            title(ui, cards[3].title, "Amplitude", help::AMPLITUDE, &facts);
+            title(
+                ui,
+                cards[3].title,
+                "Amplitude",
+                help::AMPLITUDE,
+                &facts,
+                None,
+            );
             // Whole degrees: a live reading's ± is about a degree, so a
             // decimal would claim more than the beats can say.
             let unit = match r.and_then(|r| r.amplitude_error_deg) {
@@ -10079,6 +10119,7 @@ impl TimegrapherApp {
                 "Beat Error",
                 help::BEAT_ERROR,
                 &reading_limits("Beat Error", caveats, lift_now, beats),
+                None,
             );
             let unit = match be_pm.filter(|_| unlock.is_some()) {
                 Some(e) if e >= 0.005 => format!("± {e:.2} ms"),
@@ -10140,7 +10181,14 @@ impl TimegrapherApp {
                 })
                 .into_iter()
                 .collect();
-            title(ui, cards[5].title, "Beat Rate", help::BEAT_RATE, &other);
+            title(
+                ui,
+                cards[5].title,
+                "Beat Rate",
+                help::BEAT_RATE,
+                &other,
+                None,
+            );
             let how = match (set_bph, heard_bph) {
                 (Some(_), _) => {
                     "Set on this card, so the readings use it rather than finding it \
@@ -19128,8 +19176,8 @@ mod tests {
     }
 
     /// The readings' cards carry what a take needs: the position, Listen
-    /// and Save with the take's length and Average Over on a card of their
-    /// own, the lift angle, and the beat rate's menu with the calibre: in
+    /// and Save with the take's length (at every width) and Average Over
+    /// on a card of their own, the lift angle, and the beat rate's menu with the calibre: in
     /// full where the window has room (1610), one control each where it
     /// hasn't (1000). Nothing says Take, Pause or Resume, and no Replay is
     /// offered.
@@ -19139,11 +19187,12 @@ mod tests {
         let ctx = themed();
         for w in [1000.0, 1610.0] {
             let texts = window_texts(&mut app, &ctx, w);
-            let mut wants = vec!["DU", "Listen", "Lift", "10 s", "Not Set", "Watches", "bph"];
+            let mut wants = vec!["DU", "Listen", "Lift", "Not Set", "Watches", "bph", "0:00"];
             if w > 1000.0 {
                 wants.extend([
                     "Current Position",
                     "Dial Up",
+                    "10 s",
                     "CR",
                     "DU · CH",
                     "0:00",
@@ -19155,7 +19204,9 @@ mod tests {
                     "Default",
                 ]);
             } else {
-                wants.extend(["Position", "Dial", "Up", "Clock"]);
+                // The take's length in the compact Listen card's title row,
+                // and Average Over's pop-up saying what it is.
+                wants.extend(["Position", "Dial", "Up", "Input Clock", "Avg 10 s"]);
             }
             for want in wants {
                 assert!(texts.iter().any(|t| t == want), "{want} at {w}: {texts:?}");
