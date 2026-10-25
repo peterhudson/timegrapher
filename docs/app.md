@@ -514,7 +514,9 @@ Measurement**) once it is there. **Restart DD Measurement**, naming the
 position just measured (or the one under way), settles and measures it
 again, after a knock for instance; **Pause** holds the test, leaving out
 what the position measured so far, and **Resume** settles and measures it
-again from the start; **Stop** ends the test and clears its table. Only
+again from the start; **Stop** ends the test and clears its table. Each
+button keeps its own place, as wide as the widest it holds, so none moves
+as the test moves on: Stop is always where it was. Only
 the measured seconds in each position count. From the moment the test
 starts, the strip, its track and the charts mark the test's
 phases, Dial Up included, each in its own grey: **Before Test** over the
@@ -541,8 +543,10 @@ positions test:
   the start of each stretch and less masked time.
 - **Readings** show once a position has 10 s. Under that it reads
   "Under 10 s"; a position never marked reads "Not marked".
-- **Largest Rate Difference** follows, with "n of 6" positions read,
-  once two positions have readings.
+- **Average** and **Largest Difference** follow once two positions
+  have readings: the average rate, amplitude and beat error over the
+  positions read (with "n of 6" in Duration), then the highest of each
+  less the lowest.
 - The figures are core `session::positions_table`'s: each position's
   stretches read together, the time between them left out as a mask is.
   While listening the table is read again every second, in the
@@ -553,8 +557,10 @@ with core `session::measure` as `session` does (rate on the input's
 measured clock when there is one): each position by name ("Crown Up
 (CU, 3H)"), its rate, its rate less the mean of the positions measured,
 its amplitude and its beat error (a size); the position under way says
-how far its settling or measuring has got. Then a Mean row, the largest
-difference between the rates (D), vertical less horizontal for rate and
+it is settling, then "Measuring…" until it has 10 s, then shows its
+figures so far, in the accent colour, read again every second as This
+Take is. Then an Average row, a Largest Difference row (rate, D;
+amplitude; beat error), vertical less horizontal for rate and
 amplitude (DVH), all from core `session::indices`, the values
 `session` gives (a position read twice is averaged first), and a plain line for each condition found in a
 position's sound: no regular beat (with its timing scatter), clipping,
@@ -565,7 +571,7 @@ reads the six together. The figures are `session`'s for the same
 stretches. **Save as
 CSV…** saves the watch's name, its calibre, beat rate and lift angle,
 when the test began and its settling and measuring times, then the
-table, the means, the differences and those lines, as a CSV file a
+table, the averages, the largest differences and those lines, as a CSV file a
 spreadsheet opens; **Copy** puts the same on the clipboard with tabs
 between the columns. It gives no verdict and no pass or fail: the
 figures are for the watchmaker to judge.
@@ -926,8 +932,8 @@ one opened:
 - On a recording opened from disk it is saved as masks are: a change
   marks it unsaved, and **Save** writes one entry per stretch in place of
   the entries for what was opened, each keeping everything else the first
-  of them said (each later position starting after its settling, as a
-  saved take's do). It is refused where those entries list more than one
+  of them said (each later position starting after its settling, with
+  `settle_s = 0`, as a saved take's do). It is refused where those entries list more than one
   file.
 
 **The track** runs along the top of the strip (down its right side when
@@ -1165,7 +1171,8 @@ dBFS beside it ("peak −14 dBFS", with ", clipping" while it clips).
 
 **Status bar.** First what the strip shows: the take's name (Quick
 Listen, New Take, or the name of the recording or saved take), its watch
-(No watch for Quick Listen, No watch picked otherwise) and its state
+(No watch for Quick Listen, No watch picked for a recording or saved
+take with none) and its state
 (Not Started, Listening, Stopped, Opening or Opened), such as "Quick
 Listen · No watch · Listening", "New Take · Pepsi · Not Started" or
 "w.wav · No watch picked · Opened". Then, while listening, the input;
@@ -1428,8 +1435,12 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   it, the beats are drawn faintly, and they are left out of the
   readings, the charts' points, the distributions and Steadiness, but kept
   in the audio. A saved take's `session.toml` starts each later position
-  after its settling, so `timegrapher session` reads the same seconds as
-  the app. Guided runs through the positions (as `timegrapher
+  after its settling, and each entry says `settle_s = 0`, so
+  `timegrapher session` skips nothing more and reads the same seconds as
+  the app (a take saved by an earlier build skips its settling a second
+  time there). Its rates still differ from the app's by the sound card's
+  own clock error, which it corrects from the take's clock log and the
+  app's figures don't. Guided runs through the positions (as `timegrapher
   session` reports them) will build on it.
 
 ## Sessions

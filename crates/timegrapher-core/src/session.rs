@@ -839,6 +839,8 @@ pub struct StateIndices {
     pub amplitude_mean: Option<f64>,
     /// Mean unsigned beat error over the positions, ms.
     pub beat_error_mean: Option<f64>,
+    /// Largest difference between the positions' unsigned beat errors, ms.
+    pub d_beat_error: Option<f64>,
 }
 
 /// How one position's rate and amplitude change as the watch runs down.
@@ -984,6 +986,7 @@ pub fn indices(wind_h: f64, figures: &[Figures]) -> StateIndices {
         di: get(Position::H6).zip(get(Position::CH)).map(|(a, b)| a - b),
         amplitude_mean: mean(amp(&all).into_iter()),
         beat_error_mean: mean(positions.iter().filter_map(|v| v.beat_error_ms)),
+        d_beat_error: spread(positions.iter().filter_map(|v| v.beat_error_ms)),
         positions,
     }
 }
