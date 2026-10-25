@@ -5063,7 +5063,11 @@ impl TimegrapherApp {
         if self.saving.is_some() {
             return self.confirm_saving_dialog(ctx);
         }
-        if !self.needs_save_confirmation() {
+        let ask = match what {
+            Confirm::PickWatch(_) => self.line_pick_asks(),
+            _ => self.needs_save_confirmation(),
+        };
+        if !ask {
             self.confirm = None;
             return self.confirmed(what, ctx);
         }
@@ -7586,8 +7590,7 @@ impl TimegrapherApp {
             return;
         }
         if self.live.is_some() || self.session.recorder.is_some() {
-            let quick = self.quick_unsaved() && self.unsaved_s() > 5.0;
-            if !asked && (self.needs_save_confirmation() || quick) {
+            if !asked && self.line_pick_asks() {
                 self.confirm = Some(Confirm::PickWatch(id));
                 return;
             }
@@ -7597,6 +7600,12 @@ impl TimegrapherApp {
             Some(id) => self.pick_watch(&id),
             None => self.pick_unsorted(),
         }
+    }
+
+    /// Whether the Watch line asks before putting the take on show away:
+    /// what any new take asks about, and Quick Listen's unsaved sound too.
+    fn line_pick_asks(&self) -> bool {
+        self.needs_save_confirmation() || self.quick_unsaved() && self.unsaved_s() > 5.0
     }
 
     /// The library's watches, the one with the newest take first.
@@ -21036,11 +21045,18 @@ mod tests {
         })
         .unwrap();
         app.session.recorder = Some(r);
-        app.session.set_state(session::State::Paused {
-            since: Instant::now(),
-        });
+        app.session.set_state(session::State::Listening);
+        // Stopped as the Listen card's Stop does.
+        app.stop_listening();
+        app.wait_for_save();
         assert!(app.quick_unsaved() && !app.needs_save_confirmation());
         app.line_pick(Some(pepsi.clone()), false);
+        assert_eq!(app.confirm, Some(Confirm::PickWatch(Some(pepsi.clone()))));
+        // The question shows, and stays until answered.
+        let ctx = themed();
+        for _ in 0..2 {
+            let _ = ctx.run(screen(), |ctx| app.confirm_dialog(ctx));
+        }
         assert_eq!(app.confirm, Some(Confirm::PickWatch(Some(pepsi.clone()))));
         assert!(app.open_watch().is_none() && app.session.recorder.is_some());
         // Cancel: nothing changes.
