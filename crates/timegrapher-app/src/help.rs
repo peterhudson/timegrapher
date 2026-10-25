@@ -37,12 +37,13 @@ pub const RATE: &[&str] = &[
      card's crystal runs a steady 10 to 50 parts per million off, which moves every \
      rate read on it by 1 to 4 seconds a day. The app times the card's clock against \
      the computer's while it listens. After 20 minutes, once the timing is known to \
-     half a part per million, it offers the result under the rate with a Keep button; a \
-     busy computer delivers sound less evenly, so the offer can come later. The result \
+     half a part per million, Settings > Microphone > Quartz Correction offers the \
+     result with a Keep button; a busy computer delivers sound less evenly, so the offer \
+     can come later. The result \
      is only right if the computer's clock is kept by internet time. Once the error is \
      kept (by Keep, `timegrapher clock measure --save`, or `clock from-log --save` \
-     after a recording with a clock log), the app shows the corrected rate under the \
-     big figure. Settings > Microphone > Quartz Correction lists each input's. Until then the rate is read on the card's clock alone, as tg reads \
+     after a recording with a clock log), the corrected rate is in the big \
+     figure's hover. Settings > Microphone > Quartz Correction lists each input's. Until then the rate is read on the card's clock alone, as tg reads \
      it. The big figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
     "The ± is how far the figure could be off from the scatter of 10-second rates over \
@@ -53,22 +54,18 @@ pub const RATE: &[&str] = &[
      the 5th to 95th percentile of its 10-second rates.",
 ];
 
-pub const CLIPPING_BANNER: &[&str] = &[
-    "The loudest part of each tick reaches the top of the input's range and is cut \
-     flat. That moves where the drop seems to be, so the amplitude and the beat error \
-     read wrong. The rate comes from when the beats arrive, which clipping doesn't \
-     change.",
-    "It shows whenever a beat in the readings has a clipped sample in its sound, \
-     counted the same way `timegrapher analyze` counts them. Input Level is in \
-     Settings > Microphone.",
-];
+/// The rest of a "Clipped" chip's hover.
+pub const CLIPPING: &str = "The loudest part of each tick reaches the top of the input's \
+     range and is cut flat. That moves where the drop seems to be, so the amplitude and \
+     the beat error read wrong; the rate comes from when the beats arrive, which clipping \
+     doesn't change. Input Level is in Settings > Microphone.";
 
 pub const AMPLITUDE: &[&str] = &[
     "How far the balance swings each way from rest, in degrees, averaged over the \
      ticks and tocks of the averaging time.",
     "It is worked out from the time between the unlock and the drop of each beat (the \
      solid green and indigo lines on the Tick Tock Profile) and the lift angle, so it is \
-     only as right as the lift angle, the Lift on this card.",
+     only as right as the lift angle, the Lift on the Calibre card.",
     "The ± figure is roughly how far the amplitude could be off from the scatter of \
      its 2-second pieces alone. It is precision, not accuracy: the amplitude moves \
      with the lift angle in proportion (1° of lift moves it about 5° at 260° with a \
@@ -116,12 +113,17 @@ pub const LISTEN: &[&str] = &[
      follows changes sooner.",
 ];
 
-pub const BEAT_RATE: &[&str] = &[
-    "How many beats the watch makes an hour, ticks and tocks counted alike: 28,800 \
-     for a balance swinging 4 times a second each way, 21,600 for 3, 18,000 for 2.5.",
-    "With the Beat Rate menu on this card on Auto, it is the standard rate nearest to the beats \
-     of the first few seconds. Set it there when the watch beats at an unusual \
-     rate, or to read a watch that runs far off.",
+pub const CALIBRE: &[&str] = &[
+    "What the readings are worked out for: the watch's calibre, its beat rate and its \
+     lift angle, the three in one place.",
+    "Pick the calibre from the table and it sets the beat rate and the lift angle, \
+     which then show here as text. With no calibre set, Beat Rate is Auto (the standard \
+     rate nearest to the beats of the first few seconds, shown beside it) and \
+     Lift is the default 52°; set either here, for a watch that beats at an unusual rate \
+     or runs far off, or whose lift angle you know.",
+    "A beat rate is how many beats the watch makes an hour, ticks and tocks counted \
+     alike: 28,800 for a balance swinging 4 times a second each way, 21,600 for 3, \
+     18,000 for 2.5. The lift angle is what Amplitude is worked out from.",
 ];
 
 /// The last paragraph of every pane toolbar's "?": how its icons work.
@@ -362,7 +364,7 @@ pub const NO_REGULAR_BEAT: &str = "The beats found don't come at regular interva
 
 pub const POWER_RESERVE: &[&str] = &[
     "Wind the watch fully, set it to a minute marker, put it on the stand in the \
-     position picked under Position, and press Start Test. The app starts a new \
+     position set on the Current Position card, and press Start Test. The app starts a new \
      session and listens until the watch stops. The run ends at the last beat heard \
      before ten minutes with none. Beats that come back sooner join the run, and the \
      pane says how many times they stopped and came back.",

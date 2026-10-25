@@ -1,4 +1,4 @@
-//! The Calibre menu on the Beat Rate card, and Manage Calibres. The menu
+//! The Calibre menu on the Calibre card, and Manage Calibres. The menu
 //! offers the calibres the app was set to lately, the short list and the
 //! watchmaker's own, marked Custom. Manage Calibres is a table of every
 //! calibre to sort, filter by any column and search over names, other

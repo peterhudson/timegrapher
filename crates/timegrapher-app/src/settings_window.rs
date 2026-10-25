@@ -116,9 +116,10 @@ pub fn sidebar(ui: &mut egui::Ui, tab: &mut Tab) -> bool {
 
 pub const QUARTZ_HELP: &[&str] = &[
     "A sound card's quartz clock runs a little fast or slow, so every rate read on it is off \
-     by the same amount. Listening for long enough times the input's clock against the \
-     computer's; Keep then stores that error for the input, and its rates are shown \
-     corrected as True Clock from then on. Each input keeps its own.",
+     by the same amount. While you listen, the input's clock is timed here against the \
+     computer's; after 20 minutes Keep stores that error for the input, and its rates are \
+     shown corrected as True Clock from then on. Each input keeps its own. It is only right \
+     if the computer's clock is kept by internet time.",
     "Each input kept is listed here with its error, when it was measured and how. Forget \
      asks first, then removes it: rates from that input are then read on its own clock again, uncorrected, \
      until it is timed and kept afresh. Do this after changing the microphone or sound card \
@@ -333,15 +334,40 @@ pub fn error_words(c: &DeviceClock) -> String {
     )
 }
 
-/// The Quartz Correction section: each input's kept clock error, with
-/// Forget beside it; `current` is the input listening, marked. `store` is
-/// the list as last read, or why it couldn't be. Returns the input whose
-/// Forget was pressed.
+/// The input listening, as its clock is being timed against the
+/// computer's.
+pub struct Timing {
+    /// The input's name as the microphone menu shows it.
+    pub shown: String,
+    /// Seconds of sound heard since timing began, and how many it needs.
+    pub heard_s: f64,
+    pub needed_s: f64,
+    /// Once timed, the error in words, with the whole of it for a hover,
+    /// and whether it is offered to keep (none kept, or the kept one is
+    /// off from it).
+    pub timed: Option<(String, String)>,
+    pub offered: bool,
+}
+
+/// What a press in the Quartz Correction section asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuartzAct {
+    /// Keep the clock as timed for the input listening.
+    Keep,
+    /// Forget the input's kept clock.
+    Forget(String),
+}
+
+/// The Quartz Correction section: the input listening timed against the
+/// computer's clock, with Keep once it is, then each input's kept clock
+/// error, with Forget beside it; `current` is the input listening,
+/// marked. `store` is the list as last read, or why it couldn't be.
 pub fn quartz_section(
     ui: &mut egui::Ui,
     store: &Result<ClockStore, String>,
     current: Option<&str>,
-) -> Option<String> {
+    timing: Option<&Timing>,
+) -> Option<QuartzAct> {
     let pal = theme::pal(ui);
     let mut forget = None;
     ui.horizontal(|ui| {
@@ -349,6 +375,65 @@ pub fn quartz_section(
         theme::help(ui, "Quartz Correction", QUARTZ_HELP);
     });
     ui.add_space(4.0);
+    if let Some(t) = timing {
+        theme::card().fill(pal.card).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.add(
+                egui::Label::new(RichText::new(format!("Timing \"{}\"", t.shown)).strong()).wrap(),
+            )
+            .on_hover_text("The input listening, timed against the computer's clock");
+            match &t.timed {
+                Some((words, hint)) => {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if t.offered
+                                && ui
+                                    .button("Keep")
+                                    .on_hover_text(
+                                        "Keep this input's clock error and correct its rates",
+                                    )
+                                    .clicked()
+                            {
+                                forget = Some(QuartzAct::Keep);
+                            }
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.add(egui::Label::new(words.as_str()).wrap())
+                                        .on_hover_text(hint);
+                                },
+                            );
+                        });
+                    });
+                    if !t.offered {
+                        ui.label(
+                            RichText::new("The correction kept for it agrees.")
+                                .small()
+                                .color(pal.text_secondary),
+                        );
+                    }
+                }
+                None => {
+                    let frac = (t.heard_s / t.needed_s).clamp(0.0, 1.0) as f32;
+                    ui.add(egui::ProgressBar::new(frac).desired_height(6.0))
+                        .on_hover_text(
+                            "Timed once this much sound has been heard in one go; a break in \
+                             listening starts it again",
+                        );
+                    ui.label(
+                        RichText::new(format!(
+                            "{} of {} heard",
+                            crate::strip::fmt_time(t.heard_s),
+                            crate::strip::fmt_time(t.needed_s)
+                        ))
+                        .small()
+                        .color(pal.text_secondary),
+                    );
+                }
+            }
+        });
+        ui.add_space(4.0);
+    }
     let store = match store {
         Ok(s) => s,
         Err(e) => {
@@ -361,8 +446,8 @@ pub fn quartz_section(
     if let Some(now) = current.filter(|d| store.get(d).is_none()) {
         ui.label(
             RichText::new(format!(
-                "None kept for \"{now}\", the input listening. Listen for 20 minutes or more \
-                 and Keep the clock the Rate card offers."
+                "None kept for \"{now}\", the input listening. Once it is timed above, Keep \
+                 stores it here."
             ))
             .color(pal.text_secondary),
         );
@@ -371,8 +456,8 @@ pub fn quartz_section(
         if current.is_none() {
             ui.label(
                 RichText::new(
-                    "None kept for any input. Listen for 20 minutes or more and Keep the clock \
-                     the Rate card offers, and it is listed here.",
+                    "None kept for any input. Listen for 20 minutes or more and the input is \
+                     timed here, with Keep to store it.",
                 )
                 .color(pal.text_secondary),
             );
@@ -405,7 +490,7 @@ pub fn quartz_section(
                         ))
                         .clicked()
                     {
-                        forget = Some(c.device.clone());
+                        forget = Some(QuartzAct::Forget(c.device.clone()));
                     }
                 });
             });
@@ -441,6 +526,52 @@ pub fn quartz_section(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Quartz Correction times the input listening: how much sound it has
+    /// heard until it is timed, then the error with Keep, which it returns
+    /// when pressed; nothing offered when the kept one agrees.
+    #[test]
+    fn quartz_correction_times_the_input_listening_with_keep() {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let draw = |timing: &Timing| {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    quartz_section(ui, &Ok(ClockStore::default()), Some("mic"), Some(timing));
+                });
+            });
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut t = Timing {
+            shown: "USB Mic".into(),
+            heard_s: 300.0,
+            needed_s: 1200.0,
+            timed: None,
+            offered: false,
+        };
+        let text = draw(&t);
+        assert!(text.iter().any(|l| l == "Timing \"USB Mic\""), "{text:?}");
+        assert!(
+            text.iter().any(|l| l.starts_with("5:00 of 20:00 heard")),
+            "{text:?}"
+        );
+        assert!(!text.iter().any(|l| l == "Keep"), "{text:?}");
+        t.timed = Some(("Runs 20.0 ppm slow".into(), String::new()));
+        t.offered = true;
+        let text = draw(&t);
+        assert!(text.iter().any(|l| l == "Runs 20.0 ppm slow"), "{text:?}");
+        assert!(text.iter().any(|l| l == "Keep"), "{text:?}");
+        t.offered = false;
+        let text = draw(&t);
+        assert!(!text.iter().any(|l| l == "Keep"), "{text:?}");
+        assert!(text.iter().any(|l| l.contains("agrees")), "{text:?}");
+    }
 
     #[test]
     fn a_tiny_error_reads_as_none() {

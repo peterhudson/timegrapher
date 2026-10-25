@@ -47,9 +47,9 @@ Steadiness views share one green. The readings have pictures of their
 own wherever the app shows or switches one: a hare for the rate, a swing
 for the amplitude and a seesaw for the beat error, in their colours.
 
-**The readings**, across the top, are six cards: **Current Position** and
-**Listen**, then **Rate**, **Amplitude**, **Beat Error** and **Beat
-Rate**, sharing the rest of the width. Every card is the same three rows,
+**The readings**, across the top, are six cards, left to right:
+**Current Position**, **Calibre** and **Listen**, then **Rate**,
+**Amplitude** and **Beat Error**, sharing the rest of the width. Every card is the same three rows,
 so the titles, the big figures and the controls each read in one line
 across: a title row (the caption, the card's **?** in its top-right
 corner, and what limits the reading in a small chip beside the ?), a
@@ -57,7 +57,7 @@ figure row (the big figure with its ± and unit on the figure's baseline)
 and a controls row. What stands behind a figure is in its hover: the
 beats the rate is fitted to and their jitter, True Clock, the Tick and
 Tock amplitudes, the beat error from the drop, how the beat rate was
-found, and, for a stopped take, the whole take's reading (see below).
+found (on the Calibre card), and, for a stopped take, the whole take's reading (see below).
 **Current Position** shows the watch as it lies, in teal, the colour of
 position information everywhere, with no stand: the case, its crown at
 3, the numbers 12, 3, 6 and 9, and the hands at 10:10. Standing, the
@@ -95,43 +95,41 @@ length ("12:48"), live while listening and the whole take for one
 opened, and its state under it (Listening, Stopped, Opened, or 0:00 and
 Not Started). The status bar no longer gives the length. Under them
 **Average Over** and its pop-up ("10 s"), the time the readings are
-fitted over. **Rate** has **Input Clock** on its controls row: the
-microphone's clock error, kept or timed, or "Not Timed", with **Keep**
-when one has been timed to keep (see True Clock). **Amplitude** has
-**Lift**, the lift angle, in one field that is typed in or picked from
-the common ones with its ▾, and "Default" beside it while nothing has
-set it; a calibre picked that has a lift angle in the table, a watch's
-or one picked in Quick Listen, sets it instead, and it shows as text.
-**Beat Error** has no controls. **Beat Rate**'s figure is the beat rate,
-set or found; its controls row has the beat rate's pop-up (**Auto**,
-found from the beats, or a standard rate) and, with no watch picked, the
-**Calibre** pop-up (its search covers the whole table, with **Manage
-Calibres…** at its foot; see Calibre, below). A calibre picked that beats
-at another rate than the one heard says so in a chip ("Peacock SL1258 is
-28800 bph"). With a watch whose calibre the table knows, one line names
-the calibre (as "Peacock SL1258 is 28800 bph" when the watch is heard at
-another rate); its hover gives the beat rate and lift angle it sets
-(Edit… on the watch changes them). Lines too long for the card end in
+fitted over. **Rate**, **Amplitude** and **Beat Error** have no
+controls: each is its figure. **Calibre** holds what the readings are
+worked out for, in one place: the **Calibre** pop-up on its figure row
+(its search covers the whole table, with **Manage Calibres…** at its
+foot; see Calibre, below), and under it the beat rate's pop-up (**Auto**,
+found from the beats and given beside it, "Auto 28800", or a standard
+rate, "21600 bph") and **Lift**, the lift angle, one field typed in or picked from
+the common ones with its ▾ (52° by default). A calibre picked in Quick
+Listen sets the beat rate, and the lift angle where the table has one,
+which then show as text; Not Set puts back Auto and 52°. A calibre
+picked that beats at another rate than the one heard says so in a chip
+("Peacock SL1258 is 28800 bph"). With a watch whose calibre the table
+knows, the card names the calibre (as "Peacock SL1258 is 28800 bph" when
+the watch is heard at another rate), with the beat rate and lift angle
+it sets as text (Edit… on the watch changes them); a watch with no
+calibre the table knows reads "No Calibre" there, its beat rate and lift
+still set on the card. Lines too long for the card end in
 "…", with the whole sentence on hover.
 
-**Narrower windows.** The cards keep their full controls only where they
-fit. Below about 1520 points Current Position and Listen take their
-compact form; below about 1320 points every card does, down to the
-800-point minimum. Compact, Current Position is captioned **Position**,
-with a smaller picture, the name on two lines beside it, and one pop-up
-of the six positions (with their keys) instead of the buttons; keys 1 to
-6 still work, and the bars aren't shown. Listen keeps its two icons, gives
-the take's length beside its caption ("Listen 12:48"; on the narrowest
-windows, below about 820 points, in the Listen icon's hover instead, so
-the other cards keep their captions whole), and shows Average Over's
-pop-up as **Avg 10 s**. The reading cards' figures are smaller,
-with the ± over the unit beside them, and each card keeps one control:
-**Input Clock** (**Clock** on the narrowest cards), with the input clock
-and Keep in its menu, **Lift 52°** (the same field), none on Beat
-Error, and the **Calibre** pop-up on Beat Rate with the beat rates first
-in its menu. A reading card too narrow for its labels drops them: Input
-Clock goes into the value's hover, and the Calibre pop-up reads "No
-Calibre" when none is set.
+**Narrower windows.** Current Position, Listen and Calibre keep their
+full width first, since Rate, Amplitude and Beat Error need room only
+for their figures, which take a smaller form (the ± over the unit
+beside them) where they are narrower. Then Listen, Current Position and
+Calibre take compact forms in turn, down to the 800-point minimum, the
+reading cards always keeping room for their captions whole. Compact,
+Current Position is captioned **Position**, with a smaller picture, the
+position's two-letter code beside it ("CR"; the name is in its hover),
+and under it one pop-up, **Set**, of the six positions (with their keys)
+instead of the buttons (none while a take is on show or a test runs); keys 1 to 6 still work, and the bars aren't shown. Listen keeps
+its two icons, gives the take's length beside its caption ("Listen
+12:48"; on the narrowest windows in the Listen icon's hover instead),
+and shows Average Over's pop-up as **Avg 10 s**. Compact, Calibre keeps
+its pop-up with the beat rate and lift under it; on the narrowest
+windows the beat rate alone ("Auto 28800"), with the lift heading the
+Calibre menu (its value, then the common lift angles to pick).
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
@@ -300,9 +298,8 @@ and then Listen, Positions Test or Power Reserve Test, each take saved
 into it, or to add one with New Watch…; and recordings and folders open
 from the File menu, analysed all at once. While a recording is being
 analysed the Paper Strip shows how far the analysis has got, in hours of sound and time
-left, with **Cancel**; a problem shows in a red banner floating over the
-top of the main area, so nothing below it moves, until it is dismissed or
-the next start clears it. A recording that can't be opened leaves the one
+left, with **Cancel**; a problem shows in red in the status bar, its
+whole message and Dismiss a click away, so nothing in the window moves. A recording that can't be opened leaves the one
 shown in place. The app follows the
 desktop's light or dark setting (Appearance, in Settings, overrides it),
 and uses the Inter typeface with figures of even width, so readings don't
@@ -327,9 +324,9 @@ can be spotted. A 16-hour night takes some minutes to analyse; the
 window shows the hours done, the time left and the files in order, and
 Steadiness then covers the whole night.
 
-**Readings.** The **Beat Rate** card gives the beats per hour the
-readings use: found from the beats while the Beat Rate menu on its card is Auto,
-or the one set there, and says which. Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
+**Readings.** The **Calibre** card gives the beats per hour the
+readings use: found from the beats while its beat rate is Auto ("Auto
+28800"), or the one set there or by the calibre. Rate (seconds per day gained, +, or lost, −), amplitude (degrees) and beat error (ms), each a
 fit over the last few seconds of beats (10 s by default, or 2, 4, 20, 30
 or 60 s; the setting is Average Over, on the Listen card). Early in a session, or after a break in listening or a gap of
 more than 2 s with no beats, there are fewer seconds of beats than asked
@@ -542,14 +539,16 @@ CR, as in `session.toml`), `rate_s_per_day`, `amplitude_deg` and
 
 **Power Reserve.** The Power Reserve pane, a hidden tab beside the
 Positions Test to begin with (its icon a fuel gauge near empty), runs the
-watch down from full wind to stop in one position. Its toolbar holds
-**Position** (any of the six), **Keep Sound** or **Analysis Only**, and
-**Start Test**. Before a test the pane says how much space is free where
+watch down from full wind to stop in one position, the one on the
+Current Position card. Its toolbar says which ("Runs in Dial Up (DU), set
+on the Current Position card"; it has no position setting of its own),
+then holds **Keep Sound** or **Analysis Only**, and **Start Test**. Before a test the pane says how much space is free where
 the take will be kept against the most an 80 h run writes (the sample
 rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
-16-bit). Start Test starts a new session in the picked position; while it
-runs the computer is kept awake whatever Keep Awake is set to, the
-position can't change, and the **Stop** icon on the Listen card, or **Stop Test**
+16-bit). Start Test starts a new session in the card's position as it
+stands; while it runs the computer is kept awake whatever Keep Awake is
+set to, the position can't change (the card's other positions are greyed,
+their hover saying why), and the **Stop** icon on the Listen card, or **Stop Test**
 in the pane, ends the test. The run ends at the last beat heard before 10 minutes with none
 (a beat heard is one matching the beat's sound with a quality over 0.4,
 in a run of at least eight such beats each within one and a half beats of
@@ -597,8 +596,9 @@ bar always showing when the pane is too short for every row.
 
 **True Clock.** While it listens, the app times the microphone's clock
 against the computer's. After 20 minutes of listening, once the timing is
-known to half a ppm, the Rate card shows the error it timed with a
-**Keep** button if no error is kept for that input yet, or if the one kept
+known to half a ppm, Settings, under Microphone's **Quartz
+Correction**, shows the error it timed (with how much has been heard
+until then) with a **Keep** button if no error is kept for that input yet, or if the one kept
 is more than 2 ppm from it; then the line also gives how far apart they
 are and the day the kept one was measured, since an input reached by a
 shared name (the system default, say) may be another sound card. A busy
@@ -607,8 +607,8 @@ timing is only right when the computer's clock is kept by internet time
 (NTP). When the microphone's own clock error has been kept (by **Keep**,
 `timegrapher clock measure --save`, or `clock from-log --save` after a
 take with a clock log; see `clock` in [the agent
-interface](agent-interface.md#clock)), the Rate card's controls row names
-it, and the Rate figure's hover gives the rate corrected onto true time,
+interface](agent-interface.md#clock)), Quartz Correction lists it, and
+the Rate figure's hover gives the rate corrected onto true time,
 labelled True Clock, with the day the clock it uses was kept. A sound card's crystal runs a steady 10 to 50 ppm off,
 which moves every rate read on it by 1 to 4 s/d. The big figure always
 stays on the card's clock, the same clock tg and `timegrapher analyze`
@@ -628,17 +628,17 @@ afresh. Do this after changing the microphone or sound card behind an
 input's name.
 
 **Clipping.** Whenever a beat in the readings has a clipped sample in
-its sound, counted as `timegrapher analyze` counts them, an amber banner
-above the readings says **Clipping on 3% of beats** (or "under 1%").
-Clipping flattens the loudest part of each tick, which moves
-the drop and so the amplitude and the beat error; the rate is unaffected.
-The banner follows the readings: it shows while the beats being averaged
-clip and goes when they no longer do. The peak meter, in
-Settings under Microphone, turns red on any clipped sample at once; the banner counts the
-beats in the readings. Even a watch driven several times past full scale is
-still read, with the banner, rather than taken for silence: when most of
-the beats found clip, the flattened peaks no longer count against the
-signal.
+its sound, counted as `timegrapher analyze` counts them, the Amplitude
+and Beat Error cards say so in a chip, **3% Clipped**, its hover saying
+why it matters. Clipping flattens the loudest part of each tick, which
+moves the drop and so the amplitude and the beat error; the rate is
+unaffected. The chip follows the readings: it shows while the beats
+being averaged clip and goes when they no longer do. The peak meter, in
+Settings under Microphone, turns red on any clipped sample at once; the
+chip counts the beats in the readings. Even a watch driven several times
+past full scale is still read, with the chip, rather than taken for
+silence: when most of the beats found clip, the flattened peaks no
+longer count against the signal.
 
 **Panes.** Below the readings, to begin with, are the paper strip (with
 Rate Line and Parallel Guides on) and under it the tick tock profile,
@@ -721,7 +721,8 @@ row each from 20 ms before the beat to 180 ms after, so the next beat
 shows too. **400 ms** shows every beat in one grey row, three or four
 beats at once. **Beats** draws the latest 1, 4, 8 or 16 over each other,
 the older ones fainter, so a beat that differs from the rest stands out.
-While listening it shows the latest beats; stopped, or on a
+Each row is scaled to its own loudest beat, so the Tick and Tock rows
+compare in shape, not in size. While listening it shows the latest beats; stopped, or on a
 recording, it shows the last beats, read from the recording. Only the few seconds around the beats are read, however long
 the recording: a WAV seeks there and a FLAC is searched by its frame
 headers (`span.rs`). No crosshair, as on the other sound plots.
@@ -994,8 +995,8 @@ opened, level changes, beat lock gained and lost, position changes and
 every message the app shows. It is kept under 1 MB, with the two files
 before it. If the app panics it also writes `crash-<time>.txt` there with
 the message, where it happened and the last 200 log lines, and the next
-start shows **The timegrapher closed unexpectedly last time. Make a
-report?** with **Make a Report…** (copies the record and opens a new GitHub
+start shows **Closed Unexpectedly…** in the status bar, which opens
+**The timegrapher closed unexpectedly last time. Make a report?** with **Make a Report…** (copies the record and opens a new GitHub
 issue to paste it into), **Show the Record** and **Dismiss**. Nothing is
 sent anywhere by the app itself.
 
@@ -1009,7 +1010,7 @@ anything, the app says why in the log and, on Windows and macOS, in a
 message box, and exits with an error. An error that ends the window after it
 has drawn is reported the same way.
 
-**Report a Problem.** **Report a Problem…** at the right of the status line
+**Report a Problem.** **Report a Problem…** in the Help menu
 makes the same zip as `timegrapher report` (see [reports.md](reports.md)) to
 attach to a GitHub issue. Choose what kind of problem it is (Bug, Reading,
 Setup or Idea) and say what happened. **Include the Sound** adds up to five
@@ -1047,24 +1048,30 @@ dBFS beside it ("peak −14 dBFS", with ", clipping" while it clips).
 **Status bar.** First what the strip shows: the take's name (Quick
 Listen, New Take, or the name of the recording or saved take), its watch
 (No watch for Quick Listen, No watch picked otherwise) and its state
-(Not started, Listening, Stopped, Opening or Opened), such as "Quick
-Listen · No watch · Listening", "New Take · Pepsi · Not started" or
-"w.wav · No watch picked · Opened". Then the input; the signal, "signal 12×", how far the typical
+(Not Started, Listening, Stopped, Opening or Opened), such as "Quick
+Listen · No watch · Listening", "New Take · Pepsi · Not Started" or
+"w.wav · No watch picked · Opened". Then, while listening, the input;
+the signal, "signal 12×", how far the typical
 beat's peak stands above the typical level between beats (noise alone
 reads about 2×, and below 4× no beats are logged). It measures
 loudness, not the shape of the tick, so hum, knocks or a holder that
 smears the sound aren't caught by it. Then how much sound the session
-holds and whether it is saved, and on the right the beat rate and the
-position, **Check for Updates…** and **Report a Problem…**.
+holds and whether it is saved, and the latest message. It repeats
+nothing the cards show. On the right are its notices, one short word
+each for what needs you: an error, in red; **Closed Unexpectedly…**
+after a crash; **Unsaved Sound Found…** for sound kept from an earlier
+session; **Timegrapher 0.2.0 Available…**. A click opens the whole
+message over the window with its buttons. Nothing ever appears above the
+readings, so the window never moves under the pointer.
 
 **Updates.** With **Check for Updates at Start** on (in Settings, under
 General; on unless switched off), the app asks GitHub once at start, on a
 background thread, whether a newer release is published
-(`timegrapher_core::update::check`). If one is, a banner says
-"Timegrapher 0.2.0 is available" with **Download**, which opens the
+(`timegrapher_core::update::check`). If one is, the status bar says
+**Timegrapher 0.2.0 Available…**, which opens **Download**, which opens the
 release's page in the browser. Nothing installs itself. At start, a
 failed check or an up-to-date version says nothing. **Check for
-Updates…** in the status bar or the Help menu makes the same check and always says what it
+Updates…** in the Help menu makes the same check and always says what it
 found: the notice, "up to date", or why it couldn't check ("no release has
 been published yet"). The request carries no account or identifier.
 
@@ -1167,7 +1174,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   for an input without one, such as a built-in microphone.
 - **Calibre.** Not Set, a calibre from the list (`timegrapher_core::calibres`,
   some 4,500 of them, each with its sources), or one of your own.
-  - **The menu.** On the Beat Rate card with no watch picked, and in the
+  - **The menu.** On the Calibre card with no watch picked, and in the
     New Watch form. A **Search every calibre** box at its top, ready to
     type into, lists every calibre matching a name, another name or the
     maker (the first 200, with how many more). Empty, the menu offers Not
@@ -1184,7 +1191,7 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
     and selected whatever the filters hide. Under the heading, every
     calibre in a table on the left and, level with it on the right,
     the one selected in full (see **The details** below). Opened
-    from the Calibre menu while a beat rate is known (set on the Beat Rate
+    from the Calibre menu while a beat rate is known (set on the Calibre
     card, found from the beats, or the watch's in its form), the table
     starts with the Beat Rate funnel at that rate and says so above it
     ("Showing 28800 bph, the rate found from the beats"), with **Show
@@ -1276,11 +1283,11 @@ folder can't be moved while another copy has it open. The Watches pane adds watc
   - **What isn't kept.** The pick itself, like the lift angle, is about
     the watch on the stand and isn't kept. Not Set names cycles after the
     wheels most calibres at the beat rate share.
-- **Beat rate.** On the Beat Rate card: Auto (guessed from the first seconds) or any standard rate
+- **Beat rate.** On the Calibre card: Auto (guessed from the first seconds) or any standard rate
   from 12,000 to 72,000 bph. Changing it starts the readings again; with
   a take open, the take is read again at the new rate, keeping the
   settings and masks as they are.
-- **Lift angle.** **Lift**, on the Amplitude card: 52° by default. Type the calibre's angle and press Enter,
+- **Lift angle.** **Lift**, on the Calibre card: 52° by default. Type the calibre's angle and press Enter,
   or pick a common one. Amplitude is worked out again at once, history
   included.
 - **Position.** On the Current Position card, or keys 1 to 6: DU, DD, CU, CD, CL, CR, with the Swiss laboratory names
@@ -1364,8 +1371,8 @@ the app quits without asking (on a Mac, Cmd+Q and Quit in the app menu or
 the Dock, which can't be held back; on any system, a logout or a
 shutdown) with more than 5 s of unsaved sound other than a Quick Listen
 take's, or is stopped by a crash,
-the sound stays there, and the next start says so in a
-banner, with when it started (in this computer's time), its length and
+the sound stays there, and the next start says so in the status bar,
+**Unsaved Sound Found…**, which opens the message with when it started (in this computer's time), its length and
 size, and **Open** (analysed here, and offered again next time),
 **Move To…** (the recording's folder moved into one you pick, to open
 with Open Folder…), **Delete…** (asking first) and **Later**. A folder

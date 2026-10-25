@@ -189,22 +189,24 @@ pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) ->
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             let Some(t) = test else {
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(format!(
-                            "Wind the watch fully, set it to a minute marker, put it on the \
-                             stand in the position picked above, and press Start Test. The app \
-                             listens until the watch stops: the run ends at the last beat heard \
-                             before {} min with none, and the take is kept in the watch's \
-                             history with its run time. The computer is kept awake and the \
-                             sound is kept while it runs; the position can't change and the \
-                             listening can't pause.",
-                            power_reserve::STOP_AFTER_S / 60.0
-                        ))
-                        .color(pal.text_secondary),
-                    )
-                    .wrap(),
-                );
+                let stop = power_reserve::STOP_AFTER_S / 60.0;
+                let steps = [
+                    "1.  Wind the watch fully and set it to a minute marker.".to_string(),
+                    "2.  Put it on the stand in the position on the Current Position card."
+                        .to_string(),
+                    "3.  Press Start Test.".to_string(),
+                ];
+                let after = [
+                    "•  The app listens until the watch stops.".to_string(),
+                    format!("•  The run ends at the last beat heard before {stop} min with none."),
+                    "•  The take is kept in the watch's history with its run time.".to_string(),
+                    "•  While it runs the computer is kept awake and the sound is kept; the \
+                     position can't change and the listening can't pause."
+                        .to_string(),
+                ];
+                for l in steps.iter().chain(after.iter()) {
+                    ui.add(egui::Label::new(RichText::new(l).color(pal.text_secondary)).wrap());
+                }
                 if let Some((have, need)) = free {
                     let line = if have >= need {
                         format!(
