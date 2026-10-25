@@ -33,6 +33,17 @@ fn scaled(v: &[f32], top: f32, scale: Scale) -> Vec<f64> {
         .collect()
 }
 
+/// A linear level's axis label, with as many decimals as its grid step
+/// needs, so close marks never read alike.
+fn level_label(value: f64, step: f64) -> String {
+    let places = if step > 0.0 {
+        (-step.log10() - 1e-9).ceil().clamp(0.0, 6.0) as usize
+    } else {
+        2
+    };
+    format!("{:.*}", places, value + 0.0)
+}
+
 /// The facts on each plot, a row each, top to bottom.
 const FACT_NAMES: [&str; 5] = ["Beats", "Unlock", "Drop", "Unlock to Drop", "Amplitude"];
 
@@ -397,7 +408,7 @@ pub fn draw(
                 }
                 match scale {
                     Scale::Decibels => format!("{:.0} dB", m.value + 0.0),
-                    Scale::Linear => format!("{:.2}", m.value + 0.0),
+                    Scale::Linear => level_label(m.value, m.step_size),
                 }
             });
         // Before there are beats, a typical stretch of time rather than none.
@@ -987,6 +998,24 @@ fn label_marks(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The level axis takes its decimals from its grid step: small levels
+    /// on a tall plot read 0.002, 0.004, not 0.00 at every mark.
+    #[test]
+    fn level_marks_read_apart_at_any_step() {
+        assert_eq!(level_label(0.004, 0.002), "0.004");
+        assert_eq!(level_label(0.0, 0.002), "0.000");
+        assert_eq!(level_label(0.25, 0.05), "0.25");
+        assert_eq!(level_label(0.3, 0.1), "0.3");
+        assert_eq!(level_label(2.0, 1.0), "2");
+        assert_eq!(level_label(-0.0, 0.01), "0.00");
+        let marks: Vec<String> = (0..6)
+            .map(|i| level_label(i as f64 * 0.0005, 0.0005))
+            .collect();
+        let mut seen = marks.clone();
+        seen.dedup();
+        assert_eq!(seen, marks);
+    }
 
     /// Names in a lane: centred on their marks, out a row where they would
     /// touch, slid along where the second row is taken, inside the plot,
