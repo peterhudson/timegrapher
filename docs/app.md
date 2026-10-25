@@ -48,12 +48,16 @@ own wherever the app shows or switches one: a hare for the rate, a swing
 for the amplitude and a seesaw for the beat error, in their colours.
 
 **The readings**, across the top, are six cards: **Current Position** and
-**Listen**, narrower, then **Rate**, **Amplitude**, **Beat Error** and
-**Beat Rate**, one width. Each card of figures carries its big figure and
-one line at most; what stands behind the figure is in its hover: the
-beats the rate is fitted to and their jitter, the Tick and Tock
-amplitudes, the beat error from the drop, how the beat rate was found,
-and, for a stopped take, the whole take's reading (see below).
+**Listen**, then **Rate**, **Amplitude**, **Beat Error** and **Beat
+Rate**, sharing the rest of the width. Every card is the same three rows,
+so the titles, the big figures and the controls each read in one line
+across: a title row (the caption, the card's **?** in its top-right
+corner, and what limits the reading in a small chip beside the ?), a
+figure row (the big figure with its ± and unit on the figure's baseline)
+and a controls row. What stands behind a figure is in its hover: the
+beats the rate is fitted to and their jitter, True Clock, the Tick and
+Tock amplitudes, the beat error from the drop, how the beat rate was
+found, and, for a stopped take, the whole take's reading (see below).
 **Current Position** shows the watch as it lies, in teal, the colour of
 position information everywhere, with no stand: the case, its crown at
 3, the numbers 12, 3, 6 and 9, and the hands at 10:10. Standing, the
@@ -62,52 +66,72 @@ and all, as the watch in your hand would be: the crown on top for Crown
 Up, at the bottom for Crown Down, on the left for Crown Left and on the
 right for Crown Right. Lying, it is drawn flat with its side wall below:
 the dial for Dial Up, and for Dial Down only the case back's fluted
-ring, crown on the left. Beside the picture are the name ("Crown Down")
-and both codes, the common one then Witschi's ("CD · 9H"; DU · CH and
-DD · CB lying flat); on a narrow card the codes alone, and narrower still
-the codes under the picture. Under them are six buttons, **DU DD CU CD
-CL CR**, the current one filled teal: in one row where each has room,
-else in two rows of three (a 1000-point window), so they stay big enough
-to read and press. Each one's hover gives its name, codes and key
-("Crown Down (CD, 9H) · key 4") and how long each change of position
-settles (the Positions Test pane's Settle), and the picture and the
-label keep their size whichever is set. Along each button's foot a thin
-teal bar fills with the seconds heard in that position, in Quick Listen
-as in a test or a take on show: settled and not masked, each position's
-own time only. It is full at the Positions Test pane's Measure (60 s
-unless set otherwise; at 120 s, 60 s heard fills half), so a free-form
-test shows which positions still need time; the hover gives the
-seconds. On the narrowest windows
-(about 800 points) the card is captioned **Position**, and the
-Amplitude card puts **Lift** on a line of its own above its field.
-While you listen, or before anything is on show, a button sets the
-position; keys 1 to 6 do the same, except while typing in a field. With
-a take on show, and during a Positions Test or a Power Reserve Test, the
-buttons only show the position, the take's latest or the one the test
-set: a take's positions can't be changed afterwards. **Listen**
-has a **Listen** icon, which starts Quick Listen (below), or with a
-watch picked that watch's Listen take, and becomes a **Stop** icon while
-listening; beside it a **Save** icon (a floppy disk), whose menu offers
-**Keep in a Watch** (your watches, then **New Watch…**;
-shown for a Quick Listen take, and for a recording opened from outside
-the Watches folder) and **Save in a Folder…**, which asks where, or
-**Save Again** once it has been saved. The Save icon is hidden for a
-watch's own take, which saves itself at Stop. Under them **Average
-Over**, shown as "Average 10 s", the time the readings are fitted over.
-**Amplitude** has **Lift**, the lift angle, typed or picked from the
-common ones, with "the default" beside it while nothing has set it
-(shortened where the card is narrow); a calibre picked that has a lift
-angle in the table, a watch's or one picked in Quick Listen, sets it
-instead, and it shows as a figure. **Beat Error** has no
-controls. On **Beat Rate** the big figure is itself the beat rate's menu
-(Auto, found from the beats, or a standard rate), with "Auto" beside it
-where the card has room, and, with no watch picked, the labelled
-**Calibre** menu (its search covers the whole table, with **Manage
-Calibres…** at its foot; see Calibre, below). With a watch whose calibre
-the table knows, the figure shows and one line names the calibre (as
-"Peacock SL1258 is 28800 bph" when the watch is heard at another rate); its hover gives the beat rate and lift angle it sets (Edit… on the
-watch changes them). Lines too long for the card end in "…", with the
-whole sentence on hover.
+ring, crown on the left. The picture sits at the card's left, across the
+title and figure rows; beside it are the caption, the name ("Crown
+Down") and both codes, the common one then Witschi's ("CD · 9H"; DU · CH
+and DD · CB lying flat). Across the controls row are six buttons, **DU DD
+CU CD CL CR**, the current one filled teal. Each one's hover gives its
+name, codes and key ("Crown Down (CD, 9H) · key 4") and how long each
+change of position settles (the Positions Test pane's Settle). Along each
+button's foot a teal bar, over a faint track, fills with the seconds
+heard in that position, in Quick Listen as in a test or a take on show:
+settled and not masked, each position's own time only. It is full at the
+Positions Test pane's Measure (60 s unless set otherwise; at 120 s, 60 s
+heard fills half), so a free-form test shows which positions still need
+time; the hover gives the seconds. While you listen, or before anything
+is on show, a button sets the position; keys 1 to 6 do the same, except
+while typing in a field. With a take on show, and during a Positions Test
+or a Power Reserve Test, the buttons only show the position, the take's
+latest or the one the test set: a take's positions can't be changed
+afterwards. **Listen** has a **Listen** icon, which starts Quick Listen
+(below), or with a watch picked that watch's Listen take, and becomes a
+**Stop** icon while listening; beside it a **Save** icon (a floppy disk),
+whose menu offers **Keep in a Watch** (your watches, then **New
+Watch…**; shown for a Quick Listen take, and for a recording opened from
+outside the Watches folder) and **Save in a Folder…**, which asks where,
+or **Save Again** once it has been saved. The Save icon is hidden for a
+watch's own take, which saves itself at Stop. Beside them are the take's
+length ("12:48"), live while listening and the whole take for one
+opened, and its state under it (Listening, Stopped, Opened, or 0:00 and
+Not Started). The status bar no longer gives the length. Under them
+**Average Over** and its pop-up ("10 s"), the time the readings are
+fitted over. **Rate** has **Input Clock** on its controls row: the
+microphone's clock error, kept or timed, or "Not Timed", with **Keep**
+when one has been timed to keep (see True Clock). **Amplitude** has
+**Lift**, the lift angle, in one field that is typed in or picked from
+the common ones with its ▾, and "Default" beside it while nothing has
+set it; a calibre picked that has a lift angle in the table, a watch's
+or one picked in Quick Listen, sets it instead, and it shows as text.
+**Beat Error** has no controls. **Beat Rate**'s figure is the beat rate,
+set or found; its controls row has the beat rate's pop-up (**Auto**,
+found from the beats, or a standard rate) and, with no watch picked, the
+**Calibre** pop-up (its search covers the whole table, with **Manage
+Calibres…** at its foot; see Calibre, below). A calibre picked that beats
+at another rate than the one heard says so in a chip ("Peacock SL1258 is
+28800 bph"). With a watch whose calibre the table knows, one line names
+the calibre (as "Peacock SL1258 is 28800 bph" when the watch is heard at
+another rate); its hover gives the beat rate and lift angle it sets
+(Edit… on the watch changes them). Lines too long for the card end in
+"…", with the whole sentence on hover.
+
+**Narrower windows.** The cards keep their full controls only where they
+fit. Below about 1520 points Current Position and Listen take their
+compact form; below about 1320 points every card does, down to the
+800-point minimum. Compact, Current Position is captioned **Position**,
+with a smaller picture, the name on two lines beside it, and one pop-up
+of the six positions (with their keys) instead of the buttons; keys 1 to
+6 still work, and the bars aren't shown. Listen keeps its two icons, gives
+the take's length beside its caption ("Listen 12:48"; on the narrowest
+windows, below about 820 points, in the Listen icon's hover instead, so
+the other cards keep their captions whole), and shows Average Over's
+pop-up as **Avg 10 s**. The reading cards' figures are smaller,
+with the ± over the unit beside them, and each card keeps one control:
+**Input Clock** (**Clock** on the narrowest cards), with the input clock
+and Keep in its menu, **Lift 52°** (the same field), none on Beat
+Error, and the **Calibre** pop-up on Beat Rate with the beat rates first
+in its menu. A reading card too narrow for its labels drops them: Input
+Clock goes into the value's hover, and the Calibre pop-up reads "No
+Calibre" when none is set.
 
 **Quick Listen**, from the Listen icon on the Listen card, listens on the
 microphone without picking or adding a watch first, for a watch handed
@@ -355,14 +379,15 @@ standard errors of their 2 s windows in the averaging time. The rate's ±
 comes from the scatter of 10 s windows over the run so far (back to a
 break or a move, up to five minutes), scaled to the averaging time; it
 needs about 30 s of unbroken beats. What the ± can't show is named, as a
-plain fact, whole, under the reading's caption, with a sentence on
-hover: "12 s of beats" when the beats span under 10 s, "540 of 600
+plain fact, in a chip beside the reading's caption, with its sentence on
+hover (a click keeps it open, as the ? does; with several, the chip
+shows the first and how many more, "12 s of Beats +1", and the hover
+lists them all): "12 s of beats" when the beats span under 10 s, "540 of 600
 beats" when under 95% of the beats expected were found, "3% clipped"
 when over 1% of beats clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
-in listening in the stretch (such as the computer sleeping). When no calibre or lift angle is set, "the default"
+in listening in the stretch (such as the computer sleeping). Chips are in Title Case ("3% Clipped"). When no calibre or lift angle is set, "Default"
 beside Lift on the Amplitude card says the amplitude comes from the
-default 52° (shortened to "default" on a narrow card, or "*" with the
-same hover where even that won't fit). The cards give their units short:
+default 52° (on a compact card, the field's hover says it). The cards give their units short:
 s/d and ms. On the beat error, a reading of an opened file whose Tick
 and Tock were named by the beat count across a break says so ("sides
 named by count", with the number of breaks in the hover). A masked
@@ -582,12 +607,12 @@ timing is only right when the computer's clock is kept by internet time
 (NTP). When the microphone's own clock error has been kept (by **Keep**,
 `timegrapher clock measure --save`, or `clock from-log --save` after a
 take with a clock log; see `clock` in [the agent
-interface](agent-interface.md#clock)), a line under the rate gives the
-rate corrected onto true time, labelled True Clock, with the day the clock
-it uses was kept. A sound card's crystal runs a steady 10 to 50 ppm off,
+interface](agent-interface.md#clock)), the Rate card's controls row names
+it, and the Rate figure's hover gives the rate corrected onto true time,
+labelled True Clock, with the day the clock it uses was kept. A sound card's crystal runs a steady 10 to 50 ppm off,
 which moves every rate read on it by 1 to 4 s/d. The big figure always
 stays on the card's clock, the same clock tg and `timegrapher analyze`
-read, so it compares directly with them; the True Clock line is beside it,
+read, so it compares directly with them; True Clock is in its hover,
 never instead of it. It is looked up by the input's name when a microphone
 session starts, and is not shown for a recording opened from disk. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
@@ -598,7 +623,7 @@ the day it was measured, since getting it back takes 20 minutes or more of
 listening; then it removes it from the same `clocks.json` that
 `timegrapher clock list` and `clock forget` read, so the command line and
 the MCP server forget it too; rates from that input are then read on its
-own clock again, and the True Clock line goes, until it is timed and kept
+own clock again, and True Clock goes from the hover, until it is timed and kept
 afresh. Do this after changing the microphone or sound card behind an
 input's name.
 
@@ -1350,21 +1375,15 @@ come back with the next take on the microphone.
 Stopped during a move's settling time, the rate card gives the reading
 from before the move and says so.
 
-**The cards keep their height.** Every line on a reading card has its
-place whether it shows anything or not: the caption, what limits the
-reading, the figure and its unit (under it on a card too narrow for the
-widest figure), and the lines under the figure. What limits the reading
-and the line under the figure always show whole, wrapped, in short
-words ("9 s of beats · 25 of 66 beats"; "settling, 20 s"; "before the
-move"; "waiting for beats"), with the full sentence in the hover; each
-has room for its longest usual wording at the card's width. With no
-regular beat, the cards say "No regular beat", with the full sentence
-and the timing scatter in the hover. A figure too wide for its card is
-drawn smaller. The Rate card's last line (True Clock, or the input clock
-timed to keep) is cut short where it doesn't fit, its whole in the
-hover; True Clock is in the Rate figure's hover too. So the cards, and
-every pane under them, change height only with the window's width, never
-with the readings. No pane is squeezed below 120 points, so the Paper
+**The cards keep their height.** Every card is 134 points tall at every
+window width, whatever it shows: its three rows have their places whether
+anything is in them or not. A missing figure is a "—", with what the
+reading waits on in the unit's place, in short words ("Settling, 20 s";
+"Waiting for Beats"; "Before the Move"), the full sentence in the hover.
+With no regular beat, the reading cards say "No Regular Beat" there, with
+the full sentence and the timing scatter in the hover. A figure too wide
+for its card is drawn smaller. So the cards, and every pane under them,
+never change height with the readings. No pane is squeezed below 120 points, so the Paper
 Strip keeps room to read on a short window.
 
 Each saved recording is a folder named after the start time, then the

@@ -96,7 +96,7 @@ pub const POSITION: &[&str] = &[
      edge with the crown up, down, left or right. The picture shows the watch as it lies, \
      the hour that points up at the top; beside it are its name and codes, the common one \
      then Witschi's (CD · 9H). While you listen, the six buttons DU, DD, CU, CD, CL and CR \
-     set it, as keys 1 to 6 do.",
+     set it (on a narrow window, one pop-up of them), as keys 1 to 6 do, one key each.",
     "Looking at a take, or during a Positions Test or a Power Reserve Test, the buttons \
      only show the position: the one at the strip's latest beat on show, or the one the \
      test set. A take's positions can't be changed afterwards.",

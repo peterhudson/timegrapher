@@ -74,6 +74,19 @@ pub fn entry(
     fmt: &Format,
     width: f32,
 ) -> bool {
+    entry_framed(ui, id_salt, value, range, fmt, width, true)
+}
+
+/// [`entry`], with or without its own frame.
+fn entry_framed(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    value: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    fmt: &Format,
+    width: f32,
+    frame: bool,
+) -> bool {
     let id = ui.make_persistent_id(id_salt);
     let buf = id.with("text");
     let mut text = ui
@@ -82,6 +95,7 @@ pub fn entry(
     let resp = ui.add(
         egui::TextEdit::singleline(&mut text)
             .id(id)
+            .frame(frame)
             .desired_width(width),
     );
     let mut changed = false;
@@ -126,6 +140,90 @@ pub fn presets(
     } else {
         false
     }
+}
+
+/// One control `width` wide and a control's height for `value`, typed or
+/// picked: `prefix` and the typed value, with a ▾ inside at the right that
+/// lists `options`. Returns the control's response, and true if the
+/// value changed.
+#[allow(clippy::too_many_arguments)]
+pub fn combo(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    value: &mut f64,
+    range: std::ops::RangeInclusive<f64>,
+    fmt: &Format,
+    options: &[f64],
+    show: fn(f64) -> String,
+    prefix: &str,
+    width: f32,
+) -> (egui::Response, bool) {
+    let pal = crate::theme::pal(ui);
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(width, crate::theme::CONTROL_H),
+        egui::Sense::hover(),
+    );
+    let arrow = egui::Rect::from_min_max(egui::pos2(rect.right() - 24.0, rect.top()), rect.max);
+    let arrow_resp = ui.interact(
+        arrow,
+        ui.make_persistent_id((id_salt, "options")),
+        egui::Sense::click(),
+    );
+    let fill = if arrow_resp.hovered() {
+        pal.control_hover
+    } else {
+        pal.control
+    };
+    ui.painter().rect_filled(
+        rect,
+        egui::CornerRadius::same(crate::theme::CONTROL_RADIUS),
+        fill,
+    );
+    // The ▾, 10 in from the right edge.
+    let c = egui::pos2(rect.right() - 14.0, rect.center().y);
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![
+            c + egui::vec2(-4.0, -2.5),
+            c + egui::vec2(4.0, -2.5),
+            c + egui::vec2(0.0, 2.5),
+        ],
+        pal.text_secondary,
+        egui::Stroke::NONE,
+    ));
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(egui::Rect::from_min_max(
+                rect.min + egui::vec2(10.0, 0.0),
+                egui::pos2(arrow.left(), rect.bottom()),
+            ))
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    child.spacing_mut().item_spacing.x = 4.0;
+    if !prefix.is_empty() {
+        child.label(egui::RichText::new(prefix).color(pal.text_secondary));
+    }
+    let mut typed = *value;
+    let w = child.available_width();
+    let mut changed = entry_framed(&mut child, id_salt, &mut typed, range, fmt, w, false);
+    let mut picked = None;
+    egui::Popup::menu(&arrow_resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .show(|ui| {
+            for &o in options {
+                if ui.selectable_label(o == *value, show(o)).clicked() {
+                    picked = Some(o);
+                }
+            }
+        });
+    if let Some(o) = picked {
+        typed = o;
+        changed = true;
+    }
+    let changed = changed && typed != *value;
+    if changed {
+        *value = typed;
+    }
+    (resp.union(arrow_resp), changed)
 }
 
 #[cfg(test)]

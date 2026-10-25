@@ -441,10 +441,23 @@ impl Calibres {
         current: &str,
         rate: Option<(u32, &'static str)>,
     ) -> Option<String> {
+        self.picker_with(ui, current, rate, "Not Set", None)
+    }
+
+    /// [`Self::picker`], reading `unset` while no calibre is picked, its
+    /// menu starting with what `before` draws.
+    pub fn picker_with(
+        &mut self,
+        ui: &mut egui::Ui,
+        current: &str,
+        rate: Option<(u32, &'static str)>,
+        unset: &str,
+        mut before: Option<&mut dyn FnMut(&mut egui::Ui)>,
+    ) -> Option<String> {
         let pal = theme::pal(ui);
         let shown = match self.find(current) {
             Some(e) => e.name().to_string(),
-            None => "Not Set".to_string(),
+            None => unset.to_string(),
         };
         let picked: std::cell::RefCell<Option<String>> = Default::default();
         let mut manage = false;
@@ -463,6 +476,9 @@ impl Calibres {
                 .truncate()
                 .selected_text(shown)
                 .show_ui(ui, |ui| {
+                    if let Some(before) = before.as_mut() {
+                        before(ui);
+                    }
                     let line = |ui: &mut egui::Ui, e: Entry<'_>, text: String| {
                         if ui
                             .selectable_label(e.name() == current, text)

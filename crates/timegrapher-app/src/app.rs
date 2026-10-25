@@ -47,8 +47,14 @@ const SOUND_EVERY_S: f64 = 2.0;
 struct Readouts {
     /// Keep the input's clock as timed.
     keep_clock: bool,
-    /// Where each card's controls go, at its foot.
+    /// Where each card's controls go.
     slots: Vec<(Slot, egui::Rect)>,
+    /// Current Position and Listen in their compact form, the window too
+    /// narrow for their full width beside four full reading cards.
+    lead_compact: bool,
+    /// The reading cards in their compact form, too narrow for the full
+    /// controls.
+    compact: bool,
 }
 
 /// The controls the readings' cards carry, each in a strip at its card's
@@ -811,63 +817,200 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
 /// it is shown.
 const WATCH_SHARE: f32 = 0.34;
 
-/// The heights of the strips of controls at the readings' cards' feet: a
-/// row of controls, the Beat Rate card's two, the Position card's picture
-/// of the position.
-const CONTROL_SLOT_H: f32 = 28.0;
-/// The size of a card's big figure.
-const FIGURE_PT: f32 = 30.0;
-const BEAT_RATE_SLOT_H: f32 = 72.0;
-/// The Beat Rate card's controls narrower than this put the Calibre menu
-/// under its name, and the card leaves this much more room for them.
-const BEAT_RATE_NARROW_W: f32 = 130.0;
-const BEAT_RATE_NARROW_EXTRA_H: f32 = 20.0;
-/// The Current Position card's picture and label, then its buttons: one
-/// row of six where each button has `POSITION_BUTTON_W`, else two rows of
-/// three.
-const POSITION_PIC_H: f32 = 72.0;
-const POSITION_SEG_H: f32 = 26.0;
-const POSITION_BUTTON_W: f32 = 30.0;
-/// The Current Position card's width: its share of the window, between
-/// these.
-const POSITION_MIN_W: f32 = 124.0;
-const POSITION_MAX_W: f32 = 240.0;
-/// The room the Amplitude card's lift row takes: Lift, its field, °, the
-/// presets menu and the default's mark. Narrower, Lift goes on a line of
-/// its own above the rest, and the card is this much taller.
-const LIFT_ROW_W: f32 = 130.0;
-const LIFT_NARROW_EXTRA_H: f32 = 20.0;
-/// The narrowest a card of figures can be and still show its caption and
-/// "?" whole.
-const FIGURE_MIN_W: f32 = 118.0;
-/// The Current Position card narrower than this is captioned Position.
-const POSITION_CAPTION_W: f32 = 160.0;
+/// The readings cards' widths: Current Position and Listen fixed, the
+/// four reading cards sharing the rest, each at least `FULL_FIGURE_W` for
+/// the full controls. Narrower, every card takes its compact form, at
+/// these widths.
+const POSITION_W: f32 = 250.0;
+const LISTEN_W: f32 = 190.0;
+const FULL_FIGURE_W: f32 = 250.0;
+const POSITION_COMPACT_W: f32 = 112.0;
+/// A compact Listen card gives the take's length beside its caption; on
+/// the narrowest windows it drops to `LISTEN_NARROWEST_W` and the length
+/// is in the Listen button's hover, so the reading cards keep
+/// `CAPTION_FIT_W`, room for their captions whole.
+const LISTEN_COMPACT_W: f32 = 140.0;
+const LISTEN_NARROWEST_W: f32 = 120.0;
+const CAPTION_FIT_W: f32 = 118.0;
+const BEAT_RATE_COMPACT_W: f32 = 130.0;
+/// The Current Position card's picture, and on a compact card.
+const POSITION_PIC: f32 = 66.0;
+const POSITION_PIC_COMPACT: f32 = 40.0;
 /// Dark text on the teal of the current position's button.
 const POSITION_ON_INK: Color32 = Color32::from_rgb(0x0d, 0x26, 0x29);
+/// The Listen card's buttons.
+const LISTEN_BUTTON: f32 = 40.0;
+/// A reading card narrower than this drops the labels on its controls
+/// row: Input Clock, and Calibre (its pop-up reading No Calibre).
+const LABELLED_W: f32 = 260.0;
+/// The widest a compact card's one control is.
+const COMPACT_CONTROL_W: f32 = 140.0;
 
-/// The rows of the Current Position card's buttons across `inner`, the
-/// card less its margins: six in one row where each has room, else three
-/// in each of two.
-fn position_rows(inner: f32) -> usize {
-    if (inner - 4.0) / 6.0 >= POSITION_BUTTON_W {
-        1
-    } else {
-        2
+const KEEP_CLOCK_HINT: &str = "Keep this input's clock error and correct its rates";
+
+/// A readings card's three rows inside its padding.
+struct CardRows {
+    inner: egui::Rect,
+    title: egui::Rect,
+    figure: egui::Rect,
+    controls: egui::Rect,
+}
+
+impl CardRows {
+    fn of(card: egui::Rect) -> Self {
+        let inner = card.shrink(f32::from(theme::CARD_PADDING));
+        let band = |top: f32, h: f32| {
+            egui::Rect::from_min_size(
+                egui::pos2(inner.left(), inner.top() + top),
+                Vec2::new(inner.width(), h),
+            )
+        };
+        CardRows {
+            inner,
+            title: band(0.0, theme::TITLE_ROW_H),
+            figure: band(theme::TITLE_ROW_H + theme::ROW_GAP, theme::FIGURE_ROW_H),
+            controls: band(
+                theme::TITLE_ROW_H + theme::FIGURE_ROW_H + 2.0 * theme::ROW_GAP,
+                theme::CONTROL_H,
+            ),
+        }
     }
 }
 
-/// Where the Current Position card puts its label: the name and codes
-/// beside the picture, the codes alone beside it, or the codes under it.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum PositionLabel {
-    Beside,
-    Codes,
-    Under,
+/// The input's clock as the Rate card names it.
+struct ClockWords {
+    /// "20.2 ppm fast", or "Not Timed".
+    value: String,
+    hint: String,
+    /// Timed or kept, rather than not timed yet.
+    timed: bool,
+    /// Timed while listening and offered to keep.
+    offered: bool,
 }
 
-/// The height of the Current Position card's buttons, in `rows` rows.
-fn position_buttons_h(rows: usize) -> f32 {
-    rows as f32 * POSITION_SEG_H + (rows as f32 - 1.0) * 4.0
+/// A reading's limit in short in Title Case, for its chip: "9 s of Beats",
+/// "3% Clipped", "28800 bph Heard".
+fn chip_words(short: &str) -> String {
+    short
+        .split(' ')
+        .enumerate()
+        .map(|(n, w)| {
+            let keep = matches!(w, "s" | "bph" | "ms" | "is")
+                || (n > 0 && matches!(w, "of" | "by" | "the"))
+                || w.chars().next().is_none_or(|c| !c.is_alphabetic());
+            if keep {
+                w.to_string()
+            } else {
+                let mut c = w.chars();
+                c.next()
+                    .map(|f| f.to_uppercase().chain(c).collect())
+                    .unwrap_or_default()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Where a galley's first line sits: its baseline, down from its top.
+fn baseline(g: &egui::Galley) -> f32 {
+    g.rows
+        .first()
+        .and_then(|r| Some(r.pos.y + r.row.glyphs.first()?.pos.y))
+        .unwrap_or(g.size().y * 0.8)
+}
+
+/// A readings card's figure row: the big figure ("—" while there is none),
+/// then its ± and unit on the figure's baseline, or what the reading waits
+/// on in their place. On a compact card the figure is smaller and the ±
+/// sits over the unit beside it. A figure too wide for the card (noise
+/// read as beats can give thousands of s/d) is made smaller to show whole.
+fn figure_row(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    value: Option<&str>,
+    unit: &str,
+    status: Option<&(String, String)>,
+    hover: &str,
+    compact: bool,
+) {
+    let pal = theme::pal(ui);
+    let (text, colour) = match value {
+        // A true minus sign, as wide as the plus.
+        Some(v) => (v.replace('-', "−"), pal.text),
+        None => ("—".to_string(), pal.text_tertiary),
+    };
+    let side_text = status.map_or(unit, |s| s.0.as_str());
+    // Beside the figure: one line in Body, or on a compact card two small
+    // lines, the ± over the unit.
+    let lines: Vec<String> = if side_text.is_empty() {
+        Vec::new()
+    } else if !compact {
+        vec![side_text.to_string()]
+    } else if status.is_some() {
+        // Two lines as even as the words allow: "Settling," over "12 s",
+        // "Waiting for" over "Beats".
+        let splits = side_text.match_indices(' ').map(|(i, _)| i);
+        match splits.min_by_key(|&i| i.abs_diff(side_text.len() - i)) {
+            Some(i) => vec![side_text[..i].to_string(), side_text[i + 1..].to_string()],
+            None => vec![side_text.to_string()],
+        }
+    } else {
+        // "± 8.6 s/d" stacks; "± 0.8°" and "bph" stay one line.
+        match side_text.rsplit_once(' ') {
+            Some((a, b)) if a.starts_with('±') && a.contains(' ') => {
+                vec![a.to_string(), b.to_string()]
+            }
+            _ => vec![side_text.to_string()],
+        }
+    };
+    let side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
+    let side: Vec<_> = lines
+        .iter()
+        .map(|l| {
+            ui.painter()
+                .layout_no_wrap(l.clone(), side_font.clone(), pal.text_secondary)
+        })
+        .collect();
+    let side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    let room = rect.width() - if side_w > 0.0 { side_w + 6.0 } else { 0.0 };
+    let full = if compact {
+        theme::FIGURE_COMPACT_PT
+    } else {
+        theme::FIGURE_PT
+    };
+    let lay = |size: f32| {
+        ui.painter()
+            .layout_no_wrap(text.clone(), theme::display(size), colour)
+    };
+    let mut big = lay(full);
+    if big.size().x > room && value.is_some() {
+        big = lay((full * room / big.size().x).floor().max(12.0));
+    }
+    let top = rect.center().y - big.size().y / 2.0;
+    let base = top + baseline(&big);
+    let painter = ui.painter().with_clip_rect(rect.expand(2.0));
+    let x = rect.left() + big.size().x + 6.0;
+    painter.galley(egui::pos2(rect.left(), top), big, colour);
+    let step = side_font.size * 1.2;
+    let n = side.len();
+    for (i, g) in side.into_iter().enumerate() {
+        let line_base = base - (n - 1 - i) as f32 * step;
+        let y = line_base - baseline(&g);
+        painter.galley(egui::pos2(x, y), g, pal.text_secondary);
+    }
+    let hover = match status {
+        Some((_, h)) if !h.is_empty() && !hover.is_empty() => format!("{h}\n\n{hover}"),
+        Some((_, h)) if !h.is_empty() => h.clone(),
+        _ => hover.to_string(),
+    };
+    if !hover.is_empty() {
+        ui.interact(
+            rect,
+            ui.id().with(("figure", rect.left() as i32)),
+            egui::Sense::hover(),
+        )
+        .on_hover_text(hover);
+    }
 }
 
 /// The USB microphone behind an input, for its automatic gain switch on
@@ -916,13 +1059,6 @@ fn open_sound_settings() -> std::io::Result<()> {
         .spawn()
         .map(|_| ())
 }
-
-/// The Current Position card's slot across `inner`: the picture, then its
-/// buttons.
-fn position_slot_h(inner: f32) -> f32 {
-    POSITION_PIC_H + 6.0 + position_buttons_h(position_rows(inner))
-}
-const LISTEN_SLOT_H: f32 = 60.0;
 
 /// The layout's version: a layout saved before this one is replaced by the
 /// default once, as the panes moved.
@@ -1206,6 +1342,14 @@ const MS: Format = Format {
     show: fields::plain,
     parse: fields::parse_number,
 };
+/// An angle in whole or half degrees, with its °.
+const DEGREES: Format = Format {
+    show: show_degrees,
+    parse: fields::parse_number,
+};
+fn show_degrees(v: f64) -> String {
+    format!("{}°", fields::plain(v))
+}
 /// A wheel's period: as many decimals as it has, up to three (3.75 s).
 const DURATION: Format = Format {
     show: fields::duration,
@@ -6307,8 +6451,13 @@ impl TimegrapherApp {
         } else {
             "No watch picked".to_string()
         };
-        let state = match self.session.state() {
-            session::State::Idle => "Not started",
+        format!("{name} · {watch} · {}", self.state_words())
+    }
+
+    /// Whether the take on show is listening, stopped or opened.
+    fn state_words(&self) -> &'static str {
+        match self.session.state() {
+            session::State::Idle => "Not Started",
             session::State::Listening => "Listening",
             session::State::Paused { .. } => "Stopped",
             // Only tests play a recording through as if live.
@@ -6316,11 +6465,10 @@ impl TimegrapherApp {
             session::State::ReplayStopped => "Stopped",
             session::State::Analysing => "Opening",
             session::State::Analysed => "Opened",
-        };
-        format!("{name} · {watch} · {state}")
+        }
     }
 
-    /// The controls on the readings' cards, each in the strip its card
+    /// The controls on the readings' cards, each in the rows its card
     /// left for it.
     fn card_controls(&mut self, ui: &mut egui::Ui, out: &Readouts) {
         for &(slot, rect) in &out.slots {
@@ -6331,13 +6479,15 @@ impl TimegrapherApp {
                 egui::UiBuilder::new()
                     .id_salt(("card controls", slot))
                     .max_rect(rect)
-                    .layout(egui::Layout::top_down(egui::Align::Min)),
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.spacing_mut().interact_size.y = theme::CONTROL_H;
             match slot {
-                Slot::Position => self.position_buttons(&mut ui),
-                Slot::Listen => self.listen_buttons(&mut ui),
-                Slot::Lift => self.lift_control(&mut ui),
-                Slot::BeatRate => self.beat_rate_controls(&mut ui),
+                Slot::Position => self.position_card(&mut ui, out.lead_compact),
+                Slot::Listen => self.listen_buttons(&mut ui, out.lead_compact),
+                Slot::Lift => self.lift_control(&mut ui, out.compact),
+                Slot::BeatRate => self.beat_rate_controls(&mut ui, out.compact),
             }
         }
     }
@@ -6366,81 +6516,61 @@ impl TimegrapherApp {
             .map_or(self.position, |(_, p)| p)
     }
 
-    /// The Current Position card: the watch as it lies and its name in the
-    /// middle, and six buttons under them, DU to CR, the current one
-    /// filled: one row where the card has room, else two rows of three.
-    /// The buttons set the position in a free live take; on a take on show
-    /// or during a test they only show it.
-    fn position_buttons(&mut self, ui: &mut egui::Ui) {
+    /// The Current Position card, in `ui`'s rect inside its padding: the
+    /// watch as it lies at the left, its caption and name beside it, and
+    /// the six buttons, DU to CR, across the foot, the current one teal,
+    /// each with a bar filling as that position is heard. On a compact
+    /// card, the picture smaller, the name beside it, and one pop-up of
+    /// the six instead of the buttons. The buttons set the position in a
+    /// free live take; on a take on show or during a test they only show
+    /// it.
+    fn position_card(&mut self, ui: &mut egui::Ui, compact: bool) {
         let pal = theme::pal(ui);
         let here = self.shown_position();
         let editable = self.position_editable();
-        let area = ui.max_rect();
-        let rows = position_rows(area.width());
-        let buttons_h = position_buttons_h(rows);
-        let top = egui::Rect::from_min_max(
-            area.min,
-            egui::pos2(area.right(), area.bottom() - buttons_h - 6.0),
+        let rows = CardRows::of(ui.max_rect().expand(f32::from(theme::CARD_PADDING)));
+        let settle = format!(
+            "Each change of position settles for {} s (Settle, on the Positions Test pane), \
+             and those seconds are left out of the readings.",
+            fields::plain(self.guided_settle_s)
         );
-        // The picture and the label together, centred; the label falls
-        // back to the codes alone, then to the codes under the picture, as
-        // the card narrows.
-        let name_font = theme::semibold(12.5);
-        let code_font = egui::FontId::proportional(10.5);
-        let codes_of = |p: Position| format!("{} · {}", p.code(), p.witschi());
-        let codes = codes_of(here);
-        // Sized for the widest of the six, so the picture keeps its size
-        // whichever position is set.
-        let (name_w, codes_w, code_h) = ui.fonts_mut(|f| {
-            let mut w = |t: String, font: &egui::FontId| {
-                f.layout_no_wrap(t, font.clone(), pal.text).size().x
-            };
-            let (n, c) = Position::ALL
-                .into_iter()
-                .fold((0.0f32, 0.0f32), |(n, c), p| {
-                    (
-                        n.max(w(p.name().to_string(), &name_font)),
-                        c.max(w(codes_of(p), &code_font)),
+        let codes = format!("{} · {}", here.code(), here.witschi());
+        // The caption and its "?" in a title row.
+        let caption_row = |ui: &mut egui::Ui, rect: egui::Rect, caption: &str| {
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("position title")
+                    .max_rect(rect)
+                    .layout(egui::Layout::right_to_left(egui::Align::Center)),
+            );
+            theme::help(&mut child, caption, help::POSITION);
+            child.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(caption)
+                            .font(theme::semibold(13.0))
+                            .color(pal.text_secondary),
                     )
-                });
-            (n, c, f.row_height(&code_font))
-        });
-        let side_for = |label_w: f32| {
-            (top.width() - label_w - 8.0)
-                .min(top.height())
-                .min(POSITION_PIC_H)
+                    .truncate(),
+                );
+            });
         };
-        let (side, label) = if side_for(name_w.max(codes_w)) >= 44.0 {
-            (side_for(name_w.max(codes_w)), PositionLabel::Beside)
-        } else if side_for(codes_w) >= 44.0 {
-            (side_for(codes_w), PositionLabel::Codes)
+        let side = if compact {
+            POSITION_PIC_COMPACT
         } else {
-            (
-                (top.height() - code_h - 2.0)
-                    .min(top.width())
-                    .min(POSITION_PIC_H),
-                PositionLabel::Under,
-            )
+            POSITION_PIC
         };
-        let label_w = match label {
-            PositionLabel::Beside => name_w.max(codes_w) + 8.0,
-            PositionLabel::Codes => codes_w + 8.0,
-            PositionLabel::Under => 0.0,
-        };
-        let pic = if label == PositionLabel::Under {
+        let pic = if compact {
             egui::Rect::from_min_size(
-                egui::pos2(
-                    top.center().x - side / 2.0,
-                    top.center().y - (side + 2.0 + code_h) / 2.0,
-                ),
+                egui::pos2(rows.figure.left(), rows.figure.center().y - side / 2.0),
                 Vec2::splat(side),
             )
         } else {
+            // Across the title and figure rows, centred in their height.
+            let top = rows.title.top();
+            let h = rows.figure.bottom() - top;
             egui::Rect::from_min_size(
-                egui::pos2(
-                    top.center().x - (side + label_w) / 2.0,
-                    top.center().y - side / 2.0,
-                ),
+                egui::pos2(rows.inner.left(), top + (h - side) / 2.0),
                 Vec2::splat(side),
             )
         };
@@ -6452,11 +6582,6 @@ impl TimegrapherApp {
             pal.text,
             pal.card,
         );
-        let settle = format!(
-            "Each change of position settles for {} s (Settle, on the Positions Test pane), \
-             and those seconds are left out of the readings.",
-            fields::plain(self.guided_settle_s)
-        );
         ui.interact(pic, ui.id().with("position picture"), egui::Sense::hover())
             .on_hover_text(if editable {
                 format!("{}. {POSITION_HINT} {settle}", here.label())
@@ -6467,66 +6592,99 @@ impl TimegrapherApp {
                     here.label()
                 )
             });
-        let x = pic.right() + 8.0;
-        let painter = ui.painter();
-        match label {
-            PositionLabel::Beside => {
-                painter.text(
-                    egui::pos2(x, pic.center().y - 1.0),
-                    egui::Align2::LEFT_BOTTOM,
-                    here.name(),
-                    name_font,
-                    pal.text,
-                );
-                painter.text(
-                    egui::pos2(x, pic.center().y + 1.0),
-                    egui::Align2::LEFT_TOP,
-                    &codes,
-                    code_font,
-                    pal.text_secondary,
-                );
+        let painter = ui.painter().clone();
+        if compact {
+            caption_row(ui, rows.title, "Position");
+            // The name on two lines beside the picture.
+            let x = pic.right() + 8.0;
+            let name_font = theme::semibold(14.0);
+            let (a, b) = here.name().split_once(' ').unwrap_or((here.name(), ""));
+            let clip = painter.with_clip_rect(rows.figure);
+            clip.text(
+                egui::pos2(x, rows.figure.center().y),
+                egui::Align2::LEFT_BOTTOM,
+                a,
+                name_font.clone(),
+                pal.text,
+            );
+            clip.text(
+                egui::pos2(x, rows.figure.center().y),
+                egui::Align2::LEFT_TOP,
+                b,
+                name_font,
+                pal.text,
+            );
+            // The six in one pop-up; keys 1 to 6 still pick them.
+            let mut picked = here;
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("position menu")
+                    .max_rect(rows.controls)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            child.spacing_mut().interact_size.y = theme::CONTROL_H;
+            child
+                .add_enabled_ui(editable, |ui| {
+                    egui::ComboBox::from_id_salt("position")
+                        .width(ui.available_width())
+                        .selected_text(here.code())
+                        .show_ui(ui, |ui| {
+                            for (n, p) in Position::ALL.into_iter().enumerate() {
+                                ui.selectable_value(
+                                    &mut picked,
+                                    p,
+                                    format!("{} ({}) · key {}", p.name(), p.code(), n + 1),
+                                );
+                            }
+                        })
+                        .response
+                })
+                .inner
+                .on_hover_text(if editable {
+                    format!("{codes}. {POSITION_HINT} {settle}")
+                } else {
+                    format!(
+                        "{codes}: shown, not set here. A take's positions are kept as they \
+                         were; during a test the test sets them."
+                    )
+                });
+            if picked != here && picked != self.position {
+                self.change_position(picked);
             }
-            PositionLabel::Codes => {
-                painter.text(
-                    egui::pos2(x, pic.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    &codes,
-                    code_font,
-                    pal.text_secondary,
-                );
-            }
-            PositionLabel::Under => {
-                painter.text(
-                    egui::pos2(pic.center().x, pic.bottom() + 2.0),
-                    egui::Align2::CENTER_TOP,
-                    &codes,
-                    code_font,
-                    pal.text_secondary,
-                );
-            }
+            return;
         }
-        // The six buttons, a segmented row across the card, or two.
-        let per_row = 6 / rows;
+        let x = pic.right() + theme::GAP;
+        let beside = |r: egui::Rect| egui::Rect::from_min_max(egui::pos2(x, r.top()), r.max);
+        caption_row(ui, beside(rows.title), "Current Position");
+        // The name, and both its codes under it, inside the figure row.
+        let fig = beside(rows.figure);
+        let clip = painter.with_clip_rect(fig);
+        clip.text(
+            egui::pos2(fig.left(), fig.center().y + 3.0),
+            egui::Align2::LEFT_BOTTOM,
+            here.name(),
+            theme::semibold(17.0),
+            pal.text,
+        );
+        clip.text(
+            egui::pos2(fig.left(), fig.center().y + 4.0),
+            egui::Align2::LEFT_TOP,
+            &codes,
+            egui::FontId::proportional(12.0),
+            pal.text_secondary,
+        );
+        // The six buttons, a segmented control across the card.
+        let track = rows.controls;
+        painter.rect_filled(
+            track,
+            egui::CornerRadius::same(theme::CONTROL_RADIUS),
+            pal.control,
+        );
+        let w = (track.width() - 4.0) / 6.0;
         let mut picked = None;
         for (n, p) in Position::ALL.into_iter().enumerate() {
-            let (line, col) = (n / per_row, n % per_row);
-            let track = egui::Rect::from_min_size(
-                egui::pos2(
-                    area.left(),
-                    area.bottom() - buttons_h + line as f32 * (POSITION_SEG_H + 4.0),
-                ),
-                Vec2::new(area.width(), POSITION_SEG_H),
-            );
-            if col == 0 {
-                ui.painter().rect_filled(
-                    track,
-                    egui::CornerRadius::same(theme::CONTROL_RADIUS + 1),
-                    pal.control,
-                );
-            }
-            let w = (track.width() - 4.0) / per_row as f32;
             let r = egui::Rect::from_min_size(
-                egui::pos2(track.left() + 2.0 + w * col as f32, track.top() + 2.0),
+                egui::pos2(track.left() + 2.0 + w * n as f32, track.top() + 2.0),
                 Vec2::new(w, track.height() - 4.0),
             )
             .shrink2(Vec2::new(1.0, 0.0));
@@ -6544,8 +6702,7 @@ impl TimegrapherApp {
             } else {
                 Color32::TRANSPARENT
             };
-            ui.painter()
-                .rect_filled(r, egui::CornerRadius::same(theme::CONTROL_RADIUS), fill);
+            painter.rect_filled(r, egui::CornerRadius::same(theme::CONTROL_RADIUS - 1), fill);
             let ink = if on {
                 if ui.visuals().dark_mode {
                     POSITION_ON_INK
@@ -6557,11 +6714,11 @@ impl TimegrapherApp {
             } else {
                 pal.text_tertiary
             };
-            ui.painter().text(
-                r.center(),
+            painter.text(
+                r.center() - Vec2::new(0.0, 1.0),
                 egui::Align2::CENTER_CENTER,
                 p.code(),
-                theme::semibold(12.0),
+                egui::FontId::proportional(12.0),
                 ink,
             );
             // A bar along the foot, filling as the position is heard, full
@@ -6575,11 +6732,10 @@ impl TimegrapherApp {
                     egui::pos2(r.right() - 4.0, r.bottom() - 2.0),
                 );
                 let fill_ink = if on { ink } else { pal.teal };
-                ui.painter()
-                    .rect_filled(bar, 1.5, fill_ink.gamma_multiply(0.2));
+                painter.rect_filled(bar, 1.5, fill_ink.gamma_multiply(0.2));
                 let mut done = bar;
                 done.set_width(bar.width() * full.min(1.0) as f32);
-                ui.painter().rect_filled(done, 1.5, fill_ink);
+                painter.rect_filled(done, 1.5, fill_ink);
             }
             let tip = format!(
                 "{} ({}, {}) · key {}. {} heard, settled and not masked; the bar is full at \
@@ -6610,70 +6766,136 @@ impl TimegrapherApp {
         }
     }
 
-    /// Listen or Stop and Save, with Average Over under them, on the
-    /// Listen card.
-    fn listen_buttons(&mut self, ui: &mut egui::Ui) {
+    /// The Listen card's rows under its caption: Listen or Stop and Save,
+    /// with the take's length and state beside them, then Average Over. On
+    /// a compact card, the length goes in Listen's hover and Average Over
+    /// loses its label to its hover.
+    fn listen_buttons(&mut self, ui: &mut egui::Ui, compact: bool) {
         let pal = theme::pal(ui);
-        ui.spacing_mut().item_spacing.y = 6.0;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            if self.running() && self.session.mic() {
-                if theme::icon_button(ui, Icon::Stop, 26.0, pal.bad, true, false)
-                    .on_hover_text(STOP_HINT)
-                    .clicked()
-                {
-                    self.stop_listening();
-                }
-            } else {
-                // With a watch picked, a take of it; else Quick Listen.
-                let watch = self.open_watch().map(|e| e.watch.name.clone());
-                let hint = match &watch {
-                    Some(name) => format!(
-                        "Listen to {name}: a new take, saved into it at Stop. For a Quick \
-                         Listen with no watch, pick Unsorted Takes in the Watches pane, or \
-                         Quick Listen (No Watch) in the Watches menu."
-                    ),
-                    None => QUICK_LISTEN_HINT.to_string(),
-                };
-                if ui
-                    .add_enabled_ui(!self.running() && self.batch.is_none(), |ui| {
-                        theme::icon_button(ui, Icon::Listen, 26.0, pal.accent, true, false)
-                    })
-                    .inner
-                    .on_hover_text(hint)
-                    .clicked()
-                {
-                    if watch.is_some() {
-                        self.new_take(NewTake::Listen, false);
-                    } else {
-                        // Asks only about what isn't Quick Listen's: changed
-                        // masks on a recording opened, a watch's unsaved
-                        // details.
-                        self.quick_listen(false);
-                    }
-                }
+        let area = ui.max_rect();
+        let length = strip::fmt_time(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
+        let state = self.state_words();
+        let top = egui::Rect::from_min_size(area.min, Vec2::new(area.width(), theme::FIGURE_ROW_H));
+        let foot = egui::Rect::from_min_max(
+            egui::pos2(area.left(), area.bottom() - theme::CONTROL_H),
+            area.max,
+        );
+        let mut buttons = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("listen buttons")
+                .max_rect(top)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        buttons.spacing_mut().item_spacing.x = 8.0;
+        let ui_b = &mut buttons;
+        let length_hint = format!("\n\n{length} · {state}");
+        if self.running() && self.session.mic() {
+            let mut hint = STOP_HINT.to_string();
+            if compact {
+                hint += &length_hint;
             }
-            // A watch's take saves itself at Stop.
-            if !self.session.mic() || self.quick_listen {
-                self.save_menu(ui);
+            if theme::icon_button(ui_b, Icon::Stop, LISTEN_BUTTON, 8, pal.accent, true, false)
+                .on_hover_text(hint)
+                .clicked()
+            {
+                self.stop_listening();
             }
-        });
-        ui.horizontal(|ui| {
-            let mut avg = self.average_s;
-            egui::ComboBox::from_id_salt("card average")
-                .width(ui.available_width())
-                .selected_text(format!("Average {}", fields::duration(avg)))
-                .show_ui(ui, |ui| {
-                    for a in AVERAGES {
-                        ui.selectable_value(&mut avg, a, fields::duration(a));
-                    }
+        } else {
+            // With a watch picked, a take of it; else Quick Listen.
+            let watch = self.open_watch().map(|e| e.watch.name.clone());
+            let mut hint = match &watch {
+                Some(name) => format!(
+                    "Listen to {name}: a new take, saved into it at Stop. For a Quick \
+                     Listen with no watch, pick Unsorted Takes in the Watches pane, or \
+                     Quick Listen (No Watch) in the Watches menu."
+                ),
+                None => QUICK_LISTEN_HINT.to_string(),
+            };
+            if compact {
+                hint += &length_hint;
+            }
+            if ui_b
+                .add_enabled_ui(!self.running() && self.batch.is_none(), |ui| {
+                    theme::icon_button(ui, Icon::Listen, LISTEN_BUTTON, 8, pal.accent, true, false)
                 })
-                .response
-                .on_hover_text(format!("Average Over: {AVERAGE_REACH}"));
-            if avg != self.average_s {
-                self.set_average(avg);
+                .inner
+                .on_hover_text(hint)
+                .clicked()
+            {
+                if watch.is_some() {
+                    self.new_take(NewTake::Listen, false);
+                } else {
+                    // Asks only about what isn't Quick Listen's: changed
+                    // masks on a recording opened, a watch's unsaved
+                    // details.
+                    self.quick_listen(false);
+                }
             }
-        });
+        }
+        // A watch's take saves itself at Stop.
+        if !self.session.mic() || self.quick_listen {
+            self.save_menu(ui_b, LISTEN_BUTTON);
+        }
+        if !compact {
+            // The take's length, live while listening, and its state.
+            ui_b.add_space(4.0);
+            let at = ui_b.cursor().min.x;
+            let words = egui::Rect::from_min_max(egui::pos2(at, top.top()), top.max);
+            let clip = ui_b.painter().with_clip_rect(words);
+            clip.text(
+                egui::pos2(at, top.center().y + 1.0),
+                egui::Align2::LEFT_BOTTOM,
+                &length,
+                egui::FontId::proportional(15.0),
+                pal.text,
+            );
+            clip.text(
+                egui::pos2(at, top.center().y + 2.0),
+                egui::Align2::LEFT_TOP,
+                state,
+                egui::FontId::proportional(12.0),
+                pal.text_secondary,
+            );
+            ui_b.interact(words, ui_b.id().with("take length"), egui::Sense::hover())
+                .on_hover_text(
+                    "The take's length: the sound heard so far while listening, or the whole \
+                     take opened",
+                );
+        }
+        let mut row = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("listen average")
+                .max_rect(foot)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        row.spacing_mut().item_spacing.x = 8.0;
+        row.spacing_mut().interact_size.y = theme::CONTROL_H;
+        if !compact {
+            row.label(
+                RichText::new("Average Over")
+                    .size(13.0)
+                    .color(pal.text_secondary),
+            );
+        }
+        let mut avg = self.average_s;
+        egui::ComboBox::from_id_salt("card average")
+            .width(row.available_width())
+            // Compact, "Avg" says it isn't a timer.
+            .selected_text(if compact {
+                format!("Avg {}", fields::duration(avg))
+            } else {
+                fields::duration(avg)
+            })
+            .show_ui(&mut row, |ui| {
+                for a in AVERAGES {
+                    ui.selectable_value(&mut avg, a, fields::duration(a));
+                }
+            })
+            .response
+            .on_hover_text(format!("Average Over: {AVERAGE_REACH}"));
+        if avg != self.average_s {
+            self.set_average(avg);
+        }
     }
 
     /// Save: what is on show kept in a watch, or as a take in a folder.
@@ -6683,7 +6905,7 @@ impl TimegrapherApp {
         self.quick_listen && self.session.saved_to().is_none() && self.watch_takes_dir().is_some()
     }
 
-    fn save_menu(&mut self, ui: &mut egui::Ui) {
+    fn save_menu(&mut self, ui: &mut egui::Ui, size: f32) {
         let pal = theme::pal(ui);
         let can = self.session.allows(Action::Save) && self.saving.is_none();
         let watches: Vec<(String, String)> = match &self.library {
@@ -6699,7 +6921,7 @@ impl TimegrapherApp {
         let mut picked = None;
         let (mut new, mut folder, mut unsorted) = (false, false, false);
         ui.add_enabled_ui(can || self.addable_take().is_some(), |ui| {
-            let button = theme::icon_button(ui, Icon::Save, 26.0, pal.accent, false, false);
+            let button = theme::icon_button(ui, Icon::Save, size, 8, pal.accent, false, false);
             let saved = self.session.saved_to().is_some();
             egui::Popup::menu(&button)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
@@ -6777,129 +6999,89 @@ impl TimegrapherApp {
         }
     }
 
-    /// The lift angle, on the Amplitude card: typed or picked, unless the
-    /// watch's calibre sets it.
-    fn lift_control(&mut self, ui: &mut egui::Ui) {
+    /// The lift angle, on the Amplitude card's controls row: "Lift", one
+    /// field to type it or pick it, and "Default" while it is the default;
+    /// on a compact card the field alone with "Lift" inside it. A calibre
+    /// that sets it shows it as text.
+    fn lift_control(&mut self, ui: &mut egui::Ui, compact: bool) {
         let pal = theme::pal(ui);
-        // On a narrow card, Lift on a line of its own above the rest.
-        let narrow = ui.available_width() < LIFT_ROW_W;
-        if narrow {
-            ui.label(RichText::new("Lift").color(pal.text_secondary));
-        }
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            if !narrow {
-                ui.label(RichText::new("Lift").color(pal.text_secondary));
-            }
-            if !self.take_shows_rate_and_lift() {
-                ui.label(format!("{}°", fields::plain(self.lift_deg)))
-                    .on_hover_text("The watch's calibre sets it. Edit… on the watch changes it.");
-                return;
-            }
+        let set_by = if !self.take_shows_rate_and_lift() {
+            Some("The watch's calibre sets it. Edit… on the watch changes it.".to_string())
+        } else if !self.lift_settable() {
             // A calibre picked with a lift angle of its own sets it.
-            if !self.lift_settable() {
-                ui.label(format!("{}°", fields::plain(self.lift_deg)))
-                    .on_hover_text(format!(
-                        "The {} calibre sets it. Set Calibre to Not Set to type another.",
-                        self.calibre
-                    ));
-                return;
-            }
-            let mut lift = self.lift_deg;
-            let a = fields::entry(ui, "lift", &mut lift, 10.0..=90.0, &MS, 32.0);
-            ui.label("°");
-            let b = fields::presets(ui, "lift-presets", &mut lift, &LIFTS, |v| {
-                format!("{}°", fields::plain(v))
-            });
-            if a || b {
-                self.set_lift(lift);
-            }
-            if !self.lift_known() {
-                // As much of it as the card has room for.
-                let small = egui::TextStyle::Small.resolve(ui.style());
-                let tiny = egui::FontId::proportional(9.0);
-                let fits = |ui: &egui::Ui, t: &str, font: &egui::FontId| {
-                    ui.fonts_mut(|f| f.layout_no_wrap(t.into(), font.clone(), Color32::WHITE))
-                        .size()
-                        .x
-                        <= ui.available_width()
-                };
-                let word = [
-                    ("the default", small.clone()),
-                    ("default", small.clone()),
-                    ("default", tiny),
-                ]
-                .into_iter()
-                .find(|(t, font)| fits(ui, t, font));
-                if let Some((t, font)) = word {
-                    ui.label(RichText::new(t).font(font).color(pal.text_secondary))
-                        .on_hover_text(LIFT_HINT);
-                } else {
-                    ui.label(RichText::new("*").color(pal.text_secondary))
-                        .on_hover_text(LIFT_HINT);
-                }
-            }
-        });
+            Some(format!(
+                "The {} calibre sets it. Set Calibre to Not Set to type another.",
+                self.calibre
+            ))
+        } else {
+            None
+        };
+        if let Some(why) = set_by {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.label(RichText::new("Lift").size(13.0).color(pal.text_secondary))
+                .on_hover_text(&why);
+            ui.label(RichText::new(format!("{}°", fields::plain(self.lift_deg))).size(13.0))
+                .on_hover_text(why);
+            return;
+        }
+        let known = self.lift_known();
+        let mut lift = self.lift_deg;
+        let (resp, changed) = if compact {
+            let w = ui.available_width().min(COMPACT_CONTROL_W);
+            fields::combo(
+                ui,
+                "lift",
+                &mut lift,
+                10.0..=90.0,
+                &DEGREES,
+                &LIFTS,
+                show_degrees,
+                "Lift",
+                w,
+            )
+        } else {
+            ui.label(RichText::new("Lift").size(13.0).color(pal.text_secondary));
+            fields::combo(
+                ui,
+                "lift",
+                &mut lift,
+                10.0..=90.0,
+                &DEGREES,
+                &LIFTS,
+                show_degrees,
+                "",
+                76.0,
+            )
+        };
+        let hint = if known {
+            "The lift angle: type it, or pick one with ▾".to_string()
+        } else {
+            LIFT_HINT.to_string()
+        };
+        resp.on_hover_text(hint);
+        if changed {
+            self.set_lift(lift);
+        }
+        if !known && !compact {
+            ui.add(
+                egui::Label::new(RichText::new("Default").size(13.0).color(pal.text_tertiary))
+                    .truncate(),
+            )
+            .on_hover_text(LIFT_HINT);
+        }
     }
 
-    /// The beat rate and the calibre, on the Beat Rate card.
-    fn beat_rate_controls(&mut self, ui: &mut egui::Ui) {
+    /// The beat rate and the calibre, on the Beat Rate card's controls
+    /// row: the beat rate's pop-up, then Calibre and its pop-up. On a
+    /// compact card the Calibre pop-up alone, the beat rates first in its
+    /// menu. A watch's calibre that sets both is named instead.
+    fn beat_rate_controls(&mut self, ui: &mut egui::Ui, compact: bool) {
         if !self.take_shows_rate_and_lift() {
             return self.calibre_line(ui);
-        }
-        ui.spacing_mut().item_spacing.y = 4.0;
-        // Taken before anything is drawn: a control wider than the card
-        // would widen what is left.
-        let narrow = ui.available_width() < BEAT_RATE_NARROW_W;
-        if narrow {
-            ui.spacing_mut().button_padding.x = 4.0;
         }
         let pal = theme::pal(ui);
         let mut bph = self.bph;
         let heard = self.live.as_ref().and_then(|l| l.bph());
-        // The figure is the menu: the beat rate set, or the one found, as
-        // large as the card has room for, with Auto named where it fits;
-        // its hover says which always.
-        let (figure, colour) = match bph.or(heard) {
-            Some(b) => (b.to_string(), pal.text),
-            None => ("—".to_string(), pal.text_tertiary),
-        };
-        // `unit` false leaves "bph" to the card's name and the hover, where
-        // the card is too narrow for it.
-        let make = |size: f32, auto: bool, unit: bool| {
-            let mut job = egui::text::LayoutJob::default();
-            job.append(
-                &figure,
-                0.0,
-                egui::TextFormat::simple(theme::display(size), colour),
-            );
-            if unit {
-                job.append(
-                    if auto { "bph · Auto" } else { "bph" },
-                    6.0,
-                    egui::TextFormat::simple(egui::FontId::proportional(13.0), pal.text_secondary),
-                );
-            }
-            job
-        };
-        // The menu's arrow and padding beside the text.
-        let room = ui.available_width() - 2.0 * ui.spacing().button_padding.x - 24.0;
-        let wide = |ui: &egui::Ui, job: &egui::text::LayoutJob| {
-            ui.fonts_mut(|f| f.layout_job(job.clone())).size().x
-        };
-        let tries = [
-            (FIGURE_PT - 4.0, bph.is_none(), true),
-            (FIGURE_PT - 4.0, false, true),
-            (FIGURE_PT - 8.0, false, true),
-            (FIGURE_PT - 12.0, false, true),
-            (FIGURE_PT - 8.0, false, false),
-            (FIGURE_PT - 12.0, false, false),
-        ];
-        let job = tries
-            .iter()
-            .map(|&(size, auto, unit)| make(size, auto, unit))
-            .find(|j| wide(ui, j) <= room)
-            .unwrap_or_else(|| make(FIGURE_PT - 16.0, false, false));
         let how = match (bph, heard) {
             (Some(_), _) => {
                 "Beats per hour, set here, so the readings use it rather than finding it from \
@@ -6915,69 +7097,66 @@ impl TimegrapherApp {
                  rate to set it."
             }
         };
-        egui::ComboBox::from_id_salt("bph")
-            .width(ui.available_width())
-            .height(320.0)
-            .selected_text(job)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut bph, None, "Auto: found from the beats");
-                for b in STANDARD_BPH {
-                    ui.selectable_value(&mut bph, Some(b), format!("{b} bph"));
-                }
-            })
-            .response
-            .on_hover_text(how);
-        if bph != self.bph {
-            self.change_bph(bph);
+        let rates = |ui: &mut egui::Ui, bph: &mut Option<u32>| {
+            ui.selectable_value(bph, None, "Auto: found from the beats");
+            for b in STANDARD_BPH {
+                ui.selectable_value(bph, Some(b), format!("{b} bph"));
+            }
+        };
+        let shown = bph.map_or_else(|| "Auto".to_string(), |b| b.to_string());
+        let calibre_menu = self.open_watch().is_none();
+        let labelled = ui.available_width() + 2.0 * f32::from(theme::CARD_PADDING) >= LABELLED_W;
+        if !compact || !calibre_menu {
+            let width = if calibre_menu {
+                ui.fonts_mut(|f| {
+                    f.layout_no_wrap(shown.clone(), egui::FontId::proportional(13.0), pal.text)
+                        .size()
+                        .x
+                }) + 36.0
+            } else {
+                ui.available_width()
+            };
+            egui::ComboBox::from_id_salt("bph")
+                .width(width)
+                .height(320.0)
+                .selected_text(shown)
+                .show_ui(ui, |ui| rates(ui, &mut bph))
+                .response
+                .on_hover_text(how);
         }
-        if self.open_watch().is_none() {
+        if calibre_menu {
             let current = self.calibre.clone();
             // The rate Manage Calibres… starts its table at.
             let rate = match self.bph {
                 Some(b) => Some((b, "the rate set on the Beat Rate card")),
-                None => self
-                    .live
-                    .as_ref()
-                    .and_then(|l| l.bph())
-                    .map(|b| (b, "the rate found from the beats")),
+                None => heard.map(|b| (b, "the rate found from the beats")),
             };
-            let name = |ui: &mut egui::Ui| {
+            let picked = if compact {
+                let mut first = |ui: &mut egui::Ui| {
+                    ui.label(RichText::new("Beat Rate").small().color(pal.text_tertiary))
+                        .on_hover_text(how);
+                    rates(ui, &mut bph);
+                    ui.separator();
+                };
+                self.cal
+                    .picker_with(ui, &current, rate, "Not Set", Some(&mut first))
+            } else if labelled {
                 ui.label(
                     RichText::new("Calibre")
-                        .small()
-                        .color(theme::pal(ui).text_secondary),
+                        .size(13.0)
+                        .color(pal.text_secondary),
                 );
-            };
-            // A narrow card puts the menu under its name, so both fit.
-            let picked = if narrow {
-                name(ui);
                 self.cal.picker(ui, &current, rate)
             } else {
-                ui.horizontal(|ui| {
-                    name(ui);
-                    self.cal.picker(ui, &current, rate)
-                })
-                .inner
+                // Too narrow for its label, the pop-up says what it is.
+                self.cal.picker_with(ui, &current, rate, "No Calibre", None)
             };
             if let Some(p) = picked {
                 self.set_calibre(p);
             }
         }
-        // A calibre that beats at another rate than the one heard.
-        let heard = self.live.as_ref().and_then(|l| l.bph());
-        if let Some((b, cb)) = heard
-            .zip(self.cal.bph(&self.calibre))
-            .filter(|&(b, cb)| b != cb)
-        {
-            let pal = theme::pal(ui);
-            let note = format!(
-                "The {} beats at {cb} bph; this watch beats at {b}.",
-                self.calibre
-            );
-            ui.add(
-                egui::Label::new(RichText::new(&note).small().color(pal.text_secondary)).truncate(),
-            )
-            .on_hover_text(note);
+        if bph != self.bph {
+            self.change_bph(bph);
         }
     }
 
@@ -9536,143 +9715,155 @@ impl TimegrapherApp {
         }
     }
 
-    /// The three readings, each in a card: a caption with what limits the
-    /// reading, the figure large with its ± beside it, and a line of detail.
-    /// The reading cards across the top: Readings with its Average Over,
-    /// then Rate, Amplitude, Beat Error and Beat Rate, all one width.
-    /// Returns a new Average Over when one was picked.
+    /// The reading cards across the top: Current Position, Listen, then
+    /// Rate, Amplitude, Beat Error and Beat Rate. Every card is the same
+    /// three rows (title, figure, controls) and one height at every width;
+    /// where the full controls don't fit, the compact form of every card.
+    /// Returns what the cards asked for, and where their controls go.
     fn readouts(&self, ui: &mut egui::Ui) -> Readouts {
         let pal = theme::pal(ui);
         let r = self.reading();
-        ui.spacing_mut().item_spacing.x = theme::GAP;
         let gap = theme::GAP;
         let total = ui.available_width();
-        // The Current Position card wide enough for its six buttons in a
-        // row where the window allows (else they go in two rows of three),
-        // and Listen; the four of figures share the rest, Amplitude taking
-        // the room its lift row needs from the other three.
-        let listen = (total * 0.13).clamp(144.0, 180.0);
-        let narrow = (total * 0.18)
-            .clamp(POSITION_MIN_W, POSITION_MAX_W)
-            .min(total - listen - 5.0 * gap - 4.0 * FIGURE_MIN_W)
-            .max(POSITION_MIN_W);
-        let share = ((total - narrow - listen - 5.0 * gap) / 4.0).max(100.0);
-        let amp_w = (LIFT_ROW_W + 2.0 * 14.0)
-            .min(4.0 * share - 3.0 * FIGURE_MIN_W)
-            .max(share);
-        let wide = (4.0 * share - amp_w) / 3.0;
-        // The width inside a card of figures, less its margins: the room
-        // kept for whole lines is reckoned at it, the same on every card.
-        let inner = wide - 2.0 * 14.0;
-        // Every line of a card is a row of fixed height, whatever is on it
-        // or not, so the cards (and every pane under them) never change
-        // height with the readings: only with the window's width. What
-        // doesn't fit a row is cut short with its whole in the hover.
-        let small_h = ui.text_style_height(&egui::TextStyle::Small) + 2.0;
-        let body_h = ui.text_style_height(&egui::TextStyle::Body);
-        let display_h = ui.fonts_mut(|f| f.row_height(&theme::display(FIGURE_PT)));
-        let row = |ui: &mut egui::Ui, h: f32, add: &mut dyn FnMut(&mut egui::Ui)| {
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), h), egui::Sense::hover());
+        // Every card in its full form where the window has room; else
+        // Current Position and Listen compact, the four reading cards
+        // sharing the rest in their full form while each has room for it;
+        // else every card compact, at its compact width.
+        let share = |lead: f32| (total - lead - 5.0 * gap) / 4.0;
+        let lead_compact = share(POSITION_W + LISTEN_W) < FULL_FIGURE_W;
+        let lead = if lead_compact {
+            POSITION_COMPACT_W + LISTEN_COMPACT_W
+        } else {
+            POSITION_W + LISTEN_W
+        };
+        let compact = share(lead) < FULL_FIGURE_W;
+        let widths = if compact {
+            let rest = |listen: f32| {
+                (total - POSITION_COMPACT_W - listen - BEAT_RATE_COMPACT_W - 5.0 * gap) / 3.0
+            };
+            let listen = if rest(LISTEN_COMPACT_W) >= CAPTION_FIT_W {
+                LISTEN_COMPACT_W
+            } else {
+                LISTEN_NARROWEST_W
+            };
+            let rest = rest(listen).max(60.0);
+            [
+                POSITION_COMPACT_W,
+                listen,
+                rest,
+                rest,
+                rest,
+                BEAT_RATE_COMPACT_W,
+            ]
+        } else if lead_compact {
+            let rest = share(lead);
+            [POSITION_COMPACT_W, LISTEN_COMPACT_W, rest, rest, rest, rest]
+        } else {
+            let rest = share(lead);
+            [POSITION_W, LISTEN_W, rest, rest, rest, rest]
+        };
+        let (block, _) = ui.allocate_exact_size(
+            Vec2::new(total, theme::READINGS_CARD_H),
+            egui::Sense::hover(),
+        );
+        // Each card's three rows, hung off the same three lines.
+        let mut x = block.left();
+        let cards: Vec<CardRows> = widths
+            .iter()
+            .map(|&w| {
+                let rect = egui::Rect::from_min_size(
+                    egui::pos2(x, block.top()),
+                    Vec2::new(w, block.height()),
+                );
+                x += w + gap;
+                ui.painter().rect_filled(
+                    rect,
+                    egui::CornerRadius::same(theme::CARD_RADIUS),
+                    pal.card,
+                );
+                CardRows::of(rect)
+            })
+            .collect();
+        // A row of a card, laid out left to right and kept inside it.
+        let row = |ui: &mut egui::Ui, rect: egui::Rect, salt: &str| {
             let mut child = ui.new_child(
                 egui::UiBuilder::new()
+                    .id_salt(("card row", salt))
                     .max_rect(rect)
                     .layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
-            child.set_clip_rect(rect.intersect(ui.clip_rect()));
-            child.spacing_mut().item_spacing.x = 6.0;
-            add(&mut child);
+            child.set_clip_rect(rect.expand(2.0).intersect(ui.clip_rect()));
+            child.spacing_mut().item_spacing.x = 8.0;
+            child.spacing_mut().interact_size.y = theme::CONTROL_H;
+            child
         };
-        // A small line of its own, cut short where it doesn't fit.
-        let note = |ui: &mut egui::Ui, text: &str, hover: &str| {
-            row(ui, small_h, &mut |ui| {
-                let l = ui.add(
-                    egui::Label::new(RichText::new(text).small().color(pal.text_secondary))
-                        .truncate(),
-                );
-                if !hover.is_empty() {
-                    l.on_hover_text(hover);
+        // The title row: the caption, its limits in a chip, and the "?" in
+        // the corner. The caption is cut short before the chip is.
+        let title = |ui: &mut egui::Ui,
+                     rect: egui::Rect,
+                     caption: &str,
+                     help: &[&str],
+                     limits: &[(String, String)],
+                     note: Option<&(String, String)>| {
+            let mut child = row(ui, rect, caption);
+            child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                theme::help(ui, caption, help);
+                // A short fact in plain small text before the "?".
+                if let Some((text, hover)) = note {
+                    ui.label(RichText::new(text).size(12.0).color(pal.text_secondary))
+                        .on_hover_text(hover);
                 }
+                if let Some(first) = limits.first() {
+                    let more = if limits.len() > 1 {
+                        format!(" +{}", limits.len() - 1)
+                    } else {
+                        String::new()
+                    };
+                    let sentences: Vec<String> = limits.iter().map(|l| l.1.clone()).collect();
+                    // Where the words would push the caption off the
+                    // card, how many limits there are, the words in the
+                    // hover.
+                    let words = format!("{}{more}", chip_words(&first.0));
+                    let caption_w = ui.fonts_mut(|f| {
+                        f.layout_no_wrap(caption.into(), theme::semibold(13.0), pal.text)
+                            .size()
+                            .x
+                    });
+                    let words_w = ui.fonts_mut(|f| {
+                        f.layout_no_wrap(words.clone(), egui::FontId::proportional(12.0), pal.text)
+                            .size()
+                            .x
+                    }) + 14.0;
+                    let text = if words_w + 6.0 + caption_w <= ui.available_width() {
+                        words
+                    } else {
+                        limits.len().to_string()
+                    };
+                    theme::chip(ui, &text, caption, &sentences, ui.available_width());
+                }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(caption)
+                                .font(theme::semibold(13.0))
+                                .color(pal.text_secondary),
+                        )
+                        .truncate(),
+                    );
+                });
             });
         };
-        // The big figure, with what stands behind it in its hover. The
-        // unit beside it, or under it on a card too narrow for `widest`,
-        // the widest figure and unit the card shows: the width decides,
-        // never the figure.
-        let figure = |ui: &mut egui::Ui,
-                      value: Option<String>,
-                      unit: &str,
-                      hover: &str,
-                      widest: (&str, &str)| {
-            let (v, c) = match value {
-                // A true minus sign, as wide as the plus.
-                Some(v) => (v.replace('-', "−"), pal.text),
-                None => ("—".to_string(), pal.text_tertiary),
-            };
-            // In short, the same with or without a figure, so the card
-            // keeps one look while it waits and once it reads.
-            let unit = unit
-                .replace("seconds per day", "s/d")
-                .replace("milliseconds", "ms");
-            let wide = |text: &str, font: egui::FontId| {
-                ui.fonts_mut(|f| f.layout_no_wrap(text.into(), font, c).size().x)
-            };
-            // An Amplitude with no ± yet still keeps the unit's row.
-            let beside = widest.1.is_empty()
-                || wide(widest.0, theme::display(FIGURE_PT))
-                    + 6.0
-                    + wide(widest.1, egui::TextStyle::Body.resolve(ui.style()))
-                    <= ui.available_width();
-            // A figure wider than its card (noise read as beats can give
-            // thousands of s/d) is made smaller to show whole.
-            let unit_w = if beside && !unit.is_empty() {
-                6.0 + wide(&unit, egui::TextStyle::Body.resolve(ui.style()))
-            } else {
-                0.0
-            };
-            let room = ui.available_width() - unit_w;
-            let fig_w = wide(&v, theme::display(FIGURE_PT));
-            let size = if fig_w > room {
-                (FIGURE_PT * room / fig_w).floor().max(12.0)
-            } else {
-                FIGURE_PT
-            };
-            let big = |ui: &mut egui::Ui| {
-                let l = ui.add(
-                    egui::Label::new(RichText::new(&v).font(theme::display(size)).color(c))
-                        .extend()
-                        .sense(egui::Sense::hover()),
-                );
-                if !hover.is_empty() {
-                    l.on_hover_text(hover);
-                }
-            };
-            let small = |ui: &mut egui::Ui| {
-                ui.add(egui::Label::new(RichText::new(&unit).color(pal.text_secondary)).extend());
-            };
-            if beside {
-                row(ui, display_h, &mut |ui| {
-                    big(ui);
-                    if !unit.is_empty() {
-                        small(ui);
-                    }
-                });
-            } else {
-                row(ui, display_h, &mut |ui| big(ui));
-                row(ui, body_h, &mut |ui| small(ui));
-            }
-        };
         // A reading whose beats scatter like noise is no watch: no figures
-        // then, only a note saying so.
+        // then, only a word saying so where the unit goes.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
-        // On the cards the fact in short, whole; the sentence with the
-        // timing scatter, as the command line gives it, in the hover.
-        let unheard_line = "No regular beat".to_string();
+        let unheard_line = "No Regular Beat".to_string();
         let unheard_hover = format!(
             "{}.\n\n{}",
             r.as_ref().map(no_regular_beat).unwrap_or_default(),
             help::NO_REGULAR_BEAT
         );
+        let unheard = (!heard).then(|| (unheard_line.clone(), unheard_hover.clone()));
         let r = r.as_ref().filter(|_| heard);
         let caveats = r.map_or(&[][..], |r| &r.caveats[..]);
         // Each reading's ±, as an analysis of the recording gives them
@@ -9694,513 +9885,444 @@ impl TimegrapherApp {
                 strip::fmt_time(span)
             )
         };
-        // The line under the figure that says no watch is heard, or
-        // nothing.
-        let unheard = |ui: &mut egui::Ui| {
-            if heard {
-                whole_lines(ui, "", "", LONGEST_STATUS, inner);
-            } else {
-                whole_lines(ui, &unheard_line, &unheard_hover, LONGEST_STATUS, inner);
-            }
-        };
-        // The cards share one height, the tallest's on the last frame. With
-        // every line of fixed height, that changes only with the window's
-        // width.
-        let height_id = ui.id().with("readout height");
-        let (height, height_w) = ui
-            .ctx()
-            .data(|d| d.get_temp::<(f32, f32)>(height_id))
-            .unwrap_or((0.0, 0.0));
-        let tallest = std::cell::Cell::new(0f32);
-        let slots = std::cell::RefCell::new(Vec::new());
-        let card = |ui: &mut egui::Ui,
-                    title: &str,
-                    help: &[&str],
-                    facts: Option<Vec<(String, String)>>,
-                    slot: Option<(Slot, f32)>,
-                    body: &dyn Fn(&mut egui::Ui)| {
-            let margin = egui::Margin::symmetric(14, 10);
-            let shown = theme::card()
-                .fill(pal.card)
-                .inner_margin(margin)
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    // Before anything is laid out: the minimum is taken from
-                    // the cursor down.
-                    ui.set_min_height(height);
-                    let top = ui.min_rect().top();
-                    let short = facts
-                        .iter()
-                        .flatten()
-                        .map(|f| f.0.as_str())
-                        .collect::<Vec<_>>()
-                        .join(" · ");
-                    let long = facts
-                        .iter()
-                        .flatten()
-                        .map(|f| f.1.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n\n");
-                    ui.horizontal(|ui| {
-                        ui.label(theme::caption(title).color(pal.text_secondary));
-                        theme::help(ui, title, help);
-                    });
-                    // A reading card's limits under its title, whole, never
-                    // cut short: they may be what says the figure isn't a
-                    // watch's. Their room is there (empty) or not, as many
-                    // lines as the longest usual limits take at this width,
-                    // so the card's height follows the width alone; only
-                    // limits longer still take more.
-                    if facts.is_some() {
-                        whole_lines(ui, &short, &long, LONGEST_LIMITS, inner);
-                    }
-                    body(ui);
-                    // Room for the controls, which go in once every card
-                    // is drawn, at the foot of the row's height.
-                    if let Some((_, h)) = slot {
-                        ui.add_space(6.0);
-                        ui.allocate_space(Vec2::new(ui.available_width(), h));
-                    }
-                    let bottom = ui.cursor().top() - ui.spacing().item_spacing.y;
-                    tallest.set(tallest.get().max(bottom - top));
-                });
-            if let Some((kind, h)) = slot {
-                let r = shown.response.rect;
-                let (mx, my) = (f32::from(margin.left), f32::from(margin.bottom));
-                slots.borrow_mut().push((
-                    kind,
-                    egui::Rect::from_min_max(
-                        egui::pos2(r.left() + mx, r.bottom() - my - h),
-                        egui::pos2(r.right() - mx, r.bottom() - my),
-                    ),
-                ));
-            }
-        };
-        let origin = ui.cursor().min;
-        let mut cols: Vec<egui::Ui> = [narrow, listen, wide, amp_w, wide, wide]
-            .iter()
-            .scan(origin.x, |x, &w| {
-                let rect =
-                    egui::Rect::from_min_size(egui::pos2(*x, origin.y), Vec2::new(w, 2000.0));
-                *x += w + gap;
-                Some(rect)
-            })
-            .map(|rect| {
-                ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(rect)
-                        .layout(egui::Layout::top_down(egui::Align::Min)),
-                )
-            })
-            .collect();
+        let mut slots = vec![(Slot::Position, cards[0].inner)];
+        // Listen: its caption here, its buttons and Average Over in the
+        // rows under it.
+        // A compact Listen card has no room beside its buttons for the
+        // take's length: it goes in the title row, before the "?".
+        let length = lead_compact.then(|| {
+            let length = strip::fmt_time(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
+            (
+                length.clone(),
+                format!(
+                    "{length} · {}: the take's length, the sound heard so far while \
+                     listening, or the whole take opened",
+                    self.state_words()
+                ),
+            )
+        });
+        title(
+            ui,
+            cards[1].title,
+            "Listen",
+            help::LISTEN,
+            &[],
+            length.as_ref().filter(|_| {
+                cards[1].inner.width() >= LISTEN_COMPACT_W - 2.0 * f32::from(theme::CARD_PADDING)
+            }),
+        );
+        slots.push((Slot::Listen, cards[1].figure.union(cards[1].controls)));
         let keep_clock = std::cell::Cell::new(false);
         let measured = self.clock_offer();
         let kept = self.clock.clone();
+        // Rate.
         {
             let rate = r.and_then(|r| r.rate_s_per_day);
-            // The input's clock is named in the Rate "?" rather than on the
-            // card: nothing on the card can change it.
-            let rate_facts = reading_limits("Rate", caveats, lift_now, beats)
+            // The input's clock is named on the controls row rather than
+            // in a chip.
+            let rate_facts: Vec<_> = reading_limits("Rate", caveats, lift_now, beats)
                 .into_iter()
                 .filter(|f| f.0 != CLOCK_UNKNOWN)
                 .collect();
-            card(
-                &mut cols[0],
-                if narrow >= POSITION_CAPTION_W {
-                    "Current Position"
+            title(ui, cards[2].title, "Rate", help::RATE, &rate_facts, None);
+            let unit = match pm {
+                Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
+                _ => "s/d".to_string(),
+            };
+            // The beats behind the figure, in its hover.
+            let mut behind = r.map_or_else(String::new, |r| {
+                let short = r.span_s + 1.0 < self.average_s;
+                let mut t = if short {
+                    format!(
+                        "{} beats in {} of {}: there are fewer seconds of beats than \
+                         Average Over asks for, early in a session or after a break in \
+                         the sound, so the readings use what there is.",
+                        r.beats_used,
+                        fields::duration(r.span_s.round()),
+                        fields::duration(self.average_s)
+                    )
                 } else {
-                    "Position"
-                },
-                help::POSITION,
-                None,
-                Some((Slot::Position, position_slot_h(narrow - 2.0 * 14.0))),
-                &|_| {},
-            );
-            card(
-                &mut cols[1],
-                "Listen",
-                help::LISTEN,
-                None,
-                Some((Slot::Listen, LISTEN_SLOT_H)),
-                &|_| {},
-            );
-            card(
-                &mut cols[2],
-                "Rate",
-                help::RATE,
-                Some(rate_facts),
-                None,
-                &|ui| {
-                    let unit = match pm {
-                        Some(e) if e < 0.05 => "seconds per day".to_string(),
-                        Some(e) => format!("± {e:.1} seconds per day"),
-                        None => "seconds per day".to_string(),
-                    };
-                    // The beats behind the figure, in its hover.
-                    let behind = r.map_or_else(String::new, |r| {
-                        let short = r.span_s + 1.0 < self.average_s;
-                        let mut t = if short {
-                            format!(
-                                "{} beats in {} of {}: there are fewer seconds of beats than \
-                                 Average Over asks for, early in a session or after a break in \
-                                 the sound, so the readings use what there is.",
-                                r.beats_used,
-                                fields::duration(r.span_s.round()),
-                                fields::duration(self.average_s)
-                            )
-                        } else {
-                            format!(
-                                "{} beats in {}: the beats the readings are fitted to, over \
-                                 Average Over.",
-                                r.beats_used,
-                                fields::duration(self.average_s)
-                            )
-                        };
-                        if let Some(j) = r.jitter_us {
-                            t += &format!(
-                                "\n\nJitter {j:.0} µs: how far single beats land from the \
-                                 rate's straight line, the spread of the dots across the strip."
-                            );
-                        }
-                        t
-                    });
-                    let mut behind = behind;
-                    if let Some((w, v)) =
-                        whole.as_ref().and_then(|w| Some((w, w.m.rate_s_per_day?)))
-                    {
-                        let se = w.m.confidence.and_then(|c| c.rate.se);
-                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
-                        let spread = w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
-                            format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
-                        });
-                        behind += &whole_text(
-                            format!("{v:+.1}{pm} s/d").replace('-', "−"),
-                            spread,
-                            w.span,
-                        );
-                    }
-                    // Under the figure, two lines: what the reading waits on
-                    // (or why it is the position before), and the rate on the
-                    // input's own clock or the clock timed to keep.
-                    let status: Option<(String, String)> = if r.is_none() {
-                        if let Some(left) = self.settling_left() {
-                            Some((
-                                format!("settling, {:.0} s", left.ceil()),
-                                format!(
-                                    "Settling in the new position for {:.0} s more.\n\n{SETTLE_HINT}",
-                                    left.ceil()
-                                ),
-                            ))
-                        } else if heard {
-                            Some(("waiting for beats".into(), String::new()))
-                        } else {
-                            Some((unheard_line.clone(), unheard_hover.clone()))
-                        }
-                    } else {
-                        self.stopped_in_settle().map(|at| {
-                            (
-                                "before the move".to_string(),
-                                format!(
-                                    "Stopped while the watch settled in its new position, so \
-                                     these are the last readings of the position before it, \
-                                     before the move at {}.",
-                                    strip::fmt_time(at)
-                                ),
-                            )
-                        })
-                    };
-                    let true_clock = rate.zip(self.clock.as_ref()).map(|(rate, c)| {
-                        let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
-                        let slow = if c.ppm >= 0.0 { "slow" } else { "fast" };
-                        (
-                            format!(
-                                "True Clock {v} seconds per day, with the clock kept {}",
-                                day_of(&c.measured_utc)
-                            ),
-                            format!(
-                                "The rate corrected for this input's own clock, which runs \
-                             {:.1} ppm {slow} ({:+.1} s/d on every rate), measured {} from \
-                             {}. The big figure stays on the card's clock, the one tg and an \
-                             analysis of the recording read, so the two compare directly. \
-                             The clock kept is under Settings > Microphone > Quartz \
-                             Correction.",
-                                c.ppm.abs(),
-                                c.rate_error_s_per_day(),
-                                c.measured_utc,
-                                match c.source.as_str() {
-                                    "log" => "a recording's clock log",
-                                    "measure" => "listening against the system clock",
-                                    _ => "a value typed in",
-                                }
-                            ),
-                        )
-                    });
-                    // True Clock in the figure's hover too, for when the two
-                    // lines under it are taken.
-                    if let Some((t, _)) = &true_clock {
-                        behind += &format!("\n\n{t}.");
-                    }
-                    figure(
-                        ui,
-                        rate.map(|v| format!("{v:+.1}")),
-                        &unit,
-                        behind.trim_start(),
-                        ("−88.8", "± 8.8 s/d"),
+                    format!(
+                        "{} beats in {}: the beats the readings are fitted to, over \
+                         Average Over.",
+                        r.beats_used,
+                        fields::duration(self.average_s)
+                    )
+                };
+                if let Some(j) = r.jitter_us {
+                    t += &format!(
+                        "\n\nJitter {j:.0} µs: how far single beats land from the \
+                         rate's straight line, the spread of the dots across the strip."
                     );
-                    // Timed long enough while listening: offered, never kept
-                    // unasked.
-                    let offer = measured.map(|f| {
-                        let slow = if f.ppm >= 0.0 { "slow" } else { "fast" };
-                        let mut text = format!("input clock timed: {:.1} ppm {slow}", f.ppm.abs());
-                        let mut hint = format!(
-                            "Timed against the computer's clock over {} of listening, this \
-                         input's clock runs {:.1} ± {:.1} ppm {slow}: {:+.1} seconds per \
-                         day on every rate. Keep it to show the corrected rate as True \
-                         Clock from now on; the command line and the MCP server use it \
-                         too. It is only right if the computer's clock is kept by \
-                         internet time.",
-                            strip::fmt_time(f.span_s),
-                            f.ppm.abs(),
-                            f.ppm_sd,
-                            f.rate_error_s_per_day
-                        );
-                        if let Some(c) = &kept {
-                            let off = f.ppm - c.ppm;
-                            text += &format!(
-                                ", {:.1} ppm from the clock kept {}",
-                                off.abs(),
-                                day_of(&c.measured_utc)
-                            );
-                            hint += &format!(
-                                "\n\nThe clock kept for \"{}\" runs {:.1} ppm {}, kept {}. \
-                             This timing is {:.1} ppm from it, {:.1} seconds per day on \
-                             True Clock. An input reached by a shared name, such as the \
-                             system default, may be a different sound card from the one \
-                             timed then. Keep replaces the kept clock with this one.",
-                                c.device,
-                                c.ppm.abs(),
-                                if c.ppm >= 0.0 { "slow" } else { "fast" },
-                                day_of(&c.measured_utc),
-                                off.abs(),
-                                timegrapher_core::clock::rate_error_s_per_day(off.abs())
+                }
+                t
+            });
+            if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.rate_s_per_day?))) {
+                let se = w.m.confidence.and_then(|c| c.rate.se);
+                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
+                let spread =
+                    w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
+                        format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
+                    });
+                behind += &whole_text(format!("{v:+.1}{pm} s/d").replace('-', "−"), spread, w.span);
+            }
+            // In the unit's place: what the reading waits on, or why it is
+            // the position before.
+            let status: Option<(String, String)> = if r.is_none() {
+                if let Some(left) = self.settling_left() {
+                    Some((
+                        format!("Settling, {:.0} s", left.ceil()),
+                        format!(
+                            "Settling in the new position for {:.0} s more.\n\n{SETTLE_HINT}",
+                            left.ceil()
+                        ),
+                    ))
+                } else if heard {
+                    Some(("Waiting for Beats".into(), String::new()))
+                } else {
+                    unheard.clone()
+                }
+            } else {
+                self.stopped_in_settle().map(|at| {
+                    (
+                        "Before the Move".to_string(),
+                        format!(
+                            "Stopped while the watch settled in its new position, so \
+                             these are the last readings of the position before it, \
+                             before the move at {}.",
+                            strip::fmt_time(at)
+                        ),
+                    )
+                })
+            };
+            // While a clock is kept, the rate on it in the figure's hover.
+            if let Some(t) = rate.and_then(|rate| self.true_clock_words(rate)) {
+                behind += &format!("\n\n{t}");
+            }
+            figure_row(
+                ui,
+                cards[2].figure,
+                rate.map(|v| format!("{v:+.1}")).as_deref(),
+                &unit,
+                status.as_ref(),
+                behind.trim_start(),
+                compact,
+            );
+            // The input's clock: timed long enough while listening, it is
+            // offered, never kept unasked.
+            let clock = self.clock_words(measured, kept.as_ref());
+            let labelled = widths[2] >= LABELLED_W;
+            let mut child = row(ui, cards[2].controls, "rate controls");
+            if compact {
+                // "Input Clock" where it fits, else "Clock".
+                let w = child.available_width().min(COMPACT_CONTROL_W);
+                egui::ComboBox::from_id_salt("card clock")
+                    .width(w)
+                    .selected_text(if w >= 120.0 { "Input Clock" } else { "Clock" })
+                    .show_ui(&mut child, |ui| {
+                        ui.label(RichText::new(format!("Input Clock {}", clock.value)))
+                            .on_hover_text(&clock.hint);
+                        if clock.offered
+                            && ui.button("Keep").on_hover_text(KEEP_CLOCK_HINT).clicked()
+                        {
+                            keep_clock.set(true);
+                        }
+                    })
+                    .response
+                    .on_hover_text(format!("Input Clock {}. {}", clock.value, clock.hint));
+            } else {
+                // Keep first, at the trailing edge, so a long line is cut
+                // short rather than pushing it off the card.
+                child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if clock.offered
+                        && ui
+                            .add(
+                                egui::Button::new("Keep")
+                                    .min_size(Vec2::new(0.0, theme::CONTROL_H)),
+                            )
+                            .on_hover_text(KEEP_CLOCK_HINT)
+                            .clicked()
+                    {
+                        keep_clock.set(true);
+                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        // Too narrow for its label, the value says it in
+                        // its hover.
+                        if labelled {
+                            ui.label(
+                                RichText::new("Input Clock")
+                                    .size(13.0)
+                                    .color(pal.text_secondary),
                             );
                         }
-                        (text, hint)
+                        let colour = if clock.timed {
+                            pal.text
+                        } else {
+                            pal.text_tertiary
+                        };
+                        ui.add(
+                            egui::Label::new(RichText::new(&clock.value).size(13.0).color(colour))
+                                .truncate(),
+                        )
+                        .on_hover_text(format!("Input Clock {}. {}", clock.value, clock.hint));
                     });
-                    let (first, second) = match (status, true_clock) {
-                        (Some(s), clock) => (Some(s), clock),
-                        (None, clock) => (clock, None),
-                    };
-                    // What the figure waits on, or that no watch is heard,
-                    // whole; True Clock (in the figure's hover too) where
-                    // the line is free.
-                    match first {
-                        Some((t, h)) => whole_lines(ui, &t, &h, LONGEST_STATUS, inner),
-                        None => whole_lines(ui, "", "", LONGEST_STATUS, inner),
-                    }
-                    match (offer, second) {
-                        (Some((text, hint)), _) => row(ui, small_h, &mut |ui| {
-                            // The button first, so a long line is cut short
-                            // rather than pushing it off the card.
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .small_button("Keep")
-                                        .on_hover_text(
-                                            "Keep this input's clock error and correct its rates",
-                                        )
-                                        .clicked()
-                                    {
-                                        keep_clock.set(true);
-                                    }
-                                    ui.with_layout(
-                                        egui::Layout::left_to_right(egui::Align::Center),
-                                        |ui| {
-                                            ui.add(
-                                                egui::Label::new(
-                                                    RichText::new(&text)
-                                                        .small()
-                                                        .color(pal.text_secondary),
-                                                )
-                                                .truncate(),
-                                            )
-                                            .on_hover_text(&hint);
-                                        },
-                                    );
-                                },
-                            );
-                        }),
-                        (None, Some((t, h))) => note(ui, &t, &h),
-                        (None, None) => note(ui, "", ""),
-                    }
-                },
-            );
+                });
+            }
+        }
+        // Amplitude. A default lift angle is said by "Default" beside
+        // Lift, on the controls row, rather than again in a chip.
+        {
             let amp = r.and_then(|r| r.amplitude_deg);
-            card(
-                &mut cols[3],
+            let facts: Vec<_> = reading_limits("Amplitude", caveats, lift_now, beats)
+                .into_iter()
+                .filter(|f| !f.0.starts_with("lift angle "))
+                .collect();
+            title(
+                ui,
+                cards[3].title,
                 "Amplitude",
                 help::AMPLITUDE,
-                // A default lift angle is said by "the default" beside Lift,
-                // at the card's foot, rather than again in its heading.
-                Some(
-                    reading_limits("Amplitude", caveats, lift_now, beats)
-                        .into_iter()
-                        .filter(|f| !f.0.starts_with("lift angle "))
-                        .collect(),
-                ),
-                Some((
-                    Slot::Lift,
-                    if amp_w - 2.0 * 14.0 < LIFT_ROW_W {
-                        CONTROL_SLOT_H + LIFT_NARROW_EXTRA_H
-                    } else {
-                        CONTROL_SLOT_H
-                    },
-                )),
-                &|ui| {
-                    // Whole degrees: a live reading's ± is about a degree, so a
-                    // decimal would claim more than the beats can say.
-                    let unit = match r.and_then(|r| r.amplitude_error_deg) {
-                        Some(e) if e < 0.95 => format!("± {e:.1}°"),
-                        Some(e) => format!("± {e:.0}°"),
-                        None => String::new(),
-                    };
-                    let mut behind = String::new();
-                    if let Some(&LiveReading {
-                        amplitude_even_deg: Some(a),
-                        amplitude_odd_deg: Some(b),
-                        ..
-                    }) = r
-                    {
-                        behind = format!("Tick {a:.0}°, Tock {b:.0}°: each side's own amplitude.");
-                    }
-                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.amplitude_deg?)))
-                    {
-                        let se = w.m.confidence.and_then(|c| c.amplitude.se);
-                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.0}"));
-                        let spread =
-                            w.m.amplitude_p05
-                                .zip(w.m.amplitude_p95)
-                                .map(|(a, b)| format!("2 s windows {a:.0}° to {b:.0}°"));
-                        behind += &whole_text(format!("{v:.0}{pm}°"), spread, w.span);
-                    }
-                    figure(
-                        ui,
-                        amp.map(|v| format!("{v:.0}°")),
-                        &unit,
-                        behind.trim_start(),
-                        ("888°", "± 8°"),
-                    );
-                    unheard(ui);
-                },
+                &facts,
+                None,
             );
+            // Whole degrees: a live reading's ± is about a degree, so a
+            // decimal would claim more than the beats can say.
+            let unit = match r.and_then(|r| r.amplitude_error_deg) {
+                Some(e) if e < 0.95 => format!("± {e:.1}°"),
+                Some(e) => format!("± {e:.0}°"),
+                None => String::new(),
+            };
+            let mut behind = String::new();
+            if let Some(&LiveReading {
+                amplitude_even_deg: Some(a),
+                amplitude_odd_deg: Some(b),
+                ..
+            }) = r
+            {
+                behind = format!("Tick {a:.0}°, Tock {b:.0}°: each side's own amplitude.");
+            }
+            if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.amplitude_deg?))) {
+                let se = w.m.confidence.and_then(|c| c.amplitude.se);
+                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.0}"));
+                let spread =
+                    w.m.amplitude_p05
+                        .zip(w.m.amplitude_p95)
+                        .map(|(a, b)| format!("2 s windows {a:.0}° to {b:.0}°"));
+                behind += &whole_text(format!("{v:.0}{pm}°"), spread, w.span);
+            }
+            figure_row(
+                ui,
+                cards[3].figure,
+                amp.map(|v| format!("{v:.0}°")).as_deref(),
+                &unit,
+                unheard.as_ref(),
+                behind.trim_start(),
+                compact,
+            );
+            slots.push((Slot::Lift, cards[3].controls));
+        }
+        // Beat Error, the size only: which beat is the tick can flip
+        // between runs.
+        {
             let unlock = r.and_then(|r| r.beat_error_unlock_ms);
             let drop = r.and_then(|r| r.beat_error_ms);
-            card(
-                &mut cols[4],
+            title(
+                ui,
+                cards[4].title,
                 "Beat Error",
                 help::BEAT_ERROR,
-                Some(reading_limits("Beat Error", caveats, lift_now, beats)),
+                &reading_limits("Beat Error", caveats, lift_now, beats),
                 None,
-                &|ui| {
-                    let unit = match be_pm.filter(|_| unlock.is_some()) {
-                        Some(e) if e >= 0.005 => format!("± {e:.2} milliseconds"),
-                        _ => "milliseconds".to_string(),
-                    };
-                    // Which edge it is timed from, in the figure's hover.
-                    let from = match (unlock, drop) {
-                        (Some(_), Some(d)) => format!(
-                            "From the unlock, the usual reading, as tg shows it: quote this one. \
-                             From the drop, a second opinion: {:.2} ms.",
-                            d.abs()
-                        ),
-                        (None, Some(_)) => "From the drop: the unlock couldn't be timed.".into(),
-                        _ => "From the unlock, the usual reading, as tg shows it.".into(),
-                    };
-                    let mut from = from;
-                    if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?)))
-                    {
-                        let se = w.m.confidence.and_then(|c| c.beat_error.se);
-                        let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
-                        from += &whole_text(format!("{v:.2}{pm} ms"), None, w.span);
-                        if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
-                            from += &format!(
-                                " The {WHOLE_AS_SIZES}, so the sizes either side are combined \
-                                 rather than the signed values, as timegrapher session does."
-                            );
-                        }
-                    }
-                    // The size only: which beat is the tick can flip between runs.
-                    figure(
-                        ui,
-                        unlock.or(drop).map(|v| format!("{:.2}", v.abs())),
-                        &unit,
-                        &from,
-                        ("8.88", "± 0.88 ms"),
-                    );
-                    unheard(ui);
-                },
             );
-            let heard_bph = r.and_then(|r| r.bph).or_else(|| self.live.as_ref()?.bph());
-            let set_bph = self.bph;
-            // Set on the card, the figure is the card's menu, in its slot.
-            let menu = self.take_shows_rate_and_lift();
-            card(
-                &mut cols[5],
-                "Beat Rate",
-                help::BEAT_RATE,
-                None,
-                Some((
-                    Slot::BeatRate,
-                    if !menu {
-                        CONTROL_SLOT_H
-                    } else if wide - 2.0 * 14.0 < BEAT_RATE_NARROW_W {
-                        // The card less its side margins.
-                        BEAT_RATE_SLOT_H + BEAT_RATE_NARROW_EXTRA_H
-                    } else {
-                        BEAT_RATE_SLOT_H
-                    },
-                )),
-                &|ui| {
-                    if menu {
-                        return;
-                    }
-                    let how = match (set_bph, heard_bph) {
-                        (Some(_), _) => {
-                            "Set on this card, so the readings use it rather than finding it \
-                             from the beats. Auto finds it again."
-                        }
-                        (None, Some(_)) => {
-                            "Found from the beats: Beat Rate is Auto, so the app found it from \
-                             the first seconds of beats, as the nearest standard rate."
-                        }
-                        (None, None) => "",
-                    };
-                    figure(
-                        ui,
-                        set_bph.or(heard_bph).map(|b| b.to_string()),
-                        "bph",
-                        how,
-                        ("28800", "bph"),
+            let unit = match be_pm.filter(|_| unlock.is_some()) {
+                Some(e) if e >= 0.005 => format!("± {e:.2} ms"),
+                _ => "ms".to_string(),
+            };
+            // Which edge it is timed from, in the figure's hover.
+            let mut from = match (unlock, drop) {
+                (Some(_), Some(d)) => format!(
+                    "From the unlock, the usual reading, as tg shows it: quote this one. \
+                     From the drop, a second opinion: {:.2} ms.",
+                    d.abs()
+                ),
+                (None, Some(_)) => "From the drop: the unlock couldn't be timed.".into(),
+                _ => "From the unlock, the usual reading, as tg shows it.".into(),
+            };
+            if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?))) {
+                let se = w.m.confidence.and_then(|c| c.beat_error.se);
+                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
+                from += &whole_text(format!("{v:.2}{pm} ms"), None, w.span);
+                if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
+                    from += &format!(
+                        " The {WHOLE_AS_SIZES}, so the sizes either side are combined \
+                         rather than the signed values, as timegrapher session does."
                     );
-                },
+                }
+            }
+            figure_row(
+                ui,
+                cards[4].figure,
+                unlock
+                    .or(drop)
+                    .map(|v| format!("{:.2}", v.abs()))
+                    .as_deref(),
+                &unit,
+                unheard.as_ref(),
+                &from,
+                compact,
             );
         }
-        let bottom = cols
-            .iter()
-            .map(|c| c.min_rect().bottom())
-            .fold(origin.y, f32::max);
-        ui.allocate_space(Vec2::new(total, bottom - origin.y));
-        let fit = tallest.get();
-        if (fit, total) != (height, height_w) {
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(height_id, (fit, total)));
-            ui.ctx().request_repaint();
+        // Beat Rate, a plain figure like the others; a calibre picked that
+        // beats at another rate than the one heard says so in a chip.
+        {
+            let heard_bph = r.and_then(|r| r.bph).or_else(|| self.live.as_ref()?.bph());
+            let set_bph = self.bph;
+            let other: Vec<(String, String)> = self
+                .live
+                .as_ref()
+                .and_then(|l| l.bph())
+                .zip(self.cal.bph(&self.calibre))
+                .filter(|&(b, cb)| b != cb && self.take_shows_rate_and_lift())
+                .map(|(b, cb)| {
+                    (
+                        format!("{} is {cb} bph", self.calibre),
+                        format!(
+                            "The {} beats at {cb} bph; this watch beats at {b}.",
+                            self.calibre
+                        ),
+                    )
+                })
+                .into_iter()
+                .collect();
+            title(
+                ui,
+                cards[5].title,
+                "Beat Rate",
+                help::BEAT_RATE,
+                &other,
+                None,
+            );
+            let how = match (set_bph, heard_bph) {
+                (Some(_), _) => {
+                    "Set on this card, so the readings use it rather than finding it \
+                     from the beats. Auto finds it again."
+                }
+                (None, Some(_)) => {
+                    "Found from the beats: Beat Rate is Auto, so the app found it from \
+                     the first seconds of beats, as the nearest standard rate."
+                }
+                (None, None) => "",
+            };
+            figure_row(
+                ui,
+                cards[5].figure,
+                set_bph.or(heard_bph).map(|b| b.to_string()).as_deref(),
+                "bph",
+                None,
+                how,
+                compact,
+            );
+            slots.push((Slot::BeatRate, cards[5].controls));
         }
         Readouts {
             keep_clock: keep_clock.get(),
-            slots: slots.into_inner(),
+            slots,
+            lead_compact,
+            compact,
+        }
+    }
+
+    /// The rate `rate` on the clock kept for the input, for the Rate
+    /// figure's hover, while one is kept.
+    fn true_clock_words(&self, rate: f64) -> Option<String> {
+        let c = self.clock.as_ref()?;
+        let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
+        Some(format!(
+            "True Clock {v} seconds per day, with the clock kept {}: the rate corrected \
+             for this input's own clock. The big figure stays on the card's clock, the one \
+             tg and an analysis of the recording read, so the two compare directly.",
+            day_of(&c.measured_utc)
+        ))
+    }
+
+    /// The input's clock in words, for the Rate card: as timed and offered
+    /// to keep, as kept, or not timed yet.
+    fn clock_words(
+        &self,
+        measured: Option<&timegrapher_core::clock::ClockFit>,
+        kept: Option<&clockstore::DeviceClock>,
+    ) -> ClockWords {
+        let words = |ppm: f64| {
+            format!(
+                "{:.1} ppm {}",
+                ppm.abs(),
+                if ppm >= 0.0 { "slow" } else { "fast" }
+            )
+        };
+        if let Some(f) = measured {
+            let slow = if f.ppm >= 0.0 { "slow" } else { "fast" };
+            let mut hint = format!(
+                "Timed against the computer's clock over {} of listening, this input's \
+                 clock runs {:.1} ± {:.1} ppm {slow}: {:+.1} seconds per day on every rate. \
+                 Keep it to show the corrected rate as True Clock from now on; the command \
+                 line and the MCP server use it too. It is only right if the computer's \
+                 clock is kept by internet time.",
+                strip::fmt_time(f.span_s),
+                f.ppm.abs(),
+                f.ppm_sd,
+                f.rate_error_s_per_day
+            );
+            if let Some(c) = kept {
+                let off = f.ppm - c.ppm;
+                hint += &format!(
+                    "\n\nThe clock kept for \"{}\" runs {}, kept {}. This timing is {:.1} ppm \
+                     from it, {:.1} seconds per day on True Clock. An input reached by a \
+                     shared name, such as the system default, may be a different sound card \
+                     from the one timed then. Keep replaces the kept clock with this one.",
+                    c.device,
+                    words(c.ppm),
+                    day_of(&c.measured_utc),
+                    off.abs(),
+                    timegrapher_core::clock::rate_error_s_per_day(off.abs())
+                );
+            }
+            return ClockWords {
+                value: words(f.ppm),
+                hint,
+                timed: true,
+                offered: true,
+            };
+        }
+        if let Some(c) = kept {
+            return ClockWords {
+                value: words(c.ppm),
+                hint: format!(
+                    "This input's own clock runs {} ({:+.1} s/d on every rate), measured {} \
+                     from {}. The Rate figure's hover gives the rate corrected for it, as True \
+                     Clock. The clock kept is under Settings > Microphone > Quartz Correction.",
+                    words(c.ppm),
+                    c.rate_error_s_per_day(),
+                    c.measured_utc,
+                    match c.source.as_str() {
+                        "log" => "a recording's clock log",
+                        "measure" => "listening against the system clock",
+                        _ => "a value typed in",
+                    }
+                ),
+                timed: true,
+                offered: false,
+            };
+        }
+        ClockWords {
+            value: "Not Timed".into(),
+            hint: format!(
+                "This input's clock hasn't been timed, so the rate includes the sound card's \
+                 own clock error. After {} of listening it is timed against the computer's \
+                 clock and offered here to keep.",
+                fields::duration(CLOCK_MEASURE_S)
+            ),
+            timed: false,
+            offered: false,
         }
     }
 
@@ -10422,18 +10544,11 @@ impl TimegrapherApp {
                 match self.session.saved_to() {
                     Some(p) => (
                         if since >= 1.0 {
-                            format!(
-                                "{} of sound, the last {} not saved",
-                                strip::fmt_time(r.duration_s()),
-                                strip::fmt_time(since)
-                            )
+                            format!("The last {} not saved", strip::fmt_time(since))
                         } else if self.metadata_unsaved() {
-                            format!(
-                                "{} of sound, settings not saved",
-                                strip::fmt_time(r.duration_s())
-                            )
+                            "Settings not saved".to_string()
                         } else {
-                            format!("{} of sound, saved", strip::fmt_time(r.duration_s()))
+                            "Saved".to_string()
                         },
                         pal.text_secondary,
                         format!(
@@ -10455,10 +10570,7 @@ impl TimegrapherApp {
                             "its analysis kept".to_string()
                         };
                         (
-                            format!(
-                                "{} of sound, not saved; {kept}",
-                                strip::fmt_time(r.duration_s())
-                            ),
+                            format!("Not saved; {kept}"),
                             pal.text_secondary,
                             format!(
                                 "The analysis of the first {} was kept without the sound in {}. \
@@ -10472,7 +10584,7 @@ impl TimegrapherApp {
                         )
                     }
                     None => (
-                        format!("{} of sound, not saved", strip::fmt_time(r.duration_s())),
+                        "Not saved".to_string(),
                         pal.text_secondary,
                         "The session's sound is kept as it goes, so Save can keep it at any \
                      point. New Session and quitting ask before throwing it away, and a quit that \
@@ -13419,51 +13531,8 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     }
 }
 
-/// Small text on a reading card, wrapped whole and never cut short, for
-/// lines that may be what says the figure isn't a watch's: the limits
-/// under the title, and the line under the figure. Its room is there
-/// (empty) or not, as many lines as `longest` takes at `inner`, the width
-/// inside every card of figures alike, so the cards' lines stay level and
-/// their height follows the window's width alone; only text longer still
-/// takes more.
-fn whole_lines(ui: &mut egui::Ui, short: &str, long: &str, longest: &str, inner: f32) {
-    let pal = theme::pal(ui);
-    let w = ui.available_width();
-    let font = egui::TextStyle::Small.resolve(ui.style());
-    let lines = |ui: &egui::Ui, text: &str, w: f32| {
-        ui.fonts_mut(|f| {
-            f.layout(text.to_string(), font.clone(), pal.text_secondary, w)
-                .rows
-                .len()
-        })
-    };
-    let n = lines(ui, longest, inner).max(lines(ui, short, w)).max(1);
-    let h = n as f32 * ui.text_style_height(&egui::TextStyle::Small) + 2.0;
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover());
-    let mut child = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(rect)
-            .layout(egui::Layout::top_down(egui::Align::Min)),
-    );
-    if !short.is_empty() {
-        let l = child
-            .add(egui::Label::new(RichText::new(short).small().color(pal.text_secondary)).wrap());
-        if !long.is_empty() {
-            l.on_hover_text(long);
-        }
-    }
-}
-
 /// The least a pane is squeezed to, points.
 const PANE_MIN_H: f32 = 120.0;
-
-/// The longest limits a reading card usually names, as on noise taken for
-/// beats: the card keeps room for them at every width.
-const LONGEST_LIMITS: &str = "9 s of beats · 25 of 66 beats";
-
-/// The longest line a reading card gives under its figure that must show
-/// whole: the card keeps room for it at every width.
-const LONGEST_STATUS: &str = "waiting for beats";
 
 /// What the settling after a move is, wherever it is shown.
 const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
@@ -14821,7 +14890,8 @@ mod tests {
     }
 
     /// Clipped sound puts a warning over the readings, and a stored clock
-    /// error adds the corrected rate under the card-clock one.
+    /// error shows on the Rate card, the corrected rate in its figure's
+    /// hover.
     #[test]
     fn clipping_and_the_true_clock_show_with_the_readings() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
@@ -14854,7 +14924,7 @@ mod tests {
         });
         let ctx = themed();
         let mut text = String::new();
-        for w in [400.0, 400.0, 1280.0, 1280.0, 1280.0] {
+        for w in [400.0, 400.0, 1610.0, 1610.0, 1610.0] {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -14865,11 +14935,14 @@ mod tests {
             text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
         }
         assert!(text.contains("Clipping on"), "{text}");
-        assert!(text.contains("True Clock"), "{text}");
-        // 20 ppm slow takes 1.7 s/d off a rate read on the card.
+        // The clock kept, on the Rate card's controls row.
+        assert!(text.contains("20.0 ppm slow"), "{text}");
+        // The rate on it, in the Rate figure's hover: 20 ppm slow takes
+        // 1.7 s/d off a rate read on the card.
         let card = app.reading().unwrap().rate_s_per_day.unwrap();
         let shown = format!("{:+.1}", clockstore::correct_rate(card, 20.0)).replace('-', "−");
-        assert!(text.contains(&format!("True Clock {shown}")), "{text}");
+        let hover = app.true_clock_words(card).expect("a clock kept");
+        assert!(hover.starts_with(&format!("True Clock {shown}")), "{hover}");
     }
 
     /// A context with the app's fonts and styles, as the window has.
@@ -15936,7 +16009,7 @@ mod tests {
         ] {
             assert!(drawn.contains(t), "{t}: {drawn}");
         }
-        assert_eq!(app.status_words(), "New Take · Pepsi · Not started");
+        assert_eq!(app.status_words(), "New Take · Pepsi · Not Started");
 
         // Save… with the watch picked saves into it, named by its start.
         let scratch = base.join("unsaved");
@@ -16319,7 +16392,7 @@ mod tests {
         // File > New Session lets go of the recording: a new take follows.
         app.new_session();
         assert!(app.input == Input::Microphone && app.opened_path.is_empty());
-        assert_eq!(app.status_words(), "New Take · Meteorite · Not started");
+        assert_eq!(app.status_words(), "New Take · Meteorite · Not Started");
         // And the watch's settings apply to it (set up as New Take does,
         // without opening a real input).
         app.take_setup();
@@ -18684,15 +18757,13 @@ mod tests {
     }
 
     /// The Current Position card's six buttons stay big enough to read and
-    /// press: one row where the card gives each 30 points (1280), else two
-    /// rows of three (1000, 800). On the narrowest window the card is
-    /// captioned Position, and every card of the row stays inside the
-    /// window with the Beat Rate card's caption whole.
+    /// press, in one row, where the window has room for every card's full
+    /// form (1610). Narrower (1000, 800), the card is captioned Position
+    /// and one pop-up of the six takes the buttons' place. Either way every
+    /// card of the row stays inside the window with the Beat Rate card's
+    /// caption whole.
     #[test]
     fn the_position_buttons_keep_their_size() {
-        assert_eq!(position_rows(198.0), 1);
-        assert_eq!(position_rows(148.0), 2);
-        assert!(position_slot_h(148.0) > position_slot_h(198.0));
         let ctx = themed();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let rects = |app: &mut TimegrapherApp, w: f32| {
@@ -18722,23 +18793,25 @@ mod tests {
                 .map(|(_, r)| *r)
                 .unwrap_or_else(|| panic!("{text}: {found:?}"))
         };
-        for (w, rows, caption) in [
-            (1280.0, 1, "Current Position"),
-            (1000.0, 2, "Current Position"),
-            (800.0, 2, "Position"),
+        for (w, buttons, caption) in [
+            (1610.0, true, "Current Position"),
+            (1000.0, false, "Position"),
+            (800.0, false, "Position"),
         ] {
             let found = rects(&mut app, w);
             at(&found, caption);
-            let (du, cd) = (at(&found, "DU"), at(&found, "CD"));
-            if rows == 1 {
+            if buttons {
+                let (du, cd) = (at(&found, "DU"), at(&found, "CD"));
                 assert!((du.center().y - cd.center().y).abs() < 1.0, "{w}");
+                // Next to each other, the codes' centres are far enough
+                // apart for a button of 28 points or more each.
+                let cu = at(&found, "CU");
+                assert!(cu.center().x - du.center().x >= 2.0 * 28.0, "{w}");
             } else {
-                assert!(cd.center().y > du.bottom(), "{w}");
+                // The pop-up shows the current position's code alone.
+                at(&found, "DU");
+                assert!(!found.iter().any(|(t, _)| t == "CR"), "{w}: {found:?}");
             }
-            // Next to each other, the codes' centres are far enough apart
-            // for a button of 28 points or more each.
-            let cu = at(&found, "CU");
-            assert!(cu.center().x - du.center().x >= 2.0 * 28.0, "{w}");
             let beat_rate = at(&found, "Beat Rate");
             assert!(beat_rate.right() <= w - 12.0, "{w}: {beat_rate:?}");
         }
@@ -18759,7 +18832,7 @@ mod tests {
                 let input = egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
-                        Vec2::new(1000.0, 800.0),
+                        Vec2::new(1610.0, 800.0),
                     )),
                     ..Default::default()
                 };
@@ -18776,11 +18849,9 @@ mod tests {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         assert!(app.position_editable());
         let settable = ink(&mut app);
-        let texts = window_texts(&mut app, &ctx, 1000.0);
+        let texts = window_texts(&mut app, &ctx, 1610.0);
         assert!(texts.iter().any(|t| t == "Current Position"), "{texts:?}");
         assert!(texts.iter().any(|t| t == "DU · CH"), "{texts:?}");
-        // With room, the name too.
-        let texts = window_texts(&mut app, &ctx, 1440.0);
         assert!(texts.iter().any(|t| t == "Dial Up"), "{texts:?}");
         for p in Position::ALL {
             assert!(
@@ -18791,13 +18862,18 @@ mod tests {
         }
         let mut app = synthetic(20.0, 0.0);
         assert!(!app.position_editable());
-        let texts = window_texts(&mut app, &ctx, 1000.0);
+        let texts = window_texts(&mut app, &ctx, 1610.0);
         for p in Position::ALL {
             assert!(
                 texts.iter().any(|t| t == p.code()),
                 "{}: {texts:?}",
                 p.code()
             );
+        }
+        // Compact, the name on two lines beside the picture.
+        let texts = window_texts(&mut app, &ctx, 1000.0);
+        for want in ["Position", "Dial", "Up", "DU"] {
+            assert!(texts.iter().any(|t| t == want), "{want}: {texts:?}");
         }
         let pal = theme::palette(ctx.style().visuals.dark_mode);
         assert_eq!(settable, pal.text);
@@ -19112,41 +19188,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The readings' cards carry what a take needs: the position with the
-    /// arrows that tip the watch, Listen and Save with Average Over on a
-    /// card of their own, the lift angle and the beat rate's menu with the
-    /// calibre. Nothing says Take, Pause or Resume, and no Replay is
+    /// The readings' cards carry what a take needs: the position, Listen
+    /// and Save with the take's length (on the card from 1000 up; on the
+    /// narrowest window in Listen's hover, so the reading cards keep their
+    /// captions whole) and Average Over on a card of their own, the lift angle, and the beat rate's menu with the calibre: in
+    /// full where the window has room (1610), one control each where it
+    /// hasn't (1000). Nothing says Take, Pause or Resume, and no Replay is
     /// offered.
     #[test]
     fn the_readings_cards_carry_the_take_controls() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let ctx = themed();
-        for w in [1000.0, 1440.0] {
+        for w in [800.0, 1000.0, 1610.0] {
             let texts = window_texts(&mut app, &ctx, w);
-            // The name where it fits on one line, else the code alone.
-            if w > 1000.0 {
-                assert!(texts.iter().any(|t| t == "Dial Up"), "at {w}: {texts:?}");
+            let mut wants = vec!["DU", "Listen", "Lift", "Not Set", "Watches", "bph"];
+            if w > 800.0 {
+                wants.push("0:00");
+            } else {
+                // The length is in Listen's hover here, leaving the reading
+                // cards room for their captions.
+                assert!(!texts.iter().any(|t| t == "0:00"), "0:00 at {w}: {texts:?}");
+                wants.extend(["Position", "Avg 10 s", "Clock"]);
             }
-            for want in [
-                "Current Position",
-                "DU",
-                "CR",
-                "DU · CH",
-                "Listen",
-                "Lift",
-                "Average 10 s",
-                "Calibre",
-                "Not Set",
-                "Watches",
-            ] {
+            if w > 1000.0 {
+                wants.extend([
+                    "Current Position",
+                    "Dial Up",
+                    "10 s",
+                    "CR",
+                    "DU · CH",
+                    "0:00",
+                    "Not Started",
+                    "Average Over",
+                    "Calibre",
+                    "Auto",
+                    "Input Clock",
+                    "Default",
+                ]);
+            } else if w > 800.0 {
+                // The take's length in the compact Listen card's title row,
+                // and Average Over's pop-up saying what it is.
+                wants.extend(["Position", "Dial", "Up", "Input Clock", "Avg 10 s"]);
+            }
+            for want in wants {
                 assert!(texts.iter().any(|t| t == want), "{want} at {w}: {texts:?}");
             }
-            assert!(
-                texts
-                    .iter()
-                    .any(|t| t.starts_with('—') && t.contains("bph")),
-                "the beat rate's menu at {w}: {texts:?}"
-            );
             for gone in [
                 "Take",
                 "New Take",
@@ -19224,81 +19310,136 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// On a card as narrow as the smallest window gives it, the Beat Rate
-    /// card's menus stay inside it: the figure drops "bph" and the Calibre
-    /// menu goes under its name.
+    /// The Beat Rate card's controls stay inside its controls row: the
+    /// Calibre pop-up alone on a compact card, the beat rate's pop-up and
+    /// the Calibre pop-up, with or without its label, on the narrowest
+    /// full card and a wider one.
     #[test]
     fn the_beat_rate_controls_fit_a_narrow_card() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.bph = Some(28800);
         let ctx = themed();
-        for w in [84.0, 160.0] {
+        let inner = |card: f32| card - 2.0 * f32::from(theme::CARD_PADDING);
+        for (w, compact) in [
+            (inner(BEAT_RATE_COMPACT_W), true),
+            (inner(FULL_FIGURE_W), false),
+            (inner(LABELLED_W), false),
+        ] {
             let mut used = egui::Rect::NOTHING;
             for _ in 0..2 {
                 let _ = ctx.run(egui::RawInput::default(), |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        let rect = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(w, 200.0));
+                        let rect = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            Vec2::new(w, theme::CONTROL_H),
+                        );
                         let mut child = ui.new_child(
                             egui::UiBuilder::new()
                                 .max_rect(rect)
-                                .layout(egui::Layout::top_down(egui::Align::Min)),
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
                         );
-                        app.beat_rate_controls(&mut child);
+                        app.beat_rate_controls(&mut child, compact);
                         used = child.min_rect();
                     });
                 });
             }
             assert!(
-                used.width() <= w + 0.5,
-                "{} pt wide in a {w} pt card",
-                used.width()
+                used.width() <= w + 0.5 && used.height() <= theme::CONTROL_H + 0.5,
+                "{:?} in a {w} pt row",
+                used.size()
             );
         }
     }
 
-    /// A card's limits show whole, wrapped, never cut short, in room that
-    /// is the same whether they are there or not: at the narrowest card
-    /// and a wide one.
+    /// A card's limits show in a chip in its title row, in Title Case, the
+    /// first of them with how many more; the whole sentences are its
+    /// hover. Where the words would push the card's caption off it, the
+    /// chip gives how many limits there are.
     #[test]
-    fn a_cards_limits_show_whole_in_room_kept_for_them() {
+    fn a_cards_limits_show_in_a_chip_with_the_whole_in_its_hover() {
+        assert_eq!(chip_words("9 s of beats"), "9 s of Beats");
+        assert_eq!(chip_words("3% clipped"), "3% Clipped");
+        assert_eq!(chip_words("28800 bph heard"), "28800 bph Heard");
+        assert_eq!(chip_words("sides named by count"), "Sides Named by Count");
         let ctx = themed();
-        let noise = "9 s of beats · 25 of 66 beats";
-        for w in [92.0, 190.0] {
-            let mut heights = Vec::new();
-            for short in ["", "12 s of beats", noise] {
-                let out = ctx.run(egui::RawInput::default(), |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        let rect = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(w, 400.0));
-                        let mut child = ui.new_child(
-                            egui::UiBuilder::new()
-                                .max_rect(rect)
-                                .layout(egui::Layout::top_down(egui::Align::Min)),
-                        );
-                        let top = child.cursor().top();
-                        whole_lines(&mut child, short, "", LONGEST_LIMITS, w);
-                        heights.push(child.cursor().top() - top);
-                    });
-                });
-                let drawn: String = out
+        // Fewer seconds of beats than an analysis asks for: a limit on
+        // every reading.
+        let noise = synthetic(6.0, 0.0);
+        let r = noise.reading().expect("a reading");
+        let limits = reading_limits("Beat Error", &r.caveats, noise.lift_deg, r.beats_used);
+        assert!(!limits.is_empty(), "{:?}", r.caveats);
+        let chip = match limits.len() {
+            1 => chip_words(&limits[0].0),
+            n => format!("{} +{}", chip_words(&limits[0].0), n - 1),
+        };
+        let drawn = |w: f32| {
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let out = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            Vec2::new(w, 820.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let _ = noise.readouts(ui);
+                        });
+                    },
+                );
+                texts = out
                     .shapes
                     .iter()
                     .filter_map(|c| match &c.shape {
                         egui::Shape::Text(t) => Some(t.galley.text().to_string()),
                         _ => None,
                     })
-                    .collect();
-                assert!(!drawn.contains('…'), "{drawn}");
-                assert_eq!(drawn.replace('\n', " ").trim(), short, "at {w} pt");
+                    .collect::<Vec<_>>();
             }
-            assert!(
-                heights.iter().all(|&h| h == heights[0]),
-                "{heights:?} at {w} pt"
-            );
+            texts
+        };
+        let wide = drawn(1610.0);
+        assert!(wide.contains(&chip), "{chip}: {wide:?}");
+        for caption in ["Rate", "Amplitude", "Beat Error"] {
+            assert!(wide.iter().any(|t| t == caption), "{caption}: {wide:?}");
         }
+        // Too narrow for the words beside the caption, the chip gives how
+        // many limits there are.
+        let narrow = drawn(800.0);
+        let count = limits.len().to_string();
+        assert!(
+            narrow.iter().any(|t| *t == chip || *t == count),
+            "{chip} or {count}: {narrow:?}"
+        );
+        assert!(narrow.iter().any(|t| t == "Rate"), "{narrow:?}");
     }
 
-    /// The reading cards are one height at a width, whatever they show:
-    /// waiting, reading, settling, or with their limits named.
+    /// Hiss with the beat rate set: a reading of whatever peaks there are,
+    /// with its limits named.
+    fn noisy_app() -> TimegrapherApp {
+        let mut noise = TimegrapherApp::with_devices(Vec::new(), None);
+        noise.bph = Some(28_800);
+        noise.reset_session(48000, "noise".into());
+        let mut seed = 12_345_u32;
+        let hiss: Vec<f32> = (0..48_000 * 20)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 8) as f32 / (1 << 24) as f32 * 0.02 - 0.01
+            })
+            .collect();
+        let live = noise.live.as_mut().unwrap();
+        for b in hiss.chunks(960) {
+            live.push(b);
+        }
+        noise.poll();
+        assert!(noise.reading().is_some_and(|r| !r.watch_heard));
+        noise
+    }
+
+    /// The reading cards are one height at every width, whatever they
+    /// show: waiting, reading, settling, or with their limits named.
     #[test]
     fn the_cards_keep_their_height_whatever_they_show() {
         let ctx = themed();
@@ -19335,27 +19476,13 @@ mod tests {
         settling.session.start_settle(55.0);
         let mut masked = synthetic(60.0, 0.0);
         masked.mask(5.0, 30.0);
-        // Hiss with the beat rate set: a reading of whatever peaks there
-        // are, with its limits named.
-        let mut noise = TimegrapherApp::with_devices(Vec::new(), None);
-        noise.bph = Some(28_800);
-        noise.reset_session(48000, "noise".into());
-        let mut seed = 12_345_u32;
-        let hiss: Vec<f32> = (0..48_000 * 20)
-            .map(|_| {
-                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-                (seed >> 8) as f32 / (1 << 24) as f32 * 0.02 - 0.01
-            })
-            .collect();
-        let live = noise.live.as_mut().unwrap();
-        for b in hiss.chunks(960) {
-            live.push(b);
-        }
-        noise.poll();
-        assert!(noise.reading().is_some_and(|r| !r.watch_heard));
+        let noise = noisy_app();
         for w in [800.0, 1280.0, 1900.0] {
             let h = height(&waiting, w);
-            assert!(h > 0.0);
+            assert_eq!(
+                h,
+                theme::READINGS_CARD_H + ctx.style().spacing.item_spacing.y
+            );
             for app in [&reading, &settling, &masked, &noise] {
                 assert_eq!(height(app, w), h, "at {w} pt wide");
             }
@@ -19385,15 +19512,23 @@ mod tests {
         let drawn = |app: &mut TimegrapherApp| {
             let out = ctx.run(egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    app.beat_rate_controls(ui);
-                    app.lift_control(ui);
+                    ui.horizontal(|ui| app.beat_rate_controls(ui, false));
+                    ui.horizontal(|ui| app.lift_control(ui, false));
                 });
             });
-            format!("{:?}", out.shapes)
+            // The lift angle's field: one control 76 wide.
+            let field = out.shapes.iter().any(|c| match &c.shape {
+                egui::Shape::Rect(r) => {
+                    (r.rect.width() - 76.0).abs() < 0.5
+                        && (r.rect.height() - theme::CONTROL_H).abs() < 0.5
+                }
+                _ => false,
+            });
+            format!("{:?}{}", out.shapes, if field { "LIFT FIELD" } else { "" })
         };
-        // The lift angle's field has its ° beside it; a calibre's angle is
-        // one label.
-        let asks = |d: &str| d.contains("bph · Auto") && d.contains("text: \"°\"");
+        // The beat rate's pop-up reads Auto, and the lift angle has its
+        // field; a calibre's angle is a label.
+        let asks = |d: &str| d.contains("\"Auto\"") && d.contains("LIFT FIELD");
         let none = drawn(&mut app);
         assert!(asks(&none) && none.contains("Not Set"), "{none}");
         app.pick_watch(&diver);
@@ -19483,12 +19618,13 @@ mod tests {
                 }
             }
             let pane = top_of["Paper Strip"];
-            let bph = bottom_of
-                .keys()
-                .find(|k| k.starts_with('—') && k.contains("bph"))
-                .expect("the beat rate's menu")
-                .clone();
-            for control in ["CR", "Lift", bph.as_str()] {
+            // The Beat Rate card's one control: the Calibre pop-up, or for
+            // a watch with no calibre the beat rate's.
+            let bph = ["Not Set", "Auto"]
+                .into_iter()
+                .find(|k| bottom_of.contains_key(*k))
+                .expect("the beat rate's menu");
+            for control in ["DU", "Lift", bph] {
                 assert!(
                     bottom_of[control] < pane,
                     "{control} ends at {} under the panes at {pane}",
@@ -19672,7 +19808,7 @@ mod tests {
                 }
             }
         }
-        let cards = top_of["Paper Strip"] - top_of["Current Position"];
+        let cards = top_of["Paper Strip"] - top_of["Beat Error"];
         let strip = top_of["Tick Tock Profile"] - top_of["Paper Strip"];
         let profile = top_of[&app.status_words()] - top_of["Tick Tock Profile"];
         assert!(
