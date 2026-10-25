@@ -929,7 +929,7 @@ fn row(
                 );
             }
             let dots: Vec<[f64; 2]> = by_time.iter().flatten().copied().collect();
-            let boxes = columns(f);
+            let boxes = steady_views::fold_columns(f);
             let box_w = 0.3 * f.period_s / bins as f64;
             let shape: Vec<[f64; 2]> = f
                 .profile
@@ -978,7 +978,7 @@ fn row(
                     f.raster.len()
                 ),
             };
-            let label = match cycle_spread(f) {
+            let label = match steady_views::fold_spread(f, &boxes) {
                 Some((swing, middle)) => format!(
                     "{label}\nThe median line swings {}; the boxes' median height is {}",
                     value_text(k, swing, swing.abs().min(middle.abs()) / 10.0),
@@ -1003,7 +1003,7 @@ fn row(
                     );
                 }
                 for (b, q) in boxes.iter().enumerate() {
-                    let Some((q1, _, q3)) = *q else { continue };
+                    let Some([q1, _, q3]) = *q else { continue };
                     let (l, r) = (x(b) - box_w, x(b) + box_w);
                     p.polygon(
                         Polygon::new("middle half", vec![[l, q1], [r, q1], [r, q3], [l, q3]])
@@ -1516,64 +1516,14 @@ fn log_label(
     }
 }
 
+/// How many colours the Cycle view's dots take, first cycle to last.
+const TIME_BANDS: usize = 12;
+
 /// The 1st to 99th percentile of the points' values, padded a little,
 /// leaving out lone wild values (a knock, a dropped beat) so that two of
 /// them don't flatten the rest: those beyond three interquartile ranges
 /// of the middle half, unless they are more than 3% of the values (then
 /// they are part of what the watch does, as in the steadiness test).
-/// How many colours the Cycle view's dots take, first cycle to last.
-const TIME_BANDS: usize = 12;
-
-/// Each phase column's quartiles (lower, median, upper) over its cycles,
-/// None for a column with fewer than four readings.
-fn columns(f: &Fold) -> Vec<Option<(f64, f64, f64)>> {
-    (0..f.profile.len())
-        .map(|b| {
-            let mut v: Vec<f64> = f
-                .raster
-                .iter()
-                .filter_map(|r| r.get(b).copied())
-                .filter(|v| v.is_finite())
-                .collect();
-            if v.len() < 4 {
-                return None;
-            }
-            v.sort_by(f64::total_cmp);
-            let q = |p: f64| {
-                let x = (v.len() - 1) as f64 * p;
-                let (i, t) = (x.floor() as usize, x.fract());
-                v[i] + (v[(i + 1).min(v.len() - 1)] - v[i]) * t
-            };
-            Some((q(0.25), q(0.5), q(0.75)))
-        })
-        .collect()
-}
-
-/// The median line's swing (highest less lowest) and the median of the
-/// columns' middle-half spans, when both can be given.
-fn cycle_spread(f: &Fold) -> Option<(f64, f64)> {
-    let shape: Vec<f64> = f
-        .profile
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .collect();
-    let mut mids: Vec<f64> = columns(f).iter().flatten().map(|(a, _, c)| c - a).collect();
-    if shape.len() < 2 || mids.is_empty() {
-        return None;
-    }
-    mids.sort_by(f64::total_cmp);
-    let n = mids.len();
-    let middle = if n % 2 == 1 {
-        mids[n / 2]
-    } else {
-        (mids[n / 2 - 1] + mids[n / 2]) / 2.0
-    };
-    let hi = shape.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let lo = shape.iter().copied().fold(f64::INFINITY, f64::min);
-    Some((hi - lo, middle))
-}
-
 fn spread(pts: &[[f64; 2]]) -> Option<(f64, f64)> {
     if pts.len() < 2 {
         return None;
@@ -1633,11 +1583,11 @@ mod tests {
             ],
             t0: 0.0,
         };
-        let c = super::columns(&f);
-        assert_eq!(c[0], Some((1.0, 2.0, 3.0)));
-        assert_eq!(c[1], Some((-2.0, -1.0, 0.0)));
+        let c = steady_views::fold_columns(&f);
+        assert_eq!(c[0], Some([1.0, 2.0, 3.0]));
+        assert_eq!(c[1], Some([-2.0, -1.0, 0.0]));
         assert_eq!(c[2], None);
-        assert_eq!(super::cycle_spread(&f), Some((2.0, 2.0)));
+        assert_eq!(steady_views::fold_spread(&f, &c), Some((2.0, 2.0)));
     }
 
     use super::*;
