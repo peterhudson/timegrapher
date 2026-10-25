@@ -678,15 +678,15 @@ when not read.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
-middle half), the curve through them and where it turns, and under it the
-first half hour against the half hour 24 hours later (or the session's last),
-the usual 0 h / 24 h comparison, captioned Full Wind Against 24 Hours
-Later. It needs the amplitude to fall
-through at least three 2° steps, which a run-down over some hours gives.
+middle half), the curve through them and where it turns, filling the
+pane. It needs the amplitude to fall
+through at least three 2° steps, which a run-down over some hours gives
+(a long run-down is one way; any take over a wide range of amplitude
+does).
 A note on what it needs is behind the **?** in its toolbar. Until there are 5 minutes of beats in one position, the
 Steadiness and Isochronism tabs say so; during a Positions Test they say
-that the test never stays that long in one position. Both scroll with a
-bar always showing when the pane is too short for every row.
+that the test never stays that long in one position. Steadiness scrolls
+with a bar always showing when the pane is too short for every row.
 
 **True Clock.** While it listens, the app times the microphone's clock
 against the computer's. After 20 minutes of listening, once the timing is

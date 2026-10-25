@@ -308,10 +308,6 @@ pub const ISOCHRONISM: &[&str] = &[
     "The curve needs the amplitude to fall through at least three 2° bands with 10 \
      readings in each, which a session of some hours from full wind gives. It comes \
      from the same tests as Steadiness, the same as `timegrapher series`.",
-    "0 h / 24 h compares the first half hour of the session with the half hour 24 hours \
-     later in one position: rate, amplitude and beat error, and how much each \
-     changed. It needs at least 2 hours; under 24 hours, the \
-     last half hour stands in for the 24 h one.",
 ];
 
 pub const HISTOGRAMS: &[&str] = &[

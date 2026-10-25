@@ -1,55 +1,32 @@
 //! The Isochronism pane: how the rate moves with the amplitude as the
-//! mainspring lets down, and the 0 h / 24 h comparison, from the same
-//! steadiness report as the Steadiness pane (core `steadiness`, as
-//! `timegrapher series` gives them). Nothing is computed here: the curve
-//! and the comparison come ready made with the report.
+//! mainspring lets down, from the same steadiness report as the
+//! Steadiness pane (core `steadiness`, as `timegrapher series` gives it).
+//! Nothing is computed here: the curve comes ready made with the report.
 
 use crate::theme;
 use eframe::egui::{self, RichText};
 use egui_plot::{Line, Plot, Points, VLine};
-use timegrapher_core::steadiness::{IsochronismCurve, WindDown};
+use timegrapher_core::steadiness::IsochronismCurve;
 
-/// Room for the 0 h / 24 h table under the chart before it has been
-/// measured, points.
-const TABLE_H: f32 = 118.0;
 /// Room for the vertical axis labels, as on the Steadiness pane.
 const GUTTER: f32 = 64.0;
 
-/// Draw the pane: the rate by amplitude, and the 0 h / 24 h table.
-pub fn ui(ui: &mut egui::Ui, curve: Option<&IsochronismCurve>, wind: Option<&WindDown>) {
+/// Draw the pane: the rate by amplitude.
+pub fn ui(ui: &mut egui::Ui, curve: Option<&IsochronismCurve>) {
     let pal = theme::pal(ui);
-    // The table's height as it was last drawn (it depends on the fonts, the
-    // width and the wrapped line under it), so the chart leaves room for
-    // all of it.
-    let id = ui.id().with("isochronism_table_h");
-    let table_h = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(TABLE_H);
-    let room = |ui: &egui::Ui| ui.available_height() - table_h - 8.0 - ui.spacing().item_spacing.y;
     match curve {
         Some(c) => {
             ui.label(RichText::new(&c.headline).small().color(pal.text_secondary));
             ui.label(RichText::new(caption(c)).small().color(pal.text_tertiary));
-            let h = room(ui).max(120.0);
+            let h = ui.available_height().max(120.0);
             chart(ui, c, h);
         }
-        None => {
-            let h = room(ui).max(60.0);
-            ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
-                note(
-                    ui,
-                    "No isochronism curve yet: the amplitude has not moved enough. It needs at \
-                     least three 2° steps of amplitude with 10 readings in each, which a run-down \
-                     over some hours gives.",
-                );
-            });
-        }
-    }
-    ui.add_space(8.0);
-    let top = ui.cursor().top();
-    table(ui, wind);
-    let drawn = ui.min_rect().bottom() - top;
-    if (drawn - table_h).abs() > 0.5 {
-        ui.data_mut(|d| d.insert_temp(id, drawn));
-        ui.ctx().request_repaint();
+        None => note(
+            ui,
+            "No isochronism curve yet: the amplitude has not moved enough. It needs at least \
+             three 2° steps of amplitude with 10 readings in each, which a run-down over some \
+             hours gives.",
+        ),
     }
 }
 
@@ -163,86 +140,6 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
         });
 }
 
-/// The 0 h / 24 h table: the start of the take against 24 h after full
-/// wind, or against its last half hour.
-fn table(ui: &mut egui::Ui, wind: Option<&WindDown>) {
-    let pal = theme::pal(ui);
-    ui.label(theme::caption("Full Wind Against 24 Hours Later").color(pal.text_secondary))
-        .on_hover_text(
-            "The readings in the first stretch after full wind beside the same readings 24 \
-             hours on, as the mainspring lets down: how much the amplitude falls and the rate \
-             moves over a day's wear. Without a 24 hour take, the last half hour stands in.",
-        );
-    let Some(w) = wind else {
-        ui.label(
-            RichText::new(
-                "The session is too short: the comparison needs at least 2 hours, and 24 hours \
-                 for the full test.",
-            )
-            .small()
-            .color(pal.text_secondary),
-        );
-        return;
-    };
-    let hours = |s: &timegrapher_core::steadiness::Stretch| {
-        format!("{:.1}–{:.1} h", s.from_wind_h, s.to_wind_h)
-    };
-    let end = if w.at_24h {
-        "At 24 h"
-    } else {
-        "Last Half Hour"
-    };
-    let dash = || "–".to_string();
-    let rate = |v: Option<f64>| v.map_or_else(dash, |v| format!("{v:+.1} s/day"));
-    let amp = |v: Option<f64>| v.map_or_else(dash, |v| format!("{v:.0}°"));
-    let amp_change = |v: Option<f64>| v.map_or_else(dash, |v| format!("{v:+.0}°"));
-    let be = |v: Option<f64>| v.map_or_else(dash, |v| format!("{v:.2} ms"));
-    let be_change = |v: Option<f64>| v.map_or_else(dash, |v| format!("{v:+.2} ms"));
-    let rows = [
-        (
-            "Rate",
-            pal.trace_rate,
-            rate(w.start.rate_s_per_day),
-            rate(w.end.rate_s_per_day),
-            rate(w.rate_change_s_per_day),
-        ),
-        (
-            "Amplitude",
-            pal.trace_amplitude,
-            amp(w.start.amplitude_deg),
-            amp(w.end.amplitude_deg),
-            amp_change(w.amplitude_change_deg),
-        ),
-        (
-            "Beat Error",
-            pal.trace_beat_error,
-            be(w.start.beat_error_ms),
-            be(w.end.beat_error_ms),
-            be_change(w.beat_error_change_ms),
-        ),
-    ];
-    let small = |t: &str| RichText::new(t).small().color(pal.text_secondary);
-    egui::Grid::new("wind_down")
-        .num_columns(4)
-        .spacing([18.0, 3.0])
-        .min_col_width(70.0)
-        .show(ui, |ui| {
-            ui.label("");
-            ui.label(small(&format!("Start ({})", hours(&w.start))));
-            ui.label(small(&format!("{end} ({})", hours(&w.end))));
-            ui.label(small("Change"));
-            ui.end_row();
-            for (name, colour, a, b, d) in rows {
-                ui.label(RichText::new(name).color(pal.ink(colour)));
-                ui.label(a);
-                ui.label(b);
-                ui.label(d);
-                ui.end_row();
-            }
-        });
-    ui.label(RichText::new(&w.headline).small().color(pal.text_tertiary));
-}
-
 fn note(ui: &mut egui::Ui, text: &str) {
     let pal = theme::pal(ui);
     ui.centered_and_justified(|ui| {
@@ -253,22 +150,11 @@ fn note(ui: &mut egui::Ui, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use timegrapher_core::steadiness::{AmplitudeBin, Stretch};
-
-    fn stretch(from: f64, rate: f64, amp: f64, be: f64) -> Stretch {
-        Stretch {
-            from_wind_h: from,
-            to_wind_h: from + 0.5,
-            readings: 180,
-            rate_s_per_day: Some(rate),
-            amplitude_deg: Some(amp),
-            beat_error_ms: Some(be),
-        }
-    }
+    use timegrapher_core::steadiness::AmplitudeBin;
 
     /// A run-down drawn by hand: flat above 250°, falling below.
     #[test]
-    fn draws_a_curve_and_the_table_and_says_why_when_either_is_missing() {
+    fn draws_a_curve_and_says_why_when_it_is_missing() {
         let bins: Vec<AmplitudeBin> = (0..8)
             .map(|i| {
                 let a = 236.0 + 4.0 * i as f64;
@@ -298,28 +184,13 @@ mod tests {
             turn_deg: Some(256.7),
             headline: "The rate falls as the amplitude does.".into(),
         };
-        let wind = WindDown {
-            start: stretch(0.0, 17.3, 262.0, 0.21),
-            end: stretch(15.3, 7.4, 241.0, 0.33),
-            hours_apart: 15.3,
-            at_24h: false,
-            rate_change_s_per_day: Some(-9.9),
-            amplitude_change_deg: Some(-21.0),
-            beat_error_change_ms: Some(0.12),
-            headline: "From the start to the last half hour, the rate fell 9.9 s/day.".into(),
-        };
         assert!(caption(&curve).contains("where the curve turns, 257°"));
         assert!((curve_at(&curve, 250.0) - 16.8).abs() < 1e-12);
         assert_eq!(rate_label(-0.0001, 0.5), "+0.0 s/day");
 
         let ctx = egui::Context::default();
         theme::install(&ctx);
-        for (c, w) in [
-            (Some(&curve), Some(&wind)),
-            (None, Some(&wind)),
-            (Some(&curve), None),
-            (None, None),
-        ] {
+        for c in [Some(&curve), None] {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -328,7 +199,7 @@ mod tests {
                 ..Default::default()
             };
             let out = ctx.run(input, |ctx| {
-                egui::CentralPanel::default().show(ctx, |u| super::ui(u, c, w));
+                egui::CentralPanel::default().show(ctx, |u| super::ui(u, c));
             });
             assert!(!out.shapes.is_empty());
         }

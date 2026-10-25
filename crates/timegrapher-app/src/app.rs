@@ -730,8 +730,7 @@ impl Pane {
                  scaled to its own loudest beat."
             }
             Pane::Isochronism => {
-                "How the rate moves with the amplitude as the mainspring lets down, and the \
-                 first half hour against 24 hours later"
+                "How the rate moves with the amplitude as the mainspring lets down"
             }
             Pane::PositionsTest => {
                 "The six positions one after another, settled and measured in turn, with \
@@ -7290,29 +7289,13 @@ impl TimegrapherApp {
         let pal = theme::pal(ui);
         self.steady_working(ui);
         match &self.steady {
-            // Scrolling when the pane is too short for the chart and the
-            // whole table.
-            Some(s) => {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                    .show(ui, |ui| {
-                        isochronism::ui(
-                            ui,
-                            s.report.isochronism.as_ref(),
-                            s.report.wind_down.as_ref(),
-                        )
-                    });
-            }
+            Some(s) => isochronism::ui(ui, s.report.isochronism.as_ref()),
             None if self.steady_job.is_some() => {}
             None => {
                 ui.label(
-                    RichText::new(
-                        self.steady_wait(dur)
-                            + " The full-wind comparison needs 2 hours, and 24 for the full test.",
-                    )
-                    .small()
-                    .color(pal.text_secondary),
+                    RichText::new(self.steady_wait(dur))
+                        .small()
+                        .color(pal.text_secondary),
                 );
             }
         }
