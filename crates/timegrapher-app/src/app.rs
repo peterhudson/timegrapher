@@ -19688,7 +19688,10 @@ mod tests {
         // name, which a compact card cuts short.
         let texts = window_texts(&mut app, &ctx, 1000.0);
         assert!(texts.iter().any(|t| t == "Position"), "{texts:?}");
-        assert_eq!(texts.iter().filter(|t| *t == "DU").count(), 1, "{texts:?}");
+        // The cards are drawn before the panes; the Paper Strip's Position
+        // Brush shows a code of its own.
+        let cards = texts.iter().take_while(|t| *t != "Paper Strip");
+        assert_eq!(cards.filter(|t| *t == "DU").count(), 1, "{texts:?}");
         for gone in ["Dial", "Up", "Dial Up"] {
             assert!(!texts.iter().any(|t| t == gone), "{gone}: {texts:?}");
         }
@@ -20554,12 +20557,16 @@ mod tests {
                     ..Default::default()
                 };
                 let out = ctx.run(input, |ctx| app.panels(ctx));
+                top_of.clear();
+                bottom_of.clear();
                 for c in &out.shapes {
                     if let egui::Shape::Text(t) = &c.shape {
                         let r = c.shape.visual_bounding_rect();
                         let k = t.galley.text().to_string();
-                        top_of.insert(k.clone(), r.top());
-                        bottom_of.insert(k, r.bottom());
+                        // The first drawn of a text: the cards come before
+                        // the panes (the Position Brush shows a code too).
+                        top_of.entry(k.clone()).or_insert(r.top());
+                        bottom_of.entry(k).or_insert(r.bottom());
                     }
                 }
             }
