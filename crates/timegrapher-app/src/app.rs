@@ -755,6 +755,14 @@ const LIFT_HINT: &str = "No calibre or lift angle is set, so every amplitude is 
      from the default 52°. Type the calibre's lift angle, pick one, or pick the calibre above \
      it.";
 /// The takes a watch's row starts, each saved into the watch.
+/// The Watches view's list column, pt.
+const WATCH_LIST_W: f32 = 280.0;
+/// How wide the watch's side grows, pt: across a 2560 window a figure
+/// would sit far from its date.
+const WATCH_SIDE_MAX: f32 = 1100.0;
+/// The Watches view's width from which the list and the watch sit side by
+/// side; narrower, one shows at a time.
+const WATCHES_SIDE_BY_SIDE: f32 = 900.0;
 const NEW_TAKES: [(NewTake, &str, &str); 3] = [
     (
         NewTake::Listen,
@@ -1756,6 +1764,12 @@ pub struct TimegrapherApp {
     quick_listen: bool,
     watch_search: String,
     watch_sort: watches::Sort,
+    /// The added field the list shows under each watch's name, by its
+    /// label; none, the calibre.
+    watch_list_shows: Option<String>,
+    /// The Watches view was wide enough last frame for the list and the
+    /// watch side by side.
+    watches_wide: bool,
     watch_form: Option<watches::Form>,
     /// The form was opened from Keep in a Watch…: Done keeps what is on
     /// show in the new watch.
@@ -2355,6 +2369,8 @@ impl TimegrapherApp {
             quick_listen: false,
             watch_search: String::new(),
             watch_sort: watches::Sort::default(),
+            watch_list_shows: None,
+            watches_wide: true,
             watch_form: None,
             keep_after_form: false,
             test_keep: None,
@@ -5431,61 +5447,124 @@ impl TimegrapherApp {
     /// then the watch itself. Before anything is open it stands beside
     /// the ways in, so the microphone and the watch can be set first.
     fn watch_pane(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical()
-            .id_salt("watch pane")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                // Clear of the scroll bar.
-                ui.set_max_width(ui.available_width() - 8.0);
-                ui.spacing_mut().item_spacing.y = 8.0;
-                let picked = self.open_watch().is_some();
-                if self.list_shown() {
-                    self.section(ui, "Watches", watches::HELP, Self::watch_list_card);
-                } else if picked {
-                    self.watch_details(ui);
-                    self.watch_actions(ui);
-                    self.section(ui, "Takes", watches::HELP, Self::watch_takes_card);
-                } else if self.unsorted_open {
-                    watches::unsorted_details(ui);
-                    self.section(ui, "Takes", watches::HELP, Self::watch_takes_card);
+        let wide = ui.available_width() >= WATCHES_SIDE_BY_SIDE;
+        // The toolbar, drawn first, goes by this: drawn again at once when
+        // it changes.
+        if wide != self.watches_wide {
+            ui.ctx().request_repaint();
+        }
+        self.watches_wide = wide;
+        let scroll = |ui: &mut egui::Ui, id: &str, add: &mut dyn FnMut(&mut egui::Ui)| {
+            egui::ScrollArea::vertical()
+                .id_salt(id)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // Clear of the scroll bar.
+                    ui.set_max_width(ui.available_width() - 8.0);
+                    ui.spacing_mut().item_spacing.y = 8.0;
+                    add(ui);
+                });
+        };
+        if !wide {
+            // One at a time: the list, or the watch with ‹ All Watches.
+            let one = !self.list_shown() && (self.open_watch().is_some() || self.unsorted_open);
+            scroll(ui, "watch pane", &mut |ui| {
+                if one {
+                    self.watch_side(ui);
                 } else {
-                    self.section(ui, "Watches", watches::HELP, Self::watch_list_card);
+                    self.watch_list_card(ui);
                 }
             });
+            return;
+        }
+        // The list beside the watch; only the watch's side scrolls with
+        // it, and it stops at about 1100 pt wide.
+        let full = ui.available_rect_before_wrap();
+        let list = egui::Rect::from_min_size(full.min, Vec2::new(WATCH_LIST_W, full.height()));
+        let side = egui::Rect::from_min_max(
+            egui::pos2(list.right() + 17.0, full.top()),
+            egui::pos2(
+                (list.right() + 17.0 + WATCH_SIDE_MAX).min(full.right()),
+                full.bottom(),
+            ),
+        );
+        let pal = theme::pal(ui);
+        ui.painter().vline(
+            list.right() + 8.0,
+            full.y_range(),
+            egui::Stroke::new(1.0_f32, pal.separator),
+        );
+        ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
+            scroll(ui, "watch list", &mut |ui| self.watch_list_card(ui));
+        });
+        ui.scope_builder(egui::UiBuilder::new().max_rect(side), |ui| {
+            scroll(ui, "watch side", &mut |ui| self.watch_side(ui));
+        });
+        ui.allocate_rect(full, egui::Sense::hover());
     }
 
-    /// The watch picked's takes to start: Listen, the Positions Test and
-    /// the Power Reserve Test, each saved into it; Stop while one runs.
-    fn watch_actions(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            if self.running() && self.session.mic() && !self.quick_listen {
-                if ui
-                    .add(theme::destructive(ui, "Stop"))
-                    .on_hover_text(STOP_HINT)
-                    .clicked()
-                {
-                    self.stop_listening();
+    /// Why a new take can't start or a take be opened from the Watches
+    /// view: the Bench holds one take at a time.
+    fn watches_busy(&self) -> Option<&'static str> {
+        (self.running() || self.batch.is_some()).then_some("Stop the take on the Bench first.")
+    }
+
+    /// The picked watch, or Unsorted Takes: its header, New Take, its
+    /// takes, then its details and photos.
+    fn watch_side(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        let busy = self.watches_busy();
+        if let Some(e) = self.open_watch().cloned() {
+            let writable = matches!(&self.library, Ok(Some(l)) if l.read_only.is_none());
+            let locked = (!writable).then_some("This copy of the app can only read your watches");
+            match watches::header(ui, &e, &self.cal, &mut self.thumbs, locked) {
+                Some(watches::HeaderAction::Edit) => {
+                    self.watch_form = Some(watches::Form {
+                        watch: e.watch.clone(),
+                        new: false,
+                        error: None,
+                    });
                 }
-                return;
+                Some(watches::HeaderAction::AddPhotos) => self.add_photos(),
+                None => {}
             }
-            let free = !self.running() && self.batch.is_none();
-            for (kind, name, hint) in NEW_TAKES {
-                let b = if kind == NewTake::Listen {
-                    theme::primary(ui, name)
-                } else {
-                    theme::secondary(ui, name)
-                };
-                if ui
-                    .add_enabled(free, b)
-                    .on_hover_text(hint)
-                    .on_disabled_hover_text("Stop listening first")
-                    .clicked()
-                {
-                    self.view = View::Bench;
-                    self.new_take(kind, false);
+            watches::title_row(ui, "New Take", None, |ui| {
+                if let Some(why) = busy {
+                    ui.label(RichText::new(why).small().color(pal.text_secondary));
                 }
+            });
+            let names = NEW_TAKES.map(|(_, name, hint)| (name, hint));
+            if let Some(i) = watches::new_take_buttons(ui, names, busy) {
+                self.view = View::Bench;
+                self.new_take(NEW_TAKES[i].0, false);
             }
-        });
+            self.watch_takes_section(ui, &e, busy);
+            watches::title_row(ui, "Details", None, |_| {});
+            watches::details_panel(ui, &e.watch);
+            watches::title_row(ui, "Photos", None, |_| {});
+            if e.photos.is_empty() {
+                watches::panel(ui, |ui| {
+                    ui.label(
+                        RichText::new(
+                            "None yet. Add Photos… puts them here, as a strip of thumbnails.",
+                        )
+                        .small()
+                        .color(pal.text_secondary),
+                    );
+                });
+            } else {
+                self.watch_photos(ui, &e);
+            }
+        } else if let Some(e) = self.open_group() {
+            watches::unsorted_details(ui);
+            self.watch_takes_section(ui, &e, busy);
+        } else {
+            ui.add_space(24.0);
+            ui.label(
+                RichText::new("Pick a watch in the list to see its takes and start a new one.")
+                    .color(pal.text_secondary),
+            );
+        }
     }
 
     /// The watch picked in the Watches view, as the library last read it.
@@ -5552,7 +5631,30 @@ impl TimegrapherApp {
                         RichText::new("No watch matches the search.").color(pal.text_secondary),
                     );
                 }
-                let picked = watches::list(ui, &shown, marked, &mut self.thumbs);
+                let picked = watches::list(
+                    ui,
+                    &shown,
+                    marked,
+                    &mut self.thumbs,
+                    self.watch_list_shows.as_deref(),
+                );
+                // How many the search hid.
+                if !self.watch_search.trim().is_empty() && !l.watches.is_empty() {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} of {} {}",
+                            shown.len(),
+                            l.watches.len(),
+                            if l.watches.len() == 1 {
+                                "watch"
+                            } else {
+                                "watches"
+                            }
+                        ))
+                        .small()
+                        .color(pal.text_secondary),
+                    );
+                }
                 if let Some(why) = &l.read_only {
                     ui.label(
                         RichText::new(format!("{why}."))
@@ -5590,17 +5692,10 @@ impl TimegrapherApp {
         }
     }
 
-    /// The picked watch's details and photos.
-    fn watch_details(&mut self, ui: &mut egui::Ui) {
-        let Some(e) = self.open_watch().cloned() else {
-            return;
-        };
-        watches::details(ui, &e);
-        if e.photos.is_empty() {
-            return;
-        }
+    /// The picked watch's photos, as a strip.
+    fn watch_photos(&mut self, ui: &mut egui::Ui, e: &library::WatchEntry) {
         let writable = matches!(&self.library, Ok(Some(l)) if l.read_only.is_none());
-        match watches::photo_strip(ui, &e, &mut self.thumbs, writable) {
+        match watches::photo_strip(ui, e, &mut self.thumbs, writable) {
             Some(watches::PhotoAction::Open(p)) => {
                 if let Err(err) = reveal(&p) {
                     self.error(format!("Couldn't open {}: {err}", p.display()));
@@ -5653,11 +5748,13 @@ impl TimegrapherApp {
         }
     }
 
-    /// The picked watch's takes.
-    fn watch_takes_card(&mut self, ui: &mut egui::Ui) {
-        let Some(e) = self.open_group() else {
-            return;
-        };
+    /// The watch's takes: the title row with Open and "…", then the table.
+    fn watch_takes_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        e: &library::WatchEntry,
+        busy: Option<&'static str>,
+    ) {
         let (others, writable) = match &self.library {
             Ok(Some(l)) => (
                 l.watches
@@ -5689,7 +5786,13 @@ impl TimegrapherApp {
             picked: picked.as_deref(),
             on_show: on_show.as_deref(),
         };
-        let act = watches::takes(ui, &e, &cx);
+        let mut act = None;
+        watches::title_row(ui, "Takes", Some(e.takes.len()), |ui| {
+            act = watches::takes_buttons(ui, e, &cx, busy);
+        });
+        if let Some(a) = watches::takes_table(ui, e, &cx, busy) {
+            act = Some(a);
+        }
         self.take_action(act);
     }
 
@@ -6270,59 +6373,37 @@ impl TimegrapherApp {
     /// The Watches view's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
     fn watches_tools(&mut self, ui: &mut egui::Ui) {
-        let read_only = "This copy of the app can only read your watches";
-        if self.list_shown() {
-            // The list's own tools, below.
-        } else if self.unsorted_open && self.watch_open.is_none() {
-            if theme::tool_button(
-                ui,
-                Icon::Back,
-                "‹ All Watches",
-                "Back to the list of watches, Unsorted Takes marked",
-                None,
-            ) {
-                self.list_for = Some((None, true));
+        // One at a time in a narrow window: the watch shown has only the
+        // way back to the list.
+        if !self.watches_wide && !self.list_shown() {
+            if self.unsorted_open && self.watch_open.is_none() {
+                theme::keep_next(ui);
+                if theme::tool_word_button(
+                    ui,
+                    Icon::Back,
+                    "All Watches",
+                    "Back to the list of watches, Unsorted Takes marked",
+                    false,
+                    None,
+                ) {
+                    self.list_for = Some((None, true));
+                }
+                return;
+            } else if self.open_watch().is_some() {
+                theme::keep_next(ui);
+                if theme::tool_word_button(
+                    ui,
+                    Icon::Back,
+                    "All Watches",
+                    "Back to the list of watches, this one marked, the search kept: Listen \
+                     and the tests still take it until another row is picked",
+                    false,
+                    None,
+                ) {
+                    self.list_for = Some((self.watch_open.clone(), false));
+                }
+                return;
             }
-            return;
-        } else if let Some(e) = self.open_watch() {
-            let w = e.watch.clone();
-            if theme::tool_button(
-                ui,
-                Icon::Back,
-                "‹ All Watches",
-                "Back to the list of watches, this one marked: Listen and the tests still take \
-                 it until another row is picked",
-                None,
-            ) {
-                self.list_for = Some((self.watch_open.clone(), false));
-            }
-            let writable = matches!(&self.library, Ok(Some(l)) if l.read_only.is_none());
-            let locked = (!writable).then_some(read_only);
-            theme::bar_gap(ui);
-            if theme::tool_button(
-                ui,
-                Icon::Screwdriver,
-                "Edit…",
-                "Change this watch's details",
-                locked,
-            ) {
-                self.watch_form = Some(watches::Form {
-                    watch: w,
-                    new: false,
-                    error: None,
-                });
-            }
-            if theme::tool_button(
-                ui,
-                Icon::NewPhoto,
-                "Add Photos…",
-                "Copy photos of this watch into its folder (JPEG, PNG, HEIC from an iPhone, or \
-                 TIFF). The first by name leads its row in the list.",
-                locked,
-            ) {
-                self.add_photos();
-            }
-            return;
         }
         // The pane's main action first, in words, and never folded: the
         // empty list names it.
@@ -6385,6 +6466,46 @@ impl TimegrapherApp {
                 });
         });
         self.watch_sort = sort;
+        // What each row shows under the watch's name: the calibre, or one
+        // of the fields added to the watches.
+        let labels: Vec<String> = match &self.library {
+            Ok(Some(l)) => {
+                let mut v: Vec<String> = l
+                    .watches
+                    .iter()
+                    .flat_map(|e| e.watch.fields.iter().map(|f| f.label.clone()))
+                    .collect();
+                v.sort();
+                v.dedup();
+                v
+            }
+            _ => Vec::new(),
+        };
+        if self
+            .watch_list_shows
+            .as_ref()
+            .is_some_and(|l| !labels.contains(l))
+        {
+            self.watch_list_shows = None;
+        }
+        let mut shows = self.watch_list_shows.clone();
+        theme::tool_field(
+            ui,
+            "List Shows",
+            "What each watch's row shows under its name: its calibre, or a field added to \
+             the watches, such as Customer",
+            |ui| {
+                egui::ComboBox::from_id_salt("watch list shows")
+                    .selected_text(shows.as_deref().unwrap_or("Calibre"))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut shows, None, "Calibre");
+                        for l in &labels {
+                            ui.selectable_value(&mut shows, Some(l.clone()), l);
+                        }
+                    });
+            },
+        );
+        self.watch_list_shows = shows;
     }
 
     /// The form for a new watch: only its name is needed.
@@ -6611,28 +6732,6 @@ impl TimegrapherApp {
         }
         ui.add_space(2.0);
         self.microphone_settings(ui);
-    }
-
-    /// A group of settings in the Watches view under its caption, which
-    /// folds it away.
-    fn section(
-        &mut self,
-        ui: &mut egui::Ui,
-        title: &'static str,
-        help: &[&str],
-        settings: impl FnOnce(&mut Self, &mut egui::Ui),
-    ) {
-        let mut folded = self.folded.contains(title);
-        theme::section_header(ui, title, None, help, &mut folded);
-        if folded {
-            self.folded.insert(title.to_string());
-        } else {
-            self.folded.remove(title);
-            ui.indent(title, |ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                settings(self, ui);
-            });
-        }
     }
 
     /// A pane's toolbar: its settings in a row and its "?" at the right.
@@ -17277,8 +17376,9 @@ mod tests {
         for t in [
             "Pepsi",
             "No takes yet",
-            "‹ All Watches",
+            "New Take",
             "Edit…",
+            "Add Photos…",
             "Listen",
             "Positions Test",
             "Power Reserve Test",
@@ -17315,7 +17415,9 @@ mod tests {
         assert!(saved[0].join(MANIFEST).is_file());
         assert_eq!(app.session.saved_to(), Some(saved[0].as_path()));
         let drawn = pane(&ctx, &mut app);
-        assert!(drawn.contains(&name), "{drawn}");
+        // Its row says when it started, as its folder's name does.
+        let row = watches::started_words(&app.open_group().unwrap().takes[0]);
+        assert!(drawn.contains(&row), "{row}: {drawn}");
         // Save Again saves into the same take.
         app.save_again();
         app.wait_for_save();
@@ -17779,7 +17881,7 @@ mod tests {
         }
         app.list_for = None;
         let drawn = pane(&ctx, &mut app);
-        for t in ["Unsorted Takes", "No takes here", "‹ All Watches"] {
+        for t in ["Unsorted Takes", "No takes here", "Takes"] {
             assert!(drawn.contains(t), "{t}: {drawn}");
         }
 
@@ -17811,7 +17913,8 @@ mod tests {
         assert_eq!(std::fs::read_dir(&unsorted).unwrap().count(), 1);
         let name = file_name(&saved[0]);
         let drawn = pane(&ctx, &mut app);
-        assert!(drawn.contains(&name), "{drawn}");
+        let row = watches::started_words(&app.open_group().unwrap().takes[0]);
+        assert!(drawn.contains(&row), "{row}: {drawn}");
 
         // The list shows Unsorted at its top, with Quick Listen.
         app.unsorted_open = false;
@@ -18077,7 +18180,7 @@ mod tests {
         let ctx = egui::Context::default();
         theme::install(&ctx);
         let out = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| app.watch_takes_card(ui));
+            egui::CentralPanel::default().show(ctx, |ui| app.watch_side(ui));
         });
         assert!(format!("{:?}", out.shapes).contains("Analysis Only"));
         // A click picks the take without opening it.
@@ -21402,6 +21505,106 @@ mod tests {
     /// only the window's own frame (the menus, the mode switch and the
     /// status bar). The pane icons and the readings cards are the Bench's
     /// and don't show.
+    /// The Watches view per its design: in a wide window the list sits
+    /// beside the watch, whose side stops at about 1100 pt, with Takes
+    /// straight after New Take and Details and Photos after them; in a
+    /// narrow one the watch shows alone, with ‹ All Watches back to the
+    /// list.
+    #[test]
+    fn the_watches_view_puts_the_list_beside_the_watch_when_wide() {
+        let base = std::env::temp_dir().join(format!("tg-app-wv-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(base.join("Timegrapher Data")));
+        for name in ["Rolex", "Pepsi"] {
+            let mut w = library::Watch::new(name);
+            w.notes = Some(String::new());
+            app.watch_form = Some(watches::Form {
+                watch: w,
+                new: true,
+                error: None,
+            });
+            app.save_watch_form();
+        }
+        assert_eq!(
+            app.open_watch().map(|e| e.watch.name.as_str()),
+            Some("Pepsi")
+        );
+        let ctx = themed();
+        let tops = |app: &mut TimegrapherApp, w: f32| {
+            let input = || egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(w, 900.0),
+                )),
+                ..Default::default()
+            };
+            let mut at: Vec<(String, egui::Rect)> = Vec::new();
+            for _ in 0..3 {
+                let out = ctx.run(input(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        app.pane_tools(ui, Pane::Watch);
+                        app.watch_pane(ui);
+                    });
+                });
+                at = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => {
+                            Some((t.galley.text().to_string(), c.shape.visual_bounding_rect()))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+            }
+            at
+        };
+        let find =
+            |at: &[(String, egui::Rect)], t: &str| at.iter().find(|(s, _)| s == t).map(|(_, r)| *r);
+        let wide = tops(&mut app, 2560.0);
+        for t in [
+            "Rolex",
+            "Pepsi",
+            "New Take",
+            "Takes",
+            "Details",
+            "Photos",
+            "Edit…",
+            "Add Photos…",
+        ] {
+            assert!(find(&wide, t).is_some(), "{t} not drawn: {wide:?}");
+        }
+        assert!(find(&wide, "All Watches").is_none());
+        let y = |t: &str| find(&wide, t).unwrap().top();
+        assert!(
+            y("New Take") < y("Takes") && y("Takes") < y("Details") && y("Details") < y("Photos")
+        );
+        let right = find(&wide, "Add Photos…").unwrap().right();
+        assert!(
+            right <= WATCH_LIST_W + 17.0 + WATCH_SIDE_MAX + 20.0,
+            "the watch's side reaches {right}"
+        );
+        let narrow = tops(&mut app, 800.0);
+        assert!(
+            find(&narrow, "Rolex").is_none(),
+            "the list is hidden: {narrow:?}"
+        );
+        assert!(find(&narrow, "New Take").is_some());
+        assert!(
+            theme::tools_drawn(&ctx)
+                .iter()
+                .any(|k| k.contains("All Watches")),
+            "{:?}",
+            theme::tools_drawn(&ctx)
+        );
+        // Nothing on the Bench: New Take and Open are free.
+        assert_eq!(app.watches_busy(), None);
+        assert!(find(&wide, "Stop the take on the Bench first.").is_none());
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn the_watches_view_is_the_watches_content_in_the_whole_window() {
         let base = std::env::temp_dir().join(format!("tg-app-view-{}", std::process::id()));
