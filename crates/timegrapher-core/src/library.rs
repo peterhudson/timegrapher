@@ -53,6 +53,12 @@ pub const WATCH_FILE: &str = "watch.toml";
 pub const TAKES: &str = "takes";
 pub const PHOTOS: &str = "photos";
 pub const CACHE_FILE: &str = ".cache.json";
+/// The format of what `.cache.json` keeps of each take, raised whenever a
+/// take reads differently, so a cache an earlier build wrote is read
+/// afresh. Apart from [`FORMAT`]: a new cache never stops an older build
+/// opening the library, which just makes its own cache again. 2: `at_end`
+/// gained `rate_corrected_s_per_day`.
+const CACHE_FORMAT: u32 = 2;
 pub const LOCK_FILE: &str = ".library.lock";
 /// The folder of takes not yet filed under a watch.
 pub const UNSORTED: &str = "Unsorted";
@@ -490,10 +496,10 @@ impl Library {
         let old: Cache = fs::read(&cache_path)
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
-            .filter(|c: &Cache| c.format == FORMAT)
+            .filter(|c: &Cache| c.format == CACHE_FORMAT)
             .unwrap_or_default();
         let mut cache = Cache {
-            format: FORMAT,
+            format: CACHE_FORMAT,
             takes: BTreeMap::new(),
         };
         self.watches.clear();
@@ -1553,6 +1559,15 @@ mod tests {
         assert_eq!(rate(&lib), Some(3.5));
         // A cache that is gone or unreadable is made again.
         fs::write(root.join(CACHE_FILE), "not json").unwrap();
+        lib.scan();
+        assert_eq!(rate(&lib), Some(3.5));
+        // A cache an earlier build wrote, in an older format, is not used.
+        lib.scan();
+        let cache = fs::read_to_string(root.join(CACHE_FILE)).unwrap();
+        let want = format!("\"format\":{CACHE_FORMAT}");
+        assert!(cache.contains(&want), "{cache}");
+        let old = cache.replace("3.5", "9.5").replace(&want, "\"format\":1");
+        fs::write(root.join(CACHE_FILE), old).unwrap();
         lib.scan();
         assert_eq!(rate(&lib), Some(3.5));
         let _ = fs::remove_dir_all(&root);
