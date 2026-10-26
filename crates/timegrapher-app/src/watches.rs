@@ -814,13 +814,13 @@ pub fn started_words(t: &Take) -> String {
         .unwrap_or_else(|| t.name.clone())
 }
 
-/// A Positions Test take's Mean row: rate, amplitude and beat error over
-/// its six positions, the figures its table shows (core `session::indices`
+/// A Positions Test take's positions measured and its Mean row: rate,
+/// amplitude and beat error over those positions, the figures its table shows (core `session::indices`
 /// on its saved results); `None` for any other take. Read once per change
 /// of the results file.
-pub fn positions_means(dir: &std::path::Path) -> Option<[Option<f64>; 3]> {
-    type Cache =
-        std::collections::HashMap<PathBuf, (Option<std::time::SystemTime>, [Option<f64>; 3])>;
+pub fn positions_means(dir: &std::path::Path) -> Option<(usize, [Option<f64>; 3])> {
+    type Means = (usize, [Option<f64>; 3]);
+    type Cache = std::collections::HashMap<PathBuf, (Option<std::time::SystemTime>, Means)>;
     thread_local! {
         static MEANS: std::cell::RefCell<Cache> = Default::default();
     }
@@ -838,7 +838,10 @@ pub fn positions_means(dir: &std::path::Path) -> Option<[Option<f64>; 3]> {
             .and_then(|t| crate::guided::FullWind::from_json(&t).ok())
             .map(|f| {
                 let t = crate::guided::kept_table(&f);
-                [t.mean_rate, t.mean_amplitude, t.mean_beat_error]
+                (
+                    t.rows.len(),
+                    [t.mean_rate, t.mean_amplitude, t.mean_beat_error],
+                )
             })
             .unwrap_or_default();
         m.insert(dir.to_path_buf(), (modified, means));
@@ -903,6 +906,23 @@ pub fn take_cells(t: &Take, means: Option<[Option<f64>; 3]>) -> [String; 7] {
         figure(be, &|b| format!("{:.1}", b.abs())),
         format!("{:.1}", t.bytes as f64 / 1e6),
     ]
+}
+
+/// The takes row's hover on a test's figures: what they stand for, from
+/// the positions a Positions Test measured, or a Power Reserve Test's.
+fn figures_hover(count: Option<usize>, reserve: bool) -> String {
+    match count {
+        Some(0) => String::new(),
+        Some(6) => "\n\nRate, Amplitude and Beat Error: Mean of the six positions.".into(),
+        Some(1) => "\n\nRate, Amplitude and Beat Error: the one position measured.".into(),
+        Some(n) => {
+            format!("\n\nRate, Amplitude and Beat Error: Mean of the {n} positions measured.")
+        }
+        None if reserve => {
+            "\n\nRate, Amplitude and Beat Error: hour by hour in the take: open it.".into()
+        }
+        None => String::new(),
+    }
 }
 
 /// The takes table's headings, in [`take_cells`]' order.
@@ -1086,7 +1106,7 @@ pub fn takes_table(
         let rows: Vec<[String; 7]> = e
             .takes
             .iter()
-            .map(|t| take_cells(t, positions_means(&e.take_dir(t))))
+            .map(|t| take_cells(t, positions_means(&e.take_dir(t)).map(|m| m.1)))
             .collect();
         let text_w = |t: &str, size: f32| {
             ui.fonts_mut(|f| {
@@ -1155,7 +1175,7 @@ pub fn takes_table(
             } else if r.hovered() {
                 ui.painter().rect_filled(rect, 4.0, pal.control_hover);
             }
-            let cells = take_cells(t, means);
+            let cells = take_cells(t, means.map(|m| m.1));
             let reserve = t.power_reserve.is_some();
             draw(
                 ui,
@@ -1190,13 +1210,7 @@ pub fn takes_table(
                     pal.text_secondary,
                 );
             }
-            let figures = if test {
-                "\n\nRate, Amplitude and Beat Error: Mean of the six positions."
-            } else if reserve {
-                "\n\nRate, Amplitude and Beat Error: hour by hour in the take: open it."
-            } else {
-                ""
-            };
+            let figures = figures_hover(means.map(|m| m.0), reserve);
             let r = r.on_hover_text(format!(
                 "{}{figures}\n\n{}",
                 take_line(t, test),
@@ -1970,10 +1984,21 @@ mod tests {
         let t = crate::guided::kept_table(&full);
         assert_eq!(
             positions_means(&dir),
-            Some([t.mean_rate, t.mean_amplitude, t.mean_beat_error])
+            Some((3, [t.mean_rate, t.mean_amplitude, t.mean_beat_error]))
         );
         assert!(t.mean_rate.is_some());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The row's hover says how many positions a test's figures are the
+    /// mean of: six only when six were measured.
+    #[test]
+    fn a_tests_hover_counts_the_positions_measured() {
+        assert!(figures_hover(Some(6), false).contains("Mean of the six positions"));
+        assert!(figures_hover(Some(2), false).contains("Mean of the 2 positions measured"));
+        assert!(figures_hover(Some(1), false).contains("the one position measured"));
+        assert!(figures_hover(None, true).contains("hour by hour"));
+        assert_eq!(figures_hover(None, false), "");
     }
 
     #[test]

@@ -12867,8 +12867,8 @@ impl TimegrapherApp {
             (
                 "Stop the Power Reserve Test?",
                 format!(
-                    "The run so far, {}, is kept{kept}. Its run time then says it was stopped \
-                     by hand.",
+                    "The run so far, {} from the first beat heard, is kept{kept}. Its run time \
+                     then says it was stopped by hand.",
                     reserve::run_words(run)
                 ),
             )

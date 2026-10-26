@@ -573,29 +573,6 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
             },
             Phase::Finished => ("Positions Test done".to_string(), String::new(), 1.0),
         };
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::Label::new(
-                    RichText::new(title)
-                        .font(theme::semibold(15.0))
-                        .color(pal.text),
-                )
-                .truncate(),
-            );
-            step_chips(ui, test);
-        });
-        // One line, whole in its hover: the panel never grows.
-        ui.add(
-            egui::Label::new(RichText::new(&detail).small().color(pal.text_secondary)).truncate(),
-        )
-        .on_hover_text(&detail);
-        ui.add_space(4.0);
-        ui.add(
-            egui::ProgressBar::new(frac.clamp(0.0, 1.0))
-                .desired_height(6.0)
-                .fill(pal.accent),
-        );
-        ui.add_space(4.0);
         // Each button has its own slot, as wide as the widest it holds, so
         // none moves as the phase changes.
         let pad = 2.0 * ui.spacing().button_padding.x;
@@ -632,7 +609,26 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
             )
             .inner
         };
+        // The step's buttons on the title's line, in reach in the shortest
+        // pane; the chips and what is happening on the line under it.
+        let slots_w = first_w + restart_w + 2.0 * ui.spacing().item_spacing.x;
         ui.horizontal(|ui| {
+            let title_w = (ui.available_width() - slots_w).max(40.0);
+            ui.allocate_ui_with_layout(
+                Vec2::new(title_w, 26.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_width(title_w);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&title)
+                                .font(theme::semibold(15.0))
+                                .color(pal.text),
+                        )
+                        .truncate(),
+                    );
+                },
+            );
             let code = test.position().code();
             let name = test.position().name();
             match phase {
@@ -716,11 +712,40 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 }
             }
         });
+        // One line, whole in its hover: the panel never grows.
+        ui.horizontal(|ui| {
+            let chips_w = ORDER.len() as f32 * 30.0 + 8.0;
+            let room = ui.available_width();
+            let detail_w = if room >= chips_w + 60.0 {
+                room - chips_w
+            } else {
+                room
+            };
+            ui.allocate_ui_with_layout(
+                Vec2::new(detail_w, 18.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_width(detail_w);
+                    ui.add(
+                        egui::Label::new(RichText::new(&detail).small().color(pal.text_secondary))
+                            .truncate(),
+                    )
+                    .on_hover_text(&detail);
+                },
+            );
+            step_chips(ui, test);
+        });
+        ui.add_space(4.0);
+        ui.add(
+            egui::ProgressBar::new(frac.clamp(0.0, 1.0))
+                .desired_height(6.0)
+                .fill(pal.accent),
+        );
     });
     action
 }
 
-/// The six positions as chips after the step's title: done, the one
+/// The six positions as chips after what the step is doing: done, the one
 /// under way, and those to come, each its code. Left out where the panel
 /// has no room for them.
 fn step_chips(ui: &mut egui::Ui, test: &Test) {
@@ -2008,6 +2033,14 @@ mod tests {
             let top = rect(found, text).top();
             assert!((top - y).abs() < 0.5, "{text} at {top}, Restart at {y}");
         }
+        // On the title's line, so the step's button is in reach in the
+        // shortest pane: never under the progress bar.
+        let title = rect(&turn, "Turn the watch to Dial Down");
+        let start = rect(&turn, "Start DD Measurement");
+        assert!(
+            (start.center().y - title.center().y).abs() < 6.0,
+            "{title:?} {start:?}"
+        );
         // Pause is its own width at the left of the first slot, where
         // Start begins, not stretched across it: its words sit well short
         // of the slot's middle, where a stretched button would centre them.
