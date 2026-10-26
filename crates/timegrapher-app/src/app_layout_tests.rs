@@ -962,18 +962,30 @@ fn a_finished_runs_pane_is_never_a_sliver() {
             app.panes.tiles.rect(tabs).unwrap().height()
         };
         assert!((row(&app) - MIN_PANE_H).abs() < 1.5, "{w}: {}", row(&app));
-        app.reserve = Some(reserve::finished_run(3));
+        // The run's take opened, as from the Watches view.
+        let dir = std::env::temp_dir().join(format!("tg-app-sliver-{}-{w}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = reserve::finished_run(3).results.unwrap();
+        std::fs::write(dir.join(power_reserve::FILE), run.to_json()).unwrap();
+        app.load_reserve(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
         for _ in 0..4 {
             pass(&mut app);
         }
         let need = app.pane_need.get(&Pane::PowerReserve).copied().unwrap();
         let tall = row(&app);
-        assert!(tall > MIN_PANE_H + 40.0, "{w}: {tall}");
-        // A tab bar over the pane's own need, where the window has room.
-        assert!(
-            h < 700.0 || tall + 1.0 >= need + 24.0,
-            "{w}: {tall} for {need}"
-        );
+        // Nor does the Paper Strip above give up its own least for it.
+        let strip = {
+            let id = app.panes.tiles.find_pane(&Pane::Strip).unwrap();
+            let tabs = app.panes.tiles.parent_of(id).unwrap();
+            app.panes.tiles.rect(tabs).unwrap().height()
+        };
+        assert!(strip + 1.0 >= MIN_PANE_H, "{w}: the strip {strip}");
+        // A tab bar over the pane's own need, its first chart readable.
+        assert!(tall + 1.0 >= need + 24.0, "{w}: {tall} for {need}");
+        // Where the window has room, grown to show the charts and table.
+        assert!(h < 700.0 || tall > MIN_PANE_H + 40.0, "{w}: {tall}");
     }
 }
 
