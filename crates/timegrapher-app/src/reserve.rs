@@ -339,9 +339,14 @@ fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
         d.insert_temp(id, pass);
         last
     });
+    // Never taller than the room left, however little: egui's least
+    // scrolled height of 64 would run the foot past a short pane, out of
+    // reach of the wheel.
     let mut area = egui::ScrollArea::vertical()
         .id_salt(id)
         .auto_shrink([false, false])
+        .min_scrolled_height(0.0)
+        .max_height(viewport_h.max(0.0))
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
     if last.is_none_or(|l| l + 1 < pass) {
         area = area.vertical_scroll_offset(0.0);
@@ -813,6 +818,21 @@ mod tests {
             shown(&texts, "4–5 h"),
             "the last hour, scrolled to: {texts:?}"
         );
+        // A pane with under 64 points left under its line: the last hour
+        // still scrolls whole into it.
+        let low = 84.0;
+        let mut texts = Vec::new();
+        for _ in 0..30 {
+            texts = pass(Some(&t), low, true);
+        }
+        let row = texts.iter().find(|t| t.0 == "4–5 h");
+        assert!(
+            row.is_some_and(|r| r.1.bottom() <= low),
+            "{row:?} {texts:?}"
+        );
+        for _ in 0..60 {
+            pass(Some(&t), h, false);
+        }
         // The wheel's glide spent, away a pass and back: at the top again.
         for _ in 0..60 {
             pass(Some(&t), h, false);
