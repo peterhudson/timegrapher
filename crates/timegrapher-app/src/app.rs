@@ -4851,6 +4851,8 @@ impl TimegrapherApp {
             Some("Nothing to paint yet. Listen, or open a recording.")
         } else if test && self.guided_running() {
             Some("Not during a Positions Test: the test sets each position.")
+        } else if self.reserve_running() {
+            Some("Not during a Power Reserve Test: it runs in one position.")
         } else if test || self.positions_take {
             Some(POSITIONS_TAKE_PAINT)
         } else {
@@ -13206,6 +13208,9 @@ impl TimegrapherApp {
         } else {
             None
         };
+        if self.reserve.is_some() {
+            self.note_need(ui, Pane::PowerReserve, reserve::PANE_MIN_H);
+        }
         if reserve::pane(ui, self.reserve.as_ref(), free, self.position_card_title)
             == Some(reserve::Action::Stop)
         {
@@ -18599,7 +18604,9 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(watches::take_line(&take).starts_with("Power Reserve 0 h 00 min (still running"));
+        assert!(
+            watches::take_line(&take, false).starts_with("Power Reserve 0 h 00 min (still running")
+        );
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.start_batch(&saved);
@@ -21115,6 +21122,40 @@ mod tests {
         draw(&mut app);
         assert_eq!(app.brush, None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The Position Brush is put down and greyed while a Power Reserve
+    /// Test runs, as for a Positions Test: the run keeps one position.
+    #[test]
+    fn the_brush_waits_for_a_power_reserve_run() {
+        let mut app = synthetic(60.0, 0.0);
+        let ctx = themed();
+        let draw = |app: &mut TimegrapherApp| {
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    theme::pane_toolbar(ui, "Paper Strip", &[], |ui| app.strip_settings(ui))
+                });
+            });
+        };
+        app.brush = Some(Position::DialUp);
+        draw(&mut app);
+        assert_eq!(app.brush, Some(Position::DialUp));
+        let mut t = reserve::Test::new(Position::DialUp, true, String::new(), 0.0);
+        let beats: Vec<timegrapher_core::beats::Beat> = (0..100)
+            .map(|i| timegrapher_core::beats::Beat {
+                index: i,
+                time: 1.0 + i as f64 * 0.125,
+                quality: 1.0,
+            })
+            .collect();
+        t.update(&beats, 0.125, 20.0);
+        app.reserve = Some(t);
+        assert!(app.reserve_running());
+        draw(&mut app);
+        assert_eq!(app.brush, None);
+        app.brush = Some(Position::CrownUp);
+        draw(&mut app);
+        assert_eq!(app.brush, None, "it stays down while the run goes on");
     }
 
     /// After a masked stretch the charts stay empty until a whole

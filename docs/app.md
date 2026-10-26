@@ -252,8 +252,8 @@ under it its calibre, beat rate, lift angle and added fields, with
   first." at its right; that row is always there, so nothing moves.
 - **Takes**, with the count, and **Open** and **…** at the right of its
   title, acting on the take picked; then the takes as a table, newest
-  first: Started, Position (such as DU, or DU, CU, or All 6; Power Reserve for that
-  test), Length, Rate (s/d), Amplitude (°), Beat Error (ms, its size) and
+  first: Started, Position (such as DU, or DU, CU, or All 6; Power Reserve or
+  Positions Test for those tests, a test's positions in the row's hover), Length, Rate (s/d), Amplitude (°), Beat Error (ms, its size) and
   Size (MB), as measured when saved (the rate corrected from the take's
   clock log, as the Bench reads the take), with **Analysis Only**, **Incomplete**
   or **On Show** after the date when it is one. Nothing is inserted
@@ -981,7 +981,8 @@ is masked, when a new take, New Session or another recording starts.
 **Position Brush** (the highlighter, the brush's position code in teal,
 then ▾) marks a stretch of the strip as one position, on a live take or
 one opened. A Positions Test's take, run or opened, sets its own
-positions: the brush is greyed there.
+positions: the brush is greyed there, and while a Power Reserve Test
+runs, which keeps one position.
 
 - Pick a position from its menu, then drag along the strip. While
   dragging, a teal preview says the position and the times, such as

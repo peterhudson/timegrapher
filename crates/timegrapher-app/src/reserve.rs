@@ -189,11 +189,13 @@ pub fn pane(
 ) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 6.0;
-            let Some(t) = test else {
+    ui.spacing_mut().item_spacing.y = 6.0;
+    let Some(t) = test else {
+        // The steps scroll, with their bar on show, when the pane is short.
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .show(ui, |ui| {
                 let stop = power_reserve::STOP_AFTER_S / 60.0;
                 let steps = [
                     "1.  Wind the watch fully and set it to a minute marker.".to_string(),
@@ -233,8 +235,11 @@ pub fn pane(
                         theme::alert_label(ui, theme::Alert::Warning, &line, true);
                     }
                 }
-                return;
-            };
+            });
+        return None;
+    };
+    {
+        {
             let run = power_reserve::run_text(t.run_so_far_s());
             ui.label(
                 RichText::new(match &t.results {
@@ -323,15 +328,40 @@ pub fn pane(
                     .color(pal.text_tertiary),
                 );
             }
+            // The charts take the pane's height; the hours' table under
+            // them scrolls in what is left.
             if let Some(r) = t.results.as_ref().filter(|r| !r.hours.is_empty()) {
                 ui.add_space(8.0);
-                hour_chart(ui, r);
+                // A grid row: a label's height (no less than a control's)
+                // and the grid's gap.
+                let row_h = ui
+                    .text_style_height(&egui::TextStyle::Body)
+                    .max(ui.spacing().interact_size.y)
+                    + 3.0;
+                let room = ui.available_height() - 8.0 - 2.0 * ui.spacing().item_spacing.y;
+                let table_h = ((r.hours.len() as f32 + 1.0) * row_h + 4.0).min(room * 0.35);
+                let chart_h =
+                    ((room - table_h - ui.spacing().item_spacing.y) / 2.0).max(CHART_MIN_H);
+                hour_chart(ui, r, chart_h);
                 ui.add_space(8.0);
-                hour_table(ui, r);
+                egui::ScrollArea::vertical()
+                    .id_salt("reserve hours")
+                    .max_height(table_h)
+                    .auto_shrink([false, true])
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                    .show(ui, |ui| hour_table(ui, r));
             }
-        });
+        }
+    }
     action
 }
+
+/// The least height of each of the Power Reserve charts, points.
+const CHART_MIN_H: f32 = 56.0;
+
+/// The least height the Power Reserve pane keeps for its run, charts and
+/// a few of its hours, points.
+pub const PANE_MIN_H: f32 = 240.0;
 
 /// A value or a dash.
 fn cell(v: Option<f64>, d: usize, unit: &str) -> String {
@@ -387,7 +417,7 @@ const HOUR_STEPS: [f64; 7] = [1.0, 2.0, 3.0, 6.0, 12.0, 24.0, 48.0];
 
 /// Rate and amplitude against hours since the first beat, one above the
 /// other on the same hours.
-fn hour_chart(ui: &mut egui::Ui, r: &Results) {
+fn hour_chart(ui: &mut egui::Ui, r: &Results, height: f32) {
     use egui_plot::{Line, Plot, PlotPoints};
     let pal = theme::pal(ui);
     let x = |h: &power_reserve::Hour| f64::from(h.hour) + h.span_s / 7200.0;
@@ -409,7 +439,7 @@ fn hour_chart(ui: &mut egui::Ui, r: &Results) {
         // 0 h to 1 h rather than the one hour over and over.
         let last = pts.iter().map(|p| p[0]).fold(1.0, f64::max);
         Plot::new(format!("reserve {name}"))
-            .height(110.0)
+            .height(height)
             .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)
@@ -593,6 +623,82 @@ mod tests {
         assert_eq!(hour_label(&r.hours[0]), "0 h + 1:40");
     }
 
+    /// After a run, its two charts take the pane's height and nothing is
+    /// cut at its foot: a taller pane gives taller charts, and the hours'
+    /// table ends inside the pane.
+    #[test]
+    fn a_finished_runs_charts_take_the_panes_height() {
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
+        t.stop();
+        t.finish(|s| s).unwrap();
+        if let Some(r) = t.results.as_mut() {
+            r.hours = (0..3)
+                .map(|h| power_reserve::Hour {
+                    hour: h,
+                    span_s: 3600.0,
+                    rate_s_per_day: Some(6.5),
+                    amplitude_deg: Some(281.0),
+                    beat_error_ms: Some(0.4),
+                    read_s: 3500.0,
+                })
+                .collect();
+        }
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        // Each "0 h" axis label's height, and the foot of the last text.
+        let drawn = |h: f32| {
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(700.0, h),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        pane(ui, Some(&t), None, "Position");
+                    });
+                });
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter(|c| {
+                        c.clip_rect.intersects(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(700.0, h),
+                        ))
+                    })
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some((
+                            t.galley.text().to_string(),
+                            t.galley.rect.translate(t.pos.to_vec2()),
+                        )),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+            }
+            let zero: Vec<f32> = texts
+                .iter()
+                .filter(|t| t.0 == "0 h")
+                .map(|t| t.1.center().y)
+                .collect();
+            assert_eq!(zero.len(), 2, "{texts:?}");
+            // Nothing drawn starts below the pane: what doesn't fit is in
+            // the table, which scrolls.
+            assert!(texts.iter().all(|t| t.1.top() < h), "{texts:?}");
+            let last = texts.iter().find(|t| t.0 == "2–3 h").map(|t| t.1.bottom());
+            (zero[1] - zero[0], last)
+        };
+        let (short, _) = drawn(380.0);
+        let (tall, last) = drawn(760.0);
+        // Room enough: the whole table shows.
+        assert!(last.is_some_and(|b| b <= 760.0), "{last:?}");
+        assert!(tall > short + 120.0, "{short} {tall}");
+    }
+
     /// A run of half a minute charts 0 h to 1 h, each hour named once,
     /// none "-0 h".
     #[test]
@@ -614,7 +720,7 @@ mod tests {
         let mut texts = Vec::new();
         for _ in 0..2 {
             let out = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| hour_chart(ui, &r));
+                egui::CentralPanel::default().show(ctx, |ui| hour_chart(ui, &r, 110.0));
             });
             texts = out
                 .shapes
