@@ -90,6 +90,7 @@ fn an_escape_wheel_line_faster_than_the_readings_is_named_not_denied() {
     let p = s.faster_than_readings().expect(&s.headline);
     assert!((p.period_s - 5.0).abs() < 0.05, "{}", p.period_s);
     assert!(!s.headline.contains("no cycle"), "{}", s.headline);
+    assert!(!s.summary.contains("no cycle"), "{}", s.summary);
     // In place of "no cycle", or as its own sentence after another lead.
     assert!(
         s.headline
