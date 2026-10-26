@@ -211,20 +211,13 @@ pub const CHARTS: &[&str] = &[
 
 pub const STEADINESS: &[&str] = &[
     "How the rate, the amplitude and the beat error each change over the session, in \
-     time order: cycles, steps, trends, and how each reading follows the last. The \
-     tests are timegrapher series on the command line.",
-    "Info, the i at the toolbar's right, gives what the tests found for each series and \
-     its statistics, beside the plots. A rate dot is a 10 s reading; an amplitude or \
-     beat error dot is a 2 s window. Each plot's key says which.",
-    "The hare, the swing and the seesaw choose the series this pane shows. Each view \
-     has its own icon under Analysis, so two can sit side by side.",
-    "Readings Over Time: every reading in order. Periods: how strongly the readings \
-     repeat at each period. Cycle: the readings folded at the cycle found. \
-     Autocorrelation, Allan Deviation and CUSUM: whether readings are independent and \
-     the level steady. FFT: the sine wave's size at each period, as Witschi's FFT. The \
-     wheels' periods are dotted lines; Wheel Periods shows or hides them.",
-    "The tests need about 5 minutes of beats and say more the longer the session. Rates \
-     are on the sound card's clock.",
+     time order: cycles, steps and trends. The tests need about 5 minutes of beats; \
+     they are timegrapher series on the command line.",
+    "Info, the i at the right, gives what the tests found and their statistics. A rate \
+     dot is a 10 s reading; an amplitude or beat error dot is a 2 s window.",
+    "Each view has its icon under Analysis. Periods: how strongly the readings repeat. \
+     Cycle: the readings folded at the cycle found. FFT: the sine wave's size at each \
+     period. The wheels' periods are dotted.",
 ];
 
 pub const SCOPE: &[&str] = &[
