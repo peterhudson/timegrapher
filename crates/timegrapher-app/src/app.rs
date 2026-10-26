@@ -329,6 +329,8 @@ enum Confirm {
     Open {
         path: PathBuf,
     },
+    /// Start Test on the Power Reserve pane: a new take of the watch.
+    ReserveStart,
 }
 
 /// A test that ended with no watch picked, asked where it goes: Keep in
@@ -5553,6 +5555,7 @@ impl TimegrapherApp {
         let ask = match what {
             Confirm::PickWatch(_) => self.line_pick_asks(),
             Confirm::NewTake(_) => self.new_take_asks(),
+            Confirm::ReserveStart => self.line_pick_asks(),
             _ => self.needs_save_confirmation(),
         };
         if !ask {
@@ -5569,7 +5572,9 @@ impl TimegrapherApp {
             ui.label(
                 RichText::new(match what {
                     Confirm::NewSession => "Start a new session?",
-                    Confirm::NewTake(_) => "Start a new take without saving?",
+                    Confirm::NewTake(_) | Confirm::ReserveStart => {
+                        "Start a new take without saving?"
+                    }
                     // A watch picked on the Watch line is the next take's.
                     Confirm::PickWatch(_) => "Start a new take without saving?",
                     Confirm::Quit => "Quit without saving?",
@@ -5604,6 +5609,7 @@ impl TimegrapherApp {
                         None,
                         Confirm::NewSession
                         | Confirm::NewTake(_)
+                        | Confirm::ReserveStart
                         | Confirm::PickWatch(_)
                         | Confirm::Open { .. }
                         | Confirm::Microphone
@@ -5695,6 +5701,7 @@ impl TimegrapherApp {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::NewTake(kind) => self.new_take(kind, true),
+            Confirm::ReserveStart => self.start_reserve_asked(true),
             Confirm::PickWatch(id) => {
                 // Asked over a Quick Listen still listening: it stops now.
                 self.pause();
@@ -13078,6 +13085,12 @@ impl TimegrapherApp {
     /// Current Position card's position, kept in the watch's takes when it
     /// ends.
     fn start_reserve(&mut self) {
+        self.start_reserve_asked(false);
+    }
+
+    /// [`Self::start_reserve`], `asked` once the question about unsaved
+    /// sound has been answered.
+    fn start_reserve_asked(&mut self, asked: bool) {
         if let Err(e) = self.reserve_takes_dir() {
             return self.error(format!("A Power Reserve Test can't keep its take: {e}"));
         }
@@ -13087,12 +13100,10 @@ impl TimegrapherApp {
             );
             return;
         }
-        // Quick Listen's sound too: a test of a watch isn't its sound.
-        if self.line_pick_asks() {
-            self.info_msg(
-                "Save or set aside this session first: a Power Reserve Test starts a new one."
-                    .into(),
-            );
+        // Quick Listen's sound too: a test of a watch isn't its sound. The
+        // same question as a new take's.
+        if !asked && self.line_pick_asks() {
+            self.confirm = Some(Confirm::ReserveStart);
             return;
         }
         if self.live.is_some() || self.session.recorder.is_some() {
@@ -23916,6 +23927,16 @@ mod tests {
         app.confirm = None;
         app.start_reserve();
         assert!(app.session.recorder.is_some() && app.reserve.is_none());
+        // Start Test asks the same question.
+        assert_eq!(app.confirm, Some(Confirm::ReserveStart));
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| app.confirm_dialog(ctx));
+        }
+        assert_eq!(
+            app.confirm,
+            Some(Confirm::ReserveStart),
+            "shown, not passed"
+        );
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }
