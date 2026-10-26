@@ -6824,11 +6824,35 @@ impl TimegrapherApp {
     }
 
     /// A Steadiness pane's Rate, Amplitude and Beat Error switches.
+    /// The series a steadiness pane shows: its own switches, or for the
+    /// two maps their one shared choice, one map at a time.
+    fn series_shown(&self, view: steady::View) -> [bool; 3] {
+        if view.is_map() {
+            steady::one_series(
+                self.steady_series
+                    .get(&steady::View::Stft)
+                    .copied()
+                    .unwrap_or([true; 3]),
+            )
+        } else {
+            self.steady_series.get(&view).copied().unwrap_or([true; 3])
+        }
+    }
+
     fn steady_settings(&mut self, ui: &mut egui::Ui, pane: Pane) {
         let Some(view) = pane.steady_view() else {
             return;
         };
-        steady::series_switches(ui, self.steady_series.entry(view).or_insert([true; 3]));
+        if view.is_map() {
+            steady::series_choice(
+                ui,
+                self.steady_series
+                    .entry(steady::View::Stft)
+                    .or_insert([true; 3]),
+            );
+        } else {
+            steady::series_switches(ui, self.steady_series.entry(view).or_insert([true; 3]));
+        }
         let accent = theme::pal(ui).accent;
         if view == steady::View::Periods {
             theme::bar_gap(ui);
@@ -7021,7 +7045,7 @@ impl TimegrapherApp {
             self.steady.as_ref(),
             &status,
             view,
-            &self.steady_series.get(&view).copied().unwrap_or([true; 3]),
+            &self.series_shown(view),
             steady::Opts {
                 periods_log: self.periods_log,
                 fft_timing: self.fft_timing,

@@ -743,3 +743,33 @@ fn the_profiles_plots_take_the_panes_height() {
         "Tock's axis is in the window: {foot:?}"
     );
 }
+
+/// The STFT and Wavelet Maps show one map at a time, Rate first, and
+/// share the choice: picking Amplitude on one picks it on the other.
+/// Every other steadiness pane keeps its own switches.
+#[test]
+fn the_maps_show_one_map_at_a_time_and_share_it() {
+    use steady::View;
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    assert_eq!(app.series_shown(View::Stft), [true, false, false]);
+    assert_eq!(app.series_shown(View::Wavelet), [true, false, false]);
+    assert_eq!(app.series_shown(View::Fft), [true; 3]);
+    app.steady_series.insert(View::Stft, [false, true, false]);
+    assert_eq!(app.series_shown(View::Wavelet), [false, true, false]);
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut keys = Vec::new();
+    for _ in 0..3 {
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.pane_tools(ui, Pane::SteadyWavelet);
+            });
+        });
+        keys = theme::tools_drawn_at(&ctx)
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+    }
+    assert!(keys.iter().any(|k| k == "Wavelet Map/Series"), "{keys:?}");
+    assert_eq!(app.steady_series[&View::Stft], [false, true, false]);
+}

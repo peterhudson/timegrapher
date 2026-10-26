@@ -1136,7 +1136,7 @@ reading missing or a stretch's ends the wavelet can't reach, is left
 empty and shown as "not read" in the key under the map; the wheels' turns are
 dotted across it and named at the right; **Log Scale** in the toolbar
 colours the sizes on a log scale over a range of 300 to 1; the pointer
-over a cell shows its time, period and size). In Periods and FFT each wheel's
+over a cell shows its time, period and size; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
 period is a bold dotted line and half of it, twice a turn as an off-centre wheel
 shows, a fainter dotted line marked ×2; the grid behind is pale. The
 wheels' lines are grey and dotted, and named, so they never
