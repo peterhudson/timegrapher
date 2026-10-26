@@ -931,6 +931,52 @@ fn the_power_reserve_pane_opens_at_its_least() {
     }
 }
 
+/// A finished run in a Power Reserve pane at its least, as when a run's
+/// take is opened under a tall Paper Strip, gets room for its charts: never
+/// a sliver with its axis cut, at the design size or a small window.
+#[test]
+fn a_finished_runs_pane_is_never_a_sliver() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    for (w, h) in [(2560.0, 1440.0), (1280.0, 820.0), (800.0, 600.0)] {
+        let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
+        let pass = |app: &mut TimegrapherApp| {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| app.panels(ctx));
+        };
+        set_pane_visible(&mut app.panes.tiles, Pane::PowerReserve, false);
+        for _ in 0..3 {
+            pass(&mut app);
+        }
+        app.reveal_pane(Pane::PowerReserve);
+        for _ in 0..3 {
+            pass(&mut app);
+        }
+        let row = |app: &TimegrapherApp| {
+            let id = app.panes.tiles.find_pane(&Pane::PowerReserve).unwrap();
+            let tabs = app.panes.tiles.parent_of(id).unwrap();
+            app.panes.tiles.rect(tabs).unwrap().height()
+        };
+        assert!((row(&app) - MIN_PANE_H).abs() < 1.5, "{w}: {}", row(&app));
+        app.reserve = Some(reserve::finished_run(3));
+        for _ in 0..4 {
+            pass(&mut app);
+        }
+        let need = app.pane_need.get(&Pane::PowerReserve).copied().unwrap();
+        let tall = row(&app);
+        assert!(tall > MIN_PANE_H + 40.0, "{w}: {tall}");
+        // A tab bar over the pane's own need, where the window has room.
+        assert!(
+            h < 700.0 || tall + 1.0 >= need + 24.0,
+            "{w}: {tall} for {need}"
+        );
+    }
+}
+
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and
 /// share the choice: picking Amplitude on one picks it on the other.
 /// Every other steadiness pane keeps its own switches.
