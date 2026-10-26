@@ -1137,15 +1137,40 @@ fn figure_row(
             _ => vec![side_text.to_string()],
         }
     };
-    let side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
-    let side: Vec<_> = lines
-        .iter()
-        .map(|l| {
-            ui.painter()
-                .layout_no_wrap(l.clone(), side_font.clone(), pal.text_secondary)
-        })
-        .collect();
-    let side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    let mut side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
+    let lay_side = |font: &egui::FontId| -> Vec<_> {
+        lines
+            .iter()
+            .map(|l| {
+                ui.painter()
+                    .layout_no_wrap(l.clone(), font.clone(), pal.text_secondary)
+            })
+            .collect()
+    };
+    let mut side = lay_side(&side_font);
+    let mut side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    // Words in the figure's place ("No Regular Beat") show whole: with no
+    // figure, the dash gives them its room, and they are made smaller
+    // only when even that is too narrow.
+    let dash_w = ui
+        .painter()
+        .layout_no_wrap(
+            text.clone(),
+            theme::display(if compact {
+                theme::FIGURE_COMPACT_PT
+            } else {
+                theme::FIGURE_PT
+            }),
+            colour,
+        )
+        .size()
+        .x;
+    let no_dash = value.is_none() && status.is_some() && dash_w + 6.0 + side_w > rect.width();
+    if no_dash && side_w > rect.width() {
+        side_font.size = (side_font.size * rect.width() / side_w).floor().max(9.0);
+        side = lay_side(&side_font);
+        side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    }
     let room = rect.width() - if side_w > 0.0 { side_w + 6.0 } else { 0.0 };
     let full = if compact {
         theme::FIGURE_COMPACT_PT
@@ -1163,8 +1188,14 @@ fn figure_row(
     let top = rect.center().y - big.size().y / 2.0;
     let base = top + baseline(&big);
     let painter = ui.painter().with_clip_rect(rect.expand(2.0));
-    let x = rect.left() + big.size().x + 6.0;
-    painter.galley(egui::pos2(rect.left(), top), big, colour);
+    let x = if no_dash {
+        rect.left()
+    } else {
+        rect.left() + big.size().x + 6.0
+    };
+    if !no_dash {
+        painter.galley(egui::pos2(rect.left(), top), big, colour);
+    }
     let step = side_font.size * 1.2;
     let n = side.len();
     for (i, g) in side.into_iter().enumerate() {
@@ -17019,6 +17050,47 @@ mod tests {
         assert!(!app.lift_settable());
         app.set_calibre(String::new());
         assert!(app.lift_settable());
+    }
+
+    /// Words in a reading's place on a narrow card show whole: "No
+    /// Regular Beat" takes the dash's room rather than being cut.
+    #[test]
+    fn a_narrow_cards_words_show_whole() {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let status = ("No Regular Beat".to_string(), String::new());
+        for compact in [true, false] {
+            let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(96.0, 40.0));
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        figure_row(ui, rect, None, "s/d", Some(&status), "", compact);
+                    });
+                });
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some((
+                            t.galley.text().to_string(),
+                            t.galley.rect.translate(t.pos.to_vec2()),
+                        )),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+            }
+            let words: String = texts
+                .iter()
+                .filter(|t| t.0 != "—")
+                .map(|t| t.0.clone())
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert_eq!(words, "No Regular Beat", "{texts:?}");
+            for t in &texts {
+                assert!(t.1.right() <= rect.right() + 0.5, "{compact}: {t:?} is cut");
+            }
+        }
     }
 
     /// On the Tick Tock Profile an edge's bar and a sound's ring are drawn

@@ -480,6 +480,15 @@ pub fn draw(
             plot
         };
         let mut med = Vec::new();
+        // The trace at each time: where an edge's name inside a short plot
+        // finds a clear spot.
+        let tops: Vec<[f64; 2]> = p.as_ref().map_or_else(Vec::new, |p| {
+            scaled(&p.median, top, scale)
+                .iter()
+                .enumerate()
+                .map(|(i, v)| [p.t0_ms + dx + i as f64 * p.step_ms, *v])
+                .collect()
+        });
         // A short plot's edge names, drawn in it.
         let mut edge_names = p.as_ref().filter(|_| short && opt.edges).map(|p| {
             let level = scaled(&p.median, top, scale);
@@ -501,6 +510,7 @@ pub fn draw(
                 pl.add(EdgeNames {
                     base: egui_plot::PlotItemBase::new(format!("{name} edge names")),
                     names,
+                    tops: tops.clone(),
                     facts: facts_here.clone(),
                     fill: box_fill,
                     ink: pal.text,
@@ -579,7 +589,7 @@ pub fn draw(
         });
         if let Some(p) = p {
             let inside = short.then(|| facts_here.right(&resp.transform));
-            label_marks(ui, &resp.transform, p, &med, opt, dx, k, inside);
+            label_marks(ui, &resp.transform, p, &med, &tops, opt, dx, k, inside);
         }
     };
     // Stacked, each side's share; too short for two plots one above the
@@ -651,12 +661,17 @@ fn inside_name_rect(frame: egui::Rect, left: f32, w: f32) -> egui::Rect {
 /// centred on its line within the plot; one that would touch the facts
 /// box (ending at `box_right`) starts at its line instead, right of it,
 /// or isn't named if its line is under the box; one that would come within a word space of the name before it isn't
-/// named (its line's hover names it). Each name's left edge, or none.
+/// named (its line's hover names it). Where the trace crosses its row
+/// there (`clear` says whether a span of x is clear of it), it ends at its
+/// line on the left, else starts at it on the right, whichever is clear;
+/// with neither, it stays as it was, the trace over it. Each name's left
+/// edge, or none.
 pub fn inside_places(
     names: &[(&str, f32, f32)],
     left: f32,
     right: f32,
     box_right: f32,
+    clear: &dyn Fn(f32, f32) -> bool,
 ) -> Vec<Option<f32>> {
     let mut end = f32::NEG_INFINITY;
     names
@@ -671,6 +686,16 @@ pub fn inside_places(
                     return None;
                 }
             }
+            if !clear(at - 3.0, at + w + 3.0) {
+                let fits = |a: f32| {
+                    a - 3.0 >= (left + 1.0).max(box_right + 4.0).max(end + NAME_GAP)
+                        && a + w + 3.0 <= right - 1.0
+                        && clear(a - 3.0, a + w + 3.0)
+                };
+                if let Some(a) = [x - w - 5.0, x + 5.0].into_iter().find(|&a| fits(a)) {
+                    at = a;
+                }
+            }
             if at - 3.0 < end + NAME_GAP {
                 return None;
             }
@@ -678,6 +703,16 @@ pub fn inside_places(
             Some(at)
         })
         .collect()
+}
+
+/// Whether the trace (`tops`, plot coordinates) stays below the
+/// row of edge names inside a short plot from screen x `a` to `b`.
+fn row_clear(t: &egui_plot::PlotTransform, tops: &[[f64; 2]], a: f32, b: f32) -> bool {
+    let row_foot = t.frame().top() + FACT_INSET + ROW_H;
+    tops.iter()
+        .map(|p| (t.position_from_point_x(p[0]), t.position_from_point_y(p[1])))
+        .filter(|(x, _)| (a..=b).contains(x))
+        .all(|(_, y)| y > row_foot + 1.0)
 }
 
 /// The edges' names inside a short plot, as a plot item so they sit over
@@ -688,6 +723,8 @@ struct EdgeNames {
     /// Each edge's label, time as drawn, name width and the trace's level
     /// there.
     names: Vec<(&'static str, f64, f32, Option<f64>)>,
+    /// The trace at each time, plot coordinates.
+    tops: Vec<[f64; 2]>,
     /// The facts box, which keeps its corner.
     facts: FactBox,
     fill: Color32,
@@ -715,6 +752,7 @@ impl egui_plot::PlotItem for EdgeNames {
             frame.left(),
             frame.right(),
             frame.left() + self.facts.right(transform),
+            &|a, b| row_clear(transform, &self.tops, a, b),
         );
         // The names go on after every line, on their boxes, so no other
         // edge's line runs through one.
@@ -890,6 +928,7 @@ fn label_marks(
     t: &egui_plot::PlotTransform,
     p: &TickProfile,
     med: &[f64],
+    tops: &[[f64; 2]],
     opt: Options,
     dx: f64,
     side: usize,
@@ -989,6 +1028,7 @@ fn label_marks(
                     frame.left(),
                     frame.right(),
                     frame.left() + box_right,
+                    &|a, b| row_clear(t, tops, a, b),
                 );
                 names_in
                     .borrow_mut()
@@ -1277,13 +1317,14 @@ mod tests {
             0.0,
             1000.0,
             200.0,
+            &|_, _| true,
         );
         assert_eq!(at, vec![Some(380.0), Some(685.0), Some(885.0)]);
         // Unlock under the facts box: it starts at its line, right of it.
-        let at = inside_places(&[("Unlock", 210.0, 40.0)], 0.0, 1000.0, 200.0);
+        let at = inside_places(&[("Unlock", 210.0, 40.0)], 0.0, 1000.0, 200.0, &|_, _| true);
         assert_eq!(at, vec![Some(214.0)]);
         // Its line under the box: unnamed, the facts left clear.
-        let at = inside_places(&[("Unlock", 150.0, 40.0)], 0.0, 1000.0, 200.0);
+        let at = inside_places(&[("Unlock", 150.0, 40.0)], 0.0, 1000.0, 200.0, &|_, _| true);
         assert_eq!(at, vec![None]);
         // Peak 15 pt after Drop: not named.
         let at = inside_places(
@@ -1291,8 +1332,25 @@ mod tests {
             0.0,
             1000.0,
             0.0,
+            &|_, _| true,
         );
         assert_eq!(at, vec![Some(685.0), None]);
+    }
+
+    /// Where the trace crosses a name's row at its line, the name ends at
+    /// the line on the left if that is clear, else starts at it on the
+    /// right; crossed on both sides, it stays centred, the trace over it.
+    #[test]
+    fn a_short_plots_name_takes_a_clear_side() {
+        let names = [("Drop", 700.0, 30.0)];
+        // The trace in the row from `lo` to `hi`.
+        let crossing = |lo: f32, hi: f32| move |a: f32, b: f32| b < lo || a > hi;
+        let at = inside_places(&names, 0.0, 1000.0, 0.0, &crossing(660.0, 700.0));
+        assert_eq!(at, vec![Some(705.0)], "right of its line");
+        let at = inside_places(&names, 0.0, 1000.0, 0.0, &crossing(700.0, 760.0));
+        assert_eq!(at, vec![Some(665.0)], "left of its line");
+        let at = inside_places(&names, 0.0, 1000.0, 0.0, &|_, _| false);
+        assert_eq!(at, vec![Some(685.0)], "centred, crossed both sides");
     }
 
     #[test]

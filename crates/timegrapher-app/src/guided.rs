@@ -410,7 +410,10 @@ impl Test {
     /// The test ended at `now` before it finished: what this position
     /// measured so far isn't used either.
     pub fn stop(&mut self, now: f64) {
-        self.close_step(now, true);
+        // A position already measured, waiting to be turned, keeps its
+        // measurement: only the wait since is unused.
+        let measured = self.spans.len() > self.step;
+        self.close_step(now, !measured);
         if let Some(p) = self.paused.take().filter(|&p| now > p) {
             self.unused.push((p, now, NOT_USED));
         }
@@ -2298,6 +2301,21 @@ mod tests {
         let u = t.unused(s3 + 100.0);
         assert_eq!(u.last(), Some(&(s3 + sm, s3 + sm + 5.0, NOT_USED)));
         assert_eq!(t.stretches().len(), 1);
+    }
+
+    /// Stopped while waiting to turn the watch, the position just measured
+    /// keeps its measured stretch: only the wait since is unused.
+    #[test]
+    fn a_stop_while_turning_keeps_the_measured_position() {
+        let (sm, m) = (SETTLE_S, MEASURE_S);
+        let mut t = Test::new();
+        t.tick(0.0);
+        let end = sm + m;
+        assert_eq!(t.tick(end + 1.0), Phase::Turn);
+        t.stop(end + 30.0);
+        let u = t.unused(end + 40.0);
+        assert_eq!(u, [(0.0, sm, SETTLING), (end, end + 30.0, NOT_USED)]);
+        assert_eq!(t.stretches(), [(Position::DialUp, sm, end)]);
     }
 
     /// A test begun ten minutes into the sound: the time before it is
