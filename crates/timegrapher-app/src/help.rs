@@ -210,56 +210,21 @@ pub const CHARTS: &[&str] = &[
 ];
 
 pub const STEADINESS: &[&str] = &[
-    "How the rate, the amplitude and the beat error (from the unlock) each change over \
-     the session: cycles, steps, trends and how each reading relates to the last. A \
-     distribution can't show \
-     a cycle, a step or a slow wander because it throws the time order away; these \
-     tests keep it. They are the same as `timegrapher series`.",
-    "Each series gets a sentence saying what the tests found: a cycle (named after \
-     the wheel whose turn it matches; the fourth wheel turns once a minute), two \
-     levels the readings switch between, a level that steps and stays, a slow trend, \
-     correlation between readings, or none of these. When two levels come from the \
-     unlock mark hopping between two edges of the sound, the sentence says so. Under \
-     it are the statistics: what was tested, median, standard deviation, the scatter \
-     from one reading to the next, the lag-1 correlation and the Ljung–Box p-value, and \
-     the trend and period when found. Info, the i at the right of the toolbar, shows \
-     them beside the plots, with what the view shows; it is the same in every view.",
-    "Two kinds of dot: a rate reading needs 10 s of beats, while the amplitude and the \
-     beat error are measured every 2 s, so their plots draw a dot per 2 s window and \
-     their cycles are folded on those finer windows. The key in each plot's corner says \
-     which, and how many.",
-    "Each view is a pane of its own, with its icon under Analysis at the top, so two \
-     can sit side by side. The hare, the swing and the seesaw, for Rate, Amplitude and \
-     Beat Error in each pane's toolbar, choose which series that pane shows; at least one \
-     stays on.",
-    "Readings Over Time: every reading in time order (10 s rate readings, 2 s \
-     amplitude and beat error readings), with the stretches of constant level and the \
-     two state levels. Periods: how strongly the readings repeat at each period, with \
-     the 1% false-alarm line dashed and the wheels' periods marked; Log Scale in its \
-     toolbar draws the scores on a log scale, so a small peak beside a tall one shows. \
-     Cycle: the readings \
-     folded at the cycle found. Autocorrelation: how much a reading resembles the one \
-     a lag later, with the band independent readings stay inside. Allan Deviation: the \
-     scatter of averages against the dashed line independent readings follow, on \
-     logarithmic axes; the lowest point is the averaging time that gives the most \
-     repeatable reading. CUSUM: the running sum of distances from the mean, which \
-     stays inside the dashed lines unless the level changes. FFT: the size of the sine \
-     wave at each period, like Witschi's FFT, in the series' own units, the rate's as \
-     the swing peak to peak it makes in 10 s rate readings, in s/d, from 20 s up (from \
-     the beat timing: a timing sine of a ms at period P swings the rate by \
-     2 × a × 2π / P × 86.4 s/d, of which a 10 s reading keeps sin(x)/x, x = π × 10 / P). \
-     Timing in its toolbar draws rate as the beat timing's own spectrum, in ms, at every \
-     period instead. In both, each wheel's period is a bold dotted line, and half of \
-     it, twice a turn as an off-centre wheel shows, is a fainter line marked ×2, both \
-     grey and dotted; the STFT and Wavelet Maps dot the wheels' turns \
-     across the map. With no calibre picked, or none of its wheels known, one minute \
-     and one hour are marked in grey instead. Wheel Periods in the toolbar shows or \
-     hides these marks.",
-    "The tests need about 5 minutes of beats, and say more the longer the session: a \
-     cycle has to come round several times to count. They run over the whole session \
-     in the background, again every minute while it grows; for a recording opened, \
-     they cover all of it. Rates are on the \
-     sound card's clock.",
+    "How the rate, the amplitude and the beat error each change over the session, in \
+     time order: cycles, steps, trends, and how each reading follows the last. The \
+     tests are timegrapher series on the command line.",
+    "Info, the i at the toolbar's right, gives what the tests found for each series and \
+     its statistics, beside the plots. A rate dot is a 10 s reading; an amplitude or \
+     beat error dot is a 2 s window. Each plot's key says which.",
+    "The hare, the swing and the seesaw choose the series this pane shows. Each view \
+     has its own icon under Analysis, so two can sit side by side.",
+    "Readings Over Time: every reading in order. Periods: how strongly the readings \
+     repeat at each period. Cycle: the readings folded at the cycle found. \
+     Autocorrelation, Allan Deviation and CUSUM: whether readings are independent and \
+     the level steady. FFT: the sine wave's size at each period, as Witschi's FFT. The \
+     wheels' periods are dotted lines; Wheel Periods shows or hides them.",
+    "The tests need about 5 minutes of beats and say more the longer the session. Rates \
+     are on the sound card's clock.",
 ];
 
 pub const SCOPE: &[&str] = &[
