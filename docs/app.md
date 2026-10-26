@@ -772,7 +772,14 @@ and Amplitude, a row each, the values with their units. The box is the
 same on both plots, so Tick and Tock compare row against row, and it
 sits under the band and the line, so a spike that runs into it still
 shows. On a plot under 100 points tall it keeps Unlock to Drop and
-Amplitude, and hovering it gives all five. The moment shown ("At
+Amplitude (fewer if even those don't fit), and hovering it gives all
+five. A plot that would be under 100 points with its names outside
+takes them in: the edges' names sit along its top on the plot's
+background, one row, under the trace (Unlock starts right of its line
+where the facts box has the corner, and a name that would crowd the one
+before, usually Peak beside Drop, is left to its line's hover); the
+sounds keep their dots, and hovering one names it. Stacked, the one
+time axis is under Tock. The moment shown ("At
 10:00") is at the right end of the toolbar. The noise floor is a flat
 dashed line. The Tick tock
 profile card switches the edges and the sounds on and off, switches

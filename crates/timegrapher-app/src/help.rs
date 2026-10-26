@@ -203,7 +203,7 @@ pub const PROFILE: &[&str] = &[
      when it can't be told apart from its neighbour. Hover over a name for its time.",
     "Each plot's top-left corner gives its side's beats, unlock and drop times, the time \
      from unlock to drop, and amplitude, at the same place on both. On a short plot it \
-     keeps the last two; hover it for all five.",
+     keeps the last two; hover it for all five. On a short plot, sound names show on hover.",
     "The flat dashed line is the noise floor: the level before the beat starts.",
     "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
      in beat would drop, and each side sits half the beat error from it, so the two \

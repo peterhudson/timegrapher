@@ -706,3 +706,40 @@ fn the_profiles_moment_is_at_the_toolbars_right_end() {
     }
     assert!(at("dB Scale").width() < 30.0);
 }
+
+/// The Tick Tock Profile's plots take the pane's height at 1440 × 1000 in
+/// the default layout: short, they take their names in, and with the one
+/// time axis under Tock both plots are the same height and Tock's axis is
+/// inside the window.
+#[test]
+fn the_profiles_plots_take_the_panes_height() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 1000.0));
+    for _ in 0..4 {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| app.panels(ctx));
+    }
+    let got = |k: usize| {
+        ctx.data(|d| d.get_temp::<(egui::Rect, egui::Rect)>(egui::Id::new(("profile plot", k))))
+            .expect("the profile is in the default layout")
+    };
+    let (tick, _) = got(0);
+    let (tock, foot) = got(1);
+    // About 205 pt for the whole profile here: the plots take two thirds.
+    assert!(tick.height() >= 60.0, "{tick:?}");
+    assert!(
+        (tick.height() - tock.height()).abs() < 1.0,
+        "{tick:?} {tock:?}"
+    );
+    assert!(tock.top() > tick.bottom(), "{tick:?} {tock:?}");
+    assert!(
+        foot.bottom() <= 1000.0,
+        "Tock's axis is in the window: {foot:?}"
+    );
+}
