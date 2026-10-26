@@ -1363,7 +1363,7 @@ fn cycle(
             if let Some(a) = alias_of_fast_line(c.period_s, g.step, d.span(), s.period.as_ref()) {
                 if c.period_s / a >= 1.25 {
                     let (rest, kept) = without_fold(&d, refine(&d, a, 0.03));
-                    let (e, ptp) = fold(&rest, c.period_s);
+                    let (e, ptp) = sized(&rest, c.period_s);
                     c.explained = e * kept;
                     c.peak_to_peak = ptp;
                 }
@@ -1475,6 +1475,25 @@ fn half_cycle(
     })
 }
 
+/// A cycle's share and size at `period`: its fold's, when a turn holds a
+/// whole number of readings (within a tenth of one) or more than the
+/// fold's 30 bins; otherwise the fitted sines at the period and each of
+/// its harmonics the readings resolve (two readings or more a turn, up to
+/// the 8th). A fold of whole bins at a turn of 4.5 readings (a 45 s cycle
+/// in 10 s readings) puts readings of different phases in one bin and
+/// reads 0.8 to 0.9 of a sine's size.
+fn sized(d: &Grid, period: f64) -> (f64, f64) {
+    let n = period / d.step;
+    if n > 30.0 || (n - n.round()).abs() <= 0.1 {
+        return fold(d, period);
+    }
+    let harmonics: Vec<f64> = (1..=8)
+        .map(|k| period / k as f64)
+        .filter(|&q| q >= 2.0 * d.step)
+        .collect();
+    sine_fit(d, &harmonics, period)
+}
+
 /// Least squares fit of a mean and a sine at each of `periods`: the share
 /// of the readings' variance it explains, less what noise alone would give
 /// (two per sine over the readings), and its peak to peak over one `turn`.
@@ -1545,7 +1564,7 @@ fn sine_fit(d: &Grid, periods: &[f64], turn: f64) -> (f64, f64) {
 
 /// The cycle folded at `period`.
 fn cycle_at(d: &Grid, period: f64, source: CycleSource, wheels: &[Wheel]) -> Cycle {
-    let (explained, peak_to_peak) = fold(d, period);
+    let (explained, peak_to_peak) = sized(d, period);
     Cycle {
         period_s: period,
         peak_to_peak,
@@ -2746,6 +2765,41 @@ fn wind_down(rate: &Grid, amp: &Grid, be: &Grid, cfg: &Config) -> Option<WindDow
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cycle_of_a_non_whole_number_of_readings_reads_its_full_size() {
+        // A 45 s sine, 1.0 peak to peak, in 10 s readings (4.5 a turn),
+        // whatever its phase: a fold of five whole bins reads 0.81 to 0.93.
+        for k in 0..8 {
+            let phase = k as f64 * std::f64::consts::PI / 8.0;
+            let d = Grid {
+                t0: 0.0,
+                step: 10.0,
+                y: (0..720)
+                    .map(|i| {
+                        let t = i as f64 * 10.0;
+                        0.5 * (std::f64::consts::TAU * t / 45.0 + phase).sin()
+                    })
+                    .collect(),
+            };
+            let c = cycle_at(&d, 45.0, CycleSource::PeriodSearch, &[]);
+            assert!(
+                (c.peak_to_peak - 1.0).abs() < 0.03,
+                "{k}: {}",
+                c.peak_to_peak
+            );
+            assert!(c.explained > 0.95, "{k}: {}", c.explained);
+        }
+        // A whole number of readings a turn is folded as before.
+        let d = Grid {
+            t0: 0.0,
+            step: 10.0,
+            y: (0..720)
+                .map(|i| 0.5 * (std::f64::consts::TAU * i as f64 / 6.0).sin())
+                .collect(),
+        };
+        assert_eq!(sized(&d, 60.0), fold(&d, 60.0));
+    }
 
     #[test]
     fn the_band_widens_where_gaps_leave_fewer_pairs() {
