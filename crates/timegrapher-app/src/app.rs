@@ -3174,6 +3174,11 @@ impl TimegrapherApp {
                 self.opened_masks = Some(self.masked.clone());
                 self.opened_positions = Some(self.positions_now());
                 self.info_msg(format!("Saved {what} to {}.", file.display()));
+                // A take in a watch: its row in the Watches view reads what
+                // was saved.
+                if let Ok(Some(l)) = &mut self.library {
+                    l.scan();
+                }
             }
             Err(e) => self.error(format!("Couldn't save {what}: {e}")),
         }
@@ -3250,6 +3255,10 @@ impl TimegrapherApp {
             Some(parent) => {
                 let parent = parent.to_path_buf();
                 self.save_into(&parent);
+                // Into a take in a watch, its row then reads what was saved.
+                if let Some(s) = &mut self.saving {
+                    s.rescan = true;
+                }
             }
             None => match self.watch_takes_dir() {
                 Some(takes) => self.save_into_watch(&takes),
@@ -20037,6 +20046,41 @@ mod tests {
     /// opened, each keeping the rest of what the first said; the take opens
     /// with them again. Comments, keys this app doesn't read and the other
     /// recording's entry stay.
+    /// Positions painted on a take in a watch and saved show in the
+    /// Watches view's row for it at once.
+    #[test]
+    fn a_painted_take_in_a_watch_shows_what_was_saved() {
+        let base = std::env::temp_dir().join(format!("tg-app-paint-row-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        drop(lib);
+        let take = root
+            .join("Pepsi")
+            .join(library::TAKES)
+            .join("2026-10-25 10.00 Dial Up");
+        std::fs::create_dir_all(&take).unwrap();
+        std::fs::write(
+            take.join(MANIFEST),
+            "lift = 52.0\n\n[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\n",
+        )
+        .unwrap();
+        let mut app = opened_recording(&take, "take.wav", 80.0);
+        app.use_library(Some(root.clone()));
+        let positions = |app: &TimegrapherApp| match &app.library {
+            Ok(Some(l)) => l.find("Pepsi").unwrap().takes[0].positions.clone(),
+            _ => panic!("no library"),
+        };
+        assert_eq!(positions(&app), ["DU"]);
+        app.brush = Some(Position::CrownUp);
+        app.paint_position(10.04, 40.0);
+        app.save_marks();
+        assert!(!app.marks_unsaved(), "{:?}", app.message);
+        assert_eq!(positions(&app), ["DU", "CU"]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn positions_painted_on_a_take_are_saved_to_it() {
         let base = std::env::temp_dir().join(format!("tg-app-paint-take-{}", std::process::id()));
