@@ -766,11 +766,17 @@ gives its name and time. The edges and the sounds are two different
 measurements of the same averaged sound, not single beats, so they sit
 near but not exactly on each other. A sound is missing when it can't be
 told apart from its neighbour (a soft unlock merged into the impulse,
-say). Above the plots, a small table gives each side's facts in a row,
-Tick above Tock so they compare down each column: Beats, Unlock (ms),
-Drop (ms), Unlock to Drop (ms) and Amplitude. The noise floor is a flat
+say). Each plot carries its side's facts in its top-left corner, over
+the quiet lead-in before the unlock: Beats, Unlock, Drop, Unlock to Drop
+and Amplitude, a row each, the values with their units. The box is the
+same on both plots, so Tick and Tock compare row against row, and it
+sits under the band and the line, so a spike that runs into it still
+shows. On a plot under 100 points tall it keeps Unlock to Drop and
+Amplitude, and hovering it gives all five. The moment shown ("At
+10:00") is at the right end of the toolbar. The noise floor is a flat
 dashed line. The Tick tock
-profile card switches the edges and the sounds on and off, sets the scale
+profile card switches the edges and the sounds on and off, switches
+**dB Scale** (lit: decibels below the loudest point; off: linear)
 and lays the tick above the tock (Stacked) or beside it (Beside). Tick and
 tock share one vertical scale, so a quieter side shows smaller, and every
 grid line is drawn alike.

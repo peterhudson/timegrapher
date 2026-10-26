@@ -567,14 +567,14 @@ fn a_two_way_choice_is_one_icon_wide() {
         let prefix = format!("{}/", p.title());
         for (k, r) in theme::tools_drawn_at(&ctx) {
             if let Some(name) = k.strip_prefix(&prefix) {
-                if ["Show", "Values", "Layout", "Scale", "Time From", "Keep"].contains(&name) {
+                if ["Show", "Values", "Layout", "dB Scale", "Time From", "Keep"].contains(&name) {
                     assert!(r.width() < 30.0, "{k} is {} pt wide", r.width());
                     seen.push(name.to_string());
                 }
             }
         }
     }
-    for name in ["Show", "Values", "Layout", "Scale", "Time From", "Keep"] {
+    for name in ["Show", "Values", "Layout", "dB Scale", "Time From", "Keep"] {
         assert!(seen.iter().any(|s| s == name), "{name} not drawn: {seen:?}");
     }
 }
@@ -665,4 +665,44 @@ fn removing_all_masks_asks_first() {
     }
     assert!(words.iter().any(|w| w == "Remove all masks?"), "{words:?}");
     assert_eq!(app.masked.len(), 2, "nothing removed before the yes");
+}
+
+/// The moment the profile shows ("At 10:00") is at the right end of its
+/// toolbar, before the "?", clear of the controls.
+#[test]
+fn the_profiles_moment_is_at_the_toolbars_right_end() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    app.sound_note = Some("At 10:00".into());
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 700.0));
+    for _ in 0..3 {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.pane_tools(ui, Pane::Sound);
+            });
+        });
+    }
+    let drawn = theme::tools_drawn_at(&ctx);
+    let title = Pane::Sound.title();
+    let at = |k: &str| {
+        drawn
+            .iter()
+            .find(|(d, _)| d == &format!("{title}/{k}"))
+            .map(|d| d.1)
+            .unwrap_or_else(|| panic!("no {k}: {drawn:?}"))
+    };
+    let note = at("At 10:00");
+    assert!(note.right() > 1440.0 - 60.0, "{note:?}");
+    for (k, r) in &drawn {
+        if k.starts_with(&format!("{title}/")) && !k.ends_with("At 10:00") {
+            assert!(r.right() < note.left(), "{k} at {r:?} runs into the note");
+        }
+    }
+    assert!(at("dB Scale").width() < 30.0);
 }

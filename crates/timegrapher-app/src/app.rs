@@ -2037,6 +2037,8 @@ pub struct TimegrapherApp {
     /// seconds of this session, and one worked out from the file for a
     /// moment that history doesn't cover.
     sound_opts: profiles::Options,
+    /// The moment the profile pane shows, for its toolbar's right end.
+    sound_note: Option<String>,
     sound_history: Vec<(f64, Profiles)>,
     sound_at: Option<(f64, Profiles)>,
     /// Keeping the session as its analysis alone, while that is worked out.
@@ -2447,6 +2449,7 @@ impl TimegrapherApp {
             export: None,
             export_dir: None,
             sound_opts: profiles::Options::default(),
+            sound_note: None,
             sound_history: Vec::new(),
             sound_at: None,
             analysis_save: None,
@@ -6642,9 +6645,12 @@ impl TimegrapherApp {
             Pane::Strip => theme::pane_toolbar(ui, title, help::STRIP, |ui| {
                 self.strip_settings(ui);
             }),
-            Pane::Sound => theme::pane_toolbar(ui, title, help::PROFILE, |ui| {
-                self.profile_settings(ui);
-            }),
+            Pane::Sound => {
+                let note = self.sound_note.clone();
+                theme::pane_toolbar_noted(ui, title, help::PROFILE, note.as_deref(), |ui| {
+                    self.profile_settings(ui);
+                })
+            }
             Pane::Scope => theme::pane_toolbar(ui, title, help::SCOPE, |ui| {
                 scope::settings(ui, &mut self.scope_view);
                 self.export_button(ui, pane);
@@ -8637,27 +8643,20 @@ impl TimegrapherApp {
                 ),
             ],
         );
-        theme::tool_choice(
+        let mut db = o.scale == profiles::Scale::Decibels;
+        theme::tool_switch(
             ui,
-            "Scale",
-            "How the loudness is drawn",
-            &mut o.scale,
-            &[
-                (
-                    profiles::Scale::Linear,
-                    Icon::Ruler,
-                    "Linear",
-                    "The sound's loudness as the engine measures it",
-                ),
-                (
-                    profiles::Scale::Decibels,
-                    Icon::Log,
-                    "dB",
-                    "Decibels below the loudest point, which makes the quiet unlock easier \
-                     to see",
-                ),
-            ],
+            Icon::Db,
+            accent,
+            "dB Scale",
+            &mut db,
+            "Show the level in decibels. Off: linear.",
         );
+        o.scale = if db {
+            profiles::Scale::Decibels
+        } else {
+            profiles::Scale::Linear
+        };
         theme::bar_gap(ui);
         theme::tool_switch(
             ui,
@@ -13052,7 +13051,13 @@ impl TimegrapherApp {
         };
         let i = self.trend.partition_point(|p| p.t <= end + 1e-9);
         let drop_be = i.checked_sub(1).and_then(|i| self.trend[i].beat_error_drop);
-        profiles::draw(ui, &shown, self.sound_opts, drop_be, note.as_deref());
+        // The moment shown goes in the toolbar, drawn before the pane: a
+        // change shows on the next frame.
+        if note != self.sound_note {
+            self.sound_note = note;
+            ui.ctx().request_repaint();
+        }
+        profiles::draw(ui, &shown, self.sound_opts, drop_be);
     }
 
     /// The Tick Tock profiles nearest `end`, as the profile pane shows them:

@@ -4,7 +4,7 @@
 
 use crate::strip::side_colors;
 use crate::theme;
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, Color32};
 use egui_plot::{HLine, Line, LineStyle, Plot, Polygon};
 use timegrapher_core::profile::TickProfile;
 
@@ -33,25 +33,29 @@ fn scaled(v: &[f32], top: f32, scale: Scale) -> Vec<f64> {
         .collect()
 }
 
-/// The facts table's columns after the side's name, each heading with its
-/// unit.
-const FACT_HEADS: [&str; 5] = [
-    "Beats",
-    "Unlock (ms)",
-    "Drop (ms)",
-    "Unlock to Drop (ms)",
-    "Amplitude",
-];
+/// The facts on each plot, a row each, top to bottom.
+const FACT_NAMES: [&str; 5] = ["Beats", "Unlock", "Drop", "Unlock to Drop", "Amplitude"];
 
-/// One side's row of the facts table, in [`FACT_HEADS`]' order.
+/// Below this height a plot's facts keep only their last two rows, Unlock
+/// to Drop and Amplitude; the rest are in the hover.
+const SHORT_PLOT: f32 = 100.0;
+
+/// A side's facts before it has beats.
+const NO_FACTS: &str = "Not enough beats yet";
+
+/// One side's facts with their units, in [`FACT_NAMES`]' order.
 pub fn facts(p: &TickProfile) -> [String; 5] {
-    let ms = |v: Option<f64>| v.map_or("–".to_string(), |v| format!("{v:+.2}").replace('-', "−"));
+    let ms = |v: Option<f64>| {
+        v.map_or("–".to_string(), |v| {
+            format!("{v:+.2} ms").replace('-', "−")
+        })
+    };
     [
         p.beats.to_string(),
         ms(p.unlock_ms),
         ms(p.drop_ms),
         match (p.unlock_ms, p.drop_ms) {
-            (Some(u), Some(d)) => format!("{:.2}", d - u),
+            (Some(u), Some(d)) => format!("{:.2} ms", d - u),
             _ => "–".to_string(),
         },
         p.amplitude_deg
@@ -59,88 +63,114 @@ pub fn facts(p: &TickProfile) -> [String; 5] {
     ]
 }
 
-/// The facts above the plots: one row per side, so Tick and Tock compare
-/// down each column.
-fn facts_table(ui: &mut egui::Ui, profiles: &[Option<TickProfile>; 2], colors: [Color32; 2]) {
-    let pal = theme::pal(ui);
-    let small = egui::FontId::proportional(11.0);
-    // Each figure right-aligned under its heading, as wide as the heading
-    // or the widest figure.
-    let rows: Vec<Option<[String; 5]>> = profiles.iter().map(|p| p.as_ref().map(facts)).collect();
-    let widths: Vec<f32> = FACT_HEADS
-        .iter()
-        .enumerate()
-        .map(|(i, h)| {
-            let head = ui.fonts_mut(|f| {
-                f.layout_no_wrap(h.to_string(), small.clone(), Color32::WHITE)
-                    .size()
-                    .x
-            });
-            rows.iter()
-                .flatten()
-                .map(|r| {
-                    ui.fonts_mut(|f| {
-                        f.layout_no_wrap(
-                            r[i].clone(),
-                            egui::FontId::proportional(12.5),
-                            Color32::WHITE,
-                        )
-                        .size()
-                        .x
-                    })
-                })
-                .fold(head, f32::max)
-        })
-        .collect();
-    let cell = |ui: &mut egui::Ui, w: f32, text: RichText| {
-        ui.allocate_ui_with_layout(
-            egui::vec2(w, 16.0),
-            egui::Layout::right_to_left(egui::Align::Center),
-            |ui| {
-                ui.set_min_width(w);
-                ui.label(text)
-            },
-        );
-    };
-    let name_w = 60.0;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 18.0;
-        ui.add_space(name_w);
-        for (h, &w) in FACT_HEADS.iter().zip(&widths) {
-            cell(
-                ui,
-                w,
-                RichText::new(*h)
-                    .font(small.clone())
-                    .color(pal.text_secondary),
-            );
-        }
-    });
-    for (k, row) in rows.iter().enumerate() {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 18.0;
-            ui.allocate_ui_with_layout(
-                egui::vec2(name_w, 16.0),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| {
-                    ui.set_min_width(name_w);
-                    ui.spacing_mut().item_spacing.x = 6.0;
-                    theme::dot(ui, colors[k]);
-                    ui.label(RichText::new(["Tick", "Tock"][k]).font(theme::semibold(12.5)));
-                },
-            );
-            match row {
-                Some(r) => {
-                    for (v, &w) in r.iter().zip(&widths) {
-                        cell(ui, w, RichText::new(v).size(12.5));
-                    }
-                }
-                None => {
-                    ui.label(RichText::new("Not enough beats yet").color(pal.text_secondary));
-                }
-            }
-        });
+/// The rows a plot's facts show: all five, or on a short plot the last
+/// two.
+fn fact_rows(short: bool) -> std::ops::Range<usize> {
+    if short {
+        3..5
+    } else {
+        0..5
     }
+}
+
+/// A side's facts in the plot's top-left corner, as a plot item so they
+/// sit over the grid and under the band and the trace: a spike that runs
+/// into them still shows. The same box at the same place on both plots,
+/// so Tick and Tock compare row against row.
+struct FactBox {
+    base: egui_plot::PlotItemBase,
+    rows: Vec<(String, String)>,
+    /// The values' column, right-aligned, as wide as the widest value on
+    /// either side; and the names' column likewise.
+    name_w: f32,
+    value_w: f32,
+    fill: Color32,
+    name_color: Color32,
+    value_color: Color32,
+}
+
+/// Room inside the box around its rows, and each row's height, points.
+const FACT_PAD: f32 = 8.0;
+const FACT_ROW: f32 = 16.0;
+/// Between the names' column and the values'.
+const FACT_GAP: f32 = 16.0;
+/// The facts' type size.
+const FACT_SIZE: f32 = 12.0;
+
+impl FactBox {
+    /// Where the box goes in a plot whose frame is `frame`.
+    fn rect(&self, frame: egui::Rect) -> egui::Rect {
+        egui::Rect::from_min_size(
+            frame.min + egui::vec2(4.0, 4.0),
+            egui::vec2(
+                self.name_w + FACT_GAP + self.value_w + 2.0 * FACT_PAD,
+                self.rows.len() as f32 * FACT_ROW + 2.0 * FACT_PAD,
+            ),
+        )
+    }
+}
+
+impl egui_plot::PlotItem for FactBox {
+    fn shapes(
+        &self,
+        ui: &egui::Ui,
+        transform: &egui_plot::PlotTransform,
+        shapes: &mut Vec<egui::Shape>,
+    ) {
+        let r = self.rect(*transform.frame());
+        shapes.push(egui::Shape::rect_filled(r, 6.0, self.fill));
+        let font = egui::FontId::proportional(FACT_SIZE);
+        for (i, (name, value)) in self.rows.iter().enumerate() {
+            let y = r.top() + FACT_PAD + (i as f32 + 0.5) * FACT_ROW;
+            ui.fonts_mut(|f| {
+                let g = f.layout_no_wrap(name.clone(), font.clone(), self.name_color);
+                let at = egui::pos2(r.left() + FACT_PAD, y - g.size().y / 2.0);
+                shapes.push(egui::Shape::galley(at, g, self.name_color));
+                let g = f.layout_no_wrap(value.clone(), font.clone(), self.value_color);
+                let at = egui::pos2(r.right() - FACT_PAD - g.size().x, y - g.size().y / 2.0);
+                shapes.push(egui::Shape::galley(at, g, self.value_color));
+            });
+        }
+    }
+
+    fn initialize(&mut self, _x_range: std::ops::RangeInclusive<f64>) {}
+
+    fn color(&self) -> Color32 {
+        self.value_color
+    }
+
+    fn geometry(&self) -> egui_plot::PlotGeometry<'_> {
+        egui_plot::PlotGeometry::None
+    }
+
+    fn bounds(&self) -> egui_plot::PlotBounds {
+        egui_plot::PlotBounds::NOTHING
+    }
+
+    fn base(&self) -> &egui_plot::PlotItemBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut egui_plot::PlotItemBase {
+        &mut self.base
+    }
+}
+
+/// The widest of `texts` in the facts' type, points.
+fn widest<'a>(ui: &egui::Ui, texts: impl Iterator<Item = &'a str>) -> f32 {
+    texts
+        .map(|t| {
+            ui.fonts_mut(|f| {
+                f.layout_no_wrap(
+                    t.to_owned(),
+                    egui::FontId::proportional(FACT_SIZE),
+                    Color32::WHITE,
+                )
+                .size()
+                .x
+            })
+        })
+        .fold(0.0, f32::max)
 }
 
 /// How the pane is drawn: set in its toolbar.
@@ -190,13 +220,9 @@ pub fn draw(
     profiles: &[Option<TickProfile>; 2],
     opt: Options,
     drop_beat_error_ms: Option<f64>,
-    note: Option<&str>,
 ) {
     let shift = offsets(opt, drop_beat_error_ms);
     let pal = theme::pal(ui);
-    if let Some(n) = note {
-        ui.label(RichText::new(n).small().color(pal.text_secondary));
-    }
     let colors = side_colors(ui.visuals().dark_mode);
     let top = profiles
         .iter()
@@ -208,8 +234,36 @@ pub fn draw(
         Scale::Linear => (0.0, (top as f64 * 1.08).max(1e-6)),
         Scale::Decibels => (FLOOR_DB, 3.0),
     };
-    facts_table(ui, profiles, colors);
-    ui.add_space(4.0);
+    // Each side's facts, and the columns' widths over both sides, so the
+    // two boxes match.
+    let facts: Vec<Option<[String; 5]>> = profiles.iter().map(|p| p.as_ref().map(facts)).collect();
+    let name_w = widest(ui, FACT_NAMES.iter().copied());
+    let value_w = widest(
+        ui,
+        facts
+            .iter()
+            .flatten()
+            .flat_map(|f| f.iter().map(String::as_str)),
+    );
+    let none_w = widest(ui, [NO_FACTS].into_iter());
+    let box_fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
+    let fact_box = |k: usize, short: bool| {
+        let rows = match &facts[k] {
+            Some(f) => fact_rows(short)
+                .map(|i| (FACT_NAMES[i].to_string(), f[i].clone()))
+                .collect(),
+            None => vec![(NO_FACTS.to_string(), String::new())],
+        };
+        FactBox {
+            base: egui_plot::PlotItemBase::new(format!("{} facts", ["Tick", "Tock"][k])),
+            name_w: if facts[k].is_some() { name_w } else { none_w },
+            value_w: if facts[k].is_some() { value_w } else { 0.0 },
+            rows,
+            fill: box_fill,
+            name_color: pal.text_secondary,
+            value_color: pal.text,
+        }
+    };
     let side = |ui: &mut egui::Ui, k: usize| {
         let p = &profiles[k];
         let dx = shift[k];
@@ -231,8 +285,12 @@ pub fn draw(
             c,
         );
         let h = (ui.available_height() - 20.0).max(20.0) as f64;
+        let plot_h = (ui.available_height() - bottom_lane).max(40.0);
+        let short = plot_h < SHORT_PLOT;
+        let facts_here = fact_box(k, short);
+        let facts_rect = |frame| facts_here.rect(frame);
         let plot = Plot::new(("profile", k))
-            .height((ui.available_height() - bottom_lane).max(40.0))
+            .height(plot_h)
             .link_axis("profile", [true, false])
             // No crosshair or value box: the marks and the facts above say
             // what matters.
@@ -266,8 +324,12 @@ pub fn draw(
             plot
         };
         let mut med = Vec::new();
+        let mut drawn_box = None;
         let resp = plot.show(ui, |pl| {
             pl.set_plot_bounds_y(y_lo..=y_hi);
+            // Over the grid, under the band and the trace.
+            drawn_box = Some(facts_rect(*pl.transform().frame()));
+            pl.add(fact_box(k, short));
             let Some(p) = p else { return };
             let x = |i: usize| p.t0_ms + dx + i as f64 * p.step_ms;
             let (m, lo, hi) = (
@@ -311,6 +373,17 @@ pub fn draw(
             );
             med = m;
         });
+        // A short plot's facts keep two rows; the hover has all five.
+        if let (true, Some(f), Some(r)) = (short, &facts[k], drawn_box) {
+            if resp.response.hover_pos().is_some_and(|at| r.contains(at)) {
+                let all: Vec<String> = FACT_NAMES
+                    .iter()
+                    .zip(f)
+                    .map(|(n, v)| format!("{n}: {v}"))
+                    .collect();
+                resp.response.clone().on_hover_text(all.join("\n"));
+            }
+        }
         let (foot, _) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), bottom_lane),
             egui::Sense::hover(),
@@ -620,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn the_facts_are_one_row_per_side() {
+    fn the_facts_are_a_row_each_with_their_units() {
         let p = TickProfile {
             side: timegrapher_core::profile::Side::A,
             beats: 40,
@@ -640,9 +713,35 @@ mod tests {
         };
         assert_eq!(
             facts(&p),
-            ["40", "−7.64", "−0.67", "6.97", "286°"].map(String::from)
+            ["40", "−7.64 ms", "−0.67 ms", "6.97 ms", "286°"].map(String::from)
         );
-        assert_eq!(FACT_HEADS[3], "Unlock to Drop (ms)");
+        assert_eq!(FACT_NAMES[3], "Unlock to Drop");
+        // A short plot keeps Unlock to Drop and Amplitude.
+        let short: Vec<&str> = fact_rows(true).map(|i| FACT_NAMES[i]).collect();
+        assert_eq!(short, ["Unlock to Drop", "Amplitude"]);
+        assert_eq!(fact_rows(false), 0..5);
+    }
+
+    /// The facts box sits in the plot's top-left corner, as tall as its
+    /// rows and as wide as both columns, so it is the same on both plots.
+    #[test]
+    fn the_facts_box_sits_in_the_plots_corner() {
+        let b = FactBox {
+            base: egui_plot::PlotItemBase::new("Tick facts".into()),
+            rows: vec![(String::new(), String::new()); 5],
+            name_w: 90.0,
+            value_w: 60.0,
+            fill: Color32::WHITE,
+            name_color: Color32::GRAY,
+            value_color: Color32::BLACK,
+        };
+        let frame = egui::Rect::from_min_size(egui::pos2(50.0, 30.0), egui::vec2(800.0, 150.0));
+        let r = b.rect(frame);
+        assert_eq!(r.min, egui::pos2(54.0, 34.0));
+        assert_eq!(r.width(), 90.0 + FACT_GAP + 60.0 + 2.0 * FACT_PAD);
+        assert_eq!(r.height(), 5.0 * FACT_ROW + 2.0 * FACT_PAD);
+        // It adds nothing to the plot's bounds.
+        assert!(!egui_plot::PlotItem::bounds(&b).is_valid());
     }
 
     #[test]

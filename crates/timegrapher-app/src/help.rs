@@ -201,8 +201,9 @@ pub const PROFILE: &[&str] = &[
      halfway up its own climb, named below the plot. They come from a separate measurement \
      of the beat's shape, so they sit near but not exactly on the edges. A sound is missing \
      when it can't be told apart from its neighbour. Hover over a name for its time.",
-    "The table above the plots gives each side's beats, unlock and drop times, the time \
-     from unlock to drop, and amplitude, Tick above Tock.",
+    "Each plot's top-left corner gives its side's beats, unlock and drop times, the time \
+     from unlock to drop, and amplitude, at the same place on both. On a short plot it \
+     keeps the last two; hover it for all five.",
     "The flat dashed line is the noise floor: the level before the beat starts.",
     "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
      in beat would drop, and each side sits half the beat error from it, so the two \
@@ -213,8 +214,8 @@ pub const PROFILE: &[&str] = &[
      unlock to drop, the same imbalance that gives them different amplitudes. The \
      unlock figure is the beat error tg reports; the drop \
      figure adds that imbalance on top.",
-    "Linear shows the loudness as measured; dB shows it in decibels below the loudest \
-     point, which makes the quiet unlock easier to see.",
+    "dB Scale, lit, shows the level in decibels below the loudest point, which makes the \
+     quiet unlock easier to see; off, the loudness as measured.",
 ];
 
 pub const CHARTS: &[&str] = &[
