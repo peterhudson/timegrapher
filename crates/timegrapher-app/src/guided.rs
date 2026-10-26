@@ -705,11 +705,21 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
 }
 
 /// The figures as the pane writes them: a signed figure with a true minus
-/// sign, a plain one, or a dash when missing.
+/// sign, a plain one, or a dash when missing. A figure that rounds to zero
+/// takes no sign.
 fn signed(v: Option<f64>, d: usize) -> String {
     v.map_or_else(
         || "—".to_string(),
-        |x| format!("{x:+.d$}").replace('-', "−"),
+        |x| {
+            let s = format!("{:.d$}", x.abs());
+            if s.bytes().all(|b| b == b'0' || b == b'.') {
+                s
+            } else if x < 0.0 {
+                format!("−{s}")
+            } else {
+                format!("+{s}")
+            }
+        },
     )
 }
 
@@ -1784,6 +1794,16 @@ mod tests {
     use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
     use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
+
+    /// A figure that rounds to zero reads 0.0, with no sign.
+    #[test]
+    fn a_zero_reads_without_a_sign() {
+        assert_eq!(signed(Some(-0.01), 1), "0.0");
+        assert_eq!(signed(Some(0.04), 1), "0.0");
+        assert_eq!(signed(Some(-0.06), 1), "−0.1");
+        assert_eq!(signed(Some(2.0), 1), "+2.0");
+        assert_eq!(signed(None, 1), "—");
+    }
 
     /// The pane drawn for `test` in `phase` with `live` figures: each
     /// piece of text and where it is.
