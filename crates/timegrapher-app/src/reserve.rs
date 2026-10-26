@@ -190,55 +190,74 @@ pub fn pane(
     let pal = theme::pal(ui);
     let mut action = None;
     ui.spacing_mut().item_spacing.y = 6.0;
-    let Some(t) = test else {
-        // The steps scroll, with their bar on show, when the pane is short.
-        egui::ScrollArea::vertical()
+    // What doesn't fit scrolls, its bar drawn at rest, from the top each
+    // time the pane is shown.
+    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+    let viewport_h = ui.available_height();
+    let area = |ui: &egui::Ui, name: &str| {
+        let id = egui::Id::new(("reserve scroll", name));
+        let pass = ui.ctx().cumulative_pass_nr();
+        let last = ui.ctx().data_mut(|d| {
+            let last = d.get_temp::<u64>(id);
+            d.insert_temp(id, pass);
+            last
+        });
+        let area = egui::ScrollArea::vertical()
+            .id_salt(id)
             .auto_shrink([false, false])
-            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-            .show(ui, |ui| {
-                let stop = power_reserve::STOP_AFTER_S / 60.0;
-                let steps = [
-                    "1.  Wind the watch fully and set it to a minute marker.".to_string(),
-                    format!("2.  Put it on the stand in the position on the {card} card."),
-                    "3.  Press Start Test.".to_string(),
-                ];
-                let after = [
-                    "•  The app listens until the watch stops.".to_string(),
-                    format!("•  The run ends at the last beat heard before {stop} min with none."),
-                    "•  The take is kept in the watch's history with its run time.".to_string(),
-                    "•  While it runs the computer is kept awake and the sound is kept; the \
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
+        if last.is_none_or(|l| l + 1 < pass) {
+            area.vertical_scroll_offset(0.0)
+        } else {
+            area
+        }
+    };
+    let Some(t) = test else {
+        area(ui, "steps").show(ui, |ui| {
+            let stop = power_reserve::STOP_AFTER_S / 60.0;
+            let steps = [
+                "1.  Wind the watch fully and set it to a minute marker.".to_string(),
+                format!("2.  Put it on the stand in the position on the {card} card."),
+                "3.  Press Start Test.".to_string(),
+            ];
+            let after = [
+                "•  The app listens until the watch stops.".to_string(),
+                format!("•  The run ends at the last beat heard before {stop} min with none."),
+                "•  The take is kept in the watch's history with its run time.".to_string(),
+                "•  While it runs the computer is kept awake and the sound is kept; the \
                      position can't change and the listening can't pause."
-                        .to_string(),
-                ];
-                for l in steps.iter().chain(after.iter()) {
-                    ui.add(egui::Label::new(RichText::new(l).color(pal.text_secondary)).wrap());
-                }
-                if let Some((have, need)) = free {
-                    let line = if have >= need {
-                        format!(
-                            "{} free where the take is kept; a run of up to 80 h writes up to {} \
+                    .to_string(),
+            ];
+            for l in steps.iter().chain(after.iter()) {
+                ui.add(egui::Label::new(RichText::new(l).color(pal.text_secondary)).wrap());
+            }
+            if let Some((have, need)) = free {
+                let line = if have >= need {
+                    format!(
+                        "{} free where the take is kept; a run of up to 80 h writes up to {} \
                              of sound.",
-                            gb(have),
-                            gb(need)
-                        )
-                    } else {
-                        format!(
-                            "Only {} free where the take is kept; a run of up to 80 h writes up \
+                        gb(have),
+                        gb(need)
+                    )
+                } else {
+                    format!(
+                        "Only {} free where the take is kept; a run of up to 80 h writes up \
                              to {} of sound, so a long run could fill the disk.",
-                            gb(have),
-                            gb(need)
-                        )
-                    };
-                    if have >= need {
-                        ui.label(RichText::new(line).small().color(pal.text_tertiary));
-                    } else {
-                        theme::alert_label(ui, theme::Alert::Warning, &line, true);
-                    }
+                        gb(have),
+                        gb(need)
+                    )
+                };
+                if have >= need {
+                    ui.label(RichText::new(line).small().color(pal.text_tertiary));
+                } else {
+                    theme::alert_label(ui, theme::Alert::Warning, &line, true);
                 }
-            });
+            }
+        });
         return None;
     };
-    {
+    area(ui, "run").show(ui, |ui| {
+        let top = ui.cursor().top();
         {
             let run = power_reserve::run_text(t.run_so_far_s());
             ui.label(
@@ -328,8 +347,9 @@ pub fn pane(
                     .color(pal.text_tertiary),
                 );
             }
-            // The charts take the pane's height; the hours' table under
-            // them scrolls in what is left.
+            // The charts take the pane's height left after the words and
+            // the hours' table (or a third of it, for a long table); what
+            // doesn't fit scrolls with the rest.
             if let Some(r) = t.results.as_ref().filter(|r| !r.hours.is_empty()) {
                 ui.add_space(8.0);
                 // A grid row: a label's height (no less than a control's)
@@ -338,21 +358,16 @@ pub fn pane(
                     .text_style_height(&egui::TextStyle::Body)
                     .max(ui.spacing().interact_size.y)
                     + 3.0;
-                let room = ui.available_height() - 8.0 - 2.0 * ui.spacing().item_spacing.y;
-                let table_h = ((r.hours.len() as f32 + 1.0) * row_h + 4.0).min(room * 0.35);
-                let chart_h =
-                    ((room - table_h - ui.spacing().item_spacing.y) / 2.0).max(CHART_MIN_H);
+                let gap = ui.spacing().item_spacing.y;
+                let room = viewport_h - (ui.cursor().top() - top) - 8.0 - 3.0 * gap;
+                let table_h = ((r.hours.len() as f32 + 1.0) * row_h + 4.0).min(room / 3.0);
+                let chart_h = ((room - table_h - gap) / 2.0).max(CHART_MIN_H);
                 hour_chart(ui, r, chart_h);
                 ui.add_space(8.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("reserve hours")
-                    .max_height(table_h)
-                    .auto_shrink([false, true])
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                    .show(ui, |ui| hour_table(ui, r));
+                hour_table(ui, r);
             }
         }
-    }
+    });
     action
 }
 
@@ -448,6 +463,19 @@ fn hour_chart(ui: &mut egui::Ui, r: &Results, height: f32) {
             .x_grid_spacer(|g| theme::even_grid(g, 48.0, &HOUR_STEPS))
             // Plus zero: never "-0 h".
             .x_axis_formatter(|m, _| format!("{:.0} h", m.value + 0.0))
+            // The point under the pointer in words: hours into the run and
+            // the hour's figure.
+            .label_formatter(move |name, v| {
+                if name.is_empty() {
+                    return String::new();
+                }
+                format!(
+                    "{} into the run\n{:.d$}{unit}",
+                    crate::strip::fmt_time((v.x * 3600.0).max(0.0)),
+                    v.y,
+                    d = usize::from(unit != "°")
+                )
+            })
             .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
             .y_axis_formatter(move |m, _| {
                 let places = if m.step_size < 1.0 { 1 } else { 0 };
@@ -697,6 +725,105 @@ mod tests {
         // Room enough: the whole table shows.
         assert!(last.is_some_and(|b| b <= 760.0), "{last:?}");
         assert!(tall > short + 120.0, "{short} {tall}");
+    }
+
+    /// A finished run in a short pane scrolls, by the wheel, to its
+    /// Amplitude chart and its last hour, and opens again at its top; in a
+    /// pane with room, its one hour's row shows whole.
+    #[test]
+    fn a_short_panes_run_scrolls_to_its_last_hour_and_opens_at_its_top() {
+        let run = |hours: u32| {
+            let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+            t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
+            t.stop();
+            t.finish(|s| s).unwrap();
+            if let Some(r) = t.results.as_mut() {
+                r.hours = (0..hours)
+                    .map(|h| power_reserve::Hour {
+                        hour: h,
+                        span_s: 3600.0,
+                        rate_s_per_day: Some(6.5),
+                        amplitude_deg: Some(281.0),
+                        beat_error_ms: Some(0.4),
+                        read_s: 3500.0,
+                    })
+                    .collect();
+            }
+            t
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let (w, h) = (600.0, 240.0);
+        let pass = |t: Option<&Test>, h: f32, wheel: bool| {
+            let at = egui::pos2(w / 2.0, h / 2.0);
+            let mut events = vec![egui::Event::PointerMoved(at)];
+            if wheel {
+                events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -300.0),
+                    modifiers: Default::default(),
+                });
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(w, h),
+                )),
+                events,
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    if let Some(t) = t {
+                        pane(ui, Some(t), None, "Position");
+                    }
+                });
+            });
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(s) => {
+                        let r = s.galley.rect.translate(s.pos.to_vec2());
+                        c.clip_rect
+                            .contains_rect(r)
+                            .then(|| (s.galley.text().to_string(), r))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let t = run(5);
+        let shown = |texts: &[(String, egui::Rect)], what: &str| texts.iter().any(|t| t.0 == what);
+        let mut texts = pass(Some(&t), h, false);
+        texts = pass(Some(&t), h, false).into_iter().chain(texts).collect();
+        assert!(shown(&texts, "0 h 00 min"), "the top first: {texts:?}");
+        assert!(!shown(&texts, "4–5 h"), "{texts:?}");
+        for _ in 0..12 {
+            texts = pass(Some(&t), h, true);
+        }
+        assert!(
+            shown(&texts, "4–5 h"),
+            "the last hour, scrolled to: {texts:?}"
+        );
+        // The wheel's glide spent, away a pass and back: at the top again.
+        for _ in 0..60 {
+            pass(Some(&t), h, false);
+        }
+        assert!(!shown(&pass(Some(&t), h, false), "0 h 00 min"));
+        pass(None, h, false);
+        pass(Some(&t), h, false);
+        let texts = pass(Some(&t), h, false);
+        assert!(shown(&texts, "0 h 00 min"), "{texts:?}");
+        // Room for it all: the one hour's row whole, nothing to scroll.
+        let one = run(1);
+        pass(Some(&one), 520.0, false);
+        let texts = pass(Some(&one), 520.0, false);
+        let row = texts
+            .iter()
+            .find(|t| t.0 == "0–1 h")
+            .unwrap_or_else(|| panic!("{texts:?}"));
+        assert!(row.1.bottom() <= 520.0, "{row:?}");
+        assert!(shown(&texts, "280°") || shown(&texts, "281°"), "{texts:?}");
     }
 
     /// A run of half a minute charts 0 h to 1 h, each hour named once,
