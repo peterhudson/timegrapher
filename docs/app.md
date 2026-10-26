@@ -255,7 +255,12 @@ under it its calibre, beat rate, lift angle and added fields, with
   first: Started, Position (such as DU, or DU, CU, or All 6; Power Reserve or
   Positions Test for those tests, a test's positions in the row's hover), Length, Rate (s/d), Amplitude (°), Beat Error (ms, its size) and
   Size (MB), as measured when saved (the rate corrected from the take's
-  clock log, as the Bench reads the take), with **Analysis Only**, **Incomplete**
+  clock log, as the Bench reads the take). A test's last window never
+  stands for the test: a Positions Test's row shows its Mean row, the
+  figures its table shows ("Mean of the six positions" in the row's hover),
+  and a Power Reserve Test's shows its run time as its Length and a dim
+  "—" for the figures, which are hour by hour in the take ("open it", the
+  hover says). Rows show **Analysis Only**, **Incomplete**
   or **On Show** after the date when it is one. Nothing is inserted
   between rows. Clicking a row picks it; double-clicking opens it as
   Open does, and the take on show is not read again. Open is greyed out
@@ -526,10 +531,17 @@ minutes that listening is still going.
 Tock Profile to begin with (its icon is a die showing six, one face for
 each position), leads through the six positions in the app's order: Dial Up,
 Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
-has **Start Test** (**Start a New Test** once one has run, in a new take:
-the take with the test is left as it is, and sound not saved is asked
-about first; the test always starts in Dial Up), **Load
-Full-Wind Results…**, **Settle** and **Each Position** (the seconds the watch
+has **New Test**, which sets a test up on a clear Bench and starts
+nothing (sound not saved is asked about first, and a Quick Listen still
+listening stops once asked): the pane shows, the Position card reads Dial
+Up, where the test begins, and the status bar says "Positions Test ·
+Ready, not started". **Start Test** on the Listen card then starts it;
+**Cancel Test**, in New Test's place, leaves the Bench as it was. For a
+watch, **Wind** picks **Full Wind** (just after winding) or **24 Hours
+After**, set against the watch's own full-wind test from 12 to 36 hours
+ago, found in its takes; Start Test is greyed out, its hover saying why,
+when there is none. With no watch, **Load Full-Wind Results…** loads the
+full-wind half from a file instead. Then **Settle** and **Each Position** (the seconds the watch
 settles after each turn and is then measured: 20 s and 60 s unless set
 otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
 field to type in with a menu of common times beside it, 10, 20, 30 and
@@ -537,8 +549,10 @@ field to type in with a menu of common times beside it, 10, 20, 30 and
 guided test uses), and **Save
 as CSV…**, **Copy** and, after a test just after winding, **Save
 Results for 24 Hours…**. The pane can be shown with nothing listened
-to yet, so a test can start from it.
-Start Test starts listening if need be and brings the pane to the front.
+to yet.
+Start Test starts listening and brings the pane to the front. While it
+runs the status bar reads, for instance, "Positions Test · Dial Down
+(DD), 2 of 6".
 A banner at the top of the pane names the position and shows a progress
 bar while the watch settles and is measured. It then says which position
 to turn the watch to; press the button naming it (**Start CL
@@ -546,10 +560,13 @@ Measurement**) once it is there. **Restart DD Measurement**, naming the
 position just measured (or the one under way), settles and measures it
 again, after a knock for instance; **Pause** holds the test, leaving out
 what the position measured so far, and **Resume** settles and measures it
-again from the start; **Stop** ends the test and stops listening, keeping
-the positions measured so far in its table and the take as at any Stop. Each
-button keeps its own place, as wide as the widest it holds, so none moves
-as the test moves on: Stop is always where it was. Only
+again from the start. **Stop Test…** on the Listen card asks first, with
+**Keep Measuring** the default: **Stop Test** ends the test and stops
+listening, keeping the positions measured so far in its table (a position
+measured while the watch waits to be turned keeps its row) and the take as
+at any Stop. Once the sixth position is measured and read, the test ends
+by itself the same way. Each banner button keeps its own place, as wide as
+the widest it holds, so none moves as the test moves on. Only
 the measured seconds in each position count. From the moment the test
 starts, the strip, its track and the charts mark the test's
 phases, Dial Up included, each in its own grey: **Before Test** over the
@@ -642,17 +659,19 @@ Positions Test to begin with (its icon a fuel gauge near empty), runs the
 watch down from full wind to stop in one position, the one on the
 Current Position card. Its toolbar says which ("Runs in Dial Up (DU), set
 on the Current Position card"; it has no position setting of its own),
-then holds **Keep Sound** or **Analysis Only**, and **Start Test** (**Stop Test**
-while it runs). The pane takes no more height than it shows. Before a test it
-is one line, "Wind fully, set the position on the Position card, then press
-Start Test" (the steps are in its "?"), whose hover gives how much space is
+then holds **Keep Sound** or **Analysis Only**, and **New Test**, which sets
+the test up on a clear Bench and starts nothing (**Cancel Test** in its
+place then leaves the Bench as it was); **Start Test** on the Listen card
+starts it. The pane takes no more height than it shows. Before a test it
+is one line, "New Test sets a run up on a clear Bench." (the steps are in its "?"), whose hover gives how much space is
 free where the take will be kept against the most an 80 h run writes (the
 sample rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
 16-bit), with a warning line under it when that is short. Start Test starts a new session in the card's position as it
 stands; while it runs the computer is kept awake whatever Keep Awake is
 set to, the position can't change (the card's other positions are greyed,
-their hover saying why), and the **Stop** icon on the Listen card, or **Stop Test**
-in the pane's toolbar, ends the test. The run ends at the last beat heard before 10 minutes with none
+their hover saying why), and **Stop Test…** on the Listen card asks
+first, Keep Measuring the default, then ends the test, keeping the run so
+far. The run ends at the last beat heard before 10 minutes with none
 (a beat heard is one matching the beat's sound with a quality over 0.4,
 in a run of at least eight such beats each within one and a half beats of
 the last, so a lone click is not the watch); beats that come back sooner

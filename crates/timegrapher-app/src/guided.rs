@@ -1873,6 +1873,46 @@ mod tests {
     use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
 
+    /// The 24 Hours After half finds the newest full-wind test kept in the
+    /// watch's takes that began 12 to 36 hours ago, and no other.
+    #[test]
+    fn the_full_wind_test_is_the_newest_from_12_to_36_hours_ago() {
+        let dir = std::env::temp_dir().join(format!("tg-full-wind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let now = 1_800_000_000.0;
+        let keep = |name: &str, hours: f64| {
+            let take = dir.join(name);
+            std::fs::create_dir_all(&take).unwrap();
+            let f = FullWind {
+                format: RESULTS_FORMAT.into(),
+                began_utc: String::new(),
+                began_unix: now - hours * 3600.0,
+                watch: "W".into(),
+                calibre: String::new(),
+                bph: None,
+                lift_angle_deg: None,
+                settle_s: None,
+                measure_s: None,
+                positions: vec![KeptRow {
+                    position: "DU".into(),
+                    rate_s_per_day: Some(1.0),
+                    amplitude_deg: None,
+                    beat_error_ms: None,
+                }],
+            };
+            std::fs::write(take.join(RESULTS_FILE), f.to_json()).unwrap();
+        };
+        assert_eq!(full_wind_in(&dir, now), None, "no takes folder");
+        keep("a", 40.0);
+        keep("b", 6.0);
+        assert_eq!(full_wind_in(&dir, now), None, "too old and too new");
+        keep("c", 30.0);
+        keep("d", 20.0);
+        let found = full_wind_in(&dir, now).expect("found");
+        assert_eq!(found.hours_ago(now), 20.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A figure that rounds to zero reads 0.0, with no sign.
     #[test]
     fn a_zero_reads_without_a_sign() {
@@ -1943,31 +1983,30 @@ mod tests {
         let measuring = drawn(&test, measuring_phase, None);
         assert_eq!(test.tick(85.0), Phase::Turn);
         let turn = drawn(&test, Phase::Turn, None);
-        let stop = at(&measuring, "Stop");
+        // Stop Test is on the Listen card; the banner keeps the rest in
+        // their places.
+        for found in [&settling, &measuring, &turn] {
+            assert!(!found.iter().any(|(t, _)| t == "Stop"), "{found:?}");
+        }
         let restart = at(&measuring, "Restart DU Measurement");
-        assert_eq!(at(&settling, "Stop"), stop);
-        assert_eq!(at(&turn, "Stop"), stop);
+        assert_eq!(at(&settling, "Restart DU Measurement"), restart);
         assert_eq!(at(&turn, "Restart DU Measurement"), restart);
         test.advance(86.0);
         test.pause(90.0);
         let ph = test.tick(91.0);
         let paused = drawn(&test, ph, None);
         at(&paused, "Resume");
-        assert_eq!(at(&paused, "Stop"), stop);
         // One line: every button's words start at the same height (their
         // ink ends lower where a letter has a tail).
-        let y = rect(&measuring, "Stop").top();
+        let y = rect(&measuring, "Restart DU Measurement").top();
         for (found, text) in [
             (&measuring, "Pause"),
-            (&measuring, "Restart DU Measurement"),
             (&turn, "Start DD Measurement"),
             (&turn, "Restart DU Measurement"),
-            (&turn, "Stop"),
             (&paused, "Resume"),
-            (&paused, "Stop"),
         ] {
             let top = rect(found, text).top();
-            assert!((top - y).abs() < 0.5, "{text} at {top}, Stop at {y}");
+            assert!((top - y).abs() < 0.5, "{text} at {top}, Restart at {y}");
         }
         // Pause is its own width at the left of the first slot, where
         // Start begins, not stretched across it: its words sit well short

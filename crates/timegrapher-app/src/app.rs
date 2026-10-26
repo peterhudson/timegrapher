@@ -20918,6 +20918,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// New Test sets the Positions Test up on the Bench and starts
+    /// nothing: the pane shows, the Position card reads Dial Up, and the
+    /// status bar says the test is ready, not started.
+    #[test]
+    fn a_new_positions_test_waits_ready_on_the_bench() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.view = View::Watches;
+        set_pane_visible(&mut app.panes.tiles, Pane::PositionsTest, false);
+        app.set_position(Position::CrownDown);
+        app.new_take(NewTake::Positions, false);
+        assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        assert!(app.guided.is_none() && !app.running());
+        assert_eq!(app.view, View::Bench);
+        assert!(pane_visible(&app.panes.tiles, Pane::PositionsTest));
+        assert_eq!(app.position, Position::DialUp);
+        let words = app.status_words();
+        assert!(
+            words.contains("Positions Test") && words.contains("Ready, not started"),
+            "{words}"
+        );
+        // With no watch, nothing holds Start Test back.
+        assert_eq!(app.start_test_why_not(), None);
+    }
+
+    /// The sixth position measured and read, the Positions Test ends by
+    /// itself: listening stops and the table keeps all six.
+    #[test]
+    fn a_positions_test_ends_by_itself_after_the_sixth_position() {
+        let base = std::env::temp_dir().join(format!("tg-app-guided-end-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let mut app = synthetic(20.0, 0.0);
+        app.session.listen();
+        let tx = queued_capture(&mut app, &base);
+        let end = app.live.as_ref().unwrap().duration_s();
+        let mut test = guided::Test::new().timed(0.5, 2.0);
+        let mut t = end - 18.0;
+        test.tick(t);
+        for i in 0..guided::ORDER.len() {
+            t += 2.75;
+            assert_eq!(test.tick(t), guided::Phase::Turn, "position {i}");
+            if i + 1 < guided::ORDER.len() {
+                test.advance(t);
+            }
+        }
+        app.guided = Some(test);
+        assert!(app.test_listening());
+        let ctx = egui::Context::default();
+        app.guided_tick(&ctx);
+        assert!(!app.guided_running(), "ended");
+        assert!(app.session.paused(), "listening stopped");
+        let kept = app.guided.as_ref().expect("the table stays");
+        assert_eq!(kept.readings.as_ref().map(|r| r.len()), Some(6));
+        drop(tx);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// The Watches view's Power Reserve Test only sets the take up: the
     /// pane shows on the Bench, and nothing starts until its Start Test,
     /// the position set first on the card.
