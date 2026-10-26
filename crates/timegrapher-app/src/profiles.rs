@@ -716,6 +716,9 @@ impl egui_plot::PlotItem for EdgeNames {
             frame.right(),
             frame.left() + self.facts.right(transform),
         );
+        // The names go on after every line, on their boxes, so no other
+        // edge's line runs through one.
+        let mut names = Vec::new();
         for ((label, x, w), at) in named.iter().zip(at) {
             let level = self.names.iter().find(|n| n.0 == *label).and_then(|n| n.3);
             let stop = level.map_or(frame.bottom(), |y| {
@@ -729,12 +732,7 @@ impl egui_plot::PlotItem for EdgeNames {
             let from = match at {
                 Some(a) => {
                     let r = inside_name_rect(frame, a, *w);
-                    shapes.push(egui::Shape::rect_filled(r, 3.0, self.fill));
-                    let g = ui.fonts_mut(|f| {
-                        f.layout_no_wrap(label.to_string(), theme::semibold(11.5), self.ink)
-                    });
-                    let p = egui::pos2(a, r.center().y - g.size().y / 2.0);
-                    shapes.push(egui::Shape::galley(p, g, self.ink));
+                    names.push((r, a, *label));
                     r.bottom()
                 }
                 None => frame.top(),
@@ -745,6 +743,14 @@ impl egui_plot::PlotItem for EdgeNames {
                     egui::Stroke::new(1.2_f32, ink),
                 ));
             }
+        }
+        for (r, a, label) in names {
+            shapes.push(egui::Shape::rect_filled(r, 3.0, self.fill));
+            let g = ui.fonts_mut(|f| {
+                f.layout_no_wrap(label.to_string(), theme::semibold(11.5), self.ink)
+            });
+            let p = egui::pos2(a, r.center().y - g.size().y / 2.0);
+            shapes.push(egui::Shape::galley(p, g, self.ink));
         }
     }
 
@@ -906,15 +912,26 @@ fn label_marks(
             .map(|y| t.position_from_point_y(y))
     };
     // Where the trace is marked: an edge's bar, a sound's ring, both drawn
-    // over the trace.
+    // over the trace, smaller on a short plot so they don't fill it, and
+    // left off where they would cross an edge's name drawn in the plot.
+    let r = (frame.height() / 8.0).clamp(2.5, 5.0);
+    let names_in = std::cell::RefCell::new(Vec::<egui::Rect>::new());
+    let clear = |at: egui::Pos2| {
+        let mark = egui::Rect::from_center_size(at, egui::vec2(2.0 * r + 2.0, 2.0 * r + 2.0));
+        !names_in.borrow().iter().any(|n| n.intersects(mark))
+    };
     let edge_bar = |at: egui::Pos2| {
-        painter.line_segment(
-            [at - egui::vec2(4.0, 0.0), at + egui::vec2(4.0, 0.0)],
-            egui::Stroke::new(2.0_f32, pal.text),
-        );
+        if clear(at) {
+            painter.line_segment(
+                [at - egui::vec2(r - 1.0, 0.0), at + egui::vec2(r - 1.0, 0.0)],
+                egui::Stroke::new(2.0_f32, pal.text),
+            );
+        }
     };
     let sound_ring = |at: egui::Pos2| {
-        painter.circle_stroke(at, 5.0, egui::Stroke::new(1.5_f32, pal.text_secondary));
+        if clear(at) {
+            painter.circle_stroke(at, r, egui::Stroke::new(1.5_f32, pal.text_secondary));
+        }
     };
     // A lane laid out and drawn: `marks` are each name, its time and its
     // hover's words; `up` for the edges above the plot.
@@ -973,6 +990,11 @@ fn label_marks(
                     frame.right(),
                     frame.left() + box_right,
                 );
+                names_in
+                    .borrow_mut()
+                    .extend(named.iter().zip(&at).filter_map(|((l, _, _), a)| {
+                        a.map(|a| inside_name_rect(frame, a, named_w(&named, l)))
+                    }));
                 for ((x, label, v), at) in marks.iter().zip(at) {
                     if let Some(y) = trace_y(*v + 0.0) {
                         edge_bar(egui::pos2(*x, y));
@@ -1025,7 +1047,8 @@ fn label_marks(
             let on = trace_y(*v + 0.0);
             let centre = name.center().x;
             if up {
-                let stop = on.map_or(frame.bottom(), |y| (y - 4.0).max(frame.top()));
+                // Short of the trace, and of a sound's ring at the same spot.
+                let stop = on.map_or(frame.bottom(), |y| (y - r - 2.0).max(frame.top()));
                 // Straight down from its name, or from where the name had to
                 // slide to, with a short angled leader back to its line.
                 let mut pts = vec![egui::pos2(centre, end_y)];
@@ -1042,7 +1065,7 @@ fn label_marks(
                 }
             } else if let Some(y) = on {
                 let mut pts = vec![
-                    egui::pos2(x, y + 5.0),
+                    egui::pos2(x, y + r),
                     egui::pos2(x, frame.bottom() + LANE_GAP / 2.0),
                 ];
                 pts.push(egui::pos2(centre, end_y));

@@ -807,7 +807,8 @@ phrase), the later one moves one row further out and its line runs on to it, and
 where that row is taken too it slides along with a short angled leader.
 A name changes row only once an overlap starts or ends by 2 points, so
 names don't hop as the sound drifts. Where an edge and a sound meet the trace together, the bar sits inside
-the ring. Each name sits on a box of the pane's colour, so another mark's
+the ring. On a short plot the bars and rings are smaller, and one that
+would cross an edge's name drawn in the plot is left off. Each name sits on a box of the pane's colour, so another mark's
 line passing behind it doesn't run through its letters. Hovering a line, a ring or a name
 gives its name and time. The edges and the sounds are two different
 measurements of the same averaged sound, not single beats, so they sit
