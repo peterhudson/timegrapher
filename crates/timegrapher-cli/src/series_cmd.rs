@@ -53,9 +53,13 @@ pub fn run(o: Options) -> Result<(), String> {
     let total_s = info
         .frames
         .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-    let mut applied_clock = resolve_clock(o.clock_log, &info, total_s, || {
-        crate::clock_cmd::correction_or_usb(&files, None, None)
-    })?;
+    let mut applied_clock = resolve_clock(
+        o.clock_log,
+        &info,
+        total_s,
+        || crate::clock_cmd::usb(&files),
+        || crate::clock_cmd::correction_or_usb(&files, None, None),
+    )?;
 
     let total = info.frames.map(|f| f as f64 / info.sample_rate as f64);
     let tty = std::io::stderr().is_terminal();
@@ -174,6 +178,7 @@ fn resolve_clock(
     log: Option<&Path>,
     info: &audio::AudioInfo,
     total_s: f64,
+    usb: impl FnOnce() -> Result<Option<(f64, String)>, String>,
     fallback: impl FnOnce() -> Result<Option<(f64, String)>, String>,
 ) -> Result<Option<AppliedClock>, String> {
     if let Some(path) = log {
@@ -181,11 +186,17 @@ fn resolve_clock(
         let text = fs::read_to_string(path).map_err(|e| named(e.to_string()))?;
         let pairs =
             clock::parse_log(&text, info.sample_rate, info.bytes_per_frame).map_err(named)?;
-        let fit = ClockFit::for_rates(&pairs).map_err(|e| named(e.to_string()))?;
-        return Ok(Some(AppliedClock {
-            fit,
-            from: format!("from clock log {}", path.display()),
-        }));
+        let mut fit = ClockFit::for_rates(&pairs).map_err(|e| named(e.to_string()))?;
+        // The recording's USB lines, when it has them, correct the rates;
+        // the log then gives its breaks.
+        let from = match usb()? {
+            Some((ppm, from)) => {
+                fit.rate_from_usb(ppm);
+                format!("{from}; clock log {} for its breaks", path.display())
+            }
+            None => format!("from clock log {}", path.display()),
+        };
+        return Ok(Some(AppliedClock { fit, from }));
     }
     // Keep the existing stored-before-USB resolver and fixed fit unchanged.
     Ok(fallback()?.and_then(|(ppm, from)| {
@@ -598,10 +609,16 @@ mod tests {
             (0.0, "stored for 'zero input', 2026-10-15"),
         ] {
             let mut calls = 0;
-            let applied = resolve_clock(None, &info(), 600.0, || {
-                calls += 1;
-                Ok(Some((ppm, from.into())))
-            })
+            let applied = resolve_clock(
+                None,
+                &info(),
+                600.0,
+                || Ok(None),
+                || {
+                    calls += 1;
+                    Ok(Some((ppm, from.into())))
+                },
+            )
             .unwrap()
             .unwrap();
             assert_eq!(calls, 1);
@@ -623,19 +640,23 @@ mod tests {
             );
             assert_eq!(doc, original, "every previous report field is unchanged");
         }
-        let none = resolve_clock(None, &info(), 600.0, || Ok(None)).unwrap();
+        let none = resolve_clock(None, &info(), 600.0, || Ok(None), || Ok(None)).unwrap();
         let mut doc = report_document(&rep, none.as_ref()).unwrap();
         assert_eq!(
             doc.as_object_mut().unwrap().remove("clock"),
             Some(serde_json::Value::Null)
         );
         assert_eq!(doc, original);
-        assert!(
-            resolve_clock(None, &info(), 600.0, || Err("store unreadable".into()))
-                .err()
-                .unwrap()
-                .contains("store unreadable")
-        );
+        assert!(resolve_clock(
+            None,
+            &info(),
+            600.0,
+            || Ok(None),
+            || Err("store unreadable".into())
+        )
+        .err()
+        .unwrap()
+        .contains("store unreadable"));
     }
 
     #[test]
@@ -650,9 +671,13 @@ mod tests {
             .collect();
         let text = text.as_str();
         let log = Log::new(text);
-        let applied = resolve_clock(Some(&log.0), &info(), 600.0, || {
-            panic!("explicit log must bypass stored/USB fallback")
-        })
+        let applied = resolve_clock(
+            Some(&log.0),
+            &info(),
+            600.0,
+            || Ok(None),
+            || panic!("explicit log must bypass stored/USB fallback"),
+        )
         .unwrap()
         .unwrap();
         let pairs = clock::parse_log(text, 48000, 2).unwrap();
@@ -680,13 +705,51 @@ mod tests {
     fn series_clock_from_a_short_log_says_why_it_corrects_nothing() {
         let text = "audio_s,unix_s\n0,1000\n300,1300.00375\n600,1600.0075\n";
         let log = Log::new(text);
-        let applied = resolve_clock(Some(&log.0), &info(), 600.0, || panic!("fallback"))
-            .unwrap()
-            .unwrap();
+        let applied = resolve_clock(
+            Some(&log.0),
+            &info(),
+            600.0,
+            || Ok(None),
+            || panic!("fallback"),
+        )
+        .unwrap()
+        .unwrap();
         assert!(!applied.fit.corrects());
         let clock = &report_document(&report(), Some(&applied)).unwrap()["clock"];
         assert_eq!(clock["ppm"], 0.0);
         assert_eq!(clock["withheld"]["reason"], "few_entries");
+        assert_eq!(clock["withheld"]["points"], 3);
+    }
+
+    #[test]
+    fn series_clock_takes_the_usb_lines_over_a_log() {
+        let text = "audio_s,unix_s\n0,1000\n300,1300.00375\n600,1600.0075\n";
+        let log = Log::new(text);
+        let applied = resolve_clock(
+            Some(&log.0),
+            &info(),
+            600.0,
+            || {
+                Ok(Some((
+                    19.5,
+                    "from 12 USB lines in the recording, 0.1 ppm apart".into(),
+                )))
+            },
+            || panic!("fallback"),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(applied.fit.corrects());
+        assert_eq!(
+            applied.from,
+            format!(
+                "from 12 USB lines in the recording, 0.1 ppm apart; clock log {} for its breaks",
+                log.0.display()
+            )
+        );
+        let clock = &report_document(&report(), Some(&applied)).unwrap()["clock"];
+        assert_eq!(clock["ppm"], 19.5);
+        assert_eq!(clock["withheld"]["reason"], "usb_lines");
         assert_eq!(clock["withheld"]["points"], 3);
     }
 
@@ -698,18 +761,28 @@ mod tests {
             text.push_str(&format!("{audio_s},{}\n", 1000.0 + audio_s * 1.0000125));
         }
         let log = Log::new(&text);
-        let applied = resolve_clock(Some(&log.0), &info(), 36000.0, || panic!("fallback"))
-            .unwrap()
-            .unwrap();
+        let applied = resolve_clock(
+            Some(&log.0),
+            &info(),
+            36000.0,
+            || Ok(None),
+            || panic!("fallback"),
+        )
+        .unwrap()
+        .unwrap();
         assert!(applied.fit.tracks_drift);
         assert_eq!(
             report_document(&report(), Some(&applied)).unwrap()["clock"]["tracks_drift"],
             true
         );
         let bad = Log::new("audio_s,unix_s\n0,1000\n");
-        let error = resolve_clock(Some(&bad.0), &info(), 600.0, || {
-            panic!("invalid log must fail rather than change clock source")
-        })
+        let error = resolve_clock(
+            Some(&bad.0),
+            &info(),
+            600.0,
+            || Ok(None),
+            || panic!("invalid log must fail rather than change clock source"),
+        )
         .err()
         .unwrap();
         assert!(error.contains(&bad.0.display().to_string()));
