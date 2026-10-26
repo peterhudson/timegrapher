@@ -726,7 +726,7 @@ const AGC_HINT: &str = "The microphone's own automatic gain, which raises its le
      it again each time it opens the input.";
 
 const MASK_HINT: &str = "Drag across a stretch to leave it out of the readings. Nothing is \
-     deleted: the beats stay, hatched. Right-click a mask to remove it; Edit ▸ Remove All \
+     deleted: the beats stay, hatched. Right-click a mask to remove it; Edit > Remove All \
      Masks removes them all.";
 const EXPORT_HINT: &str = "Save this pane as a picture: a PNG of it as it is on the screen, \
      or an SVG drawing whose lines and text stay sharp at any size. The file name's ending, \
@@ -6681,8 +6681,10 @@ impl TimegrapherApp {
         true
     }
 
-    /// Export: save the pane as a PNG picture or an SVG drawing.
+    /// Export: save the pane as a PNG picture or an SVG drawing. An
+    /// action, so it never folds into the toolbar's "…".
     fn export_button(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        theme::keep_next(ui);
         if theme::tool_button(ui, Icon::Export, "Export…", EXPORT_HINT, None) {
             let dir = self.export_dir.clone().or_else(|| {
                 Path::new(self.file_path.trim())
@@ -8919,7 +8921,7 @@ impl TimegrapherApp {
     }
 
     fn view_menu_panes(&mut self, ui: &mut egui::Ui) {
-        let off = "The panes are on the Bench: View ▸ Bench first";
+        let off = "The panes are on the Bench: View > Bench first";
         ui.checkbox(&mut self.show_readings, "Readings")
             .on_hover_text("The rate, amplitude and beat error cards")
             .on_disabled_hover_text(off);
@@ -15126,12 +15128,13 @@ impl TimegrapherApp {
         {
             self.save_recording();
         }
-        // Esc puts the Position Brush down.
-        if self.brush.is_some()
+        // Esc puts the tool in hand down: the Position Brush or Mask.
+        if (self.brush.is_some() || self.masking)
             && !egui::Popup::is_any_open(ctx)
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
             self.brush = None;
+            self.masking = false;
         }
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::S))) {
             if self.marks_unsaved() {
@@ -19298,7 +19301,7 @@ mod tests {
 
     /// A change of position dragged moves with its settling; painting to
     /// the newest beat puts the watch in that position from then on; the
-    /// brush is put down by Esc and by the Mask tool, and isn't offered
+    /// brush is put down by Esc (as Mask is) and by the Mask tool, and isn't offered
     /// during a Positions Test.
     #[test]
     fn the_position_brush_paints_and_moves_changes() {
@@ -19335,6 +19338,16 @@ mod tests {
             |ctx| app.panels(ctx),
         );
         assert_eq!(app.brush, None);
+        // Esc puts the Mask tool down as well.
+        app.masking = true;
+        let _ = ctx.run(
+            egui::RawInput {
+                events: vec![esc(true), esc(false)],
+                ..Default::default()
+            },
+            |ctx| app.panels(ctx),
+        );
+        assert!(!app.masking, "Esc puts Mask down");
         // Picking the Mask tool puts it down too.
         app.brush = Some(Position::DialUp);
         app.masking = true;

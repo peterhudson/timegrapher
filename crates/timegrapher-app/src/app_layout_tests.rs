@@ -508,6 +508,10 @@ fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
             if p == Pane::Watch && !keys.contains(&"New Watch…") {
                 wrong.push(format!("{at}: New Watch… is not in the row: {keys:?}"));
             }
+            // Export is an action, and actions never fold.
+            if p == Pane::Strip && !keys.contains(&"Export…") {
+                wrong.push(format!("{at}: Export… is not in the row: {keys:?}"));
+            }
             // Search stays in the row too, at 1000 pt and narrower: Sort
             // folds before it.
             if p == Pane::Watch && !keys.contains(&"Search") {
