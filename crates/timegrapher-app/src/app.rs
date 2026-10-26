@@ -3057,8 +3057,8 @@ impl TimegrapherApp {
     }
 
     /// Unsaved sound from Quick Listen goes without a question: listening
-    /// again, opening a recording, a take of a watch or quitting lets it
-    /// go. Save keeps it.
+    /// again, opening a recording or quitting lets it go. Save keeps it. A
+    /// take of a watch, or picking one, asks.
     fn quick_unsaved(&self) -> bool {
         self.quick_listen && self.session.mic() && self.session.saved_to().is_none()
     }
@@ -8404,7 +8404,14 @@ impl TimegrapherApp {
         if self.running() || self.saving_busy() {
             return;
         }
-        if !asked && self.needs_save_confirmation() {
+        // A take of a watch asks about Quick Listen's sound too, as picking
+        // a watch does: it isn't that watch's sound.
+        let asks = if self.open_watch().is_some() {
+            self.line_pick_asks()
+        } else {
+            self.needs_save_confirmation()
+        };
+        if !asked && asks {
             self.confirm = Some(Confirm::NewTake(kind));
             return;
         }
@@ -12807,7 +12814,8 @@ impl TimegrapherApp {
             );
             return;
         }
-        if self.needs_save_confirmation() {
+        // Quick Listen's sound too: a test of a watch isn't its sound.
+        if self.line_pick_asks() {
             self.info_msg(
                 "Save or set aside this session first: a Power Reserve Test starts a new one."
                     .into(),
@@ -22671,6 +22679,49 @@ mod tests {
         assert!(again.panes.tiles.find_pane(&Pane::Watch).is_none());
         assert!(layout_is_whole(&again.panes));
         assert!(pane_visible(&again.panes.tiles, Pane::Charts), "kept");
+    }
+
+    /// A Quick Listen still on show when a watch is picked, as New Watch…
+    /// picks the watch it adds, is asked about before a take of that watch
+    /// starts: Listen asks, and a Power Reserve Test waits for it to be
+    /// saved or set aside.
+    #[test]
+    fn a_take_of_a_watch_asks_about_quick_listens_sound() {
+        let base = std::env::temp_dir().join(format!("tg-app-quick-ask-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = synthetic(5.0, 0.0);
+        app.use_library(Some(root.clone()));
+        app.session.listen();
+        let info = app.info("Quick", 48000, 16);
+        let mut r = Recorder::start(&base.join("scratch"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 15],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        app.quick_listen = true;
+        app.pick_watch(&pepsi);
+        assert!(
+            app.quick_unsaved(),
+            "the readings on show are Quick Listen's"
+        );
+        app.new_take(NewTake::Listen, false);
+        assert_eq!(app.confirm, Some(Confirm::NewTake(NewTake::Listen)));
+        assert!(app.session.recorder.is_some(), "nothing let go yet");
+        app.confirm = None;
+        app.start_reserve();
+        assert!(app.session.recorder.is_some() && app.reserve.is_none());
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// Quick Listen's sound that wasn't saved goes without a question at a
