@@ -347,7 +347,7 @@ pub fn run(
             let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
             let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
                 .map_err(|e| format!("{}: {e}", p.display()))?;
-            Some(ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", p.display()))?)
+            Some(ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", p.display()))?)
         }
         None => None,
     };
@@ -667,6 +667,10 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             c.rate_error_s_per_day.abs(),
             if c.ppm >= 0.0 { "fast" } else { "slow" },
         ),
+        (Some(c), None) if !c.corrects() => println!(
+            "Clock        not calibrated: {}",
+            c.withheld.map(|w| w.note()).unwrap_or_default()
+        ),
         (Some(c), None) => println!(
             "Clock        sound card {:.2} ppm {} than NTP time, so uncorrected rates read {:.2} s/d {}; corrected from {} entries, {:.1} ms rms{}",
             c.ppm.abs(),
@@ -679,7 +683,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
         ),
         (None, _) => println!("Clock        not calibrated: rates are read on the sound card's clock, whose error is not measured here (--clock, or a card error stored with `timegrapher clock`, corrects it)"),
     }
-    if r.clock.is_some() {
+    if r.clock.as_ref().is_some_and(|c| c.corrects()) {
         println!("             tg, and a session's reference rates, read on the sound card's clock: add the error above to compare");
     }
     match &r.overall {

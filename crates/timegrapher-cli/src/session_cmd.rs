@@ -430,7 +430,7 @@ fn read_clock_as(
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let pairs = clock::parse_log(&text, sample_rate, bytes_per_frame)
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    let fit = ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
+    let fit = ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((fit, crate::archive::sha256_hex(text.as_bytes())))
 }
 
