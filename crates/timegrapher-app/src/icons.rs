@@ -58,7 +58,7 @@ const ALL: [Icon; 78] = [
     Icon::ArrowRight,
     Icon::Stacked,
     Icon::Beside,
-    Icon::Ruler,
+    Icon::Db,
     Icon::PalletFork,
     Icon::OneClock,
     Icon::TwoClocks,
@@ -284,9 +284,9 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Beside => {
             r#"<rect x="3" y="5" width="8" height="14" rx="1.5"/><rect x="13" y="5" width="8" height="14" rx="1.5"/>"#
         }
-        // A straight ruler: A linear scale.
-        Icon::Ruler => {
-            r#"<rect x="2.5" y="8" width="19" height="8" rx="1"/><path d="M6 8v3.2M9.5 8v2M13 8v3.2M16.5 8v2" stroke-width="1.2"/>"#
+        // "dB" in bold strokes: The level in decibels.
+        Icon::Db => {
+            r#"<g stroke-width="2.3"><circle cx="6.6" cy="14.6" r="3.4"/><path d="M10 5.5v12.6"/><path d="M13.6 5.8v12.4h4.2a3.1 3.1 0 0 0 0-6.2h-4.2M13.6 12h3.6a3.1 3.1 0 0 0 0-6.2h-3.6"/></g>"#
         }
         // A pallet fork: The unlock and the drop come from the pallets.
         Icon::PalletFork => {

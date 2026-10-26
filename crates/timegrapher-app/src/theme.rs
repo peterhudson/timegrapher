@@ -405,10 +405,15 @@ pub fn help_with_key(
         .width(360.0)
         .show(|ui| {
             // A long explanation and its key of icons can be taller than
-            // the window: it scrolls rather than running off the bottom.
-            egui::ScrollArea::vertical()
-                .max_height(ui.ctx().content_rect().height() - 24.0)
-                .show(ui, |ui| body(ui, true));
+            // the room below the "?": it scrolls from its start rather
+            // than running off the window's edge.
+            let room = ui.ctx().content_rect().bottom() - ui.max_rect().top() - 16.0;
+            let mut scroll = egui::ScrollArea::vertical().max_height(room.max(160.0));
+            // Each time it opens, from its title.
+            if !open {
+                scroll = scroll.vertical_scroll_offset(0.0);
+            }
+            scroll.show(ui, |ui| body(ui, true));
         });
     resp
 }
@@ -1004,10 +1009,17 @@ pub fn note_icon(ui: &Ui, icon: Icon, name: &str) {
 /// doesn't fit folds into a "…" menu at the row's end, with words, and
 /// comes back out when the pane is wide enough again; a pane's plot never
 /// gives up room for its tools.
-pub fn pane_toolbar(
+pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl FnMut(&mut Ui)) {
+    pane_toolbar_noted(ui, title, help_text, None, controls);
+}
+
+/// A pane's toolbar with `note`, a fact about what the pane shows (such
+/// as the moment it is from), at its right end before the "?".
+pub fn pane_toolbar_noted(
     ui: &mut Ui,
     title: &str,
     help_text: &[&str],
+    note: Option<&str>,
     mut controls: impl FnMut(&mut Ui),
 ) {
     let full = ui.available_rect_before_wrap();
@@ -1015,6 +1027,30 @@ pub fn pane_toolbar(
         egui::pos2(full.right() - 18.0, full.top() + 4.0),
         Vec2::splat(16.0),
     );
+    let note_w = note.map_or(0.0, |n| {
+        let p = pal(ui);
+        let g = ui.painter().layout_no_wrap(
+            n.to_owned(),
+            egui::FontId::proportional(12.0),
+            p.text_secondary,
+        );
+        let w = g.size().x;
+        ui.painter().galley(
+            egui::pos2(full.right() - 26.0 - w, q.center().y - g.size().y / 2.0),
+            g,
+            p.text_secondary,
+        );
+        note_drawn(
+            ui,
+            title,
+            n,
+            egui::Rect::from_min_size(
+                egui::pos2(full.right() - 26.0 - w, q.top()),
+                Vec2::new(w, q.height()),
+            ),
+        );
+        w + 12.0
+    });
     let mut text = help_text.to_vec();
     text.push(crate::help::TOOLBAR);
     // The key from the row as last drawn.
@@ -1025,7 +1061,7 @@ pub fn pane_toolbar(
     ui.scope_builder(egui::UiBuilder::new().max_rect(q), |ui| {
         help_with_key(ui, title, &text, &key)
     });
-    let room = full.with_max_x(full.right() - 26.0);
+    let room = full.with_max_x(full.right() - 26.0 - note_w);
     // Last frame's controls and their widths decide what folds now.
     let known: Vec<(String, f32)> = ui
         .ctx()
@@ -1499,7 +1535,7 @@ pub enum Icon {
     ArrowRight,
     Stacked,
     Beside,
-    Ruler,
+    Db,
     PalletFork,
     OneClock,
     TwoClocks,

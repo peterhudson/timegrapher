@@ -769,20 +769,42 @@ it describes the same beats as the readings; a longer time gives a
 steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
-and the marks the engine read, all grey and told apart by their lines:
-unlock (solid) and drop (dashed), from which
-amplitude and the unlock-based beat error come, the drop's peak (a thinner
-dashed line), the three sounds where the engine tells them apart (short dotted stubs up
-from the foot, numbered 1 unlock, 2 impulse, 3 drop, the whole name and
-time in each one's hover) and the noise floor. The edges are named at the top.
-The edges and the dotted sounds are two different measurements of
-the same averaged sound, not single beats: the edges are where the
-readings come from, and the sounds are where each of the three sounds
-rises halfway up its own climb, from a separate measurement of the
-beat's shape, so they sit near but not exactly on the edges. A sound line is missing when
-that sound can't be told apart from its neighbour (a soft unlock merged
-into the impulse, say). The Tick tock
-profile card switches the edges and the sounds on and off, sets the scale
+and the marks the engine read, named outside the plot: a line from the
+top is an edge, a dot on the curve is a sound. The edges (Unlock, Drop and
+Peak, where amplitude and the unlock-based beat error come from) are solid
+grey lines coming down from their names in bold above the plot, each
+stopping just short of the trace. The three sounds (Unlock Sound, Impulse
+Sound and Drop Sound, where the engine tells them apart) are white dots on
+the trace where each sound has risen halfway up its own climb, each with a
+dotted leader straight down past the plot to its name in grey italics
+below it. Names never sit inside the plot: where two would come closer
+than 12 points (more than a word space, so two names never read as one
+phrase), the later one moves one row further out and its line runs on to it, and
+where that row is taken too it slides along with a short angled leader.
+A name changes row only once an overlap starts or ends by 2 points, so
+names don't hop as the sound drifts. Hovering a line, a dot or a name
+gives its name and time. The edges and the sounds are two different
+measurements of the same averaged sound, not single beats, so they sit
+near but not exactly on each other. A sound is missing when it can't be
+told apart from its neighbour (a soft unlock merged into the impulse,
+say). Each plot carries its side's facts in its top-left corner, over
+the quiet lead-in before the unlock: Beats, Unlock, Drop, Unlock to Drop
+and Amplitude, a row each, the values with their units. The box is the
+same on both plots, so Tick and Tock compare row against row, and it
+sits under the band and the line, so a spike that runs into it still
+shows. On a plot under 100 points tall it keeps Unlock to Drop and
+Amplitude (fewer if even those don't fit), and hovering it gives all
+five. A plot that would be under 100 points with its names outside
+takes them in: the edges' names sit along its top on the plot's
+background, one row, under the trace (Unlock starts right of its line
+where the facts box has the corner, and a name that would crowd the one
+before, usually Peak beside Drop, is left to its line's hover); the
+sounds keep their dots, and hovering one names it. Stacked, the one
+time axis is under Tock. The moment shown ("At
+10:00") is at the right end of the toolbar. The noise floor is a flat
+dashed line. The Tick tock
+profile card switches the edges and the sounds on and off, switches
+**dB Scale** (lit: decibels below the loudest point; off: linear)
 and lays the tick above the tock (Stacked) or beside it (Beside). Tick and
 tock share one vertical scale, so a quieter side shows smaller, and every
 grid line is drawn alike.
