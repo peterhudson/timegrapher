@@ -520,6 +520,7 @@ pub const GROUP_ROW_H: f32 = 40.0;
 /// adds a line under the row.
 #[derive(Debug, Clone, Copy)]
 pub enum Caption<'a> {
+    None,
     Text(&'a str),
     Alert(Alert, &'a str),
 }
@@ -627,11 +628,17 @@ impl Group<'_> {
                 let out = r.inner;
                 ui.add_space(8.0);
                 ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                    ui.add_space(6.0);
+                    // A name alone sits level with its control.
+                    ui.add_space(if matches!(caption, Caption::None) {
+                        11.0
+                    } else {
+                        6.0
+                    });
                     ui.spacing_mut().item_spacing.y = 1.0;
                     ui.add(egui::Label::new(RichText::new(label).size(13.5).color(p.text)).wrap())
                         .on_hover_text(hint);
                     match caption {
+                        Caption::None => {}
                         Caption::Text(t) => {
                             ui.add(
                                 egui::Label::new(

@@ -1399,9 +1399,12 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     take opened, or a take saved: the latest first, none twice, never
     expiring, and kept across restarts.
   - **Manage Calibres.** The Calibres category of Settings, which
-    Manage Calibres… opens. **New Custom Calibre…** sits at the right of
-    the Calibres heading and adds a calibre the list doesn't have, shown
-    and selected whatever the filters hide. Under the heading, every
+    Manage Calibres… opens. Under the heading, one search field over the
+    table ("Search Makers and Calibres": what you type in the maker or the
+    calibre together, or one of the calibre's other names), the count of
+    calibres shown beside it ("4,537 calibres"), and at the right **New
+    Custom Calibre…**, which adds a calibre the list doesn't have, shown
+    and selected whatever the filters hide. Then every
     calibre in a table on the left and, level with it on the right,
     the one selected in full (see **The details** below). Opened
     from the Calibre menu while a beat rate is known (set on the Calibre
@@ -1410,17 +1413,20 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     ("Showing 28800 bph, the rate found from the beats"), with **Show
     All** beside it; the Beat Rate funnel's Clear Filter clears it too. Opened from the gear,
     or with no rate known, nothing is filtered.
-    - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**
-      and the short list, a narrow column headed by a star with a star on
+    - **Columns.** **Maker**, **Calibre**, **Beat Rate (bph)**, **Lift
+      Angle (°)** and the short list, a narrow column headed by a star with a star on
       each row, filled for a calibre on the short list and an outline for
       one off it. Clicking a heading sorts on it, a second click reverses
-      it; it starts by maker. A value the list doesn't give is "Not Given"
-      and sorts after every value.
+      it; it starts by maker. Rows are 28 points. The units are in the
+      headings, and the numbers are right-aligned under the end of theirs.
+      A value the list doesn't give is a dim "—" (its filter lists it as
+      "Not Given") and sorts after every value.
     - **Custom calibres.** Your own calibres show under the maker
       **Custom**, in the accent colour, always at the top of the table
       whatever the sort, and the Maker funnel filters them as any maker.
-    - **Funnels.** Each heading has a funnel just after its name, as a
-      spreadsheet's column filter does. Its menu sorts on the column (A to
+    - **Filters.** Each heading has a ▾ just after its name that opens
+      its filter, as a spreadsheet's column filter does; while a column's
+      filter is on, its ▾ is a funnel in the accent colour. Its menu sorts on the column (A to
       Z and Z to A; smallest or largest first for numbers; starred first or
       last for the short list), clears that column's filter, and lists the
       column's values with a tickbox each, **(Select All)** at the top and
@@ -1434,29 +1440,33 @@ folder can't be moved while another copy has it open. The Watches view adds watc
       ticks apply on **OK**; **Cancel** leaves the filter as it was, and OK
       needs at least one value ticked. It lists the values the other
       filters let through; the funnels combine, so a row shows only when
-      every column's value is ticked. A funnel in use is tinted in the
-      accent colour.
+      every column's value is ticked, and the search over the table
+      narrows them too.
     - **The details.** The calibre selected, in a card level with the
-      table: its name and what the list gives, then for a custom calibre
-      its name, maker, beat rate and lift angle, then **Wheels**, each
-      wheel's time for one turn:
+      table: its name alone (every fact in the row stays in the row; other
+      names it goes by under it), then for a custom calibre its name,
+      maker, beat rate and lift angle, then the **Wheels** group, a row
+      for each wheel's time for one turn, a caption under the group saying
+      so:
       - The six every lever movement has (balance, escape, fourth, third
         and centre wheels, and the barrel) come first, then any other the
         list names.
       - The hint on each wheel says where its figure comes from.
-      - A wheel nobody has given is blank: type its period and it is kept
-        for that calibre, marked "Custom", with **Clear** to go back.
-      - **+** at the foot of the wheels adds a row to type another wheel's
-        name and period, with **Add** (or Return) to add it once both are
-        filled in, and **Cancel** to forget the row.
-      - Then the list's sources as links, how its figures are known, and
-        its notes.
+      - A wheel nobody has given reads a dim "Not Known": type its period
+        and it is kept for that calibre, its caption "Custom", with
+        **Clear** to go back.
+      - **Add a Wheel…**, the group's last row, opens a row to type
+        another wheel's name and period, with **Add** (or Return) to add
+        it once both are filled in, and **Cancel** to forget the row.
+      - Then the **Sources** group, its title saying how the figures are
+        known ("Sources · Published List"): a row for each source, its
+        name the link (the address only on hover) and under it what the
+        source says, then the list's notes.
       - At the foot, **Share with the Project…** and, for a custom
         calibre, **Delete Calibre**.
     - **A narrow window.** When the table and the details don't both fit,
       the table takes the whole width, and choosing a calibre shows its
-      details in its place with **‹ All Calibres** to go back. **New Custom
-      Calibre…** then sits on a row of its own under the controls.
+      details in its place with **‹ All Calibres** to go back.
   - **The short list.** It starts as the list's common and modern
     calibres. In Manage Calibres clicking the star in a calibre's row puts
     it on the short list or takes it off; filter the table with the funnels
