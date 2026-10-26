@@ -326,6 +326,11 @@ pub struct SeriesCheck {
     lead: Lead,
     /// One plain sentence of what was measured.
     pub headline: String,
+    /// The headline's lead finding in a few words, one line, for a plot's
+    /// title: "repeats every 46 s, 4.0 s/d peak to peak", "no cycle,
+    /// level change or trend". No series name and no full stop; the
+    /// caller puts the series' title before it.
+    pub summary: String,
     /// Length of each reading, seconds; readings used; readings left out
     /// as outliers.
     pub step_s: f64,
@@ -904,6 +909,7 @@ pub fn check_series(
         unit: kind.unit(),
         lead: Lead::TooShort,
         headline: String::new(),
+        summary: String::new(),
         step_s: g.step,
         cycle_step_s: fine.as_ref().map_or(g.step, |f| f.step),
         readings: n,
@@ -932,6 +938,7 @@ pub fn check_series(
             kind.name(),
             g.span()
         );
+        out.summary = format!("{n} readings, too few to search");
         return out;
     }
     let (mean, sd) = mean_sd(y).unwrap();
@@ -1087,6 +1094,7 @@ pub fn check_series(
     out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
     out.lead = lead(&out, cfg);
     out.headline = lead_text(&out, mean);
+    out.summary = lead_summary(&out);
     if let Some(more) = also(&out, cfg) {
         out.headline = format!("{} {more}", out.headline);
     }
@@ -1761,6 +1769,93 @@ fn every_text(sec: f64) -> String {
         format!("{:.0} min", sec / 60.0)
     } else {
         format!("{sec:.0} s")
+    }
+}
+
+/// The lead of [`lead_text`] in a few words: what a plot's title line
+/// says after the series' name.
+fn lead_summary(s: &SeriesCheck) -> String {
+    let k = s.series;
+    let every = every_text;
+    // A line the full headline names elsewhere is a cycle: "no cycle"
+    // only when there is none.
+    let no_cycle = fast_line(s).is_none() && search_also(s).is_none();
+    match s.lead {
+        Lead::TooShort => format!("{} readings, too few to search", s.readings),
+        Lead::Steady if no_cycle => "no cycle, level change or trend".into(),
+        Lead::Steady => "no level change or trend".into(),
+        Lead::Periodic => match (&s.cycle, &s.two_state) {
+            (Some(p), _) => format!(
+                "repeats every {}{}{}, {} peak to peak",
+                every(p.period_s),
+                p.wheel
+                    .as_ref()
+                    .map_or(String::new(), |w| format!(" (the {w})")),
+                match (p.inner_period_s, p.turns) {
+                    (Some(q), Some(n)) => format!(", {n} turns of {q:.0} s"),
+                    _ => String::new(),
+                },
+                k.fmt_size(p.peak_to_peak)
+            ),
+            (None, Some(t)) => format!(
+                "drops to a low level and back{}",
+                t.period_s
+                    .map_or(String::new(), |p| format!(", about every {}", every(p)))
+            ),
+            _ => "repeats on a cycle".into(),
+        },
+        Lead::TwoStates | Lead::Measurement => {
+            let t = s.two_state.as_ref().unwrap();
+            let base = format!(
+                "switches between {} and {}, about every {}",
+                k.fmt(t.low),
+                k.fmt(t.high),
+                every(t.switch_every_s)
+            );
+            if s.lead == Lead::Measurement {
+                // As the headline says why: the side that carries the
+                // change, or the unlock without the drop.
+                let side = match lone_side(t) {
+                    Some(side) => side,
+                    None if t.unlock_jump => return format!("{base}, in the unlock only"),
+                    None if t.tick_change.unwrap_or(0.0).abs()
+                        > t.tock_change.unwrap_or(0.0).abs() =>
+                    {
+                        "Tick"
+                    }
+                    None => "Tock",
+                };
+                format!("{base}, on the {side} side only")
+            } else {
+                base
+            }
+        }
+        Lead::ShiftingMean => {
+            let ch = s.changes.as_ref().unwrap();
+            let n = ch.segments.len() - 1;
+            let (first, last) = (k.fmt(ch.segments[0].mean), k.fmt(ch.segments[n].mean));
+            if n == 1 {
+                format!("shifts level once, {first} to {last}")
+            } else {
+                format!("shifts level {n} times, {first} at the start, {last} at the end")
+            }
+        }
+        Lead::Drifting => {
+            let t = s.trend.as_ref().unwrap();
+            if let Some((_, v)) = t.turn.filter(|_| t.curve_explained > t.explained + 0.05) {
+                return format!(
+                    "changes slowly, {} to {} to {}",
+                    k.fmt(t.start),
+                    k.fmt(v),
+                    k.fmt(t.end)
+                );
+            }
+            format!("slides from {} to {}", k.fmt(t.start), k.fmt(t.end))
+        }
+        Lead::Wandering if no_cycle => {
+            "successive readings correlated; no cycle, level change or trend".into()
+        }
+        Lead::Wandering => "successive readings correlated; no level change or trend".into(),
     }
 }
 
@@ -3288,6 +3383,147 @@ mod tests {
     }
 
     #[test]
+    fn a_summary_names_each_lead_in_a_few_words() {
+        let check = |kind, y: Vec<f64>, step, two: Option<TwoState>| {
+            check_series(
+                kind,
+                grid(y, step),
+                None,
+                None,
+                two,
+                &[],
+                &Config::default(),
+            )
+        };
+        let mut z = Noise(1);
+        let steady = check(
+            SeriesKind::Amplitude,
+            (0..2000).map(|_| 250.0 + 3.0 * z.next()).collect(),
+            2.0,
+            None,
+        );
+        let mut z = Noise(2);
+        let step = check(
+            SeriesKind::Rate,
+            (0..1800)
+                .map(|i| if i < 1000 { 5.0 } else { 9.0 } + 2.0 * z.next())
+                .collect(),
+            2.0,
+            None,
+        );
+        let mut z = Noise(3);
+        let slide = check(
+            SeriesKind::Amplitude,
+            (0..3600)
+                .map(|i| 280.0 - 20.0 * i as f64 / 3600.0 + 2.0 * z.next())
+                .collect(),
+            2.0,
+            None,
+        );
+        let mut z = Noise(4);
+        let mut ar = 0.0;
+        let wander = check(
+            SeriesKind::Rate,
+            (0..3000)
+                .map(|_| {
+                    ar = 0.95 * ar + 0.3 * z.next();
+                    ar + z.next()
+                })
+                .collect(),
+            10.0,
+            None,
+        );
+        let mut z = Noise(5);
+        let tau = std::f64::consts::TAU;
+        let cycle = check(
+            SeriesKind::Rate,
+            (0..720)
+                .map(|i| 3.0 * (tau * (i as f64 + 0.5) * 10.0 / 46.0).sin() + z.next())
+                .collect(),
+            10.0,
+            None,
+        );
+        // Irregular switching between 293° and 312° in 2 s windows.
+        let dwell = [60.0, 90.0, 40.0, 130.0, 70.0, 50.0, 110.0, 80.0];
+        let edges: Vec<f64> = dwell
+            .iter()
+            .cycle()
+            .scan(0.0, |t, d| {
+                *t += d;
+                Some(*t)
+            })
+            .take(40)
+            .collect();
+        let mut z = Noise(6);
+        let y: Vec<f64> = (0..900)
+            .map(|i| {
+                let t = i as f64 * 2.0;
+                let k = edges.iter().filter(|&&e| e <= t).count();
+                (if k % 2 == 0 { 312.0 } else { 293.0 }) + 3.0 * z.next()
+            })
+            .collect();
+        let samples: Vec<crate::twostate::Sample> = y
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| crate::twostate::Sample {
+                start_s: i as f64 * 2.0,
+                end_s: i as f64 * 2.0 + 2.0,
+                value: v,
+                tick: Some(v + 1.0),
+                tock: Some(v - 1.0),
+                beat_error_unlock_ms: Some(0.2),
+                beat_error_drop_ms: Some(0.2),
+                tick_unlock_ms: Some(-7.0 + (v - 300.0) * 0.02),
+                tock_unlock_ms: Some(-7.0 + (v - 300.0) * 0.02),
+            })
+            .collect();
+        let two = crate::twostate::find(&samples, &crate::twostate::Params::default());
+        let levels = check(SeriesKind::Amplitude, y.clone(), 2.0, Some(two));
+        // The same switching carried by Tock alone: the measurement.
+        let mut one_side = samples.clone();
+        for x in &mut one_side {
+            x.tick = Some(302.0);
+            x.tock = Some(2.0 * x.value - 302.0);
+        }
+        let hop = crate::twostate::find(&one_side, &crate::twostate::Params::default());
+        let measured = check(SeriesKind::Amplitude, y, 2.0, Some(hop));
+        let short = check(SeriesKind::BeatError, vec![0.2; 20], 2.0, None);
+        for (s, lead, summary) in [
+            (&steady, Lead::Steady, "no cycle, level change or trend"),
+            (
+                &step,
+                Lead::ShiftingMean,
+                "shifts level once, +4.9 s/d to +9.1 s/d",
+            ),
+            (&slide, Lead::Drifting, "slides from 280° to 260°"),
+            (
+                &wander,
+                Lead::Wandering,
+                "successive readings correlated; no cycle, level change or trend",
+            ),
+            (
+                &cycle,
+                Lead::Periodic,
+                "repeats every 46 s, 5.8 s/d peak to peak",
+            ),
+            (
+                &levels,
+                Lead::TwoStates,
+                "switches between 293° and 312°, about every 78 s",
+            ),
+            (
+                &measured,
+                Lead::Measurement,
+                "switches between 293° and 312°, about every 78 s, on the Tock side only",
+            ),
+            (&short, Lead::TooShort, "20 readings, too few to search"),
+        ] {
+            assert_eq!(s.lead, lead, "{}", s.headline);
+            assert_eq!(s.summary, summary, "{}", s.headline);
+        }
+    }
+
+    #[test]
     fn a_slide_is_drifting() {
         let mut z = Noise(3);
         let y: Vec<f64> = (0..3600)
@@ -3370,6 +3606,10 @@ mod tests {
             s.headline.contains("five turns of a 48 s cycle"),
             "{}",
             s.headline
+        );
+        assert_eq!(
+            s.summary,
+            "repeats every 4 min, 5 turns of 48 s, 9.7 s/d peak to peak"
         );
     }
 
