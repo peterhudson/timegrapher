@@ -26,7 +26,7 @@ const context = vm.createContext({
 });
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0] + "\n" +
-  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "referenceLines", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapSize", "mapChart", "mapPixels", "mapCell"]
+  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "referenceLines", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
     .map(definition).join("\n") + "\nthis.mapPaints = mapPaints;", context);
 
 // Values made in the renderer's context, as plain ones.
@@ -76,7 +76,10 @@ test("the STFT and Wavelet Maps draw each series' map or say why not", () => {
   context.mapPaints.length = 0;
   const drawn = context.steadyPlot({ series: "amplitude" }, "stft", doc);
   assert.ok(drawn.includes('canvas class="map" data-map="0" width="4" height="3"'), drawn);
-  assert.ok(drawn.includes("0.000°") && drawn.includes("4.0° and above"), drawn);
+  // The key: the unit in its title, bare numbers on the scale.
+  assert.ok(drawn.includes("<span>Amplitude Swing (°)</span><span>0.000</span>") && drawn.includes("<span>4.0 and above</span>"), drawn);
+  assert.equal(context.mapKeyTitle({ series: "rate", unit: "ms" }), "Timing Swing (ms)");
+  assert.equal(context.mapKeyTitle({ series: "beat_error", unit: "ms" }), "Beat Error Swing (ms)");
   assert.ok(drawn.includes("fourth wheel"));
   assert.equal(context.mapPaints.length, 1);
   assert.ok(context.steadyPlot({ series: "amplitude" }, "wavelet", doc).includes("needs a longer stretch of unbroken readings"));
