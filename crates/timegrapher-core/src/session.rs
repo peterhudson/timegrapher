@@ -554,7 +554,7 @@ pub fn measure_masked(
         masked_s,
         beats: beats.len(),
         clean_fraction: (clean as f64 / expected.max(1.0)).min(1.0),
-        calibrated: clock.is_some(),
+        calibrated: clock.is_some_and(ClockFit::corrects),
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms),
         beat_error_unlock_ms: timing::median_signed(

@@ -430,7 +430,7 @@ fn read_clock_as(
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let pairs = clock::parse_log(&text, sample_rate, bytes_per_frame)
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    let fit = ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
+    let fit = ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((fit, crate::archive::sha256_hex(text.as_bytes())))
 }
 
@@ -612,7 +612,7 @@ fn read_one_inner(
     };
     let (mut clock, clock_input_sha256) = match (&e.clock, c.m.card_ppm) {
         (Some(p), _) => {
-            let (fit, digest) = match &kept {
+            let (mut fit, digest) = match &kept {
                 Some(k) => read_clock_as(
                     &c.base.join(p),
                     k.header.sample_rate,
@@ -620,6 +620,15 @@ fn read_one_inner(
                 )?,
                 None => read_clock(&c.base.join(p), &files[0])?,
             };
+            // The recording's USB lines, when it has them, correct the
+            // rates; the log then gives its breaks.
+            let usb = match &kept {
+                Some(k) => k.header.usb_clock.map(|u| u.ppm),
+                None => crate::clock_cmd::usb(&files)?.map(|(ppm, _)| ppm),
+            };
+            if let Some(ppm) = usb {
+                fit.rate_from_usb(ppm);
+            }
             (Some(fit), Some(digest))
         }
         (None, Some(ppm)) => (session::fixed_clock(ppm, log.duration_s), None),
