@@ -100,7 +100,8 @@ pub struct Withheld {
     /// `few_entries`: under [`MIN_POINTS`] entries, too few for the
     /// scatter to say how sure the line is. `unsure`: the standard error
     /// is over [`MAX_SD_PPM`], as uncertain as the error a correction
-    /// would take out.
+    /// would take out. `usb_lines`: the recording's USB lines measured the
+    /// card, and correct the rates instead ([`ClockFit::rate_from_usb`]).
     pub reason: &'static str,
 }
 
@@ -109,6 +110,7 @@ impl Withheld {
     pub fn note(&self) -> String {
         let why = match self.reason {
             "few_entries" => format!("too few entries to trust (under {MIN_POINTS})"),
+            "usb_lines" => "the recording's USB lines measure it instead".into(),
             _ => format!("its uncertainty is over {MAX_SD_PPM:.0} ppm"),
         };
         format!(
@@ -188,9 +190,19 @@ impl ClockFit {
     }
 
     /// Whether the fit corrects rates: from a log measured well enough,
-    /// or a correction given.
+    /// the recording's USB lines, or a correction given.
     pub fn corrects(&self) -> bool {
-        self.withheld.is_none()
+        self.withheld.is_none_or(|w| w.reason == "usb_lines")
+    }
+
+    /// Correct rates by the card's error read from the recording's USB
+    /// lines (`ppm`, slow positive), keeping the log only for its breaks;
+    /// what the log measured goes in [`ClockFit::withheld`] with reason
+    /// `usb_lines`. The lines time the card against the host's USB clock
+    /// to about 0.1 ppm in ten minutes, where a log of an entry a minute
+    /// for half an hour measures it to about 13 ppm.
+    pub fn rate_from_usb(&mut self, ppm: f64) {
+        self.hold("usb_lines", ppm);
     }
 
     /// What [`ClockFit::for_rates`] would withhold from this fit, and why;
@@ -229,20 +241,30 @@ impl ClockFit {
     /// Keep the breaks, and map audio time onto true time one for one
     /// between them, through the middle of the fitted line.
     fn withhold(&mut self, reason: &'static str) {
-        self.withheld = Some(Withheld {
+        self.hold(reason, 0.0);
+    }
+
+    /// Keep the breaks, and map audio time onto true time at a card
+    /// `ppm` slow between them, through the middle of the fitted line;
+    /// what the log measured (its first measurement, if held before) goes
+    /// in `withheld` with `reason`.
+    fn hold(&mut self, reason: &'static str, ppm: f64) {
+        let log = self.withheld.unwrap_or(Withheld {
             ppm: self.ppm,
             ppm_sd: self.ppm_sd,
             points: self.points,
             span_s: self.span_s,
             reason,
         });
+        self.withheld = Some(Withheld { reason, ..log });
+        let b = 1.0 + ppm * 1e-6;
         if let (Some(&(x0, _)), Some(&(x1, _))) = (self.knots.first(), self.knots.last()) {
             let m = (x0 + x1) / 2.0;
             let y = self.map_gapless(m);
-            self.knots = vec![(x0, y - (m - x0)), (x1, y + (x1 - m))];
+            self.knots = vec![(x0, y - (m - x0) * b), (x1, y + (x1 - m) * b)];
         }
-        self.ppm = 0.0;
-        self.rate_error_s_per_day = 0.0;
+        self.ppm = ppm;
+        self.rate_error_s_per_day = rate_error_s_per_day(ppm);
         self.ppm_sd = 0.0;
         self.tracks_drift = false;
     }
@@ -510,10 +532,10 @@ impl ClockFit {
             let mut at: Vec<f64> = self.entry_before.clone();
             at.extend(&missed);
             if let Ok(f) = Self::fit_at(&self.entries, &at) {
-                let held = self.withheld.map(|w| w.reason);
+                let held = self.withheld.map(|w| (w.reason, self.ppm));
                 *self = f;
-                if let Some(reason) = held {
-                    self.withhold(reason);
+                if let Some((reason, ppm)) = held {
+                    self.hold(reason, ppm);
                 }
             }
         }
@@ -677,6 +699,29 @@ pub fn of_take(
     let paths: Vec<&std::path::Path> = files.iter().map(|f| f.as_path()).collect();
     breaks::of_files_on_clock(&paths, Some(&mut fit), info.sample_rate);
     Ok(fit)
+}
+
+/// The sound card's error read from the USB lines in the first
+/// `usbclock::MAX_DURATION_S` of the first of `files`, as `analyze` reads
+/// it; `None` when the recording has none. With a clock log, pass its
+/// `ppm` to [`ClockFit::rate_from_usb`].
+pub fn usb_lines(
+    files: &[std::path::PathBuf],
+) -> Result<Option<crate::usbclock::UsbClock>, String> {
+    let Some(first) = files.first() else {
+        return Ok(None);
+    };
+    let named = |e: &dyn std::fmt::Display| format!("{}: {e}", first.display());
+    let info = crate::audio::info(first).map_err(|e| named(&e))?;
+    let keep = (crate::usbclock::MAX_DURATION_S * info.sample_rate as f64) as usize;
+    let mut x: Vec<f32> = Vec::new();
+    crate::audio::stream(first, 1 << 16, |b| {
+        if x.len() < keep {
+            x.extend_from_slice(&b[..b.len().min(keep - x.len())]);
+        }
+    })
+    .map_err(|e| named(&e))?;
+    Ok(crate::usbclock::measure(&x, info.sample_rate))
 }
 
 /// Parse a clock log: one entry per line, CSV or whitespace-separated,
@@ -987,6 +1032,51 @@ unix_s,frames
         assert!(!fit.corrects());
         assert_eq!(fit.ppm, 0.0);
         assert!((fit.map(50.0) - fit.map(40.0) - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn usb_lines_set_the_rate_and_the_log_keeps_its_pause() {
+        // A withheld log (15 noisy entries, a 30 s pause after the 8th):
+        // the USB lines' 19.5 ppm sets the rate, the pause stays.
+        let pairs = noisy_log(15, 10.0, 6.0, 0.027, 7, 30.0, 11);
+        let mut fit = ClockFit::for_rates(&pairs).unwrap();
+        let log = fit.withheld.unwrap();
+        fit.rate_from_usb(19.5);
+        assert!(fit.corrects());
+        assert_eq!(fit.ppm, 19.5);
+        assert_eq!(fit.rate_error_s_per_day, rate_error_s_per_day(19.5));
+        assert_eq!(fit.breaks.len(), 1);
+        let w = fit.withheld.unwrap();
+        assert_eq!(w.reason, "usb_lines");
+        assert_eq!((w.ppm, w.points), (log.ppm, log.points));
+        assert!(
+            w.note()
+                .ends_with("; not applied, as the recording's USB lines measure it instead"),
+            "{}",
+            w.note()
+        );
+        let across = fit.map(120.0) - fit.map(60.0);
+        assert!((across - (90.0 + 60.0 * 19.5e-6)).abs() < 0.1, "{across}");
+        assert!((fit.map(50.0) - fit.map(40.0) - 10.0 * (1.0 + 19.5e-6)).abs() < 1e-9);
+        // A refit for a listed break keeps the USB rate.
+        fit.place_breaks(&[Break {
+            audio_s: 30.0,
+            gap_s: 0.2,
+        }]);
+        assert!(fit.corrects());
+        assert_eq!(fit.ppm, 19.5);
+        assert_eq!(fit.withheld.unwrap().reason, "usb_lines");
+        assert!((fit.map(50.0) - fit.map(40.0) - 10.0 * (1.0 + 19.5e-6)).abs() < 1e-9);
+
+        // A log that would correct on its own gives way too: an hour
+        // measured at 6 ppm, the lines at 19.5.
+        let mut fit = ClockFit::for_rates(&noisy_log(361, 10.0, 6.0, 0.002, 0, 0.0, 9)).unwrap();
+        fit.rate_from_usb(19.5);
+        assert!(fit.corrects());
+        assert_eq!(fit.ppm, 19.5);
+        assert!((fit.withheld.unwrap().ppm - 6.0).abs() < 0.5);
+        let json = serde_json::to_value(&fit).unwrap();
+        assert_eq!(json["withheld"]["reason"], "usb_lines");
     }
 
     #[test]
