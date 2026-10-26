@@ -159,7 +159,7 @@ pub fn run(o: Options) -> Result<(), String> {
         }
         crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {
-        print_text(&rep, clock.is_some());
+        print_text(&rep, clock.is_some_and(|c| c.corrects()));
         Ok(())
     }
 }
@@ -181,7 +181,7 @@ fn resolve_clock(
         let text = fs::read_to_string(path).map_err(|e| named(e.to_string()))?;
         let pairs =
             clock::parse_log(&text, info.sample_rate, info.bytes_per_frame).map_err(named)?;
-        let fit = ClockFit::new(&pairs).map_err(|e| named(e.to_string()))?;
+        let fit = ClockFit::for_rates(&pairs).map_err(|e| named(e.to_string()))?;
         return Ok(Some(AppliedClock {
             fit,
             from: format!("from clock log {}", path.display()),
@@ -204,6 +204,7 @@ fn report_document(
             "rate_error_s_per_day": c.fit.rate_error_s_per_day,
             "from": c.from,
             "tracks_drift": c.fit.tracks_drift,
+            "withheld": c.fit.withheld,
         })
     });
     Ok(doc)
