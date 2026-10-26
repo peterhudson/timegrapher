@@ -13183,7 +13183,9 @@ impl TimegrapherApp {
         } else {
             None
         };
-        if reserve::pane(ui, self.reserve.as_ref(), free) == Some(reserve::Action::Stop) {
+        if reserve::pane(ui, self.reserve.as_ref(), free, self.position_card_title)
+            == Some(reserve::Action::Stop)
+        {
             if let Some(t) = self.reserve.as_mut() {
                 t.stop();
             }
@@ -15249,26 +15251,40 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         let key = egui::Id::new(("tab picked", tile_id));
         let (shown, rect) = ui.ctx().data(|d| {
             (
-                d.get_temp::<TileId>(key),
+                d.get_temp::<(TileId, u8)>(key),
                 d.get_temp::<egui::Rect>(egui::Id::new(("tab rect", active))),
             )
         });
-        if shown == Some(active) {
+        let tries = match shown {
+            Some((t, n)) if t == active => n,
+            _ => 0,
+        };
+        // Done once in view, or after a few frames' moves: never held there
+        // against the row's own arrows.
+        if tries >= TAB_REVEAL_TRIES {
             return;
         }
         // A tab new to the row has no place yet: the next frame. Moved a
         // frame at a time, from where it was last drawn, until it is whole
         // in view.
         let Some(rect) = rect else { return };
-        // Clear of the row's scroll arrows at either end.
-        let row = ui.max_rect().shrink2(Vec2::new(24.0, 0.0));
-        if rect.right() > row.right() + 0.5 {
-            *scroll_offset += rect.right() - row.right();
-        } else if rect.left() < row.left() - 0.5 {
-            *scroll_offset -= row.left() - rect.left();
+        // Clear of the row's scroll arrows: the left one shows only once
+        // the row is scrolled.
+        let row = ui.max_rect();
+        let (left, right) = (
+            row.left() + if *scroll_offset > 0.0 { 24.0 } else { 0.0 },
+            row.right() - 24.0,
+        );
+        let done = if rect.right() > right + 0.5 {
+            *scroll_offset += rect.right() - right;
+            tries + 1
+        } else if rect.left() < left - 0.5 && *scroll_offset > 0.0 {
+            *scroll_offset = (*scroll_offset - (left - rect.left())).max(0.0);
+            tries + 1
         } else {
-            ui.ctx().data_mut(|d| d.insert_temp(key, active));
-        }
+            TAB_REVEAL_TRIES
+        };
+        ui.ctx().data_mut(|d| d.insert_temp(key, (active, done)));
         ui.ctx().request_repaint();
     }
 
@@ -15314,6 +15330,9 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         }
     }
 }
+
+/// Frames a tab just picked is moved toward the tab row's view.
+const TAB_REVEAL_TRIES: u8 = 8;
 
 /// The least a pane is squeezed to, points.
 const PANE_MIN_H: f32 = 120.0;
@@ -18347,6 +18366,17 @@ mod tests {
         });
         assert!(
             painted_text(&out).contains("Runs in Crown Up (CU), set on the Position card"),
+            "{}",
+            painted_text(&out)
+        );
+        // And the steps before a run.
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                reserve::pane(ui, None, None, app.position_card_title);
+            });
+        });
+        assert!(
+            painted_text(&out).contains("in the position on the Position card."),
             "{}",
             painted_text(&out)
         );

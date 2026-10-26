@@ -775,6 +775,70 @@ fn a_short_profile_puts_tick_and_tock_side_by_side() {
     assert!(foot.bottom() <= 600.0, "{foot:?}");
 }
 
+/// At 800 × 600 with every analysis pane open and the first tab on show,
+/// the tab row's ▸ arrow scrolls it: the ◂ arrow comes, and the tab on
+/// show is not pulled back into view against it.
+#[test]
+fn the_tab_rows_arrow_scrolls_it() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    for p in Pane::ALL {
+        if !matches!(p, Pane::PositionsTest | Pane::PowerReserve) {
+            set_pane_visible(&mut app.panes.tiles, p, true);
+        }
+    }
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(800.0, 600.0));
+    let mut time = 0.0;
+    let mut pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+        time += 0.1;
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        let out = ctx.run(input, |ctx| app.panels(ctx));
+        out.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some((
+                    t.galley.text().to_string(),
+                    t.galley.rect.translate(t.pos.to_vec2()).center(),
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut drawn = Vec::new();
+    for _ in 0..6 {
+        drawn = pass(&mut app, Vec::new());
+    }
+    let arrow = drawn
+        .iter()
+        .filter(|t| t.0 == "⏵")
+        .map(|t| t.1)
+        .max_by(|a, b| a.y.total_cmp(&b.y))
+        .unwrap_or_else(|| panic!("a ▸ on the tab row: {drawn:?}"));
+    assert!(!drawn.iter().any(|t| t.0 == "⏴"), "not scrolled yet");
+    let button = |pressed| egui::Event::PointerButton {
+        pos: arrow,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Default::default(),
+    };
+    pass(
+        &mut app,
+        vec![egui::Event::PointerMoved(arrow), button(true)],
+    );
+    pass(&mut app, vec![button(false)]);
+    for _ in 0..20 {
+        drawn = pass(&mut app, Vec::new());
+    }
+    assert!(drawn.iter().any(|t| t.0 == "⏴"), "scrolled: {drawn:?}");
+}
+
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and
 /// share the choice: picking Amplitude on one picks it on the other.
 /// Every other steadiness pane keeps its own switches.
