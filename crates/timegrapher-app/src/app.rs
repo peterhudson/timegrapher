@@ -4840,9 +4840,9 @@ impl TimegrapherApp {
         let test = self.in_test();
         let why_not = if !live {
             Some("Nothing to paint yet. Listen, or open a recording.")
-        } else if test {
+        } else if test && self.guided_running() {
             Some("Not during a Positions Test: the test sets each position.")
-        } else if self.positions_take {
+        } else if test || self.positions_take {
             Some(POSITIONS_TAKE_PAINT)
         } else {
             None
@@ -5460,7 +5460,13 @@ impl TimegrapherApp {
             d = d.set_directory(&start);
         }
         let path = d.pick_file()?;
-        let read = std::fs::read_to_string(&path)
+        self.read_full_wind(&path)
+    }
+
+    /// Read the full-wind test's results saved at `path`; None if they
+    /// can't be read, which says so.
+    fn read_full_wind(&mut self, path: &Path) -> Option<guided::FullWind> {
+        let read = std::fs::read_to_string(path)
             .map_err(|e| e.to_string())
             .and_then(|t| guided::FullWind::from_json(&t));
         match read {
@@ -7779,7 +7785,7 @@ impl TimegrapherApp {
             }
             let tip = format!(
                 "{} ({}, {}) · key {}. {} heard, settled and not masked; the bar is full at \
-                 Measure's {} (Positions Test)",
+                 Each Position's {} (Positions Test)",
                 p.name(),
                 p.code(),
                 p.witschi(),
@@ -7952,14 +7958,29 @@ impl TimegrapherApp {
         };
         let into_watch = self.addable_take().is_some() || self.quick_listen;
         let into_unsorted = can && self.saves_into_unsorted();
+        // A take opened with painting or masks changed: kept in its folder.
+        let changes = self.marks_unsaved();
         let mut picked = None;
-        let (mut new, mut folder, mut unsorted) = (false, false, false);
-        ui.add_enabled_ui(can || self.addable_take().is_some(), |ui| {
+        let (mut new, mut folder, mut unsorted, mut marks) = (false, false, false, false);
+        ui.add_enabled_ui(can || changes || self.addable_take().is_some(), |ui| {
             let button = theme::icon_button(ui, Icon::Save, size, 8, pal.accent, false, false);
             let saved = self.session.saved_to().is_some();
             egui::Popup::menu(&button)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
                 .show(|ui| {
+                    if changes {
+                        if ui
+                            .button("Save Changes")
+                            .on_hover_text(SAVE_MARKS_HINT)
+                            .clicked()
+                        {
+                            marks = true;
+                        }
+                        // Only above an item: the menu never ends on a line.
+                        if into_unsorted || into_watch || can {
+                            ui.separator();
+                        }
+                    }
                     if into_unsorted {
                         if ui
                             .button("Unsorted Takes")
@@ -8016,6 +8037,9 @@ impl TimegrapherApp {
                 )
                 .on_disabled_hover_text("Nothing to save yet, or a save is under way");
         });
+        if marks {
+            self.save_marks();
+        }
         if let Some(id) = picked {
             self.keep_into(&id);
         }
@@ -12165,6 +12189,11 @@ impl TimegrapherApp {
                     .text(RichText::new(format!("Analysing {}", b.label)).small()),
             );
         }
+        // A take opened, its painting or masks changed: Save keeps them.
+        if self.session.recorder.is_none() && self.marks_unsaved() {
+            ui.label(RichText::new("Changes not saved").color(pal.text_secondary))
+                .on_hover_text(SAVE_MARKS_HINT);
+        }
         if let Some(r) = &self.session.recorder {
             let since = self.unsaved_s();
             let (text, color, hint) = if let Some(fault) = self.session.recording_fault() {
@@ -12469,6 +12498,11 @@ impl TimegrapherApp {
     /// watch dial up: just after winding, or as the 24 hour half after the
     /// full-wind test `half`.
     fn start_guided(&mut self, half: Option<guided::FullWind>) {
+        // One test to a take: after one, a new take (asking first about
+        // sound not saved), never the stopped one carried on.
+        if self.guided.is_some() && !self.running() {
+            return self.new_take(NewTake::Positions, false);
+        }
         // A test is never Quick Listen: its sound is saved or asked about,
         // not let go, even when it follows Quick Listen or runs on from it.
         self.quick_listen = false;
@@ -12565,19 +12599,25 @@ impl TimegrapherApp {
         let start_hint = match &self.guided_earlier {
             Some(_) => format!(
                 "Run the six positions again, {settle:.0} s settling and {measure:.0} s measuring \
-                 in each, against the full-wind results loaded, starting dial up. Listens to \
-                 the microphone first if it isn't already."
+                 in each, against the full-wind results loaded, starting in Dial Up whatever \
+                 the position set. Listens to the microphone first if it isn't already."
             ),
             None => format!(
-                "Lead the watch through the six positions, starting dial up: each settles \
-                 {settle:.0} s and is measured for {measure:.0} s, and the table fills in as it \
-                 goes. Listens to the microphone first if it isn't already."
+                "Lead the watch through the six positions, starting in Dial Up whatever the \
+                 position set: each settles {settle:.0} s and is measured for {measure:.0} s, \
+                 and the table fills in as it goes. Listens to the microphone first if it isn't \
+                 already."
             ),
         };
         let label = if self.guided.is_some() && !running {
             "Start a New Test"
         } else {
             "Start Test"
+        };
+        let start_hint = if self.guided.is_some() && !running {
+            format!("{start_hint} A new take: the one with this test is left as it is.")
+        } else {
+            start_hint
         };
         // While it runs, the banner below carries the test's buttons.
         if !running {
@@ -12749,6 +12789,7 @@ impl TimegrapherApp {
         let Some(mut test) = self.guided.take() else {
             return;
         };
+        let mut finished = false;
         match action {
             guided::Action::Next => match test.advance(now) {
                 // Noted in the take like a position picked by hand, so its
@@ -12759,6 +12800,7 @@ impl TimegrapherApp {
                         let clock = self.reading_clock(log.duration_s);
                         test.finish(&log, clock.as_ref(), &self.masked);
                     }
+                    finished = true;
                 }
             },
             guided::Action::Redo => test.redo(now),
@@ -12770,6 +12812,10 @@ impl TimegrapherApp {
         self.guided_unused = test.unused(now);
         self.guided_measured = test.measured(now);
         self.guided = Some(test);
+        // Finished, it stops listening as Stop does, keeping the take.
+        if finished {
+            self.stop_listening();
+        }
     }
 
     /// The banner's Stop at `now`: the positions measured so far stay in
@@ -20013,6 +20059,99 @@ mod tests {
         app
     }
 
+    /// Painting on a take opened lights Save, whose menu offers Save
+    /// Changes first, and the status bar says the changes aren't saved.
+    #[test]
+    fn painting_on_an_opened_take_lights_save() {
+        let base = std::env::temp_dir().join(format!("tg-app-paint-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = opened_recording(&base, "reverso_DU.wav", 30.0);
+        app.brush = Some(Position::CrownLeft);
+        app.paint_position(10.0, 20.0);
+        assert!(app.marks_unsaved());
+        let ctx = themed();
+        let status = ctx.run(screen(), |ctx| {
+            egui::TopBottomPanel::bottom("status").show(ctx, |ui| app.status_bar(ui));
+        });
+        assert!(painted_text(&status).contains("Changes not saved"));
+        let mut time = 0.0;
+        let mut pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+            time += 0.25;
+            let input = egui::RawInput {
+                time: Some(time),
+                events,
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.save_menu(ui, 32.0));
+            });
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some((
+                        t.galley.text().to_string(),
+                        t.galley.rect.translate(t.pos.to_vec2()).center(),
+                    )),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let click = |at: egui::Pos2| {
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            vec![egui::Event::PointerMoved(at), button(true), button(false)]
+        };
+        pass(&mut app, Vec::new());
+        pass(&mut app, click(egui::pos2(8.0 + 16.0, 8.0 + 16.0)));
+        let drawn = pass(&mut app, Vec::new());
+        let at = drawn
+            .iter()
+            .find(|t| t.0 == "Save Changes")
+            .unwrap_or_else(|| panic!("{drawn:?}"))
+            .1;
+        pass(&mut app, click(at));
+        pass(&mut app, Vec::new());
+        assert!(!app.marks_unsaved(), "{:?}", app.message);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// After a Positions Test, Start a New Test starts a new take, asking
+    /// first about sound not saved; it never carries on the stopped one.
+    #[test]
+    fn a_new_test_after_one_is_a_new_take() {
+        let base = std::env::temp_dir().join(format!("tg-app-new-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.reset_session(48000, "test".into());
+        app.session.listen();
+        let info = app.info("", 48000, 16);
+        let mut r = Recorder::start(&base.join("unsaved"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 20],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        app.session.set_state(session::State::Paused {
+            since: Instant::now(),
+        });
+        app.guided = Some(guided::Test::new());
+        app.positions_take = true;
+        assert!(app.can_resume());
+        app.start_guided(None);
+        assert!(!app.running(), "the stopped take isn't carried on");
+        assert!(matches!(
+            app.confirm,
+            Some(Confirm::NewTake(NewTake::Positions))
+        ));
+        assert!(app.guided.is_some(), "nothing let go before the answer");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// Masks on a lone recording are asked about, and saved to a new
     /// session file that makes its folder a take, written as a take
     /// recorded here with the same settings would be; they come back when
@@ -20344,6 +20483,59 @@ mod tests {
             });
         });
         assert_eq!(app.brush, None);
+    }
+
+    /// Load Full-Wind Results… reads the results the test just after
+    /// winding saved, and the next test runs set against them; a file
+    /// that isn't such results says so and loads nothing.
+    #[test]
+    fn full_wind_results_load_and_the_next_test_is_set_against_them() {
+        let base = std::env::temp_dir().join(format!("tg-app-full-wind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: "2026-10-25T09:00:00.000Z".into(),
+            began_unix: 1_792_918_800.0,
+            watch: "Pepsi".into(),
+            calibre: "ETA 2824-2".into(),
+            bph: Some(28_800),
+            lift_angle_deg: Some(52.0),
+            settle_s: Some(10.0),
+            measure_s: Some(60.0),
+            positions: ["DU", "DD", "CD", "CL", "CU", "CR"]
+                .into_iter()
+                .map(|p| guided::KeptRow {
+                    position: p.into(),
+                    rate_s_per_day: Some(4.0),
+                    amplitude_deg: Some(290.0),
+                    beat_error_ms: Some(0.3),
+                })
+                .collect(),
+        };
+        let path = base.join(guided::RESULTS_FILE);
+        std::fs::write(&path, full.to_json()).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let read = app.read_full_wind(&path);
+        assert_eq!(read.as_ref(), Some(&full));
+        // Not results: said, and nothing loaded.
+        let bad = base.join("other.json");
+        std::fs::write(&bad, "{}").unwrap();
+        assert!(app.read_full_wind(&bad).is_none());
+        assert!(app
+            .message
+            .as_ref()
+            .is_some_and(|(m, error)| *error && m.contains("other.json")));
+        // Loaded, the next test runs against them.
+        app.guided_earlier = read;
+        app.reset_session(48000, "test".into());
+        app.session.listen();
+        let _tx = queued_capture(&mut app, &base);
+        app.start_guided(app.guided_earlier.clone());
+        let test = app.guided.as_ref().expect("the test runs");
+        assert_eq!(test.full.as_ref().map(|f| &f.0), Some(&full));
+        app.capture = None;
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A Positions Test's take, run here or opened later, takes no
