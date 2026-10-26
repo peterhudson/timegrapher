@@ -462,11 +462,17 @@ impl LiveAnalyzer {
         self.quiet_passes = 0;
     }
 
-    /// Fix the beat rate, or `None` to guess it. Starts the beat log again.
+    /// Fix the beat rate, or `None` to guess it. Starts the beat log again
+    /// unless the beats are read at that rate already (or it is `None`,
+    /// which keeps the rate found).
     pub fn set_bph(&mut self, bph: Option<u32>) {
         if bph != self.cfg.analysis.bph {
             self.cfg.analysis.bph = bph;
-            self.restart();
+            // The rate the beats are already read at, or Auto, which found
+            // it: the beats so far stand.
+            if bph.is_some_and(|b| Some(b) != self.bph) {
+                self.restart();
+            }
         }
     }
 
@@ -1635,6 +1641,31 @@ mod tests {
             "only the new stretch: {first} then {rate}"
         );
         assert!(a.tick_profiles().iter().any(Option::is_some));
+    }
+
+    /// Setting the rate Auto already found (a calibre picked while
+    /// listening) keeps the beats heard so far, as does going back to
+    /// Auto; another rate starts the beat log again.
+    #[test]
+    fn the_rate_already_found_keeps_the_beats() {
+        let cfg = SynthConfig {
+            duration_s: 20.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        assert_eq!(a.bph(), Some(28_800));
+        let heard = a.beats().len();
+        assert!(heard > 100, "{heard}");
+        a.set_bph(Some(28_800));
+        assert_eq!(a.beats().len(), heard);
+        assert!(a.reading(10.0).rate_s_per_day.is_some());
+        a.set_bph(None);
+        assert_eq!(a.beats().len(), heard);
+        assert_eq!(a.bph(), Some(28_800));
+        a.set_bph(Some(21_600));
+        assert!(a.beats().is_empty());
     }
 
     #[test]

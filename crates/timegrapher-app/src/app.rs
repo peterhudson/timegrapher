@@ -6623,12 +6623,10 @@ impl TimegrapherApp {
     /// were worked out at the old one.
     fn change_bph(&mut self, bph: Option<u32>) {
         let shown = (!self.running()).then(|| self.take_on_show()).flatten();
-        self.bph = bph;
-        if let Some(l) = self.live.as_mut() {
-            l.set_bph(bph);
+        if !self.set_live_bph(bph) || shown.is_some() {
+            self.anchor = None;
+            self.clear_trends();
         }
-        self.anchor = None;
-        self.clear_trends();
         if let Some(take) = shown {
             let masked = self.masked.clone();
             self.carried_positions = Some((self.positions_now(), self.opened_positions.clone()));
@@ -6637,6 +6635,20 @@ impl TimegrapherApp {
             self.reread_with = None;
             self.masked = masked;
         }
+    }
+
+    /// Set the beat rate, and the live analysis's; true when the beats heard
+    /// so far stand, being read at that rate already (such as a calibre's
+    /// 28800 after Auto found 28800, or Auto after a set rate), so the
+    /// strip and trends keep all heard so far.
+    fn set_live_bph(&mut self, bph: Option<u32>) -> bool {
+        self.bph = bph;
+        let Some(l) = self.live.as_mut() else {
+            return false;
+        };
+        let heard = l.bph();
+        l.set_bph(bph);
+        heard.is_some() && (bph.is_none() || bph == heard)
     }
 
     /// Quick Listen's settings: no watch, no calibre, the default lift
@@ -6653,11 +6665,7 @@ impl TimegrapherApp {
             self.set_lift(DEFAULT_LIFT_DEG);
         }
         self.lift_context = (DEFAULT_LIFT_DEG, false);
-        if self.bph.is_some() {
-            self.bph = None;
-            if let Some(l) = self.live.as_mut() {
-                l.set_bph(None);
-            }
+        if self.bph.is_some() && !self.set_live_bph(None) {
             self.anchor = None;
             self.clear_trends();
         }
@@ -6686,11 +6694,7 @@ impl TimegrapherApp {
         }
         self.lift_context = (l, lift.is_some());
         let bph = self.cal.bph(&self.calibre).or(w.bph);
-        if bph != self.bph {
-            self.bph = bph;
-            if let Some(l) = self.live.as_mut() {
-                l.set_bph(bph);
-            }
+        if bph != self.bph && !self.set_live_bph(bph) {
             self.anchor = None;
             self.clear_trends();
         }
@@ -17015,6 +17019,35 @@ mod tests {
         assert!(!app.lift_settable());
         app.set_calibre(String::new());
         assert!(app.lift_settable());
+    }
+
+    /// In Quick Listen, a calibre picked while listening, at the beat rate
+    /// Auto already found, adds to the take: the beats and the strip's
+    /// readings heard so far stay. A calibre at another rate starts the
+    /// beats again.
+    #[test]
+    fn a_calibre_picked_while_listening_keeps_what_was_heard() {
+        let mut app = synthetic(30.0, 0.0);
+        assert_eq!(app.bph, None);
+        let heard = app.live.as_ref().unwrap().beats().len();
+        let trend = app.trend.len();
+        assert!(heard > 100 && trend > 5, "{heard} {trend}");
+        assert_eq!(app.cal.bph("ETA 2824-2"), Some(28_800));
+        app.set_calibre("ETA 2824-2".into());
+        assert_eq!(app.bph, Some(28_800));
+        assert_eq!(app.live.as_ref().unwrap().beats().len(), heard);
+        assert_eq!(app.trend.len(), trend);
+        // Auto again, with no calibre: still all of it.
+        app.set_calibre(String::new());
+        assert_eq!(app.bph, None);
+        assert_eq!(app.live.as_ref().unwrap().beats().len(), heard);
+        assert_eq!(app.trend.len(), trend);
+        let other = ["Seiko 7S26", "Seiko 7S26A", "Miyota 8215", "Seiko NH35"]
+            .into_iter()
+            .find(|c| app.cal.bph(c).is_some_and(|b| b != 28_800))
+            .expect("a calibre at another rate");
+        app.set_calibre(other.into());
+        assert!(app.live.as_ref().unwrap().beats().is_empty());
     }
 
     /// Noise with no regular beat: the strip shows the peaks heard,
