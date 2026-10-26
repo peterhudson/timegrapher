@@ -1412,6 +1412,24 @@ pub struct Manifest {
     /// beats are read from `analysis/` (see [`crate::analysis_take`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<bool>,
+    /// The positions as recorded, where painting with the app's Position
+    /// Brush changed them: one entry per stretch, as the recordings list
+    /// them. The app reads them to bring the recorded positions back;
+    /// readings take the positions from `recording`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recorded: Vec<RecordedPosition>,
+}
+
+/// One stretch in one position as recorded, before any painting.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordedPosition {
+    pub position: String,
+    /// Start, once settled after the change of position, seconds into the
+    /// sound; left out means its start.
+    pub start_s: Option<f64>,
+    /// End, seconds into the sound; left out means its end.
+    pub end_s: Option<f64>,
 }
 
 impl Manifest {

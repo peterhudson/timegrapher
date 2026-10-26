@@ -190,6 +190,16 @@ inside its own stretch. Overlapping pairs are joined; a pair whose end
 is not after its start is ignored. Builds from before `masked` refuse a
 session file that has it, as they refuse any field they don't know.
 
+Where the app's Position Brush painted over the positions recorded, the
+session file also lists what was recorded, so the app can bring it back:
+top-level `[[recorded]]` entries, one per stretch, each with `position`
+and, as a recording's `start_s` and `end_s`, the stretch's start once
+settled and its end, in the sound's own seconds. Readings take the
+positions from the `[[recording]]` entries alone; `timegrapher session`
+reads `[[recorded]]` and ignores it. Builds from before `recorded`
+refuse a session file that has it, as they refuse any field they don't
+know.
+
 One continuous take that moved through several positions is listed once
 per position, each entry naming the same file or folder with `start_s`
 and `end_s` (seconds into the recording; left out means its start or

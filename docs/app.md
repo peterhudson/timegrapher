@@ -917,8 +917,17 @@ one opened:
 - A drag stops at the newest beat. A stretch painted up to the newest
   beat (within a second) leaves the watch in that position from then on;
   otherwise the position after the stretch carries on there.
-- Each new change of position settles as a move does (the pane's
-  **Settle**). A change painted over goes, with its settling.
+- Painting is a correction after the fact, so it never starts a
+  settling: an edge it makes starts at the fade. A change of position
+  recorded (on the Current Position card, or by a Positions Test) that
+  painting covers loses its settling; painting from inside a settling
+  cuts it short there. Painting the position already recorded changes
+  nothing.
+- The positions recorded stay under the painting. A right click on a
+  painted stretch in the track's lane takes that painting off and brings
+  back what was recorded there, its changes and settling with it (the
+  app has no Undo, so this is the way back). Hovering a painted stretch
+  there says so.
 - **Stop Painting** at the end of its menu, or Esc, puts the brush down.
   It and Mask turn each other off. It isn't offered during a Positions
   Test, which sets each position itself.
@@ -928,22 +937,31 @@ one opened:
 - What the brush paints is the take's position record, the one the
   Current Position card writes: the track, the charts' marks, the
   Positions Test table and saved takes all read it. Times are
-  kept to a tenth of a second.
+  kept to a tenth of a second. A take saved with painting showing also
+  lists the positions recorded under it, as `[[recorded]]` entries in
+  its `session.toml`, so Remove Painting works after it is opened again;
+  readings, here and on the command line, take the positions shown.
 - On a recording opened from disk it is saved as masks are: a change
   marks it unsaved, and **Save** writes one entry per stretch in place of
   the entries for what was opened, each keeping everything else the first
   of them said (each later position starting after its settling, with
-  `settle_s = 0`, as a saved take's do). It is refused where those entries list more than one
-  file.
+  `settle_s = 0`, as a saved take's do), and the positions recorded
+  under any painting. It is refused where those entries list more than
+  one file.
 
 **The track** runs along the top of the strip (down its right side when
 the strip runs down):
 
 - Each stretch in one position is teal, named at its start ("Crown Up
   (CU, 3H)"), or by its code where the name doesn't fit, or not at all.
-- It is solid through the settling after each change, then fades over
-  40 s and stays faint, so each change shows; a thin dark line marks
-  each change. The plot behind the beats takes the same at a sixth of
+- It is solid through the settling after each change recorded, then
+  fades over 40 s and stays faint, so each change shows; a thin dark
+  line marks each change. The solid band says **Settling** where it is
+  64 pt wide or more, **STL** from 28 pt, **S** from 12 pt, and nothing
+  narrower, in dark text on the teal; the position's name starts after
+  it. Hovering the band always says "Settling" and how long. Changing
+  **Settle** on the Positions Test pane redraws every band and the
+  table. A change painted with the Position Brush starts at the fade. The plot behind the beats takes the same at a sixth of
   the strength.
 - Masked stretches are grey hatching over it, named "Masked".
 - Each name sits on a small plate of the card's colour, in the text

@@ -168,7 +168,7 @@ const SETTINGS_SIDEBAR_W: f32 = 146.0;
 use crate::session::{self, Action, Session};
 use timegrapher_core::analysis_take;
 use timegrapher_core::recorder::{self, Recorder, SavedCopy, SessionInfo};
-use timegrapher_core::session::{self as core_session, Manifest, RecordingEntry};
+use timegrapher_core::session::{self as core_session, Manifest, RecordedPosition, RecordingEntry};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 
 /// The kinds of take New Take starts for the watch picked.
@@ -1852,10 +1852,13 @@ pub struct TimegrapherApp {
     /// session file gave when it was opened or last saved to, so a change
     /// made with the Position Brush can be asked about before it is thrown
     /// away. None for a microphone session.
-    opened_positions: Option<Positions>,
+    opened_positions: Option<Layers>,
     /// Read again at a new beat rate: the positions as they were, and as
     /// the session file gave them, to put back once it is in.
-    carried_positions: Option<(Positions, Option<Positions>)>,
+    carried_positions: Option<(Layers, Option<Layers>)>,
+    /// The positions as recorded under the painting, from the session file
+    /// of the recording being opened, to load with the positions shown.
+    pending_recorded: Option<Positions>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2337,6 +2340,7 @@ impl TimegrapherApp {
             masking: false,
             opened_positions: None,
             carried_positions: None,
+            pending_recorded: None,
             brush: None,
             confirm: None,
             open_ask: None,
@@ -2900,7 +2904,7 @@ impl TimegrapherApp {
             && self
                 .opened_positions
                 .as_ref()
-                .is_some_and(|p| *p != (self.session.stretches(), self.session.settles()))
+                .is_some_and(|p| *p != self.positions_now())
     }
 
     /// The positions of the recording opened from disk as its session
@@ -2908,24 +2912,41 @@ impl TimegrapherApp {
     /// end of its settling to the next change, in seconds into the
     /// recording; one with no times while the watch stayed put.
     fn opened_entries(&self) -> Entries {
-        let spans = self.session.position_spans(self.position);
-        let one = spans.len() == 1;
-        let settles = self.session.settles();
-        spans
-            .iter()
-            .enumerate()
-            .map(|(i, &(a, b, p))| {
-                let a = if i == 0 { 0.0 } else { a };
-                let start = settles
-                    .iter()
-                    .find(|s| (s.0 - a).abs() < 1e-6)
-                    .map_or(a, |s| s.1.min(b));
-                let end = b.is_finite().then_some(b);
-                (
-                    (!one).then_some(start),
-                    end.filter(|_| !one),
-                    p.code().to_string(),
-                )
+        entries_of(
+            &self.session.position_spans(self.position),
+            &self.session.settles(),
+        )
+    }
+
+    /// The positions shown and their settling, and those recorded under
+    /// any painting, as the session has them now.
+    fn positions_now(&self) -> Layers {
+        (
+            (self.session.stretches(), self.session.settles()),
+            self.session.recorded(),
+        )
+    }
+
+    /// The positions as recorded under the painting of the recording
+    /// opened from disk, as [`Self::opened_entries`] lists those shown;
+    /// empty while nothing painted shows.
+    fn opened_recorded(&self) -> Vec<RecordedPosition> {
+        let Some((stretches, settles)) = self.session.recorded() else {
+            return Vec::new();
+        };
+        let spans: Vec<(f64, f64, Position)> = (0..stretches.len())
+            .map(|i| {
+                let (a, p) = stretches[i];
+                let b = stretches.get(i + 1).map_or(f64::INFINITY, |s| s.0);
+                (if i == 0 { f64::NEG_INFINITY } else { a }, b, p)
+            })
+            .collect();
+        entries_of(&spans, &settles)
+            .into_iter()
+            .map(|(start_s, end_s, position)| RecordedPosition {
+                position,
+                start_s,
+                end_s,
             })
             .collect()
     }
@@ -2947,14 +2968,16 @@ impl TimegrapherApp {
             _ => "the masked stretches",
         };
         let saved = match read_manifest(&path) {
-            Ok(Some(_)) => save_marks_to_take(&path, &masked, positions.as_ref()),
+            Ok(Some(_)) => {
+                save_marks_to_take(&path, &masked, positions.as_ref(), &self.opened_recorded())
+            }
             Ok(None) => self.new_take_file(&path, &masked),
             Err(e) => Err(e),
         };
         match saved {
             Ok(file) => {
                 self.opened_masks = Some(self.masked.clone());
-                self.opened_positions = Some((self.session.stretches(), self.session.settles()));
+                self.opened_positions = Some(self.positions_now());
                 self.info_msg(format!("Saved {what} to {}.", file.display()));
             }
             Err(e) => self.error(format!("Couldn't save {what}: {e}")),
@@ -3015,6 +3038,7 @@ impl TimegrapherApp {
                 ..Default::default()
             })
             .collect();
+        m.recorded = self.opened_recorded();
         let text = toml::to_string_pretty(&m).map_err(|e| e.to_string())?;
         write_replacing(&target, &text)?;
         Ok(target)
@@ -3525,7 +3549,20 @@ impl TimegrapherApp {
                 })
             })
             .collect();
-        if !test.is_empty() {
+        if test.is_empty() {
+            // What was recorded under any painting, in the sound's time.
+            m.recorded = self
+                .session
+                .recorded_ranges()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(start_s, end_s, position)| RecordedPosition {
+                    position,
+                    start_s,
+                    end_s,
+                })
+                .collect();
+        } else {
             m.recordings = test;
         }
         m
@@ -3582,27 +3619,17 @@ impl TimegrapherApp {
         let masked: Vec<[f64; 2]> = entries.iter().flat_map(|e| e.masked.clone()).collect();
         self.masked = timegrapher_core::session::masked_spans(&masked);
         self.opened_masks = Some(self.masked.clone());
-        let mut listed: Vec<(f64, Option<f64>, Position)> = entries
-            .iter()
-            .filter_map(|e| {
-                let p = Position::from_name(e.position.as_deref()?)?;
-                Some((e.start_s.unwrap_or(0.0), e.end_s, p))
-            })
-            .collect();
-        listed.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let mut out = Vec::new();
-        let mut settles = Vec::new();
-        for (i, &(start, _, p)) in listed.iter().enumerate() {
-            // The position began where the one before it ended.
-            let began = match i.checked_sub(1).and_then(|j| listed[j].1) {
-                Some(end) if end < start => {
-                    settles.push((end, start));
-                    end
-                }
-                _ => start,
-            };
-            out.push((began, p));
-        }
+        let (out, settles) = positions_of(entries.iter().filter_map(|e| {
+            let p = Position::from_name(e.position.as_deref()?)?;
+            Some((e.start_s.unwrap_or(0.0), e.end_s, p))
+        }));
+        // What was recorded under any painting, loaded with the positions.
+        self.pending_recorded = (!m.recorded.is_empty()).then(|| {
+            positions_of(m.recorded.iter().filter_map(|r| {
+                let p = Position::from_name(&r.position)?;
+                Some((r.start_s.unwrap_or(0.0), r.end_s, p))
+            }))
+        });
         if let Some(&(_, p)) = out.first() {
             self.position = p;
         }
@@ -3669,6 +3696,7 @@ impl TimegrapherApp {
             }
         }
         self.stop();
+        self.pending_recorded = None;
         self.masked.clear();
         self.masking = false;
         self.brush = None;
@@ -3721,6 +3749,9 @@ impl TimegrapherApp {
                 self.reset_session(c.sample_rate, c.label.clone());
                 self.session.replay();
                 self.session.load(&stretches, &settles);
+                if let Some((s, t)) = self.pending_recorded.take() {
+                    self.session.load_recorded(&s, &t, self.position);
+                }
                 if let (Some(live), Some(breaks)) =
                     (self.live.as_mut(), self.session.replay_breaks())
                 {
@@ -3818,6 +3849,7 @@ impl TimegrapherApp {
         if self.reread_with.is_none() {
             self.carried_positions = None;
         }
+        self.pending_recorded = None;
         // Masks carried with the settings stay; anything else opened
         // starts with what its session file masks.
         let carried_masks = carried.is_some().then(|| std::mem::take(&mut self.masked));
@@ -4309,7 +4341,10 @@ impl TimegrapherApp {
                     // Read again at a new beat rate: the positions as they were.
                     let carried = self.carried_positions.take();
                     let (stretches, settles) = match &carried {
-                        Some((now, _)) => now.clone(),
+                        Some((now, _)) => {
+                            self.pending_recorded = now.1.clone();
+                            now.0.clone()
+                        }
                         None => (stretches, settles),
                     };
                     self.show_log(log, label, stretches, settles);
@@ -4387,7 +4422,10 @@ impl TimegrapherApp {
         if let Some(&(_, p)) = self.session.stretches().last() {
             self.position = p;
         }
-        self.opened_positions = Some((self.session.stretches(), self.session.settles()));
+        if let Some((s, t)) = self.pending_recorded.take() {
+            self.session.load_recorded(&s, &t, self.position);
+        }
+        self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
         self.live = Some(live);
         self.steady = None;
@@ -4649,6 +4687,15 @@ impl TimegrapherApp {
         }
         let now = self.session.paint(a, b, pos, self.position, latest);
         self.positions_moved(now);
+    }
+
+    /// Take the painting off the painted stretch over `t`: the positions
+    /// recorded there come back, with their changes and settling.
+    fn remove_painting(&mut self, t: f64) {
+        let latest = self.latest_s().max(0.0);
+        if let Some(now) = self.session.remove_painting(t, self.position, latest) {
+            self.positions_moved(now);
+        }
     }
 
     /// Move the change of position at `was` to `now`.
@@ -6051,10 +6098,7 @@ impl TimegrapherApp {
         self.clear_trends();
         if let Some(take) = shown {
             let masked = self.masked.clone();
-            self.carried_positions = Some((
-                (self.session.stretches(), self.session.settles()),
-                self.opened_positions.clone(),
-            ));
+            self.carried_positions = Some((self.positions_now(), self.opened_positions.clone()));
             self.reread_with = Some(self.watch_setup());
             self.analyse_whole(&take, None);
             self.reread_with = None;
@@ -11802,7 +11846,8 @@ impl TimegrapherApp {
                         fields::presets(ui, "settle-presets", &mut v, &SETTLES, fields::duration);
                     if a || b {
                         self.guided_settle_s = v;
-                        self.session.set_settle_s(v);
+                        // Every settle band redraws, and the table with it.
+                        self.session.resettle(v);
                     }
                 });
             },
@@ -12787,6 +12832,12 @@ impl TimegrapherApp {
             .into_iter()
             .map(|(a, b, p)| (a.max(0.0), b, p.label(), p.code()))
             .collect();
+        let painted: Vec<(f64, f64)> = self
+            .session
+            .painted_spans(self.position)
+            .into_iter()
+            .map(|(a, b, _)| (a, b))
+            .collect();
         let mut settles = self.strip_settles();
         if guessing {
             // Drawn faintly, as the beats the readings leave out are.
@@ -12809,6 +12860,7 @@ impl TimegrapherApp {
             masking: self.masking,
             track: &track,
             brush: self.brush.map(Position::code),
+            painted: &painted,
         };
         let Some(live) = &self.live else { return };
         // The possible beats numbered at the strip's beat period from the
@@ -13199,6 +13251,9 @@ impl TimegrapherApp {
         }
         if let Some(t) = input.unmask_at {
             self.unmask_at(t);
+        }
+        if let Some(t) = input.unpaint_at {
+            self.remove_painting(t);
         }
         if let Some((was, now)) = input.reshape {
             self.reshape_mask(was, now);
@@ -14559,6 +14614,7 @@ fn save_marks_to_take(
     path: &Path,
     masked: &[[f64; 2]],
     positions: Option<&Entries>,
+    recorded: &[RecordedPosition],
 ) -> Result<PathBuf, String> {
     let dir = if path.is_dir() {
         path.to_path_buf()
@@ -14713,6 +14769,25 @@ fn save_marks_to_take(
             file.display(),
             capture_label(path)
         ));
+    }
+    // With the positions, what was recorded under any painting of them.
+    if positions.is_some() {
+        if recorded.is_empty() {
+            doc.remove("recorded");
+        } else {
+            let mut out = toml_edit::ArrayOfTables::new();
+            for r in recorded {
+                let mut t = toml_edit::Table::new();
+                t.insert("position", toml_edit::value(r.position.as_str()));
+                for (key, v) in [("start_s", r.start_s), ("end_s", r.end_s)] {
+                    if let Some(v) = v {
+                        t.insert(key, toml_edit::value(v));
+                    }
+                }
+                out.push(t);
+            }
+            doc.insert("recorded", toml_edit::Item::ArrayOfTables(out));
+        }
     }
     write_replacing(&file, &doc.to_string())?;
     Ok(file)
@@ -15253,10 +15328,60 @@ type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Option<f64>);
 /// each position's settled stretches, the masks and the True Clock.
 /// A take's changes of position and the settling after each.
 type Positions = (Vec<(f64, Position)>, Vec<(f64, f64)>);
+/// The positions shown, and those recorded under them where painting
+/// changed them.
+type Layers = (Positions, Option<Positions>);
 
 /// One entry per stretch in one position, as a session file lists it:
 /// start, end and the position's code.
 type Entries = Vec<(Option<f64>, Option<f64>, String)>;
+
+/// The positions a session file lists, each stretch's start, end and
+/// position, as changes oldest first and the settling before each: a gap
+/// between one position's end and the next one's start.
+fn positions_of(listed: impl Iterator<Item = (f64, Option<f64>, Position)>) -> Positions {
+    let mut listed: Vec<(f64, Option<f64>, Position)> = listed.collect();
+    listed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out = Vec::new();
+    let mut settles = Vec::new();
+    for (i, &(start, _, p)) in listed.iter().enumerate() {
+        // The position began where the one before it ended.
+        let began = match i.checked_sub(1).and_then(|j| listed[j].1) {
+            Some(end) if end < start => {
+                settles.push((end, start));
+                end
+            }
+            _ => start,
+        };
+        out.push((began, p));
+    }
+    (out, settles)
+}
+
+/// The session file's entries for `spans` (start, end, position) and the
+/// settling that begins them: one per stretch, from the end of its
+/// settling to the next change; one with no times while the watch stayed
+/// put.
+fn entries_of(spans: &[(f64, f64, Position)], settles: &[(f64, f64)]) -> Entries {
+    let one = spans.len() == 1;
+    spans
+        .iter()
+        .enumerate()
+        .map(|(i, &(a, b, p))| {
+            let a = if i == 0 { 0.0 } else { a };
+            let start = settles
+                .iter()
+                .find(|s| (s.0 - a).abs() < 1e-6)
+                .map_or(a, |s| s.1.min(b));
+            let end = b.is_finite().then_some(b);
+            (
+                (!one).then_some(start),
+                end.filter(|_| !one),
+                p.code().to_string(),
+            )
+        })
+        .collect()
+}
 
 type FreeKey = (
     usize,
@@ -18940,7 +19065,6 @@ mod tests {
         app.confirm = None;
         app.save_marks();
         assert!(!app.marks_unsaved());
-        let settle = app.session.settle_len();
         let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
         let entry = |pos: &str, times: &str, comment: bool| {
             format!(
@@ -18948,29 +19072,34 @@ mod tests {
                 if comment { " # and its note" } else { "" }
             )
         };
+        // Painted, so nothing settles at either edge; what was recorded,
+        // Dial Up throughout, is kept under it.
         let want = format!(
             "# A hand-written note\nwatch = \"Test\"\nlift = 52.0\n\n{}\n{}\n{}\n\
-             [[recording]]\nfile = \"other.wav\"\nposition = \"CD\"\n",
+             [[recording]]\nfile = \"other.wav\"\nposition = \"CD\"\n\n\
+             [[recorded]]\nposition = \"DU\"\n",
             entry("DU", "start_s = 0.0\nend_s = 10.0\nsettle_s = 0.0", true),
-            entry(
-                "CU",
-                &format!(
-                    "start_s = {:?}\nend_s = 40.0\nsettle_s = 0.0",
-                    10.0 + settle
-                ),
-                false
-            ),
-            entry(
-                "DU",
-                &format!("start_s = {:?}\nsettle_s = 0.0", 40.0 + settle),
-                false
-            ),
+            entry("CU", "start_s = 10.0\nend_s = 40.0\nsettle_s = 0.0", false),
+            entry("DU", "start_s = 40.0\nsettle_s = 0.0", false),
         );
         assert_eq!(text, want);
-        let again = reopened(&base.join("take.wav"));
+        let mut again = reopened(&base.join("take.wav"));
         assert_eq!(again.session.stretches(), app.session.stretches());
         assert_eq!(again.session.settles(), app.session.settles());
+        assert_eq!(
+            again.session.painted_spans(again.position),
+            [(10.0, 40.0, Position::CrownUp)]
+        );
         assert!(!again.marks_unsaved());
+        // Remove Painting, opened again: Dial Up throughout, as recorded,
+        // and saved so, with nothing kept under it.
+        again.remove_painting(20.0);
+        assert_eq!(again.session.stretches(), [(0.0, Position::DialUp)]);
+        assert!(again.marks_unsaved());
+        again.save_marks();
+        let text = std::fs::read_to_string(base.join(MANIFEST)).unwrap();
+        assert!(!text.contains("[[recorded]]"), "{text}");
+        assert_eq!(text.matches("take.wav").count(), 1, "{text}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -18985,7 +19114,10 @@ mod tests {
         app.paint_position(20.0, 30.0);
         app.move_position_change(20.0, 15.0);
         assert_eq!(app.session.stretches()[1], (15.0, Position::CrownLeft));
-        assert_eq!(app.session.settles()[0].0, 15.0);
+        assert!(
+            app.session.settles().is_empty(),
+            "painting starts no settling"
+        );
         let latest = app.latest_s();
         app.paint_position(40.0, latest - 0.5);
         assert_eq!(app.position, Position::CrownLeft, "to the end");
@@ -19368,6 +19500,30 @@ mod tests {
         opened.apply_manifest(&m2, &m2.recordings);
         assert_eq!(opened.masked, [(32.0, 38.0)]);
         app.set_masked(Vec::new());
+        // Nothing painted: nothing kept as recorded.
+        assert!(m.recorded.is_empty(), "{text}");
+        // Painted over the last stretch: what was recorded is kept under
+        // it, in the sound's seconds, as the recordings are listed; then
+        // painted back, it goes.
+        app.session
+            .paint(75.0, 85.0, Position::CrownLeft, Position::DialUp, 90.0);
+        let recorded: Vec<_> = app
+            .take_manifest()
+            .recorded
+            .iter()
+            .map(|r| (r.position.clone(), r.start_s, r.end_s))
+            .collect();
+        assert_eq!(
+            recorded,
+            [
+                ("DU".to_string(), Some(0.0), Some(30.0)),
+                ("DD".to_string(), Some(40.0), Some(60.0)),
+                ("DU".to_string(), Some(70.0), None)
+            ]
+        );
+        app.session
+            .paint(75.0, 85.0, Position::DialUp, Position::DialUp, 90.0);
+        assert!(app.take_manifest().recorded.is_empty());
 
         // Opened on a fresh app, the take brings it all back.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);

@@ -78,6 +78,9 @@ pub struct StripInput {
     /// A right click at this time, or a click with the Mask tool on, to
     /// bring back the masked stretch there.
     pub unmask_at: Option<f64>,
+    /// A right click on a painted stretch in the track's lane, at this
+    /// time: take the painting off, back to the positions recorded.
+    pub unpaint_at: Option<f64>,
     /// With the Mask tool on: an edge of a masked stretch dragged, the
     /// stretch as it was and as it is now.
     pub reshape: Option<((f64, f64), (f64, f64))>,
@@ -101,6 +104,7 @@ impl Default for StripInput {
             hover_t: None,
             mask: None,
             unmask_at: None,
+            unpaint_at: None,
             reshape: None,
             paint: None,
             move_change: None,
@@ -281,6 +285,10 @@ pub struct Extras<'a> {
     /// the strip sets that stretch to the position in place of looking
     /// back.
     pub brush: Option<&'a str>,
+    /// Where painting with the Position Brush shows over the positions
+    /// recorded: start and end. A right click on one in the track's lane
+    /// takes the painting off.
+    pub painted: &'a [(f64, f64)],
 }
 
 /// Mark each stretch of the session in one position across the plotting
@@ -576,11 +584,14 @@ pub fn paint_track(
         }
         // Named in each part of it left showing: not the time a test
         // didn't use, nor masked, nor being painted over.
+        // The name starts after the settle band, which has its own word.
+        let band = settle_band(a, b, settles);
         let mut cuts: Vec<(f64, f64)> = plain_parts
             .iter()
             .map(|p| (p.0, p.1))
             .chain(masked.iter().copied())
             .chain(covered)
+            .chain(band)
             .filter(|p| p.1 > a && p.0 < b)
             .collect();
         cuts.sort_by(|x, y| x.0.total_cmp(&y.0));
@@ -634,6 +645,36 @@ pub fn paint_track(
             );
         }
     }
+    // Each settle band's word, in each part of it left showing.
+    for &(a, b, _, _) in track {
+        let Some((s0, s1)) = settle_band(a, b, settles) else {
+            continue;
+        };
+        let mut hidden: Vec<(f64, f64)> = plain_parts
+            .iter()
+            .map(|p| (p.0, p.1))
+            .chain(masked.iter().copied())
+            .chain(covered)
+            .filter(|p| p.1 > s0 && p.0 < s1)
+            .collect();
+        hidden.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut from = s0;
+        let mut parts = Vec::new();
+        for &(h0, h1) in &hidden {
+            if h0 > from {
+                parts.push((from, h0));
+            }
+            from = from.max(h1);
+        }
+        if from < s1 {
+            parts.push((from, s1));
+        }
+        for (p0, p1) in parts {
+            if let Some(seg) = along_rect(lane, p0, p1, &at, horizontal) {
+                settle_word(&painter, seg, horizontal);
+            }
+        }
+    }
     for &(a, b) in masked {
         if let Some(seg) = along_rect(lane, a, b, &at, horizontal) {
             painter.rect_filled(seg, 0.0, vis.extreme_bg_color);
@@ -654,6 +695,53 @@ pub fn paint_track(
 }
 
 use crate::guided::SETTLING;
+
+/// The settle band that begins the stretch from `a` to `b`: from its start
+/// to where its settling ends. None when it began without one.
+pub fn settle_band(a: f64, b: f64, settles: &[(f64, f64, &str)]) -> Option<(f64, f64)> {
+    let settled = settled_from(a, b, settles);
+    (settled > a).then_some((a, settled))
+}
+
+/// The word for a settle band `w` points long: "Settling" from 64 pt,
+/// "STL" from 28, "S" from 12, none below.
+pub fn settle_word_for(w: f32) -> Option<&'static str> {
+    match w {
+        w if w >= 64.0 => Some("Settling"),
+        w if w >= 28.0 => Some("STL"),
+        w if w >= 12.0 => Some("S"),
+        _ => None,
+    }
+}
+
+/// The dark ink of a settle band's word, directly on the solid teal in
+/// both themes.
+const SETTLE_INK: Color32 = Color32::from_rgb(0x06, 0x2b, 0x26);
+
+/// Write the word that fits in the settle band `seg`, in the middle of it,
+/// with no plate. Turned a quarter, read from the top, when the track
+/// runs down.
+fn settle_word(painter: &egui::Painter, seg: Rect, horizontal: bool) {
+    let w = if horizontal {
+        seg.width()
+    } else {
+        seg.height()
+    };
+    let Some(word) = settle_word_for(w) else {
+        return;
+    };
+    let galley = painter.layout_no_wrap(word.to_string(), crate::theme::semibold(11.0), SETTLE_INK);
+    let size = galley.size();
+    if horizontal {
+        painter.galley(seg.center() - size / 2.0, galley, SETTLE_INK);
+    } else {
+        let at = Pos2::new(seg.center().x + size.y / 2.0, seg.center().y - size.x / 2.0);
+        painter.add(
+            egui::epaint::TextShape::new(at, galley, SETTLE_INK)
+                .with_angle(std::f32::consts::FRAC_PI_2),
+        );
+    }
+}
 
 /// How dark the shade over a measured stretch is, and over a settling (and
 /// the lighter of two positions when no test is under way), as fractions
@@ -951,13 +1039,44 @@ pub fn draw_strip(
         }
     }
     input.reset = resp.double_clicked();
+    // Over a settle band on the track: what it is and how long, whatever
+    // word fits it.
+    let band_at = |p: Pos2| -> Option<f64> {
+        if !lane.contains(p) {
+            return None;
+        }
+        let t = g.time_at(p);
+        extras.track.iter().find_map(|&(a, b, _, _)| {
+            let (s0, s1) = settle_band(a, b, extras.settles)?;
+            (t >= s0 && t < s1).then_some(s1 - s0)
+        })
+    };
+    // Over a painted stretch on the track: the painting, and the way back.
+    let painted_at = |p: Pos2| -> Option<f64> {
+        let t = g.time_at(p);
+        (lane.contains(p) && extras.painted.iter().any(|&(a, b)| t >= a && t < b)).then_some(t)
+    };
+    if let Some(len) = resp.hover_pos().and_then(band_at) {
+        resp.clone()
+            .on_hover_text_at_pointer(format!("Settling, {}", crate::fields::duration(len)));
+    } else if resp.hover_pos().and_then(painted_at).is_some() {
+        resp.clone().on_hover_text_at_pointer(
+            "Painted with the Position Brush. Right-click to remove the painting and bring \
+             back the positions recorded.",
+        );
+    }
     input.hover_t = resp
         .hover_pos()
         .filter(|p| r.contains(*p))
         .map(|p| g.time_at(p));
-    // A right click on a masked stretch brings it back, Mask on or off.
+    // A right click on a painted stretch in the track's lane takes the
+    // painting off; anywhere else, on a masked stretch, it brings that back,
+    // Mask on or off.
     if resp.secondary_clicked() {
-        input.unmask_at = at(resp.interact_pointer_pos());
+        match resp.interact_pointer_pos().and_then(painted_at) {
+            Some(t) => input.unpaint_at = Some(t),
+            None => input.unmask_at = at(resp.interact_pointer_pos()),
+        }
     }
     // The Mask tool: where a drag began, kept between frames, and the
     // stretch it covers so far. A drag that begins on the edge of a masked
@@ -1682,6 +1801,17 @@ mod tests {
         brush: Option<&str>,
         frames: &[Vec<egui::Event>],
     ) -> Vec<StripInput> {
+        painted_frames(ctx, brush, &[], frames)
+    }
+
+    /// [`track_frames`] with `painted` stretches over the positions
+    /// recorded.
+    fn painted_frames(
+        ctx: &egui::Context,
+        brush: Option<&str>,
+        painted: &[(f64, f64)],
+        frames: &[Vec<egui::Event>],
+    ) -> Vec<StripInput> {
         let view = StripView {
             half_width_ms: 10.0,
             span_s: 100.0,
@@ -1694,6 +1824,7 @@ mod tests {
         let extras = Extras {
             track: &track,
             brush,
+            painted,
             ..Default::default()
         };
         frames
@@ -1802,6 +1933,28 @@ mod tests {
         assert!(got
             .iter()
             .all(|i| i.paint.is_none() && i.move_change.is_none()));
+        // A right click on a painted stretch in the track's lane takes the
+        // painting off; on the plot, or on the lane where nothing is
+        // painted, it is the masks' right click as before.
+        let right = |p: Pos2| {
+            let b = |pressed| egui::Event::PointerButton {
+                pos: p,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            vec![vec![moved(p)], vec![b(true)], vec![b(false)], vec![]]
+        };
+        let painted = [(50.0, 100.0)];
+        let got = painted_frames(&ctx, None, &painted, &right(at(x50 + 40.0, lane_y)));
+        let t = got.iter().find_map(|i| i.unpaint_at).expect("painting off");
+        assert!(t > 50.0 && t < 100.0, "{t}");
+        assert!(got.iter().all(|i| i.unmask_at.is_none()));
+        for p in [at(x50 + 40.0, 200.0), at(x50 - 100.0, lane_y)] {
+            let got = painted_frames(&ctx, None, &painted, &right(p));
+            assert!(got.iter().all(|i| i.unpaint_at.is_none()), "{p:?}");
+            assert!(got.iter().any(|i| i.unmask_at.is_some()), "{p:?}");
+        }
     }
 
     /// A position's name on the track is never cut through by a masked
@@ -1866,6 +2019,111 @@ mod tests {
             }
         }
         assert!(names >= 1, "the position is named");
+    }
+
+    /// A settle band says what it is in the word that fits it, and the
+    /// position's name starts after it; a mask over part of the band
+    /// leaves the word in the part that shows.
+    #[test]
+    fn a_settle_band_is_named_by_the_word_that_fits() {
+        assert_eq!(settle_word_for(64.0), Some("Settling"));
+        assert_eq!(settle_word_for(63.9), Some("STL"));
+        assert_eq!(settle_word_for(28.0), Some("STL"));
+        assert_eq!(settle_word_for(27.9), Some("S"));
+        assert_eq!(settle_word_for(12.0), Some("S"));
+        assert_eq!(settle_word_for(11.9), None);
+        assert_eq!(
+            settle_band(50.0, 100.0, &[(50.0, 70.0, SETTLING)]),
+            Some((50.0, 70.0))
+        );
+        assert_eq!(settle_band(0.0, 50.0, &[(50.0, 70.0, SETTLING)]), None);
+
+        // The words drawn on a track 100 s across about 410 pt, a change at
+        // 50 s settling for `settle` seconds, with `masked` over it: each
+        // text and its place.
+        let drawn = |settle: f64, masked: &[(f64, f64)]| {
+            let ctx = egui::Context::default();
+            crate::theme::install(&ctx);
+            let view = StripView {
+                half_width_ms: 10.0,
+                span_s: 100.0,
+                horizontal: true,
+            };
+            let track = [
+                (0.0, 50.0, "Dial Up (DU)", "DU"),
+                (50.0, f64::INFINITY, "Dial Down (DD)", "DD"),
+            ];
+            let settles = [(50.0, 50.0 + settle, SETTLING)];
+            let extras = Extras {
+                track: &track,
+                settles: &settles,
+                masked,
+                ..Default::default()
+            };
+            let mut x = None;
+            let out = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 300.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let origin = ui.cursor().min;
+                        draw_strip(
+                            ui,
+                            &[],
+                            0.125,
+                            None,
+                            100.0,
+                            &view,
+                            &extras,
+                            Vec2::new(460.0, 260.0),
+                        );
+                        let left = origin.x + 46.0;
+                        let right = origin.x + 460.0 - 4.0;
+                        x = Some(move |t: f64| {
+                            right - ((100.0 - t) / 100.0) as f32 * (right - left)
+                        });
+                    });
+                },
+            );
+            let x = x.unwrap();
+            let texts: Vec<(String, Rect)> = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => {
+                        Some((t.galley.text().to_string(), c.shape.visual_bounding_rect()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            (texts, x)
+        };
+        let find = |texts: &[(String, Rect)], want: &str| {
+            texts.iter().find(|(t, _)| t == want).map(|(_, r)| *r)
+        };
+        // 20 s is about 82 pt: "Settling", inside the band, the name after it.
+        let (texts, x) = drawn(20.0, &[]);
+        let word = find(&texts, "Settling").expect("Settling");
+        assert!(
+            word.left() >= x(50.0) && word.right() <= x(70.0),
+            "{word:?}"
+        );
+        let name = find(&texts, "Dial Down (DD)").expect("the name");
+        assert!(name.left() >= x(70.0), "{name:?} starts after the band");
+        // 10 s, about 41 pt: "STL". 4 s, about 16 pt: "S". 2 s: no word.
+        assert!(find(&drawn(10.0, &[]).0, "STL").is_some());
+        assert!(find(&drawn(4.0, &[]).0, "S").is_some());
+        let none = drawn(2.0, &[]).0;
+        assert!(["Settling", "STL", "S"]
+            .iter()
+            .all(|w| find(&none, w).is_none()));
+        // Masked from 45 s to 60 s: the 10 s of band after it read "STL".
+        let (texts, x) = drawn(20.0, &[(45.0, 60.0)]);
+        assert!(find(&texts, "Settling").is_none());
+        let stl = find(&texts, "STL").expect("STL after the mask");
+        assert!(stl.left() >= x(60.0) && stl.right() <= x(70.0), "{stl:?}");
     }
 
     /// The track's strength: solid through the settling, then fading over
