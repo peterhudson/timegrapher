@@ -1,0 +1,29 @@
+# The title bar the guide's screenshots show: light, with dark text.
+border.width                              : 1
+padding.width                             : 6
+padding.height                            : 5
+window.client.padding.width               : 0
+window.client.padding.height              : 0
+window.handle.width                       : 0
+window.label.text.justify                 : center
+
+window.active.border.color                : #c8c8c8
+window.inactive.border.color              : #c8c8c8
+window.*.client.color                     : #f4f4f4
+window.*.title.bg                         : flat
+window.active.title.bg.color              : #ececec
+window.inactive.title.bg.color            : #ececec
+window.active.label.bg                    : parentrelative
+window.inactive.label.bg                  : parentrelative
+window.active.button.*.bg                 : parentrelative
+window.inactive.button.*.bg               : parentrelative
+window.active.button.*.image.color        : #4a4a4a
+window.inactive.button.*.image.color      : #4a4a4a
+window.active.button.*.hover.image.color  : #000000
+window.active.button.*.pressed.image.color: #000000
+window.active.label.text.color            : #2a2a2a
+window.inactive.label.text.color          : #2a2a2a
+window.active.title.separator.color       : #d4d4d4
+window.inactive.title.separator.color     : #d4d4d4
+window.active.label.text.font             : shadow=n
+window.inactive.label.text.font           : shadow=n

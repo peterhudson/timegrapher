@@ -1,0 +1,29 @@
+# Chapter 6, The Paper Strip: the strip across, beside the Watch pane, for
+# a watch whose rate is steady over half a minute.
+output = "paper-strip-across.png"
+
+# The readings across the top, Watch down the left, the strip filling the rest.
+layout = ["row", [0.2, "Watch"], [0.8, "Strip"]]
+
+[data]
+corpus = "dd3235_DU_30min"
+file = "take_part01-001.flac"
+start = 300
+seconds = 45
+
+# The take names the calibre "3235", which the catalogue reads as Rolex's.
+[data.session]
+calibre = "Dandong 3235"
+
+[window]
+size = [1600, 940]
+
+[settings]
+overlays = [false, false, false]
+rate_line = true
+rate_guides = true
+
+[settings.strip]
+half_width_ms = 10.0
+span_s = 30.0
+horizontal = true

@@ -1,0 +1,14 @@
+# Chapter 11, Calibres: the Calibre menu open, with a recent pick above the
+# short list.
+output = "calibre-menu.png"
+
+layout = ["row", [0.3, "Watch"], [0.7, "Strip"]]
+
+# Open the Calibre menu.
+actions = [["sleep", 8], ["click", 260, 447], ["sleep", 1]]
+
+[window]
+size = [1500, 900]
+
+[settings]
+recent_calibres = ["Dandong 3235", "ETA 2824-2"]

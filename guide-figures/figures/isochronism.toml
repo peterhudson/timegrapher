@@ -1,0 +1,22 @@
+# Chapter 10, Isochronism: rate against amplitude over a run-down, a watch
+# fully wound and left dial up for nearly 16 hours, with the amplitude
+# chart it comes from. The whole take is fetched (about 3.4 GB, kept in
+# .cache/).
+output = "isochronism.png"
+
+layout = ["column", [0.35, "Amplitude"], [0.65, "Isochronism"]]
+
+[data]
+corpus = "reverso21600_DU_level_overnight"
+folder = "Reverso DU run-down"
+
+[wait]
+at_least = 120
+at_most = 3000
+
+[window]
+size = [1800, 1000]
+
+[settings]
+show_readings = false
+pane_average = [["Amplitude", 60.0]]

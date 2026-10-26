@@ -1,0 +1,18 @@
+# Chapter 7, The Sound of the Beat: the Tick and Tock profiles with their
+# measured edges, under the readings they give.
+output = "tick-tock-profile.png"
+
+layout = "Sound"
+
+[data]
+corpus = "dd3235_DU_30min"
+file = "take_part01-001.flac"
+start = 300
+seconds = 45
+
+# The take names the calibre "3235", which the catalogue reads as Rolex's.
+[data.session]
+calibre = "Dandong 3235"
+
+[window]
+size = [1600, 940]

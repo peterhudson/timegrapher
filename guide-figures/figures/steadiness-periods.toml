@@ -1,0 +1,44 @@
+# Chapter 9, Steadiness. Periods: the tallest peak at 5 s, one turn of the escape wheel,
+# under the strip whose rate line swings every 5 s. Two hours of the take
+# (its sixth and seventh), as the period search needs a long run to stand
+# out.
+output = "steadiness-periods.png"
+
+layout = ["column", [0.45, "Strip"], [0.55, "SteadyPeriods"]]
+
+[data]
+corpus = "pepsi3235_DU_7h"
+files = ["take_part01-006.flac", "take_part01-007.flac"]
+start = 0
+seconds = 7200
+folder = "Pepsi 3235 DU"
+
+[wait]
+at_least = 20
+at_most = 1200
+
+[window]
+size = [1800, 1000]
+
+[settings]
+show_readings = false
+overlays = [false, true, false]
+follow = true
+rate_line = false
+rate_guides = false
+periods_log = true
+fft_timing = true
+steady_shown = [["Periods", [true, false, false]], ["Fft", [true, false, false]]]
+
+[settings.strip]
+half_width_ms = 250.0
+span_s = 7200.0
+horizontal = true
+
+# The take has no session.toml; these are from its README.
+[data.session]
+watch = "Pepsi (Dandong 3235)"
+calibre = "Dandong 3235"
+bph = 28800
+lift = 55
+position = "DU"

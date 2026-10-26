@@ -1,0 +1,27 @@
+# Chapter 3, The Microphone: the status line along the bottom while
+# listening: the input, its format, the signal ratio and the time captured.
+output = "status-line.png"
+
+layout = "Strip"
+
+# Listen to a Watch, on the welcome screen.
+actions = [["sleep", 10], ["stand", "DU"], ["click", 543, 204], ["sleep", 2]]
+
+[data]
+corpus = "dd3235_DU_30min"
+file = "take_part01-001.flac"
+start = 300
+seconds = 80
+folder = "Dandong 3235 DU"
+mode = "microphone"
+
+[wait]
+exact = 40
+
+[window]
+size = [1400, 700]
+
+[settings]
+show_readings = false
+keep_awake = false
+overlays = [false, false, false]

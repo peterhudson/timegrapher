@@ -1,0 +1,33 @@
+# Chapters 2 and 4: a measurement in progress from the microphone, with
+# the readings, the Watch pane, the strip, the Tick and Tock profile and
+# the rate chart.
+output = "main-window.png"
+
+layout = ["row", [0.22, "Watch"], [0.78, ["column",
+    [0.5, "Strip"],
+    [0.5, ["row", [0.5, "Sound"], [0.5, "Rate"]]],
+]]]
+
+# The watch on the stand, Start, then the calibre from the recent picks.
+actions = [["sleep", 10], ["stand", "DU"], ["click", 80, 164], ["sleep", 2], ["click", 261, 631], ["sleep", 1], ["click", 199, 301], ["sleep", 1]]
+
+[data]
+corpus = "dd3235_DU_30min"
+file = "take_part01-001.flac"
+start = 300
+seconds = 80
+folder = "Dandong 3235 DU"
+mode = "microphone"
+
+
+[wait]
+exact = 68
+
+[window]
+size = [1800, 1000]
+
+[settings]
+rate_line = true
+rate_guides = true
+keep_awake = false
+recent_calibres = ["Dandong 3235"]

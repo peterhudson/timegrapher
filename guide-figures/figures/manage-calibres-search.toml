@@ -1,0 +1,10 @@
+# Chapter 11, Calibres: Manage Calibres, searched for 3235.
+output = "manage-calibres-search.png"
+
+layout = ["row", [0.3, "Watch"], [0.7, "Strip"]]
+
+# Manage Calibres..., then type in its search.
+actions = [["sleep", 8], ["click", 205, 477], ["sleep", 2], ["click", 364, 119], ["sleep", 1], ["type", "3235"], ["sleep", 2]]
+
+[window]
+size = [1500, 900]
