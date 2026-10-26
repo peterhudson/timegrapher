@@ -405,9 +405,11 @@ pub fn help_with_key(
         .width(360.0)
         .show(|ui| {
             // A long explanation and its key of icons can be taller than
-            // the window: it scrolls rather than running off the bottom.
+            // the room below the "?": it scrolls from its start rather
+            // than running off the window's edge.
+            let room = ui.ctx().content_rect().bottom() - ui.max_rect().top() - 16.0;
             egui::ScrollArea::vertical()
-                .max_height(ui.ctx().content_rect().height() - 24.0)
+                .max_height(room.max(160.0))
                 .show(ui, |ui| body(ui, true));
         });
     resp

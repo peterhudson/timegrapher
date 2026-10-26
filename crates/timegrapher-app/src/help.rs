@@ -184,38 +184,17 @@ pub const STRIP: &[&str] = &[
 ];
 
 pub const PROFILE: &[&str] = &[
-    "The typical sound of a tick (blue) and of a tock (deep orange) over the averaging \
-     time, up to 60 s: the line is the beats' typical loudness at each moment, and the \
-     shaded band is where the middle 80% of beats fall. Time runs from before the \
-     unlock on the left to after the drop on the right, in milliseconds from the drop (see \
-     Time From). Both sides share one scale, so a quieter side \
-     shows as smaller.",
-    "Each beat has three sounds: the unlock, when the pallet stone lets go of the \
-     escape wheel; the impulse, when the escape wheel pushes the fork; and the drop, \
-     when the next tooth lands on the other stone.",
-    "A line from the top is an edge, a dot on the curve is a sound. The edges, Unlock, \
-     Drop and Peak, are named above the plot: where the beat first rises above the noise, \
-     where the drop starts, and the drop's peak. Amplitude comes from the time between \
-     unlock and drop; the beat error from the unlocks.",
-    "The sounds, Unlock Sound, Impulse Sound and Drop Sound, are dots where each rises \
-     halfway up its own climb, named below the plot. They come from a separate measurement \
-     of the beat's shape, so they sit near but not exactly on the edges. A sound is missing \
-     when it can't be told apart from its neighbour. Hover over a name for its time.",
-    "Each plot's top-left corner gives its side's beats, unlock and drop times, the time \
-     from unlock to drop, and amplitude, at the same place on both. On a short plot it \
-     keeps the last two; hover it for all five. On a short plot, sound names show on hover.",
-    "The flat dashed line is the noise floor: the level before the beat starts.",
-    "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
-     in beat would drop, and each side sits half the beat error from it, so the two \
-     drop lines stand the beat error from the drop apart and the two unlock lines the \
-     beat error from the unlock. Own Drop measures each side from its own drop, so both \
-     drops sit at 0 ms and only the unlock lines show a difference.",
-    "The two beat errors differ when the tick and the tock take different times from \
-     unlock to drop, the same imbalance that gives them different amplitudes. The \
-     unlock figure is the beat error tg reports; the drop \
-     figure adds that imbalance on top.",
-    "dB Scale, lit, shows the level in decibels below the loudest point, which makes the \
-     quiet unlock easier to see; off, the loudness as measured.",
+    "The typical sound of a tick (blue) and a tock (deep orange): the line is the beats' \
+     typical loudness, the band where the middle 80% fall. Time runs in ms from the drop.",
+    "A line from the top is an edge: Unlock, Drop or Peak. Amplitude comes from unlock to \
+     drop, the beat error from the unlocks. A dot on the curve is a sound: Unlock, Impulse \
+     or Drop Sound. Hover a name, line or dot for its time; on a short plot, sound names \
+     show on hover.",
+    "Each plot's top-left gives its side's facts, at the same place on both. Hover it for \
+     all five when it shows fewer. The dashed line is the noise floor.",
+    "dB Scale shows the level in decibels below the loudest point, so the quiet unlock \
+     shows. Time From: Shared puts Tick and Tock on one clock, the drops a beat error \
+     apart; Own Drop puts both drops at 0 ms.",
 ];
 
 pub const CHARTS: &[&str] = &[
