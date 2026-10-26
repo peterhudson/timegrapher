@@ -482,7 +482,7 @@ pub fn take_line(t: &Take) -> String {
         parts.push(crate::strip::fmt_time(d));
     }
     if let Some(a) = &t.at_end {
-        if let Some(r) = a.rate_s_per_day {
+        if let Some(r) = a.rate() {
             parts.push(format!("{r:+.1} s/d"));
         }
         if let Some(x) = a.amplitude_deg {
@@ -1169,6 +1169,7 @@ mod tests {
                 rate_s_per_day: Some(3.5),
                 amplitude_deg: Some(281.0),
                 beat_error_ms: Some(-0.4),
+                rate_corrected_s_per_day: None,
             }),
             power_reserve: None,
         };
@@ -1177,6 +1178,15 @@ mod tests {
         assert!(
             line.contains("+3.5 s/d · 281° · 0.4 ms · Analysis Only · Incomplete"),
             "{line}"
+        );
+        // A take with a clock log shows its rate on that log, as the
+        // Bench reads it.
+        let mut c = t.clone();
+        c.at_end.as_mut().unwrap().rate_corrected_s_per_day = Some(15.0);
+        assert!(
+            take_line(&c).contains("+15.0 s/d · 281°"),
+            "{}",
+            take_line(&c)
         );
         // A Power Reserve take leads with its run, not its length.
         let r = Take {

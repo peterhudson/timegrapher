@@ -3930,7 +3930,12 @@ impl TimegrapherApp {
             .as_ref()
             .and_then(|(_, e)| e.first()?.clock.clone())
         {
-            match take_clock(path, &log, &files, info.sample_rate, info.bytes_per_frame) {
+            let dir = if path.is_dir() {
+                path
+            } else {
+                path.parent().unwrap_or(path)
+            };
+            match timegrapher_core::clock::of_take(dir, &log, &files) {
                 Ok(fit) => self.take_clock = Some(fit),
                 Err(e) => {
                     let n = format!("Its clock log can't be read ({e}), so its rates aren't corrected for the sound card's clock.");
@@ -11537,16 +11542,15 @@ impl TimegrapherApp {
         if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
             // The input listened to; a take opened is named on the left
             // already.
+            // A label cut short shows its whole text when hovered.
             let text = format!("Listening to {}", self.source_label);
             ui.add(
                 egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
-            )
-            .on_hover_text(text);
+            );
         }
         // Errors are a notice at the right instead.
         if let Some((m, false)) = &self.message {
-            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate())
-                .on_hover_text(m);
+            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate());
         }
     }
 
@@ -15376,32 +15380,6 @@ type Layers = (Positions, Option<Positions>);
 /// One entry per stretch in one position, as a session file lists it:
 /// start, end and the position's code.
 type Entries = Vec<(Option<f64>, Option<f64>, String)>;
-
-/// The sound card's clock from the clock log `log` named in the session
-/// file of the take at `path` (a folder, or a file in one), over `files`
-/// at `sample_rate` with `bytes_per_frame`: fitted, and its breaks placed,
-/// as `timegrapher session` does.
-fn take_clock(
-    path: &Path,
-    log: &str,
-    files: &[PathBuf],
-    sample_rate: u32,
-    bytes_per_frame: u32,
-) -> Result<timegrapher_core::clock::ClockFit, String> {
-    let dir = if path.is_dir() {
-        path
-    } else {
-        path.parent().unwrap_or(path)
-    };
-    let file = dir.join(log);
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let pairs = timegrapher_core::clock::parse_log(&text, sample_rate, bytes_per_frame)?;
-    let mut fit = timegrapher_core::clock::ClockFit::new(&pairs)
-        .map_err(|e| format!("{}: {e}", file.display()))?;
-    let paths: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
-    timegrapher_core::breaks::of_files_on_clock(&paths, Some(&mut fit), sample_rate);
-    Ok(fit)
-}
 
 /// The positions a session file lists, each stretch's start, end and
 /// position, as changes oldest first and the settling before each: a gap

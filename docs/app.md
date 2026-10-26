@@ -232,7 +232,8 @@ their place); its photos as a strip of thumbnails
 be read shows its name and "Can't be shown" instead), and its **Takes**,
 newest first: each
 with its name, positions, length, the rate, amplitude and beat error (its
-size) it measured when saved, the space it uses, and **Analysis Only** or
+size) it measured when saved (the rate corrected from the take's clock
+log, as the Bench reads the take), the space it uses, and **Analysis Only** or
 **Incomplete** when it is one. Clicking a take picks it and shows its
 **Open** button under it; double-clicking opens it as
 Open… does. The take on show is marked **On Show** and is not read again

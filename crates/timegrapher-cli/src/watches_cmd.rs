@@ -231,7 +231,7 @@ fn take_line(t: &Take) -> String {
         parts.push(format!("{:.0} s", d));
     }
     if let Some(a) = &t.at_end {
-        if let Some(r) = a.rate_s_per_day {
+        if let Some(r) = a.rate() {
             parts.push(format!("{r:+.1} s/d"));
         }
         if let Some(x) = a.amplitude_deg {

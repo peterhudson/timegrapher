@@ -531,6 +531,26 @@ fn is_audio_name(c: &str) -> bool {
         || c.starts_with("bytes")
 }
 
+/// The clock fit of a take whose session file names the clock log `log`,
+/// a file in the take's folder `dir`, read as `timegrapher session` reads
+/// it: the log fitted, and the breaks the take lists (or its log shows)
+/// placed on the fit. `files` are the take's sound files, in order.
+pub fn of_take(
+    dir: &std::path::Path,
+    log: &str,
+    files: &[std::path::PathBuf],
+) -> Result<ClockFit, String> {
+    let first = files.first().ok_or("no sound files")?;
+    let info = crate::audio::info(first).map_err(|e| format!("{}: {e}", first.display()))?;
+    let file = dir.join(log);
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let pairs = parse_log(&text, info.sample_rate, info.bytes_per_frame)?;
+    let mut fit = ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", file.display()))?;
+    let paths: Vec<&std::path::Path> = files.iter().map(|f| f.as_path()).collect();
+    breaks::of_files_on_clock(&paths, Some(&mut fit), info.sample_rate);
+    Ok(fit)
+}
+
 /// Parse a clock log: one entry per line, CSV or whitespace-separated,
 /// `#` comments, with an optional header naming the columns. Other lines
 /// that aren't all numbers (a note from the logger) are skipped.
