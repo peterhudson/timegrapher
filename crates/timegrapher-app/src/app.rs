@@ -2827,12 +2827,23 @@ impl TimegrapherApp {
         self.session.allows(Action::Resume) && self.live.is_some() && !self.running()
     }
 
+    /// Let go of the input. Done on a thread of its own with a short
+    /// wait: an input whose sound server died can hang as it closes, and
+    /// the window must not hang with it.
+    fn release_capture(&mut self) {
+        if let Some(c) = self.capture.take() {
+            if !drop_within(c, RELEASE_WAIT) {
+                applog::warn("the input didn't close in time; carrying on without it");
+            }
+        }
+    }
+
     /// Stop listening for now, keeping everything.
     fn pause(&mut self) {
         if self.capture.is_none() {
             return;
         }
-        self.capture = None;
+        self.release_capture();
         if self.session.mic() {
             applog::info("microphone stopped and released");
             let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
@@ -4284,7 +4295,7 @@ impl TimegrapherApp {
             let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
             let _ = self.session.stop(now);
         }
-        self.capture = None;
+        self.release_capture();
         self.batch = None;
     }
 
@@ -4309,7 +4320,7 @@ impl TimegrapherApp {
 
     fn recording_failed(&mut self, mut reason: String) {
         // Release the input before attempting any remaining close/flush work.
-        self.capture = None;
+        self.release_capture();
         let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
         if self.session.state() == session::State::Listening {
             if let Ok(Err(e)) = self.session.pause(now) {
@@ -16156,11 +16167,48 @@ fn reading_limits(
     out
 }
 
+/// How long closing an input may take before the app carries on.
+const RELEASE_WAIT: Duration = Duration::from_secs(2);
+
+/// Drop `v` on a thread of its own, waiting up to `wait` for it: true
+/// when it finished in time. Otherwise it is left to finish, or not, on
+/// that thread.
+fn drop_within<T: Send + 'static>(v: T, wait: Duration) -> bool {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("close input".into())
+        .spawn(move || {
+            drop(v);
+            let _ = tx.send(());
+        });
+    spawned.is_ok() && rx.recv_timeout(wait).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     /// The settling the tests of a move set the pane's Settle to.
     const SETTLE_S: f64 = 10.0;
+
+    /// An input that hangs as it closes doesn't hang the app: the wait
+    /// ends and the app carries on, as it does at once when closing is
+    /// quick.
+    #[test]
+    fn a_hung_input_closes_without_hanging_the_app() {
+        struct Hangs(std::sync::mpsc::Receiver<()>);
+        impl Drop for Hangs {
+            fn drop(&mut self) {
+                // As a dead sound server's close: no answer comes.
+                let _ = self.0.recv();
+            }
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let started = Instant::now();
+        assert!(!drop_within(Hangs(rx), Duration::from_millis(100)));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        drop(tx);
+        assert!(drop_within(String::from("quick"), Duration::from_secs(2)));
+    }
 
     /// On macOS the input's automatic gain is the USB microphone's whose
     /// name it carries; the system default takes the only one there is.
