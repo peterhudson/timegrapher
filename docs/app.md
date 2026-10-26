@@ -303,8 +303,10 @@ measured: the watch's details apply to its next take. **Keep in a
 Watch**, for a recording opened from outside the Watches folder (a lone
 file or a take folder), copies it into one of your watches, or into a
 **New Watch…**, kept in the new watch when you press its button, asking
-only what neither its files nor the watch say; the original stays where
-it is.
+only what neither its files, the watch nor the take on show say (its
+position, beat rate and lift angle are the ones on show, written with
+it; when it started is offered to check); the original stays where it
+is. **Keep** stays greyed out until what is asked is given.
 
 **Open Recording…** or **Open Folder…** in the File menu first asks where
 the recording goes (when there are watches and it isn't in them already):
@@ -1157,10 +1159,14 @@ each unbroken stretch read alone; coloured in viridis from dark purple
 for the smallest size to yellow for the size 99.5% of the cells read stay
 under and above; a cell nothing was read for, such as a window with a
 reading missing or a stretch's ends the wavelet can't reach, is left
-empty and shown as "not read" in the key under the map; the wheels' turns are
+empty and shown as "not read" in the key under the map, which is titled
+with what the colour measures and its unit (**Timing Swing (ms)** for the
+rate's map, the timing's swing at each period, not a rate in s/d;
+**Amplitude Swing (°)**; **Beat Error Swing (ms)**); the wheels' turns are
 dotted across it and named at the right; **Log Scale** in the toolbar
 colours the sizes on a log scale over a range of 300 to 1; the pointer
-over a cell shows its time, period and size; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
+over a cell shows its size with its unit, its period and its time, as
+"Timing Swing 1.8 ms · period 12 s · at 3:20"; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
 period is a bold dotted line and half of it, twice a turn as an off-centre wheel
 shows, a fainter dotted line marked ×2; the grid behind is pale. The
 wheels' lines are grey and dotted, and named, so they never
@@ -1541,6 +1547,13 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   session` reports them) will build on it.
 
 ## Sessions
+
+Every question the app asks lays its buttons out as a Mac dialog does:
+the default, filled, at the right, which Return presses; **Cancel** to its
+left, which Escape presses; and a button that throws something away
+(**Don't Save**, **Throw Away**, **Delete**) at the far left. Where
+throwing away is all the question offers, nothing is the default and
+Return does nothing.
 
 At the first launch the app shows **Set Up the Microphone**, and listens
 while it is open. It is three numbered steps: **1, Choose the microphone

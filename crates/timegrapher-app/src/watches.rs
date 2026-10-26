@@ -6,7 +6,7 @@ use crate::app::{fmt_bytes, DEFAULT_LIFT_DEG};
 use crate::calibre_ui::Calibres;
 use crate::fields;
 use crate::photos::{Thumb, Thumbs};
-use crate::theme;
+use crate::theme::{self, DialogButton, Role};
 use eframe::egui::{self, RichText, Sense, Vec2};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -1331,23 +1331,23 @@ pub fn ask_dialog(
             }
         };
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            let b = if red {
-                theme::destructive(ui, go)
-            } else {
-                theme::primary(ui, go)
-            };
-            if ui.add_enabled(ready, b).on_hover_text("Go ahead").clicked() {
-                answer = Some(true);
-            }
-            if ui
-                .add(theme::secondary(ui, "Cancel"))
-                .on_hover_text("Close without changing anything")
-                .clicked()
-            {
-                answer = Some(false);
-            }
-        });
+        // What throws a take away is never the default: it sits at the far
+        // left, and Return does nothing.
+        let role = if red {
+            Role::Destructive
+        } else {
+            Role::Default
+        };
+        if let Some(i) = theme::dialog_buttons(
+            ui,
+            &[
+                DialogButton::new(role, go, "Go ahead")
+                    .enabled_unless(ready, "Choose a watch first"),
+                DialogButton::new(Role::Cancel, "Cancel", "Close without changing anything"),
+            ],
+        ) {
+            answer = Some(i == 0);
+        }
     });
     if modal.should_close() && answer.is_none() {
         answer = Some(false);
@@ -1415,26 +1415,22 @@ pub fn form(ctx: &egui::Context, f: &mut Form, cal: &mut Calibres) -> Option<For
             theme::alert_label(ui, theme::Alert::Bad, e, false);
         }
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(
-                    !f.watch.name.trim().is_empty(),
-                    theme::primary(ui, if f.new { "Add Watch" } else { "Save" }),
+        match theme::dialog_buttons(
+            ui,
+            &[
+                DialogButton::new(
+                    Role::Default,
+                    if f.new { "Add Watch" } else { "Save" },
+                    "Write these details into the watch's folder",
                 )
-                .on_hover_text("Write these details into the watch's folder")
-                .on_disabled_hover_text("A watch needs a name")
-                .clicked()
-            {
-                act = Some(FormAction::Save);
-            }
-            if ui
-                .add(theme::secondary(ui, "Cancel"))
-                .on_hover_text("Close without changing anything")
-                .clicked()
-            {
-                act = Some(FormAction::Cancel);
-            }
-        });
+                .enabled_unless(!f.watch.name.trim().is_empty(), "A watch needs a name"),
+                DialogButton::new(Role::Cancel, "Cancel", "Close without changing anything"),
+            ],
+        ) {
+            Some(0) => act = Some(FormAction::Save),
+            Some(_) => act = Some(FormAction::Cancel),
+            None => {}
+        }
     });
     if modal.should_close() && act.is_none() {
         act = Some(FormAction::Cancel);
