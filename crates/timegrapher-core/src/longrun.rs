@@ -103,13 +103,17 @@ fn percentile(v: &[f64], q: f64) -> Option<f64> {
     Some(w[((w.len() - 1) as f64 * q).round() as usize])
 }
 
-/// Grid step for the timing series: fine enough to see the escape wheel
-/// on runs up to 12 hours, coarser beyond to keep the work bounded.
+/// Grid step for the timing series: fine enough to search the escape
+/// wheel, coarser on longer runs to keep the work bounded. The period
+/// search needs eight steps a turn, so the shortest period searched is
+/// 2 s up to 12 hours and 4 s up to 48 hours: there it reaches a 5 s
+/// escape wheel (20 teeth at 28,800 bph, 15 at 21,600) but not a 3.75 s
+/// one (15 teeth at 28,800 bph).
 pub fn timing_step(span_s: f64) -> f64 {
     if span_s <= 12.0 * 3600.0 {
         0.25
     } else if span_s <= 48.0 * 3600.0 {
-        1.0
+        0.5
     } else {
         4.0
     }
@@ -378,6 +382,47 @@ mod tests {
         }];
         let p = Cuts::new(None, &jump, &[]).holes()[0];
         assert_eq!(p.start_s, p.end_s);
+    }
+
+    #[test]
+    fn a_run_over_12_hours_reaches_a_5_s_escape_wheel() {
+        // 13 h at 21,600 bph with a 0.5 ms timing ripple every 5 s, the
+        // 15-tooth escape wheel's turn: the 0.5 s grid's 4 s floor lets
+        // the search reach it, where a 1 s grid stopped at 8 s.
+        let duration = 13.0 * 3600.0;
+        assert_eq!(timing_step(duration), 0.5);
+        let beats: Vec<Beat> = (0..(duration * 6.0) as i64)
+            .map(|index| {
+                let t = index as f64 / 6.0;
+                Beat {
+                    time: t + 0.0005 * (std::f64::consts::TAU * t / 5.0).sin(),
+                    index,
+                    quality: 1.0,
+                }
+            })
+            .collect();
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: duration,
+            bph: 21600,
+            lift_deg: 52.0,
+            beats,
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: vec![],
+            by_count: vec![],
+            snippets: Vec::new(),
+        };
+        let r = analyse(&log, None, &LongConfig::default());
+        let c = r
+            .timing
+            .components
+            .iter()
+            .find(|c| (c.period_s - 5.0).abs() < 0.01)
+            .unwrap_or_else(|| panic!("{:?}", r.timing.components));
+        assert!((c.peak_to_peak - 0.001).abs() < 0.0002, "{c:?}");
     }
 
     #[test]

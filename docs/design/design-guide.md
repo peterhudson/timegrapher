@@ -1,10 +1,10 @@
 # Timegrapher Design Guide
 
-Version 1, 2026-10-25. This guide is the app's visual and interaction language. Every screen, pane, sheet and PR that touches the interface is built to it and checked against it. Where today's app differs, the app changes, not the guide. A case the guide doesn't cover is raised as an issue, and its answer is added here.
+Version 1, approved 2026-10-25. This guide is the app's visual and interaction language. Every screen, pane, sheet and PR that touches the interface is built to it and checked against it. Where today's app differs, the app changes, not the guide. A case the guide doesn't cover is raised as an issue, and its answer is added here.
 
 Its peer, [App Structure](app-structure.md), says what the app's parts are and how a user moves between them: the Bench and Watches views, the Watch line, and a take's life.
 
-It gathers the rulings made so far (readings cards, the UX survey, Settings style C, the microphone sheet B) into one place. The pictures are of two kinds: specimens drawn for this guide, and screenshots of today's app marked **Don't**. Red numbered marks run from 1 to 44 through the whole guide, in reading order, and each number is cited once in the text beside its picture. A number drawn more than once on a picture (13 on the sheet) points at several examples of the same fault. The Calibres example (section 12) is the one pair: 16 to 21 mark each fault on today's page and its fix on the redrawn page.
+It gathers the rulings made so far (readings cards, the UX survey, Settings style C, the microphone sheet B) into one place. The pictures are of two kinds: specimens drawn for this guide, and screenshots of today's app marked **Don't**. Red numbered marks 1 to 44 run through the whole guide in reading order. Marks added since then (45 onward) sit with their topic, and each number is cited once in the text beside its picture. A number drawn more than once on a picture (13 on the sheet) points at several examples of the same fault. The Calibres example (section 12) is the one pair: 16 to 21 mark each fault on today's page and its fix on the redrawn page.
 
 ---
 
@@ -25,14 +25,12 @@ It gathers the rulings made so far (readings cards, the UX survey, Settings styl
 
 ![The window's areas](window.png)
 
-*The Layout control on the mode row is pending: the Bench layouts are still being designed. Until it is approved, the Bench keeps today's arrangement.*
-
 The window has two rows at the top, then the cards, the panes and the status bar:
 
-- **(1) Menu bar and icon bar, one row.** The pane icons belong to the Bench: in the Watches view they are hidden, and nothing else on the row moves. The pane icons are grouped as: Readings, Paper Strip, Tick Tock Profile, Scope; then "Analysis" (12 panes); then "Tests" (2 panes); then Settings. The View menu lists the panes in the same order.
-- **(2) The mode row.** The **Bench | Watches** switch sits at its left ([App Structure](app-structure.md), section 3). After a separator comes the current view's own toolbar: on the Bench, the Layout control; in the Watches view, New Watch…, search, Sort and List Shows. The row is always there and always one control high, so the cards never move when the view changes.
+- **(1) Menu bar and icon bar, one row.** The pane icons belong to the Bench: in the Watches view they are hidden and their space stays empty. The Settings gear stays, in the same place, in both views. The pane icons are grouped as: Readings, Paper Strip, Tick Tock Profile, Scope; then "Analysis" (12 panes); then "Tests" (2 panes); then Settings. The View menu lists the panes in the same order.
+- **(2) The mode row.** The **Bench | Watches** switch sits at its left ([App Structure](app-structure.md), section 3). After a separator comes the current view's own toolbar: on the Bench, nothing for now; in the Watches view, New Watch…, search, Sort and List Shows. The row is always there and always one control high, so the cards never move when the view changes.
 - **(3) Readings cards.** Six cards of fixed height (134 pt) at every width, left to right: Position, Calibre, Listen, Rate, Amplitude, Beat Error. See section 10.
-- **(4) Panes.** They are arranged by the Bench layout chosen for the job: Live, Positions or Analysis. Each pane has a home in each layout, and showing a pane brings it to the front of its home. **The layouts are pending:** they are still being designed. Until they are approved, today's arrangement stays.
+- **(4) Panes.** The user places them, and the arrangement is remembered between sessions. Showing a pane brings it to the front where it is. (Fixed layouts by task, Live, Positions and Analysis, were drafted and are parked.)
 - **(5) Status bar.** It is one line, always the same height:
   - at the left, the state (Listening, Opened, Not Started) and the engine's latest message;
   - at the right, status items in fixed slots, each opening a pop-over with its details and buttons.
@@ -163,9 +161,8 @@ For colour-blind viewers (protan and deutan), light mode is worst: Rate and Tock
 ### Everything else
 
 1. **Only the six data colours appear on a plot.** Everything else drawn on a plot is a neutral grey, told apart by line style and a word label:
-   - Unlock: a solid line in secondary text grey;
-   - Drop and Peak: a dashed line in secondary grey;
-   - the three sounds: numbered markers in secondary grey;
+   - edges (Unlock, Drop, Peak): solid grey lines coming down from their names above the plot;
+   - the three sounds: white dots on the curve, each with a dotted grey leader down to its name below the plot (section 11);
    - wheel lines: dotted, in tertiary grey;
    - masks: grey hatching; the grid: separator grey.
 2. **Pane icons are neutral grey.** A pane's icon lights in the accent while the pane is shown. The Paper Strip's pink goes, and so does pink.
@@ -218,8 +215,9 @@ Masks are hatched (section 11), so a masked stretch can't be taken for a faint o
   - **Icon action** (momentary, in a toolbar: Centre, Export): flat; it never stays lit.
   - **Toggle** (on or off: Rate Line, Auto-Centre, Fit): **one** icon, lit in its colour while on. Never two icons for one state.
   - **Tool** (changes what dragging does: Mask): looks pressed while held, the pointer changes, and Esc puts it down.
-  - **Clear** (removes all of something: Unmask All): an action, named for what it clears.
+  - **Clear** (removes all of something: Edit > Remove All Masks): a menu item named for what it clears, which asks to confirm. A rare clear-all doesn't get a toolbar button.
   - **Choice** (two to five fixed options, such as Direction: Down or Across): a segmented control. More than five: a pop-up.
+    - The selected part is a lighter, raised grey with white text, as in Bench | Watches. The others are flat, with grey text. A choice never uses the default blue. The one exception is the map picker, whose parts are quantities: its selected icon is also lit in that quantity's colour.
   - **Value with presets** (Width, Length, Lift): one field with its ▾ inside, so you can type or pick.
   - **Setting** (stays on or off, in Settings and sheets): a switch on the same row as its label, with the switch at the right.
   - **Inline action** (adds a row to a list or group): accent words with no frame, as the group's last row: "Add a Wheel…", "Add Field ▾".
@@ -228,6 +226,7 @@ Masks are hatched (section 11), so a masked stretch can't be taken for a faint o
   - Use the standard symbol for a thing.
   - Rabbit, swing and seesaw (Rate, Amplitude, Beat Error) always appear in that order, left to right.
 - **Disabled** controls stay in place, greyed out, with a hint saying why.
+- **Menus** mark the current item with a ✓. The blue highlight is only for the item under the pointer, as on macOS.
 
 ---
 
@@ -245,7 +244,7 @@ Every pane has one toolbar row, in three named zones that keep their place from 
 
 A pane whose findings take more than a line gets an Info panel instead of text above its plots.
 
-- **On the plot:** a one-line headline in the plot's title, such as "Rate · repeats every 46 s, 3.5 s/d peak to peak". It comes from core, so the app, CLI and MCP say the same thing.
+- **On the plot:** a one-line headline in the plot's title, such as "Rate · repeats every 46 s, 4.0 s/d peak to peak". It comes from core, so the app, CLI and MCP say the same thing.
 - **In the panel:** the pane's one-line description, then for each shown series its full findings and its statistics (each starting with what it counts), then the stretch it was tested over. The text is selectable, so it can be copied.
 - **Where it is:** a side panel down the right of the pane, 300 pt wide or a third of the pane, whichever is less. Below about 600 pt of pane width, it opens as a pop-over from its button instead.
 - **How it opens:** only from the "i" in the Actions zone. One setting covers every pane of a family (all nine Steadiness views), so switching views keeps it open or closed.
@@ -305,14 +304,43 @@ No control appears or disappears with the state of the pane. A control that does
 
 - **Axes** carry units on their labels ("15 s/day", "0.20 ms"), in Small text. Time runs left to right in minutes and seconds.
 - **Log-scale period axes step in watchmaker's units,** never in powers of ten: 1 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h, 2 h, 6 h, 12 h. They thin out to the main marks when room is short. Every log axis uses the one source for these marks (core `period_ticks.rs`), so the app, CLI and MCP charts agree.
-- **A key inside the top-right corner** names what each mark is and how many there are, in the series colour: "● 10 s readings (179)".
+- **A key inside the top-right corner** names each series of dots or lines and how many there are, in the series colour: "● 10 s readings (179)". Marks named in words beside them, like the profile's edges and sounds, need no key.
 - **Say the scale when it isn't shared.** When rows or plots are scaled differently (each Scope row to its own loudest beat), say so in the hint and the docs.
 - **Notes on a plot are one line and never cut.** Anything longer goes in the pane's Info panel. A plot's short headline sits in its title line.
 - **Give each plot room.** A plot that needs height (wavelet or STFT maps) is shown one at a time, with a choice in the toolbar.
 - **Rate first.** Where a pane can plot several measures, it opens with Rate on and Amplitude and Beat Error off. Rate is most of what people look at, Amplitude most of the rest; Beat Error is there for completeness. The three toggles stay in their fixed place at the left of the toolbar.
-- **Mark stretches of time in a track above the plot, not with lines on it.** The position track is the model: one row above the plot, one stretch per position, named at its start. Each stretch is solid while the watch settles, then fades over 40 s to a light, steady level that lasts to the end of the stretch. A thin line marks each change, and a new stretch always starts solid, so the eye finds every change without reading. The same fade runs faintly down the plot behind the beats. See "The position track" in section 7 for its colours.
+- **Mark stretches of time in a track above the plot, not with lines on it.** The position track is the model: one row above the plot, one stretch per position, named at its start. Each stretch is solid while the watch settles, then fades over 40 s to a light, steady level that lasts to the end of the stretch. A thin line marks each change, and a recorded change always starts solid, so the eye finds every change without reading. A painted change starts at the fade (see "Settling on the position track" below). The same fade runs faintly down the plot behind the beats. See "The position track" in section 7 for its colours.
 - **Removed time is hatched, not coloured.** A masked stretch is grey diagonal hatching in the track and, fainter, down the plot. Hatching reads as "taken out" in any colour scheme, and it can't be mistaken for a faint stretch of position.
-- **Marks of different kinds look different:** edges are solid lines labelled in words; the three sounds are numbered markers. Colour and a digit alone are not enough.
+- **Marks of different kinds look different, and every one is named in words.** On the Tick Tock Profile:
+  - an **edge** (Unlock, Drop, Peak) is a solid grey line coming down from its name, which sits above the plot;
+  - a **sound** (Unlock Sound, Impulse Sound, Drop Sound) is a white dot on the curve at its half-rise point, with a dotted leader down to its name below the plot;
+  - names never sit inside the plot. They stand a short gap away from it, so each line or leader visibly runs out to its name, and a name that would touch another moves one row further out;
+  - so a line from the top is an edge, and a dot on the curve is a sound.
+
+### Settling on the position track
+
+![The settle label at four zooms, and painting over recorded positions, marks 45 to 52](track-settle.png)
+
+A change of position made on the Position card, or by the guided Positions Test, is a **recorded switch**. The watch settles after it, so the track starts that stretch with a solid band as long as the Settle setting, the same Settle the Positions Test table leaves out. The band is named so that it reads as settling, not as a stronger reading.
+
+- **The word fits the band** (marks 45 to 48). It is in dark text directly on the solid teal, with no plate, at 5.3:1 in dark mode and 6.7:1 in light:
+  - **(45)** "Settling" when the band is 64 pt or wider;
+  - **(46)** "STL" from 28 pt;
+  - **(47)** "S" from 12 pt;
+  - **(48)** no word under 12 pt. The band stays solid, and its hover always says "Settling, 20 s" (the Settle in use).
+- **The position's name starts after the band,** on its plate, so the two never overlap.
+- **The band follows the Settle setting.** Changing Settle on the Positions Test pane redraws every band and the table together.
+
+**Painting** with the Position Brush is a correction after the fact, so it never makes a settle band. The track is two layers: the recorded switches underneath, and the painted stretches on top. What shows at any moment is the painted position where there is one, otherwise the recorded one. Every edge follows one rule: **an edge made by a recorded switch starts solid for its Settle; an edge made by painting starts at the fade.**
+
+- **(49) A painted stretch** inside a recorded one starts at the fade. Where the recorded position resumes after it, that edge was made by painting too, so it also starts at the fade.
+- **(50) Painting across a switch** covers the recorded switch, so its settle band goes. The recorded position resumes at the painted end, from the fade.
+- **(51) Painting that starts inside a settle band** keeps the switch and cuts the band at the paint. The label then fits what is left ("STL" for 10 s). The table leaves out only the band that shows. If the band is too short for the position's name, the name is in the hover.
+- **Painting the same position as the recorded one** changes nothing there. The recorded layer shows through, settle band and all.
+- **Removing a painted stretch** is right-click > Remove Painting on the stretch. The app has no Undo. It shows the recorded layer again, with its switches and settle bands as they were. Painting never deletes a recorded switch, it only covers it, and both layers are saved with the take, so Remove Painting works after the take is closed and reopened.
+- **(52) A mask over a settle band** hatches what it covers. The part of the band after the mask stays solid, with the word that fits it. A mask never moves a switch.
+- **A gap in the recording** (a break or pause) is not a switch. A stretch that carries on after a gap gets no new settle band.
+- **At the start of a take,** the position set before Listen counts as a recorded switch at 0:00, so the take opens with a settle band, as today.
 
 ---
 
@@ -410,7 +438,7 @@ Watches is a view of its own, filling the window ([App Structure](app-structure.
   5. Delete…
 - **(37)** A take's state is a small tag after its date, and each tag is a plain fact. **Showing** marks the take open on the Bench now (today's wording is "On Show"). The Bench holds one take, so at most one take in the library is Showing, and none while a Quick Listen take is live. **Analysis Only** marks a take kept without its sound. **Files Missing** marks a take whose sound or analysis files aren't in its folder, for example after a half-finished copy or sync (today's wording is "Incomplete"). While Keep Analysis Only… runs, its progress and Cancel take that take's tag slot, so the row keeps its height.
 
-Details and Photos are their own groups, as in Settings (section 10). Details lists the watch's added fields, then its Notes. The photo strip behaves as today: clicking opens a photo in the viewer, and right-click offers Open, Show in Finder and Delete…. With no photos, the group says how to add them.
+Details and Photos are their own groups, as in Settings (section 10). They come after Takes, so a watch's history is never below the fold ([App Structure](app-structure.md), section 7, mark 11). Details lists the watch's added fields, then its Notes. The photo strip behaves as today: clicking opens a photo in the viewer, and right-click offers Open, Show in Finder and Delete…. With no photos, the group says how to add them.
 
 ### Making added fields earn their place
 

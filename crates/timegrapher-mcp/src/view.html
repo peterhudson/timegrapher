@@ -1209,10 +1209,20 @@ function mapSlots(m) {
   }
   return [t[0], dt, Math.round((t[t.length - 1] - t[0]) / dt) + 1];
 }
+// A size on the map's scale, bare: "0.12", "3.1".
+function mapNumber(v) {
+  const d = v >= 10 ? 0 : v >= 1 ? 1 : v >= 0.1 ? 2 : 3;
+  return v.toFixed(d);
+}
 // tfmap::size_text: "0.12 ms", "3.1°".
 function mapSize(m, v) {
-  const d = v >= 10 ? 0 : v >= 1 ? 1 : v >= 0.1 ? 2 : 3;
-  return m.unit === "deg" ? `${v.toFixed(d)}°` : `${v.toFixed(d)} ${m.unit}`;
+  return m.unit === "deg" ? `${mapNumber(v)}°` : `${mapNumber(v)} ${m.unit}`;
+}
+// The key's title, the unit in it, as the app's: one colour scale carries
+// one unit, so its numbers go bare. The rate map holds timing swing.
+function mapKeyTitle(m) {
+  const name = { rate: "Timing Swing", amplitude: "Amplitude Swing", beat_error: "Beat Error Swing" }[m.series] || "Swing";
+  return `${name} (${m.unit === "deg" ? "°" : m.unit})`;
 }
 
 function mapChart(m, doc, log) {
@@ -1268,7 +1278,7 @@ function mapChart(m, doc, log) {
     <canvas class="map" data-map="${k}" width="${w}" height="${h}" style="left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px"></canvas>
     <svg class="map-layer" style="left:0;top:0" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${over}</svg>
   </div>
-  <div class="map-key" title="${esc(keyHint)}"><span>${esc(mapSize(m, sc.lo))}</span><span class="ramp" style="background:linear-gradient(to right, ${stops})"></span><span>${esc(mapSize(m, sc.hi))} and above</span><span class="unread"></span><span>not read</span>${sc.log ? "<span>· log scale</span>" : ""}</div>
+  <div class="map-key" title="${esc(keyHint)}"><span>${esc(mapKeyTitle(m))}</span><span>${esc(mapNumber(sc.lo))}</span><span class="ramp" style="background:linear-gradient(to right, ${stops})"></span><span>${esc(mapNumber(sc.hi))} and above</span><span class="unread"></span><span>not read</span>${sc.log ? "<span>· log scale</span>" : ""}</div>
   <p class="sub caption" data-map-read="${k}">Point at the map to read a cell.</p>`;
 }
 

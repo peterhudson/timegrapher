@@ -159,7 +159,7 @@ take with `long`, `series` or `session`.
    clock its period is exact and its phase does not wander when the rate
    does.
 2. **Series.** Timing offset from a steady rate (every clean beat, in
-   0.25 s bins for runs up to 12 h, coarser beyond) and amplitude (2 s
+   0.25 s bins for runs up to 12 h, 0.5 s up to 48 h, 4 s beyond) and amplitude (2 s
    windows). Slow drift is removed with a running median of 30 minutes (a
    quadratic for runs under 20 minutes).
 3. **Score.** The power spectrum is normalized using a local-median noise
@@ -170,10 +170,10 @@ take with `long`, `series` or `session`.
    scores best with one harmonic, a short event (a dip for four minutes
    every hour) with eight; twice the true period loses because half its
    harmonics are noise. Only harmonics inside the searched band count: a
-   strong line just below the shortest period searched (a 5 s escape
-   wheel under the 8 s floor of a run over 12 hours, whose timing is
-   gridded every second) would otherwise lift every period it divides,
-   10, 20 and 40 s. With default settings, a component must pass the
+   strong line just below the shortest period searched (a 3.75 s escape
+   wheel under the 4 s floor of a run over 12 hours, whose timing is
+   gridded every half second) would otherwise lift every period it divides,
+   7.5, 15 and 30 s. With default settings, a component must pass the
    model-based 1% whole-search threshold and explain at least 0.5% of the
    detrended variation. This is not a calibrated 1% false-positive guarantee
    for every noise process, missing-data pattern or repeated search.
@@ -209,12 +209,22 @@ readings (`spectra[].reading_swing`) show less of it: sin *x*/*x* of it,
 show.
 
 The shortest period searched is eight bins of the series (the fold's
-eight phase bins), so 2 s on the 0.25 s grid, 8 s on the 1 s grid of runs
-over 12 hours, and 16 s for amplitude. With fewer bins per turn, a period
-that is a whole number of bins folds onto a few fixed phases, and the slow
-wander the trend leaves behind reads as a cycle. On a 16 h run, the
+eight phase bins), so 2 s on the 0.25 s grid of runs up to 12 hours, 4 s
+on the 0.5 s grid up to 48 hours, 32 s on the 4 s grid beyond, and 16 s
+for amplitude. Up to 48 hours that reaches a 5 s escape wheel (20 teeth at
+28,800 bph, 15 at 21,600), but not a 3.75 s one (15 teeth at 28,800 bph),
+which a run over 12 hours does not search.
+With fewer bins per turn, a period that is a whole number of bins folds
+onto a few fixed phases, and the slow wander the trend leaves behind reads
+as a cycle. On a 16 h run gridded every second, five bins a turn, the
 21,600 bph escape wheel's 5 s read 10.8 ms that way, where the beats show
 0.5 ms.
+
+A wheel faster than the shortest period searched is not just missed: the
+grid can fold it into slower cycles that are not there. On a synthetic
+13 h take, a 3.75 s timing ripple of 1 ms peak to peak read as a 54 s
+cycle of 0.14 ms (the 1 s grid gave 18, 36 and 125 s cycles of about
+0.05 ms).
 
 ## Limits
 
