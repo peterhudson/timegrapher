@@ -324,6 +324,18 @@ impl Calibres {
         self.find(name)?.bph()
     }
 
+    /// The lift angle a take of `w` starts with: its calibre's where the
+    /// table gives one, else the watch's own.
+    pub fn watch_lift(&self, w: &timegrapher_core::library::Watch) -> Option<f64> {
+        self.lift(w.calibre.as_deref().unwrap_or_default())
+            .or(w.lift)
+    }
+
+    /// The beat rate a take of `w` starts with, as [`Self::watch_lift`].
+    pub fn watch_bph(&self, w: &timegrapher_core::library::Watch) -> Option<u32> {
+        self.bph(w.calibre.as_deref().unwrap_or_default()).or(w.bph)
+    }
+
     /// A custom calibre's wheels, for the session file of a take.
     pub fn custom_wheels(&self, name: &str) -> Option<Vec<(String, f64)>> {
         match self.find(name)? {

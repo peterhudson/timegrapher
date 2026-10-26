@@ -187,14 +187,27 @@ take or open a recording, and is not kept for the next start to offer
 back. Starting a take of a watch ends Quick Listen.
 
 **The Watches view** fills the window below the switch, with its
-toolbar on the switch's row. At its top, under
-**Watches**, **Unsorted Takes**, always first, then one row per watch
+toolbar on the switch's row. From 900 points wide, the list of watches
+is a 280-point column at the left and the watch picked sits beside it,
+its side growing to about 1100 points and no wider, so each figure stays
+near its date; only the watch's side scrolls. Narrower, one shows at a
+time: the list, or the watch with **‹ All Watches** (a back chevron and its words) in the toolbar, which
+goes back to the list with that watch still marked and the search kept.
+The list has **Unsorted Takes**, always first, then one row per watch
 (see The Watches folder, below): its first photo (by name; a tile with
 its initial while it has none, or one that can't be read), its name, its
-calibre, how many takes it has and the date of the last, and the space
-they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (a loupe; in the
+calibre (or, with **List Shows** in the toolbar, one of the fields added
+to the watches, such as Customer; the choice is kept between runs, and
+shows the calibre while no watch has that field), how many takes it has and the date of the last, and the space
+they use once it is 1 MB or more. The row picked is marked. While a search is typed, a line under the
+list says how many it shows of how many, "1 of 4 watches", and what it
+found in each row's name and the line under it is in the accent blue.
+Picking a watch while a Quick Listen is listening asks about its unsaved
+sound first, as the Watch line does, then stops the listening and picks
+the watch; while a watch's take is listening, picking another is
+refused until it stops. Its toolbar has a search (a loupe; in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
-and **New Watch…** (a watch and a plus). In a narrow window, Sort folds
+**List Shows**, and **New Watch…** (a watch and a plus). In a narrow window, Sort and List Shows fold
 into the "…" menu first; New Watch… and the search always stay
 in the row. The Watches folder's location, and Show in Finder for it, are
 in Settings. Clicking **Unsorted Takes** goes back to Quick Listen: no
@@ -220,24 +233,35 @@ either the calibre's or yours:
 only those can be removed, with their ×. A watch is kept or deleted:
 there is no hiding one (a watch an older version marked Archived is
 listed like any other, and saving it clears the mark). The first watch makes the Watches folder.
-Clicking a watch shows its details, and **‹ All Watches** goes back to
-the list with that watch still picked and its row marked: Listen and the
-tests still take it until another row is picked. **Listen**, **Positions Test** and
-**Power Reserve Test**, each a new take on the microphone, asked about
-first when there is unsaved sound other than a Quick Listen take's, and
-saved into the watch when it stops (while one runs, **Stop** stands in
-their place); its photos as a strip of thumbnails
-(clicking one opens it in the computer's own viewer; right-clicking offers
-**Open**, **Show in Finder** and **Delete…**, asking first; one that can't
-be read shows its name and "Can't be shown" instead), and its **Takes**,
-newest first: each
-with its name, positions, length, the rate, amplitude and beat error (its
-size) it measured when saved (the rate corrected from the take's clock
-log, as the Bench reads the take), the space it uses, and **Analysis Only** or
-**Incomplete** when it is one. Clicking a take picks it and shows its
-**Open** button under it; double-clicking opens it as
-Open… does. The take on show is marked **On Show** and is not read again
-when opened again. Right-clicking offers **Open**,
+The watch shown has a header: its first photo or initial, its name, and
+under it its calibre, beat rate, lift angle and added fields, with
+**Edit…** and **Add Photos…** at the right. Then, in this order:
+
+- **New Take**: **Listen** (the blue one, the default), **Positions
+  Test** and **Power Reserve Test**, three equal buttons, each with a
+  line under it saying what it does. Each switches to the Bench and
+  starts a new take on the microphone there, asked about first when
+  there is unsaved sound other than a Quick Listen take's, and saved into
+  the watch when it stops. While a take runs on the Bench, the three are
+  greyed out, and the New Take row says "Stop the take on the Bench
+  first." at its right; that row is always there, so nothing moves.
+- **Takes**, with the count, and **Open** and **…** at the right of its
+  title, acting on the take picked; then the takes as a table, newest
+  first: Started, Position (such as DU, or DU, CU, or All 6; Power Reserve for that
+  test), Length, Rate (s/d), Amplitude (°), Beat Error (ms, its size) and
+  Size (MB), as measured when saved (the rate corrected from the take's
+  clock log, as the Bench reads the take), with **Analysis Only**, **Incomplete**
+  or **On Show** after the date when it is one. Nothing is inserted
+  between rows. Clicking a row picks it; double-clicking opens it as
+  Open does, and the take on show is not read again. Open is greyed out
+  while a take runs on the Bench.
+- **Details**: the fields added to the watch and its notes.
+- **Photos**: a strip of thumbnails (clicking one opens it in the
+  computer's own viewer; right-clicking offers **Open**, **Show in
+  Finder** and **Delete…**, asking first; one that can't be read shows
+  its name and "Can't be shown" instead).
+
+Right-clicking a take, or **…**, offers **Open**,
 **Show in Finder**,
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
 first, with its size; it can't be undone; deleting the take on show
@@ -246,7 +270,7 @@ first, saying the take's size and its sound's and what is lost: the take
 can't be measured again without its sound, and the Scope doesn't
 work on it, while the readings, charts, Steadiness and the Positions Test
 still do. It then reads the sound once more in the background, with
-progress and **Cancel** under the take, writes the analysis beside the
+progress and **Cancel** under the table, writes the analysis beside the
 take, checks it reads back, and only then puts it in the take's place
 and deletes the sound; `session.toml` gains `audio = false` and keeps
 everything else it says. It works on a take whose `session.toml` names
@@ -254,8 +278,7 @@ the whole folder in each recording entry, as the app's own takes do; a
 take that lists its sound file by file is refused with a message saying
 so. A take Save Again saves into, one being analysed, or one
 whose analysis is being kept is not renamed, moved or deleted until that
-is done. The toolbar then has **‹ All Watches** (a back chevron), **Edit…** (a
-screwdriver) and **Add Photos…** (a camera and a plus), which copies the photos picked (JPEG, PNG, TIFF, or HEIC as
+is done. **Add Photos…** copies the photos picked (JPEG, PNG, TIFF, or HEIC as
 an iPhone takes them, each kept as it is) into the watch's `photos/`,
 adding a number to a name already there. Thumbnails are read in the
 background, turned the way the camera says, and kept in this computer's
@@ -298,9 +321,7 @@ Opening a recording, by **Open Recording…** or **Open Folder…** in the File 
 a take's **Open** in the Watches view, or the command line, analyses it whole,
 all at once, which is how a watchmaker looks back through a take.
 Dropping a file or folder on the window opens it too where the desktop
-passes drops to the app (Windows, macOS and X11; not Wayland). Clicking a
-group's name in the Watches view, such as Watches or Takes, folds it away
-to its caption, and clicking it again opens it.
+passes drops to the app (Windows, macOS and X11; not Wayland).
 
 When viewing a recording analysed as a whole, known jumps in its beat log also
 bound each reading. Saved position and settling boundaries add to those cuts;
