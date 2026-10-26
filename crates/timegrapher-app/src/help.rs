@@ -187,8 +187,9 @@ pub const PROFILE: &[&str] = &[
     "The typical sound of a tick (blue) and a tock (deep orange): the line is the beats' \
      typical loudness, the band where the middle 80% fall. Time runs in ms from the drop.",
     "A line from the top is an edge: Unlock, Drop or Peak. Amplitude comes from unlock to \
-     drop, the beat error from the unlocks. A dot on the curve is a sound: Unlock, Impulse \
-     or Drop Sound. Hover a name, line or dot for its time; on a short plot, sound names \
+     drop, the beat error from the unlocks. A bar across the curve marks where an edge meets \
+     it; a ring on the curve is a sound: Unlock, Impulse or Drop Sound. Hover a name, line \
+     or ring for its time; on a short plot, sound names \
      show on hover.",
     "Each plot's top-left gives its side's facts, at the same place on both. Hover it for \
      all five when it shows fewer. The dashed line is the noise floor.",

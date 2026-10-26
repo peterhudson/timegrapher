@@ -413,7 +413,7 @@ pub fn draw(
             0.0
         } + axis_h;
         // A plot that would be short with its names outside takes them in:
-        // the edges' along its top, the sounds' to their dots' hovers.
+        // the edges' along its top, the sounds' to their rings' hovers.
         let outside_h = ui.available_height() - top_lane - bottom_lane;
         let short_id = ui.id().with(("profile short", k));
         let was_short = ui.data(|d| d.get_temp::<bool>(short_id)).unwrap_or(false);
@@ -802,7 +802,7 @@ fn lane_id(ui: &egui::Ui, side: usize, up: bool) -> egui::Id {
 }
 
 /// Where each name in a lane goes: `names` are each one's centre (its
-/// line's or dot's x) and width, left to right; `was` is the row each was
+/// line's or ring's x) and width, left to right; `was` is the row each was
 /// in last frame. Each name is centred on its mark, kept within
 /// `left..right`, and goes one row further out where it would touch the
 /// one before it; where the second row is taken too, it slides right of
@@ -872,9 +872,12 @@ fn time_axis(ui: &egui::Ui, t: &egui_plot::PlotTransform, foot: egui::Rect) {
 
 /// Name the marks outside the plot: each edge (Unlock, Drop, Peak) a solid
 /// grey line coming down from its name above the plot, stopping just short
-/// of the trace; each sound a dot on the trace where it has risen halfway,
-/// with a dotted leader straight down past the plot to its name below.
-/// A line from the top is an edge, a dot on the curve is a sound.
+/// of the trace, and a short solid bar across the trace where it meets it;
+/// each sound a hollow ring on the trace where it has risen halfway, with a
+/// dotted leader straight down past the plot to its name below. Solid and
+/// bold for an edge, hollow, dotted and italic for a sound; where an edge
+/// and a sound meet the trace together, the bar sits inside the ring. A
+/// name hides any other mark's line passing behind it.
 #[allow(clippy::too_many_arguments)]
 fn label_marks(
     ui: &egui::Ui,
@@ -901,6 +904,17 @@ fn label_marks(
             .then(|| med.get(i as usize).copied())
             .flatten()
             .map(|y| t.position_from_point_y(y))
+    };
+    // Where the trace is marked: an edge's bar, a sound's ring, both drawn
+    // over the trace.
+    let edge_bar = |at: egui::Pos2| {
+        painter.line_segment(
+            [at - egui::vec2(4.0, 0.0), at + egui::vec2(4.0, 0.0)],
+            egui::Stroke::new(2.0_f32, pal.text),
+        );
+    };
+    let sound_ring = |at: egui::Pos2| {
+        painter.circle_stroke(at, 5.0, egui::Stroke::new(1.5_f32, pal.text_secondary));
     };
     // A lane laid out and drawn: `marks` are each name, its time and its
     // hover's words; `up` for the edges above the plot.
@@ -934,7 +948,7 @@ fn label_marks(
             })
             .collect();
         // A short plot: the edges' names are drawn in it, under the trace
-        // (see `EdgeNames`), and the sounds' are their dots' hovers.
+        // (see `EdgeNames`), and the sounds' are their rings' hovers.
         if let Some(box_right) = inside {
             let hover = |hit: egui::Rect, label: &str, v: f64| {
                 ui.interact(
@@ -960,6 +974,9 @@ fn label_marks(
                     frame.left() + box_right,
                 );
                 for ((x, label, v), at) in marks.iter().zip(at) {
+                    if let Some(y) = trace_y(*v + 0.0) {
+                        edge_bar(egui::pos2(*x, y));
+                    }
                     let line = egui::Rect::from_x_y_ranges(
                         x - 3.0..=x + 3.0,
                         frame.top()..=frame.bottom(),
@@ -972,7 +989,7 @@ fn label_marks(
             } else {
                 for (x, label, v) in &marks {
                     if let Some(y) = trace_y(*v + 0.0) {
-                        painter.circle_filled(egui::pos2(*x, y), 3.0, pal.text);
+                        sound_ring(egui::pos2(*x, y));
                         hover(
                             egui::Rect::from_center_size(egui::pos2(*x, y), egui::vec2(10.0, 10.0)),
                             label,
@@ -992,6 +1009,9 @@ fn label_marks(
             .collect();
         let placed = place_names(&names, frame.left(), frame.right(), &was);
         ui.data_mut(|d| d.insert_temp(id, placed.iter().map(|p| p.1).collect::<Vec<u8>>()));
+        // The names go on last, each on a box of the panel's colour, so no
+        // other mark's line runs through one.
+        let mut names = Vec::new();
         for (((x, label, v), g), (left, row)) in marks.iter().zip(galleys).zip(&placed) {
             let x = *x;
             let w = g.size().x;
@@ -1017,9 +1037,12 @@ fn label_marks(
                     pts,
                     egui::Stroke::new(1.2_f32, edge_ink(label)),
                 ));
+                if let Some(y) = on {
+                    edge_bar(egui::pos2(x, y));
+                }
             } else if let Some(y) = on {
                 let mut pts = vec![
-                    egui::pos2(x, y + 3.0),
+                    egui::pos2(x, y + 5.0),
                     egui::pos2(x, frame.bottom() + LANE_GAP / 2.0),
                 ];
                 pts.push(egui::pos2(centre, end_y));
@@ -1029,9 +1052,9 @@ fn label_marks(
                     2.0,
                     2.0,
                 ));
-                painter.circle_filled(egui::pos2(x, y), 3.0, pal.text);
+                sound_ring(egui::pos2(x, y));
             }
-            painter.galley(name.min, g, ink);
+            names.push((name, g));
             let hit = name.union(egui::Rect::from_x_y_ranges(
                 x - 3.0..=x + 3.0,
                 frame.top()..=frame.bottom(),
@@ -1045,6 +1068,10 @@ fn label_marks(
                 "{label}: {}",
                 format!("{v:+.2} ms").replace('-', "−")
             ));
+        }
+        for (name, g) in names {
+            painter.rect_filled(name.expand(2.0), 2.0, ui.visuals().panel_fill);
+            painter.galley(name.min, g, ink);
         }
     };
     if opt.edges {

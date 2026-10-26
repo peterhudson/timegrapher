@@ -793,19 +793,22 @@ steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
 and the marks the engine read, named outside the plot: a line from the
-top is an edge, a dot on the curve is a sound. The edges (Unlock, Drop and
+top is an edge, a ring on the curve is a sound. The edges (Unlock, Drop and
 Peak, where amplitude and the unlock-based beat error come from) are solid
 grey lines coming down from their names in bold above the plot, each
-stopping just short of the trace. The three sounds (Unlock Sound, Impulse
-Sound and Drop Sound, where the engine tells them apart) are white dots on
-the trace where each sound has risen halfway up its own climb, each with a
+stopping just short of the trace, with a short white bar across the trace
+where it meets it. The three sounds (Unlock Sound, Impulse
+Sound and Drop Sound, where the engine tells them apart) are hollow grey
+rings on the trace where each sound has risen halfway up its own climb, each with a
 dotted leader straight down past the plot to its name in grey italics
 below it. Names never sit inside the plot: where two would come closer
 than 12 points (more than a word space, so two names never read as one
 phrase), the later one moves one row further out and its line runs on to it, and
 where that row is taken too it slides along with a short angled leader.
 A name changes row only once an overlap starts or ends by 2 points, so
-names don't hop as the sound drifts. Hovering a line, a dot or a name
+names don't hop as the sound drifts. Where an edge and a sound meet the trace together, the bar sits inside
+the ring. Each name sits on a box of the pane's colour, so another mark's
+line passing behind it doesn't run through its letters. Hovering a line, a ring or a name
 gives its name and time. The edges and the sounds are two different
 measurements of the same averaged sound, not single beats, so they sit
 near but not exactly on each other. A sound is missing when it can't be
