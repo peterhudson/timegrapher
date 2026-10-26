@@ -643,7 +643,7 @@ watch down from full wind to stop in one position, the one on the
 Current Position card. Its toolbar says which ("Runs in Dial Up (DU), set
 on the Current Position card"; it has no position setting of its own),
 then holds **Keep Sound** or **Analysis Only**, and **Start Test** (**Stop Test**
-while it runs). The pane takes no more height than it shows. Before a test it
+while it runs). The pane takes no more height than it shows, and once a run has charts it keeps room for both at a readable height and a few table rows, taken from the panes with room to spare; a run that ends, an opened run's take and the first whole hour each grow the pane to show the charts and the table, up to half the room. Before a test it
 is one line, "Wind fully, set the position on the Position card, then press
 Start Test" (the steps are in its "?"), whose hover gives how much space is
 free where the take will be kept against the most an 80 h run writes (the

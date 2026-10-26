@@ -1476,6 +1476,16 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
 /// `h` points where it is taller, the other rows sharing the rest as they
 /// did; from where the panes were last laid out.
 fn fit_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
+    size_row(tiles, pane, h, false);
+}
+
+/// Bring the row holding `pane` up to `h` points where it is shorter, no
+/// more than half the rows' room, so the rows above keep the larger part.
+fn grow_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
+    size_row(tiles, pane, h, true);
+}
+
+fn size_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32, grow: bool) {
     let Some(id) = tiles.find_pane(&pane) else {
         return;
     };
@@ -1505,7 +1515,13 @@ fn fit_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
         .filter(|&c| tiles.is_visible(c))
         .collect();
     let room = rect.height() - 8.0 * (shown.len() as f32 - 1.0);
-    if l.dir != LinearDir::Vertical || shown.len() < 2 || now.height() <= h || room <= h {
+    let h = if grow { h.min(room / 2.0) } else { h };
+    let wrong_way = if grow {
+        now.height() >= h
+    } else {
+        now.height() <= h
+    };
+    if l.dir != LinearDir::Vertical || shown.len() < 2 || wrong_way || room <= h {
         return;
     }
     let others: f32 = shown
@@ -3914,8 +3930,15 @@ impl TimegrapherApp {
         let mut t = reserve::Test::new(position, r.sound_kept, r.started_utc.clone(), 0.0);
         t.ending = Some(r.ending);
         t.saved = Some(dir.to_path_buf());
+        let hours = r.hours.len();
         t.results = Some(r);
         self.reserve = Some(t);
+        // The run's charts and table, not the line before a test.
+        grow_row(
+            &mut self.panes.tiles,
+            Pane::PowerReserve,
+            reserve::run_h(hours),
+        );
     }
 
     /// Take what a session file says about a recording: the watch, its
@@ -13230,9 +13253,16 @@ impl TimegrapherApp {
         for h in &mut fresh {
             h.hour += whole as u32;
         }
+        let mut first_chart = false;
         if let Some(t) = self.reserve.as_mut() {
             t.so_far.truncate(whole);
             t.so_far.extend(fresh);
+            // The first whole hour brings the charts: room for them, once.
+            first_chart = whole == 0 && t.so_far.iter().any(|h| h.span_s >= 3599.0);
+        }
+        if first_chart {
+            let n = self.reserve.as_ref().map_or(0, |t| t.so_far.len());
+            grow_row(&mut self.panes.tiles, Pane::PowerReserve, reserve::run_h(n));
         }
     }
 
@@ -13273,8 +13303,12 @@ impl TimegrapherApp {
         }
         // The results go into the take with its sound, through
         // `results_files`.
+        let hours = results.as_ref().map(|r| r.hours.len());
         if let Some(t) = self.reserve.as_mut() {
             t.results = results;
+        }
+        if let Some(n) = hours {
+            grow_row(&mut self.panes.tiles, Pane::PowerReserve, reserve::run_h(n));
         }
         // With no watch picked, asked where it goes before it is saved.
         if self.open_watch().is_none() {
@@ -13347,6 +13381,13 @@ impl TimegrapherApp {
             None
         };
         let watch = self.watch.trim().to_string();
+        // Its charts at a readable height, never a sliver under the strip.
+        if let Some(least) = reserve::least_h(self.reserve.as_ref()) {
+            let above = ui.cursor().top() - self.pane_top;
+            self.pane_need.insert(Pane::PowerReserve, above + least);
+        } else {
+            self.pane_need.remove(&Pane::PowerReserve);
+        }
         reserve::pane(
             ui,
             self.reserve.as_ref(),
