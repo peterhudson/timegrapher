@@ -775,11 +775,12 @@ fn a_short_profile_puts_tick_and_tock_side_by_side() {
     assert!(foot.bottom() <= 600.0, "{foot:?}");
 }
 
-/// At 800 × 600 with every analysis pane open and the first tab on show,
-/// the tab row's ▸ arrow scrolls it: the ◂ arrow comes, and the tab on
-/// show is not pulled back into view against it.
+/// At 800 × 600 with every analysis pane open, the tab row's ◂ and ▸
+/// stay in their places, greyed at its ends: clicking ▸ again and again
+/// scrolls the row to its end and then does nothing, never closing a pane
+/// or picking a tab, and ◂ brings it back the same way.
 #[test]
-fn the_tab_rows_arrow_scrolls_it() {
+fn the_tab_rows_arrows_stay_put_and_grey_at_its_ends() {
     let ctx = egui::Context::default();
     theme::install(&ctx);
     let mut app = TimegrapherApp::with_devices(mac_devices(), None);
@@ -789,6 +790,13 @@ fn the_tab_rows_arrow_scrolls_it() {
             set_pane_visible(&mut app.panes.tiles, p, true);
         }
     }
+    let open = |app: &TimegrapherApp| {
+        Pane::ALL
+            .iter()
+            .filter(|&&p| pane_visible(&app.panes.tiles, p))
+            .count()
+    };
+    let panes = open(&app);
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(800.0, 600.0));
     let mut time = 0.0;
     let mut pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
@@ -806,37 +814,73 @@ fn the_tab_rows_arrow_scrolls_it() {
                 egui::Shape::Text(t) => Some((
                     t.galley.text().to_string(),
                     t.galley.rect.translate(t.pos.to_vec2()).center(),
+                    t.fallback_color,
                 )),
                 _ => None,
             })
             .collect::<Vec<_>>()
     };
+    // The lowest of each arrow (the analysis row's), its place and colour;
+    // the last one drawn is ours, over the row's own.
+    let arrow = |drawn: &[(String, egui::Pos2, Color32)], glyph: &str| {
+        let y = drawn
+            .iter()
+            .filter(|t| t.0 == glyph)
+            .map(|t| t.1.y)
+            .fold(f32::MIN, f32::max);
+        drawn
+            .iter()
+            .rev()
+            .find(|t| t.0 == glyph && (t.1.y - y).abs() < 4.0)
+            .map(|t| (t.1, t.2))
+            .unwrap_or_else(|| panic!("a {glyph} on the tab row: {drawn:?}"))
+    };
     let mut drawn = Vec::new();
     for _ in 0..6 {
         drawn = pass(&mut app, Vec::new());
     }
-    let arrow = drawn
-        .iter()
-        .filter(|t| t.0 == "⏵")
-        .map(|t| t.1)
-        .max_by(|a, b| a.y.total_cmp(&b.y))
-        .unwrap_or_else(|| panic!("a ▸ on the tab row: {drawn:?}"));
-    assert!(!drawn.iter().any(|t| t.0 == "⏴"), "not scrolled yet");
-    let button = |pressed| egui::Event::PointerButton {
-        pos: arrow,
-        button: egui::PointerButton::Primary,
-        pressed,
-        modifiers: Default::default(),
+    let (left, _) = arrow(&drawn, "⏴");
+    let (right, _) = arrow(&drawn, "⏵");
+    let picked = |app: &TimegrapherApp| {
+        app.panes.tiles.iter().find_map(|(_, t)| match t {
+            egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t)) if t.children.len() > 4 => {
+                t.active
+            }
+            _ => None,
+        })
     };
-    pass(
-        &mut app,
-        vec![egui::Event::PointerMoved(arrow), button(true)],
-    );
-    pass(&mut app, vec![button(false)]);
-    for _ in 0..20 {
-        drawn = pass(&mut app, Vec::new());
+    let was_picked = picked(&app);
+    let mut click = |app: &mut TimegrapherApp, at: egui::Pos2| {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        pass(app, vec![egui::Event::PointerMoved(at), button(true)]);
+        pass(app, vec![button(false)]);
+        let mut drawn = Vec::new();
+        for _ in 0..3 {
+            drawn = pass(app, Vec::new());
+        }
+        drawn
+    };
+    let mut ends = Vec::new();
+    for side in [left, right, left] {
+        for _ in 0..12 {
+            drawn = click(&mut app, side);
+            assert_eq!(arrow(&drawn, "⏴").0, left, "◂ stays put");
+            assert_eq!(arrow(&drawn, "⏵").0, right, "▸ stays put");
+            assert_eq!(open(&app), panes, "no pane closed");
+            assert_eq!(picked(&app), was_picked, "no tab picked");
+        }
+        ends.push((arrow(&drawn, "⏴").1, arrow(&drawn, "⏵").1));
     }
-    assert!(drawn.iter().any(|t| t.0 == "⏴"), "scrolled: {drawn:?}");
+    // At each end the arrow that went there greys and the other doesn't.
+    let (greyed, live) = ends[0];
+    assert_ne!(greyed, live, "◂ greyed at the start, ▸ not");
+    assert_eq!(ends[1], (live, greyed), "▸ greyed at the end, ◂ not");
+    assert_eq!(ends[2], ends[0], "back at the start");
 }
 
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and
