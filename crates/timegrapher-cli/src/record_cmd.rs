@@ -535,7 +535,15 @@ fn reserve_results(
         .and_then(|t| {
             timegrapher_core::clock::parse_log(&t, info.sample_rate, info.bytes_per_frame).ok()
         })
-        .and_then(|pairs| timegrapher_core::clock::ClockFit::new(&pairs).ok());
+        .and_then(|pairs| timegrapher_core::clock::ClockFit::for_rates(&pairs).ok())
+        .map(|mut fit| {
+            // The recording's USB lines, when it has them, correct the
+            // rates; the log then gives its breaks.
+            if let Ok(Some((ppm, _))) = crate::clock_cmd::usb(&files) {
+                fit.rate_from_usb(ppm);
+            }
+            fit
+        });
     let beat_s = 3600.0 / f64::from(log.bph.max(1));
     let heard = power_reserve::heard(&log.beats, beat_s);
     let ending = if heard.stopped(log.duration_s) {

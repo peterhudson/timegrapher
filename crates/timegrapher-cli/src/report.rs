@@ -570,6 +570,10 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
             c.ppm.abs(),
             if c.ppm >= 0.0 { "slower" } else { "faster" },
         ),
+        (Some(c), None) if !c.corrects() => format!(
+            "not calibrated: {}",
+            c.withheld.map(|w| w.note()).unwrap_or_default()
+        ),
         (Some(c), None) => format!(
             "calibrated: sound card {:.2} ppm {} than NTP time ({} entries, {:.1} ms rms)",
             c.ppm.abs(),
