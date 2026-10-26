@@ -748,13 +748,13 @@ instead, fitted as `timegrapher session` fits it: the Positions Test
 tables, the readings worked out over the whole take, the Rate figure and
 the Charts are all corrected for that take's own sound card, so one take
 has one rate and it is what the command line reads. The Rate's hover
-says the figure is on the take's clock log, and by how many ppm. A log
+says first that the figure is on the take's clock log, and by how many ppm. A log
 of under 10 entries, or one measuring the clock to a standard error over
 20 ppm, corrects nothing: the take is read as heard, and the Rate's hover
 says what the log measured and why it isn't applied. Where the
 recording carries USB lines, they set the rate instead, log or not, as
 `timegrapher series` reads it: the log then places only the take's
-breaks, and the Rate's hover says the figure is on the take's USB lines,
+breaks, and the Rate's hover says first that the figure is on the take's USB lines,
 by how many ppm, and what the log measured. The lines are read from the
 first ten minutes of the take's sound after it opens, and the figures
 and charts follow once they are. In the Watches view, a take's Rate is
