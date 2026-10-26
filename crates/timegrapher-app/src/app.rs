@@ -11740,8 +11740,9 @@ impl TimegrapherApp {
                     Some((
                         format!("Settling, {:.0} s", left.ceil()),
                         format!(
-                            "Settling in the new position for {:.0} s more.\n\n{SETTLE_HINT}",
-                            left.ceil()
+                            "Settling in the new position for {:.0} s more.\n\n{}",
+                            left.ceil(),
+                            settle_hint(self.session.settle_len())
                         ),
                     ))
                 } else if heard {
@@ -15785,12 +15786,18 @@ fn tab_row_arrows(ctx: &egui::Context, row: TabRow) {
 /// The least a pane is squeezed to, points.
 const PANE_MIN_H: f32 = 120.0;
 
-/// What the settling after a move is, wherever it is shown.
-const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
-     it settles: the hand leaves the stand and the \
-     balance steadies. Those beats are drawn faintly on the Paper Strip and left out of the \
-     readings, the charts' points, the Distributions and the Steadiness tests. The sound is \
-     still kept, and a saved take's positions start after it.";
+/// What the settling after a move is, wherever it is shown, for a
+/// settling of `s` seconds: the Positions Test pane's Settle, one for
+/// every change of position.
+fn settle_hint(s: f64) -> String {
+    format!(
+        "For the first {s:.0} seconds after the watch is put in a new position (the \
+         Positions Test pane's Settle) it settles: the hand leaves the stand and the \
+         balance steadies. Those beats are drawn faintly on the Paper Strip and left out of \
+         the readings, the charts' points, the Distributions and the Steadiness tests. The \
+         sound is still kept, and a saved take's positions start after it."
+    )
+}
 
 /// Where a bug report starts: the repository's bug form.
 const BUG_REPORT_URL: &str =
@@ -20082,6 +20089,20 @@ mod tests {
         assert!(words.starts_with("The clock log's 5 entries"), "{words}");
         assert!(words.contains("not applied"), "{words}");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The settling's hint names the settling the app uses, the Positions
+    /// Test pane's Settle, in a free take as in a test: 20 s unless set.
+    #[test]
+    fn the_settle_hint_names_the_settle_in_use() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        assert_eq!(app.session.settle_len(), guided::SETTLE_S);
+        let hint = settle_hint(app.session.settle_len());
+        assert!(hint.starts_with("For the first 20 seconds"), "{hint}");
+        app.guided_settle_s = 30.0;
+        app.session.set_settle_s(app.guided_settle_s);
+        let hint = settle_hint(app.session.settle_len());
+        assert!(hint.starts_with("For the first 30 seconds"), "{hint}");
     }
 
     /// A take whose recording carries USB lines has its rate set by them,
