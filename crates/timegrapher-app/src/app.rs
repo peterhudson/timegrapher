@@ -4486,6 +4486,8 @@ impl TimegrapherApp {
                 }
             }
             if let Some(CaptureFailure::Input(error)) = failure {
+                // Settings > Microphone says why listening stopped.
+                self.input_fault = Some(error.clone());
                 // A close error during stop is a recording fault in its own
                 // right, even when the input failure triggered the stop.
                 let message = match self.session.recording_fault() {
@@ -17146,6 +17148,24 @@ mod tests {
         app.save_into(&base.join("saved"));
         app.wait_for_save();
         assert!(app.session.saved_to().unwrap().join(MANIFEST).is_file());
+        app.new_session();
+        drop(tx);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// Sound that stops while listening says so in Settings > Microphone,
+    /// as an input that won't open does.
+    #[test]
+    fn sound_that_stops_while_listening_says_so_in_the_microphone_row() {
+        let (mut app, base) = save_failure_fixture("input-fault");
+        let tx = queued_capture(&mut app, &base);
+        assert!(app.input_fault.is_none());
+        tx.send(Event::Error("input disconnected".into())).unwrap();
+        app.poll();
+        assert!(!app.running());
+        let fault = app.input_fault.clone().unwrap();
+        assert!(fault.starts_with("Input stopped."), "{fault}");
+        assert_eq!(app.message.as_ref().unwrap().0, fault);
         app.new_session();
         drop(tx);
         std::fs::remove_dir_all(base).unwrap();
