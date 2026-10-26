@@ -111,7 +111,9 @@ afterwards. **Listen** has a **Listen** icon, which starts Quick Listen
 whose menu offers **Keep in a Watch** (your watches, then **New
 Watch…**; shown for a Quick Listen take, and for a recording opened from
 outside the Watches folder) and **Save in a Folder…**, which asks where,
-or **Save Again** once it has been saved. The Save icon is hidden for a
+or **Save Again** once it has been saved. On a take opened whose painted
+positions or masks have changed, the menu offers **Save Changes** first
+and the status bar says "Changes not saved". The Save icon is hidden for a
 watch's own take, which saves itself at Stop. Beside them are the take's
 length ("12:48"), live while listening and the whole take for one
 opened, and its state under it (Listening, Stopped, Opened, or 0:00 and
@@ -523,7 +525,9 @@ minutes that listening is still going.
 Tock Profile to begin with (its icon is a die showing six, one face for
 each position), leads through the six positions in the app's order: Dial Up,
 Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
-has **Start Test** (**Start a New Test** once one has finished), **Load
+has **Start Test** (**Start a New Test** once one has run, in a new take:
+the take with the test is left as it is, and sound not saved is asked
+about first; the test always starts in Dial Up), **Load
 Full-Wind Results…**, **Settle** and **Each Position** (the seconds the watch
 settles after each turn and is then measured: 20 s and 60 s unless set
 otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
@@ -541,7 +545,8 @@ Measurement**) once it is there. **Restart DD Measurement**, naming the
 position just measured (or the one under way), settles and measures it
 again, after a knock for instance; **Pause** holds the test, leaving out
 what the position measured so far, and **Resume** settles and measures it
-again from the start; **Stop** ends the test and clears its table. Each
+again from the start; **Stop** ends the test and stops listening, keeping
+the positions measured so far in its table and the take as at any Stop. Each
 button keeps its own place, as wide as the widest it holds, so none moves
 as the test moves on: Stop is always where it was. Only
 the measured seconds in each position count. From the moment the test
@@ -594,7 +599,7 @@ position's sound: no regular beat (with its timing scatter), clipping,
 under 10 s of beats, a beat error given as a size because its sign
 differs either side of a cut, or Tick and Tock named by the beat count
 across a break rather than by their sound. After the sixth, **Finish**
-reads the six together. The figures are `session`'s for the same
+reads the six together and stops listening, as Stop does. The figures are `session`'s for the same
 stretches. **Save as
 CSV…** saves the watch's name, its calibre, beat rate and lift angle,
 when the test began and its settling and measuring times, then the
@@ -971,7 +976,8 @@ is masked, when a new take, New Session or another recording starts.
 
 **Position Brush** (the highlighter, the brush's position code in teal,
 then ▾) marks a stretch of the strip as one position, on a live take or
-one opened:
+one opened. A Positions Test's take, run or opened, sets its own
+positions: the brush is greyed there.
 
 - Pick a position from its menu, then drag along the strip. While
   dragging, a teal preview says the position and the times, such as
@@ -1595,8 +1601,10 @@ listening starts. When another program records from the same microphone
 take, and press Stop before one begins.
 
 **Listen** on the Listen card (Quick Listen), or **Listen**, **Positions
-Test** or **Power Reserve Test** for a watch picked in the Watches view,
-begins a session from the microphone. **Stop** stops
+Test** for a watch picked in the Watches view, begins a session from the
+microphone. **Power Reserve Test** there opens the Power Reserve pane on
+the Bench, so the position is set on the Current Position card before
+its Start Test. **Stop** stops
 listening and lets go of the microphone, so another program can use it,
 and keeps everything on show: the
 readings, strip, charts and the sound so far. There is no pause:
