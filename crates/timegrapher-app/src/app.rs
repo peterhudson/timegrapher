@@ -1484,7 +1484,13 @@ fn size_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32, grow: bool) {
         .filter(|&c| tiles.is_visible(c))
         .collect();
     let room = rect.height() - 8.0 * (shown.len() as f32 - 1.0);
-    let h = if grow { h.min(room / 2.0) } else { h };
+    // Grown, never past half the room, nor into another row's least.
+    let others_least = MIN_PANE_H * (shown.len() as f32 - 1.0);
+    let h = if grow {
+        h.min(room / 2.0).min(room - others_least)
+    } else {
+        h
+    };
     let wrong_way = if grow {
         now.height() >= h
     } else {
