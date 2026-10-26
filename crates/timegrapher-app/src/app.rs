@@ -1970,6 +1970,9 @@ pub struct TimegrapherApp {
     reserve_keep_sound: bool,
     /// When the running test last read the beats, audio seconds.
     reserve_read_s: f64,
+    /// When the running Power Reserve Test's hours were last measured,
+    /// audio seconds.
+    reserve_hours_s: f64,
     /// The time the Positions Test didn't use, marked on the strip; kept
     /// after the test ends, until a new session.
     guided_unused: Vec<(f64, f64, &'static str)>,
@@ -2521,6 +2524,7 @@ impl TimegrapherApp {
             reserve: None,
             reserve_keep_sound: true,
             reserve_read_s: 0.0,
+            reserve_hours_s: f64::NEG_INFINITY,
             guided_unused: Vec::new(),
             guided_measured: Vec::new(),
             guided_earlier: None,
@@ -13137,6 +13141,7 @@ impl TimegrapherApp {
             now,
         ));
         self.reserve_read_s = now;
+        self.reserve_hours_s = f64::NEG_INFINITY;
         applog::info(&format!(
             "power reserve test started in {}, {}",
             pos.code(),
@@ -13171,7 +13176,45 @@ impl TimegrapherApp {
             .and_then(|t| t.update(live.beats(), beat_s, now));
         if ended.is_some() {
             self.end_reserve();
+            return;
         }
+        // The hours so far, about once a minute: the whole hours kept,
+        // the newest measured again.
+        if now - self.reserve_hours_s < 60.0 {
+            return;
+        }
+        self.reserve_hours_s = now;
+        let Some((first, last, whole)) = self.reserve.as_ref().and_then(|t| {
+            let whole = t.so_far.iter().take_while(|h| h.span_s >= 3599.0).count();
+            Some((t.heard.first_s?, t.heard.last_s?, whole))
+        }) else {
+            return;
+        };
+        let from = first + 3600.0 * whole as f64;
+        let mut fresh = self.reserve_hours(from, last);
+        for h in &mut fresh {
+            h.hour += whole as u32;
+        }
+        if let Some(t) = self.reserve.as_mut() {
+            t.so_far.truncate(whole);
+            t.so_far.extend(fresh);
+        }
+    }
+
+    /// The run's hours from audio second `from` to `to`, as `timegrapher
+    /// session` reads each stretch, on the session's clock, breaks and
+    /// masks.
+    fn reserve_hours(&self, from: f64, to: f64) -> Vec<power_reserve::Hour> {
+        let Some(log) = self.live.as_ref().and_then(steady::log_of) else {
+            return Vec::new();
+        };
+        let fit = self
+            .clock_track
+            .as_ref()
+            .and_then(|c| c.fit.clone())
+            .or_else(|| self.reading_clock(log.duration_s));
+        let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+        power_reserve::hours(&log, fit.as_ref(), &breaks, &self.masked, from, to)
     }
 
     /// The test has ended: stop listening, keep the take in the watch's
@@ -13190,24 +13233,8 @@ impl TimegrapherApp {
         }
         let mut results = t.finish(to_true).cloned();
         // Hour by hour, as `timegrapher session` reads each stretch.
-        if let (Some(r), Some(log)) = (
-            results.as_mut(),
-            self.live.as_ref().and_then(steady::log_of),
-        ) {
-            let fit = self
-                .clock_track
-                .as_ref()
-                .and_then(|c| c.fit.clone())
-                .or_else(|| self.reading_clock(log.duration_s));
-            let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
-            r.hours = power_reserve::hours(
-                &log,
-                fit.as_ref(),
-                &breaks,
-                &self.masked,
-                r.first_beat_s,
-                r.last_beat_s,
-            );
+        if let Some(r) = results.as_mut() {
+            r.hours = self.reserve_hours(r.first_beat_s, r.last_beat_s);
         }
         // The results go into the take with its sound, through
         // `results_files`.

@@ -658,8 +658,12 @@ in a run of at least eight such beats each within one and a half beats of
 the last, so a lone click is not the watch); beats that come back sooner
 join the run, and each silence of 30 s or more inside it is counted as a
 stop on the way. A run still going at 80 h ends there. While it runs the
-pane shows the run time from the first beat heard and one line of how the
-beats stand, with the count of stops on the way. At the end it shows one line,
+pane shows one line, the run time from the first beat heard and how the
+beats stand, with the count of stops on the way, and under it the hours so
+far as at the end: about once a minute the hour in progress is measured
+again and the table gains a row as each hour starts, the hour in progress
+read like a finished run's last ("2 h + 26:28"); the charts gain a point as
+each hour is whole and show from the first whole hour. At the end it shows one line,
 such as "Ran 41 h 12 min · The watch stopped, in Dial Up (DU) · Kept in Pepsi",
 the run time in true time (through the input's clock as measured
 while listening, else its stored correction), then, scrolling in the rest

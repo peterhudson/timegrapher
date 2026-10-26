@@ -84,6 +84,8 @@ pub struct Test {
     pub ending: Option<Ending>,
     /// Its results, once it has ended and the stop was found.
     pub results: Option<Results>,
+    /// While it runs, its hours so far, the newest still filling.
+    pub so_far: Vec<power_reserve::Hour>,
     /// The take it was saved as.
     pub saved: Option<PathBuf>,
     /// Its take is being written.
@@ -101,6 +103,7 @@ impl Test {
             now_s: began_s,
             ending: None,
             results: None,
+            so_far: Vec::new(),
             saved: None,
             saving: false,
         }
@@ -248,13 +251,7 @@ pub fn pane(
         power_reserve::PAUSE_S
     );
     if t.running() {
-        ui.label(
-            RichText::new(run_words(t.run_so_far_s()))
-                .size(34.0)
-                .strong()
-                .color(pal.text),
-        )
-        .on_hover_text("From the first beat heard to now");
+        // One line, then the hours so far as when it ends.
         let state = match t.heard.silent_s(t.now_s) {
             None => "Waiting for the first beats…".to_string(),
             Some(s) if s >= power_reserve::PAUSE_S => format!(
@@ -264,14 +261,19 @@ pub fn pane(
             ),
             Some(_) => format!("Running, in {}.", t.position.label()),
         };
-        let line = ui.add(
-            egui::Label::new(
-                RichText::new(state + pauses.as_deref().unwrap_or("")).color(pal.text_secondary),
-            )
-            .truncate(),
+        let line = format!(
+            "{} · {state}{}",
+            run_words(t.run_so_far_s()),
+            pauses.as_deref().unwrap_or("")
         );
+        let mut hover = "The run so far, from the first beat heard to now".to_string();
         if pauses.is_some() {
-            line.on_hover_text(pause_hint);
+            hover.push_str(&format!(". {pause_hint}"));
+        }
+        ui.add(egui::Label::new(RichText::new(line).color(pal.text)).truncate())
+            .on_hover_text(hover);
+        if !t.so_far.is_empty() {
+            hour_area(ui, &t.so_far, true);
         }
         return;
     }
@@ -319,11 +321,15 @@ pub fn pane(
         .truncate(),
     )
     .on_hover_text(hover);
-    let Some(r) = t.results.as_ref().filter(|r| !r.hours.is_empty()) else {
-        return;
-    };
-    // The charts and the table take the rest of the pane and scroll in it,
-    // their bar drawn at rest, from the top each time the pane is shown.
+    if let Some(r) = t.results.as_ref().filter(|r| !r.hours.is_empty()) {
+        hour_area(ui, &r.hours, false);
+    }
+}
+
+/// The hour charts and table, taking the rest of the pane and scrolling
+/// in it, their bar drawn at rest, from the top each time the pane is
+/// shown; `so_far` while the run goes on, its newest hour still filling.
+fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
     ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
     let viewport_h = ui.available_height();
     let id = egui::Id::new("reserve run scroll");
@@ -349,11 +355,19 @@ pub fn pane(
             + 3.0;
         let gap = ui.spacing().item_spacing.y;
         let room = viewport_h - 8.0 - 3.0 * gap;
-        let table_h = ((r.hours.len() as f32 + 1.0) * row_h + 4.0).min(room / 3.0);
+        let table_h = ((hours.len() as f32 + 1.0) * row_h + 4.0).min(room / 3.0);
         let chart_h = ((room - table_h - gap) / 2.0).max(CHART_MIN_H);
-        hour_chart(ui, r, chart_h);
-        ui.add_space(8.0);
-        hour_table(ui, r);
+        // While it runs the charts gain a point as each hour is whole.
+        let whole = if so_far {
+            hours.iter().take_while(|h| h.span_s >= 3599.0).count()
+        } else {
+            hours.len()
+        };
+        if whole > 0 {
+            hour_chart(ui, &hours[..whole], chart_h);
+            ui.add_space(8.0);
+        }
+        hour_table(ui, hours);
     });
 }
 
@@ -374,8 +388,9 @@ fn hour_label(h: &power_reserve::Hour) -> String {
     }
 }
 
-/// The run hour by hour as a table.
-fn hour_table(ui: &mut egui::Ui, r: &Results) {
+/// The run hour by hour as a table, the hour in progress read like a
+/// finished run's last, part hour.
+fn hour_table(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
     let pal = theme::pal(ui);
     egui::Grid::new("reserve hours")
         .striped(true)
@@ -398,7 +413,7 @@ fn hour_table(ui: &mut egui::Ui, r: &Results) {
                     .on_hover_text(hint);
             }
             ui.end_row();
-            for h in &r.hours {
+            for h in hours {
                 ui.label(hour_label(h));
                 ui.label(cell(h.rate_s_per_day, 1, " s/d"));
                 ui.label(cell(h.amplitude_deg, 0, "°"));
@@ -414,7 +429,7 @@ const HOUR_STEPS: [f64; 7] = [1.0, 2.0, 3.0, 6.0, 12.0, 24.0, 48.0];
 
 /// Rate and amplitude against hours since the first beat, one above the
 /// other on the same hours.
-fn hour_chart(ui: &mut egui::Ui, r: &Results, height: f32) {
+fn hour_chart(ui: &mut egui::Ui, hours: &[power_reserve::Hour], height: f32) {
     use egui_plot::{Line, Plot, PlotPoints};
     let pal = theme::pal(ui);
     let x = |h: &power_reserve::Hour| f64::from(h.hour) + h.span_s / 7200.0;
@@ -427,8 +442,7 @@ fn hour_chart(ui: &mut egui::Ui, r: &Results, height: f32) {
         ),
         ("amplitude", pal.trace_amplitude, "°", |h| h.amplitude_deg),
     ] {
-        let pts: Vec<[f64; 2]> = r
-            .hours
+        let pts: Vec<[f64; 2]> = hours
             .iter()
             .filter_map(|h| get(h).map(|v| [x(h), v]))
             .collect();
@@ -832,7 +846,7 @@ mod tests {
     }
 
     /// The pane holds no more height than it shows: one line before a run,
-    /// the run time and one line while it runs.
+    /// and one line while it runs until its first hours are measured.
     #[test]
     fn the_pane_holds_no_more_than_it_shows() {
         let ctx = egui::Context::default();
@@ -866,18 +880,82 @@ mod tests {
             texts,
             ["Wind fully, set the position on the Position card, then press Start Test."]
         );
-        // Running: the run time and one line, with the toolbar, in 96.
+        // Running, before its first hours are measured: one line of run
+        // time and state, with the toolbar, in 64.
         let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
         t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
         assert!(t.running());
         let (h, texts) = height(Some(&t), None);
-        assert!(h <= 96.0 - 28.0, "{h}");
-        assert_eq!(texts.len(), 2, "{texts:?}");
+        assert!(h <= 64.0 - 28.0, "{h}");
+        assert_eq!(texts.len(), 1, "{texts:?}");
+        assert!(texts[0].starts_with("32 s · "), "{texts:?}");
         // Ended with no hours yet: its one line.
         t.stop();
         let (h, texts) = height(Some(&t), None);
         assert!(h <= 64.0 - 28.0, "{h} {texts:?}");
         assert!(texts[0].starts_with("Ran "), "{texts:?}");
+    }
+
+    /// While a run goes on, its hours show as they come: a row for each,
+    /// the hour in progress read like a finished run's last, and a chart
+    /// point for each whole hour only; before its first whole hour, the
+    /// table alone.
+    #[test]
+    fn a_running_test_shows_its_hours_so_far() {
+        let hour = |h: u32, span_s: f64| power_reserve::Hour {
+            hour: h,
+            span_s,
+            rate_s_per_day: Some(6.5),
+            amplitude_deg: Some(281.0),
+            beat_error_ms: Some(0.4),
+            read_s: span_s - 100.0,
+        };
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
+        assert!(t.running());
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let texts = |t: &Test| {
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(700.0, 700.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        pane(ui, Some(t), None, "Position", "Pepsi");
+                    });
+                });
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+            }
+            texts
+        };
+        // The first hour filling: its row, no chart yet.
+        t.so_far = vec![hour(0, 1588.0)];
+        let shown = texts(&t);
+        assert!(shown.iter().any(|s| s == "0 h + 26:28"), "{shown:?}");
+        assert!(!shown.iter().any(|s| s == "0 h"), "no chart: {shown:?}");
+        // Two whole hours and the third filling: three rows, and the
+        // charts reach the second hour's point only.
+        t.so_far = vec![hour(0, 3600.0), hour(1, 3600.0), hour(2, 1588.0)];
+        let shown = texts(&t);
+        for row in ["0–1 h", "1–2 h", "2 h + 26:28"] {
+            assert!(shown.iter().any(|s| s == row), "{row}: {shown:?}");
+        }
+        assert_eq!(shown.iter().filter(|s| *s == "0 h").count(), 2, "{shown:?}");
+        assert!(!shown.iter().any(|s| s == "3 h"), "{shown:?}");
+        assert!(shown[0].starts_with("32 s · "), "{shown:?}");
     }
 
     /// A run of half a minute charts 0 h to 1 h, each hour named once,
@@ -901,7 +979,7 @@ mod tests {
         let mut texts = Vec::new();
         for _ in 0..2 {
             let out = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| hour_chart(ui, &r, 110.0));
+                egui::CentralPanel::default().show(ctx, |ui| hour_chart(ui, &r.hours, 110.0));
             });
             texts = out
                 .shapes
