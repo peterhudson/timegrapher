@@ -1371,7 +1371,7 @@ pub fn note_icon(ui: &Ui, icon: Icon, name: &str) {
 /// comes back out when the pane is wide enough again; a pane's plot never
 /// gives up room for its tools.
 pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl FnMut(&mut Ui)) {
-    pane_toolbar_noted(ui, title, help_text, None, controls);
+    pane_toolbar_full(ui, title, help_text, None, None, controls)
 }
 
 /// A pane's toolbar with `note`, a fact about what the pane shows (such
@@ -1381,6 +1381,31 @@ pub fn pane_toolbar_noted(
     title: &str,
     help_text: &[&str],
     note: Option<&str>,
+    controls: impl FnMut(&mut Ui),
+) {
+    pane_toolbar_full(ui, title, help_text, note, None, controls)
+}
+
+/// [`pane_toolbar`] with one control `pinned` just left of the "?": it
+/// never folds and never moves, however the row's controls fold.
+pub fn pane_toolbar_pinned(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    pinned: Option<&mut dyn FnMut(&mut Ui)>,
+    controls: impl FnMut(&mut Ui),
+) {
+    pane_toolbar_full(ui, title, help_text, None, pinned, controls)
+}
+
+/// A pane's toolbar: its controls, then at its right end its `note`, its
+/// `pinned` control and the "?".
+fn pane_toolbar_full(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    note: Option<&str>,
+    pinned: Option<&mut dyn FnMut(&mut Ui)>,
     mut controls: impl FnMut(&mut Ui),
 ) {
     let full = ui.available_rect_before_wrap();
@@ -1388,6 +1413,18 @@ pub fn pane_toolbar_noted(
         egui::pos2(full.right() - 18.0, full.top() + 4.0),
         Vec2::splat(16.0),
     );
+    let pin_w = if pinned.is_some() {
+        CONTROL_H + 6.0
+    } else {
+        0.0
+    };
+    if let Some(pin) = pinned {
+        let r = egui::Rect::from_min_size(
+            egui::pos2(full.right() - 26.0 - CONTROL_H - 2.0, full.top() + 1.0),
+            Vec2::new(CONTROL_H, CONTROL_H),
+        );
+        ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| pin(ui));
+    }
     let note_w = note.map_or(0.0, |n| {
         let p = pal(ui);
         let g = ui.painter().layout_no_wrap(
@@ -1397,7 +1434,10 @@ pub fn pane_toolbar_noted(
         );
         let w = g.size().x;
         ui.painter().galley(
-            egui::pos2(full.right() - 26.0 - w, q.center().y - g.size().y / 2.0),
+            egui::pos2(
+                full.right() - 26.0 - pin_w - w,
+                q.center().y - g.size().y / 2.0,
+            ),
             g,
             p.text_secondary,
         );
@@ -1406,7 +1446,7 @@ pub fn pane_toolbar_noted(
             title,
             n,
             egui::Rect::from_min_size(
-                egui::pos2(full.right() - 26.0 - w, q.top()),
+                egui::pos2(full.right() - 26.0 - pin_w - w, q.top()),
                 Vec2::new(w, q.height()),
             ),
         );
@@ -1422,7 +1462,7 @@ pub fn pane_toolbar_noted(
     ui.scope_builder(egui::UiBuilder::new().max_rect(q), |ui| {
         help_with_key(ui, title, &text, &key)
     });
-    let room = full.with_max_x(full.right() - 26.0 - note_w);
+    let room = full.with_max_x(full.right() - 26.0 - pin_w - note_w);
     // Last frame's controls and their widths decide what folds now.
     let known: Vec<(String, f32)> = ui
         .ctx()
@@ -1925,6 +1965,7 @@ pub enum Icon {
     Funnel,
     Fit,
     Highlighter,
+    Info,
 }
 
 /// What an alert says about itself: a warning (a triangle in the text
