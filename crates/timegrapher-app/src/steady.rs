@@ -54,6 +54,11 @@ pub enum View {
 }
 
 impl View {
+    /// The STFT and Wavelet Maps: one map at a time, the choice shared.
+    pub fn is_map(self) -> bool {
+        matches!(self, View::Stft | View::Wavelet)
+    }
+
     #[cfg(test)]
     const ALL: [View; 9] = [
         View::Readings,
@@ -391,7 +396,7 @@ fn stats_line(c: &SeriesCheck) -> String {
     // A true minus sign, as in the readings.
     let n = |v: f64| format!("{v:.2}").replace('-', "−");
     let signed = |v: f64| format!("{v:+.2}").replace('-', "−");
-    let mut parts = vec![format!("{} readings", c.readings)];
+    let mut parts = vec![format!("Tested on {}", counted(c.readings, c.step_s))];
     if c.outliers > 0 {
         parts.push(format!(
             "{} left out as more than 6 σ from their 5-minute level",
@@ -412,19 +417,32 @@ fn stats_line(c: &SeriesCheck) -> String {
         if let Some((_, r1)) = lag1 {
             parts.push(format!("lag-1 r {}", n(*r1)));
         }
-        parts.push(format!("Ljung–Box p {:.3}", a.p_value));
+        parts.push(format!("Ljung–Box p {}", steadiness::p_text(a.p_value)));
     }
     if let Some(t) = &c.trend {
         parts.push(format!("trend {} {u}/h", signed(t.per_hour)));
     }
     if let Some(p) = &c.period {
-        parts.push(format!(
-            "period {:.0} s, peak to peak {} {u}",
-            p.period_s,
-            n(p.peak_to_peak)
-        ));
+        parts.push(format!("period {:.0} s", p.period_s));
     }
     parts.join(" · ")
+}
+
+/// What a count of readings `step_s` long counts: "179 10 s readings";
+/// readings shorter than 10 s are windows, "880 2 s windows".
+fn counted(n: usize, step_s: f64) -> String {
+    format!("{n} {}", kind_of(step_s))
+}
+
+/// Readings `step_s` long: "10 s readings"; shorter than 10 s, "2 s
+/// windows".
+fn kind_of(step_s: f64) -> String {
+    let what = if step_s >= 10.0 - 1e-9 {
+        "readings"
+    } else {
+        "windows"
+    };
+    format!("{} {what}", secs(step_s))
 }
 
 fn series_colour(k: SeriesKind, pal: &theme::Palette) -> Color32 {
@@ -497,6 +515,15 @@ fn lag_text(s: f64) -> String {
 }
 
 /// A wheel's name in Title Case.
+/// The wheel to name beside a fold at `period_s`: that of the finding
+/// (period, wheel) folded at, never one of another period's.
+fn fold_wheel<'a>(found: &[(f64, Option<&'a str>)], period_s: f64) -> Option<&'a str> {
+    found
+        .iter()
+        .filter(|(p, _)| (p - period_s).abs() <= 0.01 * period_s)
+        .find_map(|(_, w)| *w)
+}
+
 fn wheel_title(name: &str) -> String {
     name.split(' ')
         .map(|w| {
@@ -617,6 +644,64 @@ pub fn series_switches(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
     });
 }
 
+/// One series of `shown`: the first one on, else Rate.
+pub fn one_series(shown: [bool; 3]) -> [bool; 3] {
+    let i = shown.iter().position(|&on| on).unwrap_or(0);
+    let mut one = [false; 3];
+    one[i] = true;
+    one
+}
+
+/// The two map panes' choice of the one map shown: the same three icons
+/// as elsewhere, joined, one picked at a time, so the map has the pane.
+pub fn series_choice(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
+    *shown = one_series(*shown);
+    let pal = theme::pal(ui);
+    let hint = |k| {
+        format!(
+            "Show the {} map. One map is shown at a time, so it has room.",
+            title(k)
+        )
+    };
+    for k in SERIES {
+        theme::note_icon(ui, series_icon(k), title(k));
+    }
+    theme::bar_item(ui, "Series", |ui| {
+        if theme::in_toolbar(ui) {
+            egui::Frame::new()
+                .fill(pal.control)
+                .corner_radius(egui::CornerRadius::same(theme::CONTROL_RADIUS + 1))
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    for (i, k) in SERIES.into_iter().enumerate() {
+                        if theme::icon_toggle(ui, series_icon(k), shown[i], series_colour(k, pal))
+                            .on_hover_text(format!("{}: {}", title(k), hint(k)))
+                            .clicked()
+                        {
+                            *shown = [false; 3];
+                            shown[i] = true;
+                        }
+                    }
+                });
+        } else {
+            let mut i = shown.iter().position(|&on| on).unwrap_or(0);
+            let words: Vec<(usize, &str, &str)> = SERIES
+                .into_iter()
+                .enumerate()
+                .map(|(i, k)| (i, title(k), ""))
+                .collect();
+            theme::row(
+                ui,
+                "Map",
+                Some("One map is shown at a time, so it has room."),
+                |ui| theme::segmented(ui, &mut i, &words),
+            );
+            *shown = [false; 3];
+            shown[i] = true;
+        }
+    });
+}
+
 /// Turn series `i` on or off, unless it is the last one on.
 pub fn flip_series(shown: &mut [bool; 3], i: usize) {
     let others = shown.iter().enumerate().any(|(j, &on)| j != i && on);
@@ -625,9 +710,15 @@ pub fn flip_series(shown: &mut [bool; 3], i: usize) {
     }
 }
 
-/// Draw the pane: a note on what was tested, then a row for each series
-/// shown with what was detected, its statistics and the chosen view behind
-/// it.
+/// Narrower than this, the Info panel opens over the plots.
+const INFO_BESIDE_W: f32 = 600.0;
+/// The Info panel's width, or a third of the pane if that is less.
+const INFO_W: f32 = 300.0;
+
+/// Draw the pane: a row for each series shown with the chosen view, and,
+/// when `opts.info`, the Info panel at the right with what the view shows,
+/// each series' findings and statistics in full, and what was tested.
+/// Before there is an answer, `status` says what the tests wait for.
 pub fn draw(
     ui: &mut egui::Ui,
     s: Option<&Steadiness>,
@@ -637,16 +728,12 @@ pub fn draw(
     opts: Opts,
 ) {
     let pal = theme::pal(ui);
-    if !status.is_empty() {
-        ui.label(RichText::new(status).small().color(pal.text_secondary));
-    }
     let Some(s) = s else {
+        if !status.is_empty() {
+            ui.label(RichText::new(status).small().color(pal.text_secondary));
+        }
         return;
     };
-    // What the view shows, in a line; all of it on hover.
-    let hint = format!("{}: {}.", view.label(), view.hint());
-    ui.add(egui::Label::new(RichText::new(&hint).small().color(pal.text_tertiary)).truncate())
-        .on_hover_text(hint);
     let series: Vec<(usize, &SeriesCheck)> = s
         .report
         .series
@@ -659,6 +746,113 @@ pub fn draw(
                 .is_none_or(|j| shown[j])
         })
         .collect();
+    let full = ui.available_rect_before_wrap();
+    let beside = full.width() >= INFO_BESIDE_W;
+    if opts.info && beside {
+        let w = INFO_W.min(full.width() / 3.0);
+        let gap = 12.0;
+        let plots = full.with_max_x(full.right() - w - gap);
+        // Only the part of the pane on screen, so the panel scrolls rather
+        // than running off the bottom.
+        let panel = full.with_min_x(full.right() - w).intersect(ui.clip_rect());
+        ui.painter().vline(
+            panel.left() - gap / 2.0,
+            panel.y_range(),
+            egui::Stroke::new(1.0_f32, pal.separator),
+        );
+        ui.scope_builder(egui::UiBuilder::new().max_rect(panel), |ui| {
+            info_panel(ui, &series, status, view, panel.height());
+        });
+        ui.scope_builder(egui::UiBuilder::new().max_rect(plots), |ui| {
+            rows(ui, s, &series, view, opts);
+        });
+        ui.allocate_rect(full, egui::Sense::hover());
+    } else {
+        rows(ui, s, &series, view, opts);
+        if opts.info {
+            // Over the plots, from the pane's top right corner.
+            let w = INFO_W.min(full.width() - 16.0).max(120.0);
+            let seen = full.intersect(ui.clip_rect());
+            egui::Area::new(ui.id().with("steady info over"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(egui::pos2(full.right() - w - 4.0, seen.top() + 4.0))
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_width(w - 16.0);
+                        let h = (seen.height() - 24.0).max(80.0);
+                        ui.set_max_height(h);
+                        info_panel(ui, &series, status, view, h);
+                    });
+                });
+        }
+    }
+}
+
+/// The Info panel: what the view shows, then a block for each series
+/// shown under its coloured title (its findings and statistics in full),
+/// then what was tested. It scrolls, and its words can be selected.
+fn info_panel(
+    ui: &mut egui::Ui,
+    series: &[(usize, &SeriesCheck)],
+    status: &str,
+    view: View,
+    max_h: f32,
+) {
+    let pal = theme::pal(ui);
+    // Each view's panel its own, opening at its top: from the top again
+    // when it was not drawn the pass before.
+    let id = egui::Id::new(("steady info", view));
+    let pass = ui.ctx().cumulative_pass_nr();
+    let last = ui.ctx().data_mut(|d| {
+        let last = d.get_temp::<u64>(id);
+        d.insert_temp(id, pass);
+        last
+    });
+    let mut area = egui::ScrollArea::vertical()
+        .id_salt(id)
+        // No taller than `max_h`, the room on screen, with its bar always
+        // showing so what is below the edge is not missed.
+        .max_height(max_h)
+        .auto_shrink([false, true])
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible);
+    if last.is_none_or(|l| l + 1 < pass) {
+        area = area.vertical_scroll_offset(0.0);
+    }
+    area.show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
+        let text = |t: &str, c: Color32| {
+            egui::Label::new(RichText::new(t).small().color(c))
+                .wrap()
+                .selectable(true)
+        };
+        ui.label(theme::caption(view.label()).color(pal.text_secondary));
+        ui.add(text(&format!("{}.", view.hint()), pal.text_secondary));
+        for &(_, c) in series {
+            ui.add_space(8.0);
+            ui.label(theme::caption(title(c.series)).color(pal.ink(series_colour(c.series, pal))));
+            // With too few readings the row already says so in place of
+            // its plot: the panel doesn't say it twice.
+            if c.autocorrelation.is_some() {
+                ui.add(text(&c.headline, pal.text));
+            }
+            ui.add(text(&stats_line(c), pal.text_secondary));
+        }
+        if !status.is_empty() {
+            ui.add_space(8.0);
+            ui.add(text(status, pal.text_tertiary));
+        }
+    });
+}
+
+/// Each series' row with the view's plot: one above another, filling the
+/// pane, or side by side when it is wide and short.
+fn rows(
+    ui: &mut egui::Ui,
+    s: &Steadiness,
+    series: &[(usize, &SeriesCheck)],
+    view: View,
+    opts: Opts,
+) {
     let n = series.len().max(1);
     let gap = 10.0;
     let (w, h) = (ui.available_width(), ui.available_height());
@@ -679,7 +873,7 @@ pub fn draw(
                 for (k, &(i, c)) in series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
                         ui.set_min_height(row_h);
-                        row(ui, s, i, c, view, opts, None);
+                        row(ui, s, i, c, view, opts);
                     });
                     if k + 1 < n {
                         ui.add_space(gap);
@@ -689,88 +883,53 @@ pub fn draw(
     } else {
         // Wide and short: side by side.
         let col_w = fits(n, w);
-        // Every headline in the same room, so the plots line up.
-        let rows = series
-            .iter()
-            .map(|(_, c)| headline(ui, &c.headline, col_w, HEADLINE_ROWS).rows.len())
-            .max()
-            .unwrap_or(1);
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing.x = gap;
-            for &(i, c) in &series {
+            for &(i, c) in series {
                 ui.allocate_ui(Vec2::new(col_w, h), |ui| {
                     ui.set_width(col_w);
                     ui.set_min_height(h);
-                    ui.vertical(|ui| row(ui, s, i, c, view, opts, Some(rows)));
+                    ui.vertical(|ui| row(ui, s, i, c, view, opts));
                 });
             }
         });
     }
 }
 
-/// The most lines a headline takes before it ends in "…"; the whole of it
-/// is on hover.
-const HEADLINE_ROWS: usize = 8;
-
-/// A headline laid out `width` wide on up to `max_rows` lines.
-fn headline(
-    ui: &egui::Ui,
-    text: &str,
-    width: f32,
-    max_rows: usize,
-) -> std::sync::Arc<egui::Galley> {
-    let font = egui::TextStyle::Small.resolve(ui.style());
-    let mut job = egui::text::LayoutJob::single_section(
-        text.to_owned(),
-        egui::TextFormat::simple(font, theme::pal(ui).text_secondary),
-    );
-    job.wrap = egui::text::TextWrapping {
-        max_width: width,
-        max_rows,
-        break_anywhere: false,
-        overflow_character: Some('…'),
-    };
-    ui.fonts_mut(|f| f.layout_job(job))
+/// An x-axis label made by `text`, left off within 18 pt of the plot's
+/// right edge, where it would run past the plot into what is beside it.
+fn clear_of_edge(
+    plot_w: f64,
+    text: impl Fn(f64) -> String,
+) -> impl Fn(egui_plot::GridMark, &std::ops::RangeInclusive<f64>) -> String {
+    move |m, r| {
+        let span = (r.end() - r.start()).max(f64::EPSILON);
+        if (r.end() - m.value) / span * plot_w < 18.0 {
+            String::new()
+        } else {
+            text(m.value)
+        }
+    }
 }
 
-/// One series' headline, statistics and plot. Side by side, `rows` gives
-/// every headline the same room so the plots line up; one above another,
-/// each takes the lines it needs.
-fn row(
-    ui: &mut egui::Ui,
-    s: &Steadiness,
-    i: usize,
-    c: &SeriesCheck,
-    view: View,
-    opts: Opts,
-    rows: Option<usize>,
-) {
+/// One series' title and plot. Its findings and statistics are in the
+/// Info panel.
+fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
     let log_y = opts.periods_log;
     let pal = theme::pal(ui);
     ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
-    // What was detected, in full unless it is very long; all of it on
-    // hover, with the statistics behind it.
-    let max_rows = rows.unwrap_or(HEADLINE_ROWS).max(1);
-    let galley = headline(ui, &c.headline, ui.available_width(), max_rows);
-    let short_by = rows.map_or(0, |r| r.saturating_sub(galley.rows.len().max(1)));
-    let line_h = galley.size().y / galley.rows.len().max(1) as f32;
-    let stats = stats_line(c);
-    ui.add(egui::Label::new(galley))
-        .on_hover_text(format!("{}\n\n{stats}", c.headline));
-    // Side by side, the same room for each, so the plots line up.
-    if short_by > 0 {
-        ui.add_space(line_h * short_by as f32);
-    }
-    // Too few readings: no tests ran, so there is nothing to draw.
+    // Too few readings: no tests ran, so there is nothing to draw; the
+    // headline says how many it needs.
     if c.autocorrelation.is_none() {
-        return;
+        return note(ui, &c.headline);
     }
-    ui.add(egui::Label::new(RichText::new(&stats).small().color(pal.text_tertiary)).truncate())
-        .on_hover_text(&stats);
     let k = c.series;
     let colour = series_colour(k, pal);
     let weak = pal.text_tertiary;
     let id = ("steadiness", i, view);
+    // The plot's width inside its value axis, for the time labels at the
+    // right edge.
+    let plot_w = f64::from(ui.available_width() - 64.0);
     let base = Plot::new(id)
         // Grid lines reach full strength only this far apart, so at the
         // usual spacing they are faint.
@@ -799,13 +958,15 @@ fn row(
             let range = spread(&pts);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| strip::fmt_time(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, strip::fmt_time))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(move |m, _| value_text(k, m.value, m.step_size));
             if let Some((lo, hi)) = range {
                 plot = plot.default_y_bounds(lo, hi);
             }
-            plot.show(ui, |p| {
+            // What a dot is, and how many are drawn, as Charts' key.
+            let key = format!("{} ({})", kind_of(g.step), pts.len());
+            let resp = plot.show(ui, |p| {
                 p.points(Points::new("readings", pts).color(colour).radius(1.4_f32));
                 if let Some(ch) = &c.changes {
                     if ch.segments.len() > 1 {
@@ -832,6 +993,13 @@ fn row(
                     }
                 }
             });
+            crate::app::paint_key(
+                ui.painter(),
+                resp.transform.frame().to_owned(),
+                &[(key.as_str(), colour, None)],
+                ui,
+                pal,
+            );
         }
         View::Periods => {
             let Some(search) = s.searches[i].as_ref().filter(|x| !x.period_s.is_empty()) else {
@@ -867,7 +1035,7 @@ fn row(
             let threshold = y_of(search.threshold);
             let mut plot = base
                 .x_grid_spacer(period_grid(ui.available_width()))
-                .x_axis_formatter(|m, _| period_label(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(y_lo, top);
             plot = if log_y {
@@ -941,7 +1109,7 @@ fn row(
             let range = spread(&dots);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| lag_text(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, lag_text))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(move |m, _| value_text(k, m.value, m.step_size))
                 .default_x_bounds(0.0, f.period_s);
@@ -951,12 +1119,12 @@ fn row(
             let label = match &s.fold_from[i] {
                 FoldFrom::Own => {
                     let mut t = format!("{} cycle", secs(f.period_s));
-                    if let Some(w) = c
-                        .cycle
-                        .as_ref()
-                        .and_then(|c| c.wheel.as_ref())
-                        .or(c.period.as_ref().and_then(|p| p.wheel.as_ref()))
-                    {
+                    let found = [
+                        c.cycle.as_ref().map(|c| (c.period_s, c.wheel.as_deref())),
+                        c.period.as_ref().map(|p| (p.period_s, p.wheel.as_deref())),
+                    ];
+                    let found: Vec<_> = found.into_iter().flatten().collect();
+                    if let Some(w) = fold_wheel(&found, f.period_s) {
                         t += &format!(", {}", wheel_title(w));
                     }
                     t + &format!(", {} cycles folded", f.raster.len())
@@ -986,6 +1154,10 @@ fn row(
                 ),
                 None => label,
             };
+            // Above the plot, wrapped to its width, so it never sits on the
+            // axis or runs past the plot's edges.
+            ui.add(egui::Label::new(RichText::new(label).small().color(pal.text_secondary)).wrap());
+            let plot = plot.height(ui.available_height().max(40.0));
             plot.show(ui, |p| {
                 for (band, pts) in by_time.into_iter().enumerate() {
                     if pts.is_empty() {
@@ -1012,16 +1184,6 @@ fn row(
                     );
                 }
                 p.line(Line::new("shape", shape).color(colour).width(2.0_f32));
-                let b = p.plot_bounds();
-                p.text(
-                    Text::new(
-                        "cycle label",
-                        PlotPoint::new(b.max()[0], b.min()[1]),
-                        format!("{label} "),
-                    )
-                    .color(pal.text_secondary)
-                    .anchor(egui::Align2::RIGHT_BOTTOM),
-                );
             });
         }
         View::Autocorrelation => {
@@ -1038,7 +1200,7 @@ fn row(
             let x_hi = pts.last().map_or(1.0, |p| p[0]);
             let lo = pts.iter().map(|p| p[1]).fold(-a.band, f64::min).min(-0.2);
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| lag_text(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, lag_text))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_x_bounds(0.0, x_hi)
@@ -1095,7 +1257,7 @@ fn row(
             let dev = both(&a.deviation);
             let white = both(&a.white);
             base.x_grid_spacer(period_grid(ui.available_width()))
-                .x_axis_formatter(|m, _| period_label(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, |v| unit_sig(k, v)))
                 .show(ui, |p| {
@@ -1153,7 +1315,7 @@ fn row(
                 .collect();
             let m = pts.iter().map(|p| p[1].abs()).fold(1.6, f64::max) * 1.1;
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| strip::fmt_time(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, strip::fmt_time))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_y_bounds(-m, m)
@@ -1293,7 +1455,7 @@ fn row(
             };
             let peak = tallest_peak(&pts);
             base.x_grid_spacer(period_grid(ui.available_width()))
-                .x_axis_formatter(|m, _| period_label(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, size))
                 .default_x_bounds(x_lo, x_hi)
@@ -1338,6 +1500,8 @@ pub struct Opts {
     /// The calibre's wheels marked on the period axis, or the reference
     /// periods when no wheel is known.
     pub wheels: bool,
+    /// The Info panel, beside the plots: one setting for every view.
+    pub info: bool,
 }
 
 /// What Wheel Periods does, for its hint.
@@ -1556,6 +1720,18 @@ fn note(ui: &mut egui::Ui, text: &str) {
 
 #[cfg(test)]
 mod tests {
+    /// A fold names a wheel only when the finding folded at is that
+    /// wheel's: a 46 s fold doesn't borrow the escape wheel of the beat
+    /// timing's 5.0 s line.
+    #[test]
+    fn a_fold_names_only_its_own_findings_wheel() {
+        let escape = Some("escape wheel");
+        assert_eq!(fold_wheel(&[(46.0, None), (5.0, escape)], 46.0), None);
+        assert_eq!(fold_wheel(&[(5.0, escape)], 5.0), escape);
+        assert_eq!(fold_wheel(&[(46.0, None), (46.2, escape)], 46.0), escape);
+        assert_eq!(fold_wheel(&[], 46.0), None);
+    }
+
     #[test]
     fn a_spectrum_climbing_at_its_end_labels_its_own_peak_not_the_end() {
         // log10 period against log10 size: a hump at 60 s, then a climb
@@ -1620,29 +1796,327 @@ mod tests {
     use timegrapher_core::live::LiveConfig;
     use timegrapher_core::synth::{generate, SynthConfig};
 
+    /// The plots carry only their titles and a key saying what a dot is;
+    /// the Info panel holds the view's description, each series' finding
+    /// whole and its statistics, which say what they counted, and what was
+    /// tested: beside the plots in a wide pane, over them in a narrow one.
     #[test]
-    fn a_long_headline_is_shown_whole() {
-        // A headline ending on a line faster than the readings, at the
-        // Steadiness tab's width in a 1280-point window.
-        let text = "Rate repeats every 90 s, 1.1 s/d peak to peak, 0.4 s/d \
-            above the scatter. The rate's level also moves 0.8 s/d over the \
-            take. The beat timing also repeats every 5.0 s, faster than the \
-            10 s readings show: Escape Wheel, 0.12 ms peak to peak, in the \
-            beat timing itself.";
+    fn the_info_panel_holds_the_findings_and_the_plots_say_what_a_dot_is() {
+        let cfg = SynthConfig {
+            duration_s: 600.0,
+            rate_s_per_day: 5.0,
+            ..Default::default()
+        };
+        let audio = generate(
+            &cfg,
+            |_| 270.0,
+            |t| 20.0 * (std::f64::consts::TAU * t / 60.0).sin(),
+        );
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let s = compute(&log_of(&live).expect("beat rate"), None);
+        let rate = s.report.series[0].headline.clone();
         let ctx = egui::Context::default();
         theme::install(&ctx);
-        let mut rows = None;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let g = headline(ui, text, 415.0, HEADLINE_ROWS);
-                let shown: String = g.rows.iter().map(|r| r.text()).collect();
-                assert!(!shown.contains('…'), "{shown}");
-                rows = Some(g.rows.len());
-            });
-        });
-        let rows = rows.unwrap();
-        assert!(rows > 3 && rows < HEADLINE_ROWS, "{rows} rows");
+        fn texts(shape: &egui::Shape, into: &mut Vec<(String, f32)>) {
+            match shape {
+                egui::Shape::Text(t) => into.push((t.galley.text().to_string(), t.pos.x)),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                _ => {}
+            }
+        }
+        let drawn = |w: f32, info: bool| {
+            let mut all = Vec::new();
+            for _ in 0..2 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(w, 700.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let opts = Opts {
+                            info,
+                            ..Default::default()
+                        };
+                        draw(
+                            ui,
+                            Some(&s),
+                            "Tested over 10:00 of beats",
+                            View::Readings,
+                            &[true, true, false],
+                            opts,
+                        );
+                    });
+                });
+                all.clear();
+                out.shapes.iter().for_each(|c| texts(&c.shape, &mut all));
+            }
+            all
+        };
+        let has = |all: &[(String, f32)], t: &str| all.iter().any(|(s, _)| s.contains(t));
+        let closed = drawn(900.0, false);
+        assert!(has(&closed, "10 s readings ("), "{closed:?}");
+        assert!(has(&closed, "2 s windows ("), "{closed:?}");
+        for gone in [
+            rate.as_str(),
+            "Tested on",
+            "Tested over",
+            "Every reading in time order",
+        ] {
+            assert!(!has(&closed, gone), "{gone}");
+        }
+        let open = drawn(900.0, true);
+        for t in [
+            rate.as_str(),
+            "Tested on ",
+            "Tested over 10:00 of beats",
+            "Every reading in time order",
+            "Readings",
+        ] {
+            assert!(has(&open, t), "{t}: {open:?}");
+        }
+        // Beside the plots: the panel's words start in its third.
+        let x = open
+            .iter()
+            .find(|(s, _)| s.contains("Tested on "))
+            .unwrap()
+            .1;
+        assert!(x >= 900.0 - INFO_W - 16.0, "{x}");
+        assert!(!has(&open, "…"), "{open:?}");
+        // Narrow: over the plots, the same words.
+        let narrow = drawn(500.0, true);
+        assert!(has(&narrow, rate.as_str()) && has(&narrow, "Tested on "));
     }
+
+    /// A series with too few readings says so once, in its row, not again
+    /// in the open Info panel.
+    #[test]
+    fn too_few_readings_is_said_once() {
+        let cfg = SynthConfig {
+            duration_s: 60.0,
+            rate_s_per_day: 5.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 270.0, |_| 0.0);
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let s = compute(&log_of(&live).expect("beat rate"), None);
+        let few: Vec<String> = s
+            .report
+            .series
+            .iter()
+            .filter(|c| c.autocorrelation.is_none())
+            .map(|c| c.headline.clone())
+            .collect();
+        assert!(!few.is_empty(), "a minute leaves a series too few readings");
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        fn texts(shape: &egui::Shape, into: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(t) => into.push(t.galley.text().to_string()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                _ => {}
+            }
+        }
+        let mut all = Vec::new();
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(900.0, 700.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let opts = Opts {
+                        info: true,
+                        ..Default::default()
+                    };
+                    draw(
+                        ui,
+                        Some(&s),
+                        "Tested over 1:00 of beats",
+                        View::Readings,
+                        &[true, true, true],
+                        opts,
+                    );
+                });
+            });
+            all.clear();
+            out.shapes.iter().for_each(|c| texts(&c.shape, &mut all));
+        }
+        for h in &few {
+            let n = all.iter().filter(|t| t.contains(h.as_str())).count();
+            assert_eq!(n, 1, "{h}: {all:?}");
+        }
+    }
+
+    /// In a short pane the Info panel scrolls inside it rather than running
+    /// off its bottom, and Cycle's note sits above each plot, inside its
+    /// column, clear of the panel.
+    #[test]
+    fn a_short_panes_info_scrolls_and_the_cycle_note_stays_in_its_column() {
+        let cfg = SynthConfig {
+            duration_s: 600.0,
+            rate_s_per_day: 5.0,
+            ..Default::default()
+        };
+        let audio = generate(
+            &cfg,
+            |_| 270.0,
+            |t| 20.0 * (std::f64::consts::TAU * t / 60.0).sin(),
+        );
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let s = compute(&log_of(&live).expect("beat rate"), None);
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let (w, h) = (1440.0, 300.0);
+        let mut out = None;
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h))),
+                ..Default::default()
+            };
+            out = Some(ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let opts = Opts {
+                        info: true,
+                        ..Default::default()
+                    };
+                    draw(
+                        ui,
+                        Some(&s),
+                        "Tested over 10:00 of beats",
+                        View::Cycle,
+                        &[true, true, true],
+                        opts,
+                    );
+                });
+            }));
+        }
+        let out = out.unwrap();
+        let mut texts = Vec::new();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                let r = t.galley.rect.translate(t.pos.to_vec2());
+                texts.push((t.galley.text().to_string(), r, c.clip_rect));
+            }
+        }
+        // The pane's inner edge is 8 pt in from the window's.
+        let panel_left = w - 8.0 - INFO_W;
+        // The panel's words are clipped at the pane's foot: below it they
+        // scroll.
+        let panel: Vec<_> = texts.iter().filter(|t| t.1.left() >= panel_left).collect();
+        assert!(
+            panel.iter().any(|t| t.0.contains("Tested on ")),
+            "{texts:?}"
+        );
+        assert!(panel.iter().all(|t| t.2.bottom() <= h), "{panel:?}");
+        let notes: Vec<_> = texts.iter().filter(|t| t.0.contains("cycles")).collect();
+        assert!(!notes.is_empty(), "{texts:?}");
+        for n in notes {
+            assert!(n.1.left() >= 0.0 && n.1.right() < panel_left, "{n:?}");
+        }
+        // No axis label runs past the line before the panel.
+        let line = panel_left - 12.0 / 2.0;
+        for t in texts.iter().filter(|t| t.1.left() < panel_left) {
+            assert!(t.1.right() <= line, "{t:?}");
+        }
+        // The plots take the room left under their notes.
+        let axis: Vec<_> = texts.iter().filter(|t| t.0.ends_with(" s/d")).collect();
+        assert!(!axis.is_empty(), "{texts:?}");
+        assert!(axis.iter().all(|t| t.1.bottom() <= h), "{axis:?}");
+    }
+
+    /// Each view's Info panel opens at its top, with its heading in view:
+    /// one scrolled down and closed, or another view's, does not open
+    /// scrolled.
+    #[test]
+    fn the_info_panel_opens_at_its_top() {
+        let cfg = SynthConfig {
+            duration_s: 600.0,
+            rate_s_per_day: 5.0,
+            ..Default::default()
+        };
+        let audio = generate(
+            &cfg,
+            |_| 270.0,
+            |t| 20.0 * (std::f64::consts::TAU * t / 60.0).sin(),
+        );
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let s = compute(&log_of(&live).expect("beat rate"), None);
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let (w, h) = (1440.0, 300.0);
+        let panel_left = w - 8.0 - INFO_W;
+        let at = egui::pos2(w - INFO_W / 2.0, h / 2.0);
+        // One pass: the panel's heading, if in view, with `wheel` scrolling
+        // the panel, or no pane at all.
+        let pass = |view: Option<View>, wheel: bool| {
+            let mut events = vec![egui::Event::PointerMoved(at)];
+            if wheel {
+                events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0.0, -400.0),
+                    modifiers: Default::default(),
+                });
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h))),
+                events,
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    if let Some(view) = view {
+                        let opts = Opts {
+                            info: true,
+                            ..Default::default()
+                        };
+                        draw(ui, Some(&s), "", view, &[true, true, true], opts);
+                    }
+                });
+            });
+            let label = view.map(View::label).unwrap_or_default();
+            out.shapes.iter().any(|c| match &c.shape {
+                egui::Shape::Text(t) => {
+                    let r = t.galley.rect.translate(t.pos.to_vec2());
+                    t.galley.text() == label
+                        && r.left() >= panel_left
+                        && r.top() >= c.clip_rect.top()
+                }
+                _ => false,
+            })
+        };
+        assert!(pass(Some(View::Cycle), false), "opens at its top");
+        for _ in 0..20 {
+            pass(Some(View::Cycle), true);
+        }
+        assert!(
+            !pass(Some(View::Cycle), false),
+            "scrolled, the heading is out of view"
+        );
+        // Another view's panel opens at its top.
+        assert!(pass(Some(View::Readings), false));
+        // Closed and opened again: at its top.
+        pass(None, false);
+        assert!(pass(Some(View::Cycle), false));
+    }
+
     #[test]
     fn fft_renderer_paints_input_availability_in_both_rate_displays() {
         // Constructed beat/grid fixtures only: this tests presentation, not

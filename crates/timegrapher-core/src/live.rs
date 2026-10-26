@@ -176,6 +176,9 @@ pub struct LiveAnalyzer {
     masked: Vec<(f64, f64)>,
     /// Whether the sound card's clock is corrected, for the caveats.
     clock_known: bool,
+    /// The sound card's clock error, ppm slow, that the rates are
+    /// corrected for ([`Self::set_rate_clock`]); none, the rates as heard.
+    rate_ppm: Option<f64>,
     /// Tick and Tock told apart across each jump by their sound, as a
     /// whole file's reading tells them. Readings that name a side are left
     /// out until it has, and in a stretch it never could.
@@ -219,6 +222,7 @@ impl LiveAnalyzer {
             breaks: Vec::new(),
             masked: Vec::new(),
             clock_known: false,
+            rate_ppm: None,
         }
     }
 
@@ -471,6 +475,15 @@ impl LiveAnalyzer {
     pub fn set_known(&mut self, lift_known: bool, clock_known: bool) {
         self.cfg.analysis.lift_known = lift_known;
         self.clock_known = clock_known;
+    }
+
+    /// Correct the rates read for a sound card clock `ppm` slow, as a
+    /// recording's own clock log measures it ([`crate::clock::ClockFit`]),
+    /// so they are the rates `timegrapher session` reads on that log; none
+    /// leaves them as heard, on the card's clock. A corrected clock is a
+    /// known one.
+    pub fn set_rate_clock(&mut self, ppm: Option<f64>) {
+        self.rate_ppm = ppm;
     }
 
     /// Change the lift angle. Amplitude is proportional to the lift angle
@@ -865,7 +878,7 @@ impl LiveAnalyzer {
                 no_watch_reason: no_watch.unwrap_or_default(),
                 bph_heard: None,
                 lift_known: self.cfg.analysis.lift_known,
-                clock_known: self.clock_known,
+                clock_known: self.clock_known || self.rate_ppm.is_some(),
                 beats: hi - lo,
                 expected: bph.map_or(0.0, |b| b as f64 / 3600.0 * span_s),
                 clipped_fraction: clipped_fraction.unwrap_or(0.0),
@@ -890,7 +903,10 @@ impl LiveAnalyzer {
         LiveReading {
             time_s: end_s,
             bph,
-            rate_s_per_day: heard(fit.map(|f| f.rate_s_per_day)),
+            rate_s_per_day: heard(fit.map(|f| f.rate_s_per_day)).map(|v| {
+                self.rate_ppm
+                    .map_or(v, |p| crate::clockstore::correct_rate(v, p))
+            }),
             beat_error_ms: sided(fit.map(|f| f.beat_error_ms)),
             beat_error_unlock_ms: sided(med(&|w| w.beat_error_unlock_ms)),
             amplitude_deg: heard(med(&|w| w.mean())),

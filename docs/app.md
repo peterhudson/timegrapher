@@ -31,7 +31,7 @@ Listen or a test from a watch, goes to the Bench.
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 (Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q).
-**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: **Bench** (Ctrl+1)
+**Edit**: Remove All Masks… (asks first), Settings… (Ctrl+, or Cmd+, on a Mac). **View**: **Bench** (Ctrl+1)
 and **Watches** (Ctrl+2), then a tick for the readings and for each pane,
 and Reset Panes (dimmed in Watches, as the panes are the Bench's).
 **Watches**: **New Watch…**, **Find in Watches…**, which shows the
@@ -64,6 +64,9 @@ tinted chip; a hidden one is grey. No pane icon takes a reading's colour.
 The readings have pictures of their
 own wherever the app shows or switches one: a hare for the rate, a swing
 for the amplitude and a seesaw for the beat error, in their colours.
+A pane of several plots, one for each reading (Charts, Distributions and
+the Steadiness panes), shows the rate alone until its switches turn the
+others on; each pane keeps its switches from then on.
 
 **The readings**, across the top, are six cards, left to right:
 **Current Position**, **Calibre** and **Listen**, then **Rate**,
@@ -187,14 +190,27 @@ take or open a recording, and is not kept for the next start to offer
 back. Starting a take of a watch ends Quick Listen.
 
 **The Watches view** fills the window below the switch, with its
-toolbar on the switch's row. At its top, under
-**Watches**, **Unsorted Takes**, always first, then one row per watch
+toolbar on the switch's row. From 900 points wide, the list of watches
+is a 280-point column at the left and the watch picked sits beside it,
+its side growing to about 1100 points and no wider, so each figure stays
+near its date; only the watch's side scrolls. Narrower, one shows at a
+time: the list, or the watch with **‹ All Watches** (a back chevron and its words) in the toolbar, which
+goes back to the list with that watch still marked and the search kept.
+The list has **Unsorted Takes**, always first, then one row per watch
 (see The Watches folder, below): its first photo (by name; a tile with
 its initial while it has none, or one that can't be read), its name, its
-calibre, how many takes it has and the date of the last, and the space
-they use once it is 1 MB or more. The row picked is marked. Its toolbar has a search (a loupe; in the
+calibre (or, with **List Shows** in the toolbar, one of the fields added
+to the watches, such as Customer; the choice is kept between runs, and
+shows the calibre while no watch has that field), how many takes it has and the date of the last, and the space
+they use once it is 1 MB or more. The row picked is marked. While a search is typed, a line under the
+list says how many it shows of how many, "1 of 4 watches", and what it
+found in each row's name and the line under it is in the accent blue.
+Picking a watch while a Quick Listen is listening asks about its unsaved
+sound first, as the Watch line does, then stops the listening and picks
+the watch; while a watch's take is listening, picking another is
+refused until it stops. Its toolbar has a search (a loupe; in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
-and **New Watch…** (a watch and a plus). In a narrow window, Sort folds
+**List Shows**, and **New Watch…** (a watch and a plus). In a narrow window, Sort and List Shows fold
 into the "…" menu first; New Watch… and the search always stay
 in the row. The Watches folder's location, and Show in Finder for it, are
 in Settings. Clicking **Unsorted Takes** goes back to Quick Listen: no
@@ -220,23 +236,35 @@ either the calibre's or yours:
 only those can be removed, with their ×. A watch is kept or deleted:
 there is no hiding one (a watch an older version marked Archived is
 listed like any other, and saving it clears the mark). The first watch makes the Watches folder.
-Clicking a watch shows its details, and **‹ All Watches** goes back to
-the list with that watch still picked and its row marked: Listen and the
-tests still take it until another row is picked. **Listen**, **Positions Test** and
-**Power Reserve Test**, each a new take on the microphone, asked about
-first when there is unsaved sound other than a Quick Listen take's, and
-saved into the watch when it stops (while one runs, **Stop** stands in
-their place); its photos as a strip of thumbnails
-(clicking one opens it in the computer's own viewer; right-clicking offers
-**Open**, **Show in Finder** and **Delete…**, asking first; one that can't
-be read shows its name and "Can't be shown" instead), and its **Takes**,
-newest first: each
-with its name, positions, length, the rate, amplitude and beat error (its
-size) it measured when saved, the space it uses, and **Analysis Only** or
-**Incomplete** when it is one. Clicking a take picks it and shows its
-**Open** button under it; double-clicking opens it as
-Open… does. The take on show is marked **On Show** and is not read again
-when opened again. Right-clicking offers **Open**,
+The watch shown has a header: its first photo or initial, its name, and
+under it its calibre, beat rate, lift angle and added fields, with
+**Edit…** and **Add Photos…** at the right. Then, in this order:
+
+- **New Take**: **Listen** (the blue one, the default), **Positions
+  Test** and **Power Reserve Test**, three equal buttons, each with a
+  line under it saying what it does. Each switches to the Bench and
+  starts a new take on the microphone there, asked about first when
+  there is unsaved sound other than a Quick Listen take's, and saved into
+  the watch when it stops. While a take runs on the Bench, the three are
+  greyed out, and the New Take row says "Stop the take on the Bench
+  first." at its right; that row is always there, so nothing moves.
+- **Takes**, with the count, and **Open** and **…** at the right of its
+  title, acting on the take picked; then the takes as a table, newest
+  first: Started, Position (such as DU, or DU, CU, or All 6; Power Reserve for that
+  test), Length, Rate (s/d), Amplitude (°), Beat Error (ms, its size) and
+  Size (MB), as measured when saved (the rate corrected from the take's
+  clock log, as the Bench reads the take), with **Analysis Only**, **Incomplete**
+  or **On Show** after the date when it is one. Nothing is inserted
+  between rows. Clicking a row picks it; double-clicking opens it as
+  Open does, and the take on show is not read again. Open is greyed out
+  while a take runs on the Bench.
+- **Details**: the fields added to the watch and its notes.
+- **Photos**: a strip of thumbnails (clicking one opens it in the
+  computer's own viewer; right-clicking offers **Open**, **Show in
+  Finder** and **Delete…**, asking first; one that can't be read shows
+  its name and "Can't be shown" instead).
+
+Right-clicking a take, or **…**, offers **Open**,
 **Show in Finder**,
 **Keep Analysis Only…**, **Move to Another Watch** and **Delete…** (asking
 first, with its size; it can't be undone; deleting the take on show
@@ -245,7 +273,7 @@ first, saying the take's size and its sound's and what is lost: the take
 can't be measured again without its sound, and the Scope doesn't
 work on it, while the readings, charts, Steadiness and the Positions Test
 still do. It then reads the sound once more in the background, with
-progress and **Cancel** under the take, writes the analysis beside the
+progress and **Cancel** under the table, writes the analysis beside the
 take, checks it reads back, and only then puts it in the take's place
 and deletes the sound; `session.toml` gains `audio = false` and keeps
 everything else it says. It works on a take whose `session.toml` names
@@ -253,8 +281,7 @@ the whole folder in each recording entry, as the app's own takes do; a
 take that lists its sound file by file is refused with a message saying
 so. A take Save Again saves into, one being analysed, or one
 whose analysis is being kept is not renamed, moved or deleted until that
-is done. The toolbar then has **‹ All Watches** (a back chevron), **Edit…** (a
-screwdriver) and **Add Photos…** (a camera and a plus), which copies the photos picked (JPEG, PNG, TIFF, or HEIC as
+is done. **Add Photos…** copies the photos picked (JPEG, PNG, TIFF, or HEIC as
 an iPhone takes them, each kept as it is) into the watch's `photos/`,
 adding a number to a name already there. Thumbnails are read in the
 background, turned the way the camera says, and kept in this computer's
@@ -276,8 +303,10 @@ measured: the watch's details apply to its next take. **Keep in a
 Watch**, for a recording opened from outside the Watches folder (a lone
 file or a take folder), copies it into one of your watches, or into a
 **New Watch…**, kept in the new watch when you press its button, asking
-only what neither its files nor the watch say; the original stays where
-it is.
+only what neither its files, the watch nor the take on show say (its
+position, beat rate and lift angle are the ones on show, written with
+it; when it started is offered to check); the original stays where it
+is. **Keep** stays greyed out until what is asked is given.
 
 **Open Recording…** or **Open Folder…** in the File menu first asks where
 the recording goes (when there are watches and it isn't in them already):
@@ -297,9 +326,7 @@ Opening a recording, by **Open Recording…** or **Open Folder…** in the File 
 a take's **Open** in the Watches view, or the command line, analyses it whole,
 all at once, which is how a watchmaker looks back through a take.
 Dropping a file or folder on the window opens it too where the desktop
-passes drops to the app (Windows, macOS and X11; not Wayland). Clicking a
-group's name in the Watches view, such as Watches or Takes, folds it away
-to its caption, and clicking it again opens it.
+passes drops to the app (Windows, macOS and X11; not Wayland).
 
 When viewing a recording analysed as a whole, known jumps in its beat log also
 bound each reading. Saved position and settling boundaries add to those cuts;
@@ -310,9 +337,9 @@ pane, one row, with the pane's **?** at its right. The toolbar is a row
 of icons, each naming itself and saying what it does on hover, in the
 words this guide uses: a switch is an icon that stays pressed, tinted,
 while it is on; a choice between two settings is one icon showing the
-setting in use, and a click changes to the other (Direction shows a
-down arrow while the strip runs down and an across arrow while it runs
-across); a choice of more is a row of icons with the picked one tinted.
+setting in use, and a click changes to the other (the Paper Strip's
+Direction is the exception: a labelled two-part control, **Down |
+Across**); a choice of more is a row of icons with the picked one tinted.
 Icons are for what can be clicked: a setting that holds a value (Width,
 Length, Settle, Span, Beats) shows its name in words before
 its field, with the same hover; a search box keeps the magnifying glass
@@ -462,7 +489,7 @@ As copying the take: meanwhile the sound waits in memory, and is saved and
 read once they finish. With **Keep Awake** on (in Settings, under
 General; it is on unless switched off), the app asks the computer not to go to sleep on its own while it listens;
 the screen can still lock and switch off as usual. If the system refuses,
-a note under the switch says so. When the sound's own timestamps jump by
+Keep Awake's caption says so in its place. When the sound's own timestamps jump by
 more than 5 seconds (as when the computer sleeps: a laptop's lid closed,
 Sleep chosen from a menu, or Keep Awake off), the app leaves the jump out
 of the take as a break, keeps listening, and a
@@ -651,15 +678,15 @@ when not read.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
-middle half), the curve through them and where it turns, and under it the
-first half hour against the half hour 24 hours later (or the session's last),
-the usual 0 h / 24 h comparison, captioned Full Wind Against 24 Hours
-Later. It needs the amplitude to fall
-through at least three 2° steps, which a run-down over some hours gives.
+middle half), the curve through them and where it turns, filling the
+pane. It needs the amplitude to fall
+through at least three 2° steps, which a run-down over some hours gives
+(a long run-down is one way; any take over a wide range of amplitude
+does).
 A note on what it needs is behind the **?** in its toolbar. Until there are 5 minutes of beats in one position, the
 Steadiness and Isochronism tabs say so; during a Positions Test they say
-that the test never stays that long in one position. Both scroll with a
-bar always showing when the pane is too short for every row.
+that the test never stays that long in one position. Steadiness scrolls
+with a bar always showing when the pane is too short for every row.
 
 **True Clock.** While it listens, the app times the microphone's clock
 against the computer's. After 20 minutes of listening, once the timing is
@@ -677,11 +704,19 @@ take with a clock log; see `clock` in [the agent
 interface](agent-interface.md#clock)), Quartz Correction lists it, and
 the Rate figure's hover gives the rate corrected onto true time,
 labelled True Clock, with the day the clock it uses was kept. A sound card's crystal runs a steady 10 to 50 ppm off,
-which moves every rate read on it by 1 to 4 s/d. The big figure always
-stays on the card's clock, the same clock tg and `timegrapher analyze`
+which moves every rate read on it by 1 to 4 s/d. While listening, the big
+figure stays on the card's clock, the same clock tg and `timegrapher analyze`
 read, so it compares directly with them; True Clock is in its hover,
 never instead of it. It is looked up by the input's name when a microphone
-session starts, and is not shown for a recording opened from disk. **Settings**,
+session starts. A take opened from disk whose session file names a clock
+log (every take the app keeps has `clock.csv`) is read on that log
+instead, fitted as `timegrapher session` fits it: the Positions Test
+tables, the readings worked out over the whole take, the Rate figure and
+the Charts are all corrected for that take's own sound card, so one take
+has one rate and it is what the command line reads. The Rate's hover
+says the figure is on the take's clock log, and by how many ppm. A log
+that can't be read is named in the line shown on opening, and the take
+is read as heard. A recording opened without a log shows no True Clock. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
 and in s/d, the day it was measured, how, and over how long), with
 **Forget** beside it; the input listening is marked "(listening)", or
@@ -739,20 +774,42 @@ it describes the same beats as the readings; a longer time gives a
 steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
-and the marks the engine read, all grey and told apart by their lines:
-unlock (solid) and drop (dashed), from which
-amplitude and the unlock-based beat error come, the drop's peak (a thinner
-dashed line), the three sounds where the engine tells them apart (short dotted stubs up
-from the foot, numbered 1 unlock, 2 impulse, 3 drop, the whole name and
-time in each one's hover) and the noise floor. The edges are named at the top.
-The edges and the dotted sounds are two different measurements of
-the same averaged sound, not single beats: the edges are where the
-readings come from, and the sounds are where each of the three sounds
-rises halfway up its own climb, from a separate measurement of the
-beat's shape, so they sit near but not exactly on the edges. A sound line is missing when
-that sound can't be told apart from its neighbour (a soft unlock merged
-into the impulse, say). The Tick tock
-profile card switches the edges and the sounds on and off, sets the scale
+and the marks the engine read, named outside the plot: a line from the
+top is an edge, a dot on the curve is a sound. The edges (Unlock, Drop and
+Peak, where amplitude and the unlock-based beat error come from) are solid
+grey lines coming down from their names in bold above the plot, each
+stopping just short of the trace. The three sounds (Unlock Sound, Impulse
+Sound and Drop Sound, where the engine tells them apart) are white dots on
+the trace where each sound has risen halfway up its own climb, each with a
+dotted leader straight down past the plot to its name in grey italics
+below it. Names never sit inside the plot: where two would come closer
+than 12 points (more than a word space, so two names never read as one
+phrase), the later one moves one row further out and its line runs on to it, and
+where that row is taken too it slides along with a short angled leader.
+A name changes row only once an overlap starts or ends by 2 points, so
+names don't hop as the sound drifts. Hovering a line, a dot or a name
+gives its name and time. The edges and the sounds are two different
+measurements of the same averaged sound, not single beats, so they sit
+near but not exactly on each other. A sound is missing when it can't be
+told apart from its neighbour (a soft unlock merged into the impulse,
+say). Each plot carries its side's facts in its top-left corner, over
+the quiet lead-in before the unlock: Beats, Unlock, Drop, Unlock to Drop
+and Amplitude, a row each, the values with their units. The box is the
+same on both plots, so Tick and Tock compare row against row, and it
+sits under the band and the line, so a spike that runs into it still
+shows. On a plot under 100 points tall it keeps Unlock to Drop and
+Amplitude (fewer if even those don't fit), and hovering it gives all
+five. A plot that would be under 100 points with its names outside
+takes them in: the edges' names sit along its top on the plot's
+background, one row, under the trace (Unlock starts right of its line
+where the facts box has the corner, and a name that would crowd the one
+before, usually Peak beside Drop, is left to its line's hover); the
+sounds keep their dots, and hovering one names it. Stacked, the one
+time axis is under Tock. The moment shown ("At
+10:00") is at the right end of the toolbar. The noise floor is a flat
+dashed line. The Tick tock
+profile card switches the edges and the sounds on and off, switches
+**dB Scale** (lit: decibels below the loudest point; off: linear)
 and lays the tick above the tock (Stacked) or beside it (Beside). Tick and
 tock share one vertical scale, so a quieter side shows smaller, and every
 grid line is drawn alike.
@@ -796,7 +853,11 @@ recording, it shows the last beats, read from the recording. Only the few second
 the recording: a WAV seeks there and a FLAC is searched by its frame
 headers (`span.rs`). No crosshair, as on the other sound plots.
 
-**Paper Strip.** One dot per beat, tick and tock in two colours. Across
+**Paper Strip.** Its toolbar runs, left to right: Rate, Amplitude and Beat
+Error (Draw Over the Strip, below); Width and Length, each one field with
+its presets under its ▾, then Fit; Centre and Auto-Centre; Rate Line and
+Parallel Guides; the Mask tool (scissors) and the Position Brush;
+Direction; and Export. One dot per beat, tick and tock in two colours. Across
 the strip is how early or late each beat came against a perfect clock
 beating exactly at the nominal beat rate (every 125 ms at 28,800 bph): a
 beat before that clock's beat is early, after it late, the words Witschi's
@@ -829,7 +890,7 @@ stays as it was. The gap between the two lines is the beat error. A line
 that runs off one edge comes back on the other, so the strip's width is
 its zoom and its length sets how much history it shows. Type both (a width
 of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`, `2h` or
-`1:30:00`) or pick a common value from the list beside each: the widths
+`1:30:00`) or pick a common value from the ▾ inside each field: the widths
 run from ±1 ms, for a good watch's beat error, through ±62.5 ms, half a
 beat at 28,800 bph and the widest view in which tick and tock can't wrap
 onto each other, up to ±60 s, so a long run-down take that drifts by many
@@ -854,21 +915,22 @@ On the strip, the mouse wheel changes the length about the time under the
 pointer, which stays where it is, Shift or Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
 the session (live or not), dragging across slides the trace, and a double
-click returns to the newest beats and centres them. **Auto-Centre** keeps
+click returns to the newest beats and centres them. **Auto-Centre** (a
+pushpin on a dashed line, lit while on) keeps
 the newest beats on the centre line all the time, so the older ones slide
 away from it as the rate wanders; sliding the trace by hand turns it off.
-**Centre** centres once.
+**Centre** (two arrows meeting on a dashed line) centres once.
 
-**Mask** leaves stretches out of the readings, such as a bump of the
+**Mask** (scissors: nothing is deleted, the beats stay, hatched) leaves stretches out of the readings, such as a bump of the
 stand in a long take: with it on, dragging along the strip over the beats
 masks that stretch (one under half a second is left alone, as a slip of
 the mouse), dragging a masked stretch's edge moves it (the pointer is a
 cross over the strip and a two-way arrow within 8 points of an edge),
 dragging with the right button still looks back through the session, and clicking a
 masked stretch, or right-clicking one with Mask on or off, brings it
-back; **Unmask All** brings them all back. Stretches that overlap, by
+back; **Edit ▸ Remove All Masks…** brings them all back, after asking. Stretches that overlap, by
 masking or by moving an edge, join into one and stay joined. Masked stretches are shaded on the strip and named on its track,
-and the toolbar says how many there are and how long they add up to.
+and the Mask tool's hover says how many there are and how long they add up to.
 They are cut like a break in listening, at both ends: no reading reaches across one,
 nothing is read inside one, a chart's line breaks there and comes back
 once a whole averaging time has been heard after it, a beat in each 2
@@ -1038,14 +1100,23 @@ unlock) each change over the session, from the same tests as
 `timegrapher series` (see [series.md](series.md)). Each view is a pane of
 its own, so two can sit side by side; their icons sit together under
 **Analysis** in the icon bar (and in an Analysis menu under View), and
-they start as hidden tabs beside the Tick Tock Profile. Each series shows the sentence `series` writes, saying what
-was detected (a cycle, two levels, a step, a trend, correlation between
-readings, or none of these), with no verdict word or colour, and under it
-the statistics: readings, median, standard deviation, the scatter from one
-reading to the next, the lag-1 correlation and Ljung–Box p-value, and the
-trend and period when found. **Rate**, **Amplitude** and **Beat Error**,
-in each pane's toolbar, choose which series that pane shows; at least one
-stays on.
+they start as hidden tabs beside the Tick Tock Profile. Above the plots
+is the toolbar and nothing else: each plot has its series' title, and the
+plots take the rest of the pane. **Info**, an "i" in a circle fixed at the
+right of the toolbar just left of the **?**, opens the Info panel down the
+right of the pane (300 pt, or a third of the pane if less; over the plots,
+from the pane's top right corner, in a pane under 600 pt wide): what the
+view shows, then for each series shown, under its coloured title, the
+sentence `series` writes, saying what was detected (a cycle, two levels, a
+step, a trend, correlation between readings, or none of these), with no
+verdict word or colour, and the statistics: what was tested ("Tested on 179
+10 s readings"), median, standard deviation, the scatter from one reading
+to the next, the lag-1 correlation and Ljung–Box p-value, and the trend
+and period when found; then how much of the session was tested. Its words
+wrap, scroll and can be selected to copy. It opens and closes only when
+clicked, and is one setting for every Steadiness view, kept between runs.
+**Rate**, **Amplitude** and **Beat Error**, in each pane's toolbar, choose
+which series that pane shows; at least one stays on.
 
 Known phase jumps and position boundaries remain cuts in the derived
 Steadiness log, including when separate visits to one position are joined.
@@ -1060,7 +1131,11 @@ sizes, positive, as the tests beside them read them.
 The views:
 **Readings Over Time** (the readings in time order, with the stretches of
 constant level the change finder found and, for two states, the two
-levels dashed; scaled to the readings with lone wild ones left out),
+levels dashed; scaled to the readings with lone wild ones left out; a key
+in the plot's top right corner, as Charts' key, says after a dot in the
+series' colour what a dot is and how many are drawn: "10 s readings
+(179)" for the rate, "2 s windows (880)" for the amplitude and beat
+error, measured every 2 s),
 **Periods** (the period search's score at each period on a logarithmic
 axis, with the 1% false-alarm line dashed, the calibre's wheels' periods
 marked, and the strongest component labelled; **Log
@@ -1097,10 +1172,14 @@ each unbroken stretch read alone; coloured in viridis from dark purple
 for the smallest size to yellow for the size 99.5% of the cells read stay
 under and above; a cell nothing was read for, such as a window with a
 reading missing or a stretch's ends the wavelet can't reach, is left
-empty and shown as "not read" in the key under the map; the wheels' turns are
+empty and shown as "not read" in the key under the map, which is titled
+with what the colour measures and its unit (**Timing Swing (ms)** for the
+rate's map, the timing's swing at each period, not a rate in s/d;
+**Amplitude Swing (°)**; **Beat Error Swing (ms)**); the wheels' turns are
 dotted across it and named at the right; **Log Scale** in the toolbar
 colours the sizes on a log scale over a range of 300 to 1; the pointer
-over a cell shows its time, period and size). In Periods and FFT each wheel's
+over a cell shows its size with its unit, its period and its time, as
+"Timing Swing 1.8 ms · period 12 s · at 3:20"; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
 period is a bold dotted line and half of it, twice a turn as an off-centre wheel
 shows, a fainter dotted line marked ×2; the grid behind is pale. The
 wheels' lines are grey and dotted, and named, so they never
@@ -1224,13 +1303,22 @@ been published yet"). The request carries no account or identifier.
 the end of the pane icons opens it over the app. As the Mac's System
 Settings does, a sidebar down its left lists the categories, each with its
 icon and name, the one picked filled in the accent colour, and the picked
-category's name heads its settings on the right:
-**General** (Appearance, Check for Updates at Start, **Listening** with
+category's name heads its settings on the right. Each page is in
+groups: a group's title in small grey type above a rounded panel no wider
+than 560 points, its rows apart by hairlines, each row's name at the left
+with a one-line caption under it and its control at the right of the
+same row. A message about a setting (Keep Awake refused, an input's level
+that can't be set, the microphone reporting its automatic gain otherwise)
+takes that row's caption, in the same space, so no row grows.
+**General**: Appearance (Auto, Light or Dark); **Listening**, with
 **Listen When the App Opens**, on unless switched off, and **Keep
-Awake**), **Microphone** (the microphone menu and **Rescan**, **Input
-Level**, the peak meter, **Show Every Input** and **Quartz Correction**,
-each input's kept clock with Forget; see True Clock), **Watches Folder**
-(below) and **Calibres** (Manage Calibres, below). It opens at the
+Awake**; **Updates**, with Check for Updates at Start. **Microphone**:
+the **Microphone** group (the microphone menu and **Rescan**, **Show
+Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
+warning in the caption, and **Peak** with its shaded band) and **Quartz
+Correction**, each input's kept clock as a row with Forget (see True
+Clock). **Watches Folder** (below) and **Calibres** (Manage Calibres,
+below). It opens at the
 category it was last left on, kept with the app's settings across
 restarts. **Done**, at the top right, Escape or a click outside closes it. What belongs to
 the take on show (its calibre, lift angle, beat rate, position and
@@ -1311,7 +1399,8 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   Off by default and kept for each input. Each time the app opens the
   input it sets the switch to match, since a stand turns it back on each
   time it is plugged in, and it reads it back: where the microphone
-  reports otherwise, a line under the switch says so. On a Mac the
+  reports otherwise, the row's caption says so in place of the warning to
+  keep it off. On a Mac the
   request reaches every USB microphone's switch at once, so it is sent
   only when the input's own switch needs changing. The switch is hidden
   for an input without one, such as a built-in microphone.
@@ -1329,9 +1418,12 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     take opened, or a take saved: the latest first, none twice, never
     expiring, and kept across restarts.
   - **Manage Calibres.** The Calibres category of Settings, which
-    Manage Calibres… opens. **New Custom Calibre…** sits at the right of
-    the Calibres heading and adds a calibre the list doesn't have, shown
-    and selected whatever the filters hide. Under the heading, every
+    Manage Calibres… opens. Under the heading, one search field over the
+    table ("Search Makers and Calibres": what you type in the maker or the
+    calibre together, or one of the calibre's other names), the count of
+    calibres shown beside it ("4,537 calibres"), and at the right **New
+    Custom Calibre…**, which adds a calibre the list doesn't have, shown
+    and selected whatever the filters hide. Then every
     calibre in a table on the left and, level with it on the right,
     the one selected in full (see **The details** below). Opened
     from the Calibre menu while a beat rate is known (set on the Calibre
@@ -1340,17 +1432,20 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     ("Showing 28800 bph, the rate found from the beats"), with **Show
     All** beside it; the Beat Rate funnel's Clear Filter clears it too. Opened from the gear,
     or with no rate known, nothing is filtered.
-    - **Columns.** **Maker**, **Calibre**, **Beat Rate**, **Lift Angle**
-      and the short list, a narrow column headed by a star with a star on
+    - **Columns.** **Maker**, **Calibre**, **Beat Rate (bph)**, **Lift
+      Angle (°)** and the short list, a narrow column headed by a star with a star on
       each row, filled for a calibre on the short list and an outline for
       one off it. Clicking a heading sorts on it, a second click reverses
-      it; it starts by maker. A value the list doesn't give is "Not Given"
-      and sorts after every value.
+      it; it starts by maker. Rows are 28 points. The units are in the
+      headings, and the numbers are right-aligned under the end of theirs.
+      A value the list doesn't give is a dim "—" (its filter lists it as
+      "Not Given") and sorts after every value.
     - **Custom calibres.** Your own calibres show under the maker
       **Custom**, in the accent colour, always at the top of the table
       whatever the sort, and the Maker funnel filters them as any maker.
-    - **Funnels.** Each heading has a funnel just after its name, as a
-      spreadsheet's column filter does. Its menu sorts on the column (A to
+    - **Filters.** Each heading has a ▾ just after its name that opens
+      its filter, as a spreadsheet's column filter does; while a column's
+      filter is on, its ▾ is a funnel in the accent colour. Its menu sorts on the column (A to
       Z and Z to A; smallest or largest first for numbers; starred first or
       last for the short list), clears that column's filter, and lists the
       column's values with a tickbox each, **(Select All)** at the top and
@@ -1364,29 +1459,33 @@ folder can't be moved while another copy has it open. The Watches view adds watc
       ticks apply on **OK**; **Cancel** leaves the filter as it was, and OK
       needs at least one value ticked. It lists the values the other
       filters let through; the funnels combine, so a row shows only when
-      every column's value is ticked. A funnel in use is tinted in the
-      accent colour.
+      every column's value is ticked, and the search over the table
+      narrows them too.
     - **The details.** The calibre selected, in a card level with the
-      table: its name and what the list gives, then for a custom calibre
-      its name, maker, beat rate and lift angle, then **Wheels**, each
-      wheel's time for one turn:
+      table: its name alone (every fact in the row stays in the row; other
+      names it goes by under it), then for a custom calibre its name,
+      maker, beat rate and lift angle, then the **Wheels** group, a row
+      for each wheel's time for one turn, a caption under the group saying
+      so:
       - The six every lever movement has (balance, escape, fourth, third
         and centre wheels, and the barrel) come first, then any other the
         list names.
       - The hint on each wheel says where its figure comes from.
-      - A wheel nobody has given is blank: type its period and it is kept
-        for that calibre, marked "Custom", with **Clear** to go back.
-      - **+** at the foot of the wheels adds a row to type another wheel's
-        name and period, with **Add** (or Return) to add it once both are
-        filled in, and **Cancel** to forget the row.
-      - Then the list's sources as links, how its figures are known, and
-        its notes.
+      - A wheel nobody has given reads a dim "Not Known": type its period
+        and it is kept for that calibre, its caption "Custom", with
+        **Clear** to go back.
+      - **Add a Wheel…**, the group's last row, opens a row to type
+        another wheel's name and period, with **Add** (or Return) to add
+        it once both are filled in, and **Cancel** to forget the row.
+      - Then the **Sources** group, its title saying how the figures are
+        known ("Sources · Published List"): a row for each source, its
+        name the link (the address only on hover) and under it what the
+        source says, then the list's notes.
       - At the foot, **Share with the Project…** and, for a custom
         calibre, **Delete Calibre**.
     - **A narrow window.** When the table and the details don't both fit,
       the table takes the whole width, and choosing a calibre shows its
-      details in its place with **‹ All Calibres** to go back. **New Custom
-      Calibre…** then sits on a row of its own under the controls.
+      details in its place with **‹ All Calibres** to go back.
   - **The short list.** It starts as the list's common and modern
     calibres. In Manage Calibres clicking the star in a calibre's row puts
     it on the short list or takes it off; filter the table with the funnels
@@ -1456,24 +1555,41 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   after its settling, and each entry says `settle_s = 0`, so
   `timegrapher session` skips nothing more and reads the same seconds as
   the app (a take saved by an earlier build skips its settling a second
-  time there). Its rates still differ from the app's by the sound card's
-  own clock error, which it corrects from the take's clock log and the
-  app's figures don't. Guided runs through the positions (as `timegrapher
+  time there). Both correct the rates from the take's clock log (see True
+  Clock). Guided runs through the positions (as `timegrapher
   session` reports them) will build on it.
 
 ## Sessions
 
+Every question the app asks lays its buttons out as a Mac dialog does:
+the default, filled, at the right, which Return presses; **Cancel** to its
+left, which Escape presses; and a button that throws something away
+(**Don't Save**, **Throw Away**, **Delete**) at the far left. Where
+throwing away is all the question offers, nothing is the default and
+Return does nothing.
+
 At the first launch the app shows **Set Up the Microphone**, and listens
-while it is open: the microphone menu, the input level and the peak meter,
-with a shaded band from -10 to -6 dBFS to set the peak in (at 0 dBFS the
-sound clips, which the words beside the meter say), then **Done** and **Not Now**.
-Choosing another microphone listens to that one instead; if a microphone
-won't start, the sheet says why. Done keeps Quick Listen running; Not Now
-stops it and closes the sheet, which shows again at the next launch. Once
-the microphone is set up (by Done, or by any listening that opened it
-with the sheet closed), every launch starts Quick Listen at once, unless **Listen When the
-App Opens** (Settings, under General) is off or a recording was given on
-the command line. With it off, the microphone is opened only when
+while it is open. It is three numbered steps: **1, Choose the microphone
+the watch sits on** (the microphone menu with Rescan, and Show Every
+Input); **2, Put a ticking watch on it**; **3, Set the Input Level so the
+peaks sit in the shaded band**: Input Level ("Not adjustable here" where
+the system sets it), **Automatic Gain** with its standing warning to keep
+it off (only for an input whose automatic gain the app can reach), and
+the **Peak** meter with its dBFS, over a shaded band from −10 to −6
+dBFS. Under them a status line two lines tall says one thing: the green
+dot and "Listening to …", a failure (the red icon, then its words, cut at
+two lines with the whole of it on hover), a warning such as "Clipping:
+lower the Input Level.", or "Not listening.". It changes nothing around
+it. At the bottom are two notes and **Not Now** and **Done**; Return
+presses Done and Escape presses Not Now. Choosing another microphone
+listens to that one instead. Done keeps Quick Listen running and counts
+the microphone as set up. Not Now stops listening and closes the sheet,
+which then doesn't come back by itself (Settings > Microphone sets it
+up later); it doesn't count as set up, so the app still doesn't listen
+by itself at launch. Once the microphone is set up (by Done, or by any
+listening that opened it with the sheet closed), every launch starts
+Quick Listen at once, unless **Listen When the App Opens** (Settings,
+under General) is off or a recording was given on the command line. With it off, the microphone is opened only when
 listening starts. When another program records from the same microphone
 (a long take with the recorder, say), don't start listening during its
 take, and press Stop before one begins.

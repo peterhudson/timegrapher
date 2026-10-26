@@ -342,12 +342,12 @@ pub fn run(
         eprintln!("{note}");
     }
     let clock_log = clock_args.log;
-    let clock = match clock_log {
+    let mut clock = match clock_log {
         Some(p) => {
             let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
             let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
                 .map_err(|e| format!("{}: {e}", p.display()))?;
-            Some(ClockFit::new(&pairs).map_err(|e| format!("{}: {e}", p.display()))?)
+            Some(ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", p.display()))?)
         }
         None => None,
     };
@@ -362,9 +362,22 @@ pub fn run(
     let total_s = info
         .frames
         .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-    let mut clock = match &fixed {
-        Some((ppm, _)) => session::fixed_clock(*ppm, total_s),
-        None => clock,
+    // With a log, the recording's USB lines, when it has them, correct the
+    // rates; the log then gives its breaks.
+    let usb = match (clock_log, clock.as_mut()) {
+        (Some(p), Some(fit)) => crate::clock_cmd::usb(&files)?.map(|(ppm, from)| {
+            fit.rate_from_usb(ppm);
+            (
+                ppm,
+                format!("{from}; clock log {} for its breaks", p.display()),
+            )
+        }),
+        _ => None,
+    };
+    let fixed = fixed.or(usb);
+    let mut clock = match (&fixed, clock_log) {
+        (Some((ppm, _)), None) => session::fixed_clock(*ppm, total_s),
+        _ => clock,
     };
     let clock_note = fixed.as_ref().map(|(_, from)| from.as_str());
     let out = out.unwrap_or_else(|| {
@@ -667,6 +680,10 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             c.rate_error_s_per_day.abs(),
             if c.ppm >= 0.0 { "fast" } else { "slow" },
         ),
+        (Some(c), None) if !c.corrects() => println!(
+            "Clock        not calibrated: {}",
+            c.withheld.map(|w| w.note()).unwrap_or_default()
+        ),
         (Some(c), None) => println!(
             "Clock        sound card {:.2} ppm {} than NTP time, so uncorrected rates read {:.2} s/d {}; corrected from {} entries, {:.1} ms rms{}",
             c.ppm.abs(),
@@ -679,7 +696,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
         ),
         (None, _) => println!("Clock        not calibrated: rates are read on the sound card's clock, whose error is not measured here (--clock, or a card error stored with `timegrapher clock`, corrects it)"),
     }
-    if r.clock.is_some() {
+    if r.clock.as_ref().is_some_and(|c| c.corrects()) {
         println!("             tg, and a session's reference rates, read on the sound card's clock: add the error above to compare");
     }
     match &r.overall {

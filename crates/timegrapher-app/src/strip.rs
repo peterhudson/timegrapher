@@ -1509,7 +1509,7 @@ pub fn draw_strip(
             painter.text(
                 Pos2::new(r.center().x, y),
                 Align2::CENTER_TOP,
-                format!("{} scale", o.name),
+                format!("{} Scale", o.name),
                 font.clone(),
                 ink.gamma_multiply(0.8),
             );

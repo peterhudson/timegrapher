@@ -9,6 +9,7 @@
 //! offered. Nothing is sent anywhere: the app opens the GitHub form and the
 //! person attaches the zip.
 
+use crate::theme::{DialogButton, Role};
 use crate::{applog, strip, theme};
 use eframe::egui::{self, RichText, Sense, Vec2};
 use serde_json::{json, Value};
@@ -322,29 +323,42 @@ impl ReportDialog {
         ui.add_space(10.0);
         let busy = self.saving.is_some();
         let ready = !busy && (!self.has_sound() || self.listened);
-        ui.horizontal_wrapped(|ui| {
-            let save = ui
-                .add_enabled(ready, theme::primary(ui, "Save Report…"))
-                .on_hover_text(
-                    "Choose where to save the zip. Its folder and the GitHub form open next, \
-                     so you can drag it in.",
-                )
-                .on_disabled_hover_text(if busy {
-                    "Saving…"
-                } else {
-                    "Listen to the sound, then tick the box above first"
+        let w = ui.available_width();
+        ui.allocate_ui_with_layout(
+            egui::vec2(w, 26.0),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                let buttons = [
+                    DialogButton::new(
+                        Role::Default,
+                        "Save Report…",
+                        "Choose where to save the zip. Its folder and the GitHub form open \
+                         next, so you can drag it in.",
+                    )
+                    .enabled_unless(
+                        ready,
+                        if busy {
+                            "Saving…"
+                        } else {
+                            "Listen to the sound, then tick the box above first"
+                        },
+                    ),
+                    DialogButton::new(Role::Cancel, "Cancel", ""),
+                ];
+                match theme::dialog_buttons_right(ui, &buttons) {
+                    Some(0) => self.save(),
+                    Some(_) => self.close(),
+                    None => {}
+                }
+                // While it saves, at the left of the row.
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    if busy {
+                        ui.spinner();
+                        ui.label(RichText::new("Saving…").color(pal.text_secondary));
+                    }
                 });
-            if save.clicked() {
-                self.save();
-            }
-            if ui.add(theme::secondary(ui, "Cancel")).clicked() {
-                self.close();
-            }
-            if busy {
-                ui.spinner();
-                ui.label(RichText::new("Saving…").color(pal.text_secondary));
-            }
-        });
+            },
+        );
         match &self.result {
             Some(Saved::Done { zip, bytes }) => {
                 let big = *bytes > 25_000_000;

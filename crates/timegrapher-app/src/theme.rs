@@ -405,10 +405,15 @@ pub fn help_with_key(
         .width(360.0)
         .show(|ui| {
             // A long explanation and its key of icons can be taller than
-            // the window: it scrolls rather than running off the bottom.
-            egui::ScrollArea::vertical()
-                .max_height(ui.ctx().content_rect().height() - 24.0)
-                .show(ui, |ui| body(ui, true));
+            // the room below the "?": it scrolls from its start rather
+            // than running off the window's edge.
+            let room = ui.ctx().content_rect().bottom() - ui.max_rect().top() - 16.0;
+            let mut scroll = egui::ScrollArea::vertical().max_height(room.max(160.0));
+            // Each time it opens, from its title.
+            if !open {
+                scroll = scroll.vertical_scroll_offset(0.0);
+            }
+            scroll.show(ui, |ui| body(ui, true));
         });
     resp
 }
@@ -457,76 +462,6 @@ pub fn chip(ui: &mut Ui, text: &str, title: &str, sentences: &[String], max_w: f
     resp
 }
 
-/// The caption over a card of settings, with its explanation and, for a
-/// pane, the switch that shows or hides it. True when the switch flipped.
-pub fn section_header(
-    ui: &mut Ui,
-    text: &str,
-    shown: Option<&mut bool>,
-    help_text: &[&str],
-    folded: &mut bool,
-) -> bool {
-    let mut changed = false;
-    let p = pal(ui);
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        // The chevron and the name fold the card away or open it again.
-        let galley =
-            ui.painter()
-                .layout_no_wrap(text.to_string(), semibold(12.5), p.text_secondary);
-        let size = Vec2::new(18.0 + galley.size().x, 20.0);
-        let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-        let color = if resp.hovered() {
-            p.text
-        } else {
-            p.text_secondary
-        };
-        let c = egui::pos2(rect.left() + 8.0, rect.center().y);
-        let t = ui.ctx().animate_bool_responsive(resp.id, !*folded);
-        // A triangle pointing right when folded, turning to point down.
-        let angle = t * std::f32::consts::FRAC_PI_2;
-        let rot = |x: f32, y: f32| {
-            let (s, co) = angle.sin_cos();
-            c + Vec2::new(x * co - y * s, x * s + y * co)
-        };
-        ui.painter().add(egui::Shape::convex_polygon(
-            vec![rot(3.5, 0.0), rot(-2.5, 3.5), rot(-2.5, -3.5)],
-            color,
-            Stroke::NONE,
-        ));
-        ui.painter().galley_with_override_text_color(
-            egui::pos2(rect.left() + 18.0, rect.center().y - galley.size().y / 2.0),
-            galley,
-            color,
-        );
-        if resp.clicked() {
-            *folded = !*folded;
-        }
-        resp.on_hover_text(if *folded {
-            format!("Open the {} card", text)
-        } else {
-            format!("Fold the {} card away", text)
-        })
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-        if !help_text.is_empty() {
-            help(ui, text, help_text);
-        }
-        if let Some(on) = shown {
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.add_space(14.0);
-                let hint = if *on {
-                    format!("Hide the {}", text)
-                } else {
-                    format!("Show the {}", text)
-                };
-                changed = switch(ui, on).on_hover_text(hint).changed();
-            });
-        }
-    });
-    ui.add_space(2.0);
-    changed
-}
-
 /// A row in a settings card: the name on the left (with its hint on hover)
 /// and the control after it, lined up with the rows above and below.
 pub fn row<R>(
@@ -573,6 +508,190 @@ pub fn row<R>(
 
 /// Width of the names in a settings card.
 pub const LABEL_W: f32 = 92.0;
+
+/// Settings' groups are no wider than this.
+pub const GROUP_W: f32 = 560.0;
+
+/// A settings row's height, without a caption that wraps.
+pub const GROUP_ROW_H: f32 = 40.0;
+
+/// What sits under a settings row's name: its one-line caption, or a
+/// message about the setting in the caption's place, so a message never
+/// adds a line under the row.
+#[derive(Debug, Clone, Copy)]
+pub enum Caption<'a> {
+    None,
+    Text(&'a str),
+    Alert(Alert, &'a str),
+}
+
+/// A titled group of settings: the title in small secondary text above a
+/// rounded panel no wider than [`GROUP_W`], its rows apart by hairlines.
+/// `help`, when given, is a "?" beside the title.
+pub fn group<R>(
+    ui: &mut Ui,
+    title: &str,
+    help_text: Option<&[&str]>,
+    add: impl FnOnce(&mut Group<'_>) -> R,
+) -> R {
+    let p = pal(ui);
+    ui.horizontal(|ui| {
+        ui.add_space(6.0);
+        ui.label(RichText::new(title).size(12.0).color(p.text_secondary));
+        if let Some(h) = help_text {
+            help(ui, title, h);
+        }
+    });
+    let w = ui.available_width().min(GROUP_W);
+    // A step off the window it sits on: lighter in the dark theme, the
+    // window's grey on a white one in the light.
+    let fill = if ui.visuals().dark_mode {
+        lerp_color(p.card, p.control, 0.5)
+    } else {
+        p.window
+    };
+    let out = Frame::new()
+        .fill(fill)
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(12, 0))
+        .show(ui, |ui| {
+            ui.set_width(w - 24.0);
+            ui.spacing_mut().item_spacing.y = 0.0;
+            add(&mut Group { ui, rows: 0 })
+        })
+        .inner;
+    ui.add_space(14.0);
+    out
+}
+
+/// The rows of a [`group`].
+pub struct Group<'a> {
+    pub ui: &'a mut Ui,
+    rows: usize,
+}
+
+impl Group<'_> {
+    /// A hairline above each row but the first.
+    fn next(&mut self) {
+        if self.rows > 0 {
+            let r = self.ui.available_rect_before_wrap();
+            let y = r.top();
+            // Darker than the group in the dark theme; the separator grey
+            // on the light theme's.
+            let p = pal(self.ui);
+            let ink = if self.ui.visuals().dark_mode {
+                p.card
+            } else {
+                p.separator
+            };
+            self.ui
+                .painter()
+                .hline(r.x_range(), y, Stroke::new(1.0_f32, ink));
+        }
+        self.rows += 1;
+    }
+
+    /// A row: the name at the left with its caption under it, and the
+    /// control at the right of the same row; `hint` on the name.
+    pub fn row<R>(
+        &mut self,
+        label: &str,
+        caption: Caption,
+        hint: &str,
+        control: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        self.next();
+        let ui = &mut *self.ui;
+        let p = pal(ui);
+        let w = ui.available_width();
+        ui.allocate_ui_with_layout(
+            Vec2::new(w, GROUP_ROW_H),
+            Layout::right_to_left(Align::Center),
+            |ui| {
+                ui.set_min_size(Vec2::new(w, GROUP_ROW_H));
+                ui.spacing_mut().item_spacing.x = 8.0;
+                // The control laid left to right at the right edge, in the
+                // width it took last frame, so a row of buttons or a
+                // segmented control keeps its order.
+                let id = ui.id().with(("group row", label));
+                let was = ui.ctx().data(|d| d.get_temp::<f32>(id)).unwrap_or(0.0);
+                let r = ui.allocate_ui_with_layout(
+                    Vec2::new(was, GROUP_ROW_H),
+                    Layout::left_to_right(Align::Center),
+                    control,
+                );
+                let took = r.response.rect.width();
+                if (took - was).abs() > 0.5 {
+                    ui.ctx().data_mut(|d| d.insert_temp(id, took));
+                    ui.ctx().request_repaint();
+                }
+                let out = r.inner;
+                ui.add_space(8.0);
+                ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    // A name alone sits level with its control.
+                    ui.add_space(if matches!(caption, Caption::None) {
+                        11.0
+                    } else {
+                        6.0
+                    });
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    ui.add(egui::Label::new(RichText::new(label).size(13.5).color(p.text)).wrap())
+                        .on_hover_text(hint);
+                    match caption {
+                        Caption::None => {}
+                        Caption::Text(t) => {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(t).size(11.5).color(p.text_secondary),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        Caption::Alert(kind, t) => {
+                            // As tall as a caption, one line cut short, so the row
+                            // keeps its height; the row's hover says more.
+                            ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                                ui.spacing_mut().item_spacing.x = 5.0;
+                                let (rect, _) =
+                                    ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
+                                alert_icon(
+                                    ui.painter(),
+                                    rect.translate(Vec2::new(0.0, 1.0)),
+                                    kind,
+                                    p,
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(t).size(11.5).color(p.text_secondary),
+                                    )
+                                    .truncate(),
+                                );
+                            });
+                        }
+                    }
+                    ui.add_space(6.0);
+                });
+                out
+            },
+        )
+        .inner
+    }
+
+    /// A row of its own: whatever `add` draws, across the group.
+    pub fn whole<R>(&mut self, add: impl FnOnce(&mut Ui) -> R) -> R {
+        self.next();
+        let ui = &mut *self.ui;
+        ui.add_space(8.0);
+        let out = ui
+            .scope(|ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+                add(ui)
+            })
+            .inner;
+        ui.add_space(8.0);
+        out
+    }
+}
 
 /// A row with a name on the left and a switch on the right. True when the
 /// switch was flipped.
@@ -738,6 +857,122 @@ pub fn destructive(ui: &Ui, text: &str) -> egui::Button<'static> {
     secondary(ui, text)
 }
 
+/// What a button in a dialog's button row does, which says where it sits
+/// (as a Mac dialog lays them out): the default rightmost, Cancel to its
+/// left, others to the left of Cancel, and a button that throws something
+/// away at the far left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// Filled; Return presses it.
+    Default,
+    /// Escape presses it.
+    Cancel,
+    Other,
+    /// Throws something away: far from the default.
+    Destructive,
+}
+
+/// One button in a dialog's button row.
+#[derive(Debug, Clone, Copy)]
+pub struct DialogButton<'a> {
+    pub role: Role,
+    pub label: &'a str,
+    pub hint: &'a str,
+    /// Greyed out, saying why on hover, when not.
+    pub enabled: Result<(), &'a str>,
+}
+
+impl<'a> DialogButton<'a> {
+    pub fn new(role: Role, label: &'a str, hint: &'a str) -> Self {
+        Self {
+            role,
+            label,
+            hint,
+            enabled: Ok(()),
+        }
+    }
+
+    /// Greyed out, with `why` on hover, unless `on`.
+    pub fn enabled_unless(mut self, on: bool, why: &'a str) -> Self {
+        self.enabled = if on { Ok(()) } else { Err(why) };
+        self
+    }
+}
+
+/// A dialog's button row along its foot: each button where its role puts
+/// it, all of one height. Return presses the default button (when it is
+/// enabled and no field has the keyboard), Escape the Cancel button.
+/// Returns the index in `buttons` of the one pressed.
+pub fn dialog_buttons(ui: &mut Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let mut hit = None;
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 26.0),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            hit = dialog_buttons_right(ui, buttons);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                for (i, b) in buttons.iter().enumerate() {
+                    if b.role == Role::Destructive && dialog_button(ui, b) {
+                        hit = Some(i);
+                    }
+                }
+            });
+        },
+    );
+    hit.or_else(|| dialog_keys(ui, buttons))
+}
+
+/// The right-hand part of a dialog's button row, for a row with more in
+/// it, inside a right-to-left layout: the default, then Cancel, then the
+/// others. Destructive buttons are left to the caller's left side.
+pub fn dialog_buttons_right(ui: &mut Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let mut hit = None;
+    for role in [Role::Default, Role::Cancel, Role::Other] {
+        for (i, b) in buttons.iter().enumerate() {
+            if b.role == role && dialog_button(ui, b) {
+                hit = Some(i);
+            }
+        }
+    }
+    hit
+}
+
+/// Return and Escape on a dialog's button row.
+pub fn dialog_keys(ui: &Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let free = ui.memory(|m| m.focused().is_none());
+    let find = |role| {
+        buttons
+            .iter()
+            .position(|b| b.role == role && b.enabled.is_ok())
+    };
+    if free && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        return find(Role::Default);
+    }
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        return find(Role::Cancel);
+    }
+    None
+}
+
+fn dialog_button(ui: &mut Ui, b: &DialogButton<'_>) -> bool {
+    let button = match b.role {
+        Role::Default => primary(ui, b.label),
+        Role::Destructive => destructive(ui, b.label),
+        Role::Cancel | Role::Other => secondary(ui, b.label),
+    };
+    let r = ui.add_enabled(b.enabled.is_ok(), button);
+    let r = if b.hint.is_empty() {
+        r
+    } else {
+        r.on_hover_text(b.hint)
+    };
+    match b.enabled {
+        Err(why) => r.on_disabled_hover_text(why).clicked(),
+        Ok(()) => r.clicked(),
+    }
+}
+
 /// Grid marks for a plot, all of one step so every grid line and label is
 /// drawn alike: the first step of `ladder` (1, 2 and 5 times powers of ten
 /// when empty) at least `min_px` points apart. 80 points is what the plot
@@ -843,6 +1078,67 @@ pub fn dash(ui: &mut Ui, a: Color32, b: Color32) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A dialog's button row as on a Mac, whatever order the buttons are
+    /// given in: the default rightmost, Cancel to its left, others left of
+    /// Cancel, a button that throws something away at the far left. Return
+    /// presses the default (not while greyed out), Escape Cancel.
+    #[test]
+    fn a_dialog_row_puts_each_button_where_its_role_says() {
+        let ctx = egui::Context::default();
+        install(&ctx);
+        let buttons = [
+            DialogButton::new(Role::Destructive, "Don't Save", ""),
+            DialogButton::new(Role::Cancel, "Cancel", ""),
+            DialogButton::new(Role::Other, "Elsewhere…", ""),
+            DialogButton::new(Role::Default, "Save…", ""),
+        ];
+        let run = |keys: &[egui::Key], buttons: &[DialogButton]| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(600.0, 200.0),
+                )),
+                events: keys
+                    .iter()
+                    .map(|&key| egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            let mut hit = None;
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    hit = dialog_buttons(ui, buttons);
+                });
+            });
+            let mut at = std::collections::HashMap::new();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    at.insert(t.galley.text().to_string(), t.pos.x);
+                }
+            }
+            (hit, at)
+        };
+        let (hit, at) = run(&[], &buttons);
+        assert_eq!(hit, None);
+        let x = |n: &str| at[n];
+        assert!(x("Don't Save") < 100.0, "{at:?}");
+        assert!(x("Don't Save") < x("Elsewhere…"));
+        assert!(x("Elsewhere…") < x("Cancel"));
+        assert!(x("Cancel") < x("Save…"));
+        assert!(x("Save…") > 450.0, "{at:?}");
+        assert_eq!(run(&[egui::Key::Enter], &buttons).0, Some(3));
+        assert_eq!(run(&[egui::Key::Escape], &buttons).0, Some(1));
+        let mut greyed = buttons;
+        greyed[3] = greyed[3].enabled_unless(false, "Fill it in first");
+        assert_eq!(run(&[egui::Key::Enter], &greyed).0, None);
+    }
 
     #[test]
     fn fonts_load_and_lay_out() {
@@ -1074,10 +1370,42 @@ pub fn note_icon(ui: &Ui, icon: Icon, name: &str) {
 /// doesn't fit folds into a "…" menu at the row's end, with words, and
 /// comes back out when the pane is wide enough again; a pane's plot never
 /// gives up room for its tools.
-pub fn pane_toolbar(
+pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl FnMut(&mut Ui)) {
+    pane_toolbar_full(ui, title, help_text, None, None, controls)
+}
+
+/// A pane's toolbar with `note`, a fact about what the pane shows (such
+/// as the moment it is from), at its right end before the "?".
+pub fn pane_toolbar_noted(
     ui: &mut Ui,
     title: &str,
     help_text: &[&str],
+    note: Option<&str>,
+    controls: impl FnMut(&mut Ui),
+) {
+    pane_toolbar_full(ui, title, help_text, note, None, controls)
+}
+
+/// [`pane_toolbar`] with one control `pinned` just left of the "?": it
+/// never folds and never moves, however the row's controls fold.
+pub fn pane_toolbar_pinned(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    pinned: Option<&mut dyn FnMut(&mut Ui)>,
+    controls: impl FnMut(&mut Ui),
+) {
+    pane_toolbar_full(ui, title, help_text, None, pinned, controls)
+}
+
+/// A pane's toolbar: its controls, then at its right end its `note`, its
+/// `pinned` control and the "?".
+fn pane_toolbar_full(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    note: Option<&str>,
+    pinned: Option<&mut dyn FnMut(&mut Ui)>,
     mut controls: impl FnMut(&mut Ui),
 ) {
     let full = ui.available_rect_before_wrap();
@@ -1085,6 +1413,45 @@ pub fn pane_toolbar(
         egui::pos2(full.right() - 18.0, full.top() + 4.0),
         Vec2::splat(16.0),
     );
+    let pin_w = if pinned.is_some() {
+        CONTROL_H + 6.0
+    } else {
+        0.0
+    };
+    if let Some(pin) = pinned {
+        let r = egui::Rect::from_min_size(
+            egui::pos2(full.right() - 26.0 - CONTROL_H - 2.0, full.top() + 1.0),
+            Vec2::new(CONTROL_H, CONTROL_H),
+        );
+        ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| pin(ui));
+    }
+    let note_w = note.map_or(0.0, |n| {
+        let p = pal(ui);
+        let g = ui.painter().layout_no_wrap(
+            n.to_owned(),
+            egui::FontId::proportional(12.0),
+            p.text_secondary,
+        );
+        let w = g.size().x;
+        ui.painter().galley(
+            egui::pos2(
+                full.right() - 26.0 - pin_w - w,
+                q.center().y - g.size().y / 2.0,
+            ),
+            g,
+            p.text_secondary,
+        );
+        note_drawn(
+            ui,
+            title,
+            n,
+            egui::Rect::from_min_size(
+                egui::pos2(full.right() - 26.0 - pin_w - w, q.top()),
+                Vec2::new(w, q.height()),
+            ),
+        );
+        w + 12.0
+    });
     let mut text = help_text.to_vec();
     text.push(crate::help::TOOLBAR);
     // The key from the row as last drawn.
@@ -1095,7 +1462,7 @@ pub fn pane_toolbar(
     ui.scope_builder(egui::UiBuilder::new().max_rect(q), |ui| {
         help_with_key(ui, title, &text, &key)
     });
-    let room = full.with_max_x(full.right() - 26.0);
+    let room = full.with_max_x(full.right() - 26.0 - pin_w - note_w);
     // Last frame's controls and their widths decide what folds now.
     let known: Vec<(String, f32)> = ui
         .ctx()
@@ -1113,6 +1480,9 @@ pub fn pane_toolbar(
     ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
         ui.set_clip_rect(room.intersect(ui.clip_rect()));
         ui.horizontal(|ui| {
+            // The row as tall as its tallest field from the start, so each
+            // control is centred on the same line.
+            ui.set_min_height(CONTROL_H);
             ui.spacing_mut().item_spacing = Vec2::new(BAR_GAP, 4.0);
             set_bar(
                 ui,
@@ -1562,12 +1932,11 @@ pub enum Icon {
     Truing,
     AutoCentre,
     Masks,
-    Unmask,
     ArrowDown,
     ArrowRight,
     Stacked,
     Beside,
-    Ruler,
+    Db,
     PalletFork,
     OneClock,
     TwoClocks,
@@ -1596,6 +1965,7 @@ pub enum Icon {
     Funnel,
     Fit,
     Highlighter,
+    Info,
 }
 
 /// What an alert says about itself: a warning (a triangle in the text

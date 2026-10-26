@@ -53,6 +53,12 @@ pub const WATCH_FILE: &str = "watch.toml";
 pub const TAKES: &str = "takes";
 pub const PHOTOS: &str = "photos";
 pub const CACHE_FILE: &str = ".cache.json";
+/// The format of what `.cache.json` keeps of each take, raised whenever a
+/// take reads differently, so a cache an earlier build wrote is read
+/// afresh. Apart from [`FORMAT`]: a new cache never stops an older build
+/// opening the library, which just makes its own cache again. 2: `at_end`
+/// gained `rate_corrected_s_per_day`.
+const CACHE_FORMAT: u32 = 2;
 pub const LOCK_FILE: &str = ".library.lock";
 /// The folder of takes not yet filed under a watch.
 pub const UNSORTED: &str = "Unsorted";
@@ -296,6 +302,19 @@ pub struct AtEnd {
     pub amplitude_deg: Option<f64>,
     /// Signed, from the unlock.
     pub beat_error_ms: Option<f64>,
+    /// `rate_s_per_day` corrected for the take's sound card from its clock
+    /// log, as `timegrapher session` and the app read the take; left out
+    /// when the take has no clock log that can be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_corrected_s_per_day: Option<f64>,
+}
+
+impl AtEnd {
+    /// The rate to show: on the take's clock log where it has one, else as
+    /// heard.
+    pub fn rate(&self) -> Option<f64> {
+        self.rate_corrected_s_per_day.or(self.rate_s_per_day)
+    }
 }
 
 /// One take, as the scan found it.
@@ -477,10 +496,10 @@ impl Library {
         let old: Cache = fs::read(&cache_path)
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
-            .filter(|c: &Cache| c.format == FORMAT)
+            .filter(|c: &Cache| c.format == CACHE_FORMAT)
             .unwrap_or_default();
         let mut cache = Cache {
-            format: FORMAT,
+            format: CACHE_FORMAT,
             takes: BTreeMap::new(),
         };
         self.watches.clear();
@@ -1236,14 +1255,32 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
         }
     }
     let at = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_f64);
+    // The rate kept is as heard, on the sound card's clock; the take's
+    // clock log corrects it, as reading the take does, when it measures
+    // the clock well enough to.
+    let ppm = || {
+        let m = manifest.as_ref().filter(|_| audio && !incomplete)?;
+        let first = m.recordings.first()?;
+        let listed: Vec<String> = m.recordings.iter().map(|r| r.file.clone()).collect();
+        let files = crate::recording_order::recordings_in(dir, &listed).ok()?;
+        crate::clock::of_take(dir, first.clock.as_deref()?, &files)
+            .ok()
+            .filter(crate::clock::ClockFit::corrects)
+            .map(|f| f.ppm)
+    };
     let at_end = about
         .as_ref()
         .and_then(|a| a.get("result"))
         .filter(|r| r.is_object())
-        .map(|r| AtEnd {
-            rate_s_per_day: at(r, "rate_s_per_day"),
-            amplitude_deg: at(r, "amplitude_deg"),
-            beat_error_ms: at(r, "beat_error_unlock_ms"),
+        .map(|r| {
+            let rate = at(r, "rate_s_per_day");
+            AtEnd {
+                rate_s_per_day: rate,
+                amplitude_deg: at(r, "amplitude_deg"),
+                beat_error_ms: at(r, "beat_error_unlock_ms"),
+                rate_corrected_s_per_day: rate
+                    .and_then(|v| Some(crate::clockstore::correct_rate(v, ppm()?))),
+            }
         });
     Ok(Take {
         name: file_name(dir),
@@ -1341,6 +1378,53 @@ mod tests {
         .unwrap();
     }
 
+    /// The rate a take keeps is as heard; its clock log corrects it, as
+    /// reading the take does, and without a log it stays as heard.
+    #[test]
+    fn a_takes_rate_at_its_end_is_corrected_from_its_clock_log() {
+        let dir = scratch("clock-log");
+        fs::create_dir_all(&dir).unwrap();
+        let audio = crate::audio::Audio {
+            samples: vec![0.0; 8000 * 120],
+            sample_rate: 8000,
+        };
+        crate::audio::write_wav(&dir.join("audio-001.wav"), &audio).unwrap();
+        // The card's clock 50 ppm off the computer's.
+        let mut log = String::from("unix_s,frames\n");
+        for k in 0..13 {
+            let audio_s = 10.0 * k as f64;
+            log += &format!(
+                "{:.6},{}\n",
+                1_700_000_000.0 + audio_s * (1.0 + 50e-6),
+                (audio_s * 8000.0) as u64
+            );
+        }
+        fs::write(dir.join("clock.csv"), log).unwrap();
+        fs::write(
+            dir.join("session.toml"),
+            "bph = 28800\n\n[[recording]]\nfile = '.'\nposition = 'DU'\nclock = 'clock.csv'\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("session.json"),
+            r#"{"result":{"rate_s_per_day":3.5,"amplitude_deg":281.0,"beat_error_unlock_ms":-0.4}}"#,
+        )
+        .unwrap();
+        let a = read_take(&dir, 0).unwrap().at_end.unwrap();
+        assert_eq!(a.rate_s_per_day, Some(3.5));
+        let fit = crate::clock::of_take(&dir, "clock.csv", &[dir.join("audio-001.wav")]).unwrap();
+        assert!((fit.ppm.abs() - 50.0).abs() < 0.5, "{}", fit.ppm);
+        let want = crate::clockstore::correct_rate(3.5, fit.ppm);
+        assert_eq!(a.rate_corrected_s_per_day, Some(want));
+        assert!((want - 3.5).abs() > 4.0, "{want}");
+        assert_eq!(a.rate(), Some(want));
+        // A log that can't be read leaves the rate as heard.
+        fs::write(dir.join("clock.csv"), "unix_s,frames\n").unwrap();
+        let a = read_take(&dir, 0).unwrap().at_end.unwrap();
+        assert_eq!(a.rate_corrected_s_per_day, None);
+        assert_eq!(a.rate(), Some(3.5));
+    }
+
     #[test]
     fn a_library_lists_its_watches_and_their_takes() {
         let root = scratch("lists");
@@ -1393,6 +1477,7 @@ mod tests {
                 rate_s_per_day: Some(3.5),
                 amplitude_deg: Some(281.0),
                 beat_error_ms: Some(-0.4),
+                rate_corrected_s_per_day: None,
             })
         );
         let file_bytes = |t: &str| -> u64 {
@@ -1476,6 +1561,15 @@ mod tests {
         assert_eq!(rate(&lib), Some(3.5));
         // A cache that is gone or unreadable is made again.
         fs::write(root.join(CACHE_FILE), "not json").unwrap();
+        lib.scan();
+        assert_eq!(rate(&lib), Some(3.5));
+        // A cache an earlier build wrote, in an older format, is not used.
+        lib.scan();
+        let cache = fs::read_to_string(root.join(CACHE_FILE)).unwrap();
+        let want = format!("\"format\":{CACHE_FORMAT}");
+        assert!(cache.contains(&want), "{cache}");
+        let old = cache.replace("3.5", "9.5").replace(&want, "\"format\":1");
+        fs::write(root.join(CACHE_FILE), old).unwrap();
         lib.scan();
         assert_eq!(rate(&lib), Some(3.5));
         let _ = fs::remove_dir_all(&root);

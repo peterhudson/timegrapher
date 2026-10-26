@@ -184,37 +184,17 @@ pub const STRIP: &[&str] = &[
 ];
 
 pub const PROFILE: &[&str] = &[
-    "The typical sound of a tick (blue) and of a tock (deep orange) over the averaging \
-     time, up to 60 s: the line is the beats' typical loudness at each moment, and the \
-     shaded band is where the middle 80% of beats fall. Time runs from before the \
-     unlock on the left to after the drop on the right, in milliseconds from the drop (see \
-     Time From). Both sides share one scale, so a quieter side \
-     shows as smaller.",
-    "Each beat has three sounds: 1, the unlock, when the pallet stone lets go of the \
-     escape wheel; 2, the impulse, when the escape wheel pushes the fork; 3, the drop, \
-     when the next tooth lands on the other stone.",
-    "The grey lines named Unlock, Drop and Drop Peak are the edges the readings come \
-     from: unlock (solid) where the beat first rises above the noise, drop (dashed) where \
-     the drop starts, and the drop's peak (a thinner dashed line). Amplitude comes from the time between unlock and drop; the beat \
-     error from the unlocks.",
-    "The short dotted grey stubs at the foot, numbered 1, 2 and 3, mark where each of the \
-     three sounds rises halfway up its own climb. Hover over one for its name and time. They come from a separate measurement of the beat's shape, so they sit \
-     near but not exactly on the edges. Both \
-     are measured on the same averaged sound, not on single beats.",
-    "A sound's stub is missing when that sound can't be told apart from its \
-     neighbour: a soft unlock that merges into the impulse, say.",
-    "The flat dashed line is the noise floor: the level before the beat starts.",
-    "Time From: Shared puts the tick and the tock on one clock. Zero is where a watch \
-     in beat would drop, and each side sits half the beat error from it, so the two \
-     drop lines stand the beat error from the drop apart and the two unlock lines the \
-     beat error from the unlock. Own Drop measures each side from its own drop, so both \
-     drops sit at 0 ms and only the unlock lines show a difference.",
-    "The two beat errors differ when the tick and the tock take different times from \
-     unlock to drop, the same imbalance that gives them different amplitudes. The \
-     unlock figure is the beat error tg reports; the drop \
-     figure adds that imbalance on top.",
-    "Linear shows the loudness as measured; dB shows it in decibels below the loudest \
-     point, which makes the quiet unlock easier to see.",
+    "The typical sound of a tick (blue) and a tock (deep orange): the line is the beats' \
+     typical loudness, the band where the middle 80% fall. Time runs in ms from the drop.",
+    "A line from the top is an edge: Unlock, Drop or Peak. Amplitude comes from unlock to \
+     drop, the beat error from the unlocks. A dot on the curve is a sound: Unlock, Impulse \
+     or Drop Sound. Hover a name, line or dot for its time; on a short plot, sound names \
+     show on hover.",
+    "Each plot's top-left gives its side's facts, at the same place on both. Hover it for \
+     all five when it shows fewer. The dashed line is the noise floor.",
+    "dB Scale shows the level in decibels below the loudest point, so the quiet unlock \
+     shows. Time From: Shared puts Tick and Tock on one clock, the drops a beat error \
+     apart; Own Drop puts both drops at 0 ms.",
 ];
 
 pub const CHARTS: &[&str] = &[
@@ -230,51 +210,14 @@ pub const CHARTS: &[&str] = &[
 ];
 
 pub const STEADINESS: &[&str] = &[
-    "How the rate, the amplitude and the beat error (from the unlock) each change over \
-     the session: cycles, steps, trends and how each reading relates to the last. A \
-     distribution can't show \
-     a cycle, a step or a slow wander because it throws the time order away; these \
-     tests keep it. They are the same as `timegrapher series`.",
-    "Each series gets a sentence saying what the tests found: a cycle (named after \
-     the wheel whose turn it matches; the fourth wheel turns once a minute), two \
-     levels the readings switch between, a level that steps and stays, a slow trend, \
-     correlation between readings, or none of these. When two levels come from the \
-     unlock mark hopping between two edges of the sound, the sentence says so. Under \
-     it are the statistics: readings, median, standard deviation, the scatter from one \
-     reading to the next, the lag-1 correlation and the Ljung–Box p-value, and the \
-     trend and period when found.",
-    "Each view is a pane of its own, with its icon under Analysis at the top, so two \
-     can sit side by side. The hare, the swing and the seesaw, for Rate, Amplitude and \
-     Beat Error in each pane's toolbar, choose which series that pane shows; at least one \
-     stays on.",
-    "Readings Over Time: every reading in time order (10 s rate readings, 2 s \
-     amplitude and beat error readings), with the stretches of constant level and the \
-     two state levels. Periods: how strongly the readings repeat at each period, with \
-     the 1% false-alarm line dashed and the wheels' periods marked; Log Scale in its \
-     toolbar draws the scores on a log scale, so a small peak beside a tall one shows. \
-     Cycle: the readings \
-     folded at the cycle found. Autocorrelation: how much a reading resembles the one \
-     a lag later, with the band independent readings stay inside. Allan Deviation: the \
-     scatter of averages against the dashed line independent readings follow, on \
-     logarithmic axes; the lowest point is the averaging time that gives the most \
-     repeatable reading. CUSUM: the running sum of distances from the mean, which \
-     stays inside the dashed lines unless the level changes. FFT: the size of the sine \
-     wave at each period, like Witschi's FFT, in the series' own units, the rate's as \
-     the swing peak to peak it makes in 10 s rate readings, in s/d, from 20 s up (from \
-     the beat timing: a timing sine of a ms at period P swings the rate by \
-     2 × a × 2π / P × 86.4 s/d, of which a 10 s reading keeps sin(x)/x, x = π × 10 / P). \
-     Timing in its toolbar draws rate as the beat timing's own spectrum, in ms, at every \
-     period instead. In both, each wheel's period is a bold dotted line, and half of \
-     it, twice a turn as an off-centre wheel shows, is a fainter line marked ×2, both \
-     grey and dotted; the STFT and Wavelet Maps dot the wheels' turns \
-     across the map. With no calibre picked, or none of its wheels known, one minute \
-     and one hour are marked in grey instead. Wheel Periods in the toolbar shows or \
-     hides these marks.",
-    "The tests need about 5 minutes of beats, and say more the longer the session: a \
-     cycle has to come round several times to count. They run over the whole session \
-     in the background, again every minute while it grows; for a recording opened, \
-     they cover all of it. Rates are on the \
-     sound card's clock.",
+    "How the rate, the amplitude and the beat error each change over the session, in \
+     time order: cycles, steps and trends. The tests need about 5 minutes of beats; \
+     they are timegrapher series on the command line.",
+    "Info, the i at the right, gives what the tests found and their statistics. A rate \
+     dot is a 10 s reading; an amplitude or beat error dot is a 2 s window.",
+    "Each view has its icon under Analysis. Periods: how strongly the readings repeat. \
+     Cycle: the readings folded at the cycle found. FFT: the sine wave's size at each \
+     period. The wheels' periods are dotted.",
 ];
 
 pub const SCOPE: &[&str] = &[
@@ -328,10 +271,6 @@ pub const ISOCHRONISM: &[&str] = &[
     "The curve needs the amplitude to fall through at least three 2° bands with 10 \
      readings in each, which a session of some hours from full wind gives. It comes \
      from the same tests as Steadiness, the same as `timegrapher series`.",
-    "0 h / 24 h compares the first half hour of the session with the half hour 24 hours \
-     later in one position: rate, amplitude and beat error, and how much each \
-     changed. It needs at least 2 hours; under 24 hours, the \
-     last half hour stands in for the 24 h one.",
 ];
 
 pub const HISTOGRAMS: &[&str] = &[

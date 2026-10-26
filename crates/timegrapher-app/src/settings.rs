@@ -14,6 +14,10 @@ use serde::{Deserialize, Serialize};
 /// Where the settings sit in eframe's storage.
 const KEY: &str = "timegrapher-settings";
 
+/// A pane of several plots shows Rate alone until its switches are
+/// changed: rate, amplitude, beat error.
+pub const RATE_ONLY: [bool; 3] = [true, false, false];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -50,6 +54,8 @@ pub struct Settings {
     /// The calibre's wheels marked on the Periods, FFT, STFT Map and
     /// Wavelet Map panes' period axes.
     pub show_wheels: bool,
+    /// The Steadiness panes' Info panel open: one setting for all of them.
+    pub steady_info: bool,
     /// The Positions Test's settling and measuring in each position,
     /// seconds.
     pub positions_settle_s: f64,
@@ -78,6 +84,9 @@ pub struct Settings {
     /// The microphone has been set up (Set Up the Microphone, or a listen
     /// that opened it): until then the app asks at launch.
     pub mic_set_up: bool,
+    /// Not Now was pressed on Set Up the Microphone: it isn't shown at
+    /// launch again, and this doesn't count as set up.
+    pub setup_declined: bool,
     /// The readings' cards across the top shown.
     pub show_readings: bool,
     /// The library's folder when one was chosen in Settings; `None` is
@@ -89,6 +98,9 @@ pub struct Settings {
     /// ("default" for the system default). Every other input with the
     /// switch has it turned off each time the app opens it.
     pub agc_on: Vec<String>,
+    /// The field the Watches view's list shows under each name (List
+    /// Shows); `None` is the calibre.
+    pub watch_list_shows: Option<String>,
 }
 
 /// A calibre's train as earlier versions kept it in the settings.
@@ -121,19 +133,20 @@ impl Default for Settings {
             rate_guides: true,
             overlays: [true, false, false],
             follow: false,
-            chart_series: [true; 3],
-            dist_series: [true; 3],
+            chart_series: RATE_ONLY,
+            dist_series: RATE_ONLY,
             hist_cumulative: false,
             hist_readings: true,
             sound: profiles::Options::default(),
             folded: Vec::new(),
             theme: ThemePreference::System,
-            steady_series: [true; 3],
+            steady_series: RATE_ONLY,
             steady_shown: Vec::new(),
             periods_log: false,
             fft_timing: false,
             maps_log: false,
             show_wheels: true,
+            steady_info: false,
             positions_settle_s: crate::guided::SETTLE_S,
             positions_measure_s: crate::guided::MEASURE_S,
             scope: scope::View::default(),
@@ -147,10 +160,12 @@ impl Default for Settings {
             keep_awake: true,
             listen_at_open: true,
             mic_set_up: false,
+            setup_declined: false,
             show_readings: true,
             library: None,
             settings_section: "general".into(),
             agc_on: Vec::new(),
+            watch_list_shows: None,
         }
     }
 }

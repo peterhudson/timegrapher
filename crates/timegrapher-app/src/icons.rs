@@ -54,12 +54,11 @@ const ALL: [Icon; 79] = [
     Icon::Truing,
     Icon::AutoCentre,
     Icon::Masks,
-    Icon::Unmask,
     Icon::ArrowDown,
     Icon::ArrowRight,
     Icon::Stacked,
     Icon::Beside,
-    Icon::Ruler,
+    Icon::Db,
     Icon::PalletFork,
     Icon::OneClock,
     Icon::TwoClocks,
@@ -88,6 +87,7 @@ const ALL: [Icon; 79] = [
     Icon::Funnel,
     Icon::Fit,
     Icon::Highlighter,
+    Icon::Info,
 ];
 
 /// The drawing behind each icon, with the pun it makes.
@@ -261,21 +261,17 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Rails => {
             r#"<path d="M8.5 3L4.5 21M15.5 3l4 18"/><path d="M7.6 6.5h8.8M6.7 10.5h10.6M5.8 14.5h12.4M4.9 18.5h14.2" stroke-width="1.3"/>"#
         }
-        // Truing calipers: What a watchmaker centres a balance with.
+        // Two arrows meeting on a dashed line: Bring the beats to the centre line.
         Icon::Truing => {
-            r#"<path d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16"/><path d="M4 12h5M20 12h-5"/><circle cx="12" cy="12" r="2"/>"#
+            r#"<path d="M3 12h18" stroke-dasharray="2.2 2.2"/><path d="M12 2.5v6.5M9 6.5l3 3 3-3"/><path d="M12 21.5V15M9 17.5l3-3 3 3"/>"#
         }
-        // Truing calipers with a loop: Centring that keeps going.
+        // A pushpin on the dashed line: Keep the beats pinned to the centre line.
         Icon::AutoCentre => {
-            r#"<path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M4 10.5h4.5M20 10.5h-4.5"/><circle cx="12" cy="10.5" r="1.7"/><path d="M8.5 17a3.5 3 0 1 0 7 0"/><path d="M15.5 17l.4-2.5M15.5 17l-2.4-.8"/>"#
+            r#"<path d="M8.5 2.5h7M10 2.5v5.5l-3 3h10l-3-3V2.5"/><path d="M12 11v6.5"/><path d="M3 19.5h18" stroke-dasharray="2.2 2.2"/>"#
         }
-        // Theatre masks: Masking, one smiling, one not.
+        // Scissors: Cut a stretch out of the readings (the beats stay, hatched).
         Icon::Masks => {
-            r#"<path d="M2.5 3.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M5 7h1.5M8.2 7h1.5M5.4 11.2a2 2 0 0 0 3.7 0"/><path d="M12 8.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M14.5 12h1.5M17.5 12H19M14.9 17.6a2 2 0 0 1 3.7 0"/>"#
-        }
-        // Theatre masks crossed out: The masks taken off.
-        Icon::Unmask => {
-            r#"<path d="M2.5 3.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M12 8.5h9.5v6a4.75 4.75 0 0 1-9.5 0z"/><path d="M3 21L21 3"/>"#
+            r#"<circle cx="6" cy="6.5" r="3"/><circle cx="6" cy="17.5" r="3"/><path d="M8.6 8L20 18.5M8.6 16L20 5.5"/>"#
         }
         // An arrow down: Time running down the strip.
         Icon::ArrowDown => r#"<path d="M12 4v15M6 13l6 6 6-6"/>"#,
@@ -289,9 +285,9 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Beside => {
             r#"<rect x="3" y="5" width="8" height="14" rx="1.5"/><rect x="13" y="5" width="8" height="14" rx="1.5"/>"#
         }
-        // A straight ruler: A linear scale.
-        Icon::Ruler => {
-            r#"<rect x="2.5" y="8" width="19" height="8" rx="1"/><path d="M6 8v3.2M9.5 8v2M13 8v3.2M16.5 8v2" stroke-width="1.2"/>"#
+        // "dB" in bold strokes: The level in decibels.
+        Icon::Db => {
+            r#"<g stroke-width="2.3"><circle cx="6.6" cy="14.6" r="3.4"/><path d="M10 5.5v12.6"/><path d="M13.6 5.8v12.4h4.2a3.1 3.1 0 0 0 0-6.2h-4.2M13.6 12h3.6a3.1 3.1 0 0 0 0-6.2h-3.6"/></g>"#
         }
         // A pallet fork: The unlock and the drop come from the pallets.
         Icon::PalletFork => {
@@ -393,6 +389,10 @@ fn drawing(icon: Icon) -> &'static str {
         // paints a stretch of the strip as one position.
         Icon::Highlighter => {
             r#"<path d="M15 3l6 6-8.5 8.5-6-6z"/><path d="M6.5 11.5L5 16l3 3 4.5-1.5"/><path d="M3 21.5h9" stroke-width="2.6"/>"#
+        }
+        // The standard "i" in a circle: Info, the findings in full.
+        Icon::Info => {
+            r#"<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/>"#
         }
     }
 }

@@ -100,6 +100,15 @@ fn row_half(m: &TimeFrequency) -> Option<f64> {
 
 /// A size in the map's unit: "0.12 ms", "3.1°".
 pub fn size_text(m: &TimeFrequency, v: f64) -> String {
+    let n = number_text(v);
+    match m.unit {
+        "deg" => format!("{n}°"),
+        u => format!("{n} {u}"),
+    }
+}
+
+/// A size's number alone, its unit given elsewhere: "0.12", "3.1".
+fn number_text(v: f64) -> String {
     let d = if v >= 10.0 {
         0
     } else if v >= 1.0 {
@@ -109,10 +118,27 @@ pub fn size_text(m: &TimeFrequency, v: f64) -> String {
     } else {
         3
     };
-    match m.unit {
-        "deg" => format!("{v:.d$}°"),
-        u => format!("{v:.d$} {u}"),
+    format!("{v:.d$}")
+}
+
+/// What the map's colour measures: the swing of the series at each
+/// period. The rate's map holds the timing's swing, in ms.
+fn measure_name(m: &TimeFrequency) -> &'static str {
+    match m.series {
+        "rate" => "Timing Swing",
+        "amplitude" => "Amplitude Swing",
+        "beat_error" => "Beat Error Swing",
+        _ => "Swing",
     }
+}
+
+/// The key's title, with the unit its numbers are in: "Timing Swing (ms)".
+pub fn key_title(m: &TimeFrequency) -> String {
+    let unit = match m.unit {
+        "deg" => "°",
+        u => u,
+    };
+    format!("{} ({unit})", measure_name(m))
 }
 
 /// Draw map `m` with `base` (the pane's plot, its axes still to set),
@@ -169,11 +195,19 @@ pub fn draw(
     let width = dt * w as f64;
     let key_h = 22.0;
     let plot_h = (ui.available_height() - key_h).max(40.0);
+    let plot_w = ui.available_width() as f64;
     let x_hi = upto_s.max(left + width);
     let resp = base
         .height(plot_h)
         .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-        .x_axis_formatter(move |g, _| time_label(g.value))
+        .x_axis_formatter(move |g, r| {
+            // A mark too near the right edge for its label to show whole
+            // goes unlabelled, rather than cut to "10:0".
+            if (r.end() - g.value) / (r.end() - r.start()) * plot_w < 18.0 {
+                return String::new();
+            }
+            time_label(g.value)
+        })
         .y_grid_spacer(crate::steady::period_grid(plot_h))
         .y_axis_formatter(|g, _| crate::steady::period_label(g.value))
         .default_x_bounds(0.0f64.min(left), x_hi)
@@ -197,9 +231,10 @@ pub fn draw(
             None => "not read".into(),
         };
         resp.response.on_hover_text_at_pointer(format!(
-            "{}, period {}: {what}",
-            crate::strip::fmt_time(t),
-            period_label(per)
+            "{} {what} · period {} · at {}",
+            measure_name(m),
+            period_label(per),
+            crate::strip::fmt_time(t)
         ));
     }
     key_row(ui, m, scale, pal);
@@ -253,7 +288,9 @@ fn wheel_rows(
 fn key_row(ui: &mut egui::Ui, m: &TimeFrequency, s: Scale, pal: &theme::Palette) {
     ui.horizontal(|ui| {
         let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
-        ui.label(small(size_text(m, s.lo)));
+        ui.label(RichText::new(key_title(m)).small().color(pal.text));
+        ui.add_space(6.0);
+        ui.label(small(number_text(s.lo)));
         let (r, _) = ui.allocate_exact_size(Vec2::new(120.0, 10.0), egui::Sense::hover());
         let n = 60;
         for i in 0..n {
@@ -265,7 +302,7 @@ fn key_row(ui: &mut egui::Ui, m: &TimeFrequency, s: Scale, pal: &theme::Palette)
                 viridis(i as f32 / (n - 1) as f32),
             );
         }
-        ui.label(small(format!("{} and above", size_text(m, s.hi))));
+        ui.label(small(format!("{} and above", number_text(s.hi))));
         ui.add_space(12.0);
         let (e, _) = ui.allocate_exact_size(Vec2::new(14.0, 10.0), egui::Sense::hover());
         ui.painter().rect_stroke(
@@ -376,5 +413,20 @@ mod tests {
         assert!((s.at((0.01f64 * 3.0).sqrt()) - 0.5).abs() < 1e-6);
         assert!(Scale::of(&[vec![f64::NAN]], false).is_none());
         assert_eq!(size_text(&m, 3.04), "3.0°");
+    }
+
+    /// The key says what its colour measures, with the unit: the rate's
+    /// map holds the timing's swing in ms, not a rate in s/d.
+    #[test]
+    fn the_key_names_what_its_colour_measures() {
+        let mut m = map(vec![vec![1.0]], vec![10.0], None);
+        assert_eq!(key_title(&m), "Amplitude Swing (°)");
+        m.series = "rate";
+        m.unit = "ms";
+        assert_eq!(key_title(&m), "Timing Swing (ms)");
+        assert_eq!(size_text(&m, 1.83), "1.8 ms");
+        assert_eq!(number_text(0.123), "0.12");
+        m.series = "beat_error";
+        assert_eq!(key_title(&m), "Beat Error Swing (ms)");
     }
 }
