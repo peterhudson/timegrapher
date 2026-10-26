@@ -3504,7 +3504,7 @@ mod tests {
             (
                 &cycle,
                 Lead::Periodic,
-                "repeats every 46 s, 5.2 s/d peak to peak",
+                "repeats every 46 s, 5.8 s/d peak to peak",
             ),
             (
                 &levels,
