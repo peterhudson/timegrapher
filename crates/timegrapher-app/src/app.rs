@@ -11704,9 +11704,15 @@ impl TimegrapherApp {
                     )
                 })
             };
-            // While a clock is kept, the rate on it in the figure's hover.
+            // While a clock is kept, the rate on it in the figure's hover:
+            // first when the figure itself is corrected, as it says what
+            // the figure is.
             if let Some(t) = rate.and_then(|rate| self.true_clock_words(rate)) {
-                behind += &format!("\n\n{t}");
+                behind = if self.take_rate_ppm().is_some() {
+                    format!("{t}\n\n{}", behind.trim_start())
+                } else {
+                    behind + &format!("\n\n{t}")
+                };
             }
             figure_row(
                 ui,
@@ -11940,8 +11946,7 @@ impl TimegrapherApp {
                     .unwrap_or_default();
                 return Some(format!(
                     "On this take's USB lines: the rate corrected for the sound card's own \
-                     clock, {ppm} ppm {way}, as `timegrapher series` reads it. {note}; the \
-                     log places only its breaks."
+                     clock, {ppm} ppm {way}. {note}; the log places only its breaks."
                 ));
             }
         }
