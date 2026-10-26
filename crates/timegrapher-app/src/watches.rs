@@ -163,6 +163,74 @@ fn row(
     below: &[String],
     hint: &str,
 ) -> egui::Response {
+    found_row(ui, picked, lead, top, right, below, hint, "")
+}
+
+/// Where `key` is found in `text`, ignoring case, as byte ranges of
+/// `text`, in order and not overlapping. Nothing for an empty key.
+pub fn found_in(text: &str, key: &str) -> Vec<std::ops::Range<usize>> {
+    let key: Vec<char> = key.chars().flat_map(char::to_lowercase).collect();
+    if key.is_empty() {
+        return Vec::new();
+    }
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut found = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        // Match char by char, each lowered, so the ranges stay on
+        // `text`'s own boundaries.
+        let mut lowered = Vec::new();
+        let mut j = i;
+        while j < chars.len() && lowered.len() < key.len() {
+            lowered.extend(chars[j].1.to_lowercase());
+            j += 1;
+        }
+        if lowered == key {
+            let end = chars.get(j).map_or(text.len(), |c| c.0);
+            found.push(chars[i].0..end);
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    found
+}
+
+/// `text` in `font` and `color`, with what `key` finds in it in `accent`.
+fn found_job(
+    text: &str,
+    key: &str,
+    font: egui::FontId,
+    color: egui::Color32,
+    accent: egui::Color32,
+) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    let mut at = 0;
+    let add = |job: &mut egui::text::LayoutJob, s: &str, c| {
+        job.append(s, 0.0, egui::TextFormat::simple(font.clone(), c));
+    };
+    for r in found_in(text, key) {
+        add(&mut job, &text[at..r.start], color);
+        add(&mut job, &text[r.clone()], accent);
+        at = r.end;
+    }
+    add(&mut job, &text[at..], color);
+    job
+}
+
+/// A list row, what the search found in its name and the line under it
+/// in the accent colour.
+#[allow(clippy::too_many_arguments)]
+fn found_row(
+    ui: &mut egui::Ui,
+    picked: bool,
+    lead: Lead,
+    top: &str,
+    right: &str,
+    below: &[String],
+    hint: &str,
+    key: &str,
+) -> egui::Response {
     let pal = theme::pal(ui);
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 40.0), Sense::click());
@@ -191,7 +259,11 @@ fn row(
     // Nothing runs off the row: the name stops short of the size, cut with
     // "…", and the line under it keeps only the parts that fit, in order.
     let name_room = (size.left() - 8.0 - left).max(0.0);
-    let name = one_line(ui, top, theme::semibold(13.0), pal.text, name_room);
+    let name = cut(
+        ui,
+        found_job(top, key, theme::semibold(13.0), pal.text, pal.accent),
+        name_room,
+    );
     p.galley(
         egui::pos2(left, rect.top() + 12.0 - name.size().y / 2.0),
         name,
@@ -200,7 +272,11 @@ fn row(
     let room = (rect.right() - 8.0 - left).max(0.0);
     let small = egui::FontId::proportional(11.5);
     let line = fitted(ui, below, &small, room);
-    let line = one_line(ui, &line, small, pal.text_secondary, room);
+    let line = cut(
+        ui,
+        found_job(&line, key, small, pal.text_secondary, pal.accent),
+        room,
+    );
     p.galley(
         egui::pos2(left, rect.top() + 29.0 - line.size().y / 2.0),
         line,
@@ -209,18 +285,8 @@ fn row(
     resp.on_hover_text(hint)
 }
 
-/// `text` on one line no wider than `width`, cut short with "…".
-fn one_line(
-    ui: &egui::Ui,
-    text: &str,
-    font: egui::FontId,
-    color: egui::Color32,
-    width: f32,
-) -> std::sync::Arc<egui::Galley> {
-    let mut job = egui::text::LayoutJob::single_section(
-        text.to_owned(),
-        egui::TextFormat::simple(font, color),
-    );
+/// `job` on one line no wider than `width`, cut short with "…".
+fn cut(ui: &egui::Ui, mut job: egui::text::LayoutJob, width: f32) -> std::sync::Arc<egui::Galley> {
     job.wrap = egui::text::TextWrapping {
         max_width: width,
         max_rows: 1,
@@ -273,7 +339,9 @@ pub fn list(
     marked: Option<&str>,
     thumbs: &mut Thumbs,
     shows: Option<&str>,
+    search: &str,
 ) -> Option<String> {
+    let key = search.trim();
     let mut picked = None;
     let photos = watches.iter().any(|e| !e.photos.is_empty());
     for e in watches {
@@ -306,7 +374,7 @@ pub fn list(
         if let Some(t) = last_take(e).and_then(local_minute) {
             below.push(format!("last {}", &t[..10]));
         }
-        if row(
+        if found_row(
             ui,
             marked == Some(w.id.as_str()),
             lead,
@@ -314,6 +382,7 @@ pub fn list(
             &list_size(e.bytes()),
             &below,
             "Show this watch's details and takes",
+            key,
         )
         .clicked()
         {
@@ -1682,6 +1751,20 @@ mod tests {
             got[2], "Audemars Piguet 2121",
             "the first is kept, to be cut"
         );
+    }
+
+    /// The search's matches, ignoring case, on the text's own char
+    /// boundaries, each once.
+    #[test]
+    fn the_list_marks_what_the_search_found() {
+        assert_eq!(found_in("Pepsi GMT", "gmt"), vec![6..9]);
+        assert_eq!(
+            found_in("Pepsi GMT", ""),
+            Vec::<std::ops::Range<usize>>::new()
+        );
+        assert_eq!(found_in("aaa", "aa"), vec![0..2]);
+        assert_eq!(found_in("Ébauche ÉTA", "é"), vec![0..2, 9..11]);
+        assert_eq!(found_in("Seiko", "x"), Vec::<std::ops::Range<usize>>::new());
     }
 
     #[test]

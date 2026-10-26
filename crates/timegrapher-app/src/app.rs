@@ -230,6 +230,27 @@ struct OpenNeed {
     started: bool,
 }
 
+/// What a watch picked in the Watches view's list does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListPick {
+    /// Shows it, refused while a watch's take listens.
+    Pick,
+    /// Asks about the unsaved sound, then stops and picks it.
+    Ask,
+    /// Stops listening, with nothing to ask about, and picks it.
+    StopThenPick,
+}
+
+/// The way a watch picked in the list goes: `running`, whether a Quick
+/// Listen is what listens, and whether its sound would be asked about.
+fn list_pick_route(running: bool, quick: bool, asks: bool) -> ListPick {
+    match (running && quick, asks) {
+        (false, _) => ListPick::Pick,
+        (true, true) => ListPick::Ask,
+        (true, false) => ListPick::StopThenPick,
+    }
+}
+
 /// What a question before throwing away unsaved sound is about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Confirm {
@@ -2155,6 +2176,7 @@ impl TimegrapherApp {
             library: self.library_dir.clone(),
             settings_section: self.settings_last.key().into(),
             agc_on: self.agc_on.clone(),
+            watch_list_shows: self.watch_list_shows.clone(),
         }
     }
 
@@ -2200,7 +2222,9 @@ impl TimegrapherApp {
             library,
             settings_section,
             agc_on,
+            watch_list_shows,
         } = s;
+        self.watch_list_shows = watch_list_shows;
         self.settings_last = Tab::from_key(&settings_section);
         self.listen_at_open = listen_at_open;
         self.mic_set_up = mic_set_up;
@@ -5432,7 +5456,11 @@ impl TimegrapherApp {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::NewTake(kind) => self.new_take(kind, true),
-            Confirm::PickWatch(id) => self.line_pick(id, true),
+            Confirm::PickWatch(id) => {
+                // Asked over a Quick Listen still listening: it stops now.
+                self.pause();
+                self.line_pick(id, true)
+            }
             Confirm::Open { path } => self.open_recording(&path, false),
             Confirm::Microphone => self.listen_after_ask(),
             Confirm::QuickListen => self.quick_listen(true),
@@ -5603,6 +5631,7 @@ impl TimegrapherApp {
     /// The library's watches, or what stands in for them.
     fn watch_list_card(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
+        let shows = self.list_shows().map(str::to_string);
         let mut show_unsorted = false;
         let picked = match &self.library {
             Ok(Some(l)) => {
@@ -5636,7 +5665,8 @@ impl TimegrapherApp {
                     &shown,
                     marked,
                     &mut self.thumbs,
-                    self.watch_list_shows.as_deref(),
+                    shows.as_deref(),
+                    &self.watch_search,
                 );
                 // How many the search hid.
                 if !self.watch_search.trim().is_empty() && !l.watches.is_empty() {
@@ -5688,7 +5718,26 @@ impl TimegrapherApp {
             self.pick_unsorted();
         }
         if let Some(id) = picked {
-            self.pick_watch(&id);
+            self.list_pick(id);
+        }
+    }
+
+    /// A watch picked in the Watches view's list. Over a Quick Listen
+    /// still listening, its unsaved sound is asked about first (as the
+    /// Watch line asks), then the listening stops and the watch is picked;
+    /// over a watch's take still listening, it is refused.
+    fn list_pick(&mut self, id: String) {
+        match list_pick_route(
+            self.running(),
+            self.quick_listen && !self.saving_busy(),
+            self.line_pick_asks(),
+        ) {
+            ListPick::Pick => self.pick_watch(&id),
+            ListPick::Ask => self.confirm = Some(Confirm::PickWatch(Some(id))),
+            ListPick::StopThenPick => {
+                self.pause();
+                self.line_pick(Some(id), true);
+            }
         }
     }
 
@@ -6481,14 +6530,10 @@ impl TimegrapherApp {
             }
             _ => Vec::new(),
         };
-        if self
-            .watch_list_shows
-            .as_ref()
-            .is_some_and(|l| !labels.contains(l))
-        {
-            self.watch_list_shows = None;
-        }
-        let mut shows = self.watch_list_shows.clone();
+        // A field no watch has any more shows as Calibre, the choice kept
+        // for when one has it again.
+        let mut shows = self.list_shows().map(str::to_string);
+        let was = shows.clone();
         theme::tool_field(
             ui,
             "List Shows",
@@ -6505,7 +6550,23 @@ impl TimegrapherApp {
                     });
             },
         );
-        self.watch_list_shows = shows;
+        if shows != was {
+            self.watch_list_shows = shows;
+        }
+    }
+
+    /// The field the list shows under each name, while some watch has it;
+    /// `None` is the calibre.
+    fn list_shows(&self) -> Option<&str> {
+        let label = self.watch_list_shows.as_deref()?;
+        match &self.library {
+            Ok(Some(l)) => l
+                .watches
+                .iter()
+                .any(|e| e.watch.fields.iter().any(|f| f.label == label))
+                .then_some(label),
+            _ => None,
+        }
     }
 
     /// The form for a new watch: only its name is needed.
@@ -21741,6 +21802,51 @@ mod tests {
                 .clone(),
             _ => panic!("no library"),
         }
+    }
+
+    /// A watch picked in the list over a Quick Listen still listening asks
+    /// about its unsaved sound first, or stops at once with nothing to ask
+    /// about; over a watch's take listening it goes to `pick_watch`, which
+    /// refuses; with nothing listening it is picked.
+    #[test]
+    fn a_watch_picked_over_a_quick_listen_asks_then_stops() {
+        assert_eq!(list_pick_route(true, true, true), ListPick::Ask);
+        assert_eq!(list_pick_route(true, true, false), ListPick::StopThenPick);
+        assert_eq!(list_pick_route(true, false, true), ListPick::Pick);
+        assert_eq!(list_pick_route(false, true, true), ListPick::Pick);
+        // Asked and answered with nothing listening, it picks the watch.
+        let (mut app, base) = line_app("list-pick", &["Pepsi"], None);
+        let pepsi = watch_id(&app, "Pepsi");
+        app.list_pick(pepsi.clone());
+        assert_eq!(app.watch_open.as_deref(), Some(pepsi.as_str()));
+        app.pick_unsorted();
+        app.confirmed(
+            Confirm::PickWatch(Some(pepsi.clone())),
+            &egui::Context::default(),
+        );
+        assert_eq!(app.watch_open.as_deref(), Some(pepsi.as_str()));
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// List Shows is kept between runs. A field no watch has shows as the
+    /// calibre, the choice still kept.
+    #[test]
+    fn list_shows_is_kept_between_runs() {
+        let (mut app, base) = line_app("list-shows", &["Pepsi"], None);
+        app.watch_list_shows = Some("Customer".into());
+        assert_eq!(app.list_shows(), None, "no watch has Customer");
+        if let Ok(Some(l)) = &mut app.library {
+            l.watches[0].watch.fields.push(library::Field {
+                label: "Customer".into(),
+                kind: library::FieldKind::Text,
+                value: "Ada".into(),
+            });
+        }
+        assert_eq!(app.list_shows(), Some("Customer"));
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+        again.apply_settings(app.settings());
+        assert_eq!(again.watch_list_shows.as_deref(), Some("Customer"));
+        let _ = std::fs::remove_dir_all(base);
     }
 
     /// What the Watch line's menu draws, in order.

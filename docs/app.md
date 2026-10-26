@@ -197,9 +197,15 @@ The list has **Unsorted Takes**, always first, then one row per watch
 (see The Watches folder, below): its first photo (by name; a tile with
 its initial while it has none, or one that can't be read), its name, its
 calibre (or, with **List Shows** in the toolbar, one of the fields added
-to the watches, such as Customer), how many takes it has and the date of the last, and the space
+to the watches, such as Customer; the choice is kept between runs, and
+shows the calibre while no watch has that field), how many takes it has and the date of the last, and the space
 they use once it is 1 MB or more. The row picked is marked. While a search is typed, a line under the
-list says how many it shows of how many, "1 of 4 watches". Its toolbar has a search (a loupe; in the
+list says how many it shows of how many, "1 of 4 watches", and what it
+found in each row's name and the line under it is in the accent blue.
+Picking a watch while a Quick Listen is listening asks about its unsaved
+sound first, as the Watch line does, then stops the listening and picks
+the watch; while a watch's take is listening, picking another is
+refused until it stops. Its toolbar has a search (a loupe; in the
 name, calibre, notes and fields), **Sort** by Name, Last Take or Size,
 **List Shows**, and **New Watch…** (a watch and a plus). In a narrow window, Sort and List Shows fold
 into the "…" menu first; New Watch… and the search always stay
