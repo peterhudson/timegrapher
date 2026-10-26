@@ -799,35 +799,45 @@ fn info_panel(
     max_h: f32,
 ) {
     let pal = theme::pal(ui);
-    // No taller than `max_h`, the room on screen, with its bar always
-    // showing so what is below the edge is not missed.
-    egui::ScrollArea::vertical()
-        .id_salt("steady info")
+    // Each view's panel its own, opening at its top: from the top again
+    // when it was not drawn the pass before.
+    let id = egui::Id::new(("steady info", view));
+    let pass = ui.ctx().cumulative_pass_nr();
+    let last = ui.ctx().data_mut(|d| {
+        let last = d.get_temp::<u64>(id);
+        d.insert_temp(id, pass);
+        last
+    });
+    let mut area = egui::ScrollArea::vertical()
+        .id_salt(id)
+        // No taller than `max_h`, the room on screen, with its bar always
+        // showing so what is below the edge is not missed.
         .max_height(max_h)
         .auto_shrink([false, true])
-        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 4.0;
-            let text = |t: &str, c: Color32| {
-                egui::Label::new(RichText::new(t).small().color(c))
-                    .wrap()
-                    .selectable(true)
-            };
-            ui.label(theme::caption(view.label()).color(pal.text_secondary));
-            ui.add(text(&format!("{}.", view.hint()), pal.text_secondary));
-            for &(_, c) in series {
-                ui.add_space(8.0);
-                ui.label(
-                    theme::caption(title(c.series)).color(pal.ink(series_colour(c.series, pal))),
-                );
-                ui.add(text(&c.headline, pal.text));
-                ui.add(text(&stats_line(c), pal.text_secondary));
-            }
-            if !status.is_empty() {
-                ui.add_space(8.0);
-                ui.add(text(status, pal.text_tertiary));
-            }
-        });
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible);
+    if last.is_none_or(|l| l + 1 < pass) {
+        area = area.vertical_scroll_offset(0.0);
+    }
+    area.show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
+        let text = |t: &str, c: Color32| {
+            egui::Label::new(RichText::new(t).small().color(c))
+                .wrap()
+                .selectable(true)
+        };
+        ui.label(theme::caption(view.label()).color(pal.text_secondary));
+        ui.add(text(&format!("{}.", view.hint()), pal.text_secondary));
+        for &(_, c) in series {
+            ui.add_space(8.0);
+            ui.label(theme::caption(title(c.series)).color(pal.ink(series_colour(c.series, pal))));
+            ui.add(text(&c.headline, pal.text));
+            ui.add(text(&stats_line(c), pal.text_secondary));
+        }
+        if !status.is_empty() {
+            ui.add_space(8.0);
+            ui.add(text(status, pal.text_tertiary));
+        }
+    });
 }
 
 /// Each series' row with the view's plot: one above another, filling the
@@ -882,6 +892,22 @@ fn rows(
     }
 }
 
+/// An x-axis label made by `text`, left off within 18 pt of the plot's
+/// right edge, where it would run past the plot into what is beside it.
+fn clear_of_edge(
+    plot_w: f64,
+    text: impl Fn(f64) -> String,
+) -> impl Fn(egui_plot::GridMark, &std::ops::RangeInclusive<f64>) -> String {
+    move |m, r| {
+        let span = (r.end() - r.start()).max(f64::EPSILON);
+        if (r.end() - m.value) / span * plot_w < 18.0 {
+            String::new()
+        } else {
+            text(m.value)
+        }
+    }
+}
+
 /// One series' title and plot. Its findings and statistics are in the
 /// Info panel.
 fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
@@ -897,6 +923,9 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
     let colour = series_colour(k, pal);
     let weak = pal.text_tertiary;
     let id = ("steadiness", i, view);
+    // The plot's width inside its value axis, for the time labels at the
+    // right edge.
+    let plot_w = f64::from(ui.available_width() - 64.0);
     let base = Plot::new(id)
         // Grid lines reach full strength only this far apart, so at the
         // usual spacing they are faint.
@@ -925,7 +954,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let range = spread(&pts);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| strip::fmt_time(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, strip::fmt_time))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(move |m, _| value_text(k, m.value, m.step_size));
             if let Some((lo, hi)) = range {
@@ -1002,7 +1031,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let threshold = y_of(search.threshold);
             let mut plot = base
                 .x_grid_spacer(period_grid(ui.available_width()))
-                .x_axis_formatter(|m, _| period_label(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(y_lo, top);
             plot = if log_y {
@@ -1076,7 +1105,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let range = spread(&dots);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| lag_text(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, lag_text))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(move |m, _| value_text(k, m.value, m.step_size))
                 .default_x_bounds(0.0, f.period_s);
@@ -1167,7 +1196,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let x_hi = pts.last().map_or(1.0, |p| p[0]);
             let lo = pts.iter().map(|p| p[1]).fold(-a.band, f64::min).min(-0.2);
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| lag_text(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, lag_text))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_x_bounds(0.0, x_hi)
@@ -1224,7 +1253,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let dev = both(&a.deviation);
             let white = both(&a.white);
             base.x_grid_spacer(period_grid(ui.available_width()))
-                .x_axis_formatter(|m, _| period_label(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, |v| unit_sig(k, v)))
                 .show(ui, |p| {
@@ -1282,7 +1311,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .collect();
             let m = pts.iter().map(|p| p[1].abs()).fold(1.6, f64::max) * 1.1;
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(|m, _| strip::fmt_time(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, strip::fmt_time))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_y_bounds(-m, m)
@@ -1422,7 +1451,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             };
             let peak = tallest_peak(&pts);
             base.x_grid_spacer(period_grid(ui.available_width()))
-                .x_axis_formatter(|m, _| period_label(m.value))
+                .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, size))
                 .default_x_bounds(x_lo, x_hi)
@@ -1929,14 +1958,93 @@ mod tests {
         for n in notes {
             assert!(n.1.left() >= 0.0 && n.1.right() < panel_left, "{n:?}");
         }
+        // No axis label runs past the line before the panel.
+        let line = panel_left - 12.0 / 2.0;
+        for t in texts.iter().filter(|t| t.1.left() < panel_left) {
+            assert!(t.1.right() <= line, "{t:?}");
+        }
         // The plots take the room left under their notes.
         let axis: Vec<_> = texts.iter().filter(|t| t.0.ends_with(" s/d")).collect();
         assert!(!axis.is_empty(), "{texts:?}");
         assert!(axis.iter().all(|t| t.1.bottom() <= h), "{axis:?}");
-        // The plots take the room left under their notes.
-        let axis: Vec<_> = texts.iter().filter(|t| t.0.ends_with(" s/d")).collect();
-        assert!(!axis.is_empty(), "{texts:?}");
-        assert!(axis.iter().all(|t| t.1.bottom() <= h), "{axis:?}");
+    }
+
+    /// Each view's Info panel opens at its top, with its heading in view:
+    /// one scrolled down and closed, or another view's, does not open
+    /// scrolled.
+    #[test]
+    fn the_info_panel_opens_at_its_top() {
+        let cfg = SynthConfig {
+            duration_s: 600.0,
+            rate_s_per_day: 5.0,
+            ..Default::default()
+        };
+        let audio = generate(
+            &cfg,
+            |_| 270.0,
+            |t| 20.0 * (std::f64::consts::TAU * t / 60.0).sin(),
+        );
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let s = compute(&log_of(&live).expect("beat rate"), None);
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let (w, h) = (1440.0, 300.0);
+        let panel_left = w - 8.0 - INFO_W;
+        let at = egui::pos2(w - INFO_W / 2.0, h / 2.0);
+        // One pass: the panel's heading, if in view, with `wheel` scrolling
+        // the panel, or no pane at all.
+        let pass = |view: Option<View>, wheel: bool| {
+            let mut events = vec![egui::Event::PointerMoved(at)];
+            if wheel {
+                events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0.0, -400.0),
+                    modifiers: Default::default(),
+                });
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h))),
+                events,
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    if let Some(view) = view {
+                        let opts = Opts {
+                            info: true,
+                            ..Default::default()
+                        };
+                        draw(ui, Some(&s), "", view, &[true, true, true], opts);
+                    }
+                });
+            });
+            let label = view.map(View::label).unwrap_or_default();
+            out.shapes.iter().any(|c| match &c.shape {
+                egui::Shape::Text(t) => {
+                    let r = t.galley.rect.translate(t.pos.to_vec2());
+                    t.galley.text() == label
+                        && r.left() >= panel_left
+                        && r.top() >= c.clip_rect.top()
+                }
+                _ => false,
+            })
+        };
+        assert!(pass(Some(View::Cycle), false), "opens at its top");
+        for _ in 0..20 {
+            pass(Some(View::Cycle), true);
+        }
+        assert!(
+            !pass(Some(View::Cycle), false),
+            "scrolled, the heading is out of view"
+        );
+        // Another view's panel opens at its top.
+        assert!(pass(Some(View::Readings), false));
+        // Closed and opened again: at its top.
+        pass(None, false);
+        assert!(pass(Some(View::Cycle), false));
     }
 
     #[test]
