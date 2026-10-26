@@ -414,8 +414,8 @@ input named by the first recording's provenance is used, then USB lines
 from that recording if available. A stored zero correction is still an
 applied correction. There is no `--card-ppm` or `--device` option for `series`.
 A `--clock` log that can't measure the clock well enough to correct by
-(under 10 entries, or a standard error over half the error it measures and
-over 1 ppm, as a log of a minute or two gives) still places its breaks but
+(under 10 entries, or a standard error over 20 ppm, as a log of a minute
+or two gives) still places its breaks but
 corrects nothing: `ppm` and `rate_error_s_per_day` are 0 and `withheld`
 gives what it measured, `ppm`, `ppm_sd`, `points`, `span_s` and `reason`
 (`few_entries` or `unsure`). The same rule holds wherever a take's clock

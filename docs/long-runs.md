@@ -117,8 +117,10 @@ four hours are mapped with a local straight-line fit every ten minutes
 over two hours, which follows the crystal's drift with temperature.
 
 The correction is applied only when the log measures it well: from 10
-entries or more, with a standard error under half the error measured (or
-under 1 ppm). A log of a minute or two can't: its entries carry tens of ms
+entries or more, with a standard error of at most 20 ppm (1.7 s/d), about
+the error a crystal typically has and so what leaving the correction out
+leaves in. A log every minute for half an hour measures to about 13 ppm. A
+log of a minute or two can't: its entries carry tens of ms
 of jitter each, so six entries over 42 s put a card's error at 63 ± 276
 ppm, and applying that would move the rate by 5.5 s/d on noise. Such a log
 still places its breaks, but the rates stay on the sound card's clock,

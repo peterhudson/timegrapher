@@ -99,8 +99,8 @@ pub struct Withheld {
     pub span_s: f64,
     /// `few_entries`: under [`MIN_POINTS`] entries, too few for the
     /// scatter to say how sure the line is. `unsure`: the standard error
-    /// is over half the clock error measured (and over [`SURE_PPM`]), so
-    /// the measurement can't tell the error from none.
+    /// is over [`MAX_SD_PPM`], as uncertain as the error a correction
+    /// would take out.
     pub reason: &'static str,
 }
 
@@ -109,7 +109,7 @@ impl Withheld {
     pub fn note(&self) -> String {
         let why = match self.reason {
             "few_entries" => format!("too few entries to trust (under {MIN_POINTS})"),
-            _ => "its uncertainty is over half the error itself".into(),
+            _ => format!("its uncertainty is over {MAX_SD_PPM:.0} ppm"),
         };
         format!(
             "the clock log's {} entries over {:.0} s measure the sound card at {:+.0} ± {:.0} ppm; not applied, as {why}",
@@ -120,9 +120,13 @@ impl Withheld {
 
 /// Fewest log entries a clock correction is applied from.
 pub const MIN_POINTS: usize = 10;
-/// A clock error measured to this standard error, ppm (about 0.09 s/d),
-/// is applied whatever its size.
-pub const SURE_PPM: f64 = 1.0;
+/// Largest standard error, ppm (1.7 s/d), a clock correction is applied
+/// with: about the error a crystal typically has (10–50 ppm), which is
+/// what leaving the correction out leaves in. A log every minute for
+/// half an hour measures to about 13 ppm; a minute of entries, to
+/// hundreds. The rule does not look at the error measured, so takes on
+/// one card are treated alike however their noise happens to fall.
+pub const MAX_SD_PPM: f64 = 20.0;
 
 /// Least-squares line `y = a + b x`.
 fn line(p: &[(f64, f64)]) -> (f64, f64) {
@@ -170,7 +174,7 @@ impl ClockFit {
 
     /// [`ClockFit::new`] for correcting rates: the clock error is applied
     /// only when the log measures it from at least [`MIN_POINTS`] entries
-    /// with a standard error under half its size (or under [`SURE_PPM`]).
+    /// with a standard error of at most [`MAX_SD_PPM`].
     /// Otherwise the fit keeps the log's breaks but corrects nothing, and
     /// says why in [`ClockFit::withheld`]. A few entries over a minute
     /// carry jitter of tens of ms each, so they can put the error at
@@ -192,7 +196,7 @@ impl ClockFit {
     fn withhold_if_unsure(&mut self) {
         let reason = if self.points < MIN_POINTS {
             "few_entries"
-        } else if self.ppm_sd > SURE_PPM.max(self.ppm.abs() / 2.0) {
+        } else if self.ppm_sd.is_nan() || self.ppm_sd > MAX_SD_PPM {
             "unsure"
         } else {
             return;
@@ -873,12 +877,12 @@ mod tests {
         assert_eq!(json["withheld"]["reason"], "few_entries");
         assert_eq!(json["ppm"], 0.0);
 
-        // Enough entries, but over two minutes they still can't tell the
-        // error from none.
+        // Enough entries, but over two minutes they measure the error only
+        // to over a hundred ppm.
         let fit = ClockFit::for_rates(&noisy_log(15, 10.0, 6.0, 0.027, 0, 0.0, 8)).unwrap();
         let w = fit.withheld.unwrap();
         assert_eq!(w.reason, "unsure");
-        assert!(w.ppm_sd > w.ppm.abs() / 2.0, "{w:?}");
+        assert!(w.ppm_sd > MAX_SD_PPM, "{w:?}");
     }
 
     #[test]
@@ -914,6 +918,15 @@ unix_s,frames
             .unwrap()
             .get("withheld")
             .is_none());
+        // Half an hour of entries a minute apart with 34 ms of jitter, as
+        // the corpus's 30 min takes have: measured to about 13 ppm, applied.
+        let fit = ClockFit::for_rates(&noisy_log(30, 60.0, 22.0, 0.034, 0, 0.0, 12)).unwrap();
+        assert!(fit.corrects(), "{:?}", fit.withheld);
+        assert!(
+            fit.ppm_sd > 5.0 && fit.ppm_sd < MAX_SD_PPM,
+            "{}",
+            fit.ppm_sd
+        );
         // A well-measured card close to right is applied too.
         let fit = ClockFit::for_rates(&noisy_log(361, 10.0, 0.3, 0.002, 0, 0.0, 10)).unwrap();
         assert!(fit.corrects(), "{:?}", fit.withheld);
