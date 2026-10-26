@@ -933,12 +933,18 @@ fn the_power_reserve_pane_opens_at_its_least() {
 
 /// A finished run in a Power Reserve pane at its least, as when a run's
 /// take is opened under a tall Paper Strip, gets room for its charts: never
-/// a sliver with its axis cut, at the design size or a small window.
+/// a sliver with its axis cut, at the design size or a small window, and
+/// never by squeezing the Paper Strip to less than it takes.
 #[test]
 fn a_finished_runs_pane_is_never_a_sliver() {
     let ctx = egui::Context::default();
     theme::install(&ctx);
-    for (w, h) in [(2560.0, 1440.0), (1280.0, 820.0), (800.0, 600.0)] {
+    for (w, h) in [
+        (2560.0, 1440.0),
+        (1280.0, 820.0),
+        (1000.0, 700.0),
+        (800.0, 600.0),
+    ] {
         let mut app = TimegrapherApp::with_devices(mac_devices(), None);
         let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
         let pass = |app: &mut TimegrapherApp| {
@@ -984,8 +990,10 @@ fn a_finished_runs_pane_is_never_a_sliver() {
         assert!(strip + 1.0 >= MIN_PANE_H, "{w}: the strip {strip}");
         // A tab bar over the pane's own need, its first chart readable.
         assert!(tall + 1.0 >= need + 24.0, "{w}: {tall} for {need}");
-        // Where the window has room, grown to show the charts and table.
+        // Where the window has room, grown to show the charts and table,
+        // but to no more than half: the Paper Strip keeps as much.
         assert!(h < 700.0 || tall > MIN_PANE_H + 40.0, "{w}: {tall}");
+        assert!(h < 700.0 || strip + 1.0 >= tall, "{w}: {strip} {tall}");
     }
 }
 
