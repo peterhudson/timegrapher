@@ -159,7 +159,7 @@ pub fn run(o: Options) -> Result<(), String> {
         }
         crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {
-        print_text(&rep, clock.is_some());
+        print_text(&rep, clock.is_some_and(|c| c.corrects()));
         Ok(())
     }
 }
@@ -181,7 +181,7 @@ fn resolve_clock(
         let text = fs::read_to_string(path).map_err(|e| named(e.to_string()))?;
         let pairs =
             clock::parse_log(&text, info.sample_rate, info.bytes_per_frame).map_err(named)?;
-        let fit = ClockFit::new(&pairs).map_err(|e| named(e.to_string()))?;
+        let fit = ClockFit::for_rates(&pairs).map_err(|e| named(e.to_string()))?;
         return Ok(Some(AppliedClock {
             fit,
             from: format!("from clock log {}", path.display()),
@@ -199,12 +199,17 @@ fn report_document(
 ) -> Result<serde_json::Value, String> {
     let mut doc = serde_json::to_value(rep).map_err(|e| e.to_string())?;
     doc["clock"] = clock.map_or(serde_json::Value::Null, |c| {
-        serde_json::json!({
+        let mut j = serde_json::json!({
             "ppm": c.fit.ppm,
             "rate_error_s_per_day": c.fit.rate_error_s_per_day,
             "from": c.from,
             "tracks_drift": c.fit.tracks_drift,
-        })
+        });
+        // A log too short or noisy to correct by: what it measured.
+        if let Some(w) = c.fit.withheld {
+            j["withheld"] = serde_json::json!(w);
+        }
+        j
     });
     Ok(doc)
 }
@@ -636,7 +641,14 @@ mod tests {
     #[test]
     fn series_clock_log_wins_and_serializes_the_fit_actually_applied() {
         // Supplied clock entries only; no acoustic analysis or local clock store.
-        let text = "audio_s,unix_s\n0,1000\n300,1300.00375\n600,1600.0075\n";
+        // Eleven entries a minute apart, enough to correct by.
+        let text: String = std::iter::once("audio_s,unix_s\n".to_string())
+            .chain((0..=10).map(|i| {
+                let a = i as f64 * 60.0;
+                format!("{a},{}\n", 1000.0 + a * 1.0000125)
+            }))
+            .collect();
+        let text = text.as_str();
         let log = Log::new(text);
         let applied = resolve_clock(Some(&log.0), &info(), 600.0, || {
             panic!("explicit log must bypass stored/USB fallback")
@@ -644,7 +656,8 @@ mod tests {
         .unwrap()
         .unwrap();
         let pairs = clock::parse_log(text, 48000, 2).unwrap();
-        let expected = ClockFit::new(&pairs).unwrap();
+        let expected = ClockFit::for_rates(&pairs).unwrap();
+        assert!(expected.corrects());
         assert_eq!(
             serde_json::to_value(&applied.fit).unwrap(),
             serde_json::to_value(&expected).unwrap()
@@ -661,6 +674,20 @@ mod tests {
                 "tracks_drift": expected.tracks_drift,
             })
         );
+    }
+
+    #[test]
+    fn series_clock_from_a_short_log_says_why_it_corrects_nothing() {
+        let text = "audio_s,unix_s\n0,1000\n300,1300.00375\n600,1600.0075\n";
+        let log = Log::new(text);
+        let applied = resolve_clock(Some(&log.0), &info(), 600.0, || panic!("fallback"))
+            .unwrap()
+            .unwrap();
+        assert!(!applied.fit.corrects());
+        let clock = &report_document(&report(), Some(&applied)).unwrap()["clock"];
+        assert_eq!(clock["ppm"], 0.0);
+        assert_eq!(clock["withheld"]["reason"], "few_entries");
+        assert_eq!(clock["withheld"]["points"], 3);
     }
 
     #[test]
