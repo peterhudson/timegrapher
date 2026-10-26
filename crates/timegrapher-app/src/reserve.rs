@@ -380,15 +380,15 @@ fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
 const CHART_MIN_H: f32 = 56.0;
 
 /// The least height the pane's run needs under its toolbar once it has
-/// charts: its line, both charts at their least, and two table rows; none
-/// before then.
+/// charts: its line and the first chart at its least, the rest scrolling
+/// under it; none before then. No more, so the panes above keep theirs.
 pub fn least_h(test: Option<&Test>) -> Option<f32> {
     let t = test?;
     let charts = match t.results.as_ref() {
         Some(r) => !r.hours.is_empty(),
         None => t.so_far.iter().any(|h| h.span_s >= 3599.0),
     };
-    charts.then_some(22.0 + 2.0 * CHART_MIN_H + 8.0 + 3.0 * 22.0 + 12.0)
+    charts.then_some(22.0 + CHART_MIN_H + 12.0)
 }
 
 /// A run stopped by hand after `hours` whole hours, for the tests.

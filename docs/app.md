@@ -662,7 +662,7 @@ on the Current Position card"; it has no position setting of its own),
 then holds **Keep Sound** or **Analysis Only**, and **New Test**, which sets
 the test up on a clear Bench and starts nothing (**Cancel Test** in its
 place then leaves the Bench as it was); **Start Test** on the Listen card
-starts it. The pane takes no more height than it shows, and once a run has charts it keeps room for both at a readable height and a few table rows, taken from the panes with room to spare; a run that ends, an opened run's take and the first whole hour each grow the pane to show the charts and the table, up to half the room. Before a test it
+starts it. The pane takes no more height than it shows, and once a run has charts it keeps room for its first chart at a readable height, the rest scrolling under it, taken from the panes with room to spare; a run that ends, an opened run's take and the first whole hour each grow the pane to show the charts and the table, up to half the room and never into another pane's least. Before a test it
 is one line, "New Test sets a run up on a clear Bench." (the steps are in its "?"), whose hover gives how much space is
 free where the take will be kept against the most an 80 h run writes (the
 sample rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
@@ -751,7 +751,14 @@ has one rate and it is what the command line reads. The Rate's hover
 says the figure is on the take's clock log, and by how many ppm. A log
 of under 10 entries, or one measuring the clock to a standard error over
 20 ppm, corrects nothing: the take is read as heard, and the Rate's hover
-says what the log measured and why it isn't applied. A log
+says what the log measured and why it isn't applied. Where the
+recording carries USB lines, they set the rate instead, log or not, as
+`timegrapher series` reads it: the log then places only the take's
+breaks, and the Rate's hover says the figure is on the take's USB lines,
+by how many ppm, and what the log measured. The lines are read from the
+first ten minutes of the take's sound after it opens, and the figures
+and charts follow once they are. In the Watches view, a take's Rate is
+corrected the same way. A log
 that can't be read is named in the line shown on opening, and the take
 is read as heard. A recording opened without a log shows no True Clock. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
