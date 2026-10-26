@@ -17298,6 +17298,76 @@ mod tests {
         assert!(app.lift_settable());
     }
 
+    /// On the Tick Tock Profile an edge's bar and a sound's ring are drawn
+    /// on the trace, the ring hollow; on a short plot, with the edges'
+    /// names inside it, no bar or ring crosses a name.
+    #[test]
+    fn the_profiles_marks_keep_off_the_names() {
+        let mut app = synthetic(30.0, 0.0);
+        // Stopped, the profile is the one kept at the end.
+        let end = app.latest_s();
+        let sides = app.live.as_ref().unwrap().tick_profiles().clone();
+        app.sound_history = vec![(end, sides)];
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let run = |app: &mut TimegrapherApp, w: f32, h: f32| {
+            let mut shapes = Vec::new();
+            for _ in 0..4 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(w, h),
+                    )),
+                    ..Default::default()
+                };
+                shapes = ctx.run(input, |ctx| app.panels(ctx)).shapes;
+            }
+            let names: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t)
+                        if ["Unlock", "Drop", "Peak"].contains(&t.galley.text()) =>
+                    {
+                        Some(t.galley.rect.translate(t.pos.to_vec2()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let rings: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Circle(r) if r.fill == egui::Color32::TRANSPARENT => Some(
+                        egui::Rect::from_center_size(r.center, egui::Vec2::splat(2.0 * r.radius)),
+                    ),
+                    _ => None,
+                })
+                .collect();
+            let bars: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::LineSegment { points, stroke }
+                        if stroke.width == 2.0 && points[0].y == points[1].y =>
+                    {
+                        Some(egui::Rect::from_two_pos(points[0], points[1]))
+                    }
+                    _ => None,
+                })
+                .collect();
+            (names, rings, bars)
+        };
+        let (names, rings, bars) = run(&mut app, 1440.0, 1000.0);
+        assert!(!names.is_empty(), "the edges named");
+        assert!(!rings.is_empty() && !bars.is_empty(), "{rings:?} {bars:?}");
+        let (names, rings, bars) = run(&mut app, 800.0, 600.0);
+        assert!(!names.is_empty(), "the edges named in the short plot");
+        for m in rings.iter().chain(&bars) {
+            assert!(
+                names.iter().all(|n| !n.intersects(*m)),
+                "{m:?} crosses a name: {names:?}"
+            );
+        }
+    }
+
     /// In Quick Listen, a calibre picked while listening, at the beat rate
     /// Auto already found, adds to the take: the beats and the strip's
     /// readings heard so far stay. A calibre at another rate starts the
