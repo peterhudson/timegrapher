@@ -50,6 +50,8 @@ const FACT_NAMES: [&str; 5] = ["Beats", "Unlock", "Drop", "Unlock to Drop", "Amp
 /// Below this height a plot's facts keep only their last two rows, Unlock
 /// to Drop and Amplitude; the rest are in the hover.
 const SHORT_PLOT: f32 = 100.0;
+/// The least height a side takes stacked: its name and a plot of 40 pt.
+const STACKED_MIN: f32 = 64.0;
 
 /// A side's facts before it has beats.
 const NO_FACTS: &str = "Not enough beats yet";
@@ -522,7 +524,11 @@ pub fn draw(
             label_marks(ui, &resp.transform, p, &med, opt, dx, k, inside);
         }
     };
-    if opt.side_by_side {
+    // Stacked, each side's share; too short for two plots one above the
+    // other, they go side by side, each the pane's height.
+    let gap = 6.0;
+    let stacked_h = (ui.available_height() - gap - AXIS_H - 2.0) / 2.0;
+    if opt.side_by_side || stacked_h < STACKED_MIN {
         ui.columns(2, |cols| {
             for (k, ui) in cols.iter_mut().enumerate() {
                 side(ui, k, true);
@@ -531,10 +537,9 @@ pub fn draw(
     } else {
         // Tick above Tock, the one time axis under Tock: Tock's share is
         // the axis taller, so the two plots are the same height.
-        let gap = 6.0;
         ui.spacing_mut().item_spacing.y = 0.0;
         let w = ui.available_width();
-        let h = ((ui.available_height() - gap - AXIS_H - 2.0) / 2.0).max(40.0);
+        let h = stacked_h;
         for k in 0..2 {
             let h = if k == 1 { h + AXIS_H + 2.0 } else { h };
             ui.allocate_ui(egui::vec2(w, h), |ui| {

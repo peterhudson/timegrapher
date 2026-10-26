@@ -866,6 +866,8 @@ const WATCH_SIDE_MAX: f32 = 1100.0;
 /// The Watches view's width from which the list and the watch sit side by
 /// side; narrower, one shows at a time.
 const WATCHES_SIDE_BY_SIDE: f32 = 900.0;
+/// Why Keep in a Watch is greyed while a take is heard.
+const KEEP_AFTER_STOP: &str = "Stop listening first, then keep the take in a watch.";
 /// Why a Positions Test's take takes no Position Brush.
 const POSITIONS_TAKE_PAINT: &str = "A Positions Test sets its own positions; paint a Listen take.";
 /// The hover on a test's setting it can't change while it runs.
@@ -1363,8 +1365,9 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
         if n < 2 || room <= 0.0 {
             continue;
         }
-        // Each child's least: a tab bar's active pane may need more than
-        // the usual height, under its tab bar.
+        // Each child's least: a tab bar's panes may need more than the
+        // usual height, under its tab bar. The most any of its tabs needs,
+        // not the one on show, so changing tabs never moves the divider.
         let mut least: Vec<f32> = shown
             .iter()
             .map(|&c| {
@@ -1373,11 +1376,14 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
                 }
                 let more = match tiles.get(c) {
                     Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t))) => t
-                        .active
-                        .and_then(|a| match tiles.get(a) {
+                        .children
+                        .iter()
+                        .filter(|&&a| tiles.is_visible(a))
+                        .filter_map(|&a| match tiles.get(a) {
                             Some(egui_tiles::Tile::Pane(p)) => need(*p),
                             _ => None,
                         })
+                        .reduce(f32::max)
                         .map(|h| h + TAB_BAR_H),
                     _ => None,
                 };
@@ -1888,6 +1894,8 @@ pub struct TimegrapherApp {
     results_rects: [Option<egui::Rect>; 2],
     /// This take ran a Positions Test.
     positions_take: bool,
+    /// The position card's title as last drawn, for the words naming it.
+    position_card_title: &'static str,
     /// A question about a take (Delete, Keep Analysis Only, Add to
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
@@ -2508,6 +2516,7 @@ impl TimegrapherApp {
             test_keep: None,
             results_rects: [None; 2],
             positions_take: false,
+            position_card_title: "Current Position",
             take_ask: None,
             keep_back: None,
             take_keep: None,
@@ -7576,6 +7585,11 @@ impl TimegrapherApp {
     /// free live take; on a take on show or during a test they only show
     /// it.
     fn position_card(&mut self, ui: &mut egui::Ui, compact: bool) {
+        self.position_card_title = if compact {
+            "Position"
+        } else {
+            "Current Position"
+        };
         let pal = theme::pal(ui);
         let here = self.shown_position();
         let editable = self.position_editable();
@@ -7641,7 +7655,7 @@ impl TimegrapherApp {
             });
         let painter = ui.painter().clone();
         if compact {
-            caption_row(ui, rows.title, "Position");
+            caption_row(ui, rows.title, self.position_card_title);
             // The two-letter code beside the picture, the name in its
             // hover: a name doesn't fit a compact card whole.
             let x = pic.right() + 8.0;
@@ -7699,7 +7713,7 @@ impl TimegrapherApp {
         }
         let x = pic.right() + theme::GAP;
         let beside = |r: egui::Rect| egui::Rect::from_min_max(egui::pos2(x, r.top()), r.max);
-        caption_row(ui, beside(rows.title), "Current Position");
+        caption_row(ui, beside(rows.title), self.position_card_title);
         // The name, and both its codes under it, inside the figure row.
         let fig = beside(rows.figure);
         let clip = painter.with_clip_rect(fig);
@@ -7952,6 +7966,7 @@ impl TimegrapherApp {
         };
         let into_watch = self.addable_take().is_some() || self.quick_listen;
         let into_unsorted = can && self.saves_into_unsorted();
+        let listening = self.running();
         let mut picked = None;
         let (mut new, mut folder, mut unsorted) = (false, false, false);
         ui.add_enabled_ui(can || self.addable_take().is_some(), |ui| {
@@ -7979,14 +7994,22 @@ impl TimegrapherApp {
                                 .small()
                                 .color(pal.text_secondary),
                         );
+                        // A take goes into a watch once it ends: greyed,
+                        // saying so, while it is heard.
+                        let keeps = !listening;
                         for (id, name) in &watches {
-                            if ui.button(name).clicked() {
+                            if ui
+                                .add_enabled(keeps, egui::Button::new(name))
+                                .on_disabled_hover_text(KEEP_AFTER_STOP)
+                                .clicked()
+                            {
                                 picked = Some(id.clone());
                             }
                         }
                         if ui
-                            .button("New Watch…")
+                            .add_enabled(keeps, egui::Button::new("New Watch…"))
                             .on_hover_text("Add a watch, and keep this in it when you add it")
+                            .on_disabled_hover_text(KEEP_AFTER_STOP)
                             .clicked()
                         {
                             new = true;
@@ -11467,8 +11490,9 @@ impl TimegrapherApp {
                             .on_hover_text(hover);
                     }
                 }
-                // Limits with no room for even their count beside the whole
-                // caption are in the caption's hover.
+                // Limits with no room for their words beside the whole
+                // caption are in the caption's hover: a bare count says
+                // nothing.
                 let mut caption_hover = None;
                 if let Some(first) = limits.first() {
                     let more = if limits.len() > 1 {
@@ -11477,18 +11501,9 @@ impl TimegrapherApp {
                         String::new()
                     };
                     let sentences: Vec<String> = limits.iter().map(|l| l.1.clone()).collect();
-                    // Where the words would push the caption off the
-                    // card, how many limits there are, the words in the
-                    // hover.
                     let words = format!("{}{more}", chip_words(&first.0));
-                    let count = limits.len().to_string();
-                    let fits = |ui: &mut egui::Ui, t: &str| {
-                        small_w(ui, t) + 14.0 + 4.0 + caption_w <= ui.available_width()
-                    };
-                    if fits(ui, &words) {
+                    if small_w(ui, &words) + 14.0 + 4.0 + caption_w <= ui.available_width() {
                         theme::chip(ui, &words, caption, &sentences, ui.available_width());
-                    } else if fits(ui, &count) {
-                        theme::chip(ui, &count, caption, &sentences, ui.available_width());
                     } else {
                         caption_hover = Some(sentences.join("\n\n"));
                     }
@@ -12832,9 +12847,10 @@ impl TimegrapherApp {
             format!("Runs in {} ({})", p.name(), p.code())
         } else {
             format!(
-                "Runs in {} ({}), set on the Current Position card",
+                "Runs in {} ({}), set on the {} card",
                 p.name(),
-                p.code()
+                p.code(),
+                self.position_card_title
             )
         };
         ui.add(egui::Label::new(
@@ -13524,6 +13540,7 @@ impl TimegrapherApp {
         if guessing && candidates.is_empty() {
             return self.no_watch(ui);
         }
+        self.note_need(ui, Pane::Strip, STRIP_MIN_H);
         self.follow_fit();
         if self.follow {
             self.centre();
@@ -14953,6 +14970,9 @@ const STACKED_MIN_H: f32 = 70.0;
 const DIST_MIN_H: f32 = 100.0;
 /// The line under stacked plots naming those with no room.
 const STACKED_NOTE_H: f32 = 18.0;
+/// The least height of the Paper Strip under its toolbar: its lane, the
+/// dots and the time axis, the amplitude scale's labels apart.
+const STRIP_MIN_H: f32 = 72.0;
 
 /// A chart's value labels, small, beside its grid lines in the gutter.
 fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
@@ -15144,9 +15164,15 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     fn on_tab_button(
         &mut self,
         _tiles: &Tiles<Pane>,
-        _tile_id: TileId,
+        tile_id: TileId,
         button_response: egui::Response,
     ) -> egui::Response {
+        // Where each tab was drawn, for the tab row to scroll to one just
+        // picked.
+        let rect = button_response.rect;
+        button_response
+            .ctx
+            .data_mut(|d| d.insert_temp(egui::Id::new(("tab rect", tile_id)), rect));
         button_response.on_hover_text(
             "Drag a tab to move the pane, or beside another to show both. The × hides it; \
              its icon at the top, or the View menu, brings it back.",
@@ -15161,6 +15187,43 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         _state: &egui_tiles::TabState,
     ) -> egui::Stroke {
         egui::Stroke::NONE
+    }
+
+    /// Scroll the tab row to a tab just picked, by its tab or by its icon,
+    /// that is out of its view, from where the tabs were last drawn.
+    fn top_bar_right_ui(
+        &mut self,
+        _tiles: &Tiles<Pane>,
+        ui: &mut egui::Ui,
+        tile_id: TileId,
+        tabs: &egui_tiles::Tabs,
+        scroll_offset: &mut f32,
+    ) {
+        let Some(active) = tabs.active else { return };
+        let key = egui::Id::new(("tab picked", tile_id));
+        let (shown, rect) = ui.ctx().data(|d| {
+            (
+                d.get_temp::<TileId>(key),
+                d.get_temp::<egui::Rect>(egui::Id::new(("tab rect", active))),
+            )
+        });
+        if shown == Some(active) {
+            return;
+        }
+        // A tab new to the row has no place yet: the next frame. Moved a
+        // frame at a time, from where it was last drawn, until it is whole
+        // in view.
+        let Some(rect) = rect else { return };
+        // Clear of the row's scroll arrows at either end.
+        let row = ui.max_rect().shrink2(Vec2::new(24.0, 0.0));
+        if rect.right() > row.right() + 0.5 {
+            *scroll_offset += rect.right() - row.right();
+        } else if rect.left() < row.left() - 0.5 {
+            *scroll_offset -= row.left() - rect.left();
+        } else {
+            ui.ctx().data_mut(|d| d.insert_temp(key, active));
+        }
+        ui.ctx().request_repaint();
     }
 
     fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
@@ -18226,6 +18289,21 @@ mod tests {
             "{texts:?}"
         );
         assert!(!texts.iter().any(|t| t == "Position"), "{texts:?}");
+        // A compact card is titled Position: the words name it so.
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.position_card(ui, true));
+        });
+        assert!(painted_text(&out).contains("Position"));
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.horizontal(|ui| app.reserve_settings(ui));
+            });
+        });
+        assert!(
+            painted_text(&out).contains("Runs in Crown Up (CU), set on the Position card"),
+            "{}",
+            painted_text(&out)
+        );
     }
 
     #[test]
@@ -18580,6 +18658,92 @@ mod tests {
             (app.watch.as_str(), app.bph, app.lift_deg),
             ("Meteorite", Some(21600), 50.0)
         );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// While a take is heard, Save's Keep in a Watch items are greyed and
+    /// say why: a take goes into a watch once it ends, so a pick is never
+    /// a silent no-op.
+    #[test]
+    fn keep_in_a_watch_waits_for_the_take_to_end() {
+        let base = std::env::temp_dir().join(format!("tg-app-keep-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        app.quick_listen = true;
+        app.session.listen();
+        let info = app.info("", 48000, 16);
+        let mut r = Recorder::start(&base.join("unsaved"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 5],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        let _tx = queued_capture(&mut app, &base);
+        assert!(app.running() && app.session.allows(Action::Save));
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut time = 0.0;
+        let mut pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+            time += 0.25;
+            let input = egui::RawInput {
+                time: Some(time),
+                events,
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.save_menu(ui, 32.0));
+            });
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some((
+                        t.galley.text().to_string(),
+                        t.galley.rect.translate(t.pos.to_vec2()).center(),
+                    )),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let click = |at: egui::Pos2| {
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            vec![egui::Event::PointerMoved(at), button(true), button(false)]
+        };
+        pass(&mut app, Vec::new());
+        // The Save button at the panel's top left: its menu opens.
+        pass(&mut app, click(egui::pos2(8.0 + 16.0, 8.0 + 16.0)));
+        let drawn = pass(&mut app, Vec::new());
+        let pepsi = drawn
+            .iter()
+            .find(|t| t.0 == "Pepsi")
+            .unwrap_or_else(|| panic!("{drawn:?}"))
+            .1;
+        assert!(drawn.iter().any(|t| t.0 == "New Watch…"), "{drawn:?}");
+        // Over the watch: greyed, it says why.
+        let mut said = false;
+        pass(&mut app, vec![egui::Event::PointerMoved(pepsi)]);
+        for _ in 0..8 {
+            let drawn = pass(&mut app, Vec::new());
+            said |= drawn.iter().any(|t| t.0 == KEEP_AFTER_STOP);
+        }
+        assert!(said, "the hover says why");
+        // A click on it keeps nothing and changes no watch.
+        pass(&mut app, click(pepsi));
+        pass(&mut app, Vec::new());
+        assert!(app.watch_open.is_none() && app.keep_back.is_none());
+        assert!(app.session.saved_to().is_none());
+        app.capture = None;
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -23214,14 +23378,11 @@ mod tests {
         for caption in ["Rate", "Amplitude", "Beat Error"] {
             assert!(wide.iter().any(|t| t == caption), "{caption}: {wide:?}");
         }
-        // Too narrow for the words beside the caption, the chip gives how
-        // many limits there are.
+        // Too narrow for the words beside the caption, they go to the
+        // caption's hover: never a bare count.
         let narrow = drawn(800.0);
         let count = limits.len().to_string();
-        assert!(
-            narrow.iter().any(|t| *t == chip || *t == count),
-            "{chip} or {count}: {narrow:?}"
-        );
+        assert!(!narrow.contains(&count), "{count}: {narrow:?}");
         assert!(narrow.iter().any(|t| t == "Rate"), "{narrow:?}");
     }
 

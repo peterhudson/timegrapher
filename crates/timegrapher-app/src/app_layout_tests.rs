@@ -744,6 +744,37 @@ fn the_profiles_plots_take_the_panes_height() {
     );
 }
 
+/// At 800 × 600 the pane is too short to stack Tick and Tock: they go
+/// side by side, Tock's plot whole inside the window.
+#[test]
+fn a_short_profile_puts_tick_and_tock_side_by_side() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(800.0, 600.0));
+    for _ in 0..4 {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| app.panels(ctx));
+    }
+    let got = |k: usize| {
+        ctx.data(|d| d.get_temp::<(egui::Rect, egui::Rect)>(egui::Id::new(("profile plot", k))))
+            .expect("the profile is in the default layout")
+    };
+    let (tick, _) = got(0);
+    let (tock, foot) = got(1);
+    assert!(tock.left() > tick.right(), "{tick:?} {tock:?}");
+    assert!(tock.height() >= 24.0, "{tock:?}");
+    assert!(
+        (tick.height() - tock.height()).abs() < 1.0,
+        "{tick:?} {tock:?}"
+    );
+    assert!(foot.bottom() <= 600.0, "{foot:?}");
+}
+
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and
 /// share the choice: picking Amplitude on one picks it on the other.
 /// Every other steadiness pane keeps its own switches.
