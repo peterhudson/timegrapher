@@ -180,8 +180,13 @@ pub fn ending_text(e: Ending) -> &'static str {
 }
 
 /// The pane's body: the run time, how the beats stand, and at the end the
-/// result.
-pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) -> Option<Action> {
+/// result. `card` is the position card's title as drawn, for the steps.
+pub fn pane(
+    ui: &mut egui::Ui,
+    test: Option<&Test>,
+    free: Option<(u64, u64)>,
+    card: &str,
+) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
     egui::ScrollArea::vertical()
@@ -192,8 +197,7 @@ pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) ->
                 let stop = power_reserve::STOP_AFTER_S / 60.0;
                 let steps = [
                     "1.  Wind the watch fully and set it to a minute marker.".to_string(),
-                    "2.  Put it on the stand in the position on the Current Position card."
-                        .to_string(),
+                    format!("2.  Put it on the stand in the position on the {card} card."),
                     "3.  Press Start Test.".to_string(),
                 ];
                 let after = [
