@@ -342,7 +342,7 @@ pub fn run(
         eprintln!("{note}");
     }
     let clock_log = clock_args.log;
-    let clock = match clock_log {
+    let mut clock = match clock_log {
         Some(p) => {
             let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
             let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
@@ -362,9 +362,22 @@ pub fn run(
     let total_s = info
         .frames
         .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-    let mut clock = match &fixed {
-        Some((ppm, _)) => session::fixed_clock(*ppm, total_s),
-        None => clock,
+    // With a log, the recording's USB lines, when it has them, correct the
+    // rates; the log then gives its breaks.
+    let usb = match (clock_log, clock.as_mut()) {
+        (Some(p), Some(fit)) => crate::clock_cmd::usb(&files)?.map(|(ppm, from)| {
+            fit.rate_from_usb(ppm);
+            (
+                ppm,
+                format!("{from}; clock log {} for its breaks", p.display()),
+            )
+        }),
+        _ => None,
+    };
+    let fixed = fixed.or(usb);
+    let mut clock = match (&fixed, clock_log) {
+        (Some((ppm, _)), None) => session::fixed_clock(*ppm, total_s),
+        _ => clock,
     };
     let clock_note = fixed.as_ref().map(|(_, from)| from.as_str());
     let out = out.unwrap_or_else(|| {
