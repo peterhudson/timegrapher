@@ -73,7 +73,10 @@ th { color: var(--text2); font-weight: 500; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
 .seg button { font: inherit; font-size: 12px; color: var(--text); background: var(--control); border: 0; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--text); color: var(--card); }
-.series-name { font-size: 12.5px; font-weight: 600; margin: 12px 0 2px; }
+.series-name { font-size: 12.5px; font-weight: 600; margin: 12px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.series-name .summary { font-weight: 400; color: var(--text2); }
+.info { border-left: 2px solid var(--separator); padding: 0 0 2px 10px; margin: 6px 0 4px; }
+.info .series-name { white-space: normal; margin-top: 8px; }
 .headline { color: var(--text); font-size: 12.5px; margin: 0 0 2px; }
 .stats { color: var(--text2); font-size: 11.5px; margin: 0 0 4px; font-variant-numeric: tabular-nums; }
 .empty { color: var(--text2); padding: 24px 0; text-align: center; }
@@ -707,7 +710,7 @@ let steadyView = null;
 // scale, and the FFT's rate as the beat timing in ms.
 // steady::TIME_BANDS: the Cycle view's dots, coloured by when they came.
 const TIME_BANDS = 12;
-let periodsLog = false, fftTiming = false, mapsLog = false, showWheels = true;
+let periodsLog = false, fftTiming = false, mapsLog = false, showWheels = true, showInfo = false;
 
 // steady::secs: "45 s", "12 min", "2.5 h".
 function secs(t) {
@@ -832,6 +835,10 @@ function xyChart(o) {
     const right = n.x > (x0 + x1) / 2;
     inside += `<text x="${sx(n.x) + (right ? -8 : 8)}" y="${sy(n.y) + (n.above ? -6 : 14)}" text-anchor="${right ? "end" : "start"}" style="fill:var(--text)">${esc(n.text)}</text>`;
   }
+  // The dots' key, top right, as the app's: "● 10 s readings (179)".
+  if (o.key) {
+    inside += `<text x="${L + plotW - 6}" y="${T + 13}" text-anchor="end" style="paint-order:stroke;stroke:var(--card);stroke-width:3px"><tspan style="fill:var(${o.key.color})">●</tspan> ${esc(o.key.text)}</text>`;
+  }
   if (o.corner) {
     // One line per "\n", the last at the corner.
     const lines = String(o.corner.text).split("\n");
@@ -881,6 +888,18 @@ function referenceLines(doc) {
 function steadyNote(text) { return `<p class="empty">${esc(text)}</p>`; }
 
 // One series' plot under the chosen view.
+// What a dot is, and how many are drawn: "10 s readings (179)", "2 s
+// windows (912)"; on a long take only every few are drawn, and it says so.
+function dotKey(r, drawn) {
+  const what = r.step_s === 10 ? "10 s readings" : r.step_s === 2 ? "2 s windows" : `${num(r.step_s, 0)} s readings`;
+  const nth = r.stride > 1 ? `, every ${ordinal(r.stride)}` : "";
+  return `${what}${nth} (${drawn.toLocaleString("en-US")})`;
+}
+function ordinal(k) {
+  const t = k % 100, u = k % 10;
+  return `${k}${t >= 11 && t <= 13 ? "th" : u === 1 ? "st" : u === 2 ? "nd" : u === 3 ? "rd" : "th"}`;
+}
+
 function steadyPlot(s, view, doc) {
   const [, color, unit] = SERIES[s.series] || ["", "--text", ""];
   const time = (px) => (lo, hi, w) => linTicks(lo, hi, w, Math.max(Math.min(80, w / 4), px), (v) => v);
@@ -897,7 +916,7 @@ function steadyPlot(s, view, doc) {
         title: "Readings", x: [Math.min(...r.t_s), Math.max(...r.t_s)], y: [lo, hi],
         xTicks: (a, b, w) => linTicks(a, b, w, Math.min(80, w / 4), (t) => fmtTime(t), TIME_STEPS),
         yTicks: (a, b, h) => linTicks(a, b, h, 24, (y, st) => stepText(y, st, unit)),
-        dots: [{ pts, color, r: 1.4 }],
+        dots: [{ pts, color, r: 1.4 }], key: { color, text: dotKey(r, pts.length) },
         lines: segs.map((g) => ({ pts: [[g.start_s, g.mean], [g.end_s, g.mean]], color: "--text", width: 1.8 })),
         hlines: ts ? [ts.low, ts.high].map((y) => ({ y, color: "--text", dash: "loose" })) : [],
       });
@@ -1095,7 +1114,7 @@ function spreadRange(values) {
 // The statistics behind a series' headline, as the JSON gives them.
 function steadyStats(s) {
   const u = s.unit === "deg" ? "°" : s.unit ? ` ${s.unit}` : "";
-  const parts = [`${s.readings} readings of ${num(s.step_s, 0)} s`];
+  const parts = [`Tested on ${s.readings} ${num(s.step_s, 0)} s readings`];
   if (Number.isFinite(s.median)) parts.push(`median ${num(s.median, 2)}${u}`);
   if (Number.isFinite(s.sd)) parts.push(`SD ${num(s.sd, 2)}${u}`);
   if (Number.isFinite(s.short_term_sd)) parts.push(`reading to reading ${num(s.short_term_sd, 2)}${u}`);
@@ -1117,16 +1136,24 @@ function steadinessCard(doc) {
   const drawn = series.some(tested);
   const [, , hint] = STEADY_VIEWS.find(([k]) => k === steadyView);
   const status = Number.isFinite(doc.duration_s) ? `Tested over ${fmtTime(doc.duration_s)} of beats` : "";
-  const rows = series.map((s) => {
-    const [title] = SERIES[s.series] || [s.series];
-    return `<p class="series-name">${esc(title)}</p>
+  // Each plot's title line: the series and its finding in a few words
+  // (core's `summary`), the whole of it on hover.
+  const name = (s) => (SERIES[s.series] || [s.series])[0];
+  const titleLine = (s) => {
+    const t = s.summary ? `${name(s)} · ${s.summary}` : name(s);
+    return `<p class="series-name" title="${esc(t)}">${esc(name(s))}${s.summary ? `<span class="summary"> · ${esc(s.summary)}</span>` : ""}</p>`;
+  };
+  // The Info panel, as the app's: the view's description, then each
+  // series' full headline and statistics, and how long was tested.
+  const info = showInfo || !drawn
+    ? `<div class="info">${drawn ? `<p class="hint">${esc(hint)}</p>` : ""}${series.map((s) => `<p class="series-name">${esc(name(s))}</p>
       <p class="headline">${esc(s.headline || "")}</p>
-      <p class="stats">${esc(steadyStats(s))}</p>
-      ${tested(s) ? steadyPlot(s, steadyView, doc) : ""}`;
-  }).join("");
+      <p class="stats">${esc(steadyStats(s))}</p>`).join("")}<p class="sub off">${esc(status)}</p></div>`
+    : "";
+  const plots = drawn ? series.map((s) => `${titleLine(s)}${tested(s) ? steadyPlot(s, steadyView, doc) : `<p class="headline">${esc(s.headline || "")}</p>`}`).join("") : "";
   return `<div class="card"><h2>Steadiness</h2><p class="hint">How the rate, amplitude and beat error each move over the session: what was detected in each (a cycle, two levels, level changes, a trend, or none), with the statistics behind it</p>
     ${drawn ? `<div class="seg" role="group" aria-label="View">${offered.map(([key, label]) => `<button data-steady="${key}" aria-pressed="${key === steadyView}">${esc(label)}</button>`).join("")}</div>
-    ${steadySwitch()}<p class="hint">${esc(hint)}</p>` : ""}<p class="sub off">${esc(status)}</p>${rows}</div>`;
+    <div class="seg" role="group" aria-label="Switches">${steadySwitch()}<button data-switch="info" aria-pressed="${showInfo}" title="${esc(INFO_HINT)}">Info</button></div>` : ""}${info}${plots}</div>`;
 }
 
 // The current view's switches, as in the app's toolbar: Log Scale for
@@ -1144,8 +1171,11 @@ function steadySwitch() {
   if (!sw) return "";
   const wheels = ["wheels", "Wheel Periods", showWheels, WHEELS_HINT];
   // Each a switch of its own, side by side.
-  return `<div class="seg" role="group" aria-label="Switches">${[sw, wheels].map((b) => `<button data-switch="${b[0]}" aria-pressed="${b[2]}" title="${esc(b[3])}">${b[1]}</button>`).join("")}</div>`;
+  return [sw, wheels].map((b) => `<button data-switch="${b[0]}" aria-pressed="${b[2]}" title="${esc(b[3])}">${b[1]}</button>`).join("");
 }
+
+// The app's Info button hint.
+const INFO_HINT = "Info: what this view shows, and each reading's findings and statistics, in full.";
 
 // steady::WHEELS_HINT.
 const WHEELS_HINT = "Mark the period each of the calibre's wheels turns in, in green and named beside its line, and half of it dashed, where a wheel that is off centre shows twice a turn. With no calibre picked, or none of its wheels known, one minute and one hour are marked in grey instead: periods alone, named after no wheel.";
@@ -1159,6 +1189,7 @@ function wireSteadiness(root) {
       if (b.dataset.switch === "log") periodsLog = !periodsLog;
       else if (b.dataset.switch === "mapslog") mapsLog = !mapsLog;
       else if (b.dataset.switch === "wheels") showWheels = !showWheels;
+      else if (b.dataset.switch === "info") showInfo = !showInfo;
       else fftTiming = !fftTiming;
       redraw();
     });
