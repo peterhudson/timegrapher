@@ -15,7 +15,7 @@ detect, and adds a sentence for the others:
 |---|---|
 | two levels | the two levels and how often the series switches between them (the two-state finder in `twostate.rs`) |
 | two levels on one side only | the same, and which side carries them: "Tick windows fall in two clusters; Tock windows do not", or that the beat error from the unlock jumps between the levels while the one from the drop does not |
-| a cycle | its period, the wheel whose turn it matches, and its size peak to peak |
+| a cycle | its period, the wheel whose turn it matches, and its size peak to peak. When the tests find a cycle but can't size one period, the headline still says so: "Amplitude drops to a low level and back on a cycle of about 78 s." when the two-level finder sees the dips ("of about" only when it times them), otherwise "Amplitude repeats on a cycle." |
 | level changes | the number of changes and the level of each stretch; beyond three changes, the number, the range, and the first and last levels (every stretch is in `changes.segments[]`, and the text output lists each with its start and end) |
 | a trend | the start and end level and the change per hour |
 | correlation between readings | the lag-1 correlation, the Ljung–Box p, how long the correlation lasts, and the Allan excess |
@@ -383,7 +383,7 @@ Each entry of `series[]`:
 | Field | Contents |
 |---|---|
 | `series`, `unit`, `headline` | what it is, and what the tests found in one plain sentence |
-| `summary` | the headline's lead in a few words, one line, with no series name and no full stop, for a plot's title after the series' own: e.g. "repeats every 46 s, 4.0 s/d peak to peak", "shifts level once, +4.9 s/d to +9.1 s/d", "slides from 280° to 260°", "switches between 293° and 312°, about every 78 s", "successive readings correlated; no cycle, level change or trend", "no cycle, level change or trend", "20 readings, too few to search". It says "no cycle" only when the headline names none. |
+| `summary` | the headline's lead in a few words, one line, with no series name and no full stop, for a plot's title after the series' own: e.g. "repeats every 46 s, 4.0 s/d peak to peak", "shifts level once, +4.9 s/d to +9.1 s/d", "slides from 280° to 260°", "switches between 293° and 312°, about every 78 s", "successive readings correlated; no cycle, level change or trend", "no cycle, level change or trend", "20 readings, too few to search", and, for a cycle without one period to size, "drops to a low level and back, about every 78 s" or "repeats on a cycle". It says "no cycle" only when the headline names none. |
 | `step_s`, `readings`, `outliers` | reading length (the rate's for all three series), readings used, readings left out |
 | `median`, `sd`, `short_term_sd` | level, spread, reading-to-reading scatter |
 | `autocorrelation` | `lag_s[]`, `r[]` (thinned to about 600 points), `band`, `band_by_lag[]` (the band at each of `lag_s`, 1.96/√pairs from the pairs that lag was read from: wider than `band` where gaps leave fewer pairs; null where none), `ljung_box_q`, `ljung_box_lags`, `p_value`, `max_short_lag_r`, `memory_s`, `repeat_lag_s`, `repeat_r` |
