@@ -379,6 +379,54 @@ fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
 /// The least height of each of the Power Reserve charts, points.
 const CHART_MIN_H: f32 = 56.0;
 
+/// The least height the pane's run needs under its toolbar once it has
+/// charts: its line, both charts at their least, and two table rows; none
+/// before then.
+pub fn least_h(test: Option<&Test>) -> Option<f32> {
+    let t = test?;
+    let charts = match t.results.as_ref() {
+        Some(r) => !r.hours.is_empty(),
+        None => t.so_far.iter().any(|h| h.span_s >= 3599.0),
+    };
+    charts.then_some(22.0 + 2.0 * CHART_MIN_H + 8.0 + 3.0 * 22.0 + 12.0)
+}
+
+/// A run stopped by hand after `hours` whole hours, for the tests.
+#[cfg(test)]
+pub fn finished_run(hours: u32) -> Test {
+    let beats: Vec<Beat> = (0..160)
+        .map(|i| Beat {
+            index: i,
+            time: i as f64 * 0.2,
+            quality: 1.0,
+        })
+        .collect();
+    let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+    t.update(&beats, 0.2, 32.0);
+    t.stop();
+    t.finish(|s| s);
+    if let Some(r) = t.results.as_mut() {
+        r.hours = (0..hours)
+            .map(|h| power_reserve::Hour {
+                hour: h,
+                span_s: 3600.0,
+                rate_s_per_day: Some(6.5),
+                amplitude_deg: Some(281.0),
+                beat_error_ms: Some(0.4),
+                read_s: 3500.0,
+            })
+            .collect();
+    }
+    t
+}
+
+/// The height a run of `hours` rows reads well in: the toolbar and the
+/// run's line, two charts of a readable height, and the table.
+pub fn run_h(hours: usize) -> f32 {
+    let row_h = 22.0;
+    60.0 + 2.0 * 160.0 + 8.0 + (hours as f32 + 1.0) * row_h
+}
+
 /// A value or a dash.
 fn cell(v: Option<f64>, d: usize, unit: &str) -> String {
     v.map_or_else(|| "–".to_string(), |x| format!("{x:.d$}{unit}"))

@@ -1472,10 +1472,30 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
     }
 }
 
+/// The status bar's progress words while a take is read: how far, as the
+/// take's name is already at the left of the bar.
+fn batch_words(frac: f64, known: bool) -> String {
+    if known {
+        format!("Analysing, {:.0}%", frac * 100.0)
+    } else {
+        "Analysing…".to_string()
+    }
+}
+
 /// Bring the row holding `pane` (its tabs, or the pane itself) down to
 /// `h` points where it is taller, the other rows sharing the rest as they
 /// did; from where the panes were last laid out.
 fn fit_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
+    size_row(tiles, pane, h, false);
+}
+
+/// Bring the row holding `pane` up to `h` points where it is shorter, no
+/// more than half the rows' room, so the rows above keep the larger part.
+fn grow_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
+    size_row(tiles, pane, h, true);
+}
+
+fn size_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32, grow: bool) {
     let Some(id) = tiles.find_pane(&pane) else {
         return;
     };
@@ -1505,7 +1525,13 @@ fn fit_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
         .filter(|&c| tiles.is_visible(c))
         .collect();
     let room = rect.height() - 8.0 * (shown.len() as f32 - 1.0);
-    if l.dir != LinearDir::Vertical || shown.len() < 2 || now.height() <= h || room <= h {
+    let h = if grow { h.min(room / 2.0) } else { h };
+    let wrong_way = if grow {
+        now.height() >= h
+    } else {
+        now.height() <= h
+    };
+    if l.dir != LinearDir::Vertical || shown.len() < 2 || wrong_way || room <= h {
         return;
     }
     let others: f32 = shown
@@ -3929,9 +3955,16 @@ impl TimegrapherApp {
         let mut t = reserve::Test::new(position, r.sound_kept, r.started_utc.clone(), 0.0);
         t.ending = Some(r.ending);
         t.saved = Some(dir.to_path_buf());
+        let hours = r.hours.len();
         t.results = Some(r);
         self.reserve = Some(t);
         self.reveal_pane(Pane::PowerReserve);
+        // The run's charts and table, not the line before a test.
+        grow_row(
+            &mut self.panes.tiles,
+            Pane::PowerReserve,
+            reserve::run_h(hours),
+        );
     }
 
     /// Take what a session file says about a recording: the watch, its
@@ -7072,8 +7105,9 @@ impl TimegrapherApp {
             )
     }
 
-    /// The microphone menu with Rescan after it, `w` wide.
-    fn device_menu(&mut self, ui: &mut egui::Ui, w: f32) {
+    /// The microphone menu with Rescan after it, `w` wide; a name too long
+    /// for it cut in the middle where `middle`, else at its end.
+    fn device_menu(&mut self, ui: &mut egui::Ui, w: f32, middle: bool) {
         let choices = self.input_choices();
         let listed = self.devices_listed;
         let sel = self.picked_label();
@@ -7097,9 +7131,23 @@ impl TimegrapherApp {
                     self.rescan();
                 }
                 let full = sel.clone();
+                let box_w = ui.available_width().max(60.0);
+                // Cut in the middle where it can't show whole: similar
+                // devices often differ only at the end.
+                let font = egui::TextStyle::Button.resolve(ui.style());
+                let shown = if !middle {
+                    sel.clone()
+                } else {
+                    theme::middle_cut(
+                        ui,
+                        &sel,
+                        &font,
+                        box_w - 2.0 * ui.spacing().icon_width - 12.0,
+                    )
+                };
                 egui::ComboBox::from_id_salt("device")
-                    .selected_text(sel)
-                    .width(ui.available_width().max(60.0))
+                    .selected_text(shown)
+                    .width(box_w)
                     .show_ui(ui, |ui| {
                         opened = true;
                         if !listed {
@@ -9871,7 +9919,7 @@ impl TimegrapherApp {
             ui.add_space(4.0);
             sheet_step(ui, 1, "Choose the microphone the watch sits on");
             sheet_indent(ui, |ui| {
-                self.device_menu(ui, ui.available_width());
+                self.device_menu(ui, ui.available_width(), false);
                 let hint =
                     "List every device the system offers in the microphone menu, with its id";
                 theme::switch_row(ui, "Show Every Input", &mut self.all_inputs, hint);
@@ -11367,17 +11415,15 @@ impl TimegrapherApp {
         theme::group(ui, "Microphone", None, |g| {
             let hint = "The microphone to listen to. Show Every Input lists every device the \
                         system offers.";
-            g.row(
-                "Microphone",
-                match &input_fault {
-                    Some(f) => theme::Caption::Alert(theme::Alert::Warning, f),
-                    None => theme::Caption::Text("The input the watch sits on."),
-                },
-                hint,
-                |ui| {
-                    self.device_menu(ui, 300.0);
-                },
-            );
+            // The menu on its own line, the group's width, whatever the
+            // device: a long name moves nothing.
+            let caption = match &input_fault {
+                Some(f) => theme::Caption::Alert(theme::Alert::Warning, f),
+                None => theme::Caption::Text("The input the watch sits on."),
+            };
+            g.row_under("Microphone", caption, hint, |ui| {
+                self.device_menu(ui, ui.available_width(), true);
+            });
             let hint = "List every device the system offers in the microphone menu, with its id";
             g.row(
                 "Show Every Input",
@@ -12484,7 +12530,7 @@ impl TimegrapherApp {
                     .desired_width(240.0)
                     .desired_height(14.0)
                     .fill(pal.accent)
-                    .text(RichText::new(format!("Analysing {}", b.label)).small()),
+                    .text(RichText::new(batch_words(frac, b.duration_s.is_some())).small()),
             );
         }
         // A take opened, its painting or masks changed: Save keeps them.
@@ -13505,9 +13551,16 @@ impl TimegrapherApp {
         for h in &mut fresh {
             h.hour += whole as u32;
         }
+        let mut first_chart = false;
         if let Some(t) = self.reserve.as_mut() {
             t.so_far.truncate(whole);
             t.so_far.extend(fresh);
+            // The first whole hour brings the charts: room for them, once.
+            first_chart = whole == 0 && t.so_far.iter().any(|h| h.span_s >= 3599.0);
+        }
+        if first_chart {
+            let n = self.reserve.as_ref().map_or(0, |t| t.so_far.len());
+            grow_row(&mut self.panes.tiles, Pane::PowerReserve, reserve::run_h(n));
         }
     }
 
@@ -13548,8 +13601,12 @@ impl TimegrapherApp {
         }
         // The results go into the take with its sound, through
         // `results_files`.
+        let hours = results.as_ref().map(|r| r.hours.len());
         if let Some(t) = self.reserve.as_mut() {
             t.results = results;
+        }
+        if let Some(n) = hours {
+            grow_row(&mut self.panes.tiles, Pane::PowerReserve, reserve::run_h(n));
         }
         // With no watch picked, asked where it goes before it is saved.
         if self.open_watch().is_none() {
@@ -13622,6 +13679,13 @@ impl TimegrapherApp {
             None
         };
         let watch = self.watch.trim().to_string();
+        // Its charts at a readable height, never a sliver under the strip.
+        if let Some(least) = reserve::least_h(self.reserve.as_ref()) {
+            let above = ui.cursor().top() - self.pane_top;
+            self.pane_need.insert(Pane::PowerReserve, above + least);
+        } else {
+            self.pane_need.remove(&Pane::PowerReserve);
+        }
         reserve::pane(
             ui,
             self.reserve.as_ref(),
@@ -20885,6 +20949,14 @@ mod tests {
             panic!("{:?}", app.guided_live(&ctx));
         };
         assert!((rate - 30.0).abs() < 5.0, "{rate}");
+    }
+
+    /// While a take is read, the status bar's bar says how far, not the
+    /// take's name again: that is already at the bar's left.
+    #[test]
+    fn the_analysing_bar_says_how_far_not_the_name() {
+        assert_eq!(batch_words(0.374, true), "Analysing, 37%");
+        assert_eq!(batch_words(0.0, false), "Analysing…");
     }
 
     /// Stop Test… on the Listen card, answered Stop Test, keeps the

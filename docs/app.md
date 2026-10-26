@@ -662,7 +662,7 @@ on the Current Position card"; it has no position setting of its own),
 then holds **Keep Sound** or **Analysis Only**, and **New Test**, which sets
 the test up on a clear Bench and starts nothing (**Cancel Test** in its
 place then leaves the Bench as it was); **Start Test** on the Listen card
-starts it. The pane takes no more height than it shows. Before a test it
+starts it. The pane takes no more height than it shows, and once a run has charts it keeps room for both at a readable height and a few table rows, taken from the panes with room to spare; a run that ends, an opened run's take and the first whole hour each grow the pane to show the charts and the table, up to half the room. Before a test it
 is one line, "New Test sets a run up on a clear Bench." (the steps are in its "?"), whose hover gives how much space is
 free where the take will be kept against the most an 80 h run writes (the
 sample rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
@@ -1356,8 +1356,10 @@ takes that row's caption, in the same space, so no row grows.
 **General**: Appearance (Auto, Light or Dark); **Listening**, with
 **Listen When the App Opens**, on unless switched off, and **Keep
 Awake**; **Updates**, with Check for Updates at Start. **Microphone**:
-the **Microphone** group (the microphone menu and **Rescan**, **Show
-Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
+the **Microphone** group (the microphone menu and **Rescan** on their own
+line under the row's name, the group's width for every device, a name
+too long for it cut in the middle with "…" so its end shows, whole in its
+hover and in the menu; **Show Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
 warning in the caption, and **Peak** with its shaded band) and **Quartz
 Correction**, each input's kept clock as a row with Forget (see True
 Clock). **Watches Folder** (below) and **Calibres** (Manage Calibres,
