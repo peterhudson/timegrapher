@@ -1472,6 +1472,16 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
     }
 }
 
+/// The status bar's progress words while a take is read: how far, as the
+/// take's name is already at the left of the bar.
+fn batch_words(frac: f64, known: bool) -> String {
+    if known {
+        format!("Analysing, {:.0}%", frac * 100.0)
+    } else {
+        "Analysing…".to_string()
+    }
+}
+
 /// Bring the row holding `pane` (its tabs, or the pane itself) down to
 /// `h` points where it is taller, the other rows sharing the rest as they
 /// did; from where the panes were last laid out.
@@ -7079,8 +7089,9 @@ impl TimegrapherApp {
             )
     }
 
-    /// The microphone menu with Rescan after it, `w` wide.
-    fn device_menu(&mut self, ui: &mut egui::Ui, w: f32) {
+    /// The microphone menu with Rescan after it, `w` wide; a name too long
+    /// for it cut in the middle where `middle`, else at its end.
+    fn device_menu(&mut self, ui: &mut egui::Ui, w: f32, middle: bool) {
         let choices = self.input_choices();
         let listed = self.devices_listed;
         let sel = self.picked_label();
@@ -7104,9 +7115,23 @@ impl TimegrapherApp {
                     self.rescan();
                 }
                 let full = sel.clone();
+                let box_w = ui.available_width().max(60.0);
+                // Cut in the middle where it can't show whole: similar
+                // devices often differ only at the end.
+                let font = egui::TextStyle::Button.resolve(ui.style());
+                let shown = if !middle {
+                    sel.clone()
+                } else {
+                    theme::middle_cut(
+                        ui,
+                        &sel,
+                        &font,
+                        box_w - 2.0 * ui.spacing().icon_width - 12.0,
+                    )
+                };
                 egui::ComboBox::from_id_salt("device")
-                    .selected_text(sel)
-                    .width(ui.available_width().max(60.0))
+                    .selected_text(shown)
+                    .width(box_w)
                     .show_ui(ui, |ui| {
                         opened = true;
                         if !listed {
@@ -9731,7 +9756,7 @@ impl TimegrapherApp {
             ui.add_space(4.0);
             sheet_step(ui, 1, "Choose the microphone the watch sits on");
             sheet_indent(ui, |ui| {
-                self.device_menu(ui, ui.available_width());
+                self.device_menu(ui, ui.available_width(), false);
                 let hint =
                     "List every device the system offers in the microphone menu, with its id";
                 theme::switch_row(ui, "Show Every Input", &mut self.all_inputs, hint);
@@ -11227,17 +11252,15 @@ impl TimegrapherApp {
         theme::group(ui, "Microphone", None, |g| {
             let hint = "The microphone to listen to. Show Every Input lists every device the \
                         system offers.";
-            g.row(
-                "Microphone",
-                match &input_fault {
-                    Some(f) => theme::Caption::Alert(theme::Alert::Warning, f),
-                    None => theme::Caption::Text("The input the watch sits on."),
-                },
-                hint,
-                |ui| {
-                    self.device_menu(ui, 300.0);
-                },
-            );
+            // The menu on its own line, the group's width, whatever the
+            // device: a long name moves nothing.
+            let caption = match &input_fault {
+                Some(f) => theme::Caption::Alert(theme::Alert::Warning, f),
+                None => theme::Caption::Text("The input the watch sits on."),
+            };
+            g.row_under("Microphone", caption, hint, |ui| {
+                self.device_menu(ui, ui.available_width(), true);
+            });
             let hint = "List every device the system offers in the microphone menu, with its id";
             g.row(
                 "Show Every Input",
@@ -12344,7 +12367,7 @@ impl TimegrapherApp {
                     .desired_width(240.0)
                     .desired_height(14.0)
                     .fill(pal.accent)
-                    .text(RichText::new(format!("Analysing {}", b.label)).small()),
+                    .text(RichText::new(batch_words(frac, b.duration_s.is_some())).small()),
             );
         }
         // A take opened, its painting or masks changed: Save keeps them.
@@ -20649,6 +20672,14 @@ mod tests {
             panic!("{:?}", app.guided_live(&ctx));
         };
         assert!((rate - 30.0).abs() < 5.0, "{rate}");
+    }
+
+    /// While a take is read, the status bar's bar says how far, not the
+    /// take's name again: that is already at the bar's left.
+    #[test]
+    fn the_analysing_bar_says_how_far_not_the_name() {
+        assert_eq!(batch_words(0.374, true), "Analysing, 37%");
+        assert_eq!(batch_words(0.0, false), "Analysing…");
     }
 
     /// The banner's Stop keeps the positions measured in the table, stops

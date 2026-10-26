@@ -1337,8 +1337,10 @@ takes that row's caption, in the same space, so no row grows.
 **General**: Appearance (Auto, Light or Dark); **Listening**, with
 **Listen When the App Opens**, on unless switched off, and **Keep
 Awake**; **Updates**, with Check for Updates at Start. **Microphone**:
-the **Microphone** group (the microphone menu and **Rescan**, **Show
-Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
+the **Microphone** group (the microphone menu and **Rescan** on their own
+line under the row's name, the group's width for every device, a name
+too long for it cut in the middle with "…" so its end shows, whole in its
+hover and in the menu; **Show Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
 warning in the caption, and **Peak** with its shaded band) and **Quartz
 Correction**, each input's kept clock as a row with Forget (see True
 Clock). **Watches Folder** (below) and **Calibres** (Manage Calibres,
