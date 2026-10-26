@@ -193,15 +193,37 @@ impl ClockFit {
         self.withheld.is_none()
     }
 
-    fn withhold_if_unsure(&mut self) {
+    /// What [`ClockFit::for_rates`] would withhold from this fit, and why;
+    /// `None` when it would apply it. For a fit made with
+    /// [`ClockFit::new`], as when measuring a card. A correction given
+    /// ([`ClockFit::fixed`]) is not a measurement, and is never unsure.
+    pub fn unsure(&self) -> Option<Withheld> {
+        if self.withheld.is_some() {
+            return self.withheld;
+        }
+        if self.entries.is_empty() {
+            return None;
+        }
         let reason = if self.points < MIN_POINTS {
             "few_entries"
         } else if self.ppm_sd.is_nan() || self.ppm_sd > MAX_SD_PPM {
             "unsure"
         } else {
-            return;
+            return None;
         };
-        self.withhold(reason);
+        Some(Withheld {
+            ppm: self.ppm,
+            ppm_sd: self.ppm_sd,
+            points: self.points,
+            span_s: self.span_s,
+            reason,
+        })
+    }
+
+    fn withhold_if_unsure(&mut self) {
+        if let Some(w) = self.unsure() {
+            self.withhold(w.reason);
+        }
     }
 
     /// Keep the breaks, and map audio time onto true time one for one
@@ -903,6 +925,21 @@ unix_s,frames
         let w = fit.withheld.unwrap();
         assert_eq!(w.reason, "few_entries");
         assert!(w.ppm_sd > w.ppm.abs(), "{w:?}");
+    }
+
+    #[test]
+    fn unsure_says_what_for_rates_would_withhold() {
+        let short = ClockFit::new(&noisy_log(6, 8.4, 6.0, 0.027, 0, 0.0, 7)).unwrap();
+        assert_eq!(short.unsure().unwrap().reason, "few_entries");
+        assert_eq!(
+            short.unsure(),
+            ClockFit::for_rates(&noisy_log(6, 8.4, 6.0, 0.027, 0, 0.0, 7))
+                .unwrap()
+                .withheld
+        );
+        let long = ClockFit::new(&noisy_log(361, 10.0, 6.0, 0.002, 0, 0.0, 9)).unwrap();
+        assert!(long.unsure().is_none());
+        assert!(ClockFit::fixed(20.0, 60.0).unsure().is_none());
     }
 
     #[test]
