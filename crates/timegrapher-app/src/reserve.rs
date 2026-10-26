@@ -167,8 +167,10 @@ impl Test {
 /// A run's length in words: hours and minutes, with its seconds under an
 /// hour, so a short run never reads a minute short.
 fn run_words(s: f64) -> String {
-    if s < 3600.0 {
-        let s = s.max(0.0).floor() as u64;
+    if s < 60.0 {
+        format!("{} s", s.max(0.0).floor() as u64)
+    } else if s < 3600.0 {
+        let s = s.floor() as u64;
         format!("{} min {:02} s", s / 60, s % 60)
     } else {
         power_reserve::run_text(s)
@@ -784,7 +786,9 @@ mod tests {
         texts = pass(Some(&t), h, false).into_iter().chain(texts).collect();
         assert!(rate_scale(&texts), "the top first: {texts:?}");
         assert!(
-            texts.iter().any(|t| t.0.starts_with("Ran 0 min ")),
+            texts
+                .iter()
+                .any(|t| t.0.starts_with("Ran ") && t.0.contains(" s · ")),
             "one line of the result: {texts:?}"
         );
         assert!(!shown(&texts, "4–5 h"), "{texts:?}");
@@ -816,12 +820,14 @@ mod tests {
         assert!(shown(&texts, "280°") || shown(&texts, "281°"), "{texts:?}");
     }
 
-    /// A run under an hour reads its minutes and seconds, never a minute
-    /// short; an hour or more, hours and minutes.
+    /// A run under a minute reads its seconds, under an hour its minutes
+    /// and seconds, never a minute short; an hour or more, hours and
+    /// minutes.
     #[test]
     fn a_short_run_reads_its_seconds() {
         assert_eq!(run_words(112.4), "1 min 52 s");
-        assert_eq!(run_words(59.0), "0 min 59 s");
+        assert_eq!(run_words(59.0), "59 s");
+        assert_eq!(run_words(13.7), "13 s");
         assert_eq!(run_words(166_320.0), "46 h 12 min");
     }
 

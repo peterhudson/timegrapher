@@ -13094,18 +13094,18 @@ impl TimegrapherApp {
         if let Err(e) = self.reserve_takes_dir() {
             return self.error(format!("A Power Reserve Test can't keep its take: {e}"));
         }
-        if self.running() {
-            self.info_msg(
-                "Stop listening first: a Power Reserve Test starts a new session.".into(),
-            );
-            return;
-        }
-        // Quick Listen's sound too: a test of a watch isn't its sound. The
-        // same question as a new take's.
+        // Quick Listen's sound too, listening or not: a test of a watch
+        // isn't its sound. The same question as a new take's; listening
+        // stops once it is answered.
         if !asked && self.line_pick_asks() {
             self.confirm = Some(Confirm::ReserveStart);
             return;
         }
+        if self.running() {
+            self.pause();
+        }
+        // Whatever the status line said before is past.
+        self.message = None;
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
         }
