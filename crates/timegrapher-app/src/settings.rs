@@ -89,6 +89,9 @@ pub struct Settings {
     /// ("default" for the system default). Every other input with the
     /// switch has it turned off each time the app opens it.
     pub agc_on: Vec<String>,
+    /// The field the Watches view's list shows under each name (List
+    /// Shows); `None` is the calibre.
+    pub watch_list_shows: Option<String>,
 }
 
 /// A calibre's train as earlier versions kept it in the settings.
@@ -151,6 +154,7 @@ impl Default for Settings {
             library: None,
             settings_section: "general".into(),
             agc_on: Vec::new(),
+            watch_list_shows: None,
         }
     }
 }
