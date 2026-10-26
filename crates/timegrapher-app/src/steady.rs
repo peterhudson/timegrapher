@@ -54,6 +54,11 @@ pub enum View {
 }
 
 impl View {
+    /// The STFT and Wavelet Maps: one map at a time, the choice shared.
+    pub fn is_map(self) -> bool {
+        matches!(self, View::Stft | View::Wavelet)
+    }
+
     #[cfg(test)]
     const ALL: [View; 9] = [
         View::Readings,
@@ -613,6 +618,64 @@ pub fn series_switches(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
             if flip {
                 flip_series(shown, i);
             }
+        }
+    });
+}
+
+/// One series of `shown`: the first one on, else Rate.
+pub fn one_series(shown: [bool; 3]) -> [bool; 3] {
+    let i = shown.iter().position(|&on| on).unwrap_or(0);
+    let mut one = [false; 3];
+    one[i] = true;
+    one
+}
+
+/// The two map panes' choice of the one map shown: the same three icons
+/// as elsewhere, joined, one picked at a time, so the map has the pane.
+pub fn series_choice(ui: &mut egui::Ui, shown: &mut [bool; 3]) {
+    *shown = one_series(*shown);
+    let pal = theme::pal(ui);
+    let hint = |k| {
+        format!(
+            "Show the {} map. One map is shown at a time, so it has room.",
+            title(k)
+        )
+    };
+    for k in SERIES {
+        theme::note_icon(ui, series_icon(k), title(k));
+    }
+    theme::bar_item(ui, "Series", |ui| {
+        if theme::in_toolbar(ui) {
+            egui::Frame::new()
+                .fill(pal.control)
+                .corner_radius(egui::CornerRadius::same(theme::CONTROL_RADIUS + 1))
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    for (i, k) in SERIES.into_iter().enumerate() {
+                        if theme::icon_toggle(ui, series_icon(k), shown[i], series_colour(k, pal))
+                            .on_hover_text(format!("{}: {}", title(k), hint(k)))
+                            .clicked()
+                        {
+                            *shown = [false; 3];
+                            shown[i] = true;
+                        }
+                    }
+                });
+        } else {
+            let mut i = shown.iter().position(|&on| on).unwrap_or(0);
+            let words: Vec<(usize, &str, &str)> = SERIES
+                .into_iter()
+                .enumerate()
+                .map(|(i, k)| (i, title(k), ""))
+                .collect();
+            theme::row(
+                ui,
+                "Map",
+                Some("One map is shown at a time, so it has room."),
+                |ui| theme::segmented(ui, &mut i, &words),
+            );
+            *shown = [false; 3];
+            shown[i] = true;
         }
     });
 }
