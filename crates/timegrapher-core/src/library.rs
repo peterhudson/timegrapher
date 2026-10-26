@@ -57,8 +57,9 @@ pub const CACHE_FILE: &str = ".cache.json";
 /// take reads differently, so a cache an earlier build wrote is read
 /// afresh. Apart from [`FORMAT`]: a new cache never stops an older build
 /// opening the library, which just makes its own cache again. 2: `at_end`
-/// gained `rate_corrected_s_per_day`.
-const CACHE_FORMAT: u32 = 2;
+/// gained `rate_corrected_s_per_day`. 3: a recording's USB lines correct
+/// that rate over its clock log.
+const CACHE_FORMAT: u32 = 3;
 pub const LOCK_FILE: &str = ".library.lock";
 /// The folder of takes not yet filed under a watch.
 pub const UNSORTED: &str = "Unsorted";
@@ -1657,6 +1658,12 @@ mod tests {
         let want = format!("\"format\":{CACHE_FORMAT}");
         assert!(cache.contains(&want), "{cache}");
         let old = cache.replace("3.5", "9.5").replace(&want, "\"format\":1");
+        fs::write(root.join(CACHE_FILE), old).unwrap();
+        lib.scan();
+        assert_eq!(rate(&lib), Some(3.5));
+        // Nor one from the build before USB lines corrected a take's rate.
+        let cache = fs::read_to_string(root.join(CACHE_FILE)).unwrap();
+        let old = cache.replace("3.5", "9.5").replace(&want, "\"format\":2");
         fs::write(root.join(CACHE_FILE), old).unwrap();
         lib.scan();
         assert_eq!(rate(&lib), Some(3.5));
