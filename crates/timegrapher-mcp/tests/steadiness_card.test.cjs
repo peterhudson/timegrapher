@@ -13,7 +13,7 @@ function definition(name) {
   return match[0];
 }
 const constant = (name) => html.match(new RegExp(`^const ${name} = [\\s\\S]*?;\\n(?=\\S|\\n)`, "m"))[0];
-const context = vm.createContext({ fmtTime: (t) => `${t / 60}:00`, spectrumOf: () => null, steadyView: "readings",
+const context = vm.createContext({ fmtTime: (t) => `${t / 60}:00`, secs: (t) => `${t} s`, spectrumOf: () => null, steadyView: "readings",
   periodsLog: false, fftTiming: false, mapsLog: false, showWheels: true, showInfo: false });
 vm.runInContext([constant("SERIES"), constant("STEADY_VIEWS"), constant("INFO_HINT"), constant("WHEELS_HINT"),
   ...["esc", "num", "pText", "steadyStats", "steadySwitch", "dotKey", "ordinal", "steadinessCard"].map(definition)].join("\n"), context);
@@ -39,5 +39,7 @@ test("the Readings view's key says what a dot is and how many are drawn", () => 
   assert.equal(context.dotKey({ step_s: 10, stride: 1 }, 179), "10 s readings (179)");
   assert.equal(context.dotKey({ step_s: 2, stride: 1 }, 912), "2 s windows (912)");
   assert.equal(context.dotKey({ step_s: 2, stride: 3 }, 3000), "2 s windows, every 3rd (3,000)");
+  assert.equal(context.dotKey({ step_s: 20, stride: 1 }, 90), "20 s readings (90)");
+  assert.equal(context.dotKey({ step_s: 5, stride: 1 }, 40), "5 s windows (40)");
   assert.equal(context.ordinal(12), "12th");
 });

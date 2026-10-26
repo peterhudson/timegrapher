@@ -888,10 +888,11 @@ function referenceLines(doc) {
 function steadyNote(text) { return `<p class="empty">${esc(text)}</p>`; }
 
 // One series' plot under the chosen view.
-// What a dot is, and how many are drawn: "10 s readings (179)", "2 s
-// windows (912)"; on a long take only every few are drawn, and it says so.
+// What a dot is, and how many are drawn, as the app's steady::kind_of:
+// "10 s readings (179)"; shorter than 10 s, "2 s windows (912)". On a long
+// take only every few are drawn, and it says so.
 function dotKey(r, drawn) {
-  const what = r.step_s === 10 ? "10 s readings" : r.step_s === 2 ? "2 s windows" : `${num(r.step_s, 0)} s readings`;
+  const what = `${secs(r.step_s)} ${r.step_s >= 10 - 1e-9 ? "readings" : "windows"}`;
   const nth = r.stride > 1 ? `, every ${ordinal(r.stride)}` : "";
   return `${what}${nth} (${drawn.toLocaleString("en-US")})`;
 }
