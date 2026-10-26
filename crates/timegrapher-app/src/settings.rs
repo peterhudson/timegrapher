@@ -82,6 +82,9 @@ pub struct Settings {
     /// The microphone has been set up (Set Up the Microphone, or a listen
     /// that opened it): until then the app asks at launch.
     pub mic_set_up: bool,
+    /// Not Now was pressed on Set Up the Microphone: it isn't shown at
+    /// launch again, and this doesn't count as set up.
+    pub setup_declined: bool,
     /// The readings' cards across the top shown.
     pub show_readings: bool,
     /// The library's folder when one was chosen in Settings; `None` is
@@ -154,6 +157,7 @@ impl Default for Settings {
             keep_awake: true,
             listen_at_open: true,
             mic_set_up: false,
+            setup_declined: false,
             show_readings: true,
             library: None,
             settings_section: "general".into(),

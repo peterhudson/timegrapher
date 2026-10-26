@@ -179,126 +179,154 @@ pub fn library_section(
 ) -> Option<LibraryAction> {
     let pal = theme::pal(ui);
     let mut act = None;
-    let Some(root) = root else {
-        ui.label(
-            RichText::new(
-                "There is no home folder to keep your watches in: choose a folder for them.",
-            )
-            .color(pal.text_secondary),
-        );
-        if ui
-            .add(theme::secondary(ui, "Choose Another…"))
-            .on_hover_text("Use a Watches folder somewhere else, or an empty folder for a new one")
-            .clicked()
-        {
-            act = Some(LibraryAction::Choose);
-        }
-        return act;
-    };
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Location").color(pal.text_tertiary));
-        ui.label(root.display().to_string())
-            .on_hover_text(if chosen {
+    theme::group(ui, "Watches Folder", None, |g| {
+        let Some(root) = root else {
+            g.row(
+                "No Home Folder",
+                theme::Caption::Text("Choose a folder to keep your watches in."),
+                "There is no home folder to keep your watches in",
+                |ui| {
+                    if ui
+                        .add(theme::secondary(ui, "Choose Another…"))
+                        .on_hover_text(
+                            "Use a Watches folder somewhere else, or an empty folder for a new one",
+                        )
+                        .clicked()
+                    {
+                        act = Some(LibraryAction::Choose);
+                    }
+                },
+            );
+            return;
+        };
+        let path = root.display().to_string();
+        g.row(
+            "Location",
+            theme::Caption::Text(&path),
+            if chosen {
                 "The folder you chose"
             } else {
                 "The default: Timegrapher Data in your home folder"
-            });
-    });
-    match lib {
-        Ok(Some(l)) => {
-            let takes =
-                l.watches.iter().map(|w| w.takes.len()).sum::<usize>() + l.unsorted.takes.len();
-            ui.label(format!(
-                "{}, {}, {}",
-                count(l.watches.len(), "watch", "watches"),
-                count(takes, "take", "takes"),
-                crate::app::fmt_bytes(l.bytes())
-            ));
-            if let (Some(why), None) = (&l.read_only, moving) {
-                ui.label(RichText::new(format!("{why}.")).color(pal.text_secondary));
-            }
-            if !l.unreadable.is_empty() {
-                theme::alert_label(
-                    ui,
-                    theme::Alert::Warning,
-                    &format!(
-                        "{} can't be read and {} left as {}:",
-                        count(l.unreadable.len(), "folder", "folders"),
-                        if l.unreadable.len() == 1 { "is" } else { "are" },
-                        if l.unreadable.len() == 1 {
-                            "it is"
-                        } else {
-                            "they are"
-                        },
-                    ),
-                    false,
+            },
+            |ui| {
+                if ui
+                    .add_enabled(root.is_dir(), theme::secondary(ui, show_in_words()))
+                    .on_hover_text("Open the Watches folder")
+                    .on_disabled_hover_text("The folder isn't there yet")
+                    .clicked()
+                {
+                    act = Some(LibraryAction::Show);
+                }
+            },
+        );
+        match lib {
+            Ok(Some(l)) => {
+                let takes =
+                    l.watches.iter().map(|w| w.takes.len()).sum::<usize>() + l.unsorted.takes.len();
+                let held = format!(
+                    "{}, {}, {}",
+                    count(l.watches.len(), "watch", "watches"),
+                    count(takes, "take", "takes"),
+                    crate::app::fmt_bytes(l.bytes())
                 );
-                for e in &l.unreadable {
-                    ui.label(RichText::new(e).small().color(pal.text_secondary));
+                let why = match (&l.read_only, moving) {
+                    (Some(why), None) => format!("{why}."),
+                    _ => "Every watch, its photos and its takes.".to_string(),
+                };
+                g.row(
+                    &held,
+                    theme::Caption::Text(&why),
+                    "What the Watches folder holds",
+                    |_| {},
+                );
+                if !l.unreadable.is_empty() {
+                    g.whole(|ui| {
+                        theme::alert_label(
+                            ui,
+                            theme::Alert::Warning,
+                            &format!(
+                                "{} can't be read and {} left as {}:",
+                                count(l.unreadable.len(), "folder", "folders"),
+                                if l.unreadable.len() == 1 { "is" } else { "are" },
+                                if l.unreadable.len() == 1 {
+                                    "it is"
+                                } else {
+                                    "they are"
+                                },
+                            ),
+                            false,
+                        );
+                        for e in &l.unreadable {
+                            ui.label(RichText::new(e).small().color(pal.text_secondary));
+                        }
+                    });
                 }
             }
+            Ok(None) => {
+                g.whole(|ui| {
+                    ui.label(
+                        RichText::new("No watches are kept here yet.").color(pal.text_secondary),
+                    );
+                });
+            }
+            Err(e) => {
+                g.whole(|ui| {
+                    theme::alert_label(
+                        ui,
+                        theme::Alert::Bad,
+                        &format!("Your watches can't be read: {e}"),
+                        false,
+                    );
+                });
+            }
         }
-        Ok(None) => {
-            ui.label(RichText::new("No watches are kept here yet.").color(pal.text_secondary));
+        if let Some(to) = moving {
+            g.whole(|ui| {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(format!("Moving your watches to {}", to.display()));
+                });
+            });
+            return;
         }
-        Err(e) => {
-            theme::alert_label(
-                ui,
-                theme::Alert::Bad,
-                &format!("Your watches can't be read: {e}"),
-                false,
-            );
-        }
-    }
-    ui.add_space(8.0);
-    if let Some(to) = moving {
-        ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label(format!("Moving your watches to {}", to.display()));
+        g.whole(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(
+                        matches!(lib, Ok(Some(_))),
+                        theme::secondary(ui, "Move Watches…"),
+                    )
+                    .on_hover_text(
+                        "Move the whole Watches folder into another folder and keep using it \
+                         there. It asks first.",
+                    )
+                    .on_disabled_hover_text("No watches are kept here to move")
+                    .clicked()
+                {
+                    act = Some(LibraryAction::Move);
+                }
+                if ui
+                    .add(theme::secondary(ui, "Choose Another…"))
+                    .on_hover_text(
+                        "Use a Watches folder somewhere else, such as one copied from another \
+                         computer, or an empty folder for a new one. Nothing is moved.",
+                    )
+                    .clicked()
+                {
+                    act = Some(LibraryAction::Choose);
+                }
+                if chosen
+                    && ui
+                        .add(theme::secondary(ui, "Use the Default"))
+                        .on_hover_text(
+                            "Use Timegrapher Data in your home folder again. Nothing is moved.",
+                        )
+                        .clicked()
+                {
+                    act = Some(LibraryAction::UseDefault);
+                }
+            });
         });
-        return None;
-    }
-    ui.horizontal_wrapped(|ui| {
-        if ui
-            .add_enabled(root.is_dir(), theme::secondary(ui, show_in_words()))
-            .on_hover_text("Open the Watches folder")
-            .on_disabled_hover_text("The folder isn't there yet")
-            .clicked()
-        {
-            act = Some(LibraryAction::Show);
-        }
-        if ui
-            .add_enabled(
-                matches!(lib, Ok(Some(_))),
-                theme::secondary(ui, "Move Watches…"),
-            )
-            .on_hover_text(
-                "Move the whole Watches folder into another folder and keep using it there. It \
-                 asks first.",
-            )
-            .on_disabled_hover_text("No watches are kept here to move")
-            .clicked()
-        {
-            act = Some(LibraryAction::Move);
-        }
-        if ui
-            .add(theme::secondary(ui, "Choose Another…"))
-            .on_hover_text(
-                "Use a Watches folder somewhere else, such as one copied from another \
-                 computer, or an empty folder for a new one. Nothing is moved.",
-            )
-            .clicked()
-        {
-            act = Some(LibraryAction::Choose);
-        }
-        if chosen
-            && ui
-                .add(theme::secondary(ui, "Use the Default"))
-                .on_hover_text("Use Timegrapher Data in your home folder again. Nothing is moved.")
-                .clicked()
-        {
-            act = Some(LibraryAction::UseDefault);
-        }
     });
     act
 }
@@ -376,161 +404,128 @@ pub fn quartz_section(
     timing: Option<&Timing>,
 ) -> Option<QuartzAct> {
     let pal = theme::pal(ui);
-    let mut forget = None;
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Quartz Correction").strong());
-        theme::help(ui, "Quartz Correction", QUARTZ_HELP);
-    });
-    ui.add_space(4.0);
-    if let Some(t) = timing {
-        theme::card().fill(pal.card).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.add(
-                egui::Label::new(RichText::new(format!("Timing \"{}\"", t.shown)).strong()).wrap(),
-            )
-            .on_hover_text("The input listening, timed against the computer's clock");
+    let mut act = None;
+    theme::group(ui, "Quartz Correction", Some(QUARTZ_HELP), |g| {
+        if let Some(t) = timing {
+            let label = format!("Timing \"{}\"", t.shown);
+            let hint = "The input listening, timed against the computer's clock";
             match &t.timed {
-                Some((words, hint)) => {
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if t.offered
-                                && ui
-                                    .button("Keep")
-                                    .on_hover_text(
-                                        "Keep this input's clock error and correct its rates",
-                                    )
-                                    .clicked()
-                            {
-                                forget = Some(QuartzAct::Keep);
-                            }
-                            ui.with_layout(
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.add(egui::Label::new(words.as_str()).wrap())
-                                        .on_hover_text(hint);
-                                },
-                            );
-                        });
+                Some((words, hint_words)) => {
+                    let caption = if t.offered {
+                        words.clone()
+                    } else {
+                        format!("{words}. The correction kept for it agrees.")
+                    };
+                    g.row(&label, theme::Caption::Text(&caption), hint, |ui| {
+                        if t.offered
+                            && ui
+                                .button("Keep")
+                                .on_hover_text(format!(
+                                    "Keep this input's clock error and correct its rates. \
+                                     {hint_words}"
+                                ))
+                                .clicked()
+                        {
+                            act = Some(QuartzAct::Keep);
+                        }
                     });
-                    if !t.offered {
-                        ui.label(
-                            RichText::new("The correction kept for it agrees.")
-                                .small()
-                                .color(pal.text_secondary),
-                        );
-                    }
                 }
                 None => {
-                    let frac = (t.heard_s / t.needed_s).clamp(0.0, 1.0) as f32;
-                    ui.add(egui::ProgressBar::new(frac).desired_height(6.0))
+                    let heard = format!(
+                        "{} of {} heard",
+                        crate::strip::fmt_time(t.heard_s),
+                        crate::strip::fmt_time(t.needed_s)
+                    );
+                    g.row(&label, theme::Caption::Text(&heard), hint, |ui| {
+                        let frac = (t.heard_s / t.needed_s).clamp(0.0, 1.0) as f32;
+                        ui.add(
+                            egui::ProgressBar::new(frac)
+                                .desired_width(120.0)
+                                .desired_height(6.0),
+                        )
                         .on_hover_text(
                             "Timed once this much sound has been heard in one go; a break in \
                              listening starts it again",
                         );
-                    ui.label(
-                        RichText::new(format!(
-                            "{} of {} heard",
-                            crate::strip::fmt_time(t.heard_s),
-                            crate::strip::fmt_time(t.needed_s)
-                        ))
-                        .small()
-                        .color(pal.text_secondary),
-                    );
+                    });
                 }
             }
-        });
-        ui.add_space(4.0);
-    }
-    let store = match store {
-        Ok(s) => s,
-        Err(e) => {
-            theme::alert_label(
-                ui,
-                theme::Alert::Bad,
-                &format!("The kept corrections can't be read: {e}"),
-                false,
-            );
-            return None;
         }
-    };
-    if let Some(now) = current.filter(|d| store.get(d).is_none()) {
-        ui.label(
-            RichText::new(format!(
+        let store = match store {
+            Ok(s) => s,
+            Err(e) => {
+                g.whole(|ui| {
+                    theme::alert_label(
+                        ui,
+                        theme::Alert::Bad,
+                        &format!("The kept corrections can't be read: {e}"),
+                        false,
+                    );
+                });
+                return;
+            }
+        };
+        let none_now = current.filter(|d| store.get(d).is_none());
+        let none_words = match (none_now, store.devices.is_empty()) {
+            (Some(now), _) => Some(format!(
                 "None kept for \"{now}\", the input listening. Once it is timed above, Keep \
                  stores it here."
-            ))
-            .color(pal.text_secondary),
-        );
-    }
-    if store.devices.is_empty() {
-        if current.is_none() {
-            ui.label(
-                RichText::new(
-                    "None kept for any input. Listen for 20 minutes or more and the input is \
-                     timed here, with Keep to store it.",
-                )
-                .color(pal.text_secondary),
-            );
-        }
-        return None;
-    }
-    for c in &store.devices {
-        theme::card().fill(pal.card).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            let mut name = RichText::new(&c.device).strong();
-            if Some(c.device.as_str()) == current {
-                name = RichText::new(format!("{}  (listening)", c.device)).strong();
-            }
-            ui.horizontal(|ui| {
-                // A long name wraps beside Forget, never under it.
-                let w = (ui.available_width() - 80.0).max(80.0);
-                ui.vertical(|ui| {
-                    ui.set_max_width(w);
-                    ui.add(egui::Label::new(name).wrap())
-                        .on_hover_text("The input, by the name the system gives it");
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    if ui
-                        .button("Forget")
-                        .on_hover_text(format!(
-                            "Stop correcting rates from \"{}\": they are read on its own clock \
-                             again until it is timed and kept afresh. The command line and the \
-                             MCP server forget it too.",
-                            c.device
-                        ))
-                        .clicked()
-                    {
-                        forget = Some(QuartzAct::Forget(c.device.clone()));
-                    }
-                });
+            )),
+            (None, true) => Some(
+                "None kept for any input. Listen for 20 minutes or more and the input is \
+                 timed here, with Keep to store it."
+                    .to_string(),
+            ),
+            (None, false) => None,
+        };
+        if let Some(w) = none_words {
+            g.whole(|ui| {
+                ui.add(egui::Label::new(RichText::new(w).color(pal.text_secondary)).wrap());
             });
-            ui.label(error_words(c)).on_hover_text(format!(
-                "This input's clock runs {}{}: rates read on it are {} s/d off, and True Clock \
-                 takes that off.",
-                ppm_words(c.ppm),
-                c.ppm_sd
-                    .map_or(String::new(), |sd| format!(", give or take {sd:.1} ppm")),
-                sd_words(c.rate_error_s_per_day()),
-            ));
+        }
+        for c in &store.devices {
+            let name = if Some(c.device.as_str()) == current {
+                format!("{}  (listening)", c.device)
+            } else {
+                c.device.clone()
+            };
             let over = if c.span_s > 0.0 {
                 format!(" over {}", crate::strip::fmt_time(c.span_s))
             } else {
                 String::new()
             };
-            ui.label(
-                RichText::new(format!(
-                    "Measured {}, {}{over}",
-                    c.measured_utc.get(..10).unwrap_or(&c.measured_utc),
-                    source_words(&c.source)
-                ))
-                .small()
-                .color(pal.text_secondary),
-            )
-            .on_hover_text(format!("Measured {} UTC", c.measured_utc));
-        });
-        ui.add_space(4.0);
-    }
-    forget
+            let caption = format!(
+                "{}. Measured {}, {}{over}.",
+                error_words(c),
+                c.measured_utc.get(..10).unwrap_or(&c.measured_utc),
+                source_words(&c.source)
+            );
+            let hint = format!(
+                "This input's clock runs {}{}: rates read on it are {} s/d off, and True Clock \
+                 takes that off. Measured {} UTC.",
+                ppm_words(c.ppm),
+                c.ppm_sd
+                    .map_or(String::new(), |sd| format!(", give or take {sd:.1} ppm")),
+                sd_words(c.rate_error_s_per_day()),
+                c.measured_utc,
+            );
+            g.row(&name, theme::Caption::Text(&caption), &hint, |ui| {
+                if ui
+                    .button("Forget")
+                    .on_hover_text(format!(
+                        "Stop correcting rates from \"{}\": they are read on its own clock \
+                         again until it is timed and kept afresh. The command line and the \
+                         MCP server forget it too.",
+                        c.device
+                    ))
+                    .clicked()
+                {
+                    act = Some(QuartzAct::Forget(c.device.clone()));
+                }
+            });
+        }
+    });
+    act
 }
 
 #[cfg(test)]

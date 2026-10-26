@@ -509,6 +509,183 @@ pub fn row<R>(
 /// Width of the names in a settings card.
 pub const LABEL_W: f32 = 92.0;
 
+/// Settings' groups are no wider than this.
+pub const GROUP_W: f32 = 560.0;
+
+/// A settings row's height, without a caption that wraps.
+pub const GROUP_ROW_H: f32 = 40.0;
+
+/// What sits under a settings row's name: its one-line caption, or a
+/// message about the setting in the caption's place, so a message never
+/// adds a line under the row.
+#[derive(Debug, Clone, Copy)]
+pub enum Caption<'a> {
+    Text(&'a str),
+    Alert(Alert, &'a str),
+}
+
+/// A titled group of settings: the title in small secondary text above a
+/// rounded panel no wider than [`GROUP_W`], its rows apart by hairlines.
+/// `help`, when given, is a "?" beside the title.
+pub fn group<R>(
+    ui: &mut Ui,
+    title: &str,
+    help_text: Option<&[&str]>,
+    add: impl FnOnce(&mut Group<'_>) -> R,
+) -> R {
+    let p = pal(ui);
+    ui.horizontal(|ui| {
+        ui.add_space(6.0);
+        ui.label(RichText::new(title).size(12.0).color(p.text_secondary));
+        if let Some(h) = help_text {
+            help(ui, title, h);
+        }
+    });
+    let w = ui.available_width().min(GROUP_W);
+    // A step off the window it sits on: lighter in the dark theme, the
+    // window's grey on a white one in the light.
+    let fill = if ui.visuals().dark_mode {
+        lerp_color(p.card, p.control, 0.5)
+    } else {
+        p.window
+    };
+    let out = Frame::new()
+        .fill(fill)
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(12, 0))
+        .show(ui, |ui| {
+            ui.set_width(w - 24.0);
+            ui.spacing_mut().item_spacing.y = 0.0;
+            add(&mut Group { ui, rows: 0 })
+        })
+        .inner;
+    ui.add_space(14.0);
+    out
+}
+
+/// The rows of a [`group`].
+pub struct Group<'a> {
+    pub ui: &'a mut Ui,
+    rows: usize,
+}
+
+impl Group<'_> {
+    /// A hairline above each row but the first.
+    fn next(&mut self) {
+        if self.rows > 0 {
+            let r = self.ui.available_rect_before_wrap();
+            let y = r.top();
+            // Darker than the group in the dark theme; the separator grey
+            // on the light theme's.
+            let p = pal(self.ui);
+            let ink = if self.ui.visuals().dark_mode {
+                p.card
+            } else {
+                p.separator
+            };
+            self.ui
+                .painter()
+                .hline(r.x_range(), y, Stroke::new(1.0_f32, ink));
+        }
+        self.rows += 1;
+    }
+
+    /// A row: the name at the left with its caption under it, and the
+    /// control at the right of the same row; `hint` on the name.
+    pub fn row<R>(
+        &mut self,
+        label: &str,
+        caption: Caption,
+        hint: &str,
+        control: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        self.next();
+        let ui = &mut *self.ui;
+        let p = pal(ui);
+        let w = ui.available_width();
+        ui.allocate_ui_with_layout(
+            Vec2::new(w, GROUP_ROW_H),
+            Layout::right_to_left(Align::Center),
+            |ui| {
+                ui.set_min_size(Vec2::new(w, GROUP_ROW_H));
+                ui.spacing_mut().item_spacing.x = 8.0;
+                // The control laid left to right at the right edge, in the
+                // width it took last frame, so a row of buttons or a
+                // segmented control keeps its order.
+                let id = ui.id().with(("group row", label));
+                let was = ui.ctx().data(|d| d.get_temp::<f32>(id)).unwrap_or(0.0);
+                let r = ui.allocate_ui_with_layout(
+                    Vec2::new(was, GROUP_ROW_H),
+                    Layout::left_to_right(Align::Center),
+                    control,
+                );
+                let took = r.response.rect.width();
+                if (took - was).abs() > 0.5 {
+                    ui.ctx().data_mut(|d| d.insert_temp(id, took));
+                    ui.ctx().request_repaint();
+                }
+                let out = r.inner;
+                ui.add_space(8.0);
+                ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    ui.add_space(6.0);
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    ui.add(egui::Label::new(RichText::new(label).size(13.5).color(p.text)).wrap())
+                        .on_hover_text(hint);
+                    match caption {
+                        Caption::Text(t) => {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(t).size(11.5).color(p.text_secondary),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        Caption::Alert(kind, t) => {
+                            // As tall as a caption, one line cut short, so the row
+                            // keeps its height; the row's hover says more.
+                            ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                                ui.spacing_mut().item_spacing.x = 5.0;
+                                let (rect, _) =
+                                    ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
+                                alert_icon(
+                                    ui.painter(),
+                                    rect.translate(Vec2::new(0.0, 1.0)),
+                                    kind,
+                                    p,
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(t).size(11.5).color(p.text_secondary),
+                                    )
+                                    .truncate(),
+                                );
+                            });
+                        }
+                    }
+                    ui.add_space(6.0);
+                });
+                out
+            },
+        )
+        .inner
+    }
+
+    /// A row of its own: whatever `add` draws, across the group.
+    pub fn whole<R>(&mut self, add: impl FnOnce(&mut Ui) -> R) -> R {
+        self.next();
+        let ui = &mut *self.ui;
+        ui.add_space(8.0);
+        let out = ui
+            .scope(|ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+                add(ui)
+            })
+            .inner;
+        ui.add_space(8.0);
+        out
+    }
+}
+
 /// A row with a name on the left and a switch on the right. True when the
 /// switch was flipped.
 pub fn switch_row(ui: &mut Ui, label: &str, on: &mut bool, hint: &str) -> bool {

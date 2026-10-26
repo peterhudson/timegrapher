@@ -487,7 +487,7 @@ As copying the take: meanwhile the sound waits in memory, and is saved and
 read once they finish. With **Keep Awake** on (in Settings, under
 General; it is on unless switched off), the app asks the computer not to go to sleep on its own while it listens;
 the screen can still lock and switch off as usual. If the system refuses,
-a note under the switch says so. When the sound's own timestamps jump by
+Keep Awake's caption says so in its place. When the sound's own timestamps jump by
 more than 5 seconds (as when the computer sleeps: a laptop's lid closed,
 Sleep chosen from a menu, or Keep Awake off), the app leaves the jump out
 of the take as a break, keeps listening, and a
@@ -1284,13 +1284,22 @@ been published yet"). The request carries no account or identifier.
 the end of the pane icons opens it over the app. As the Mac's System
 Settings does, a sidebar down its left lists the categories, each with its
 icon and name, the one picked filled in the accent colour, and the picked
-category's name heads its settings on the right:
-**General** (Appearance, Check for Updates at Start, **Listening** with
+category's name heads its settings on the right. Each page is in
+groups: a group's title in small grey type above a rounded panel no wider
+than 560 points, its rows apart by hairlines, each row's name at the left
+with a one-line caption under it and its control at the right of the
+same row. A message about a setting (Keep Awake refused, an input's level
+that can't be set, the microphone reporting its automatic gain otherwise)
+takes that row's caption, in the same space, so no row grows.
+**General**: Appearance (Auto, Light or Dark); **Listening**, with
 **Listen When the App Opens**, on unless switched off, and **Keep
-Awake**), **Microphone** (the microphone menu and **Rescan**, **Input
-Level**, the peak meter, **Show Every Input** and **Quartz Correction**,
-each input's kept clock with Forget; see True Clock), **Watches Folder**
-(below) and **Calibres** (Manage Calibres, below). It opens at the
+Awake**; **Updates**, with Check for Updates at Start. **Microphone**:
+the **Microphone** group (the microphone menu and **Rescan**, **Show
+Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
+warning in the caption, and **Peak** with its shaded band) and **Quartz
+Correction**, each input's kept clock as a row with Forget (see True
+Clock). **Watches Folder** (below) and **Calibres** (Manage Calibres,
+below). It opens at the
 category it was last left on, kept with the app's settings across
 restarts. **Done**, at the top right, Escape or a click outside closes it. What belongs to
 the take on show (its calibre, lift angle, beat rate, position and
@@ -1371,7 +1380,8 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   Off by default and kept for each input. Each time the app opens the
   input it sets the switch to match, since a stand turns it back on each
   time it is plugged in, and it reads it back: where the microphone
-  reports otherwise, a line under the switch says so. On a Mac the
+  reports otherwise, the row's caption says so in place of the warning to
+  keep it off. On a Mac the
   request reaches every USB microphone's switch at once, so it is sent
   only when the input's own switch needs changing. The switch is hidden
   for an input without one, such as a built-in microphone.
@@ -1523,16 +1533,27 @@ folder can't be moved while another copy has it open. The Watches view adds watc
 ## Sessions
 
 At the first launch the app shows **Set Up the Microphone**, and listens
-while it is open: the microphone menu, the input level and the peak meter,
-with a shaded band from -10 to -6 dBFS to set the peak in (at 0 dBFS the
-sound clips, which the words beside the meter say), then **Done** and **Not Now**.
-Choosing another microphone listens to that one instead; if a microphone
-won't start, the sheet says why. Done keeps Quick Listen running; Not Now
-stops it and closes the sheet, which shows again at the next launch. Once
-the microphone is set up (by Done, or by any listening that opened it
-with the sheet closed), every launch starts Quick Listen at once, unless **Listen When the
-App Opens** (Settings, under General) is off or a recording was given on
-the command line. With it off, the microphone is opened only when
+while it is open. It is three numbered steps: **1, Choose the microphone
+the watch sits on** (the microphone menu with Rescan, and Show Every
+Input); **2, Put a ticking watch on it**; **3, Set the Input Level so the
+peaks sit in the shaded band**: Input Level ("Not adjustable here" where
+the system sets it), **Automatic Gain** with its standing warning to keep
+it off (only for an input whose automatic gain the app can reach), and
+the **Peak** meter with its dBFS, over a shaded band from −10 to −6
+dBFS. Under them a status line two lines tall says one thing: the green
+dot and "Listening to …", a failure (the red icon, then its words, cut at
+two lines with the whole of it on hover), a warning such as "Clipping:
+lower the Input Level.", or "Not listening.". It changes nothing around
+it. At the bottom are two notes and **Not Now** and **Done**; Return
+presses Done and Escape presses Not Now. Choosing another microphone
+listens to that one instead. Done keeps Quick Listen running and counts
+the microphone as set up. Not Now stops listening and closes the sheet,
+which then doesn't come back by itself (Settings > Microphone sets it
+up later); it doesn't count as set up, so the app still doesn't listen
+by itself at launch. Once the microphone is set up (by Done, or by any
+listening that opened it with the sheet closed), every launch starts
+Quick Listen at once, unless **Listen When the App Opens** (Settings,
+under General) is off or a recording was given on the command line. With it off, the microphone is opened only when
 listening starts. When another program records from the same microphone
 (a long take with the recorder, say), don't start listening during its
 take, and press Stop before one begins.
