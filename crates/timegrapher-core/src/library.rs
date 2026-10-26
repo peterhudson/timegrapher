@@ -1256,7 +1256,8 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
     }
     let at = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_f64);
     // The rate kept is as heard, on the sound card's clock; the take's
-    // clock log corrects it, as reading the take does.
+    // clock log corrects it, as reading the take does, when it measures
+    // the clock well enough to.
     let ppm = || {
         let m = manifest.as_ref().filter(|_| audio && !incomplete)?;
         let first = m.recordings.first()?;
@@ -1264,6 +1265,7 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
         let files = crate::recording_order::recordings_in(dir, &listed).ok()?;
         crate::clock::of_take(dir, first.clock.as_deref()?, &files)
             .ok()
+            .filter(crate::clock::ClockFit::corrects)
             .map(|f| f.ppm)
     };
     let at_end = about

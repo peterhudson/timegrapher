@@ -177,6 +177,11 @@ fn report(
     input: Value,
 ) -> Result<(), String> {
     let path = if save {
+        // A correction too loose to correct a take's rates by is not stored
+        // either, or it would correct every later take on the card.
+        if let Some(w) = fit.unsure() {
+            return Err(refusal(d, &w));
+        }
         let mut s = ClockStore::load()?;
         s.set(d.clone());
         Some(s.save()?)
@@ -200,6 +205,20 @@ fn report(
         None => println!("Not stored   (add --save to keep it)"),
     }
     Ok(())
+}
+
+/// Why a measurement is not stored: what it measured, and the rule.
+fn refusal(d: &DeviceClock, w: &clock::Withheld) -> String {
+    format!(
+        "not stored: {} entries over {:.0} s measure '{}' at {:+.1} ± {:.1} ppm; a stored correction needs {} entries or more and a standard error of at most {:.0} ppm (as a take's own log does to correct its rates)",
+        w.points,
+        w.span_s,
+        d.device,
+        w.ppm,
+        w.ppm_sd,
+        clock::MIN_POINTS,
+        clock::MAX_SD_PPM
+    )
 }
 
 /// Listen for `minutes`, comparing the audio that arrives against the
@@ -381,5 +400,28 @@ mod tests {
             .unwrap_err()
             .contains("ppm"));
         assert_eq!(fs::read_to_string(path).unwrap(), invalid);
+    }
+
+    #[test]
+    fn a_log_too_short_to_correct_by_is_not_stored() {
+        // Six entries over 42 s, as a short take's log: measured, but loose.
+        let pairs: Vec<(f64, f64)> = [0.0, 0.029, -0.031, 0.012, 0.004, -0.018]
+            .iter()
+            .enumerate()
+            .map(|(i, j)| (i as f64 * 8.4, 1.7e9 + i as f64 * 8.4 * (1.0 + 6e-6) + j))
+            .collect();
+        let fit = ClockFit::new(&pairs).unwrap();
+        let d = DeviceClock::from_fit("card", &fit, "now".into(), "log");
+        let e = report(&d, &fit, true, true, json!({})).unwrap_err();
+        assert!(
+            e.starts_with("not stored: 6 entries over 42 s measure 'card' at "),
+            "{e}"
+        );
+        assert!(
+            e.contains("10 entries or more and a standard error of at most 20 ppm"),
+            "{e}"
+        );
+        // Without --save it is still reported.
+        report(&d, &fit, false, true, json!({})).unwrap();
     }
 }
