@@ -303,8 +303,10 @@ measured: the watch's details apply to its next take. **Keep in a
 Watch**, for a recording opened from outside the Watches folder (a lone
 file or a take folder), copies it into one of your watches, or into a
 **New Watch…**, kept in the new watch when you press its button, asking
-only what neither its files nor the watch say; the original stays where
-it is.
+only what neither its files, the watch nor the take on show say (its
+position, beat rate and lift angle are the ones on show, written with
+it; when it started is offered to check); the original stays where it
+is. **Keep** stays greyed out until what is asked is given.
 
 **Open Recording…** or **Open Folder…** in the File menu first asks where
 the recording goes (when there are watches and it isn't in them already):
@@ -676,15 +678,15 @@ when not read.
 
 **Isochronism.** A tab beside the Steadiness panes, from the same run of tests: the
 rate by amplitude in 2° steps (the median rate as a dot, with bars over the
-middle half), the curve through them and where it turns, and under it the
-first half hour against the half hour 24 hours later (or the session's last),
-the usual 0 h / 24 h comparison, captioned Full Wind Against 24 Hours
-Later. It needs the amplitude to fall
-through at least three 2° steps, which a run-down over some hours gives.
+middle half), the curve through them and where it turns, filling the
+pane. It needs the amplitude to fall
+through at least three 2° steps, which a run-down over some hours gives
+(a long run-down is one way; any take over a wide range of amplitude
+does).
 A note on what it needs is behind the **?** in its toolbar. Until there are 5 minutes of beats in one position, the
 Steadiness and Isochronism tabs say so; during a Positions Test they say
-that the test never stays that long in one position. Both scroll with a
-bar always showing when the pane is too short for every row.
+that the test never stays that long in one position. Steadiness scrolls
+with a bar always showing when the pane is too short for every row.
 
 **True Clock.** While it listens, the app times the microphone's clock
 against the computer's. After 20 minutes of listening, once the timing is
@@ -1098,14 +1100,23 @@ unlock) each change over the session, from the same tests as
 `timegrapher series` (see [series.md](series.md)). Each view is a pane of
 its own, so two can sit side by side; their icons sit together under
 **Analysis** in the icon bar (and in an Analysis menu under View), and
-they start as hidden tabs beside the Tick Tock Profile. Each series shows the sentence `series` writes, saying what
-was detected (a cycle, two levels, a step, a trend, correlation between
-readings, or none of these), with no verdict word or colour, and under it
-the statistics: readings, median, standard deviation, the scatter from one
-reading to the next, the lag-1 correlation and Ljung–Box p-value, and the
-trend and period when found. **Rate**, **Amplitude** and **Beat Error**,
-in each pane's toolbar, choose which series that pane shows; at least one
-stays on.
+they start as hidden tabs beside the Tick Tock Profile. Above the plots
+is the toolbar and nothing else: each plot has its series' title, and the
+plots take the rest of the pane. **Info**, an "i" in a circle fixed at the
+right of the toolbar just left of the **?**, opens the Info panel down the
+right of the pane (300 pt, or a third of the pane if less; over the plots,
+from the pane's top right corner, in a pane under 600 pt wide): what the
+view shows, then for each series shown, under its coloured title, the
+sentence `series` writes, saying what was detected (a cycle, two levels, a
+step, a trend, correlation between readings, or none of these), with no
+verdict word or colour, and the statistics: what was tested ("Tested on 179
+10 s readings"), median, standard deviation, the scatter from one reading
+to the next, the lag-1 correlation and Ljung–Box p-value, and the trend
+and period when found; then how much of the session was tested. Its words
+wrap, scroll and can be selected to copy. It opens and closes only when
+clicked, and is one setting for every Steadiness view, kept between runs.
+**Rate**, **Amplitude** and **Beat Error**, in each pane's toolbar, choose
+which series that pane shows; at least one stays on.
 
 Known phase jumps and position boundaries remain cuts in the derived
 Steadiness log, including when separate visits to one position are joined.
@@ -1120,7 +1131,11 @@ sizes, positive, as the tests beside them read them.
 The views:
 **Readings Over Time** (the readings in time order, with the stretches of
 constant level the change finder found and, for two states, the two
-levels dashed; scaled to the readings with lone wild ones left out),
+levels dashed; scaled to the readings with lone wild ones left out; a key
+in the plot's top right corner, as Charts' key, says after a dot in the
+series' colour what a dot is and how many are drawn: "10 s readings
+(179)" for the rate, "2 s windows (880)" for the amplitude and beat
+error, measured every 2 s),
 **Periods** (the period search's score at each period on a logarithmic
 axis, with the 1% false-alarm line dashed, the calibre's wheels' periods
 marked, and the strongest component labelled; **Log
@@ -1157,10 +1172,14 @@ each unbroken stretch read alone; coloured in viridis from dark purple
 for the smallest size to yellow for the size 99.5% of the cells read stay
 under and above; a cell nothing was read for, such as a window with a
 reading missing or a stretch's ends the wavelet can't reach, is left
-empty and shown as "not read" in the key under the map; the wheels' turns are
+empty and shown as "not read" in the key under the map, which is titled
+with what the colour measures and its unit (**Timing Swing (ms)** for the
+rate's map, the timing's swing at each period, not a rate in s/d;
+**Amplitude Swing (°)**; **Beat Error Swing (ms)**); the wheels' turns are
 dotted across it and named at the right; **Log Scale** in the toolbar
 colours the sizes on a log scale over a range of 300 to 1; the pointer
-over a cell shows its time, period and size; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
+over a cell shows its size with its unit, its period and its time, as
+"Timing Swing 1.8 ms · period 12 s · at 3:20"; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
 period is a bold dotted line and half of it, twice a turn as an off-centre wheel
 shows, a fainter dotted line marked ×2; the grid behind is pale. The
 wheels' lines are grey and dotted, and named, so they never
@@ -1541,6 +1560,13 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   session` reports them) will build on it.
 
 ## Sessions
+
+Every question the app asks lays its buttons out as a Mac dialog does:
+the default, filled, at the right, which Return presses; **Cancel** to its
+left, which Escape presses; and a button that throws something away
+(**Don't Save**, **Throw Away**, **Delete**) at the far left. Where
+throwing away is all the question offers, nothing is the default and
+Return does nothing.
 
 At the first launch the app shows **Set Up the Microphone**, and listens
 while it is open. It is three numbered steps: **1, Choose the microphone

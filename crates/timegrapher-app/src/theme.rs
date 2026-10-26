@@ -857,6 +857,122 @@ pub fn destructive(ui: &Ui, text: &str) -> egui::Button<'static> {
     secondary(ui, text)
 }
 
+/// What a button in a dialog's button row does, which says where it sits
+/// (as a Mac dialog lays them out): the default rightmost, Cancel to its
+/// left, others to the left of Cancel, and a button that throws something
+/// away at the far left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// Filled; Return presses it.
+    Default,
+    /// Escape presses it.
+    Cancel,
+    Other,
+    /// Throws something away: far from the default.
+    Destructive,
+}
+
+/// One button in a dialog's button row.
+#[derive(Debug, Clone, Copy)]
+pub struct DialogButton<'a> {
+    pub role: Role,
+    pub label: &'a str,
+    pub hint: &'a str,
+    /// Greyed out, saying why on hover, when not.
+    pub enabled: Result<(), &'a str>,
+}
+
+impl<'a> DialogButton<'a> {
+    pub fn new(role: Role, label: &'a str, hint: &'a str) -> Self {
+        Self {
+            role,
+            label,
+            hint,
+            enabled: Ok(()),
+        }
+    }
+
+    /// Greyed out, with `why` on hover, unless `on`.
+    pub fn enabled_unless(mut self, on: bool, why: &'a str) -> Self {
+        self.enabled = if on { Ok(()) } else { Err(why) };
+        self
+    }
+}
+
+/// A dialog's button row along its foot: each button where its role puts
+/// it, all of one height. Return presses the default button (when it is
+/// enabled and no field has the keyboard), Escape the Cancel button.
+/// Returns the index in `buttons` of the one pressed.
+pub fn dialog_buttons(ui: &mut Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let mut hit = None;
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 26.0),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            hit = dialog_buttons_right(ui, buttons);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                for (i, b) in buttons.iter().enumerate() {
+                    if b.role == Role::Destructive && dialog_button(ui, b) {
+                        hit = Some(i);
+                    }
+                }
+            });
+        },
+    );
+    hit.or_else(|| dialog_keys(ui, buttons))
+}
+
+/// The right-hand part of a dialog's button row, for a row with more in
+/// it, inside a right-to-left layout: the default, then Cancel, then the
+/// others. Destructive buttons are left to the caller's left side.
+pub fn dialog_buttons_right(ui: &mut Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let mut hit = None;
+    for role in [Role::Default, Role::Cancel, Role::Other] {
+        for (i, b) in buttons.iter().enumerate() {
+            if b.role == role && dialog_button(ui, b) {
+                hit = Some(i);
+            }
+        }
+    }
+    hit
+}
+
+/// Return and Escape on a dialog's button row.
+pub fn dialog_keys(ui: &Ui, buttons: &[DialogButton<'_>]) -> Option<usize> {
+    let free = ui.memory(|m| m.focused().is_none());
+    let find = |role| {
+        buttons
+            .iter()
+            .position(|b| b.role == role && b.enabled.is_ok())
+    };
+    if free && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        return find(Role::Default);
+    }
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        return find(Role::Cancel);
+    }
+    None
+}
+
+fn dialog_button(ui: &mut Ui, b: &DialogButton<'_>) -> bool {
+    let button = match b.role {
+        Role::Default => primary(ui, b.label),
+        Role::Destructive => destructive(ui, b.label),
+        Role::Cancel | Role::Other => secondary(ui, b.label),
+    };
+    let r = ui.add_enabled(b.enabled.is_ok(), button);
+    let r = if b.hint.is_empty() {
+        r
+    } else {
+        r.on_hover_text(b.hint)
+    };
+    match b.enabled {
+        Err(why) => r.on_disabled_hover_text(why).clicked(),
+        Ok(()) => r.clicked(),
+    }
+}
+
 /// Grid marks for a plot, all of one step so every grid line and label is
 /// drawn alike: the first step of `ladder` (1, 2 and 5 times powers of ten
 /// when empty) at least `min_px` points apart. 80 points is what the plot
@@ -962,6 +1078,67 @@ pub fn dash(ui: &mut Ui, a: Color32, b: Color32) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A dialog's button row as on a Mac, whatever order the buttons are
+    /// given in: the default rightmost, Cancel to its left, others left of
+    /// Cancel, a button that throws something away at the far left. Return
+    /// presses the default (not while greyed out), Escape Cancel.
+    #[test]
+    fn a_dialog_row_puts_each_button_where_its_role_says() {
+        let ctx = egui::Context::default();
+        install(&ctx);
+        let buttons = [
+            DialogButton::new(Role::Destructive, "Don't Save", ""),
+            DialogButton::new(Role::Cancel, "Cancel", ""),
+            DialogButton::new(Role::Other, "Elsewhere…", ""),
+            DialogButton::new(Role::Default, "Save…", ""),
+        ];
+        let run = |keys: &[egui::Key], buttons: &[DialogButton]| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(600.0, 200.0),
+                )),
+                events: keys
+                    .iter()
+                    .map(|&key| egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Default::default(),
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            let mut hit = None;
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    hit = dialog_buttons(ui, buttons);
+                });
+            });
+            let mut at = std::collections::HashMap::new();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    at.insert(t.galley.text().to_string(), t.pos.x);
+                }
+            }
+            (hit, at)
+        };
+        let (hit, at) = run(&[], &buttons);
+        assert_eq!(hit, None);
+        let x = |n: &str| at[n];
+        assert!(x("Don't Save") < 100.0, "{at:?}");
+        assert!(x("Don't Save") < x("Elsewhere…"));
+        assert!(x("Elsewhere…") < x("Cancel"));
+        assert!(x("Cancel") < x("Save…"));
+        assert!(x("Save…") > 450.0, "{at:?}");
+        assert_eq!(run(&[egui::Key::Enter], &buttons).0, Some(3));
+        assert_eq!(run(&[egui::Key::Escape], &buttons).0, Some(1));
+        let mut greyed = buttons;
+        greyed[3] = greyed[3].enabled_unless(false, "Fill it in first");
+        assert_eq!(run(&[egui::Key::Enter], &greyed).0, None);
+    }
 
     #[test]
     fn fonts_load_and_lay_out() {
@@ -1194,7 +1371,7 @@ pub fn note_icon(ui: &Ui, icon: Icon, name: &str) {
 /// comes back out when the pane is wide enough again; a pane's plot never
 /// gives up room for its tools.
 pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl FnMut(&mut Ui)) {
-    pane_toolbar_noted(ui, title, help_text, None, controls);
+    pane_toolbar_full(ui, title, help_text, None, None, controls)
 }
 
 /// A pane's toolbar with `note`, a fact about what the pane shows (such
@@ -1204,6 +1381,31 @@ pub fn pane_toolbar_noted(
     title: &str,
     help_text: &[&str],
     note: Option<&str>,
+    controls: impl FnMut(&mut Ui),
+) {
+    pane_toolbar_full(ui, title, help_text, note, None, controls)
+}
+
+/// [`pane_toolbar`] with one control `pinned` just left of the "?": it
+/// never folds and never moves, however the row's controls fold.
+pub fn pane_toolbar_pinned(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    pinned: Option<&mut dyn FnMut(&mut Ui)>,
+    controls: impl FnMut(&mut Ui),
+) {
+    pane_toolbar_full(ui, title, help_text, None, pinned, controls)
+}
+
+/// A pane's toolbar: its controls, then at its right end its `note`, its
+/// `pinned` control and the "?".
+fn pane_toolbar_full(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    note: Option<&str>,
+    pinned: Option<&mut dyn FnMut(&mut Ui)>,
     mut controls: impl FnMut(&mut Ui),
 ) {
     let full = ui.available_rect_before_wrap();
@@ -1211,6 +1413,18 @@ pub fn pane_toolbar_noted(
         egui::pos2(full.right() - 18.0, full.top() + 4.0),
         Vec2::splat(16.0),
     );
+    let pin_w = if pinned.is_some() {
+        CONTROL_H + 6.0
+    } else {
+        0.0
+    };
+    if let Some(pin) = pinned {
+        let r = egui::Rect::from_min_size(
+            egui::pos2(full.right() - 26.0 - CONTROL_H - 2.0, full.top() + 1.0),
+            Vec2::new(CONTROL_H, CONTROL_H),
+        );
+        ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| pin(ui));
+    }
     let note_w = note.map_or(0.0, |n| {
         let p = pal(ui);
         let g = ui.painter().layout_no_wrap(
@@ -1220,7 +1434,10 @@ pub fn pane_toolbar_noted(
         );
         let w = g.size().x;
         ui.painter().galley(
-            egui::pos2(full.right() - 26.0 - w, q.center().y - g.size().y / 2.0),
+            egui::pos2(
+                full.right() - 26.0 - pin_w - w,
+                q.center().y - g.size().y / 2.0,
+            ),
             g,
             p.text_secondary,
         );
@@ -1229,7 +1446,7 @@ pub fn pane_toolbar_noted(
             title,
             n,
             egui::Rect::from_min_size(
-                egui::pos2(full.right() - 26.0 - w, q.top()),
+                egui::pos2(full.right() - 26.0 - pin_w - w, q.top()),
                 Vec2::new(w, q.height()),
             ),
         );
@@ -1245,7 +1462,7 @@ pub fn pane_toolbar_noted(
     ui.scope_builder(egui::UiBuilder::new().max_rect(q), |ui| {
         help_with_key(ui, title, &text, &key)
     });
-    let room = full.with_max_x(full.right() - 26.0 - note_w);
+    let room = full.with_max_x(full.right() - 26.0 - pin_w - note_w);
     // Last frame's controls and their widths decide what folds now.
     let known: Vec<(String, f32)> = ui
         .ctx()
@@ -1748,6 +1965,7 @@ pub enum Icon {
     Funnel,
     Fit,
     Highlighter,
+    Info,
 }
 
 /// What an alert says about itself: a warning (a triangle in the text
