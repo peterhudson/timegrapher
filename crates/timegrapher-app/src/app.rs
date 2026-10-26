@@ -866,6 +866,8 @@ const WATCH_SIDE_MAX: f32 = 1100.0;
 /// The Watches view's width from which the list and the watch sit side by
 /// side; narrower, one shows at a time.
 const WATCHES_SIDE_BY_SIDE: f32 = 900.0;
+/// Why a Positions Test's take takes no Position Brush.
+const POSITIONS_TAKE_PAINT: &str = "A Positions Test sets its own positions; paint a Listen take.";
 /// The hover on a test's setting it can't change while it runs.
 const FIXED_IN_TEST: &str = "Fixed while the test runs.";
 const NEW_TAKES: [(NewTake, &str, &str); 3] = [
@@ -3792,19 +3794,16 @@ impl TimegrapherApp {
         m
     }
 
-    /// Take what a session file says about a recording: the watch, its
-    /// calibre (a custom one is added to the custom calibres from its wheels),
-    /// the lift angle and beat rate. Returns the positions it lists through
-    /// the recording, oldest first, and the settling before each: a gap
-    /// between one position's end and the next one's start.
-    /// A Power Reserve Test's take opened: its results back from
-    /// `power-reserve.json` beside it, so its pane shows the run.
+    /// A take opened: a Positions Test's known by `positions-test.json`
+    /// beside it, and a Power Reserve Test's results back from
+    /// `power-reserve.json`, so its pane shows the run.
     fn load_reserve(&mut self, path: &Path) {
         let dir = if path.is_dir() {
             path
         } else {
             path.parent().unwrap_or(path)
         };
+        self.positions_take = dir.join(guided::RESULTS_FILE).is_file();
         let Ok(text) = std::fs::read_to_string(dir.join(power_reserve::FILE)) else {
             return;
         };
@@ -3824,6 +3823,11 @@ impl TimegrapherApp {
         self.reserve = Some(t);
     }
 
+    /// Take what a session file says about a recording: the watch, its
+    /// calibre (a custom one is added to the custom calibres from its wheels),
+    /// the lift angle and beat rate. Returns the positions it lists through
+    /// the recording, oldest first, and the settling before each: a gap
+    /// between one position's end and the next one's start.
     fn apply_manifest(
         &mut self,
         m: &Manifest,
@@ -4838,6 +4842,8 @@ impl TimegrapherApp {
             Some("Nothing to paint yet. Listen, or open a recording.")
         } else if test {
             Some("Not during a Positions Test: the test sets each position.")
+        } else if self.positions_take {
+            Some(POSITIONS_TAKE_PAINT)
         } else {
             None
         };
@@ -20338,6 +20344,41 @@ mod tests {
             });
         });
         assert_eq!(app.brush, None);
+    }
+
+    /// A Positions Test's take, run here or opened later, takes no
+    /// Position Brush: the test set its positions. Another take opened
+    /// takes it again.
+    #[test]
+    fn a_positions_test_take_takes_no_brush() {
+        let mut app = synthetic(60.0, 0.0);
+        let ctx = themed();
+        let draw = |app: &mut TimegrapherApp| {
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    theme::pane_toolbar(ui, "Paper Strip", &[], |ui| app.strip_settings(ui))
+                });
+            });
+        };
+        let dir =
+            std::env::temp_dir().join(format!("tg-app-positions-brush-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let take = dir.join("take.flac");
+        // A plain take: the brush stays in the hand.
+        app.load_reserve(&take);
+        assert!(!app.positions_take);
+        app.brush = Some(Position::DialUp);
+        draw(&mut app);
+        assert_eq!(app.brush, Some(Position::DialUp));
+        // A Positions Test's results beside it: put down, and greyed.
+        std::fs::write(dir.join(guided::RESULTS_FILE), "{}").unwrap();
+        app.load_reserve(&take);
+        assert!(app.positions_take);
+        assert!(!app.in_test(), "the test itself is over");
+        draw(&mut app);
+        assert_eq!(app.brush, None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// After a masked stretch the charts stay empty until a whole

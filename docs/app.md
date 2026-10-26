@@ -972,7 +972,8 @@ is masked, when a new take, New Session or another recording starts.
 
 **Position Brush** (the highlighter, the brush's position code in teal,
 then ▾) marks a stretch of the strip as one position, on a live take or
-one opened:
+one opened. A Positions Test's take, run or opened, sets its own
+positions: the brush is greyed there.
 
 - Pick a position from its menu, then drag along the strip. While
   dragging, a teal preview says the position and the times, such as
