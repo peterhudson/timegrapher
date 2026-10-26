@@ -1439,6 +1439,55 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
     }
 }
 
+/// Bring the row holding `pane` (its tabs, or the pane itself) down to
+/// `h` points where it is taller, the other rows sharing the rest as they
+/// did; from where the panes were last laid out.
+fn fit_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
+    let Some(id) = tiles.find_pane(&pane) else {
+        return;
+    };
+    let row = tiles
+        .parent_of(id)
+        .filter(|&p| {
+            matches!(
+                tiles.get(p),
+                Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(_)))
+            )
+        })
+        .unwrap_or(id);
+    let (Some(linear), Some(now)) = (tiles.parent_of(row), tiles.rect(row)) else {
+        return;
+    };
+    let Some(rect) = tiles.rect(linear) else {
+        return;
+    };
+    let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) = tiles.get(linear)
+    else {
+        return;
+    };
+    let shown: Vec<TileId> = l
+        .children
+        .iter()
+        .copied()
+        .filter(|&c| tiles.is_visible(c))
+        .collect();
+    let room = rect.height() - 8.0 * (shown.len() as f32 - 1.0);
+    if l.dir != LinearDir::Vertical || shown.len() < 2 || now.height() <= h || room <= h {
+        return;
+    }
+    let others: f32 = shown
+        .iter()
+        .filter(|&&c| c != row)
+        .map(|&c| l.shares[c])
+        .sum();
+    let f = h / room;
+    if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
+        tiles.get_mut(linear)
+    {
+        l.shares.set_share(row, others * f / (1.0 - f));
+    }
+}
+
 /// Whether a saved layout holds every pane exactly once.
 fn layout_is_whole(tree: &Tree<Pane>) -> bool {
     let panes: Vec<Pane> = tree
@@ -13246,7 +13295,13 @@ impl TimegrapherApp {
 
     /// Show a pane and bring its tab to the front.
     fn reveal_pane(&mut self, pane: Pane) {
+        let was = pane_visible(&self.panes.tiles, pane);
         set_pane_visible(&mut self.panes.tiles, pane, true);
+        // A test's pane opens at its content's height, no less than a
+        // pane's least: the Paper Strip keeps the rest until dragged.
+        if pane == Pane::PowerReserve && !was {
+            fit_row(&mut self.panes.tiles, pane, MIN_PANE_H);
+        }
         let Some(id) = self.panes.tiles.find_pane(&pane) else {
             return;
         };

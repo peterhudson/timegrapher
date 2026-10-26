@@ -164,6 +164,17 @@ impl Test {
     }
 }
 
+/// A run's length in words: hours and minutes, with its seconds under an
+/// hour, so a short run never reads a minute short.
+fn run_words(s: f64) -> String {
+    if s < 3600.0 {
+        let s = s.max(0.0).floor() as u64;
+        format!("{} min {:02} s", s / 60, s % 60)
+    } else {
+        power_reserve::run_text(s)
+    }
+}
+
 /// A run's ending in words.
 pub fn ending_text(e: Ending) -> &'static str {
     match e {
@@ -236,7 +247,7 @@ pub fn pane(
     );
     if t.running() {
         ui.label(
-            RichText::new(power_reserve::run_text(t.run_so_far_s()))
+            RichText::new(run_words(t.run_so_far_s()))
                 .size(34.0)
                 .strong()
                 .color(pal.text),
@@ -263,7 +274,7 @@ pub fn pane(
         return;
     }
     // Ended: one line of the result.
-    let run = power_reserve::run_text(t.results.as_ref().map_or(t.run_so_far_s(), |r| r.run_s));
+    let run = run_words(t.results.as_ref().map_or(t.run_so_far_s(), |r| r.run_s));
     let ending = t
         .ending
         .map(|e| format!(" · {}, in {}", ending_text(e), t.position.label()))
@@ -773,7 +784,7 @@ mod tests {
         texts = pass(Some(&t), h, false).into_iter().chain(texts).collect();
         assert!(rate_scale(&texts), "the top first: {texts:?}");
         assert!(
-            texts.iter().any(|t| t.0.starts_with("Ran 0 h 00 min")),
+            texts.iter().any(|t| t.0.starts_with("Ran 0 min ")),
             "one line of the result: {texts:?}"
         );
         assert!(!shown(&texts, "4–5 h"), "{texts:?}");
@@ -803,6 +814,15 @@ mod tests {
             .unwrap_or_else(|| panic!("{texts:?}"));
         assert!(row.1.bottom() <= 520.0, "{row:?}");
         assert!(shown(&texts, "280°") || shown(&texts, "281°"), "{texts:?}");
+    }
+
+    /// A run under an hour reads its minutes and seconds, never a minute
+    /// short; an hour or more, hours and minutes.
+    #[test]
+    fn a_short_run_reads_its_seconds() {
+        assert_eq!(run_words(112.4), "1 min 52 s");
+        assert_eq!(run_words(59.0), "0 min 59 s");
+        assert_eq!(run_words(166_320.0), "46 h 12 min");
     }
 
     /// The pane holds no more height than it shows: one line before a run,
