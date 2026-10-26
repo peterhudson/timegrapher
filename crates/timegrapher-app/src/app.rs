@@ -4699,7 +4699,7 @@ impl TimegrapherApp {
         }
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
-        live.set_rate_clock(self.take_clock.as_ref().map(|f| f.ppm));
+        live.set_rate_clock(self.take_rate_ppm());
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -11851,6 +11851,16 @@ impl TimegrapherApp {
         })
     }
 
+    /// The take's own clock error the readings are corrected by, ppm slow:
+    /// none where its clock log measures the clock too loosely to correct
+    /// by (core's `ClockFit::corrects`).
+    fn take_rate_ppm(&self) -> Option<f64> {
+        self.take_clock
+            .as_ref()
+            .filter(|f| f.corrects())
+            .map(|f| f.ppm)
+    }
+
     /// The error of [`Self::reading_clock`], ppm slow, for what is read
     /// with it to be read again when it changes.
     fn reading_ppm(&self) -> Option<f64> {
@@ -11864,6 +11874,19 @@ impl TimegrapherApp {
     /// figure's hover, while one is kept. A take with its own clock log
     /// is read on it, the big figure included, so the hover says so.
     fn true_clock_words(&self, rate: f64) -> Option<String> {
+        // A log that measures the clock too loosely corrects nothing: what
+        // it measured, and why not, in the same place.
+        if let Some(w) = self.take_clock.as_ref().and_then(|f| f.withheld) {
+            let note = w.note();
+            let mut c = note.chars();
+            let note = c
+                .next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default();
+            return Some(format!(
+                "{note}. The rate stays on the sound card's clock, as tg reads the recording."
+            ));
+        }
         if let Some(f) = &self.take_clock {
             let ppm = format!("{:.1}", f.ppm.abs());
             let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
@@ -16009,7 +16032,7 @@ impl eframe::App for TimegrapherApp {
         // clock.
         let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
-        let rate_ppm = self.take_clock.as_ref().map(|f| f.ppm);
+        let rate_ppm = self.take_rate_ppm();
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
             l.set_rate_clock(rate_ppm);
@@ -19539,6 +19562,66 @@ mod tests {
         // The card's figure is on the same clock as the table.
         let want = timegrapher_core::clockstore::correct_rate(card_heard, ppm);
         assert!((card - want).abs() < 0.02, "{card} {want} {card_heard}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take's clock log of too few entries corrects nothing: the card's
+    /// rate is the rate heard, and the Rate hover says what the log
+    /// measured and why it isn't applied.
+    #[test]
+    fn a_loose_clock_log_corrects_nothing_and_says_why() {
+        let base = std::env::temp_dir().join(format!("tg-app-clock-loose-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&base.join("audio-001.wav"), &audio).unwrap();
+        // Five entries, the card 50 ppm off: under the ten a correction
+        // needs.
+        let mut log = String::from("unix_s,frames\n");
+        for k in 0..5 {
+            let audio_s = 25.0 * k as f64;
+            log += &format!(
+                "{:.6},{}\n",
+                1_700_000_000.0 + audio_s * (1.0 + 50e-6),
+                (audio_s * audio.sample_rate as f64) as u64
+            );
+        }
+        std::fs::write(base.join("clock.csv"), log).unwrap();
+        let manifest = |clock: bool| {
+            let c = if clock { "clock = 'clock.csv'\n" } else { "" };
+            format!(
+                "bph = 28800\nlift = 52.0\n\n\
+                 [[recording]]\nfile = '.'\nposition = 'DU'\n{c}settle_s = 0.0\n"
+            )
+        };
+        let card = |clock: bool| {
+            std::fs::write(base.join(MANIFEST), manifest(clock)).unwrap();
+            let app = reopened(&base);
+            let card = app
+                .live
+                .as_ref()
+                .unwrap()
+                .reading_at(110.0, 10.0)
+                .rate_s_per_day
+                .expect("a card figure");
+            (app, card)
+        };
+        let (_, heard) = card(false);
+        let (app, rate) = card(true);
+        let fit = app.take_clock.as_ref().expect("the log read");
+        assert!(!fit.corrects());
+        assert_eq!(app.take_rate_ppm(), None);
+        assert!((rate - heard).abs() < 1e-9, "{rate} {heard}");
+        let words = app.true_clock_words(rate).expect("said");
+        assert!(words.starts_with("The clock log's 5 entries"), "{words}");
+        assert!(words.contains("not applied"), "{words}");
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -721,6 +721,9 @@ tables, the readings worked out over the whole take, the Rate figure and
 the Charts are all corrected for that take's own sound card, so one take
 has one rate and it is what the command line reads. The Rate's hover
 says the figure is on the take's clock log, and by how many ppm. A log
+of under 10 entries, or one measuring the clock to a standard error over
+20 ppm, corrects nothing: the take is read as heard, and the Rate's hover
+says what the log measured and why it isn't applied. A log
 that can't be read is named in the line shown on opening, and the take
 is read as heard. A recording opened without a log shows no True Clock. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
