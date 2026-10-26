@@ -111,7 +111,9 @@ afterwards. **Listen** has a **Listen** icon, which starts Quick Listen
 whose menu offers **Keep in a Watch** (your watches, then **New
 Watch…**; shown for a Quick Listen take, and for a recording opened from
 outside the Watches folder) and **Save in a Folder…**, which asks where,
-or **Save Again** once it has been saved. The Save icon is hidden for a
+or **Save Again** once it has been saved. On a take opened whose painted
+positions or masks have changed, the menu offers **Save Changes** first
+and the status bar says "Changes not saved". The Save icon is hidden for a
 watch's own take, which saves itself at Stop. Beside them are the take's
 length ("12:48"), live while listening and the whole take for one
 opened, and its state under it (Listening, Stopped, Opened, or 0:00 and
@@ -524,7 +526,9 @@ minutes that listening is still going.
 Tock Profile to begin with (its icon is a die showing six, one face for
 each position), leads through the six positions in the app's order: Dial Up,
 Dial Down, Crown Down, Crown Left, Crown Up, Crown Right. Its toolbar
-has **Start Test** (**Start a New Test** once one has finished), **Load
+has **Start Test** (**Start a New Test** once one has run, in a new take:
+the take with the test is left as it is, and sound not saved is asked
+about first; the test always starts in Dial Up), **Load
 Full-Wind Results…**, **Settle** and **Each Position** (the seconds the watch
 settles after each turn and is then measured: 20 s and 60 s unless set
 otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
@@ -596,7 +600,7 @@ position's sound: no regular beat (with its timing scatter), clipping,
 under 10 s of beats, a beat error given as a size because its sign
 differs either side of a cut, or Tick and Tock named by the beat count
 across a break rather than by their sound. After the sixth, **Finish**
-reads the six together. The figures are `session`'s for the same
+reads the six together and stops listening, as Stop does. The figures are `session`'s for the same
 stretches. **Save as
 CSV…** saves the watch's name, its calibre, beat rate and lift angle,
 when the test began and its settling and measuring times, then the
