@@ -220,14 +220,18 @@ pub const TOOLS: &[ToolSpec] = &[
         title: "Check Steadiness",
         description: "How the rate, amplitude and beat error move over a long recording \
             (an hour or more). Gives each series' headline (what was detected: a cycle, \
-            two levels, level changes, a trend, or none) with its statistics: \
+            two levels, level changes, a trend, or none), the same in a few words as \
+            `summary`, and its statistics: \
             autocorrelation, Allan deviation, the period and its size, the wheel whose \
             turn matches a cycle, level changes and an amplitude spectrum, and findings \
             with their evidence. With `maps`, also each series' time-frequency maps (an \
             STFT and a synchrosqueezed wavelet map, drawn in the chart view; the result \
             gives each map's outline in `time_frequency_maps`), its Lomb-Scargle \
-            periodogram, gaps and all, the coherences without their grids, and each named \
-            wheel's averaged turn; it takes longer. Facts only: the reading of them is the \
+            periodogram, gaps and all, its kurtogram in `kurtograms` (the spectral \
+            kurtosis at each period over windows of several lengths: about 0 is noise, \
+            -1 a line of steady size, above 0 a line that comes in bursts), the \
+            coherences without their grids, and each named wheel's averaged turn; it \
+            takes longer. Facts only: the reading of them is the \
             caller's.",
         command: &["series", "--views"],
         params: &[

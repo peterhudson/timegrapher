@@ -270,8 +270,11 @@ the timegrapher app draws them:
   the microphone. Chat apps without views, and any that ask for progress,
   get the latest reading in the progress messages instead, for example
   "Recording CD: 72 of 120 s · +4.1 s/day · 268° · 0.3 ms".
-- `check_steadiness`: the app's Steadiness pane (each series' headline,
-  as `series` words it, and its statistics, over its Readings, Periods,
+- `check_steadiness`: the app's Steadiness pane (each plot titled with its
+  series and that series' `summary`, the headline in a few words; the Info
+  switch shows the view's description and each series' full headline, as
+  `series` words it, and its statistics; the Readings view's key says what
+  a dot is and how many are drawn, over its Readings, Periods,
   Cycle, Autocorrelation, Allan Deviation, CUSUM or FFT view, picked with
   the buttons above it; Periods has a Log Scale switch, and the FFT draws
   the rate as the swing it makes in the rate readings, peak to peak in
