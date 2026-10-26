@@ -866,6 +866,8 @@ const WATCH_SIDE_MAX: f32 = 1100.0;
 /// The Watches view's width from which the list and the watch sit side by
 /// side; narrower, one shows at a time.
 const WATCHES_SIDE_BY_SIDE: f32 = 900.0;
+/// The hover on a test's setting it can't change while it runs.
+const FIXED_IN_TEST: &str = "Fixed while the test runs.";
 const NEW_TAKES: [(NewTake, &str, &str); 3] = [
     (
         NewTake::Listen,
@@ -3795,6 +3797,33 @@ impl TimegrapherApp {
     /// the lift angle and beat rate. Returns the positions it lists through
     /// the recording, oldest first, and the settling before each: a gap
     /// between one position's end and the next one's start.
+    /// A Power Reserve Test's take opened: its results back from
+    /// `power-reserve.json` beside it, so its pane shows the run.
+    fn load_reserve(&mut self, path: &Path) {
+        let dir = if path.is_dir() {
+            path
+        } else {
+            path.parent().unwrap_or(path)
+        };
+        let Ok(text) = std::fs::read_to_string(dir.join(power_reserve::FILE)) else {
+            return;
+        };
+        let r = match power_reserve::Results::from_json(&text) {
+            Ok(r) => r,
+            Err(e) => {
+                return self.error(format!(
+                    "This take's Power Reserve results can't be read: {e}"
+                ))
+            }
+        };
+        let position = Position::from_name(&r.position).unwrap_or(self.position);
+        let mut t = reserve::Test::new(position, r.sound_kept, r.started_utc.clone(), 0.0);
+        t.ending = Some(r.ending);
+        t.saved = Some(dir.to_path_buf());
+        t.results = Some(r);
+        self.reserve = Some(t);
+    }
+
     fn apply_manifest(
         &mut self,
         m: &Manifest,
@@ -4205,6 +4234,7 @@ impl TimegrapherApp {
         });
         self.opened_path = path.display().to_string();
         self.reset_session(info.sample_rate, label.clone());
+        self.load_reserve(path);
         self.session.analyse();
         self.live = None;
         self.batch = Some(Batch {
@@ -4285,6 +4315,7 @@ impl TimegrapherApp {
         });
         self.opened_path = path.display().to_string();
         self.reset_session(header.sample_rate, label.clone());
+        self.load_reserve(path);
         self.no_sound = true;
         self.session.analyse();
         self.live = None;
@@ -7499,7 +7530,8 @@ impl TimegrapherApp {
     /// before anything is on show, and never during a test, which sets it
     /// itself. A take's positions are its history.
     fn position_editable(&self) -> bool {
-        let testing = (self.running() && self.guided.is_some()) || self.reserve_running();
+        // A Positions Test finished, while listening goes on, sets nothing.
+        let testing = (self.running() && self.guided_running()) || self.reserve_running();
         let listening = self.running() && self.session.mic();
         !testing && (listening || self.live.is_none())
     }
@@ -8452,8 +8484,15 @@ impl TimegrapherApp {
         self.take_setup();
         match kind {
             NewTake::Listen => self.start_microphone(),
-            NewTake::Positions => self.start_guided(None),
-            NewTake::PowerReserve => self.start_reserve(),
+            // With the full-wind results loaded, if any, as Start Test
+            // on the pane uses them.
+            NewTake::Positions => self.start_guided(self.guided_earlier.clone()),
+            // Only set up: the Power Reserve pane shows on the Bench, and the
+            // test starts from its Start Test once the position is set.
+            NewTake::PowerReserve => {
+                self.view = View::Bench;
+                self.reveal_pane(Pane::PowerReserve);
+            }
         }
     }
 
@@ -12579,7 +12618,9 @@ impl TimegrapherApp {
                         // Every settle band redraws, and the table with it.
                         self.session.resettle(v);
                     }
-                });
+                })
+                .response
+                .on_disabled_hover_text(FIXED_IN_TEST);
             },
         );
         theme::tool_field(
@@ -12603,7 +12644,9 @@ impl TimegrapherApp {
                     if a || b {
                         self.guided_measure_s = v;
                     }
-                });
+                })
+                .response
+                .on_disabled_hover_text(FIXED_IN_TEST);
             },
         );
         let has = self
@@ -12716,16 +12759,26 @@ impl TimegrapherApp {
             guided::Action::Pause => test.pause(now),
             guided::Action::Resume => test.resume(now),
             guided::Action::ClearEarlier => {}
-            guided::Action::Stop => {
-                test.stop(now);
-                self.guided_unused = test.unused(now);
-                self.guided_measured = test.measured(now);
-                return;
-            }
+            guided::Action::Stop => return self.guided_stop(test, now),
         }
         self.guided_unused = test.unused(now);
         self.guided_measured = test.measured(now);
         self.guided = Some(test);
+    }
+
+    /// The banner's Stop at `now`: the positions measured so far stay in
+    /// the table, finished, and listening stops as at the Listen card's
+    /// Stop, keeping the take.
+    fn guided_stop(&mut self, mut test: guided::Test, now: f64) {
+        test.stop(now);
+        if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+            let clock = self.reading_clock(log.duration_s);
+            test.finish(&log, clock.as_ref(), &self.masked);
+        }
+        self.guided_unused = test.unused(now);
+        self.guided_measured = test.measured(now);
+        self.guided = Some(test);
+        self.stop_listening();
     }
 
     /// Whether a Power Reserve Test is under way, not yet ended.
@@ -18123,6 +18176,13 @@ mod tests {
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
         assert!(watches::take_line(&take).starts_with("Power Reserve 0 h 00 min (still running"));
+        // Opened again, the take brings its run back to the pane.
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+        again.start_batch(&saved);
+        let back = again.reserve.as_ref().expect("its results");
+        assert!(!again.reserve_running());
+        assert_eq!(back.results.as_ref(), Some(&r));
+        assert_eq!(back.position, Position::CrownLeft);
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -19663,6 +19723,51 @@ mod tests {
             panic!("{:?}", app.guided_live(&ctx));
         };
         assert!((rate - 30.0).abs() < 5.0, "{rate}");
+    }
+
+    /// The banner's Stop keeps the positions measured in the table, stops
+    /// listening, and leaves the position free to set again.
+    #[test]
+    fn a_positions_tests_stop_keeps_its_rows_and_stops_listening() {
+        let base = std::env::temp_dir().join(format!("tg-app-guided-stop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let mut app = synthetic(20.0, 0.0);
+        app.session.listen();
+        let tx = queued_capture(&mut app, &base);
+        let start = app.live.as_ref().unwrap().duration_s();
+        let mut test = guided::Test::new().timed(1.0, 5.0);
+        test.tick(start);
+        app.guided = Some(test);
+        assert!(app.guided_running());
+        let test = app.guided.take().unwrap();
+        app.guided_stop(test, start + 10.0);
+        assert!(app.session.paused(), "listening stopped");
+        let kept = app.guided.as_ref().expect("the table stays");
+        assert!(kept.readings.is_some(), "finished");
+        assert!(!app.guided_running());
+        assert!(app.capture.is_none());
+        // A finished test sets nothing while listening goes on.
+        let _tx2 = queued_capture(&mut app, &base);
+        app.session.listen();
+        assert!(app.running() && app.position_editable());
+        drop(tx);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The Watches view's Power Reserve Test only sets the take up: the
+    /// pane shows on the Bench, and nothing starts until its Start Test,
+    /// the position set first on the card.
+    #[test]
+    fn the_watches_power_reserve_test_waits_on_the_bench() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.view = View::Watches;
+        set_pane_visible(&mut app.panes.tiles, Pane::PowerReserve, false);
+        app.new_take(NewTake::PowerReserve, false);
+        assert!(app.reserve.is_none() && !app.running());
+        assert_eq!(app.view, View::Bench);
+        assert!(pane_visible(&app.panes.tiles, Pane::PowerReserve));
+        assert!(app.position_editable(), "the card sets it");
     }
 
     #[test]

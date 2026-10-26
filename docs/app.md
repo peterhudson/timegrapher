@@ -541,7 +541,8 @@ Measurement**) once it is there. **Restart DD Measurement**, naming the
 position just measured (or the one under way), settles and measures it
 again, after a knock for instance; **Pause** holds the test, leaving out
 what the position measured so far, and **Resume** settles and measures it
-again from the start; **Stop** ends the test and clears its table. Each
+again from the start; **Stop** ends the test and stops listening, keeping
+the positions measured so far in its table and the take as at any Stop. Each
 button keeps its own place, as wide as the widest it holds, so none moves
 as the test moves on: Stop is always where it was. Only
 the measured seconds in each position count. From the moment the test
@@ -1595,8 +1596,10 @@ listening starts. When another program records from the same microphone
 take, and press Stop before one begins.
 
 **Listen** on the Listen card (Quick Listen), or **Listen**, **Positions
-Test** or **Power Reserve Test** for a watch picked in the Watches view,
-begins a session from the microphone. **Stop** stops
+Test** for a watch picked in the Watches view, begins a session from the
+microphone. **Power Reserve Test** there opens the Power Reserve pane on
+the Bench, so the position is set on the Current Position card before
+its Start Test. **Stop** stops
 listening and lets go of the microphone, so another program can use it,
 and keeps everything on show: the
 readings, strip, charts and the sound so far. There is no pause:
