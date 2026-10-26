@@ -983,13 +983,13 @@ const POSITION_COMPACT_W: f32 = 112.0;
 /// both, and the reading cards keep `CAPTION_FIT_W`, room for their
 /// captions whole.
 const LISTEN_COMPACT_W: f32 = 140.0;
-const LISTEN_NARROWEST_W: f32 = 130.0;
+const LISTEN_NARROWEST_W: f32 = 126.0;
 const CAPTION_FIT_W: f32 = 118.0;
 /// The compact Calibre card: wide enough for the beat rate and the lift
 /// side by side where the reading cards keep their captions whole beside
 /// it, else narrower, the beat rates then in the Calibre menu.
 const CALIBRE_ROOMY_W: f32 = 250.0;
-const CALIBRE_COMPACT_W: f32 = 130.0;
+const CALIBRE_COMPACT_W: f32 = 126.0;
 /// The narrowest Calibre card's controls row that holds the beat rate
 /// and the lift side by side.
 const TWO_FIELDS_W: f32 = CALIBRE_ROOMY_W - 2.0 * 16.0;
@@ -1884,6 +1884,9 @@ pub struct TimegrapherApp {
     /// A question about a take (Delete, Keep Analysis Only, Add to
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
+    /// The watch (or Unsorted) picked before Keep in a Watch… showed the
+    /// one it keeps into, put back if its question is cancelled.
+    keep_back: Option<(Option<String>, bool)>,
     take_keep: Option<(PathBuf, AnalysisSave)>,
     /// The watches' photos as thumbnails, read in the background.
     thumbs: photos::Thumbs,
@@ -2494,6 +2497,7 @@ impl TimegrapherApp {
             results_rects: [None; 2],
             positions_take: false,
             take_ask: None,
+            keep_back: None,
             take_keep: None,
             thumbs: Default::default(),
             strip_points: None,
@@ -5427,6 +5431,7 @@ impl TimegrapherApp {
         }
         let ask = match what {
             Confirm::PickWatch(_) => self.line_pick_asks(),
+            Confirm::NewTake(_) => self.new_take_asks(),
             _ => self.needs_save_confirmation(),
         };
         if !ask {
@@ -6056,7 +6061,8 @@ impl TimegrapherApp {
     /// from there.
     fn keep_into(&mut self, id: &str) {
         if let Some(from) = self.addable_take() {
-            // The pane shows the watch it goes into.
+            // The pane shows the watch it goes into, until a Cancel.
+            self.keep_back = Some((self.watch_open.clone(), self.unsorted_open));
             self.watch_open = Some(id.to_string());
             self.unsorted_open = false;
             // A take folder with its session file goes in whole, copied
@@ -6066,7 +6072,12 @@ impl TimegrapherApp {
             } else {
                 from.parent().map(Path::to_path_buf).unwrap_or_default()
             };
-            if dir.join(MANIFEST).is_file() || dir.join("session.json").is_file() {
+            // One part of a take of several opened alone goes in alone,
+            // with what is on show.
+            let one_of_several = from.is_file() && recordings_in(&dir).is_ok_and(|r| r.len() > 1);
+            if !one_of_several
+                && (dir.join(MANIFEST).is_file() || dir.join("session.json").is_file())
+            {
                 self.take_ask = Some(watches::Ask::Add {
                     from: dir,
                     watch: Some(id.to_string()),
@@ -6163,12 +6174,25 @@ impl TimegrapherApp {
                     self.answer_take_ask(ask);
                 }
             }
-            Some(false) => self.take_ask = None,
+            Some(false) => {
+                self.take_ask = None;
+                self.keep_cancelled();
+            }
             None => {}
         }
     }
 
+    /// Keep in a Watch…'s question cancelled: the watch picked before it
+    /// is picked again.
+    fn keep_cancelled(&mut self) {
+        if let Some((watch, unsorted)) = self.keep_back.take() {
+            self.watch_open = watch;
+            self.unsorted_open = unsorted;
+        }
+    }
+
     fn answer_take_ask(&mut self, ask: watches::Ask) {
+        self.keep_back = None;
         // The session just saved into the take, stopped, lets go of it:
         // nothing more is saved there, and what is on show goes.
         let changed = match &ask {
@@ -7915,7 +7939,10 @@ impl TimegrapherApp {
                         {
                             new = true;
                         }
-                        ui.separator();
+                        // Only above an item: the menu never ends on a line.
+                        if can {
+                            ui.separator();
+                        }
                     }
                     if can
                         && ui
@@ -8404,14 +8431,7 @@ impl TimegrapherApp {
         if self.running() || self.saving_busy() {
             return;
         }
-        // A take of a watch asks about Quick Listen's sound too, as picking
-        // a watch does: it isn't that watch's sound.
-        let asks = if self.open_watch().is_some() {
-            self.line_pick_asks()
-        } else {
-            self.needs_save_confirmation()
-        };
-        if !asked && asks {
+        if !asked && self.new_take_asks() {
             self.confirm = Some(Confirm::NewTake(kind));
             return;
         }
@@ -8420,6 +8440,17 @@ impl TimegrapherApp {
             NewTake::Listen => self.start_microphone(),
             NewTake::Positions => self.start_guided(None),
             NewTake::PowerReserve => self.start_reserve(),
+        }
+    }
+
+    /// Whether a new take asks first: a take of a watch asks about Quick
+    /// Listen's sound too, as picking a watch does, as it isn't that
+    /// watch's sound.
+    fn new_take_asks(&self) -> bool {
+        if self.open_watch().is_some() {
+            self.line_pick_asks()
+        } else {
+            self.needs_save_confirmation()
         }
     }
 
@@ -10021,7 +10052,7 @@ impl TimegrapherApp {
         }
         match answer {
             Some(true) => self.answer_open_ask(a, need),
-            Some(false) => {}
+            Some(false) => self.keep_cancelled(),
             None => self.open_ask = Some(a),
         }
     }
@@ -10031,10 +10062,12 @@ impl TimegrapherApp {
     /// saying why.
     fn answer_open_ask(&mut self, mut a: OpenAsk, need: OpenNeed) {
         if !a.add {
+            self.keep_back = None;
             return self.open_recording(&a.path, true);
         }
         match self.add_opened(&a, need) {
             Ok((take, id, fill_error)) => {
+                self.keep_back = None;
                 self.watch_open = Some(id);
                 self.unsorted_open = false;
                 match fill_error {
@@ -11352,7 +11385,8 @@ impl TimegrapherApp {
                      note: Option<&(String, String)>| {
             let mut child = row(ui, rect, caption);
             child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
+                // Tight, so a reading card's caption stays whole at 800.
+                ui.spacing_mut().item_spacing.x = 4.0;
                 theme::help(ui, caption, help);
                 let caption_w = ui.fonts_mut(|f| {
                     f.layout_no_wrap(caption.into(), theme::semibold(13.0), pal.text)
@@ -11369,7 +11403,7 @@ impl TimegrapherApp {
                 // A short fact in plain small text before the "?", where the
                 // caption stays whole beside it.
                 if let Some((text, hover)) = note {
-                    if small_w(ui, text) + 6.0 + caption_w <= ui.available_width() {
+                    if small_w(ui, text) + 4.0 + caption_w <= ui.available_width() {
                         ui.label(RichText::new(text).size(12.0).color(pal.text_secondary))
                             .on_hover_text(hover);
                     }
@@ -11390,7 +11424,7 @@ impl TimegrapherApp {
                     let words = format!("{}{more}", chip_words(&first.0));
                     let count = limits.len().to_string();
                     let fits = |ui: &mut egui::Ui, t: &str| {
-                        small_w(ui, t) + 14.0 + 6.0 + caption_w <= ui.available_width()
+                        small_w(ui, t) + 14.0 + 4.0 + caption_w <= ui.available_width()
                     };
                     if fits(ui, &words) {
                         theme::chip(ui, &words, caption, &sentences, ui.available_width());
@@ -18295,6 +18329,23 @@ mod tests {
         for not_asked in ["Choose a Position", "Choose a Beat Rate", "Lift Angle"] {
             assert!(!text.contains(not_asked), "{not_asked}");
         }
+        // The watch shows while asked; Esc (as Cancel) puts back what was
+        // picked before, here no watch.
+        assert_eq!(app.watch_open.as_deref(), Some(pepsi.as_str()));
+        let esc = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        let _ = ctx.run(esc, |ctx| app.open_ask_dialog(ctx));
+        assert!(app.open_ask.is_none());
+        assert_eq!(app.watch_open, None);
+        app.keep_into(&pepsi);
         let mut a = app.open_ask.take().expect("asked when it started");
         a.started.clear();
         assert!(!TimegrapherApp::open_ready(&a, app.open_need(&a)));
@@ -18311,6 +18362,57 @@ mod tests {
             toml::from_str(&std::fs::read_to_string(take.join(MANIFEST)).unwrap()).unwrap();
         assert_eq!((m.bph, m.lift), (Some(28800), Some(50.0)));
         assert_eq!(m.recordings[0].position.as_deref(), Some("CL"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// One part of a take of several, opened alone, is kept in a watch
+    /// alone, with what is on show; a take of one part goes in whole.
+    #[test]
+    fn one_part_of_a_take_is_kept_alone() {
+        let base = std::env::temp_dir().join(format!("tg-app-keep-part-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+        drop(lib);
+        let take = base.join("outside").join("run");
+        std::fs::create_dir_all(&take).unwrap();
+        std::fs::write(take.join("session.json"), "{}").unwrap();
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 8000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let part = |n: usize| {
+            let p = take.join(format!("run_part{n:02}.wav"));
+            let mut w = hound::WavWriter::create(&p, spec).unwrap();
+            for _ in 0..8000 {
+                w.write_sample(0i16).unwrap();
+            }
+            w.finalize().unwrap();
+            p
+        };
+        let first = part(1);
+        let mut app = synthetic(5.0, 0.0);
+        app.use_library(Some(root.clone()));
+        app.input = Input::File;
+        app.opened_path = first.display().to_string();
+        // Alone in its folder, the take goes in whole.
+        app.keep_into(&pepsi);
+        assert!(
+            matches!(&app.take_ask, Some(watches::Ask::Add { from, .. }) if *from == take),
+            "{:?}",
+            app.take_ask
+        );
+        app.take_ask = None;
+        // One of two: it goes in alone, asked as a recording.
+        part(2);
+        app.keep_into(&pepsi);
+        assert!(app.take_ask.is_none(), "{:?}", app.take_ask);
+        let shown = app.open_ask.as_ref().map(|a| a.path.clone());
+        assert!(shown.is_none() || shown == Some(first.clone()), "{shown:?}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -21915,6 +22017,8 @@ mod tests {
             for want in wants {
                 assert!(texts.iter().any(|t| t == want), "{want} at {w}: {texts:?}");
             }
+            // No beats yet: the profile's level axis has no marks.
+            assert!(!texts.iter().any(|t| t.starts_with("0.0000")), "{texts:?}");
             for gone in [
                 "Input Clock",
                 "Beat Rate",
@@ -21945,7 +22049,8 @@ mod tests {
         let r = app.reading().expect("a reading");
         assert!(!r.caveats.is_empty(), "6 s of beats is short");
         let ctx = themed();
-        for w in [800.0, 1000.0] {
+        app.session.listen();
+        for w in [740.0, 760.0, 780.0, 800.0, 1000.0] {
             let texts = window_texts(&mut app, &ctx, w);
             for caption in ["Rate", "Amplitude", "Beat Error"] {
                 assert!(
@@ -22742,11 +22847,29 @@ mod tests {
         });
         app.quick_listen = true;
         app.pick_watch(&pepsi);
+        assert!(app.quick_unsaved(), "picking keeps the readings on show");
+        // New Watch… then Add Watch picks the watch it adds.
+        app.watch_form = Some(watches::Form {
+            watch: library::Watch::new("Speedy"),
+            new: true,
+            error: None,
+        });
+        app.save_watch_form();
+        assert_eq!(
+            app.open_watch().map(|e| e.watch.name.clone()).as_deref(),
+            Some("Speedy")
+        );
         assert!(
             app.quick_unsaved(),
             "the readings on show are Quick Listen's"
         );
         app.new_take(NewTake::Listen, false);
+        assert_eq!(app.confirm, Some(Confirm::NewTake(NewTake::Listen)));
+        // The question shows, rather than carrying on unasked.
+        let ctx = themed();
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| app.confirm_dialog(ctx));
+        }
         assert_eq!(app.confirm, Some(Confirm::NewTake(NewTake::Listen)));
         assert!(app.session.recorder.is_some(), "nothing let go yet");
         app.confirm = None;

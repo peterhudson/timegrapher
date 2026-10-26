@@ -383,6 +383,7 @@ pub fn draw(
         let h = (ui.available_height() - 20.0).max(20.0) as f64;
         let plot_h = (ui.available_height() - bottom_lane).max(24.0);
         let facts_here = fact_box(k, plot_h);
+        let empty = p.is_none();
         let plot = Plot::new(("profile", k))
             .height(plot_h)
             .link_axis("profile", [true, false])
@@ -403,7 +404,8 @@ pub fn draw(
             .y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
             .y_axis_min_width(52.0)
             .y_axis_formatter(move |m, r| {
-                if (m.value - r.start()) / (r.end() - r.start()) * h < 9.0 {
+                // Before there are beats there is no level to mark.
+                if empty || (m.value - r.start()) / (r.end() - r.start()) * h < 9.0 {
                     return String::new();
                 }
                 match scale {

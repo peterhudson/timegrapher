@@ -195,11 +195,19 @@ pub fn draw(
     let width = dt * w as f64;
     let key_h = 22.0;
     let plot_h = (ui.available_height() - key_h).max(40.0);
+    let plot_w = ui.available_width() as f64;
     let x_hi = upto_s.max(left + width);
     let resp = base
         .height(plot_h)
         .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-        .x_axis_formatter(move |g, _| time_label(g.value))
+        .x_axis_formatter(move |g, r| {
+            // A mark too near the right edge for its label to show whole
+            // goes unlabelled, rather than cut to "10:0".
+            if (r.end() - g.value) / (r.end() - r.start()) * plot_w < 18.0 {
+                return String::new();
+            }
+            time_label(g.value)
+        })
         .y_grid_spacer(crate::steady::period_grid(plot_h))
         .y_axis_formatter(|g, _| crate::steady::period_label(g.value))
         .default_x_bounds(0.0f64.min(left), x_hi)
