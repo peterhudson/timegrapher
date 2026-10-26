@@ -413,13 +413,18 @@ these readings: `ppm`, `rate_error_s_per_day`, `from` (the source), and
 input named by the first recording's provenance is used, then USB lines
 from that recording if available. A stored zero correction is still an
 applied correction. There is no `--card-ppm` or `--device` option for `series`.
-A `--clock` log that can't measure the clock well enough to correct by
-(under 10 entries, or a standard error over 20 ppm, as a log of a minute
-or two gives) still places its breaks but
-corrects nothing: `ppm` and `rate_error_s_per_day` are 0 and `withheld`
-gives what it measured, `ppm`, `ppm_sd`, `points`, `span_s` and `reason`
-(`few_entries` or `unsure`). The same rule holds wherever a take's clock
-log corrects rates: `long`, `session`, the app and the library's Watches.
+When the recording has USB lines, they set the rate even with a
+`--clock` log: they time the card against the computer's USB clock to
+about 0.1 ppm, where a log of an entry a minute for half an hour
+measures it to about 13 ppm. The log then only places its breaks; `from`
+names both, and `withheld` gives what the log measured with `reason`
+`usb_lines`. Without USB lines, a `--clock` log that can't measure the
+clock well enough to correct by (under 10 entries, or a standard error
+over 20 ppm, as a log of a minute or two gives) still places its breaks
+but corrects nothing: `ppm` and `rate_error_s_per_day` are 0 and
+`withheld` gives what it measured, `ppm`, `ppm_sd`, `points`, `span_s`
+and `reason` (`few_entries` or `unsure`). The same rules hold in `long`,
+`session` and the power reserve reader.
 Positive ppm means the card runs slow and uncorrected rates read fast;
 `rate_error_s_per_day` is ppm × 0.0864. For a log that follows drift, these
 numbers summarize the fit; its time mapping need not be one uniform
