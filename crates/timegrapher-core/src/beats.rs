@@ -420,7 +420,98 @@ pub fn detect_with_template(env: &[f32], fs: f64, bph: u32, template: &[f32]) ->
             quality: v / typical,
         });
     }
+    keep_sides_on_one_sound(&corr, fs, typical, &mut beats);
     beats
+}
+
+/// Same-side beats either way of a beat that set where its side's beats
+/// lie, for [`keep_sides_on_one_sound`]: about 10 s at 28,800 bph.
+const SIDE_LINE_HALF: usize = 20;
+/// Fewer same-side beats than this in a run, and the run is left as found.
+const SIDE_LINE_MIN: usize = 9;
+/// A gap in the beats found, in beats, that ends a run: the beats may have
+/// jumped across it.
+const SIDE_RUN_GAP: i64 = 4;
+/// How far off its side's line a beat must be to have landed on another
+/// sound, seconds. A watch's beats sit within a millisecond of their line
+/// (see [`NO_WATCH_JITTER_FRACTION`]); a beat's sounds are a few ms apart.
+const SIDE_SOUND_GAP_S: f64 = 0.003;
+
+/// Put each beat back on the sound the rest of its side is on.
+///
+/// One side of a beat can have two sounds a few ms apart that both match
+/// the template well; the track then lands on one on some beats and on the
+/// other on the rest, a step of several ms in that side's timing. In a
+/// fake-mic take of the Daytona at about 160° the Tock had a sound 6 ms
+/// before its drop that outmatched the drop on 16% of beats, which put a
+/// 1.9 ms line in the beat timing and swung 10 s rates by ±13 s/d. Within
+/// each run of beats without a gap, each side's beats should lie along a
+/// line to within tenths of a ms; a beat [`SIDE_SOUND_GAP_S`] or more off
+/// the running median of its side's is moved to the best match within
+/// [`BEAT_WINDOW_S`] of that line, when there is one at least
+/// [`BEAT_WINDOW_FLOOR`] as good as the match it had. Most of a side's beats
+/// decide which sound it is timed on, whichever came first.
+fn keep_sides_on_one_sound(corr: &[f32], fs: f64, typical: f32, beats: &mut [Beat]) {
+    let pre = PRE_S * fs;
+    let g = BEAT_WINDOW_S * fs;
+    let value = |t: f64| -> Option<f32> {
+        let i = (t * fs - pre).round();
+        (i >= 0.0 && (i as usize) < corr.len()).then(|| corr[i as usize])
+    };
+    let mut start = 0;
+    while start < beats.len() {
+        let mut end = start + 1;
+        while end < beats.len() && beats[end].index - beats[end - 1].index <= SIDE_RUN_GAP {
+            end += 1;
+        }
+        for side in 0..2 {
+            let at: Vec<usize> = (start..end)
+                .filter(|&k| beats[k].index.rem_euclid(2) == side)
+                .collect();
+            if at.len() < SIDE_LINE_MIN {
+                continue;
+            }
+            let mut steps: Vec<f64> = at
+                .windows(2)
+                .map(|w| {
+                    let (a, b) = (&beats[w[0]], &beats[w[1]]);
+                    (b.time - a.time) / (b.index - a.index) as f64
+                })
+                .collect();
+            let period = crate::dsp::median(&mut steps);
+            let y: Vec<f64> = at
+                .iter()
+                .map(|&k| beats[k].time - beats[k].index as f64 * period)
+                .collect();
+            for (n, &k) in at.iter().enumerate() {
+                let (lo, hi) = (
+                    n.saturating_sub(SIDE_LINE_HALF),
+                    (n + SIDE_LINE_HALF + 1).min(at.len()),
+                );
+                let mut near = y[lo..hi].to_vec();
+                let line = crate::dsp::median(&mut near);
+                let off = y[n] - line;
+                if off.abs() < SIDE_SOUND_GAP_S {
+                    continue;
+                }
+                let Some(v) = value(beats[k].time) else {
+                    continue;
+                };
+                let due = (beats[k].time - off) * fs - pre;
+                let (a, b) = ((due - g).max(1.0) as usize, (due + g) as usize);
+                if b + 1 >= corr.len() {
+                    continue;
+                }
+                let found = argmax(corr, a, b + 1)
+                    .filter(|&(j, w)| j > a && j < b && w >= BEAT_WINDOW_FLOOR * v);
+                if let Some((j, w)) = found {
+                    beats[k].time = (parabolic(corr, j) + pre) / fs;
+                    beats[k].quality = w / typical;
+                }
+            }
+        }
+        start = end;
+    }
 }
 
 /// The sound of each side of the beat over a stretch: the median envelope
@@ -959,6 +1050,61 @@ mod tests {
                 "peak at {t} s is off the beats"
             );
         }
+    }
+
+    /// A side whose beats match the template at two sounds 6 ms apart, as
+    /// the Tock of a fake-mic Daytona take did, and which the track put on
+    /// the earlier sound on two beats of every five: every beat goes back
+    /// to the sound the rest of its side is on.
+    #[test]
+    fn a_side_with_two_sounds_stays_on_one() {
+        let fs = 8000.0;
+        let beat = 0.125;
+        let n = 200i64;
+        let pre = PRE_S;
+        let due = |k: i64| 0.05 + k as f64 * beat + if k % 2 == 1 { 0.0004 } else { 0.0 };
+        let mut corr = vec![0.0f32; ((n as f64 + 1.0) * beat * fs) as usize];
+        let mut peak = |t: f64, v: f32| {
+            let i = ((t - pre) * fs).round() as usize;
+            corr[i - 1] += 0.6 * v;
+            corr[i] += v;
+            corr[i + 1] += 0.6 * v;
+        };
+        for k in 0..n {
+            peak(due(k), 1.0);
+            if k % 2 == 1 {
+                peak(due(k) - 0.006, 1.05);
+            }
+        }
+        let wrong = |k: i64| k % 2 == 1 && (k / 2) % 5 < 2;
+        let mut beats: Vec<Beat> = (0..n)
+            .map(|k| Beat {
+                index: k,
+                time: due(k) - if wrong(k) { 0.006 } else { 0.0 },
+                quality: 1.0,
+            })
+            .collect();
+        keep_sides_on_one_sound(&corr, fs, 1.0, &mut beats);
+        for b in &beats {
+            assert!(
+                (b.time - due(b.index)).abs() < 1e-4,
+                "beat {} at {} s, due at {} s",
+                b.index,
+                b.time,
+                due(b.index)
+            );
+        }
+        // A watch's own scatter, under a millisecond, is left as it is.
+        let mut beats: Vec<Beat> = (0..n)
+            .map(|k| Beat {
+                index: k,
+                time: due(k) + if k % 7 == 0 { 0.0008 } else { 0.0 },
+                quality: 1.0,
+            })
+            .collect();
+        let before = beats.clone();
+        keep_sides_on_one_sound(&corr, fs, 1.0, &mut beats);
+        assert!(beats.iter().zip(&before).all(|(a, b)| a.time == b.time));
     }
 
     /// A take with a hole whose Tick and Tock trade sounds 6 s after it
