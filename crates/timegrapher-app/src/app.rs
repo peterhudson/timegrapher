@@ -725,14 +725,9 @@ const AGC_HINT: &str = "The microphone's own automatic gain, which raises its le
      timegrapher needs. A stand turns it back on each time it is plugged in, so the app sets \
      it again each time it opens the input.";
 
-const MASK_HINT: &str = "Leave stretches out of the readings, such as a bump of the stand: \
-     with Mask on, drag along the strip over the beats to mask them, drag a masked \
-     stretch's edge to move it, and click a masked stretch to bring it back. A right click \
-     on one brings it back too, Mask on or off. Stretches that overlap join into one. A take \
-     saved from the app keeps them; a recording opened from disk keeps them when it is \
-     saved. Each point on the strip's line is the reading over the Average Over that ends \
-     there, so just after a masked stretch the line is blank for about one Average Over, \
-     while the sound after it builds up.";
+const MASK_HINT: &str = "Drag across a stretch to leave it out of the readings. Nothing is \
+     deleted: the beats stay, hatched. Right-click a mask to remove it; Edit > Remove All \
+     Masks removes them all.";
 const EXPORT_HINT: &str = "Save this pane as a picture: a PNG of it as it is on the screen, \
      or an SVG drawing whose lines and text stay sharp at any size. The file name's ending, \
      .png or .svg, decides which. The pane's name, and a chart's key, go at the top in place \
@@ -1428,6 +1423,32 @@ const SPANS: [f64; 7] = [10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 7200.0];
 fn span_label(v: f64) -> String {
     fields::duration(v)
 }
+
+/// The strip's width either side of the centre: ±250 ms, ±2 s.
+fn width_label(v: f64) -> String {
+    if v >= 1000.0 {
+        format!("±{} s", fields::plain(v / 1000.0))
+    } else {
+        format!("±{} ms", fields::plain(v))
+    }
+}
+
+/// A width typed as 250, ±250 ms or ±2 s, in ms.
+fn parse_width(s: &str) -> Option<f64> {
+    let t = s.trim().to_lowercase();
+    let v = fields::parse_number(&t)?;
+    Some(if t.ends_with('s') && !t.ends_with("ms") {
+        v * 1000.0
+    } else {
+        v
+    })
+}
+
+/// The strip's width, as its field shows and reads it.
+const HALF_WIDTH: Format = Format {
+    show: width_label,
+    parse: parse_width,
+};
 /// Settle times offered on the Positions Test pane, seconds.
 const SETTLES: [f64; 4] = [10.0, 20.0, 30.0, 60.0];
 /// Measure times offered on the Positions Test pane, seconds.
@@ -1871,6 +1892,8 @@ pub struct TimegrapherApp {
     save_dir: String,
     /// Asking before something throws away unsaved sound.
     confirm: Option<Confirm>,
+    /// Edit ▸ Remove All Masks asked, waiting on its yes.
+    remove_masks_asked: bool,
     /// Open Recording… or Open Folder… asking where the recording goes.
     open_ask: Option<OpenAsk>,
     /// The recording last opened, which the path box goes back to when
@@ -2348,6 +2371,7 @@ impl TimegrapherApp {
             take_clock: None,
             brush: None,
             confirm: None,
+            remove_masks_asked: false,
             open_ask: None,
             opened_path: String::new(),
             take_picked: None,
@@ -4496,6 +4520,57 @@ impl TimegrapherApp {
         points
     }
 
+    /// How many stretches are masked and how long they add up to, after a
+    /// space, for the Mask tool's hover; nothing when none is.
+    fn masked_words(&self) -> String {
+        if self.masked.is_empty() {
+            return String::new();
+        }
+        let total: f64 = self.masked.iter().map(|m| m.1 - m.0).sum();
+        let n = self.masked.len();
+        format!(
+            " {n} {} masked, {} in all.",
+            if n == 1 { "stretch" } else { "stretches" },
+            strip::fmt_time(total)
+        )
+    }
+
+    /// Edit ▸ Remove All Masks' question: every masked stretch back into
+    /// the readings, once the user says so.
+    fn remove_masks_dialog(&mut self, ctx: &egui::Context) {
+        if !self.remove_masks_asked {
+            return;
+        }
+        let mut choice = None;
+        egui::Modal::new(egui::Id::new("remove-masks")).show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(RichText::new("Remove all masks?").font(theme::semibold(15.0)));
+            ui.add_space(4.0);
+            ui.label(format!(
+                "Every masked stretch goes back into the readings.{}",
+                self.masked_words()
+            ));
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(theme::primary(ui, "Remove All Masks")).clicked() {
+                    choice = Some(true);
+                }
+                if ui
+                    .add(egui::Button::new("Cancel").min_size(Vec2::new(0.0, 26.0)))
+                    .clicked()
+                {
+                    choice = Some(false);
+                }
+            });
+        });
+        if let Some(yes) = choice {
+            self.remove_masks_asked = false;
+            if yes {
+                self.set_masked(Vec::new());
+            }
+        }
+    }
+
     /// Mask out the stretches `spans` (start and end in the session's
     /// seconds) in place of those masked before: the readings, the charts
     /// and the steadiness tests are worked out again without them.
@@ -6606,8 +6681,10 @@ impl TimegrapherApp {
         true
     }
 
-    /// Export: save the pane as a PNG picture or an SVG drawing.
+    /// Export: save the pane as a PNG picture or an SVG drawing. An
+    /// action, so it never folds into the toolbar's "…".
     fn export_button(&mut self, ui: &mut egui::Ui, pane: Pane) {
+        theme::keep_next(ui);
         if theme::tool_button(ui, Icon::Export, "Export…", EXPORT_HINT, None) {
             let dir = self.export_dir.clone().or_else(|| {
                 Path::new(self.file_path.trim())
@@ -8321,185 +8398,6 @@ impl TimegrapherApp {
 
     fn strip_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
-        theme::tool_field(
-            ui,
-            "Width",
-            "Milliseconds either side of the centre line. Shift or Ctrl and the mouse wheel \
-             on the strip change it too.",
-            |ui| {
-                ui.label("±");
-                let mut w = self.strip.half_width_ms;
-                let a = fields::entry(
-                    ui,
-                    "width",
-                    &mut w,
-                    StripView::MIN_HALF_WIDTH_MS..=StripView::MAX_HALF_WIDTH_MS,
-                    &MS,
-                    40.0,
-                );
-                ui.label("ms");
-                let b = fields::presets(ui, "width-presets", &mut w, &WIDTHS, |v| {
-                    if v >= 1000.0 {
-                        format!("±{} s", fields::plain(v / 1000.0))
-                    } else {
-                        format!("±{} ms", fields::plain(v))
-                    }
-                });
-                if a || b {
-                    self.strip.set_half_width(w);
-                }
-            },
-        );
-        theme::tool_field(
-            ui,
-            "Length",
-            "Time shown along the strip, such as 30 s, 5 min or 2 h. The mouse wheel on the \
-             strip changes it too.",
-            |ui| {
-                let mut s = self.strip.span_s;
-                let a = fields::entry(
-                    ui,
-                    "span",
-                    &mut s,
-                    StripView::MIN_SPAN_S..=StripView::MAX_SPAN_S,
-                    &DURATION,
-                    48.0,
-                );
-                let b = fields::presets(ui, "span-presets", &mut s, &SPANS, span_label);
-                if a || b {
-                    self.strip_fit = false;
-                    self.strip.set_span(s);
-                }
-            },
-        );
-        let mut fit = self.strip_fit;
-        if theme::tool_switch(
-            ui,
-            Icon::Fit,
-            pal.accent,
-            "Fit",
-            &mut fit,
-            "Show the whole session along the strip, up to its latest beat (its last 24 hours \
-             when it is longer), and keep it in view as beats arrive. Zooming or dragging the \
-             strip's time turns it off.",
-        ) {
-            if fit {
-                self.fit_strip();
-            } else {
-                self.strip_fit = false;
-            }
-        }
-        theme::bar_gap(ui);
-        theme::tool_switch(
-            ui,
-            Icon::RateLine,
-            pal.trace_rate,
-            "Rate Line",
-            &mut self.rate_line,
-            "Draw the Rate reading as a magenta line over the beats it was fitted to, to check \
-             that it follows the dots",
-        );
-        theme::tool_switch(
-            ui,
-            Icon::Rails,
-            pal.trace_rate,
-            "Parallel Guides",
-            &mut self.rate_guides,
-            "Faint lines at the Rate reading's slope across the whole strip, so it is easy \
-             to see whether the dots run parallel to it. They show with or without the Rate \
-             Line.",
-        );
-        theme::bar_gap(ui);
-        if theme::tool_button(
-            ui,
-            Icon::Truing,
-            "Centre",
-            "Put the latest beats on the centre line",
-            None,
-        ) {
-            self.centre();
-        }
-        theme::tool_switch(
-            ui,
-            Icon::AutoCentre,
-            pal.accent,
-            "Auto-Centre",
-            &mut self.follow,
-            "Keep the newest beats on the centre line and slide the rest",
-        );
-        theme::bar_gap(ui);
-        let live = self.live.is_some();
-        theme::note_icon(ui, Icon::Masks, "Mask");
-        theme::bar_item(ui, "Mask", |ui| {
-            ui.add_enabled_ui(live, |ui| {
-                if theme::in_toolbar(ui) {
-                    let r = theme::icon_toggle(ui, Icon::Masks, self.masking, pal.accent);
-                    if r.clicked() {
-                        self.masking = !self.masking;
-                    }
-                    r.on_hover_text(format!("Mask: {MASK_HINT}"))
-                        .on_disabled_hover_text(
-                            "Mask: Nothing to mask yet. Listen, or open a recording.",
-                        );
-                } else {
-                    theme::switch_row(ui, "Mask", &mut self.masking, MASK_HINT);
-                }
-            });
-        });
-        // The Mask tool and the Position Brush exclude each other.
-        if self.masking {
-            self.brush = None;
-        }
-        theme::note_icon(ui, Icon::Highlighter, "Position Brush");
-        theme::bar_item(ui, "Position Brush", |ui| self.brush_control(ui, live));
-        if self.brush.is_some() {
-            self.masking = false;
-        }
-        let unmask_hint = if self.masked.is_empty() {
-            "Bring every masked stretch back into the readings".to_string()
-        } else {
-            let total: f64 = self.masked.iter().map(|m| m.1 - m.0).sum();
-            format!(
-                "Bring every masked stretch back into the readings. {} {} masked, {} in all.",
-                self.masked.len(),
-                if self.masked.len() == 1 {
-                    "stretch"
-                } else {
-                    "stretches"
-                },
-                strip::fmt_time(total)
-            )
-        };
-        let nothing = self.masked.is_empty().then_some("Nothing is masked");
-        if theme::tool_button(ui, Icon::Unmask, "Unmask All", &unmask_hint, nothing) {
-            self.set_masked(Vec::new());
-        }
-        theme::bar_gap(ui);
-        let mut h = self.strip.horizontal;
-        theme::tool_choice(
-            ui,
-            "Direction",
-            "Which way time runs along the strip",
-            &mut h,
-            &[
-                (
-                    false,
-                    Icon::ArrowDown,
-                    "Down",
-                    "Newest beats at the top, the strip beside the charts",
-                ),
-                (
-                    true,
-                    Icon::ArrowRight,
-                    "Across",
-                    "Newest beats at the right, the strip above the charts",
-                ),
-            ],
-        );
-        if h != self.strip.horizontal {
-            self.strip.horizontal = h;
-            self.relayout(h);
-        }
         let overlays = &mut self.overlays;
         for (icon, name) in [
             (Icon::Rate, "Rate"),
@@ -8557,6 +8455,166 @@ impl TimegrapherApp {
                 }
             }
         });
+        theme::bar_gap(ui);
+        theme::tool_field(
+            ui,
+            "Width",
+            "Milliseconds either side of the centre line: type it, or pick one with ⏷. \
+             Shift or Ctrl and the mouse wheel on the strip change it too.",
+            |ui| {
+                let mut w = self.strip.half_width_ms;
+                let (_, changed) = fields::combo(
+                    ui,
+                    "width",
+                    &mut w,
+                    StripView::MIN_HALF_WIDTH_MS..=StripView::MAX_HALF_WIDTH_MS,
+                    &HALF_WIDTH,
+                    &WIDTHS,
+                    width_label,
+                    "",
+                    104.0,
+                );
+                if changed {
+                    self.strip.set_half_width(w);
+                }
+            },
+        );
+        theme::tool_field(
+            ui,
+            "Length",
+            "Time shown along the strip, such as 30 s, 5 min or 2 h: type it, or pick one \
+             with ⏷. The mouse wheel on the strip changes it too.",
+            |ui| {
+                let mut s = self.strip.span_s;
+                let (_, changed) = fields::combo(
+                    ui,
+                    "span",
+                    &mut s,
+                    StripView::MIN_SPAN_S..=StripView::MAX_SPAN_S,
+                    &DURATION,
+                    &SPANS,
+                    span_label,
+                    "",
+                    92.0,
+                );
+                if changed {
+                    self.strip_fit = false;
+                    self.strip.set_span(s);
+                }
+            },
+        );
+        let mut fit = self.strip_fit;
+        if theme::tool_switch(
+            ui,
+            Icon::Fit,
+            pal.accent,
+            "Fit",
+            &mut fit,
+            "Show the whole session along the strip, up to its latest beat (its last 24 hours \
+             when it is longer), and keep it in view as beats arrive. Zooming or dragging the \
+             strip's time turns it off.",
+        ) {
+            if fit {
+                self.fit_strip();
+            } else {
+                self.strip_fit = false;
+            }
+        }
+        theme::bar_gap(ui);
+        if theme::tool_button(
+            ui,
+            Icon::Truing,
+            "Centre",
+            "Put the latest beats on the centre line",
+            None,
+        ) {
+            self.centre();
+        }
+        theme::tool_switch(
+            ui,
+            Icon::AutoCentre,
+            pal.accent,
+            "Auto-Centre",
+            &mut self.follow,
+            "Keep the newest beats on the centre line and slide the rest",
+        );
+        theme::bar_gap(ui);
+        theme::tool_switch(
+            ui,
+            Icon::RateLine,
+            pal.trace_rate,
+            "Rate Line",
+            &mut self.rate_line,
+            "Draw the Rate reading as a magenta line over the beats it was fitted to, to check \
+             that it follows the dots",
+        );
+        theme::tool_switch(
+            ui,
+            Icon::Rails,
+            pal.trace_rate,
+            "Parallel Guides",
+            &mut self.rate_guides,
+            "Faint lines at the Rate reading's slope across the whole strip, so it is easy \
+             to see whether the dots run parallel to it. They show with or without the Rate \
+             Line.",
+        );
+        theme::bar_gap(ui);
+        let live = self.live.is_some();
+        theme::note_icon(ui, Icon::Masks, "Mask");
+        theme::bar_item(ui, "Mask", |ui| {
+            ui.add_enabled_ui(live, |ui| {
+                if theme::in_toolbar(ui) {
+                    let r = theme::icon_toggle(ui, Icon::Masks, self.masking, pal.accent);
+                    if r.clicked() {
+                        self.masking = !self.masking;
+                    }
+                    r.on_hover_text(format!("Mask: {MASK_HINT}{}", self.masked_words()))
+                        .on_disabled_hover_text(
+                            "Mask: Nothing to mask yet. Listen, or open a recording.",
+                        );
+                } else {
+                    theme::switch_row(ui, "Mask", &mut self.masking, MASK_HINT);
+                }
+            });
+        });
+        // The Mask tool and the Position Brush exclude each other.
+        if self.masking {
+            self.brush = None;
+        }
+        theme::note_icon(ui, Icon::Highlighter, "Position Brush");
+        theme::bar_item(ui, "Position Brush", |ui| self.brush_control(ui, live));
+        if self.brush.is_some() {
+            self.masking = false;
+        }
+        theme::bar_gap(ui);
+        let mut h = self.strip.horizontal;
+        theme::tool_field(
+            ui,
+            "Direction",
+            "Which way time runs along the strip",
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut h,
+                    &[
+                        (
+                            false,
+                            "Down",
+                            "Down: newest beats at the top, the strip beside the charts",
+                        ),
+                        (
+                            true,
+                            "Across",
+                            "Across: newest beats at the right, the strip above the charts",
+                        ),
+                    ],
+                )
+            },
+        );
+        if h != self.strip.horizontal {
+            self.strip.horizontal = h;
+            self.relayout(h);
+        }
         theme::bar_gap(ui);
         self.export_button(ui, Pane::Strip);
     }
@@ -8815,6 +8873,17 @@ impl TimegrapherApp {
     }
 
     fn edit_menu(&mut self, ui: &mut egui::Ui) {
+        let none = self.masked.is_empty();
+        if ui
+            .add_enabled(!none, egui::Button::new("Remove All Masks…"))
+            .on_hover_text("Bring every masked stretch back into the readings, after asking")
+            .on_disabled_hover_text("Nothing is masked")
+            .clicked()
+        {
+            ui.close();
+            self.remove_masks_asked = true;
+        }
+        ui.separator();
         if ui
             .add(
                 egui::Button::new("Settings…")
@@ -8852,7 +8921,7 @@ impl TimegrapherApp {
     }
 
     fn view_menu_panes(&mut self, ui: &mut egui::Ui) {
-        let off = "The panes are on the Bench: View ▸ Bench first";
+        let off = "The panes are on the Bench: View > Bench first";
         ui.checkbox(&mut self.show_readings, "Readings")
             .on_hover_text("The rate, amplitude and beat error cards")
             .on_disabled_hover_text(off);
@@ -15059,12 +15128,13 @@ impl TimegrapherApp {
         {
             self.save_recording();
         }
-        // Esc puts the Position Brush down.
-        if self.brush.is_some()
+        // Esc puts the tool in hand down: the Position Brush or Mask.
+        if (self.brush.is_some() || self.masking)
             && !egui::Popup::is_any_open(ctx)
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
             self.brush = None;
+            self.masking = false;
         }
         if ctx.input_mut(|i| i.consume_shortcut(&command(egui::Key::S))) {
             if self.marks_unsaved() {
@@ -15217,6 +15287,7 @@ impl eframe::App for TimegrapherApp {
         self.reserve_saved();
         self.panels(ctx);
         self.confirm_dialog(ctx);
+        self.remove_masks_dialog(ctx);
         self.kept_delete_dialog(ctx);
         self.watch_form_dialog(ctx);
         self.test_keep_dialog(ctx);
@@ -19230,7 +19301,7 @@ mod tests {
 
     /// A change of position dragged moves with its settling; painting to
     /// the newest beat puts the watch in that position from then on; the
-    /// brush is put down by Esc and by the Mask tool, and isn't offered
+    /// brush is put down by Esc (as Mask is) and by the Mask tool, and isn't offered
     /// during a Positions Test.
     #[test]
     fn the_position_brush_paints_and_moves_changes() {
@@ -19267,6 +19338,16 @@ mod tests {
             |ctx| app.panels(ctx),
         );
         assert_eq!(app.brush, None);
+        // Esc puts the Mask tool down as well.
+        app.masking = true;
+        let _ = ctx.run(
+            egui::RawInput {
+                events: vec![esc(true), esc(false)],
+                ..Default::default()
+            },
+            |ctx| app.panels(ctx),
+        );
+        assert!(!app.masking, "Esc puts Mask down");
         // Picking the Mask tool puts it down too.
         app.brush = Some(Position::DialUp);
         app.masking = true;

@@ -31,7 +31,7 @@ Listen or a test from a watch, goes to the Bench.
 Along the very top, the menu bar. **File**: Open Recording… (Ctrl+O, or
 Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 (Ctrl+Shift+S), Save Analysis Only…, New Session and Quit (Ctrl+Q).
-**Edit**: Settings… (Ctrl+, or Cmd+, on a Mac). **View**: **Bench** (Ctrl+1)
+**Edit**: Remove All Masks… (asks first), Settings… (Ctrl+, or Cmd+, on a Mac). **View**: **Bench** (Ctrl+1)
 and **Watches** (Ctrl+2), then a tick for the readings and for each pane,
 and Reset Panes (dimmed in Watches, as the panes are the Bench's).
 **Watches**: **New Watch…**, **Find in Watches…**, which shows the
@@ -311,9 +311,9 @@ pane, one row, with the pane's **?** at its right. The toolbar is a row
 of icons, each naming itself and saying what it does on hover, in the
 words this guide uses: a switch is an icon that stays pressed, tinted,
 while it is on; a choice between two settings is one icon showing the
-setting in use, and a click changes to the other (Direction shows a
-down arrow while the strip runs down and an across arrow while it runs
-across); a choice of more is a row of icons with the picked one tinted.
+setting in use, and a click changes to the other (the Paper Strip's
+Direction is the exception: a labelled two-part control, **Down |
+Across**); a choice of more is a row of icons with the picked one tinted.
 Icons are for what can be clicked: a setting that holds a value (Width,
 Length, Settle, Span, Beats) shows its name in words before
 its field, with the same hover; a search box keeps the magnifying glass
@@ -805,7 +805,11 @@ recording, it shows the last beats, read from the recording. Only the few second
 the recording: a WAV seeks there and a FLAC is searched by its frame
 headers (`span.rs`). No crosshair, as on the other sound plots.
 
-**Paper Strip.** One dot per beat, tick and tock in two colours. Across
+**Paper Strip.** Its toolbar runs, left to right: Rate, Amplitude and Beat
+Error (Draw Over the Strip, below); Width and Length, each one field with
+its presets under its ▾, then Fit; Centre and Auto-Centre; Rate Line and
+Parallel Guides; the Mask tool (scissors) and the Position Brush;
+Direction; and Export. One dot per beat, tick and tock in two colours. Across
 the strip is how early or late each beat came against a perfect clock
 beating exactly at the nominal beat rate (every 125 ms at 28,800 bph): a
 beat before that clock's beat is early, after it late, the words Witschi's
@@ -838,7 +842,7 @@ stays as it was. The gap between the two lines is the beat error. A line
 that runs off one edge comes back on the other, so the strip's width is
 its zoom and its length sets how much history it shows. Type both (a width
 of ±0.1 ms to ±60 s, typed in ms; a length such as `45`, `5 min`, `2h` or
-`1:30:00`) or pick a common value from the list beside each: the widths
+`1:30:00`) or pick a common value from the ▾ inside each field: the widths
 run from ±1 ms, for a good watch's beat error, through ±62.5 ms, half a
 beat at 28,800 bph and the widest view in which tick and tock can't wrap
 onto each other, up to ±60 s, so a long run-down take that drifts by many
@@ -863,21 +867,22 @@ On the strip, the mouse wheel changes the length about the time under the
 pointer, which stays where it is, Shift or Ctrl and the wheel (or a
 pinch) changes the width, dragging along the time axis looks back through
 the session (live or not), dragging across slides the trace, and a double
-click returns to the newest beats and centres them. **Auto-Centre** keeps
+click returns to the newest beats and centres them. **Auto-Centre** (a
+pushpin on a dashed line, lit while on) keeps
 the newest beats on the centre line all the time, so the older ones slide
 away from it as the rate wanders; sliding the trace by hand turns it off.
-**Centre** centres once.
+**Centre** (two arrows meeting on a dashed line) centres once.
 
-**Mask** leaves stretches out of the readings, such as a bump of the
+**Mask** (scissors: nothing is deleted, the beats stay, hatched) leaves stretches out of the readings, such as a bump of the
 stand in a long take: with it on, dragging along the strip over the beats
 masks that stretch (one under half a second is left alone, as a slip of
 the mouse), dragging a masked stretch's edge moves it (the pointer is a
 cross over the strip and a two-way arrow within 8 points of an edge),
 dragging with the right button still looks back through the session, and clicking a
 masked stretch, or right-clicking one with Mask on or off, brings it
-back; **Unmask All** brings them all back. Stretches that overlap, by
+back; **Edit ▸ Remove All Masks…** brings them all back, after asking. Stretches that overlap, by
 masking or by moving an edge, join into one and stay joined. Masked stretches are shaded on the strip and named on its track,
-and the toolbar says how many there are and how long they add up to.
+and the Mask tool's hover says how many there are and how long they add up to.
 They are cut like a break in listening, at both ends: no reading reaches across one,
 nothing is read inside one, a chart's line breaks there and comes back
 once a whole averaging time has been heard after it, a beat in each 2
