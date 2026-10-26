@@ -979,11 +979,11 @@ const READING_FULL_W: f32 = 210.0;
 const READING_ROOMY_W: f32 = 150.0;
 const POSITION_COMPACT_W: f32 = 112.0;
 /// A compact Listen card gives the take's length beside its caption; on
-/// the narrowest windows it drops to `LISTEN_NARROWEST_W` and the length
-/// is in the Listen button's hover, so the reading cards keep
-/// `CAPTION_FIT_W`, room for their captions whole.
+/// the narrowest windows it drops to `LISTEN_NARROWEST_W`, still room for
+/// both, and the reading cards keep `CAPTION_FIT_W`, room for their
+/// captions whole.
 const LISTEN_COMPACT_W: f32 = 140.0;
-const LISTEN_NARROWEST_W: f32 = 120.0;
+const LISTEN_NARROWEST_W: f32 = 130.0;
 const CAPTION_FIT_W: f32 = 118.0;
 /// The compact Calibre card: wide enough for the beat rate and the lift
 /// side by side where the reading cards keep their captions whole beside
@@ -11354,11 +11354,29 @@ impl TimegrapherApp {
             child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 theme::help(ui, caption, help);
-                // A short fact in plain small text before the "?".
+                let caption_w = ui.fonts_mut(|f| {
+                    f.layout_no_wrap(caption.into(), theme::semibold(13.0), pal.text)
+                        .size()
+                        .x
+                });
+                let small_w = |ui: &mut egui::Ui, t: &str| {
+                    ui.fonts_mut(|f| {
+                        f.layout_no_wrap(t.into(), egui::FontId::proportional(12.0), pal.text)
+                            .size()
+                            .x
+                    })
+                };
+                // A short fact in plain small text before the "?", where the
+                // caption stays whole beside it.
                 if let Some((text, hover)) = note {
-                    ui.label(RichText::new(text).size(12.0).color(pal.text_secondary))
-                        .on_hover_text(hover);
+                    if small_w(ui, text) + 6.0 + caption_w <= ui.available_width() {
+                        ui.label(RichText::new(text).size(12.0).color(pal.text_secondary))
+                            .on_hover_text(hover);
+                    }
                 }
+                // Limits with no room for even their count beside the whole
+                // caption are in the caption's hover.
+                let mut caption_hover = None;
                 if let Some(first) = limits.first() {
                     let more = if limits.len() > 1 {
                         format!(" +{}", limits.len() - 1)
@@ -11370,25 +11388,20 @@ impl TimegrapherApp {
                     // card, how many limits there are, the words in the
                     // hover.
                     let words = format!("{}{more}", chip_words(&first.0));
-                    let caption_w = ui.fonts_mut(|f| {
-                        f.layout_no_wrap(caption.into(), theme::semibold(13.0), pal.text)
-                            .size()
-                            .x
-                    });
-                    let words_w = ui.fonts_mut(|f| {
-                        f.layout_no_wrap(words.clone(), egui::FontId::proportional(12.0), pal.text)
-                            .size()
-                            .x
-                    }) + 14.0;
-                    let text = if words_w + 6.0 + caption_w <= ui.available_width() {
-                        words
-                    } else {
-                        limits.len().to_string()
+                    let count = limits.len().to_string();
+                    let fits = |ui: &mut egui::Ui, t: &str| {
+                        small_w(ui, t) + 14.0 + 6.0 + caption_w <= ui.available_width()
                     };
-                    theme::chip(ui, &text, caption, &sentences, ui.available_width());
+                    if fits(ui, &words) {
+                        theme::chip(ui, &words, caption, &sentences, ui.available_width());
+                    } else if fits(ui, &count) {
+                        theme::chip(ui, &count, caption, &sentences, ui.available_width());
+                    } else {
+                        caption_hover = Some(sentences.join("\n\n"));
+                    }
                 }
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    ui.add(
+                    let r = ui.add(
                         egui::Label::new(
                             RichText::new(caption)
                                 .font(theme::semibold(13.0))
@@ -11396,6 +11409,9 @@ impl TimegrapherApp {
                         )
                         .truncate(),
                     );
+                    if let Some(h) = caption_hover {
+                        r.on_hover_text(h);
+                    }
                 });
             });
         };
@@ -11453,9 +11469,7 @@ impl TimegrapherApp {
             "Listen",
             help::LISTEN,
             &[],
-            length.as_ref().filter(|_| {
-                cards[1].inner.width() >= LISTEN_COMPACT_W - 2.0 * f32::from(theme::CARD_PADDING)
-            }),
+            length.as_ref(),
         );
         slots.push((Slot::Listen, cards[1].figure.union(cards[1].controls)));
         // Rate.
@@ -21849,9 +21863,9 @@ mod tests {
     }
 
     /// The readings' cards carry what a take needs: the position, Listen
-    /// and Save with the take's length (on the card from 1000 up; on the
-    /// narrowest window in Listen's hover, so the reading cards keep their
-    /// captions whole) and Average Over on a card of their own, the lift angle, and the beat rate's menu with the calibre: in
+    /// and Save with the take's length (on the card from 1000 up; in its
+    /// title row below that, the reading cards keeping their captions
+    /// whole) and Average Over on a card of their own, the lift angle, and the beat rate's menu with the calibre: in
     /// full where the window has room (1610), one control each where it
     /// hasn't (1000). Nothing says Take, Pause or Resume, and no Replay is
     /// offered.
@@ -21874,12 +21888,10 @@ mod tests {
                 // has the row: nothing finds the lift, Auto finds the rate.
                 wants.push("Auto");
             }
-            if w > 800.0 {
-                wants.push("0:00");
-            } else {
-                // The length is in Listen's hover here, leaving the reading
-                // cards room for their captions.
-                assert!(!texts.iter().any(|t| t == "0:00"), "0:00 at {w}: {texts:?}");
+            // The take's length shows at every width, and the reading cards
+            // keep their captions whole beside it.
+            wants.extend(["0:00", "Rate", "Amplitude", "Beat Error"]);
+            if w <= 800.0 {
                 wants.extend(["Position", "Avg 10 s"]);
             }
             if w > 1000.0 {
@@ -21921,6 +21933,26 @@ mod tests {
                     .any(|t| t.starts_with("Quick Listen · No watch · ")),
                 "the status line: {texts:?}"
             );
+        }
+    }
+
+    /// A reading with limits keeps its card's caption whole on the
+    /// narrowest window: a limit with no room for its chip beside the
+    /// caption is in the caption's hover.
+    #[test]
+    fn a_readings_limits_never_cut_its_caption() {
+        let mut app = synthetic(6.0, 0.0);
+        let r = app.reading().expect("a reading");
+        assert!(!r.caveats.is_empty(), "6 s of beats is short");
+        let ctx = themed();
+        for w in [800.0, 1000.0] {
+            let texts = window_texts(&mut app, &ctx, w);
+            for caption in ["Rate", "Amplitude", "Beat Error"] {
+                assert!(
+                    texts.iter().any(|t| t == caption),
+                    "{caption} at {w}: {texts:?}"
+                );
+            }
         }
     }
 
