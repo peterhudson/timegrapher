@@ -830,7 +830,11 @@ fn info_panel(
         for &(_, c) in series {
             ui.add_space(8.0);
             ui.label(theme::caption(title(c.series)).color(pal.ink(series_colour(c.series, pal))));
-            ui.add(text(&c.headline, pal.text));
+            // With too few readings the row already says so in place of
+            // its plot: the panel doesn't say it twice.
+            if c.autocorrelation.is_some() {
+                ui.add(text(&c.headline, pal.text));
+            }
             ui.add(text(&stats_line(c), pal.text_secondary));
         }
         if !status.is_empty() {
@@ -1887,6 +1891,72 @@ mod tests {
         // Narrow: over the plots, the same words.
         let narrow = drawn(500.0, true);
         assert!(has(&narrow, rate.as_str()) && has(&narrow, "Tested on "));
+    }
+
+    /// A series with too few readings says so once, in its row, not again
+    /// in the open Info panel.
+    #[test]
+    fn too_few_readings_is_said_once() {
+        let cfg = SynthConfig {
+            duration_s: 60.0,
+            rate_s_per_day: 5.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 270.0, |_| 0.0);
+        let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+        for b in audio.samples.chunks(4800) {
+            live.push(b);
+        }
+        let s = compute(&log_of(&live).expect("beat rate"), None);
+        let few: Vec<String> = s
+            .report
+            .series
+            .iter()
+            .filter(|c| c.autocorrelation.is_none())
+            .map(|c| c.headline.clone())
+            .collect();
+        assert!(!few.is_empty(), "a minute leaves a series too few readings");
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        fn texts(shape: &egui::Shape, into: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(t) => into.push(t.galley.text().to_string()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                _ => {}
+            }
+        }
+        let mut all = Vec::new();
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(900.0, 700.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let opts = Opts {
+                        info: true,
+                        ..Default::default()
+                    };
+                    draw(
+                        ui,
+                        Some(&s),
+                        "Tested over 1:00 of beats",
+                        View::Readings,
+                        &[true, true, true],
+                        opts,
+                    );
+                });
+            });
+            all.clear();
+            out.shapes.iter().for_each(|c| texts(&c.shape, &mut all));
+        }
+        for h in &few {
+            let n = all.iter().filter(|t| t.contains(h.as_str())).count();
+            assert_eq!(n, 1, "{h}: {all:?}");
+        }
     }
 
     /// In a short pane the Info panel scrolls inside it rather than running
