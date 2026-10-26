@@ -285,9 +285,9 @@ enum Command {
         /// With --json, add the time-frequency maps of each series (an
         /// STFT and a synchrosqueezed wavelet transform) and the wavelet
         /// coherence of the rate with the amplitude and of Tick's
-        /// amplitude with Tock's, and the Lomb-Scargle periodogram of each
-        /// series' readings: about 3.8 MB on a 2 h take (the Pepsi 3235
-        /// take's parts 6 and 7).
+        /// amplitude with Tock's, the Lomb-Scargle periodogram of each
+        /// series' readings and each series' kurtogram: about 4.1 MB on a
+        /// 2 h take (the Pepsi 3235 take's parts 6 and 7).
         #[arg(long, requires = "json")]
         maps: bool,
     },

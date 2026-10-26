@@ -20,6 +20,16 @@
 //! noise the SST spreads a line over neighbouring rows, so one row reads
 //! under the line's size: the STFT gives the size, the SST where and when.
 //!
+//! The **kurtogram** says how a period's line comes and goes: its
+//! spectral kurtosis, read at several window lengths. Over a series cut
+//! into windows, it compares the spread of a period's power from window
+//! to window with what steady noise gives: about 0 for noise, -1 for a
+//! line of steady size, and above 0 for one that comes in bursts (a knock
+//! once a turn of a slow wheel, say): on windows no longer than a burst,
+//! the higher the less of the time it sounds. A short window reads a
+//! burst whole but blurs its period; a long one the reverse, and holds
+//! several bursts, so each window length is a row of its own.
+//!
 //! The **wavelet coherence** of two series read at the same times (the
 //! rate and the amplitude, Tick's amplitude and Tock's) uses the same
 //! Morlet wavelet: how tightly the two move together at each period and
@@ -742,6 +752,140 @@ fn red_noise_level(
         .collect()
 }
 
+/// One kurtogram, thinned for drawing.
+#[derive(Debug, Clone, Serialize)]
+pub struct Kurtogram {
+    /// `rate` (from the beat timing), `amplitude` or `beat_error`.
+    pub series: &'static str,
+    /// Spacing of the series, seconds.
+    pub step_s: f64,
+    /// Window lengths, seconds, shortest first: one row each.
+    pub window_s: Vec<f64>,
+    /// Windows read at each length, each with every reading present,
+    /// stepped half a window.
+    pub windows: Vec<usize>,
+    /// How far a cell of each row strays under steady noise (its
+    /// standard deviation, `2/sqrt(windows)`), for reading the rest
+    /// against.
+    pub noise_sd: Vec<f64>,
+    /// Periods, seconds, longest first, evenly spaced in log period.
+    pub period_s: Vec<f64>,
+    /// One row per `window_s`, a spectral kurtosis per `period_s` (that of
+    /// the most powerful frequency in the period's band); `null`
+    /// (NaN) where the window is too short for the period (under three
+    /// turns) or too long for the readings of the period (under four a
+    /// turn).
+    pub values: Vec<Vec<f64>>,
+}
+
+/// Shortest window, readings; each next one is twice as long.
+const KURT_MIN_WINDOW: usize = 16;
+/// Longest window, readings.
+const KURT_MAX_WINDOW: usize = 1 << 14;
+/// Fewest windows a row is read from.
+const KURT_MIN_WINDOWS: usize = 8;
+
+/// The kurtogram of `g`: for windows of 16, 32, ... readings, each with
+/// every reading present, its line taken off and a Hann window applied,
+/// stepped half a window, the spectral kurtosis of each period from 4
+/// readings to a third of the window, `mean |X|^4 / (mean |X|^2)^2 - 2`
+/// over the windows. A row needs at least 8 windows. `None` when no row
+/// has them.
+pub fn kurtogram(g: &Grid, series: &'static str) -> Option<Kurtogram> {
+    let mut planner = RealFftPlanner::<f64>::new();
+    let mut rows: Vec<(usize, usize, Vec<f64>, Vec<f64>)> = Vec::new();
+    let mut nw = KURT_MIN_WINDOW;
+    while nw <= KURT_MAX_WINDOW && nw <= g.y.len() {
+        let fwd = planner.plan_fft_forward(nw);
+        let w: Vec<f64> = (0..nw)
+            .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * (i as f64 + 0.5) / nw as f64).cos())
+            .collect();
+        let bins = nw / 2 + 1;
+        let (mut p2, mut p4) = (vec![0.0; bins], vec![0.0; bins]);
+        let mut x = fwd.make_input_vec();
+        let mut spec = fwd.make_output_vec();
+        let mut m = 0;
+        let mut start = 0;
+        while start + nw <= g.y.len() {
+            let part = &g.y[start..start + nw];
+            if part.iter().all(|v| v.is_finite()) {
+                x.copy_from_slice(part);
+                detrend_line(&mut x);
+                for (v, wi) in x.iter_mut().zip(&w) {
+                    *v *= wi;
+                }
+                if fwd.process(&mut x, &mut spec).is_ok() {
+                    for (k, c) in spec.iter().enumerate() {
+                        let e = c.norm_sqr();
+                        p2[k] += e;
+                        p4[k] += e * e;
+                    }
+                    m += 1;
+                }
+            }
+            start += nw / 2;
+        }
+        if m >= KURT_MIN_WINDOWS {
+            let sk = p2
+                .iter()
+                .zip(&p4)
+                .map(|(&a, &b)| {
+                    let (a, b) = (a / m as f64, b / m as f64);
+                    if a > 0.0 {
+                        b / (a * a) - 2.0
+                    } else {
+                        f64::NAN
+                    }
+                })
+                .collect();
+            rows.push((nw, m, p2, sk));
+        }
+        nw *= 2;
+    }
+    let longest = rows.last()?.0;
+    let (lo, hi) = (4.0 * g.step, longest as f64 * g.step / 3.0);
+    if hi <= lo {
+        return None;
+    }
+    let period_s = period_axis(lo, hi, ROWS);
+    // Each period stands for the band halfway (in log period) to its
+    // neighbours. A long window has several frequencies in a band: the
+    // one with the most power reads for it, so a line between two rows
+    // is kept.
+    let half = (period_s[0] / period_s[1]).sqrt();
+    let values = rows
+        .iter()
+        .map(|(nw, _, p2, sk)| {
+            let span = *nw as f64 * g.step;
+            period_s
+                .iter()
+                .map(|&p| {
+                    if p > span / 3.0 {
+                        return f64::NAN;
+                    }
+                    // Bin k turns k times a window.
+                    let near = (span / p).round() as usize;
+                    let a = ((span / (p * half)).ceil() as usize).max(1);
+                    let b = ((span * half / p).floor() as usize).min(nw / 2);
+                    let k = (a..=b)
+                        .max_by(|&i, &j| p2[i].total_cmp(&p2[j]))
+                        .unwrap_or(near);
+                    sk.get(k).copied().unwrap_or(f64::NAN)
+                })
+                .collect()
+        })
+        .collect();
+    Some(Kurtogram {
+        series,
+        step_s: g.step,
+        window_s: rows.iter().map(|r| r.0 as f64 * g.step).collect(),
+        windows: rows.iter().map(|r| r.1).collect(),
+        noise_sd: rows.iter().map(|r| 2.0 / (r.1 as f64).sqrt()).collect(),
+        period_s,
+        values,
+    })
+}
+
 /// Both maps of each series a take's period searches and spectra read:
 /// the beat timing (in ms, so the rate's map reaches the escape wheel),
 /// the amplitude, and the beat error from the unlock, each with its slow
@@ -786,6 +930,26 @@ pub fn coherences_for_take(
     ]
     .into_iter()
     .flatten()
+    .collect()
+}
+
+/// The kurtograms of a take's three series, read from the same series
+/// as [`for_take`]'s maps.
+pub fn kurtograms_for_take(
+    log: &crate::stream::BeatLog,
+    clock: Option<&crate::clock::ClockFit>,
+    long: &crate::longrun::LongReport,
+    lc: &crate::longterm::LongConfig,
+) -> Vec<Kurtogram> {
+    let [_, be] = crate::steadiness::window_grids(log, clock, &long.breaks);
+    let be = crate::longterm::detrend(&be, lc.detrend_s);
+    [
+        (&long.timing.detrended, "rate"),
+        (&long.amplitude.detrended, "amplitude"),
+        (&be, "beat_error"),
+    ]
+    .into_iter()
+    .filter_map(|(g, name)| kurtogram(g, name))
     .collect()
 }
 
@@ -938,6 +1102,80 @@ mod tests {
             let want = if tf.method == "stft" { 0.4 } else { 0.25 };
             assert!(l > want && l > 3.0 * n, "{}: line {l}, rest {n}", tf.method);
         }
+    }
+
+    /// The cell of `k`'s `window_s` row nearest `p`.
+    fn kurt_at(k: &Kurtogram, window_s: f64, p: f64) -> f64 {
+        let w = k.window_s.iter().position(|&w| w == window_s).unwrap();
+        k.values[w][row_of(&k.period_s, p)]
+    }
+
+    #[test]
+    fn a_kurtogram_reads_noise_steady_lines_and_bursts_apart() {
+        // 8 h of 2 s readings, noise of 1 (sd) throughout. On it, a steady
+        // 60 s line of size 2, and a 20 s line of size 3 that sounds for
+        // two minutes in every twenty.
+        let mut rng = crate::synth::Rng::new(5);
+        let g = grid(2.0, 14_400, |t| {
+            let burst = if t % 1200.0 < 120.0 { 3.0 } else { 0.0 };
+            2.0 * (std::f64::consts::TAU * t / 60.0).sin()
+                + burst * (std::f64::consts::TAU * t / 20.0).sin()
+                + rng.normal()
+        });
+        let k = kurtogram(&g, "amplitude").unwrap();
+        assert_eq!(k.window_s[0], 32.0);
+        assert!(k.window_s.windows(2).all(|w| w[1] == 2.0 * w[0]));
+        // Windows stepped half a window, 8 or more a row.
+        for (w, &m) in k.window_s.iter().zip(&k.windows) {
+            let nw = (w / 2.0) as usize;
+            assert_eq!(m, (14_400 - nw) / (nw / 2) + 1, "{w}");
+            assert!(m >= 8);
+        }
+        // The steady line reads about -1 at every window that holds three
+        // of its turns.
+        for &w in k.window_s.iter().filter(|&&w| w >= 180.0) {
+            let v = kurt_at(&k, w, 60.0);
+            assert!((v + 1.0).abs() < 0.05, "{w}: {v}");
+        }
+        // The bursts stand far above the noise on windows shorter than a
+        // burst, and fall towards a steady line's -1 on windows long
+        // enough to hold several.
+        let sd = |w: f64| k.noise_sd[k.window_s.iter().position(|&x| x == w).unwrap()];
+        for w in [64.0, 128.0] {
+            let v = kurt_at(&k, w, 20.0);
+            assert!(v > 4.0 && v > 20.0 * sd(w), "{w}: {v}");
+        }
+        assert!(kurt_at(&k, 4096.0, 20.0) < -0.5);
+        // Periods of noise alone stray about as far as `noise_sd` says.
+        let row = k.window_s.iter().position(|&w| w == 512.0).unwrap();
+        let noise: Vec<f64> = k
+            .period_s
+            .iter()
+            .zip(&k.values[row])
+            .filter(|(&p, v)| v.is_finite() && (p < 14.0 || (p > 28.0 && p < 45.0)))
+            .map(|(_, &v)| v)
+            .collect();
+        assert!(noise.len() >= 5);
+        let rms = (noise.iter().map(|v| v * v).sum::<f64>() / noise.len() as f64).sqrt();
+        assert!(rms > 0.5 * sd(512.0) && rms < 2.0 * sd(512.0), "rms {rms}");
+        // A window too short for a period reads nothing there.
+        assert!(kurt_at(&k, 32.0, 60.0).is_nan());
+    }
+
+    #[test]
+    fn a_kurtogram_reads_no_window_across_a_gap() {
+        // Readings only in stretches shorter than 64: no 64-reading window
+        // fits, so the longest row is 32 readings.
+        let g = grid(1.0, 6000, |t| {
+            if t % 60.0 < 50.0 {
+                (t / 7.0).sin()
+            } else {
+                f64::NAN
+            }
+        });
+        let k = kurtogram(&g, "rate").unwrap();
+        assert_eq!(k.window_s, vec![16.0, 32.0]);
+        assert!(kurtogram(&grid(1.0, 100, |_| f64::NAN), "rate").is_none());
     }
 
     #[test]

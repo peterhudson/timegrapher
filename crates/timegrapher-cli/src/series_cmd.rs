@@ -152,6 +152,8 @@ pub fn run(o: Options) -> Result<(), String> {
             let ls =
                 timegrapher_core::gappy::for_take(&log, clock, &long, &lc, o.check.rate_reading_s);
             doc["lomb_scargle"] = serde_json::to_value(ls).map_err(|e| e.to_string())?;
+            let kurt = timegrapher_core::timefreq::kurtograms_for_take(&log, clock, &long, &lc);
+            doc["kurtograms"] = serde_json::to_value(kurt).map_err(|e| e.to_string())?;
             let turns = timegrapher_core::wheel_lines::turns_for_take(&long, &lc);
             doc["wheel_turns"] = serde_json::to_value(turns).map_err(|e| e.to_string())?;
         }
