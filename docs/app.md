@@ -642,23 +642,28 @@ Positions Test to begin with (its icon a fuel gauge near empty), runs the
 watch down from full wind to stop in one position, the one on the
 Current Position card. Its toolbar says which ("Runs in Dial Up (DU), set
 on the Current Position card"; it has no position setting of its own),
-then holds **Keep Sound** or **Analysis Only**, and **Start Test**. Before a test the pane says how much space is free where
-the take will be kept against the most an 80 h run writes (the sample
-rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
-16-bit). Start Test starts a new session in the card's position as it
+then holds **Keep Sound** or **Analysis Only**, and **Start Test** (**Stop Test**
+while it runs). The pane takes no more height than it shows. Before a test it
+is one line, "Wind fully, set the position on the Position card, then press
+Start Test" (the steps are in its "?"), whose hover gives how much space is
+free where the take will be kept against the most an 80 h run writes (the
+sample rate times the bytes a sample times 3,600 a hour: 0.35 GB at 48 kHz,
+16-bit), with a warning line under it when that is short. Start Test starts a new session in the card's position as it
 stands; while it runs the computer is kept awake whatever Keep Awake is
 set to, the position can't change (the card's other positions are greyed,
 their hover saying why), and the **Stop** icon on the Listen card, or **Stop Test**
-in the pane, ends the test. The run ends at the last beat heard before 10 minutes with none
+in the pane's toolbar, ends the test. The run ends at the last beat heard before 10 minutes with none
 (a beat heard is one matching the beat's sound with a quality over 0.4,
 in a run of at least eight such beats each within one and a half beats of
 the last, so a lone click is not the watch); beats that come back sooner
 join the run, and each silence of 30 s or more inside it is counted as a
-stop on the way. A run still going at 80 h ends there. The pane shows the
-run time from the first beat heard (to now while it runs), and at the
-end the run time in true time (through the input's clock as measured
-while listening, else its stored correction) and how it ended, then
-the rate and amplitude against hours since the first beat, and a table
+stop on the way. A run still going at 80 h ends there. While it runs the
+pane shows the run time from the first beat heard and one line of how the
+beats stand, with the count of stops on the way. At the end it shows one line,
+such as "Ran 41 h 12 min · The watch stopped, in Dial Up (DU) · Kept in Pepsi",
+the run time in true time (through the input's clock as measured
+while listening, else its stored correction), then, scrolling in the rest
+of the pane, the rate and amplitude against hours since the first beat, and a table
 of each hour (the last as long as is left): its rate, median amplitude
 and beat error from the unlock, each measured as `timegrapher session`
 measures a stretch (core `session::measure_masked`), and how much of it

@@ -12960,8 +12960,24 @@ impl TimegrapherApp {
                 ],
             );
         });
-        if !running {
-            theme::bar_gap(ui);
+        theme::bar_gap(ui);
+        if running {
+            if theme::tool_word_button(
+                ui,
+                Icon::Stop,
+                "Stop Test",
+                "End the run now and keep the take: its run time then says it was stopped by \
+                 hand. A closed lid or Sleep from a menu still stops the computer, and the run \
+                 with it; a laptop is best left on mains power.",
+                true,
+                None,
+            ) {
+                if let Some(t) = self.reserve.as_mut() {
+                    t.stop();
+                }
+                self.end_reserve();
+            }
+        } else {
             if theme::tool_word_button(
                 ui,
                 Icon::Listen,
@@ -13208,17 +13224,14 @@ impl TimegrapherApp {
         } else {
             None
         };
-        if self.reserve.is_some() {
-            self.note_need(ui, Pane::PowerReserve, reserve::PANE_MIN_H);
-        }
-        if reserve::pane(ui, self.reserve.as_ref(), free, self.position_card_title)
-            == Some(reserve::Action::Stop)
-        {
-            if let Some(t) = self.reserve.as_mut() {
-                t.stop();
-            }
-            self.end_reserve();
-        }
+        let watch = self.watch.trim().to_string();
+        reserve::pane(
+            ui,
+            self.reserve.as_ref(),
+            free,
+            self.position_card_title,
+            &watch,
+        );
     }
 
     /// Show a pane at the front of its tabs, or hide it: what its icon and
@@ -18669,11 +18682,12 @@ mod tests {
         // And the steps before a run.
         let out = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                reserve::pane(ui, None, None, app.position_card_title);
+                reserve::pane(ui, None, None, app.position_card_title, "");
             });
         });
         assert!(
-            painted_text(&out).contains("in the position on the Position card."),
+            painted_text(&out)
+                .contains("set the position on the Position card, then press Start Test."),
             "{}",
             painted_text(&out)
         );
