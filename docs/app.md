@@ -723,7 +723,14 @@ has one rate and it is what the command line reads. The Rate's hover
 says the figure is on the take's clock log, and by how many ppm. A log
 of under 10 entries, or one measuring the clock to a standard error over
 20 ppm, corrects nothing: the take is read as heard, and the Rate's hover
-says what the log measured and why it isn't applied. A log
+says what the log measured and why it isn't applied. Where the
+recording carries USB lines, they set the rate instead, log or not, as
+`timegrapher series` reads it: the log then places only the take's
+breaks, and the Rate's hover says the figure is on the take's USB lines,
+by how many ppm, and what the log measured. The lines are read from the
+first ten minutes of the take's sound after it opens, and the figures
+and charts follow once they are. In the Watches view, a take's Rate is
+corrected the same way. A log
 that can't be read is named in the line shown on opening, and the take
 is read as heard. A recording opened without a log shows no True Clock. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm

@@ -2023,6 +2023,10 @@ pub struct TimegrapherApp {
     /// it, fitted as `timegrapher session` fits it: the readings, tables
     /// and True Clock use it in place of the clock kept for the input.
     take_clock: Option<timegrapher_core::clock::ClockFit>,
+    /// The take's USB lines being read off the window's thread (up to
+    /// 600 s of its sound), for the take opened at this path: their ppm,
+    /// when it has them, sets the rate over its clock log.
+    usb_job: Option<(String, std::sync::mpsc::Receiver<Option<f64>>)>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2529,6 +2533,7 @@ impl TimegrapherApp {
             carried_positions: None,
             pending_recorded: None,
             take_clock: None,
+            usb_job: None,
             brush: None,
             confirm: None,
             remove_masks_asked: false,
@@ -4175,7 +4180,22 @@ impl TimegrapherApp {
                 path.parent().unwrap_or(path)
             };
             match timegrapher_core::clock::of_take(dir, &log, &files) {
-                Ok(fit) => self.take_clock = Some(fit),
+                Ok(fit) => {
+                    self.take_clock = Some(fit);
+                    // The recording's USB lines set the rate wherever it
+                    // has them, as `timegrapher series` reads it; read off
+                    // this thread, as they take a while.
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let files = files.clone();
+                    std::thread::spawn(move || {
+                        let ppm = timegrapher_core::clock::usb_lines(&files)
+                            .ok()
+                            .flatten()
+                            .map(|u| u.ppm);
+                        let _ = tx.send(ppm);
+                    });
+                    self.usb_job = Some((path.display().to_string(), rx));
+                }
                 Err(e) => {
                     let n = format!("Its clock log can't be read ({e}), so its rates aren't corrected for the sound card's clock.");
                     self.open_note = Some(match self.open_note.take() {
@@ -11851,6 +11871,36 @@ impl TimegrapherApp {
         })
     }
 
+    /// The take's USB lines read: where it has them, they set its rate,
+    /// its clock log keeping only its breaks, and the charts are read
+    /// again on them.
+    fn usb_poll(&mut self) {
+        let Some((at, rx)) = &self.usb_job else {
+            return;
+        };
+        let got = match rx.try_recv() {
+            Ok(ppm) => ppm,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+        };
+        let same = *at == self.opened_path;
+        self.usb_job = None;
+        self.usb_lines_read(got.filter(|_| same));
+    }
+
+    /// The take's USB lines measured the card at `ppm`, or found none.
+    fn usb_lines_read(&mut self, ppm: Option<f64>) {
+        let (Some(ppm), Some(fit)) = (ppm, self.take_clock.as_mut()) else {
+            return;
+        };
+        fit.rate_from_usb(ppm);
+        let rate_ppm = self.take_rate_ppm();
+        if let Some(l) = self.live.as_mut() {
+            l.set_rate_clock(rate_ppm);
+            self.rebuild_trend();
+        }
+    }
+
     /// The take's own clock error the readings are corrected by, ppm slow:
     /// none where its clock log measures the clock too loosely to correct
     /// by (core's `ClockFit::corrects`).
@@ -11876,6 +11926,25 @@ impl TimegrapherApp {
     fn true_clock_words(&self, rate: f64) -> Option<String> {
         // A log that measures the clock too loosely corrects nothing: what
         // it measured, and why not, in the same place.
+        // The recording's USB lines set the rate: the log only places
+        // breaks, and what it measured is in the same place.
+        if let Some(f) = self.take_clock.as_ref().filter(|f| f.corrects()) {
+            if let Some(w) = f.withheld {
+                let ppm = format!("{:.1}", f.ppm.abs());
+                let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
+                let note = w.note();
+                let mut c = note.chars();
+                let note = c
+                    .next()
+                    .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                    .unwrap_or_default();
+                return Some(format!(
+                    "On this take's USB lines: the rate corrected for the sound card's own \
+                     clock, {ppm} ppm {way}, as `timegrapher series` reads it. {note}; the \
+                     log places only its breaks."
+                ));
+            }
+        }
         if let Some(w) = self.take_clock.as_ref().and_then(|f| f.withheld) {
             let note = w.note();
             let mut c = note.chars();
@@ -16318,6 +16387,7 @@ impl eframe::App for TimegrapherApp {
         // clock.
         let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
+        self.usb_poll();
         let rate_ppm = self.take_rate_ppm();
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
@@ -19919,6 +19989,73 @@ mod tests {
         let words = app.true_clock_words(rate).expect("said");
         assert!(words.starts_with("The clock log's 5 entries"), "{words}");
         assert!(words.contains("not applied"), "{words}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take whose recording carries USB lines has its rate set by them,
+    /// over a clock log loose or not, as `timegrapher series` reads it: the
+    /// card figure and charts corrected, and the hover saying so with
+    /// what the log measured.
+    #[test]
+    fn a_takes_usb_lines_set_its_rate() {
+        let base = std::env::temp_dir().join(format!("tg-app-clock-usb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&base.join("audio-001.wav"), &audio).unwrap();
+        let mut log = String::from("unix_s,frames\n");
+        for k in 0..5 {
+            let audio_s = 25.0 * k as f64;
+            log += &format!(
+                "{:.6},{}\n",
+                1_700_000_000.0 + audio_s * (1.0 + 50e-6),
+                (audio_s * audio.sample_rate as f64) as u64
+            );
+        }
+        std::fs::write(base.join("clock.csv"), log).unwrap();
+        std::fs::write(
+            base.join(MANIFEST),
+            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n\
+             clock = 'clock.csv'\nsettle_s = 0.0\n",
+        )
+        .unwrap();
+        let mut app = reopened(&base);
+        let card = |app: &TimegrapherApp| {
+            app.live
+                .as_ref()
+                .unwrap()
+                .reading_at(110.0, 10.0)
+                .rate_s_per_day
+                .expect("a card figure")
+        };
+        let heard = card(&app);
+        assert_eq!(app.take_rate_ppm(), None, "the log alone is too loose");
+        // As the lines read off the window's thread would give.
+        app.usb_lines_read(Some(19.5));
+        assert_eq!(app.take_rate_ppm(), Some(19.5));
+        let rate = card(&app);
+        let want = timegrapher_core::clockstore::correct_rate(heard, 19.5);
+        assert!((rate - want).abs() < 1e-6, "{rate} {want}");
+        let last = app.trend.last().and_then(|p| p.rate).expect("charts");
+        assert!(
+            (last - heard).abs() > 1.0,
+            "the charts read again: {last} {heard}"
+        );
+        let words = app.true_clock_words(rate).expect("said");
+        assert!(words.starts_with("On this take's USB lines"), "{words}");
+        assert!(words.contains("19.5 ppm slow"), "{words}");
+        assert!(words.contains("The clock log's 5 entries"), "{words}");
+        // No lines: the log stands as it was.
+        let mut app = reopened(&base);
+        app.usb_lines_read(None);
+        assert_eq!(app.take_rate_ppm(), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 
