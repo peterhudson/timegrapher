@@ -127,6 +127,13 @@ still places its breaks, but the rates stay on the sound card's clock,
 and the fit's `withheld` says what was measured and why (`few_entries`
 or `unsure`).
 
+When the recording has USB lines (see
+[agent-interface.md](agent-interface.md#clock)), they set the rate
+instead of the log, however well the log measured: they time the card
+against the computer's USB clock to about 0.1 ppm. The log then only
+places its breaks, the report names both, and `withheld` gives what the
+log measured with `reason` `usb_lines`.
+
 Without a log, `long` uses the card's error stored with `timegrapher
 clock` (see [agent-interface.md](agent-interface.md#clock)): the one for
 `--device NAME`, else the one for the input the recording's sidecar or
