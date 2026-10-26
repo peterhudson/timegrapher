@@ -859,7 +859,7 @@ const LIFT_HINT: &str = "No calibre or lift angle is set, so every amplitude is 
      it.";
 /// The takes a watch's row starts, each saved into the watch.
 /// The Watches view's list column, pt.
-const WATCH_LIST_W: f32 = 280.0;
+pub(crate) const WATCH_LIST_W: f32 = 280.0;
 /// How wide the watch's side grows, pt: across a 2560 window a figure
 /// would sit far from its date.
 const WATCH_SIDE_MAX: f32 = 1100.0;

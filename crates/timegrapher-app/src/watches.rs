@@ -614,9 +614,9 @@ pub fn take_line(t: &Take, positions_test: bool) -> String {
 
 /// The captions under the three New Take buttons: Listen, Positions Test, Power Reserve Test.
 pub const NEW_TAKE_CAPTIONS: [&str; 3] = [
-    "As long as you like. Stop saves it here.",
-    "Each position in turn, guided.",
-    "From full wind until it stops.",
+    "As long as you like",
+    "Six positions, guided",
+    "From full wind to a stop",
 ];
 
 /// The words under a watch's name in its header: its calibre, beat rate
@@ -1665,6 +1665,30 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// New Take's captions are whole under their buttons in an 800 point
+    /// window, where the watch's side is narrowest.
+    #[test]
+    fn the_new_take_captions_fit_an_800_window() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        // The window less the list, its gap and the margins.
+        let side = 800.0 - crate::app::WATCH_LIST_W - 17.0 - 2.0 * 12.0 - 16.0;
+        let tile = (side - 2.0 * 10.0) / 3.0 - 16.0;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                for c in NEW_TAKE_CAPTIONS {
+                    let font = egui::TextStyle::Small.resolve(ui.style());
+                    let w = ui
+                        .painter()
+                        .layout_no_wrap(c.to_string(), font, egui::Color32::WHITE)
+                        .size()
+                        .x;
+                    assert!(w <= tile, "{c}: {w} in {tile}");
+                }
+            });
+        });
+    }
 
     /// A watch's Calibre, Lift Angle, Beat Rate and Notes are always in its
     /// form, set or not; only a field the user added has a × to remove it.
