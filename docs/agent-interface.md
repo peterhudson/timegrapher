@@ -410,7 +410,11 @@ false for a take kept as its analysis alone, which can't be measured
 again from its sound; `at_end` is the readings the app showed when the
 take was saved (`rate_s_per_day`, `amplitude_deg`, `beat_error_ms`
 signed, from the unlock), not a new analysis, and `null` for a take saved
-without them. A take is `incomplete` when a file its session file lists
+without them. The app's figures are on the sound card's clock, so
+`at_end` adds `rate_corrected_s_per_day`, that rate corrected from the
+take's clock log as `session` reads it, when the take has a clock log
+that can be read; the text output and the app's Watches view show it in
+place of the rate as heard. A take is `incomplete` when a file its session file lists
 is not there, or a folder it lists holds no sound. A NAME that matches no
 watch, or a folder with no library in it, exits 1 with one line on
 stderr naming it. The text form of `list` gives each watch's calibre,

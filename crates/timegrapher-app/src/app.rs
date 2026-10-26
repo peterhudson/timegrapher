@@ -1859,6 +1859,10 @@ pub struct TimegrapherApp {
     /// The positions as recorded under the painting, from the session file
     /// of the recording being opened, to load with the positions shown.
     pending_recorded: Option<Positions>,
+    /// The sound card's clock as the clock log of the take on show gives
+    /// it, fitted as `timegrapher session` fits it: the readings, tables
+    /// and True Clock use it in place of the clock kept for the input.
+    take_clock: Option<timegrapher_core::clock::ClockFit>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2341,6 +2345,7 @@ impl TimegrapherApp {
             opened_positions: None,
             carried_positions: None,
             pending_recorded: None,
+            take_clock: None,
             brush: None,
             confirm: None,
             open_ask: None,
@@ -2610,6 +2615,7 @@ impl TimegrapherApp {
                 self.masked.clear();
                 self.opened_masks = None;
                 self.opened_positions = None;
+                self.take_clock = None;
                 self.masking = false;
                 self.brush = None;
                 self.reset_session(
@@ -2789,6 +2795,7 @@ impl TimegrapherApp {
         self.masked.clear();
         self.opened_masks = None;
         self.opened_positions = None;
+        self.take_clock = None;
         self.masking = false;
         self.brush = None;
         self.clear_trends();
@@ -3697,6 +3704,7 @@ impl TimegrapherApp {
         }
         self.stop();
         self.pending_recorded = None;
+        self.take_clock = None;
         self.masked.clear();
         self.masking = false;
         self.brush = None;
@@ -3916,6 +3924,27 @@ impl TimegrapherApp {
             self.keep_mic_setup();
             self.set_watch_setup(WatchSetup::default());
             self.open_note = None;
+        }
+        self.take_clock = None;
+        if let Some(log) = manifest
+            .as_ref()
+            .and_then(|(_, e)| e.first()?.clock.clone())
+        {
+            let dir = if path.is_dir() {
+                path
+            } else {
+                path.parent().unwrap_or(path)
+            };
+            match timegrapher_core::clock::of_take(dir, &log, &files) {
+                Ok(fit) => self.take_clock = Some(fit),
+                Err(e) => {
+                    let n = format!("Its clock log can't be read ({e}), so its rates aren't corrected for the sound card's clock.");
+                    self.open_note = Some(match self.open_note.take() {
+                        Some(o) => format!("{o} {n}"),
+                        None => n,
+                    });
+                }
+            }
         }
         let (stretches, settles) = match manifest {
             Some((m, entries)) => {
@@ -4427,6 +4456,7 @@ impl TimegrapherApp {
         }
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
+        live.set_rate_clock(self.take_clock.as_ref().map(|f| f.ppm));
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -4782,7 +4812,7 @@ impl TimegrapherApp {
             live.beats().len(),
             spans.clone(),
             self.masked.clone(),
-            self.clock.as_ref().map(|c| c.ppm),
+            self.reading_ppm(),
         );
         if let Some((k, w)) = self.whole_take.borrow().as_ref() {
             if *k == key {
@@ -4796,10 +4826,7 @@ impl TimegrapherApp {
                 return None;
             }
             let log = steady::log_of(live)?;
-            let clock = self
-                .clock
-                .as_ref()
-                .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s));
+            let clock = self.reading_clock(log.duration_s);
             let breaks: Vec<_> = log
                 .jumps
                 .iter()
@@ -4870,10 +4897,12 @@ impl TimegrapherApp {
     ) -> Option<guided::FreeTable> {
         let live = self.live.as_ref()?;
         let latest = self.latest_s();
+        // A take on show reads to the end of its sound, as `timegrapher
+        // session` reads its last position.
         let end = if self.running() {
             (latest / FREE_TABLE_STEP_S).floor() * FREE_TABLE_STEP_S
         } else {
-            latest
+            latest.max(live.duration_s())
         };
         let stretches: Vec<(core_session::Position, f64, f64)> = stretches
             .into_iter()
@@ -4888,12 +4917,7 @@ impl TimegrapherApp {
         } else {
             live.beats().len()
         };
-        let key: FreeKey = (
-            beats,
-            stretches.clone(),
-            masked.clone(),
-            self.clock.as_ref().map(|c| c.ppm),
-        );
+        let key: FreeKey = (beats, stretches.clone(), masked.clone(), self.reading_ppm());
         let mut job = self.free_job.borrow_mut();
         if let Some(j) = job.as_ref() {
             match j.rx.try_recv() {
@@ -4910,9 +4934,10 @@ impl TimegrapherApp {
                 return t.clone();
             }
         }
-        let ppm = self.clock.as_ref().map(|c| c.ppm);
+        let (take_clock, ppm) = (self.take_clock.clone(), self.clock.as_ref().map(|c| c.ppm));
         let read = move |log: BeatLog| {
-            let clock = ppm.and_then(|ppm| core_session::fixed_clock(ppm, log.duration_s));
+            let clock = take_clock
+                .or_else(|| ppm.and_then(|ppm| core_session::fixed_clock(ppm, log.duration_s)));
             let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
             let t = core_session::positions_table(
                 &log,
@@ -11055,9 +11080,39 @@ impl TimegrapherApp {
         }
     }
 
+    /// The clock the readings of the take on show are put on, for a log
+    /// `duration_s` long: the take's own clock log, else the clock kept for
+    /// the input.
+    fn reading_clock(&self, duration_s: f64) -> Option<timegrapher_core::clock::ClockFit> {
+        self.take_clock.clone().or_else(|| {
+            self.clock
+                .as_ref()
+                .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, duration_s))
+        })
+    }
+
+    /// The error of [`Self::reading_clock`], ppm slow, for what is read
+    /// with it to be read again when it changes.
+    fn reading_ppm(&self) -> Option<f64> {
+        self.take_clock
+            .as_ref()
+            .map(|f| f.ppm)
+            .or(self.clock.as_ref().map(|c| c.ppm))
+    }
+
     /// The rate `rate` on the clock kept for the input, for the Rate
-    /// figure's hover, while one is kept.
+    /// figure's hover, while one is kept. A take with its own clock log
+    /// is read on it, the big figure included, so the hover says so.
     fn true_clock_words(&self, rate: f64) -> Option<String> {
+        if let Some(f) = &self.take_clock {
+            let ppm = format!("{:.1}", f.ppm.abs());
+            let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
+            return Some(format!(
+                "On this take's clock log: the rate corrected for the sound card's own \
+                 clock, {ppm} ppm {way}, as the Positions table and `timegrapher session` \
+                 read it. tg reads the recording on the card's clock."
+            ));
+        }
         let c = self.clock.as_ref()?;
         let v = format!("{:+.1}", c.correct_rate(rate)).replace('-', "−");
         Some(format!(
@@ -11487,16 +11542,15 @@ impl TimegrapherApp {
         if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
             // The input listened to; a take opened is named on the left
             // already.
+            // A label cut short shows its whole text when hovered.
             let text = format!("Listening to {}", self.source_label);
             ui.add(
                 egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
-            )
-            .on_hover_text(text);
+            );
         }
         // Errors are a notice at the right instead.
         if let Some((m, false)) = &self.message {
-            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate())
-                .on_hover_text(m);
+            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate());
         }
     }
 
@@ -11977,9 +12031,7 @@ impl TimegrapherApp {
                 Some(p) => self.change_position(p),
                 None => {
                     if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
-                        let clock = self.clock.as_ref().and_then(|c| {
-                            timegrapher_core::session::fixed_clock(c.ppm, log.duration_s)
-                        });
+                        let clock = self.reading_clock(log.duration_s);
                         test.finish(&log, clock.as_ref(), &self.masked);
                     }
                 }
@@ -12031,12 +12083,7 @@ impl TimegrapherApp {
             .clock_track
             .as_ref()
             .and_then(|c| c.fit.clone())
-            .or_else(|| {
-                let d = self.live.as_ref().map_or(0.0, |l| l.duration_s());
-                self.clock
-                    .as_ref()
-                    .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, d))
-            });
+            .or_else(|| self.reading_clock(self.live.as_ref().map_or(0.0, |l| l.duration_s())));
         move |s| fit.as_ref().map_or(s, |f| f.map(s))
     }
 
@@ -12252,11 +12299,7 @@ impl TimegrapherApp {
                 .clock_track
                 .as_ref()
                 .and_then(|c| c.fit.clone())
-                .or_else(|| {
-                    self.clock
-                        .as_ref()
-                        .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s))
-                });
+                .or_else(|| self.reading_clock(log.duration_s));
             let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
             r.hours = power_reserve::hours(
                 &log,
@@ -15114,8 +15157,10 @@ impl eframe::App for TimegrapherApp {
         // clock.
         let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
+        let rate_ppm = self.take_clock.as_ref().map(|f| f.ppm);
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
+            l.set_rate_clock(rate_ppm);
         }
         // A file dropped on the window is opened, where the desktop passes
         // drops on (not yet on Wayland).
@@ -18237,6 +18282,86 @@ mod tests {
         d.open_recording(&odd, false);
         let (msg, error) = d.message.clone().unwrap();
         assert!(error && msg.contains("audio = false"), "{msg}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take whose session file names a clock log is read on that log,
+    /// as `timegrapher session` reads it: the Positions table's rates and
+    /// the Rate card's figure are corrected for the sound card's clock, so
+    /// the two agree, and the Rate's hover says so. Without the log the
+    /// rates are as heard.
+    #[test]
+    fn a_takes_clock_log_corrects_its_rates() {
+        let base = std::env::temp_dir().join(format!("tg-app-clock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&base.join("audio-001.wav"), &audio).unwrap();
+        // The card's clock 50 ppm off the computer's.
+        let mut log = String::from("unix_s,frames\n");
+        for k in 0..13 {
+            let audio_s = 10.0 * k as f64;
+            log += &format!(
+                "{:.6},{}\n",
+                1_700_000_000.0 + audio_s * (1.0 + 50e-6),
+                (audio_s * audio.sample_rate as f64) as u64
+            );
+        }
+        std::fs::write(base.join("clock.csv"), log).unwrap();
+        let manifest = |clock: bool| {
+            let c = if clock { "clock = 'clock.csv'\n" } else { "" };
+            format!(
+                "bph = 28800\nlift = 52.0\n\n\
+                 [[recording]]\nfile = '.'\nposition = 'DU'\n{c}start_s = 0.0\nend_s = 60.0\nsettle_s = 0.0\n\n\
+                 [[recording]]\nfile = '.'\nposition = 'DD'\n{c}start_s = 60.0\nsettle_s = 0.0\n"
+            )
+        };
+        let rate_of = |clock: bool| {
+            std::fs::write(base.join(MANIFEST), manifest(clock)).unwrap();
+            let app = reopened(&base);
+            let ctx = egui::Context::default();
+            let t = app.free_table(&ctx).expect("a table");
+            let rate = match t.rows[0].2 {
+                guided::FreeCell::Read(Some(r), _, _) => r,
+                ref c => panic!("{c:?}"),
+            };
+            let ppm = app.take_clock.as_ref().map(|f| f.ppm);
+            let card = app
+                .live
+                .as_ref()
+                .unwrap()
+                .reading_at(110.0, 10.0)
+                .rate_s_per_day;
+            (
+                rate,
+                ppm,
+                app.true_clock_words(10.0),
+                card.expect("a card figure"),
+            )
+        };
+        let (heard, none, words, card_heard) = rate_of(false);
+        assert_eq!(none, None);
+        assert_eq!(words, None, "no clock kept, no log: no True Clock");
+        let (corrected, ppm, words, card) = rate_of(true);
+        let ppm = ppm.expect("the log read");
+        assert!((ppm.abs() - 50.0).abs() < 0.5, "{ppm}");
+        let want = timegrapher_core::clockstore::correct_rate(heard, ppm);
+        assert!(
+            (corrected - want).abs() < 0.02,
+            "{corrected} {want} {heard}"
+        );
+        assert!((corrected - heard).abs() > 4.0, "{corrected} {heard}");
+        assert!(words.is_some_and(|w| w.contains("clock log")));
+        // The card's figure is on the same clock as the table.
+        let want = timegrapher_core::clockstore::correct_rate(card_heard, ppm);
+        assert!((card - want).abs() < 0.02, "{card} {want} {card_heard}");
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -232,7 +232,8 @@ their place); its photos as a strip of thumbnails
 be read shows its name and "Can't be shown" instead), and its **Takes**,
 newest first: each
 with its name, positions, length, the rate, amplitude and beat error (its
-size) it measured when saved, the space it uses, and **Analysis Only** or
+size) it measured when saved (the rate corrected from the take's clock
+log, as the Bench reads the take), the space it uses, and **Analysis Only** or
 **Incomplete** when it is one. Clicking a take picks it and shows its
 **Open** button under it; double-clicking opens it as
 Open… does. The take on show is marked **On Show** and is not read again
@@ -677,11 +678,19 @@ take with a clock log; see `clock` in [the agent
 interface](agent-interface.md#clock)), Quartz Correction lists it, and
 the Rate figure's hover gives the rate corrected onto true time,
 labelled True Clock, with the day the clock it uses was kept. A sound card's crystal runs a steady 10 to 50 ppm off,
-which moves every rate read on it by 1 to 4 s/d. The big figure always
-stays on the card's clock, the same clock tg and `timegrapher analyze`
+which moves every rate read on it by 1 to 4 s/d. While listening, the big
+figure stays on the card's clock, the same clock tg and `timegrapher analyze`
 read, so it compares directly with them; True Clock is in its hover,
 never instead of it. It is looked up by the input's name when a microphone
-session starts, and is not shown for a recording opened from disk. **Settings**,
+session starts. A take opened from disk whose session file names a clock
+log (every take the app keeps has `clock.csv`) is read on that log
+instead, fitted as `timegrapher session` fits it: the Positions Test
+tables, the readings worked out over the whole take, the Rate figure and
+the Charts are all corrected for that take's own sound card, so one take
+has one rate and it is what the command line reads. The Rate's hover
+says the figure is on the take's clock log, and by how many ppm. A log
+that can't be read is named in the line shown on opening, and the take
+is read as heard. A recording opened without a log shows no True Clock. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
 and in s/d, the day it was measured, how, and over how long), with
 **Forget** beside it; the input listening is marked "(listening)", or
@@ -1456,9 +1465,8 @@ folder can't be moved while another copy has it open. The Watches view adds watc
   after its settling, and each entry says `settle_s = 0`, so
   `timegrapher session` skips nothing more and reads the same seconds as
   the app (a take saved by an earlier build skips its settling a second
-  time there). Its rates still differ from the app's by the sound card's
-  own clock error, which it corrects from the take's clock log and the
-  app's figures don't. Guided runs through the positions (as `timegrapher
+  time there). Both correct the rates from the take's clock log (see True
+  Clock). Guided runs through the positions (as `timegrapher
   session` reports them) will build on it.
 
 ## Sessions
