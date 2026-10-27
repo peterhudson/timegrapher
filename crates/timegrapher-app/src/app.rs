@@ -7433,12 +7433,13 @@ impl TimegrapherApp {
             let joined = !self.session.stretches().is_empty();
             if let Some(log) = log.map(|l| if joined { steady::join(&l, &spans) } else { l }) {
                 let wheels = self.calibre_wheels();
+                let clock = self.take_clock.clone().filter(|f| f.corrects());
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
                 self.steady_work = (stage.clone(), std::time::Instant::now());
                 std::thread::spawn(move || {
-                    let _ = tx.send(steady::compute_with(&log, wheels, &stage));
+                    let _ = tx.send(steady::compute_with(&log, wheels, clock.as_ref(), &stage));
                     ctx.request_repaint();
                 });
                 self.steady_job = Some(rx);
@@ -11997,6 +11998,9 @@ impl TimegrapherApp {
             l.set_rate_clock(rate_ppm);
             self.rebuild_trend();
         }
+        // The Steadiness panes read again on the corrected clock.
+        self.steady = None;
+        self.steady_job = None;
     }
 
     /// The take's own clock error the readings are corrected by, ppm slow:
