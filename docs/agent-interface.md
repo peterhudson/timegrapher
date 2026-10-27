@@ -189,6 +189,16 @@ stays on the card's clock, as tg reads it, so comparisons with tg and the
 regression baseline are unchanged. `long` applies the correction to its
 whole report (see [long-runs.md](long-runs.md)).
 
+A clock log (`--clock`, or a recording's `clock` in its session file)
+under 10 entries or measured to a standard error over 20 ppm corrects
+nothing; the fit's `withheld` gives `ppm`, `ppm_sd`, `points`, `span_s`
+and `reason` (`few_entries` or `unsure`). When the recording has USB
+lines they set the rate even with a clock log, which then only places its
+breaks; `withheld.reason` is then `usb_lines`. `measure --save` and
+`from-log --save` refuse a measurement under 10 entries or with a standard
+error over 20 ppm, saying what was measured; without `--save` it is still
+reported.
+
 ## `record`
 
 ```sh
