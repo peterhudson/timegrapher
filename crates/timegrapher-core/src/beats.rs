@@ -793,6 +793,39 @@ pub fn jumps(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
     out
 }
 
+/// A beat whose timing [`jumps_among_good`] reads is better than this
+/// ([`Beat::quality`]).
+pub const JUMP_QUALITY: f32 = 0.4;
+
+/// [`jumps`] on the good beats alone (better than [`JUMP_QUALITY`]), the
+/// one jump search for a whole file and for live listening alike. Where
+/// the sound was lost for a moment (a dropout in the audio), the tracker
+/// follows noise for a few seconds until it finds the beats again; those
+/// noise beats would hide the step from the beats either side of it, and
+/// the count across such a stretch is a guess that swaps Tick and Tock
+/// half the time. Positions are in `beats`; `before` may hold noise beats
+/// too (see [`good_tail_start`]).
+pub fn jumps_among_good(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
+    let good = |b: &Beat| b.quality > JUMP_QUALITY;
+    let at: Vec<usize> = (0..beats.len()).filter(|&k| good(&beats[k])).collect();
+    let found: Vec<Beat> = at.iter().map(|&k| beats[k]).collect();
+    let before: Vec<Beat> = before.iter().copied().filter(good).collect();
+    jumps(&found, &before).into_iter().map(|p| at[p]).collect()
+}
+
+/// Where in `beats` the last `n` good beats (better than [`JUMP_QUALITY`])
+/// begin, or 0 when there are fewer: the stretch [`jumps_among_good`] reads.
+pub fn good_tail_start(beats: &[Beat], n: usize) -> usize {
+    beats
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, b)| b.quality > JUMP_QUALITY)
+        .nth(n.saturating_sub(1))
+        .filter(|_| n > 0)
+        .map_or(0, |(k, _)| k)
+}
+
 fn jumps_in(beats: &[Beat]) -> Vec<usize> {
     // The typical interval after an even beat and after an odd one: they
     // differ by twice the beat error.
@@ -949,6 +982,23 @@ mod tests {
         // jump is at that beat or just before it.
         assert_eq!(jumps(&b[200..], &b[188..200]), vec![0]);
         assert_eq!(jumps(&b[203..], &b[191..203]), vec![0]);
+    }
+
+    #[test]
+    fn noise_beats_around_a_jump_do_not_hide_it() {
+        // From beat 200 on both sides land 30 ms later, and the 24 beats
+        // before it are noise the tracker followed: badly matched, anywhere.
+        let mut b = ticking(400, |k, _| if k >= 200 { 0.030 } else { 0.0 });
+        for (n, x) in b[176..200].iter_mut().enumerate() {
+            x.quality = 0.05;
+            x.time += 0.04 * rng_normal(n as i64);
+        }
+        assert!(jumps(&b, &[]).is_empty(), "hidden among all the beats");
+        assert_eq!(jumps_among_good(&b, &[]), vec![200]);
+        // Seen from a chunk starting at the jump, with the noise before it.
+        let from = good_tail_start(&b[..200], JUMP_CONTEXT);
+        assert_eq!(from, 200 - 24 - JUMP_CONTEXT);
+        assert_eq!(jumps_among_good(&b[200..], &b[from..200]), vec![0]);
     }
 
     #[test]
@@ -1198,6 +1248,7 @@ mod tests {
     /// does, and its side check keeps the sides.
     #[test]
     fn a_dropout_the_tracker_follows_noise_through_keeps_the_sides() {
+        use crate::live::{LiveAnalyzer, LiveConfig};
         use crate::stream::{analyze_samples, StreamConfig};
         use crate::synth::{render_beat, Rng, SynthConfig};
         const HOLE_S: f64 = 30.0;
@@ -1235,6 +1286,21 @@ mod tests {
                     .map(|&v| ((v + noise * rng.normal()) * 0.5) as f32)
                     .collect();
                 let file = analyze_samples(&samples, c.sample_rate, &StreamConfig::default());
+                // Live listening finds the jump too, with the same search
+                // (where in the noise stretch depends on how the sound
+                // arrives).
+                let mut live = LiveAnalyzer::new(c.sample_rate, LiveConfig::default());
+                for chunk in samples.chunks(960) {
+                    live.push(chunk);
+                }
+                assert!(
+                    live.jumps()
+                        .iter()
+                        .any(|&j| (HOLE_S..HOLE_S + 10.0).contains(&j)),
+                    "louder {louder}, {beats_lost} beats lost: live jumps {:?}, file {:?}",
+                    live.jumps(),
+                    file.jumps
+                );
                 let side = |from: f64, to: f64| {
                     let run: Vec<Beat> = file
                         .beats
