@@ -13255,8 +13255,18 @@ impl TimegrapherApp {
         }
         // Whatever the status line said before is past.
         self.message = None;
-        // In the position the card and the pane named, even where it came
-        // from a take opened over listening's own.
+        self.reserve_session();
+        self.start_microphone();
+        if !self.running() || self.session.recorder.is_none() {
+            return;
+        }
+        self.begin_reserve();
+    }
+
+    /// A fresh microphone session for a Power Reserve Test, in the
+    /// position the card and the pane named, even where it came from a
+    /// take opened over listening's own.
+    fn reserve_session(&mut self) {
         let pos = self.position;
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
@@ -13266,11 +13276,6 @@ impl TimegrapherApp {
         // Never Quick Listen, whose sound goes without a question: a test
         // keeps its take.
         self.quick_listen = false;
-        self.start_microphone();
-        if !self.running() || self.session.recorder.is_none() {
-            return;
-        }
-        self.begin_reserve();
     }
 
     /// The test itself, once its session is listening: in the position the
@@ -18976,8 +18981,10 @@ mod tests {
         app.opened_path = "/x/take.wav".into();
         app.mic_setup = Some(WatchSetup::default());
         app.position = Position::DialDown;
-        app.start_reserve();
+        // The test's own session, short of opening a real input.
+        app.reserve_session();
         assert_eq!(app.position, Position::DialDown);
+        assert_eq!(app.input, Input::Microphone);
         // The take's own watch name gone, as after a test's Stop.
         app.watch.clear();
         let words = app.status_words();
