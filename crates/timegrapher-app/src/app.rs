@@ -11410,6 +11410,17 @@ impl TimegrapherApp {
         if let Some(l) = self.live.as_mut() {
             l.set_lift(lift);
         }
+        // Every amplitude read at the old lift is read again: the whole
+        // take, the Positions Test table, the Steadiness panes and the
+        // sound of a past moment.
+        *self.whole_take.borrow_mut() = None;
+        *self.free_table.borrow_mut() = None;
+        *self.free_job.borrow_mut() = None;
+        self.steady = None;
+        self.steady_job = None;
+        self.sound_at = None;
+        self.sound_job = None;
+        self.strip_points = None;
         self.rebuild_trend();
         self.note_settings();
     }
@@ -17195,6 +17206,36 @@ mod tests {
         assert_eq!(w.m.rate_s_per_day, m.rate_s_per_day);
         assert_eq!(w.m.amplitude_deg, m.amplitude_deg);
         assert!((w.span - (to - from)).abs() < 1e-9, "{}", w.span);
+    }
+
+    /// Lift changed on a stopped take reads every amplitude again at the
+    /// new lift: the whole take and the Tick Tock profiles scale with it,
+    /// and the Positions Test table is read afresh.
+    #[test]
+    fn a_new_lift_rescales_every_amplitude() {
+        let mut app = synthetic(60.0, 12.0);
+        let whole = |app: &TimegrapherApp| app.whole_take().unwrap().m.amplitude_deg.unwrap();
+        let profiles = |app: &TimegrapherApp| -> Vec<f64> {
+            app.live
+                .as_ref()
+                .unwrap()
+                .tick_profiles()
+                .iter()
+                .flatten()
+                .filter_map(|p| p.amplitude_deg)
+                .collect()
+        };
+        let (w0, p0) = (whole(&app), profiles(&app));
+        assert!(!p0.is_empty());
+        *app.free_table.borrow_mut() = Some(((0, Vec::new(), Vec::new(), None), None));
+        let k = 55.0 / app.lift_deg;
+        app.set_lift(55.0);
+        let w1 = whole(&app);
+        assert!((w1 - w0 * k).abs() < 0.05, "{w0} then {w1}");
+        for (a, b) in p0.iter().zip(profiles(&app)) {
+            assert!((b - a * k).abs() < 1e-9, "{a} then {b}");
+        }
+        assert!(app.free_table.borrow().is_none());
     }
 
     /// Stopped after the watch is taken off the stand, the readings stay on

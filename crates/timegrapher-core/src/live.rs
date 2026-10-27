@@ -517,6 +517,9 @@ impl LiveAnalyzer {
                 w.even_deg = w.even_deg.map(|a| a * k);
                 w.odd_deg = w.odd_deg.map(|a| a * k);
             }
+            for p in self.profiles.iter_mut().flatten() {
+                p.amplitude_deg = p.amplitude_deg.map(|a| a * k);
+            }
             self.cfg.analysis.amplitude.lift_deg = lift_deg;
         }
     }
