@@ -838,7 +838,8 @@ pub fn take_cells(t: &Take, positions_test: bool) -> [String; 7] {
     };
     let length = match (&t.power_reserve, t.duration_s) {
         // One format down the column, a Power Reserve Test's run included.
-        (Some(r), _) => crate::strip::fmt_time(r.run_s),
+        // Whole seconds, as the run's own words count them.
+        (Some(r), _) => crate::strip::fmt_time(r.run_s.floor()),
         (None, Some(d)) => crate::strip::fmt_time(d),
         _ => String::new(),
     };
@@ -1040,26 +1041,72 @@ pub fn takes_table(
             .iter()
             .map(|t| take_cells(t, is_positions_test(&e.take_dir(t))))
             .collect();
+        // Its state after the date, in small grey words.
+        let tags_of = |t: &Take| {
+            let mut tags = Vec::new();
+            if cx.on_show == Some(e.take_dir(t).as_path()) {
+                tags.push("On Show");
+            }
+            if !t.audio {
+                tags.push("Analysis Only");
+            }
+            if t.incomplete {
+                tags.push("Incomplete");
+            }
+            tags.join(" · ")
+        };
+        let ctx = ui.ctx().clone();
         let text_w = |t: &str, size: f32| {
-            ui.fonts_mut(|f| {
+            ctx.fonts_mut(|f| {
                 f.layout_no_wrap(t.to_string(), egui::FontId::proportional(size), pal.text)
                     .size()
                     .x
             })
         };
+        // Started's tags count in its width.
+        let tags_w = |tags: &str| {
+            if tags.is_empty() {
+                0.0
+            } else {
+                text_w(tags, 11.0) + 10.0
+            }
+        };
         let natural: Vec<f32> = (0..7)
             .map(|i| {
                 rows.iter()
-                    .map(|r| text_w(&r[i], 12.5))
+                    .zip(&e.takes)
+                    .map(|(r, t)| {
+                        text_w(&r[i], 12.5) + if i == 0 { tags_w(&tags_of(t)) } else { 0.0 }
+                    })
                     .fold(text_w(TAKE_HEADS[i], 11.5), f32::max)
                     + 18.0
             })
             .collect();
         let others: f32 = natural[1..].iter().sum();
-        let first = (w - others).max(natural[0]);
+        // Started gives way when the figures need the room, so Size never
+        // runs past the table; a name cut short ends in "…".
+        let first = (w - others).max(80.0);
         let widths: Vec<f32> = std::iter::once(first)
             .chain(natural[1..].iter().copied())
             .collect();
+        let fit = |t: &str, room: f32, font: &egui::FontId| {
+            let w = |t: &str| {
+                ctx.fonts_mut(|f| {
+                    f.layout_no_wrap(t.to_string(), font.clone(), pal.text)
+                        .size()
+                        .x
+                })
+            };
+            if w(t) <= room {
+                return t.to_string();
+            }
+            let chars: Vec<char> = t.chars().collect();
+            let mut n = chars.len();
+            while n > 0 && w(&format!("{}…", chars[..n].iter().collect::<String>())) > room {
+                n -= 1;
+            }
+            format!("{}…", chars[..n].iter().collect::<String>().trim_end())
+        };
         let row_h = 24.0;
         let font = egui::FontId::proportional(12.5);
         let draw = |ui: &egui::Ui,
@@ -1102,30 +1149,34 @@ pub fn takes_table(
             } else if r.hovered() {
                 ui.painter().rect_filled(rect, 4.0, pal.control_hover);
             }
-            let cells = take_cells(t, test);
+            let mut cells = take_cells(t, test);
+            // Date and tags share Started's room, never the columns after
+            // it: when both don't fit, the date keeps most of it and each
+            // is cut short with "…", the tags left out when too little is
+            // left for them.
+            let tags = tags_of(t);
+            let room = widths[0] - 18.0;
+            let date_room = if text_w(&cells[0], 12.5) + tags_w(&tags) <= room {
+                room
+            } else {
+                (room - tags_w(&tags)).max(0.6 * room)
+            };
+            cells[0] = fit(&cells[0], date_room, &font);
             draw(ui, rect, &cells, pal.text, &font);
-            // Its state after the date, in small grey words.
-            let mut tags = Vec::new();
-            if on_show {
-                tags.push("On Show");
-            }
-            if !t.audio {
-                tags.push("Analysis Only");
-            }
-            if t.incomplete {
-                tags.push("Incomplete");
-            }
+            let date_w = text_w(&cells[0], 12.5);
+            let tags_room = room - date_w - 10.0;
+            let small = egui::FontId::proportional(11.0);
+            let tags = if tags_room < 24.0 {
+                String::new()
+            } else {
+                fit(&tags, tags_room, &small)
+            };
             if !tags.is_empty() {
-                let date_w = ui.fonts_mut(|f| {
-                    f.layout_no_wrap(cells[0].clone(), font.clone(), pal.text)
-                        .size()
-                        .x
-                });
                 ui.painter_at(rect).text(
                     egui::pos2(rect.left() + 6.0 + date_w + 10.0, rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    tags.join(" · "),
-                    egui::FontId::proportional(11.0),
+                    tags,
+                    small,
                     pal.text_secondary,
                 );
             }
@@ -1860,6 +1911,129 @@ mod tests {
         assert_eq!(cells[1], "Power Reserve");
         assert_eq!(cells[2], crate::strip::fmt_time(166_320.0));
         assert_eq!(TAKE_HEADS.len(), 7);
+    }
+
+    /// A Power Reserve take's Length counts the run's whole seconds, as its
+    /// words do: a 113.6 s run is 1:53, as "1 min 53 s" says, not 1:54.
+    #[test]
+    fn a_power_reserve_takes_length_counts_whole_seconds() {
+        let t = Take {
+            name: "2026-10-27 16.27 Power Reserve".into(),
+            bytes: 1_000_000,
+            audio: true,
+            incomplete: false,
+            started_utc: None,
+            duration_s: Some(116.0),
+            positions: vec!["DU".into()],
+            at_end: None,
+            power_reserve: Some(timegrapher_core::power_reserve::Summary {
+                run_s: 113.6,
+                ending: timegrapher_core::power_reserve::Ending::ByHand,
+                position: "DU".into(),
+            }),
+        };
+        assert_eq!(take_cells(&t, false)[2], "1:53");
+        assert!(take_line(&t, false).starts_with("Power Reserve 1 min 53 s"));
+    }
+
+    /// A table narrower than its columns keeps every one inside it: the
+    /// date gives way, cut short with "…", its tags cut or left out after
+    /// it, and Size (MB) is still read whole at the right.
+    #[test]
+    fn a_narrow_takes_table_keeps_its_size_column() {
+        let take = |name: &str, audio: bool| Take {
+            name: name.into(),
+            bytes: 1_400_000,
+            audio,
+            incomplete: false,
+            started_utc: None,
+            duration_s: Some(60.0),
+            positions: vec!["DU".into()],
+            at_end: Some(timegrapher_core::library::AtEnd {
+                rate_s_per_day: Some(5.2),
+                amplitude_deg: Some(301.0),
+                beat_error_ms: Some(0.3),
+                rate_corrected_s_per_day: None,
+            }),
+            power_reserve: None,
+        };
+        let e = WatchEntry {
+            dir: "/nowhere/Unsorted".into(),
+            watch: timegrapher_core::library::Watch::new("Unsorted"),
+            takes: vec![
+                take("2026-10-27 09.30 Dial Up", true),
+                take("2026-10-27 09.10 Dial Up", false),
+            ],
+            photos: Vec::new(),
+        };
+        let cx = TakesContext {
+            others: &[],
+            writable: true,
+            keeping: None,
+            unsorted: true,
+            picked: None,
+            on_show: None,
+        };
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let render = |w: f32| {
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(w, 400.0),
+                    )),
+                    ..Default::default()
+                };
+                let out = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        takes_table(ui, &e, &cx, None);
+                    });
+                });
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(s) => Some((
+                            s.galley.text().to_string(),
+                            s.galley.rect.translate(s.pos.to_vec2()),
+                        )),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+            }
+            texts
+        };
+        // With the room, the tags are read whole.
+        assert!(render(1000.0).iter().any(|t| t.0 == "Analysis Only"));
+        let w = 560.0;
+        let texts = render(w);
+        let find = |what: &str| {
+            texts
+                .iter()
+                .find(|t| t.0 == what)
+                .unwrap_or_else(|| panic!("{what}: {texts:?}"))
+                .1
+        };
+        assert!(find("Size (MB)").right() <= w, "{texts:?}");
+        assert!(find("1.4").right() <= w, "{texts:?}");
+        let dates: Vec<_> = texts.iter().filter(|t| t.0.starts_with("202")).collect();
+        assert_eq!(dates.len(), 2, "{texts:?}");
+        assert!(dates.iter().all(|d| d.0.ends_with('…')), "{dates:?}");
+        // The date and its tags end before the Position column starts.
+        let position = texts
+            .iter()
+            .filter(|t| t.0 == "DU")
+            .map(|t| t.1.left())
+            .fold(f32::INFINITY, f32::min);
+        assert!(
+            texts
+                .iter()
+                .filter(|t| t.1.left() < position)
+                .all(|t| t.1.right() < position),
+            "{texts:?}"
+        );
     }
 
     /// A Positions Test's take names its kind in the table's Position

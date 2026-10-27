@@ -436,7 +436,12 @@ fn hour_label(h: &power_reserve::Hour) -> String {
     if h.span_s >= 3599.0 {
         format!("{}–{} h", h.hour, h.hour + 1)
     } else {
-        format!("{} h + {}", h.hour, crate::strip::fmt_time(h.span_s))
+        // Whole seconds, as the run's own words count them.
+        format!(
+            "{} h + {}",
+            h.hour,
+            crate::strip::fmt_time(h.span_s.floor())
+        )
     }
 }
 
@@ -696,7 +701,9 @@ mod tests {
             text.ends_with("0,100,4.2,281,0.40,90\n") || text.ends_with("0,100,4.3,281,0.40,90\n"),
             "{text}"
         );
-        assert_eq!(hour_label(&r.hours[0]), "0 h + 1:40");
+        // Whole seconds, as the run's own words count them: 99.8 s is
+        // "1 min 39 s", never a second over.
+        assert_eq!(hour_label(&r.hours[0]), "0 h + 1:39");
     }
 
     /// After a run, its two charts take the pane's height and nothing is

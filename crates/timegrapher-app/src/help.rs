@@ -313,7 +313,7 @@ pub const NO_REGULAR_BEAT: &str = "The beats found don't come at regular interva
 
 pub const POWER_RESERVE: &[&str] = &[
     "Wind the watch fully, set it to a minute marker, put it on the stand in the \
-     position set on the Current Position card, and press Start Test. The app starts a new \
+     position set on the Position card, and press Start Test. The app starts a new \
      session and listens until the watch stops. The run ends at the last beat heard \
      before ten minutes with none. Beats that come back sooner join the run, and the \
      pane says how many times they stopped and came back.",

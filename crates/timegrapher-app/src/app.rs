@@ -13891,7 +13891,12 @@ impl TimegrapherApp {
         // Before there is a take to show, or while nothing in it beats
         // regularly: where things stand, in the strip's place.
         if self.live.is_none() || self.mic_session_set_aside() {
-            return self.empty_state(ui);
+            // Scrolling where the strip is too short for it, never cut off.
+            egui::ScrollArea::vertical()
+                .id_salt("empty state")
+                .auto_shrink([false, false])
+                .show(ui, |ui| self.empty_state(ui));
+            return;
         }
         // No regular beat yet: the peaks heard, faint, if any.
         let guessing = self.no_watch_yet();
@@ -16999,9 +17004,11 @@ fn reading_limits(
             (Caveat::Breaks { count }, _) => Some((
                 format!("{count} break{}", if *count == 1 { "" } else { "s" }),
                 format!(
-                    "Listening broke off {count} {} in this stretch, such as when the \
-                     computer slept.",
-                    if *count == 1 { "time" } else { "times" }
+                    "{count} {} in this stretch: a hole in the sound, such as when the \
+                     computer slept, or a stumble where the beats stepped off together by \
+                     more than {:.0} ms.",
+                    if *count == 1 { "break" } else { "breaks" },
+                    timegrapher_core::beats::JUMP_S * 1000.0
                 ),
             )),
             // A sliver that would show as 0.0 s is left unsaid.
