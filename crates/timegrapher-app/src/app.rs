@@ -20442,6 +20442,32 @@ mod tests {
         let t = app.free_table(&egui::Context::default()).unwrap();
         let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
         assert_eq!(cu.2, guided::FreeCell::Short, "{t:?}");
+        // Seven seconds more: 12 s measured.
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 7.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let live = app.live.as_mut().unwrap();
+        for b in audio.samples.chunks(960) {
+            live.push(b);
+        }
+        let t = app.free_table(&egui::Context::default()).unwrap();
+        let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
+        assert!(
+            matches!(cu.2, guided::FreeCell::Read(Some(_), Some(_), Some(_))),
+            "{t:?}"
+        );
+        // A second masked in its middle leaves 11 s with no 10 s clear to
+        // read: the row says so, never a row of dashes.
+        let end = app.latest_s();
+        app.masked.push((end - 7.0, end - 6.0));
+        let t = app.free_table(&egui::Context::default()).unwrap();
+        let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
+        assert_eq!(cu.2, guided::FreeCell::Unread, "{t:?}");
     }
 
     #[test]
