@@ -341,6 +341,78 @@ pub struct Take {
     pub power_reserve: Option<crate::power_reserve::Summary>,
 }
 
+impl Take {
+    /// What the take measured and is, as the facts the app and
+    /// `timegrapher watches` list for it: a Power Reserve run, its
+    /// positions, its length, the readings it ended on (beat error as its
+    /// size) and its marks. Each surface joins them as it lays them out.
+    pub fn facts(&self) -> Vec<String> {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(r) = &self.power_reserve {
+            parts.push(format!(
+                "Power Reserve {}{}",
+                crate::power_reserve::run_text(r.run_s),
+                match r.ending {
+                    crate::power_reserve::Ending::Stopped => "",
+                    _ => " (still running at the end)",
+                }
+            ));
+        }
+        let names: Vec<String> = self
+            .positions
+            .iter()
+            .map(|p| Position::parse(p).map_or_else(|| p.clone(), |x| x.name().to_string()))
+            .collect();
+        if !names.is_empty() {
+            parts.push(names.join(", "));
+        }
+        if let Some(d) = self.duration_s.filter(|_| self.power_reserve.is_none()) {
+            parts.push(length_text(d));
+        }
+        if let Some(a) = &self.at_end {
+            if let Some(r) = a.rate() {
+                parts.push(format!("{r:+.1} s/d"));
+            }
+            if let Some(x) = a.amplitude_deg {
+                parts.push(format!("{x:.0}°"));
+            }
+            if let Some(b) = a.beat_error_ms {
+                parts.push(format!("{:.1} ms", b.abs()));
+            }
+        }
+        if !self.audio {
+            parts.push("Analysis Only".into());
+        }
+        if self.incomplete {
+            parts.push("Incomplete".into());
+        }
+        parts
+    }
+}
+
+/// A length of time as the app writes it: `1:30:00`, or `4:05` under an
+/// hour.
+pub fn length_text(t: f64) -> String {
+    let s = t.max(0.0).round() as u64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+/// A size on disk as the app shows it: `7.7 GB`, `58.3 MB`, `912 kB`,
+/// `40 bytes`.
+pub fn size_text(n: u64) -> String {
+    let n = n as f64;
+    match n {
+        n if n >= 1e9 => format!("{:.1} GB", n / 1e9),
+        n if n >= 1e6 => format!("{:.1} MB", n / 1e6),
+        n if n >= 1e3 => format!("{:.0} kB", n / 1e3),
+        n => format!("{n:.0} bytes"),
+    }
+}
+
 /// One watch and its takes, newest first.
 #[derive(Debug, Clone)]
 pub struct WatchEntry {
@@ -2159,5 +2231,15 @@ value = "£9,000"
         let back: Watch = toml::from_str(&toml::to_string_pretty(&w).unwrap()).unwrap();
         assert_eq!(back, w);
         assert_ne!(Watch::new("a").id, Watch::new("a").id);
+    }
+
+    #[test]
+    fn sizes_and_lengths_read_as_the_app_shows_them() {
+        assert_eq!(size_text(40), "40 bytes");
+        assert_eq!(size_text(912_400), "912 kB");
+        assert_eq!(size_text(58_300_000), "58.3 MB");
+        assert_eq!(size_text(7_700_000_000), "7.7 GB");
+        assert_eq!(length_text(245.0), "4:05");
+        assert_eq!(length_text(5400.0), "1:30:00");
     }
 }
