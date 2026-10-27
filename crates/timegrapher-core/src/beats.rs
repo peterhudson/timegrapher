@@ -797,20 +797,60 @@ pub fn jumps(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
 /// ([`Beat::quality`]).
 pub const JUMP_QUALITY: f32 = 0.4;
 
+/// Good beats [`jumps_among_good`] reads at a time: enough for their
+/// typical intervals, and the beats around a step.
+pub const JUMP_LOOK: usize = 4 * MIN_SIDE_BEATS + JUMP_CONTEXT;
+
 /// [`jumps`] on the good beats alone (better than [`JUMP_QUALITY`]), the
 /// one jump search for a whole file and for live listening alike. Where
 /// the sound was lost for a moment (a dropout in the audio), the tracker
 /// follows noise for a few seconds until it finds the beats again; those
 /// noise beats would hide the step from the beats either side of it, and
 /// the count across such a stretch is a guess that swaps Tick and Tock
-/// half the time. Positions are in `beats`; `before` may hold noise beats
-/// too (see [`good_tail_start`]).
+/// half the time. The good beats are read [`JUMP_LOOK`] at a time, each
+/// stretch half over the last, as live listening reads them on each pass:
+/// where the watch stumbles for a minute or two, its scattered timing
+/// would otherwise hide every step in a longer stretch. Positions are in
+/// `beats`; `before` may hold noise beats too (see [`good_tail_start`]).
 pub fn jumps_among_good(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
     let good = |b: &Beat| b.quality > JUMP_QUALITY;
     let at: Vec<usize> = (0..beats.len()).filter(|&k| good(&beats[k])).collect();
-    let found: Vec<Beat> = at.iter().map(|&k| beats[k]).collect();
-    let before: Vec<Beat> = before.iter().copied().filter(good).collect();
-    jumps(&found, &before).into_iter().map(|p| at[p]).collect()
+    let all: Vec<Beat> = before
+        .iter()
+        .copied()
+        .filter(good)
+        .chain(at.iter().map(|&k| beats[k]))
+        .collect();
+    let n = all.len() - at.len();
+    // The typical intervals from all of them, surer than a stretch's own.
+    let Some(step) = typical_steps(&all) else {
+        return Vec::new();
+    };
+    let mut found: Vec<usize> = Vec::new();
+    let mut a = 0;
+    loop {
+        let b = (a + JUMP_LOOK).min(all.len());
+        found.extend(
+            jumps_on(&all[a..b], step)
+                .into_iter()
+                .map(|p| a + p)
+                .filter(|&p| p + 2 * JUMP_SPAN >= n)
+                .map(|p| p.saturating_sub(n)),
+        );
+        if b == all.len() {
+            break;
+        }
+        a += JUMP_LOOK / 2;
+    }
+    found.sort_unstable();
+    // A step seen from two stretches may land a beat or two apart.
+    let mut out: Vec<usize> = Vec::new();
+    for p in found {
+        if out.last().is_none_or(|&q| p > q + 2) {
+            out.push(p);
+        }
+    }
+    out.into_iter().map(|p| at[p]).collect()
 }
 
 /// Where in `beats` the last `n` good beats (better than [`JUMP_QUALITY`])
@@ -827,22 +867,46 @@ pub fn good_tail_start(beats: &[Beat], n: usize) -> usize {
 }
 
 fn jumps_in(beats: &[Beat]) -> Vec<usize> {
-    // The typical interval after an even beat and after an odd one: they
-    // differ by twice the beat error.
+    typical_steps(beats).map_or_else(Vec::new, |step| jumps_on(beats, step))
+}
+
+/// The intervals after an even beat and after an odd one, between beats
+/// numbered one apart.
+fn side_intervals(beats: &[Beat]) -> [Vec<f64>; 2] {
     let mut after = [Vec::new(), Vec::new()];
     for p in beats.windows(2) {
         if p[1].index == p[0].index + 1 {
             after[p[0].index.rem_euclid(2) as usize].push(p[1].time - p[0].time);
         }
     }
+    after
+}
+
+fn median_of(v: &mut [f64]) -> f64 {
+    v.sort_by(|a, b| a.total_cmp(b));
+    v[v.len() / 2]
+}
+
+/// The typical interval after an even beat and after an odd one: they
+/// differ by twice the beat error. `None` with fewer than
+/// [`MIN_SIDE_BEATS`] of either.
+fn typical_steps(beats: &[Beat]) -> Option<[f64; 2]> {
+    let mut after = side_intervals(beats);
+    if after.iter().any(|v| v.len() < MIN_SIDE_BEATS) {
+        return None;
+    }
+    Some([median_of(&mut after[0]), median_of(&mut after[1])])
+}
+
+/// [`jumps_in`] on `beats` with the typical intervals `step`, which may be
+/// read from more beats than these: a short stretch's own would be less
+/// sure.
+fn jumps_on(beats: &[Beat], step: [f64; 2]) -> Vec<usize> {
+    let after = side_intervals(beats);
     if after.iter().any(|v| v.len() < MIN_SIDE_BEATS) {
         return Vec::new();
     }
-    let med = |v: &mut Vec<f64>| {
-        v.sort_by(|a, b| a.total_cmp(b));
-        v[v.len() / 2]
-    };
-    let step = [med(&mut after[0]), med(&mut after[1])];
+    let med = |v: &mut Vec<f64>| median_of(v);
     // Beats that scatter like noise (an empty stand) have no timing to
     // jump from: the median interval's spread must be under a quarter of a
     // jump, where a watch's is a tenth of a millisecond or two.

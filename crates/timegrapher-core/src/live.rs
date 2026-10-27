@@ -185,10 +185,8 @@ pub struct LiveAnalyzer {
     sides: beats::SideCheck,
 }
 
-/// Good beats looked at for a step in their timing ([`beats::jumps`]) on
-/// each pass: enough for its typical intervals, and the beats around a
-/// step.
-const JUMP_LOOK: usize = 4 * beats::MIN_SIDE_BEATS + beats::JUMP_CONTEXT;
+/// Good beats looked at for a step in their timing on each pass.
+const JUMP_LOOK: usize = beats::JUMP_LOOK;
 
 /// How many candidate peaks [`LiveAnalyzer::candidates`] keeps: about four
 /// minutes at 28,800 beats per hour, more than a strip shows.
