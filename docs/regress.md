@@ -15,6 +15,13 @@ down) holds a `session.toml` whose readings carry tg's numbers for that file
 (`reference = { rate, amplitude, beat_error, source }`, see
 [sessions](sessions.md)).
 
+tg reads the same recording on the sound card's own clock, so a take whose
+references are all on that clock (`clock = "sound_card"`, or no `clock`) is
+read on it too: no clock log, USB lines or card correction is applied, and
+rates are compared like with like. A take with a reference on its
+instrument's own clock (`clock = "own"`) is read corrected, as `session`
+reads it.
+
 ## The public corpus
 
 The takes live in the public

@@ -883,6 +883,54 @@ fn the_tab_rows_arrows_stay_put_and_grey_at_its_ends() {
     assert_eq!(ends[2], ends[0], "back at the start");
 }
 
+/// A Power Reserve Test set up from Watches opens its pane at a pane's
+/// least, 140 points with its tab bar, the Paper Strip taking what it
+/// gives up.
+#[test]
+fn the_power_reserve_pane_opens_at_its_least() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    for (w, h) in [(1280.0, 820.0), (800.0, 600.0)] {
+        let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
+        let pass = |app: &mut TimegrapherApp| {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| app.panels(ctx));
+        };
+        set_pane_visible(&mut app.panes.tiles, Pane::PowerReserve, false);
+        for _ in 0..3 {
+            pass(&mut app);
+        }
+        let row = |app: &TimegrapherApp| {
+            let id = app.panes.tiles.find_pane(&Pane::PowerReserve).unwrap();
+            let tabs = app.panes.tiles.parent_of(id).unwrap();
+            app.panes.tiles.rect(tabs).unwrap().height()
+        };
+        let strip = |app: &TimegrapherApp| {
+            let id = app.panes.tiles.find_pane(&Pane::Strip).unwrap();
+            let tabs = app.panes.tiles.parent_of(id).unwrap();
+            app.panes.tiles.rect(tabs).unwrap().height()
+        };
+        let (before, was) = (strip(&app), row(&app));
+        // At 1280 × 820 the bottom row starts taller; at 800 × 600 it is
+        // at its least already.
+        assert!(w < 1000.0 || was > MIN_PANE_H + 1.0, "{w}: {was}");
+        app.reveal_pane(Pane::PowerReserve);
+        for _ in 0..3 {
+            pass(&mut app);
+        }
+        assert!((row(&app) - MIN_PANE_H).abs() < 1.5, "{w}: {}", row(&app));
+        assert!(
+            strip(&app) >= before + (was - MIN_PANE_H) - 1.5,
+            "{w}: {} {before}",
+            strip(&app)
+        );
+    }
+}
+
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and
 /// share the choice: picking Amplitude on one picks it on the other.
 /// Every other steadiness pane keeps its own switches.

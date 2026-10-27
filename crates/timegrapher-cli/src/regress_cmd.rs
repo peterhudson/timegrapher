@@ -395,6 +395,13 @@ fn measure_all(
                     o: &opts,
                     tty: false,
                     quiet,
+                    // tg read these recordings on their sound card's
+                    // clock: our rates go beside its on the same clock.
+                    card_clock: m
+                        .recordings
+                        .iter()
+                        .filter_map(|e| e.reference.as_ref())
+                        .all(|r| r.same_clock_as(false)),
                 };
                 let r = if let Some(p) = provenance {
                     session_cmd::read_one_with_context(&m.recordings[i], &ctx).map(

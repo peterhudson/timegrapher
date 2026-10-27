@@ -57,8 +57,9 @@ pub const CACHE_FILE: &str = ".cache.json";
 /// take reads differently, so a cache an earlier build wrote is read
 /// afresh. Apart from [`FORMAT`]: a new cache never stops an older build
 /// opening the library, which just makes its own cache again. 2: `at_end`
-/// gained `rate_corrected_s_per_day`.
-const CACHE_FORMAT: u32 = 2;
+/// gained `rate_corrected_s_per_day`. 3: a recording's USB lines correct
+/// that rate over its clock log.
+const CACHE_FORMAT: u32 = 3;
 pub const LOCK_FILE: &str = ".library.lock";
 /// The folder of takes not yet filed under a watch.
 pub const UNSORTED: &str = "Unsorted";
@@ -1219,6 +1220,29 @@ fn stamp(dir: &Path) -> Stamp {
     s
 }
 
+/// The sound card's error from the USB lines of `files`' first, ppm slow
+/// ([`crate::clock::usb_lines`]), kept per file and its modified time, so
+/// a library read again doesn't decode its takes again.
+fn usb_ppm(files: &[PathBuf]) -> Option<f64> {
+    type Seen = std::collections::HashMap<PathBuf, (Option<std::time::SystemTime>, Option<f64>)>;
+    static SEEN: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+    let first = files.first()?;
+    let modified = fs::metadata(first).and_then(|m| m.modified()).ok();
+    if let Ok(seen) = SEEN.lock() {
+        if let Some((at, ppm)) = seen.as_ref().and_then(|s| s.get(first)) {
+            if *at == modified {
+                return *ppm;
+            }
+        }
+    }
+    let ppm = crate::clock::usb_lines(files).ok().flatten().map(|u| u.ppm);
+    if let Ok(mut seen) = SEEN.lock() {
+        seen.get_or_insert_with(Default::default)
+            .insert(first.clone(), (modified, ppm));
+    }
+    ppm
+}
+
 /// What a take folder says about itself.
 fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
     let manifest: Option<Manifest> = match fs::read_to_string(dir.join("session.toml")) {
@@ -1257,14 +1281,18 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
     let at = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_f64);
     // The rate kept is as heard, on the sound card's clock; the take's
     // clock log corrects it, as reading the take does, when it measures
-    // the clock well enough to.
+    // the clock well enough to, and the recording's USB lines set the
+    // rate instead wherever they are, the log then placing only breaks.
     let ppm = || {
         let m = manifest.as_ref().filter(|_| audio && !incomplete)?;
         let first = m.recordings.first()?;
         let listed: Vec<String> = m.recordings.iter().map(|r| r.file.clone()).collect();
         let files = crate::recording_order::recordings_in(dir, &listed).ok()?;
-        crate::clock::of_take(dir, first.clock.as_deref()?, &files)
-            .ok()
+        let mut fit = crate::clock::of_take(dir, first.clock.as_deref()?, &files).ok()?;
+        if let Some(ppm) = usb_ppm(&files) {
+            fit.rate_from_usb(ppm);
+        }
+        Some(fit)
             .filter(crate::clock::ClockFit::corrects)
             .map(|f| f.ppm)
     };
@@ -1425,6 +1453,67 @@ mod tests {
         assert_eq!(a.rate(), Some(3.5));
     }
 
+    /// A take whose recording carries USB lines keeps its rate corrected
+    /// by them, not by its clock log, which then only places breaks: as
+    /// reading the take and `timegrapher series` do.
+    #[test]
+    fn a_takes_usb_lines_set_its_rate_over_its_clock_log() {
+        let dir = scratch("usb-lines");
+        fs::create_dir_all(&dir).unwrap();
+        let fs_hz = 48_000u32;
+        let n = fs_hz as usize * 60;
+        // Quiet noise, and USB lines at 5, 6 and 7 kHz from a card 20 ppm
+        // slow.
+        let mut s = 7u64;
+        let mut samples: Vec<f32> = (0..n)
+            .map(|_| {
+                s = s
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (((s >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * 0.02) as f32
+            })
+            .collect();
+        for (f, a) in [(5000.0, 0.002), (6000.0, 0.003), (7000.0, 0.002)] {
+            let f = f * (1.0 + 20e-6);
+            for (i, v) in samples.iter_mut().enumerate() {
+                *v += (a * (std::f64::consts::TAU * f * i as f64 / fs_hz as f64).sin()) as f32;
+            }
+        }
+        let audio = crate::audio::Audio {
+            samples,
+            sample_rate: fs_hz,
+        };
+        crate::audio::write_wav(&dir.join("audio-001.wav"), &audio).unwrap();
+        // A log that would correct on its own, at 50 ppm.
+        let mut log = String::from("unix_s,frames\n");
+        for k in 0..13 {
+            let audio_s = 5.0 * k as f64;
+            log += &format!(
+                "{:.6},{}\n",
+                1_700_000_000.0 + audio_s * (1.0 + 50e-6),
+                (audio_s * fs_hz as f64) as u64
+            );
+        }
+        fs::write(dir.join("clock.csv"), log).unwrap();
+        fs::write(
+            dir.join("session.toml"),
+            "bph = 28800\n\n[[recording]]\nfile = '.'\nposition = 'DU'\nclock = 'clock.csv'\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("session.json"),
+            r#"{"result":{"rate_s_per_day":3.5,"amplitude_deg":281.0,"beat_error_unlock_ms":-0.4}}"#,
+        )
+        .unwrap();
+        let a = read_take(&dir, 0).unwrap().at_end.unwrap();
+        let usb = crate::clock::usb_lines(&[dir.join("audio-001.wav")])
+            .unwrap()
+            .expect("lines found");
+        assert!((usb.ppm - 20.0).abs() < 0.5, "{}", usb.ppm);
+        let want = crate::clockstore::correct_rate(3.5, usb.ppm);
+        assert_eq!(a.rate_corrected_s_per_day, Some(want));
+    }
+
     #[test]
     fn a_library_lists_its_watches_and_their_takes() {
         let root = scratch("lists");
@@ -1569,6 +1658,12 @@ mod tests {
         let want = format!("\"format\":{CACHE_FORMAT}");
         assert!(cache.contains(&want), "{cache}");
         let old = cache.replace("3.5", "9.5").replace(&want, "\"format\":1");
+        fs::write(root.join(CACHE_FILE), old).unwrap();
+        lib.scan();
+        assert_eq!(rate(&lib), Some(3.5));
+        // Nor one from the build before USB lines corrected a take's rate.
+        let cache = fs::read_to_string(root.join(CACHE_FILE)).unwrap();
+        let old = cache.replace("3.5", "9.5").replace(&want, "\"format\":2");
         fs::write(root.join(CACHE_FILE), old).unwrap();
         lib.scan();
         assert_eq!(rate(&lib), Some(3.5));

@@ -400,15 +400,28 @@ pub fn help_with_key(
     } else {
         resp.on_hover_ui(|ui| body(ui, false))
     };
+    // Below the "?", or above it where there is more room there (a pane
+    // at the window's foot).
+    let screen = ui.ctx().content_rect();
+    let below = screen.bottom() - resp.rect.bottom() - 16.0;
+    let above = resp.rect.top() - screen.top() - 16.0;
+    let up = below < 240.0 && above > below;
+    const DOWN: [egui::RectAlign; 2] = [egui::RectAlign::BOTTOM_START, egui::RectAlign::BOTTOM_END];
+    const UP: [egui::RectAlign; 2] = [egui::RectAlign::TOP_START, egui::RectAlign::TOP_END];
+    let sides: &[egui::RectAlign] = if up { &UP } else { &DOWN };
     egui::Popup::from_toggle_button_response(&resp)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .width(360.0)
+        .align(sides[0])
+        .align_alternatives(sides)
         .show(|ui| {
             // A long explanation and its key of icons can be taller than
-            // the room below the "?": it scrolls from its start rather
-            // than running off the window's edge.
-            let room = ui.ctx().content_rect().bottom() - ui.max_rect().top() - 16.0;
-            let mut scroll = egui::ScrollArea::vertical().max_height(room.max(160.0));
+            // the room on its side of the "?": it scrolls from its start,
+            // its bar drawn at rest, rather than running off the window's
+            // edge.
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+            let room = if up { above } else { below } - 24.0;
+            let mut scroll = egui::ScrollArea::vertical().max_height(room.max(80.0));
             // Each time it opens, from its title.
             if !open {
                 scroll = scroll.vertical_scroll_offset(0.0);

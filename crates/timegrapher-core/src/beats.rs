@@ -274,7 +274,12 @@ pub const TEMPLATE_TRIM: f64 = 0.25;
 /// Trimmed mean (see [`TEMPLATE_TRIM`]) of the windows from `PRE_S` before
 /// to `POST_S` after each time.
 pub fn trimmed_template(env: &[f32], fs: f64, times: &[f64]) -> Vec<f32> {
-    window_stat(env, fs, times, PRE_S, POST_S, |c| {
+    trimmed_template_from(env, fs, times, PRE_S)
+}
+
+/// [`trimmed_template`] from `pre_s` before each time.
+pub fn trimmed_template_from(env: &[f32], fs: f64, times: &[f64], pre_s: f64) -> Vec<f32> {
+    window_stat(env, fs, times, pre_s, POST_S, |c| {
         crate::dsp::trimmed_mean_f32(c, TEMPLATE_TRIM)
     })
 }

@@ -527,23 +527,27 @@ fn reserve_results(
     let mut cfg = StreamConfig::default();
     cfg.analysis.bph = bph;
     let paths: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
-    let log = stream::analyze_files(&paths, &cfg, |_| {})
+    let mut log = stream::analyze_files(&paths, &cfg, |_| {})
         .map_err(|e| format!("{}: {e}", dir.display()))?;
     let info = audio::info(paths[0]).map_err(|e| format!("{}: {e}", paths[0].display()))?;
-    let clock = fs::read_to_string(dir.join("clock.csv"))
-        .ok()
-        .and_then(|t| {
-            timegrapher_core::clock::parse_log(&t, info.sample_rate, info.bytes_per_frame).ok()
-        })
-        .and_then(|pairs| timegrapher_core::clock::ClockFit::for_rates(&pairs).ok())
-        .map(|mut fit| {
-            // The recording's USB lines, when it has them, correct the
-            // rates; the log then gives its breaks.
-            if let Ok(Some((ppm, _))) = crate::clock_cmd::usb(&files) {
-                fit.rate_from_usb(ppm);
-            }
-            fit
-        });
+    // Its clock and breaks, as every command opens a take. A clock log
+    // that cannot be read leaves the results on the sound card's clock.
+    let log_path = dir.join("clock.csv");
+    let mut clock = crate::clock_cmd::resolve(
+        log_path.is_file().then_some(log_path.as_path()),
+        &info,
+        log.duration_s,
+        || crate::clock_cmd::usb(&files),
+        || crate::clock_cmd::correction(&files[0], None, None),
+    )
+    .ok()
+    .flatten()
+    .map(|a| a.fit);
+    let breaks = timegrapher_core::take::breaks(
+        &mut log,
+        timegrapher_core::take::Listed::Files(&paths),
+        clock.as_mut(),
+    );
     let beat_s = 3600.0 / f64::from(log.bph.max(1));
     let heard = power_reserve::heard(&log.beats, beat_s);
     let ending = if heard.stopped(log.duration_s) {
@@ -557,7 +561,6 @@ fn reserve_results(
         clock.as_ref().map_or(s, |c| c.map(s))
     })
     .ok_or("no beat was heard in the take")?;
-    let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
     r.hours = power_reserve::hours(
         &log,
         clock.as_ref(),
@@ -982,6 +985,60 @@ fn print_report(r: &Report) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Power Reserve take's hours are read across the pauses its
+    /// session.json lists, as `session` reads a take: an hour's span is
+    /// true time, the pause's included.
+    #[test]
+    fn a_power_reserve_hour_spans_the_pauses_its_take_lists() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-record-pause-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // 300 s of a watch, heard for the first 90.03 s and from 210.03 s.
+        let (pause, gap) = (90.03, 120.0);
+        let watch = generate(
+            &SynthConfig {
+                duration_s: 300.0,
+                rate_s_per_day: 6.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let sr = watch.sample_rate;
+        let cut = |t: f64| (t * sr as f64) as usize;
+        let mut samples = watch.samples[..cut(pause)].to_vec();
+        samples.extend_from_slice(&watch.samples[cut(pause + gap)..]);
+        audio::write_wav(
+            &dir.join("take_part01-001.wav"),
+            &audio::Audio {
+                samples,
+                sample_rate: sr,
+            },
+        )
+        .unwrap();
+        fs::write(
+            dir.join("session.json"),
+            format!(r#"{{"breaks": [{{"audio_s": {pause}, "gap_s": {gap}}}]}}"#),
+        )
+        .unwrap();
+        let r = reserve_results(
+            &dir,
+            "2026-10-27T18:00:00Z",
+            Position::parse("DU").unwrap(),
+            Some(28800),
+        )
+        .unwrap();
+        let heard_s = r.last_beat_s - r.first_beat_s;
+        assert_eq!(r.hours.len(), 1);
+        assert!(
+            (r.hours[0].span_s - (heard_s + gap)).abs() < 1.0,
+            "an hour of {} s for {heard_s} s heard and a {gap} s pause",
+            r.hours[0].span_s
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     fn options(folder: PathBuf) -> Options {
         Options {
