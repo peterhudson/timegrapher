@@ -7720,10 +7720,10 @@ impl TimegrapherApp {
             } else {
                 "Power Reserve Test"
             };
-            let watch = if self.watch.is_empty() {
+            let watch = if named.is_empty() {
                 "No watch picked".to_string()
             } else {
-                self.watch.clone()
+                named
             };
             return format!("{name} · {watch} · {state}");
         }
