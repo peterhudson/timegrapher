@@ -170,8 +170,7 @@ impl Recorder {
             name = format!("{name}_{watch}");
         }
         name = format!("{name}_{}", safe_name(&info.position));
-        let dir = parent.join(name);
-        fs::create_dir_all(&dir)?;
+        let dir = new_dir(parent, &name)?;
         // Best effort: a system that can't lock only loses the in-use check.
         let lock = File::create(lock_path(&dir))
             .ok()
@@ -926,6 +925,26 @@ impl Drop for SaveUpdate {
     }
 }
 
+/// A new folder `name` under `parent`, or `name_2`, `name_3` and on when
+/// that is taken (a take started in the same second as another, with the
+/// same watch and position): never one that already exists, whose files a
+/// new recording would overwrite.
+fn new_dir(parent: &Path, name: &str) -> io::Result<PathBuf> {
+    fs::create_dir_all(parent)?;
+    for n in 1.. {
+        let dir = match n {
+            1 => parent.join(name),
+            n => parent.join(format!("{name}_{n}")),
+        };
+        match fs::create_dir(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+    unreachable!()
+}
+
 /// `2026-10-08T21-04-05` for a folder name, from a [`utc`] time.
 fn stamp_of(utc: &str) -> String {
     utc[..19]
@@ -1022,6 +1041,57 @@ mod tests {
         assert!(!in_use(&dir));
         remove_stale_lock(&dir);
         assert!(!lock_path(&dir).exists());
+        let _ = fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn two_takes_started_in_one_second_keep_their_own_folders() {
+        // A Quick Listen stopped and started again within the second: the
+        // first take's folder and files stay as they were.
+        let parent = std::env::temp_dir().join(format!("tg-rec-same-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&parent);
+        let info = || SessionInfo {
+            watch: "Same".into(),
+            position: "DU".into(),
+            lift_deg: 52.0,
+            bph: None,
+            device: "test".into(),
+            sample_rate: 8000,
+            bits: 16,
+            software: "test".into(),
+        };
+        let block = |at| Block {
+            samples: vec![0.25; 8000],
+            at,
+        };
+        let (first, second) = loop {
+            let mut a = Recorder::start(&parent, info()).unwrap();
+            a.write(&block(SystemTime::now())).unwrap();
+            let a = a.finish(None).unwrap();
+            let kept: Vec<(std::ffi::OsString, Vec<u8>)> = fs::read_dir(&a)
+                .unwrap()
+                .map(|e| {
+                    let e = e.unwrap();
+                    (e.file_name(), fs::read(e.path()).unwrap())
+                })
+                .collect();
+            let b = Recorder::start(&parent, info()).unwrap();
+            if a.file_name().unwrap().to_string_lossy()[..19] == stamp_of(b.started_utc()) {
+                break ((a, kept), b);
+            }
+            drop(b);
+            let _ = fs::remove_dir_all(&parent);
+        };
+        let ((a, kept), b) = (first, second);
+        assert_ne!(a, b.dir());
+        assert_eq!(
+            b.dir().file_name(),
+            Some(format!("{}_2", a.file_name().unwrap().to_string_lossy()).as_ref())
+        );
+        for (name, bytes) in &kept {
+            assert_eq!(&fs::read(a.join(name)).unwrap(), bytes, "{name:?}");
+        }
+        drop(b);
         let _ = fs::remove_dir_all(&parent);
     }
 
