@@ -176,9 +176,9 @@ pub struct LiveAnalyzer {
     masked: Vec<(f64, f64)>,
     /// Whether the sound card's clock is corrected, for the caveats.
     clock_known: bool,
-    /// The sound card's clock error, ppm slow, that the rates are
-    /// corrected for ([`Self::set_rate_clock`]); none, the rates as heard.
-    rate_ppm: Option<f64>,
+    /// The take's clock the rates are corrected on
+    /// ([`Self::set_rate_clock`]); none, the rates as heard.
+    rate_clock: Option<crate::clock::ClockFit>,
     /// Tick and Tock told apart across each jump by their sound, as a
     /// whole file's reading tells them. Readings that name a side are left
     /// out until it has, and in a stretch it never could.
@@ -222,7 +222,7 @@ impl LiveAnalyzer {
             breaks: Vec::new(),
             masked: Vec::new(),
             clock_known: false,
-            rate_ppm: None,
+            rate_clock: None,
         }
     }
 
@@ -477,13 +477,34 @@ impl LiveAnalyzer {
         self.clock_known = clock_known;
     }
 
-    /// Correct the rates read for a sound card clock `ppm` slow, as a
-    /// recording's own clock log measures it ([`crate::clock::ClockFit`]),
-    /// so they are the rates `timegrapher session` reads on that log; none
+    /// Correct the rates read on the recording's own clock, `clock` (its
+    /// log, or its USB lines' figure), as `timegrapher session` reads them:
+    /// each reading on the clock's mapping over the reading's own span, so
+    /// a clock that drifts corrects each reading by its error then. None
     /// leaves them as heard, on the card's clock. A corrected clock is a
     /// known one.
-    pub fn set_rate_clock(&mut self, ppm: Option<f64>) {
-        self.rate_ppm = ppm;
+    pub fn set_rate_clock(&mut self, clock: Option<&crate::clock::ClockFit>) {
+        // Set every frame, so copied only when it changes.
+        let same = |a: &crate::clock::ClockFit, b: &crate::clock::ClockFit| {
+            let key = |c: &crate::clock::ClockFit| {
+                (c.ppm, c.points, c.span_s, c.breaks.len(), c.map(c.span_s))
+            };
+            key(a) == key(b)
+        };
+        match (&self.rate_clock, clock) {
+            (Some(a), Some(b)) if same(a, b) => {}
+            (None, None) => {}
+            _ => self.rate_clock = clock.cloned(),
+        }
+    }
+
+    /// A clock's error over audio `from..to`, ppm slow: its mapping's
+    /// slope there.
+    fn clock_ppm(c: &crate::clock::ClockFit, from: f64, to: f64) -> f64 {
+        if to - from < 1e-6 {
+            return c.ppm;
+        }
+        ((c.map(to) - c.map(from)) / (to - from) - 1.0) * 1e6
     }
 
     /// Change the lift angle. Amplitude is proportional to the lift angle
@@ -878,7 +899,7 @@ impl LiveAnalyzer {
                 no_watch_reason: no_watch.unwrap_or_default(),
                 bph_heard: None,
                 lift_known: self.cfg.analysis.lift_known,
-                clock_known: self.clock_known || self.rate_ppm.is_some(),
+                clock_known: self.clock_known || self.rate_clock.is_some(),
                 beats: hi - lo,
                 expected: bph.map_or(0.0, |b| b as f64 / 3600.0 * span_s),
                 clipped_fraction: clipped_fraction.unwrap_or(0.0),
@@ -904,8 +925,9 @@ impl LiveAnalyzer {
             time_s: end_s,
             bph,
             rate_s_per_day: heard(fit.map(|f| f.rate_s_per_day)).map(|v| {
-                self.rate_ppm
-                    .map_or(v, |p| crate::clockstore::correct_rate(v, p))
+                self.rate_clock.as_ref().map_or(v, |c| {
+                    crate::clockstore::correct_rate(v, Self::clock_ppm(c, from, end_s))
+                })
             }),
             beat_error_ms: sided(fit.map(|f| f.beat_error_ms)),
             beat_error_unlock_ms: sided(med(&|w| w.beat_error_unlock_ms)),
@@ -1187,6 +1209,75 @@ mod tests {
             by_count: Vec::new(),
             snippets: Vec::new(),
         }
+    }
+
+    /// A take's clock that drifts corrects each reading by its error over
+    /// that reading, as `session::measure` reads the take on the clock's
+    /// mapping, not by its one figure for the whole take.
+    #[test]
+    fn a_drifting_clock_corrects_each_reading_by_its_error_then() {
+        // The card runs from 0 to 80 ppm slow over five hours, long enough
+        // for its log's mapping to follow the drift: true time is
+        // t + 40e-6 t² / 18000 of audio time t.
+        let dur = 18_000.0;
+        let true_of = |t: f64| t + 40e-6 * t * t / dur;
+        let pairs: Vec<(f64, f64)> = (0..=300)
+            .map(|k| {
+                let t = 60.0 * k as f64;
+                (t, 1_700_000_000.0 + true_of(t))
+            })
+            .collect();
+        let fit = crate::clock::ClockFit::for_rates(&pairs).unwrap();
+        assert!(fit.corrects() && fit.tracks_drift);
+        // A watch keeping true time exactly: each beat at a true 0.125 s,
+        // heard at the audio time that maps to it.
+        let audio_of = |tt: f64| {
+            let mut t = tt;
+            for _ in 0..4 {
+                t -= true_of(t) - tt;
+            }
+            t
+        };
+        let n = (dur / 0.125) as i64;
+        let mut log = viewer_phase_log(0.0, 0.0);
+        log.duration_s = dur;
+        log.jumps.clear();
+        log.beats = (0..n)
+            .map(|index| Beat {
+                index,
+                time: audio_of(index as f64 * 0.125),
+                quality: 1.0,
+            })
+            .collect();
+        // What `session::measure` reads over audio `from..to`: the beats
+        // put on the clock's mapping, then fitted.
+        let on_clock = |from: f64, to: f64| {
+            let beats: Vec<Beat> = log
+                .beats
+                .iter()
+                .filter(|b| b.time >= from && b.time <= to)
+                .map(|b| Beat {
+                    time: fit.map(b.time),
+                    ..*b
+                })
+                .collect();
+            crate::timing::fit(&beats, 28800).unwrap().rate_s_per_day
+        };
+        let mut a = LiveAnalyzer::from_log(log.clone(), LiveConfig::default());
+        a.set_rate_clock(Some(&fit));
+        for end in [1_000.0, 9_000.0, 17_000.0] {
+            let card = a.reading_at(end, 60.0).rate_s_per_day.expect("a rate");
+            let session = on_clock(end - 60.0, end);
+            assert!((card - session).abs() < 0.05, "{end}: {card} {session}");
+        }
+        // Late in the take the card is about 76 ppm slow, against 40 over
+        // the whole take: the take's one figure would be 3 s/d out there.
+        let heard = LiveAnalyzer::from_log(log.clone(), LiveConfig::default())
+            .reading_at(17_000.0, 60.0)
+            .rate_s_per_day
+            .unwrap();
+        let one = crate::clockstore::correct_rate(heard, fit.ppm);
+        assert!((one - on_clock(16_940.0, 17_000.0)).abs() > 1.0, "{one}");
     }
 
     /// A recording read whole keeps its jumps as breaks: no reading after

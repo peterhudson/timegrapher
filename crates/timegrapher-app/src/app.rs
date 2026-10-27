@@ -4736,7 +4736,7 @@ impl TimegrapherApp {
         }
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
-        live.set_rate_clock(self.take_rate_ppm());
+        live.set_rate_clock(self.take_rate_clock());
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -11919,9 +11919,9 @@ impl TimegrapherApp {
             return;
         };
         fit.rate_from_usb(ppm);
-        let rate_ppm = self.take_rate_ppm();
+        let clock = self.take_rate_clock().cloned();
         if let Some(l) = self.live.as_mut() {
-            l.set_rate_clock(rate_ppm);
+            l.set_rate_clock(clock.as_ref());
             self.rebuild_trend();
         }
         // The Steadiness panes read again on the corrected clock.
@@ -11933,10 +11933,13 @@ impl TimegrapherApp {
     /// none where its clock log measures the clock too loosely to correct
     /// by (core's `ClockFit::corrects`).
     fn take_rate_ppm(&self) -> Option<f64> {
-        self.take_clock
-            .as_ref()
-            .filter(|f| f.corrects())
-            .map(|f| f.ppm)
+        self.take_rate_clock().map(|f| f.ppm)
+    }
+
+    /// The take's own clock the readings are corrected on, where it
+    /// corrects: its mapping, which may drift over the take.
+    fn take_rate_clock(&self) -> Option<&timegrapher_core::clock::ClockFit> {
+        self.take_clock.as_ref().filter(|f| f.corrects())
     }
 
     /// The error of [`Self::reading_clock`], ppm slow, for what is read
@@ -16445,10 +16448,9 @@ impl eframe::App for TimegrapherApp {
         let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
         self.usb_poll();
-        let rate_ppm = self.take_rate_ppm();
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
-            l.set_rate_clock(rate_ppm);
+            l.set_rate_clock(self.take_clock.as_ref().filter(|f| f.corrects()));
         }
         // A file dropped on the window is opened, where the desktop passes
         // drops on (not yet on Wayland).
