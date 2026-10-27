@@ -591,12 +591,80 @@ pub enum SideCall {
     /// They sound the other way round: every beat from the jump on is
     /// numbered one further, which swaps them back.
     Swapped,
-    /// Too alike to tell: the count stands.
+    /// Too alike to tell, by their sound and by the beat error's sign:
+    /// the count stands.
     Unsure,
 }
 
 /// A good beat's window, by the beat's time.
 type SideSnip = (f64, Vec<f32>);
+
+/// Below this size, ms, a side check does not read the sides from the
+/// sign of the beat error: about three times the split's scatter (about
+/// 0.035 ms) over the [`MIN_SIDE_BEATS`] beats of each side a side check
+/// reads after a jump, when each beat scatters by 0.1 ms.
+pub const SIDE_SPLIT_MIN_MS: f64 = 0.1;
+
+/// Half the difference between the interval from an even beat to the odd
+/// beat after it and that from an odd beat to the even beat after it, ms,
+/// from each side's beat times: the beat error's sign and size near the
+/// drop, which turns over when the sides swap. Only next beats count (a
+/// gap under one and a half times the typical one). `None` with fewer than
+/// half [`MIN_SIDE_BEATS`] intervals each way.
+pub fn timing_split(even: &[f64], odd: &[f64]) -> Option<f64> {
+    let mut all: Vec<(f64, usize)> = even
+        .iter()
+        .map(|&t| (t, 0))
+        .chain(odd.iter().map(|&t| (t, 1)))
+        .collect();
+    all.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut gaps: Vec<f64> = all
+        .windows(2)
+        .filter(|p| p[0].1 != p[1].1)
+        .map(|p| p[1].0 - p[0].0)
+        .collect();
+    if gaps.is_empty() {
+        return None;
+    }
+    let typical = crate::dsp::median(&mut gaps);
+    let mut after = [Vec::new(), Vec::new()];
+    for p in all.windows(2) {
+        let d = p[1].0 - p[0].0;
+        if p[0].1 != p[1].1 && d < 1.5 * typical {
+            after[p[0].1].push(d);
+        }
+    }
+    if after.iter().any(|v| v.len() < MIN_SIDE_BEATS / 2) {
+        return None;
+    }
+    let [mut a, mut b] = after;
+    Some(500.0 * (crate::dsp::median(&mut a) - crate::dsp::median(&mut b)))
+}
+
+/// The sides after a jump told apart by the sign of the beat error
+/// ([`timing_split`]) before and after it: kept when it is the same,
+/// swapped when it turned over, unsure when it is under
+/// [`SIDE_SPLIT_MIN_MS`] either side, or changed size by more than half.
+/// Each is the beat times of the even side, then the odd.
+pub fn side_by_timing(before: &[Vec<f64>; 2], after: &[Vec<f64>; 2]) -> SideCall {
+    let (Some(b), Some(a)) = (
+        timing_split(&before[0], &before[1]),
+        timing_split(&after[0], &after[1]),
+    ) else {
+        return SideCall::Unsure;
+    };
+    if b.abs() < SIDE_SPLIT_MIN_MS
+        || a.abs() < SIDE_SPLIT_MIN_MS
+        || (a.abs() - b.abs()).abs() > 0.5 * a.abs().max(b.abs())
+    {
+        return SideCall::Unsure;
+    }
+    if a.signum() == b.signum() {
+        SideCall::Kept
+    } else {
+        SideCall::Swapped
+    }
+}
 
 /// The one check of Tick and Tock across a jump, for a whole file and for
 /// live listening alike.
@@ -607,9 +675,11 @@ type SideSnip = (f64, Vec<f32>);
 /// position) the count across the hole is a guess, and half the time it
 /// swaps the sides. Tick and Tock seldom sound the same, so the first
 /// [`MIN_SIDE_BEATS`] good beats of each side after the jump are compared
-/// with the last [`SIDE_BEATS`] before it ([`side_margin`]). Those are the same
-/// beats however the sound arrives, a file in chunks or listening in
-/// passes, so the answer is the same too.
+/// with the last [`SIDE_BEATS`] before it ([`side_margin`]). Where they
+/// sound too alike to tell, the sign of the beat error before and after
+/// tells them ([`side_by_timing`]), when it is large enough to have one.
+/// Those are the same beats however the sound arrives, a file in chunks or
+/// listening in passes, so the answer is the same too.
 ///
 /// Feed it each good beat in time order ([`SideCheck::beat`]) and each
 /// jump ([`SideCheck::jump`], which may come after beats past it were
@@ -718,13 +788,31 @@ impl SideCheck {
                 .collect()
         }
         let now = SideSounds::of(first(&got[0]), first(&got[1]));
-        let call = match (&was, &now) {
+        let by_sound = match (&was, &now) {
             (Some(b), Some(a)) => match side_margin(b, a) {
                 m if m <= -SIDE_MARGIN_MIN => SideCall::Swapped,
                 m if m >= SIDE_MARGIN_MIN => SideCall::Kept,
                 _ => SideCall::Unsure,
             },
             _ => SideCall::Unsure,
+        };
+        // Sides that sound alike are told apart by their timing, when the
+        // beat error is large enough to have a sign on both sides of the
+        // jump.
+        let call = match by_sound {
+            SideCall::Unsure => {
+                let times = |s: &[SideSnip]| s.iter().map(|x| x.0).collect::<Vec<f64>>();
+                let after: [Vec<f64>; 2] = [
+                    times(&got[0][..MIN_SIDE_BEATS]),
+                    times(&got[1][..MIN_SIDE_BEATS]),
+                ];
+                let before = self
+                    .kept
+                    .each_ref()
+                    .map(|k| k.iter().map(|x| x.0).collect());
+                side_by_timing(&before, &after)
+            }
+            call => call,
         };
         if call != SideCall::Unsure {
             self.sided.push(t);
@@ -888,9 +976,6 @@ fn jumps_in(beats: &[Beat]) -> Vec<usize> {
         let m = med(&mut v);
         Some((m, v[JUMP_SPAN - 2] - v[1] <= 0.5 * JUMP_S))
     };
-    let span = |p: usize, s: i64, forward: bool| -> Option<f64> {
-        spread(p, s, forward).and_then(|(m, tight)| tight.then_some(m))
-    };
     // Both sides' steps at `p`, when both sides have the beats to tell:
     // at most one of the four stretches (each side, before and after) may
     // scatter. Where the watch stumbles, one side can scatter for a while
@@ -930,7 +1015,7 @@ fn jumps_in(beats: &[Beat]) -> Vec<usize> {
             // nearer the timing after it than the timing before it.
             let lo = best.saturating_sub(2 * JUMP_SPAN).max(1);
             let hi = (best + 2 * JUMP_SPAN).min(off.len() - 1);
-            let level = |q: usize, forward: bool| span(best, side(q), forward);
+            let level = |q: usize, forward: bool| spread(best, side(q), forward).map(|x| x.0);
             let after_it = |q: usize| match (level(q, false), level(q, true)) {
                 (Some(back), Some(fore)) => (off[q] - fore).abs() < (off[q] - back).abs(),
                 _ => false,
