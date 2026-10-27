@@ -173,19 +173,6 @@ impl Test {
     }
 }
 
-/// A run's length in words: hours and minutes, with its seconds under an
-/// hour, so a short run never reads a minute short.
-fn run_words(s: f64) -> String {
-    if s < 60.0 {
-        format!("{} s", s.max(0.0).floor() as u64)
-    } else if s < 3600.0 {
-        let s = s.floor() as u64;
-        format!("{} min {:02} s", s / 60, s % 60)
-    } else {
-        power_reserve::run_text(s)
-    }
-}
-
 /// A run's ending in words.
 pub fn ending_text(e: Ending) -> &'static str {
     match e {
@@ -269,7 +256,7 @@ pub fn pane(
         };
         let line = format!(
             "{} · {state}{}",
-            run_words(t.run_so_far_s()),
+            power_reserve::run_text(t.run_so_far_s()),
             pauses.as_deref().unwrap_or("")
         );
         let mut hover = "The run so far, from the first beat heard to now".to_string();
@@ -284,7 +271,7 @@ pub fn pane(
         return;
     }
     // Ended: one line of the result.
-    let run = run_words(t.results.as_ref().map_or(t.run_so_far_s(), |r| r.run_s));
+    let run = power_reserve::run_text(t.results.as_ref().map_or(t.run_so_far_s(), |r| r.run_s));
     let ending = t
         .ending
         .map(|e| format!(" · {}, in {}", ending_text(e), t.position.label()))
@@ -906,17 +893,6 @@ mod tests {
             .unwrap_or_else(|| panic!("{texts:?}"));
         assert!(row.1.bottom() <= 520.0, "{row:?}");
         assert!(shown(&texts, "280°") || shown(&texts, "281°"), "{texts:?}");
-    }
-
-    /// A run under a minute reads its seconds, under an hour its minutes
-    /// and seconds, never a minute short; an hour or more, hours and
-    /// minutes.
-    #[test]
-    fn a_short_run_reads_its_seconds() {
-        assert_eq!(run_words(112.4), "1 min 52 s");
-        assert_eq!(run_words(59.0), "59 s");
-        assert_eq!(run_words(13.7), "13 s");
-        assert_eq!(run_words(166_320.0), "46 h 12 min");
     }
 
     /// The pane holds no more height than it shows: one line before a run,
