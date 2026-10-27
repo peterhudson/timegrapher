@@ -1188,9 +1188,10 @@ series' colour what a dot is and how many are drawn: "10 s readings
 error, measured every 2 s),
 **Periods** (the period search's score at each period on a logarithmic
 axis, with the 1% false-alarm line dashed, the calibre's wheels' periods
-marked, and the strongest component labelled; **Log
-Scale** in its toolbar draws the scores on a log scale, so a small peak
-beside a tall one still shows), **Cycle**
+marked, and the strongest component labelled; **dB
+Scale** in its toolbar draws the scores in decibels below the tallest,
+0 dB at the top down to −30 dB, so a small peak beside a tall one still
+shows), **Cycle**
 (the readings folded at the cycle the tests found: every cycle as dots,
 coloured by when it came from purple for the first to yellow-green for the
 last, so slow wander shows as a run of colour; a box round the middle half
@@ -1226,8 +1227,10 @@ empty and shown as "not read" in the key under the map, which is titled
 with what the colour measures and its unit (**Timing Swing (ms)** for the
 rate's map, the timing's swing at each period, not a rate in s/d;
 **Amplitude Swing (°)**; **Beat Error Swing (ms)**); the wheels' turns are
-dotted across it and named at the right; **Log Scale** in the toolbar
-colours the sizes on a log scale over a range of 300 to 1; the pointer
+dotted across it and named at the right; **dB Scale** in the toolbar
+colours the sizes in decibels below the brightest, over a range of 300 to
+1, so the key reads about −50 dB to 0 dB (a swing is a size, so twenty
+times its log); the pointer
 over a cell shows its size with its unit, its period and its time, as
 "Timing Swing 1.8 ms · period 12 s · at 3:20"; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
 period is a bold dotted line and half of it, twice a turn as an off-centre wheel

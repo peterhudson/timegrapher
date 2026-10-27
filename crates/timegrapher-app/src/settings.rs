@@ -45,12 +45,15 @@ pub struct Settings {
     pub steady_series: [bool; 3],
     /// The series each Steadiness pane shows: rate, amplitude, beat error.
     pub steady_shown: Vec<(steady::View, [bool; 3])>,
-    /// The Periods pane's scores on a log scale.
-    pub periods_log: bool,
+    /// The Periods pane's scores in dB (a build before the dB Scale
+    /// called it a log scale).
+    #[serde(alias = "periods_log")]
+    pub periods_db: bool,
     /// The FFT pane's rate as the beat timing's spectrum, in ms.
     pub fft_timing: bool,
-    /// The STFT and Wavelet Map panes' colours on a log scale.
-    pub maps_log: bool,
+    /// The STFT and Wavelet Map panes' colours in dB.
+    #[serde(alias = "maps_log")]
+    pub maps_db: bool,
     /// The calibre's wheels marked on the Periods, FFT, STFT Map and
     /// Wavelet Map panes' period axes.
     pub show_wheels: bool,
@@ -142,9 +145,9 @@ impl Default for Settings {
             theme: ThemePreference::System,
             steady_series: RATE_ONLY,
             steady_shown: Vec::new(),
-            periods_log: false,
+            periods_db: false,
             fft_timing: false,
-            maps_log: false,
+            maps_db: false,
             show_wheels: true,
             steady_info: false,
             positions_settle_s: crate::guided::SETTLE_S,
@@ -178,5 +181,24 @@ pub fn load(storage: &dyn eframe::Storage) -> Option<Settings> {
 pub fn store(storage: &mut dyn eframe::Storage, s: &Settings) {
     if let Ok(json) = serde_json::to_string(s) {
         storage.set_string(KEY, json);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Settings kept by a build before the dB Scale keep their choice:
+    /// a log scale then is the dB Scale now.
+    #[test]
+    fn an_older_log_scale_choice_is_kept_as_db() {
+        let mut v = serde_json::to_value(Settings::default()).unwrap();
+        let o = v.as_object_mut().unwrap();
+        o.remove("periods_db");
+        o.remove("maps_db");
+        o.insert("periods_log".into(), true.into());
+        o.insert("maps_log".into(), true.into());
+        let s: Settings = serde_json::from_value(v).unwrap();
+        assert!(s.periods_db && s.maps_db);
     }
 }

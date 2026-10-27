@@ -2206,12 +2206,12 @@ pub struct TimegrapherApp {
     rate_2s: RateTwoS,
     /// The series each Steadiness pane shows: rate, amplitude, beat error.
     steady_series: std::collections::BTreeMap<steady::View, [bool; 3]>,
-    /// The Periods pane's scores on a log scale.
-    periods_log: bool,
+    /// The Periods pane's scores in dB.
+    periods_db: bool,
     /// The FFT pane's rate as the beat timing's spectrum, in ms.
     fft_timing: bool,
-    /// The STFT and Wavelet Map panes' colours on a log scale.
-    maps_log: bool,
+    /// The STFT and Wavelet Map panes' colours in dB.
+    maps_db: bool,
     /// The calibre's wheels marked on the period axes.
     show_wheels: bool,
     /// The Steadiness panes' Info panel open, in every view alike.
@@ -2389,9 +2389,9 @@ impl TimegrapherApp {
             theme: self.theme,
             steady_series: RATE_ONLY,
             steady_shown: self.steady_series.iter().map(|(v, s)| (*v, *s)).collect(),
-            periods_log: self.periods_log,
+            periods_db: self.periods_db,
             fft_timing: self.fft_timing,
-            maps_log: self.maps_log,
+            maps_db: self.maps_db,
             show_wheels: self.show_wheels,
             steady_info: self.steady_info,
             positions_settle_s: self.guided_settle_s,
@@ -2438,9 +2438,9 @@ impl TimegrapherApp {
             theme,
             steady_series,
             steady_shown,
-            periods_log,
+            periods_db,
             fft_timing,
-            maps_log,
+            maps_db,
             show_wheels,
             steady_info,
             positions_settle_s,
@@ -2506,9 +2506,9 @@ impl TimegrapherApp {
         self.sound_opts = sound;
         self.folded = folded.into_iter().collect();
         self.theme = theme;
-        self.periods_log = periods_log;
+        self.periods_db = periods_db;
         self.fft_timing = fft_timing;
-        self.maps_log = maps_log;
+        self.maps_db = maps_db;
         self.show_wheels = show_wheels;
         self.steady_info = steady_info;
         self.guided_settle_s =
@@ -2689,9 +2689,9 @@ impl TimegrapherApp {
             pane_top: 0.0,
             hist_cumulative: false,
             steady_series: Default::default(),
-            periods_log: false,
+            periods_db: false,
             fft_timing: false,
-            maps_log: false,
+            maps_db: false,
             show_wheels: true,
             steady_info: false,
             scope_view: scope::View::default(),
@@ -7434,11 +7434,11 @@ impl TimegrapherApp {
             theme::bar_gap(ui);
             theme::tool_switch(
                 ui,
-                Icon::Log,
+                Icon::Db,
                 accent,
-                "Log Scale",
-                &mut self.periods_log,
-                "Draw the scores on a log scale, so a small peak beside a tall one still shows",
+                "dB Scale",
+                &mut self.periods_db,
+                "dB Scale: show the scores in decibels. Off: linear.",
             );
         }
         if view == steady::View::Fft {
@@ -7457,12 +7457,11 @@ impl TimegrapherApp {
             theme::bar_gap(ui);
             theme::tool_switch(
                 ui,
-                Icon::Log,
+                Icon::Db,
                 accent,
-                "Log Scale",
-                &mut self.maps_log,
-                "Colour the sizes on a log scale, over a range of 300 to 1, so weak lines \
-                 beside strong ones still show",
+                "dB Scale",
+                &mut self.maps_db,
+                "dB Scale: show the sizes in decibels. Off: linear.",
             );
         }
         if matches!(
@@ -7471,7 +7470,7 @@ impl TimegrapherApp {
         ) {
             theme::tool_switch(
                 ui,
-                Icon::Gears,
+                Icon::Wheel,
                 accent,
                 "Wheel Periods",
                 &mut self.show_wheels,
@@ -7607,9 +7606,9 @@ impl TimegrapherApp {
             view,
             &self.series_shown(view),
             steady::Opts {
-                periods_log: self.periods_log,
+                periods_db: self.periods_db,
                 fft_timing: self.fft_timing,
-                maps_log: self.maps_log,
+                maps_db: self.maps_db,
                 wheels: self.show_wheels,
                 info: self.steady_info,
             },

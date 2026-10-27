@@ -283,6 +283,23 @@ fn wheel_rows(
     }
 }
 
+/// The words at the key's two ends. In dB the darkest is its level below
+/// the brightest, 0 dB: a swing is a size, so twenty times its log.
+fn key_ends(s: Scale) -> (String, String) {
+    if s.log {
+        let db = 20.0 * (s.lo / s.hi).log10();
+        (
+            format!("{:.0} dB", db + 0.0).replace('-', "−"),
+            format!("0 dB, {} and above", number_text(s.hi)),
+        )
+    } else {
+        (
+            number_text(s.lo),
+            format!("{} and above", number_text(s.hi)),
+        )
+    }
+}
+
 /// Under the map: the colours from the smallest size to the largest, and
 /// an empty swatch for cells not read.
 fn key_row(ui: &mut egui::Ui, m: &TimeFrequency, s: Scale, pal: &theme::Palette) {
@@ -290,7 +307,8 @@ fn key_row(ui: &mut egui::Ui, m: &TimeFrequency, s: Scale, pal: &theme::Palette)
         let small = |t: String| RichText::new(t).small().color(pal.text_secondary);
         ui.label(RichText::new(key_title(m)).small().color(pal.text));
         ui.add_space(6.0);
-        ui.label(small(number_text(s.lo)));
+        let (lo, hi) = key_ends(s);
+        ui.label(small(lo));
         let (r, _) = ui.allocate_exact_size(Vec2::new(120.0, 10.0), egui::Sense::hover());
         let n = 60;
         for i in 0..n {
@@ -302,7 +320,7 @@ fn key_row(ui: &mut egui::Ui, m: &TimeFrequency, s: Scale, pal: &theme::Palette)
                 viridis(i as f32 / (n - 1) as f32),
             );
         }
-        ui.label(small(format!("{} and above", number_text(s.hi))));
+        ui.label(small(hi));
         ui.add_space(12.0);
         let (e, _) = ui.allocate_exact_size(Vec2::new(14.0, 10.0), egui::Sense::hover());
         ui.painter().rect_stroke(
@@ -312,9 +330,6 @@ fn key_row(ui: &mut egui::Ui, m: &TimeFrequency, s: Scale, pal: &theme::Palette)
             egui::StrokeKind::Inside,
         );
         ui.label(small("not read".into()));
-        if s.log {
-            ui.label(small("· log scale".into()));
-        }
     })
     .response
     .on_hover_text(
@@ -413,6 +428,23 @@ mod tests {
         assert!((s.at((0.01f64 * 3.0).sqrt()) - 0.5).abs() < 1e-6);
         assert!(Scale::of(&[vec![f64::NAN]], false).is_none());
         assert_eq!(size_text(&m, 3.04), "3.0°");
+    }
+
+    /// In dB the key reads from the floor below the brightest to 0 dB: a
+    /// swing is a size, so a 300 to 1 range is about −50 dB.
+    #[test]
+    fn the_keys_db_scale_reads_down_from_0_db() {
+        let s = Scale {
+            lo: 0.01,
+            hi: 3.0,
+            log: true,
+        };
+        assert_eq!(
+            key_ends(s),
+            ("−50 dB".to_string(), "0 dB, 3.0 and above".to_string())
+        );
+        let s = Scale { log: false, ..s };
+        assert_eq!(key_ends(s).1, "3.0 and above");
     }
 
     /// The key says what its colour measures, with the unit: the rate's

@@ -1986,7 +1986,7 @@ pub enum Icon {
     CrownRight,
     Export,
     Bucket,
-    Log,
+    Wheel,
     Copy,
     SaveTable,
     Calipers,
