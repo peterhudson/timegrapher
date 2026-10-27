@@ -608,7 +608,11 @@ pub fn measure_masked(
                 _ => 0.0,
             },
             listened_s,
-            breaks: m.breaks.len(),
+            breaks: crate::breaks::events(
+                &m.breaks.iter().map(|b| b.audio_s).collect::<Vec<_>>(),
+                &log.beats,
+                log.bph,
+            ),
             sides_by_count: log
                 .by_count
                 .iter()
