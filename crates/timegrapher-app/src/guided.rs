@@ -1436,6 +1436,9 @@ pub enum FreeCell {
     NotMarked,
     /// Marked, but under the 10 s one reading needs.
     Short,
+    /// 10 s or more marked, but no stretch of it clear enough to read
+    /// (cut by masks, breaks or a beat lost).
+    Unread,
     /// Its rate, amplitude and beat error (a size).
     Read(Option<f64>, Option<f64>, Option<f64>),
 }
@@ -1463,7 +1466,10 @@ pub fn free_table(t: &session::PositionsTable) -> FreeTable {
             let sp = session::Position::parse(p.code())?;
             let r = t.rows.iter().find(|r| r.position == sp)?;
             let cell = match &r.measurement {
-                Some(m) => FreeCell::Read(m.rate_s_per_day, m.amplitude_deg, m.beat_error()),
+                Some(m) => match (m.rate_s_per_day, m.amplitude_deg, m.beat_error()) {
+                    (None, None, None) => FreeCell::Unread,
+                    (rate, amp, be) => FreeCell::Read(rate, amp, be),
+                },
                 None if r.duration_s > 0.0 => FreeCell::Short,
                 None => FreeCell::NotMarked,
             };
@@ -1547,6 +1553,13 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                     FreeCell::Short => {
                         right(ui, table_duration(*duration), false, pal.text);
                         right(ui, "Under 10 s".into(), false, pal.text_secondary);
+                        for _ in 0..2 {
+                            ui.label("");
+                        }
+                    }
+                    FreeCell::Unread => {
+                        right(ui, table_duration(*duration), false, pal.text);
+                        right(ui, "No reading".into(), false, pal.text_secondary);
                         for _ in 0..2 {
                             ui.label("");
                         }
