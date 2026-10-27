@@ -986,6 +986,60 @@ fn print_report(r: &Report) {
 mod tests {
     use super::*;
 
+    /// A Power Reserve take's hours are read across the pauses its
+    /// session.json lists, as `session` reads a take: an hour's span is
+    /// true time, the pause's included.
+    #[test]
+    fn a_power_reserve_hour_spans_the_pauses_its_take_lists() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-record-pause-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // 300 s of a watch, heard for the first 90.03 s and from 210.03 s.
+        let (pause, gap) = (90.03, 120.0);
+        let watch = generate(
+            &SynthConfig {
+                duration_s: 300.0,
+                rate_s_per_day: 6.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let sr = watch.sample_rate;
+        let cut = |t: f64| (t * sr as f64) as usize;
+        let mut samples = watch.samples[..cut(pause)].to_vec();
+        samples.extend_from_slice(&watch.samples[cut(pause + gap)..]);
+        audio::write_wav(
+            &dir.join("take_part01-001.wav"),
+            &audio::Audio {
+                samples,
+                sample_rate: sr,
+            },
+        )
+        .unwrap();
+        fs::write(
+            dir.join("session.json"),
+            format!(r#"{{"breaks": [{{"audio_s": {pause}, "gap_s": {gap}}}]}}"#),
+        )
+        .unwrap();
+        let r = reserve_results(
+            &dir,
+            "2026-10-27T18:00:00Z",
+            Position::parse("DU").unwrap(),
+            Some(28800),
+        )
+        .unwrap();
+        let heard_s = r.last_beat_s - r.first_beat_s;
+        assert_eq!(r.hours.len(), 1);
+        assert!(
+            (r.hours[0].span_s - (heard_s + gap)).abs() < 1.0,
+            "an hour of {} s for {heard_s} s heard and a {gap} s pause",
+            r.hours[0].span_s
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     fn options(folder: PathBuf) -> Options {
         Options {
             folder: Some(folder),

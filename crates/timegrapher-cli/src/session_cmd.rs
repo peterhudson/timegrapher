@@ -475,6 +475,10 @@ pub(crate) struct Ctx<'a> {
     pub tty: bool,
     /// No progress lines (the file names stay out of logs).
     pub quiet: bool,
+    /// Rates on the sound card's own clock, uncorrected: for setting
+    /// beside references read from the same recordings on that clock
+    /// ([`session::Reference::same_clock_as`]), as `regress` does.
+    pub card_clock: bool,
 }
 
 /// The stretch of a recording an entry reads, seconds from its start:
@@ -603,6 +607,7 @@ fn read_one_inner(
         .as_ref()
         .map(|t| crate::archive::sha256_hex(t.as_bytes()));
     let mut clock = match &kept {
+        _ if c.card_clock => None,
         // Read as it was recorded: its sound is not here.
         Some(k) => take::clock(
             log_text.as_deref(),
@@ -820,6 +825,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         o,
         tty: std::io::stderr().is_terminal(),
         quiet: false,
+        card_clock: false,
     };
     let readings: Vec<Reading> = m
         .recordings
@@ -1188,6 +1194,7 @@ mod tests {
                 o,
                 tty: false,
                 quiet: true,
+                card_clock: false,
             };
             lift_known(&c, cal)
         };
@@ -1229,6 +1236,7 @@ mod tests {
                 o: &o,
                 tty: false,
                 quiet: true,
+                card_clock: false,
             };
             let (cfg, cal) = stream_config(&c).unwrap();
             assert_eq!(lift_known(&c, cal), expected, "{text}, {flag:?}");
@@ -1347,6 +1355,7 @@ mod tests {
                 o: &o,
                 tty: false,
                 quiet: true,
+                card_clock: false,
             };
             let (cfg, _) = stream_config(&ctx).unwrap();
             assert_eq!(
@@ -1376,6 +1385,7 @@ mod tests {
             o: &o,
             tty: false,
             quiet: true,
+            card_clock: false,
         };
         assert_eq!(
             stream_config(&ctx).unwrap().0.analysis.amplitude.lift_deg,
@@ -1610,6 +1620,69 @@ mod tests {
             .to_string();
         assert_eq!(row.split(',').nth(3), Some("102.0"), "{row}");
         assert!(v["readings"][0]["shape"].is_object(), "no shape");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Without a clock log, a recording's USB lines set the rate, as in
+    /// `series` and `long`; read on the sound card's clock, as `regress`
+    /// sets readings beside tg's, they don't.
+    #[test]
+    fn usb_lines_set_the_rate_without_a_clock_log() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-session-usb-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = SynthConfig {
+            duration_s: 120.0,
+            rate_s_per_day: 0.0,
+            ..Default::default()
+        };
+        let mut audio = generate(&cfg, |_| 280.0, |_| 3.0);
+        // The lines of a card 20 ppm slow: a true 5, 6 and 7 kHz lands
+        // 20 ppm high on its clock.
+        let fs_hz = audio.sample_rate as f64;
+        for (f, a) in [(5000.0, 0.002), (6000.0, 0.003), (7000.0, 0.002)] {
+            let f = f * (1.0 + 20e-6);
+            for (i, v) in audio.samples.iter_mut().enumerate() {
+                *v += (a * (2.0 * std::f64::consts::PI * f * i as f64 / fs_hz).sin()) as f32;
+            }
+        }
+        audio::write_wav(&dir.join("take.wav"), &audio).unwrap();
+        fs::write(
+            dir.join(MANIFEST),
+            "bph = 28800\nlift = 52\n\n[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\n",
+        )
+        .unwrap();
+        let (m, base, _) = load_manifest_file(&dir.join(MANIFEST)).unwrap();
+        let o = options(None, None, None);
+        let selection = o.calibre(&m).unwrap();
+        let read = |card_clock| {
+            let c = Ctx {
+                m: &m,
+                calibre: &selection,
+                base: &base,
+                o: &o,
+                tty: false,
+                quiet: true,
+                card_clock,
+            };
+            read_one(&m.recordings[0], &c).unwrap().measurement
+        };
+        let card = read(true);
+        assert!(!card.calibrated);
+        let on_card = card.rate_s_per_day.unwrap();
+        assert!(
+            (on_card - 3.0).abs() < 0.3,
+            "rate on the card's clock {on_card}"
+        );
+        let usb = read(false);
+        assert!(usb.calibrated, "the USB lines were not used");
+        let corrected = usb.rate_s_per_day.unwrap();
+        // 20 ppm is 1.728 s/d.
+        assert!(
+            (on_card - corrected - 1.728).abs() < 0.1,
+            "{on_card} on the card's clock, {corrected} on the USB lines'"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
