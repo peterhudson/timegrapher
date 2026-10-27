@@ -892,21 +892,25 @@ fn jumps_in(beats: &[Beat]) -> Vec<usize> {
         spread(p, s, forward).and_then(|(m, tight)| tight.then_some(m))
     };
     // Both sides' steps at `p`, when both sides have the beats to tell:
-    // each side's beats sit close together on at least one side of the
-    // step. Where the watch stumbles, one side can scatter for a while
+    // at most one of the four stretches (each side, before and after) may
+    // scatter. Where the watch stumbles, one side can scatter for a while
     // before a step while the other keeps time; its median still shows
-    // the step, and the other side must step the same.
+    // the step, and the other side must step the same. Noise over both
+    // sides (a knock of the stand) scatters two or more, and says nothing.
     let steps = |p: usize| -> Option<(f64, f64)> {
-        let at = |s: i64| -> Option<f64> {
+        let mut loose = 0;
+        let mut at = |s: i64| -> Option<f64> {
             let (fore, fore_tight) = spread(p, s, true)?;
             let (back, back_tight) = if p == 0 {
-                (0.0, false)
+                (0.0, true)
             } else {
                 spread(p, s, false)?
             };
-            (fore_tight || back_tight).then_some(fore - back)
+            loose += usize::from(!fore_tight) + usize::from(!back_tight);
+            Some(fore - back)
         };
-        Some((at(0)?, at(1)?))
+        let st = (at(0)?, at(1)?);
+        (loose <= 1).then_some(st)
     };
     let jumped = |(a, b): (f64, f64)| {
         a.abs() > JUMP_S && b.abs() > JUMP_S && (a - b).abs() <= 0.5 * a.abs().max(b.abs())
