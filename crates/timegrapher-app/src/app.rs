@@ -878,7 +878,7 @@ const NEW_TAKES: [(NewTake, &str, &str); 3] = [
     (
         NewTake::Listen,
         "Listen",
-        "Listen to the watch in the position on the Current Position card, for as long as you like; \
+        "Listen to the watch in the position on the {card} card, for as long as you like; \
          Stop saves the take into the watch",
     ),
     (
@@ -5934,7 +5934,10 @@ impl TimegrapherApp {
                     ui.label(RichText::new(why).small().color(pal.text_secondary));
                 }
             });
-            let names = NEW_TAKES.map(|(_, name, hint)| (name, hint));
+            // The position card named by its title at this width.
+            let hints =
+                NEW_TAKES.map(|(_, _, hint)| hint.replace("{card}", self.position_card_title));
+            let names = std::array::from_fn(|i| (NEW_TAKES[i].1, hints[i].as_str()));
             if let Some(i) = watches::new_take_buttons(ui, names, busy) {
                 self.view = View::Bench;
                 self.new_take(NEW_TAKES[i].0, false);
@@ -7261,9 +7264,13 @@ impl TimegrapherApp {
                 self.positions_settings(ui);
                 self.export_button(ui, pane);
             }),
-            Pane::PowerReserve => theme::pane_toolbar(ui, title, help::POWER_RESERVE, |ui| {
-                self.reserve_settings(ui);
-            }),
+            Pane::PowerReserve => {
+                let help = help::power_reserve(self.position_card_title);
+                let help: Vec<&str> = help.iter().map(String::as_str).collect();
+                theme::pane_toolbar(ui, title, &help, |ui| {
+                    self.reserve_settings(ui);
+                })
+            }
             Pane::Distributions => theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
                 steady::series_switches(ui, &mut self.dist_series);
                 theme::bar_gap(ui);
@@ -11935,13 +11942,14 @@ impl TimegrapherApp {
         // Over the whole take, once it is stopped: `session`'s reading of
         // it beside the last window's figure.
         let whole = self.whole_take();
+        let whole_breaks = whole.as_ref().map_or_else(String::new, whole_breaks_text);
         // The whole take's reading, for the figure's hover.
         let whole_text = |figure: String, spread: Option<String>, span: f64| {
             let spread = spread.map_or_else(String::new, |s| format!(", {s}"));
             format!(
                 "\n\nWhole take {figure}{spread} over {}. The big figure is the last stretch \
                  of Average Over; this is the take in this position, settling left out, read \
-                 as timegrapher session reads a recording.",
+                 as timegrapher session reads a recording.{whole_breaks}",
                 strip::fmt_time(span)
             )
         };
@@ -13382,6 +13390,7 @@ impl TimegrapherApp {
             self.guided_measure_s,
             self.open_watch().is_some(),
             note.as_deref(),
+            self.position_card_title,
         );
         let Some(action) = action else { return };
         if action == guided::Action::ClearEarlier {
@@ -13469,9 +13478,13 @@ impl TimegrapherApp {
         .on_hover_text(if running {
             "The one position the watch runs down in, from wind to stop. Stop Test to \
                  change it."
+                .to_string()
         } else {
-            "The one position the watch runs down in, from wind to stop: the one set on \
-                 the Current Position card (or keys 1 to 6) when Start Test is pressed."
+            format!(
+                "The one position the watch runs down in, from wind to stop: the one set on \
+                 the {} card (or keys 1 to 6) when Start Test is pressed.",
+                self.position_card_title
+            )
         });
         theme::bar_gap(ui);
         ui.add_enabled_ui(!running, |ui| {
@@ -13676,7 +13689,7 @@ impl TimegrapherApp {
         }
         self.reserve_hours_s = now;
         let Some((first, last, whole)) = self.reserve.as_ref().and_then(|t| {
-            let whole = t.so_far.iter().take_while(|h| h.span_s >= 3599.0).count();
+            let whole = t.so_far.iter().take_while(|h| h.whole()).count();
             Some((t.heard.first_s?, t.heard.last_s?, whole))
         }) else {
             return;
@@ -13691,7 +13704,7 @@ impl TimegrapherApp {
             t.so_far.truncate(whole);
             t.so_far.extend(fresh);
             // The first whole hour brings the charts: room for them, once.
-            first_chart = whole == 0 && t.so_far.iter().any(|h| h.span_s >= 3599.0);
+            first_chart = whole == 0 && t.so_far.iter().any(|h| h.whole());
         }
         if first_chart {
             let n = self.reserve.as_ref().map_or(0, |t| t.so_far.len());
@@ -14227,7 +14240,12 @@ impl TimegrapherApp {
         // Before there is a take to show, or while nothing in it beats
         // regularly: where things stand, in the strip's place.
         if self.live.is_none() || self.mic_session_set_aside() {
-            return self.empty_state(ui);
+            // Scrolling where the strip is too short for it, never cut off.
+            egui::ScrollArea::vertical()
+                .id_salt("empty state")
+                .auto_shrink([false, false])
+                .show(ui, |ui| self.empty_state(ui));
+            return;
         }
         // No regular beat yet: the peaks heard, faint, if any.
         let guessing = self.no_watch_yet();
@@ -17265,6 +17283,22 @@ struct WholeTake {
     span: f64,
 }
 
+/// The breaks a whole take is read across, in the caveat's words: a
+/// card's own reading never reaches across one, so the whole take's hover
+/// says them.
+fn whole_breaks_text(w: &WholeTake) -> String {
+    let breaks: Vec<_> =
+        w.m.caveats
+            .iter()
+            .filter(|c| matches!(c, Caveat::Breaks { .. }))
+            .cloned()
+            .collect();
+    reading_limits("", &breaks, 0.0, 0)
+        .into_iter()
+        .map(|(_, hover)| format!(" {hover}"))
+        .collect()
+}
+
 const WHOLE_AS_SIZES: &str = "whole take is given as a size: its sign differs either side of a cut";
 
 fn reading_limits(
@@ -17336,9 +17370,11 @@ fn reading_limits(
             (Caveat::Breaks { count }, _) => Some((
                 format!("{count} break{}", if *count == 1 { "" } else { "s" }),
                 format!(
-                    "Listening broke off {count} {} in this stretch, such as when the \
-                     computer slept.",
-                    if *count == 1 { "time" } else { "times" }
+                    "{count} {} in this stretch: a hole in the sound, such as when the \
+                     computer slept, or a stumble where the beats stepped off together by \
+                     more than {:.0} ms.",
+                    if *count == 1 { "break" } else { "breaks" },
+                    timegrapher_core::beats::JUMP_S * 1000.0
                 ),
             )),
             // A sliver that would show as 0.0 s is left unsaid.
@@ -17833,6 +17869,14 @@ mod tests {
         let w = app_with(-0.4).whole_take().expect("whole take");
         let be = w.m.beat_error_ms.unwrap();
         assert!(sizes(&w));
+        // The jump is a break the whole take's hover names, as a card's
+        // own reading never reaches across it.
+        assert!(w.m.caveats.contains(&Caveat::Breaks { count: 1 }));
+        assert!(
+            whole_breaks_text(&w).starts_with(" 1 break in this stretch: a hole in the sound"),
+            "{}",
+            whole_breaks_text(&w)
+        );
         assert!((be - size).abs() < 1e-3, "{be} vs {size}");
         assert_eq!(w.m.beat_error(), Some(be));
         assert!((be - cancelled).abs() > 0.2, "{be} all but cancelled");

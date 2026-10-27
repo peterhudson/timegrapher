@@ -1125,6 +1125,7 @@ pub fn pane(
     measure_s: f64,
     watch: bool,
     note: Option<&str>,
+    card: &str,
 ) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
@@ -1175,8 +1176,10 @@ pub fn pane(
             heading(
                 ui,
                 "This Take",
-                "Each position marked on the Current Position card, read as \
-                     `timegrapher session` reads a take",
+                &format!(
+                    "Each position marked on the {card} card, read as \
+                     `timegrapher session` reads a take"
+                ),
             );
             free_grid(ui, f);
             ui.add_space(4.0);
@@ -1981,6 +1984,7 @@ mod tests {
                         60.0,
                         false,
                         None,
+                        "Current Position",
                     );
                 });
             });

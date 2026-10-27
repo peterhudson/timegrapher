@@ -174,12 +174,17 @@ impl Test {
 }
 
 /// A run's ending in words.
-pub fn ending_text(e: Ending) -> &'static str {
+pub fn ending_text(e: Ending) -> String {
     match e {
-        Ending::Stopped => "The watch stopped",
-        Ending::ByHand => "Stopped by hand while the watch still ran",
-        Ending::Limit => "Reached the 80 h limit while the watch still ran",
+        Ending::Stopped => "The watch stopped".to_string(),
+        Ending::ByHand => "Stopped by hand while the watch still ran".to_string(),
+        Ending::Limit => format!("Reached the {} limit while the watch still ran", limit_h()),
     }
+}
+
+/// The longest run, as the words say it: "80 h".
+pub fn limit_h() -> String {
+    format!("{} h", power_reserve::LIMIT_S / 3600.0)
 }
 
 /// The pane's body, in no more height than it shows: before a run one
@@ -209,8 +214,9 @@ pub fn pane(
             ui.add(egui::Label::new(RichText::new(words).color(pal.text_secondary)).truncate());
         if let Some((have, need)) = free {
             let room = format!(
-                "{} free where the take is kept; a run of up to 80 h writes up to {} of sound.",
+                "{} free where the take is kept; a run of up to {} writes up to {} of sound.",
                 gb(have),
+                limit_h(),
                 gb(need)
             );
             if have >= need {
@@ -357,7 +363,7 @@ fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
         let chart_h = ((room - table_h - gap) / 2.0).max(CHART_MIN_H);
         // While it runs the charts gain a point as each hour is whole.
         let whole = if so_far {
-            hours.iter().take_while(|h| h.span_s >= 3599.0).count()
+            hours.iter().take_while(|h| h.whole()).count()
         } else {
             hours.len()
         };
@@ -379,7 +385,7 @@ pub fn least_h(test: Option<&Test>) -> Option<f32> {
     let t = test?;
     let charts = match t.results.as_ref() {
         Some(r) => !r.hours.is_empty(),
-        None => t.so_far.iter().any(|h| h.span_s >= 3599.0),
+        None => t.so_far.iter().any(|h| h.whole()),
     };
     charts.then_some(22.0 + CHART_MIN_H + 12.0)
 }
@@ -427,10 +433,15 @@ fn cell(v: Option<f64>, d: usize, unit: &str) -> String {
 
 /// The hour column's words: "0–1 h", and the last part hour's length.
 fn hour_label(h: &power_reserve::Hour) -> String {
-    if h.span_s >= 3599.0 {
+    if h.whole() {
         format!("{}–{} h", h.hour, h.hour + 1)
     } else {
-        format!("{} h + {}", h.hour, crate::strip::fmt_time(h.span_s))
+        // Whole seconds, as the run's own words count them.
+        format!(
+            "{} h + {}",
+            h.hour,
+            crate::strip::fmt_time(power_reserve::whole_s(h.span_s))
+        )
     }
 }
 
@@ -580,7 +591,7 @@ pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
     out += &line(&["Started (UTC)".into(), r.started_utc.clone()]);
     out += &line(&["Position".into(), r.position.clone()]);
     out += &line(&["Power reserve".into(), power_reserve::run_text(r.run_s)]);
-    out += &line(&["Ended".into(), ending_text(r.ending).into()]);
+    out += &line(&["Ended".into(), ending_text(r.ending)]);
     out += "\n";
     out += &line(&[
         "Hour".into(),
@@ -690,7 +701,9 @@ mod tests {
             text.ends_with("0,100,4.2,281,0.40,90\n") || text.ends_with("0,100,4.3,281,0.40,90\n"),
             "{text}"
         );
-        assert_eq!(hour_label(&r.hours[0]), "0 h + 1:40");
+        // Whole seconds, as the run's own words count them: 99.8 s is
+        // "1 min 39 s", never a second over.
+        assert_eq!(hour_label(&r.hours[0]), "0 h + 1:39");
     }
 
     /// After a run, its two charts take the pane's height and nothing is
