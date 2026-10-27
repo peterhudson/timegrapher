@@ -65,6 +65,12 @@ pub fn gb(bytes: u64) -> String {
     format!("{:.1} GB", bytes as f64 / 1e9)
 }
 
+/// Beats a run keeps, from its first to its limit at 43,200 bph, the
+/// fastest beat rate, so its start and its hours are read from every beat
+/// of it, not only the day the Bench keeps (about 80 MB at most).
+pub const RUN_BEATS_KEPT: usize =
+    (power_reserve::LIMIT_S as usize + power_reserve::STOP_AFTER_S as usize) * 12;
+
 /// A test under way or finished.
 #[derive(Debug, Clone)]
 pub struct Test {

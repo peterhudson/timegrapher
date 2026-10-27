@@ -189,6 +189,24 @@ fn isochronism_from_two_states_of_wind() {
 }
 
 #[test]
+fn ie_pairs_only_positions_with_a_rate_in_both_states() {
+    // CH reads 0 s/d at both states of wind. 6H reads 100 s/d when full
+    // and has no rate when run down (as for no regular beat found), so it
+    // is not a position measured in both: Ie is CH's change alone, 0 s/d,
+    // not the mean of CH and 6H full against CH alone run down.
+    let mut readings = vec![
+        reading(Position::CH, 0.0, 0.0, 280.0, 0.1),
+        reading(Position::H6, 0.0, 100.0, 280.0, 0.1),
+        reading(Position::CH, 24.0, 0.0, 250.0, 0.1),
+        reading(Position::H6, 24.0, 100.0, 250.0, 0.1),
+    ];
+    readings[3].measurement.rate_s_per_day = None;
+    let rep = evaluate(&readings);
+    assert_eq!(rep.states.len(), 2);
+    assert!(close(rep.ie, 0.0, 0.6), "Ie {:?}", rep.ie);
+}
+
+#[test]
 fn large_beat_error_is_measured_not_judged() {
     // Also checks the beat rate is still guessed right with 2.5 ms of beat error.
     let readings = vec![reading(Position::CH, 0.0, 2.0, 280.0, 2.5)];
