@@ -5270,6 +5270,7 @@ impl TimegrapherApp {
             spans.clone(),
             self.masked.clone(),
             self.reading_ppm(),
+            self.average_s,
         );
         if let Some((k, w)) = self.whole_take.borrow().as_ref() {
             if *k == key {
@@ -16922,8 +16923,9 @@ fn no_regular_beat(r: &LiveReading) -> String {
 
 /// The Beat Error card's line under the whole take, when it is of sizes.
 /// What [`TimegrapherApp::whole_take`] was read from: the beats heard,
-/// the stretches, the masks and the clock's ppm.
-type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Option<f64>);
+/// the stretches, the masks, the clock's ppm and Average Over (a take
+/// shorter than three of it has none).
+type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Option<f64>, f64);
 
 /// What [`TimegrapherApp::free_table`] was read from: the beats heard,
 /// each position's settled stretches, the masks and the True Clock.
@@ -17611,6 +17613,18 @@ mod tests {
         assert!(!sizes(&w));
         assert!((be.abs() - size).abs() < 1e-3, "{be} vs {size}");
         assert!(be < 0.0, "signed: {be}");
+    }
+
+    /// A stopped take too short for its whole-take reading at one Average
+    /// Over gets it back at a shorter one: the reading is kept per Average
+    /// Over, not the first answer for every one.
+    #[test]
+    fn a_shorter_average_brings_the_whole_take_back() {
+        let mut app = synthetic(60.0, 12.0);
+        app.average_s = 60.0;
+        assert!(app.whole_take().is_none(), "under three of 60 s");
+        app.average_s = 10.0;
+        assert!(app.whole_take().is_some(), "three of 10 s and more");
     }
 
     /// The whole take line is `session`'s reading of the same stretch:

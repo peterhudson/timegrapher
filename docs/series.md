@@ -116,7 +116,9 @@ For each series:
   that comes and goes, or drifts, shows where and when it does. The
   **STFT** is the amplitude spectrum of each 20 min stretch, stepped
   5 min, every period read over the same window, from four readings up to
-  a third of the window (400 s). The **synchrosqueezed wavelet transform**
+  a third of the window (400 s); each row reads the strongest frequency
+  in its band (halfway, in log period, to the rows either side), so a line
+  between two rows reads within 20% of its size. The **synchrosqueezed wavelet transform**
   (SST) is a Morlet wavelet transform (ω0 = 6) whose window grows with the
   period, with each value moved to the period its own phase turns at,
   which sharpens a line to near its true period; it reaches up to an hour
