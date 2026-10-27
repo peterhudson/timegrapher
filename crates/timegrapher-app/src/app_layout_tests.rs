@@ -931,6 +931,72 @@ fn the_power_reserve_pane_opens_at_its_least() {
     }
 }
 
+/// A finished run in a Power Reserve pane at its least, as when a run's
+/// take is opened under a tall Paper Strip, gets room for its charts: never
+/// a sliver with its axis cut, at the design size or a small window, and
+/// never by squeezing the Paper Strip to less than it takes.
+#[test]
+fn a_finished_runs_pane_is_never_a_sliver() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    for (w, h) in [
+        (2560.0, 1440.0),
+        (1280.0, 820.0),
+        (1000.0, 700.0),
+        (800.0, 600.0),
+    ] {
+        let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
+        let pass = |app: &mut TimegrapherApp| {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| app.panels(ctx));
+        };
+        set_pane_visible(&mut app.panes.tiles, Pane::PowerReserve, false);
+        for _ in 0..3 {
+            pass(&mut app);
+        }
+        app.reveal_pane(Pane::PowerReserve);
+        for _ in 0..3 {
+            pass(&mut app);
+        }
+        let row = |app: &TimegrapherApp| {
+            let id = app.panes.tiles.find_pane(&Pane::PowerReserve).unwrap();
+            let tabs = app.panes.tiles.parent_of(id).unwrap();
+            app.panes.tiles.rect(tabs).unwrap().height()
+        };
+        assert!((row(&app) - MIN_PANE_H).abs() < 1.5, "{w}: {}", row(&app));
+        // The run's take opened, as from the Watches view.
+        let dir = std::env::temp_dir().join(format!("tg-app-sliver-{}-{w}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = reserve::finished_run(3).results.unwrap();
+        std::fs::write(dir.join(power_reserve::FILE), run.to_json()).unwrap();
+        app.load_reserve(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        for _ in 0..4 {
+            pass(&mut app);
+        }
+        let need = app.pane_need.get(&Pane::PowerReserve).copied().unwrap();
+        let tall = row(&app);
+        // Nor does the Paper Strip above give up its own least for it.
+        let strip = {
+            let id = app.panes.tiles.find_pane(&Pane::Strip).unwrap();
+            let tabs = app.panes.tiles.parent_of(id).unwrap();
+            app.panes.tiles.rect(tabs).unwrap().height()
+        };
+        assert!(strip + 1.0 >= MIN_PANE_H, "{w}: the strip {strip}");
+        // A tab bar over the pane's own need, its first chart readable.
+        assert!(tall + 1.0 >= need + 24.0, "{w}: {tall} for {need}");
+        // Where the window has room, grown to show the charts and table,
+        // but to no more than half: the Paper Strip keeps as much.
+        assert!(h < 700.0 || tall > MIN_PANE_H + 40.0, "{w}: {tall}");
+        assert!(h < 700.0 || strip + 1.0 >= tall, "{w}: {strip} {tall}");
+    }
+}
+
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and
 /// share the choice: picking Amplitude on one picks it on the other.
 /// Every other steadiness pane keeps its own switches.

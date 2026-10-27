@@ -88,7 +88,11 @@ For each series:
   Ljung–Box test combines the first 10 lags into one p-value. `memory_s`
   is the lag where the correlation falls below 1/e. `repeat_lag_s` is
   the first lag where the correlation rises back to a peak after falling,
-  which means the readings repeat.
+  which means the readings repeat. Where gaps leave fewer pairs of
+  readings at a lag than a full series would have, the test and the
+  search for a repeat weigh each lag by its pairs, and leave out a lag
+  read from under 30 pairs (`ljung_box_lags` counts the lags kept; with
+  none, `p_value` is 1): sparse readings say nothing about a cycle.
 - **Allan deviation**: the scatter of averages over τ, drawn beside the
   white line, which is what independent readings would give (the scatter
   at one reading divided by √(τ / reading)). For independent readings

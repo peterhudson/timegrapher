@@ -7,7 +7,6 @@ use crate::output;
 use serde_json::{json, Value};
 use std::path::Path;
 use timegrapher_core::library::{self, Library, Take, WatchEntry, UNSORTED};
-use timegrapher_core::session::Position;
 
 /// The library at `library`, or at `~/Timegrapher Data`, read: an error
 /// naming the folder when there is none there.
@@ -69,13 +68,13 @@ pub fn list(library: Option<&Path>, all: bool, json: bool) -> Result<(), String>
         "{}: {}, {}",
         lib.root.display(),
         count(watches.len(), "watch", "watches"),
-        bytes(lib.bytes())
+        library::size_text(lib.bytes())
     );
     if !lib.unsorted.takes.is_empty() {
         println!(
             "  {UNSORTED}: {}, made with Quick Listen, {}",
             count(lib.unsorted.takes.len(), "take", "takes"),
-            bytes(lib.unsorted.bytes())
+            library::size_text(lib.unsorted.bytes())
         );
     }
     for e in &watches {
@@ -87,7 +86,7 @@ pub fn list(library: Option<&Path>, all: bool, json: bool) -> Result<(), String>
         if let Some(t) = last_take(e) {
             parts.push(format!("newest started {t}"));
         }
-        parts.push(bytes(e.bytes()));
+        parts.push(library::size_text(e.bytes()));
         println!("  {}: {}", e.watch.name, parts.join(", "));
     }
     warn_unreadable(&lib);
@@ -137,18 +136,6 @@ pub fn show(name: &str, library: Option<&Path>, json: bool) -> Result<(), String
 
 fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
-}
-
-/// A size as the app's Watches pane shows it: `7.7 GB`, `58.3 MB`,
-/// `912 kB`, `40 bytes`.
-fn bytes(n: u64) -> String {
-    let n = n as f64;
-    match n {
-        n if n >= 1e9 => format!("{:.1} GB", n / 1e9),
-        n if n >= 1e6 => format!("{:.1} MB", n / 1e6),
-        n if n >= 1e3 => format!("{:.0} kB", n / 1e3),
-        n => format!("{n:.0} bytes"),
-    }
 }
 
 /// When the watch's newest take started, UTC.
@@ -208,58 +195,51 @@ fn print_takes(e: &WatchEntry) {
     println!(
         "  {}, {}:",
         count(e.takes.len(), "take", "takes"),
-        bytes(e.bytes())
+        library::size_text(e.bytes())
     );
     for t in &e.takes {
         println!("    {}: {}", t.name, take_line(t));
     }
 }
 
-/// A take's positions, length, the readings the app showed when it was
-/// saved (beat error as its size), its size and marks.
+/// A take's facts as the app lists them, then its size on disk.
 fn take_line(t: &Take) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    let names: Vec<String> = t
-        .positions
-        .iter()
-        .map(|p| Position::parse(p).map_or_else(|| p.clone(), |x| x.name().to_string()))
-        .collect();
-    if !names.is_empty() {
-        parts.push(names.join(", "));
-    }
-    if let Some(d) = t.duration_s {
-        parts.push(format!("{:.0} s", d));
-    }
-    if let Some(a) = &t.at_end {
-        if let Some(r) = a.rate() {
-            parts.push(format!("{r:+.1} s/d"));
-        }
-        if let Some(x) = a.amplitude_deg {
-            parts.push(format!("{x:.0}°"));
-        }
-        if let Some(b) = a.beat_error_ms {
-            parts.push(format!("{:.1} ms", b.abs()));
-        }
-    }
-    parts.push(bytes(t.bytes));
-    if !t.audio {
-        parts.push("analysis only".into());
-    }
-    if t.incomplete {
-        parts.push("incomplete".into());
-    }
-    parts.join(", ")
+    let mut parts = t.facts();
+    parts.push(library::size_text(t.bytes));
+    parts.join(" · ")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// The CLI lists a take with the app's facts: a Power Reserve Test's
+    /// take names its run, and the length reads as the app writes it.
     #[test]
-    fn sizes_read_as_the_app_shows_them() {
-        assert_eq!(bytes(40), "40 bytes");
-        assert_eq!(bytes(912_400), "912 kB");
-        assert_eq!(bytes(58_300_000), "58.3 MB");
-        assert_eq!(bytes(7_700_000_000), "7.7 GB");
+    fn a_take_line_reads_as_the_app_lists_the_take() {
+        let t = Take {
+            name: "t".into(),
+            bytes: 58_300_000,
+            audio: false,
+            incomplete: false,
+            started_utc: None,
+            duration_s: Some(5400.0),
+            positions: vec!["DU".into()],
+            at_end: None,
+            power_reserve: Some(timegrapher_core::power_reserve::Summary {
+                run_s: 5400.0,
+                ending: timegrapher_core::power_reserve::Ending::Stopped,
+                position: "DU".into(),
+            }),
+        };
+        assert_eq!(
+            take_line(&t),
+            "Power Reserve 1 h 30 min · Dial Up · Analysis Only · 58.3 MB"
+        );
+        let t = Take {
+            power_reserve: None,
+            ..t
+        };
+        assert_eq!(take_line(&t), "Dial Up · 1:30:00 · Analysis Only · 58.3 MB");
     }
 }

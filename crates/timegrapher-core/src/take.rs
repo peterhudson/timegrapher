@@ -85,6 +85,55 @@ pub fn clock(
     )
 }
 
+/// The clock of a take in the folder `dir` whose sound files are `files`,
+/// in order, for a reader with no beats to hand (a library listing a
+/// take's figures): [`clock`] from the take's clock log (`log`, a file in
+/// `dir`), USB lines (`usb_ppm`, as [`clock::usb_lines`] reads them) and
+/// known correction, with the breaks the files list placed on it
+/// ([`breaks::of_files_on_clock`]). A reader with the beats passes the
+/// clock to [`breaks`] instead.
+pub fn clock_of_files(
+    dir: &Path,
+    log: Option<&str>,
+    files: &[std::path::PathBuf],
+    usb_ppm: Option<f64>,
+    correction_ppm: Option<f64>,
+) -> Result<Option<ClockFit>, String> {
+    let first = files.first().ok_or("no sound files")?;
+    let named = |f: &Path, e: &dyn std::fmt::Display| format!("{}: {e}", f.display());
+    let info = crate::audio::info(first).map_err(|e| named(first, &e))?;
+    let text = match log {
+        Some(log) => {
+            let file = dir.join(log);
+            Some(std::fs::read_to_string(&file).map_err(|e| named(&file, &e))?)
+        }
+        None => None,
+    };
+    let mut frames = 0u64;
+    for f in files {
+        frames += crate::audio::info(f)
+            .map_err(|e| named(f, &e))?
+            .frames
+            .unwrap_or(0);
+    }
+    let duration_s = frames as f64 / info.sample_rate as f64;
+    let mut fit = clock(
+        text.as_deref(),
+        info.sample_rate,
+        info.bytes_per_frame,
+        usb_ppm,
+        correction_ppm,
+        duration_s,
+    )
+    .map_err(|e| match log {
+        Some(log) => named(&dir.join(log), &e),
+        None => e,
+    })?;
+    let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+    breaks::of_files_on_clock(&paths, fit.as_mut(), info.sample_rate);
+    Ok(fit)
+}
+
 /// Where a take lists its breaks.
 #[derive(Debug, Clone, Copy)]
 pub enum Listed<'a> {

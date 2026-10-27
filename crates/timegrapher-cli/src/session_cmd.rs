@@ -372,7 +372,10 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
             .unwrap_or(52.0)
     ));
     t.push_str("# seconds skipped at the start of each recording while the watch settles\n");
-    t.push_str(&format!("settle_s = {}\n", o.settle.unwrap_or(20.0)));
+    t.push_str(&format!(
+        "settle_s = {}\n",
+        o.settle.unwrap_or(take::SETTLE_S)
+    ));
     t.push_str("# known sound-card error, ppm slow, for recordings without a clock log\n");
     t.push_str("# card_ppm = 0.0\n");
     for f in &files {
