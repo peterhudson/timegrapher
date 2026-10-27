@@ -151,6 +151,16 @@ pub enum Caveat {
     LiftUnknown,
     /// The sound card's clock is not corrected.
     ClockUnknown,
+    /// The recording's USB lines correct the rates, and its clock log, which
+    /// would correct them on its own, measures the card more than
+    /// [`crate::clock::DISAGREE_PPM`] differently
+    /// ([`crate::clock::ClockFit::sources_disagree`]): ppm the card runs
+    /// slow by each, and the log's standard error.
+    ClockSourcesDisagree {
+        usb_ppm: f64,
+        log_ppm: f64,
+        log_ppm_sd: f64,
+    },
     /// The beats span less than [`SHORT_SPAN_S`].
     ShortSpan { span_s: f64 },
     /// The take was paused or resumed inside the stretch.
@@ -180,10 +190,21 @@ impl Caveat {
             Caveat::BeatsMissing { .. } => 4,
             Caveat::LiftUnknown => 5,
             Caveat::ClockUnknown => 6,
-            Caveat::Breaks { .. } => 7,
-            Caveat::SidesByCount { .. } => 8,
-            Caveat::Masked { .. } => 9,
-            Caveat::BeatErrorAsSize => 10,
+            Caveat::ClockSourcesDisagree { .. } => 7,
+            Caveat::Breaks { .. } => 8,
+            Caveat::SidesByCount { .. } => 9,
+            Caveat::Masked { .. } => 10,
+            Caveat::BeatErrorAsSize => 11,
+        }
+    }
+}
+
+impl From<crate::clock::SourcesDisagree> for Caveat {
+    fn from(d: crate::clock::SourcesDisagree) -> Caveat {
+        Caveat::ClockSourcesDisagree {
+            usb_ppm: d.usb_ppm,
+            log_ppm: d.log_ppm,
+            log_ppm_sd: d.log_ppm_sd,
         }
     }
 }
