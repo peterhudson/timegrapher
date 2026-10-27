@@ -329,6 +329,8 @@ enum Confirm {
     Open {
         path: PathBuf,
     },
+    /// Start Test on the Power Reserve pane: a new take of the watch.
+    ReserveStart,
 }
 
 /// A test that ended with no watch picked, asked where it goes: Keep in
@@ -1436,6 +1438,55 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
                 l.shares.set_share(c, f * total);
             }
         }
+    }
+}
+
+/// Bring the row holding `pane` (its tabs, or the pane itself) down to
+/// `h` points where it is taller, the other rows sharing the rest as they
+/// did; from where the panes were last laid out.
+fn fit_row(tiles: &mut Tiles<Pane>, pane: Pane, h: f32) {
+    let Some(id) = tiles.find_pane(&pane) else {
+        return;
+    };
+    let row = tiles
+        .parent_of(id)
+        .filter(|&p| {
+            matches!(
+                tiles.get(p),
+                Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(_)))
+            )
+        })
+        .unwrap_or(id);
+    let (Some(linear), Some(now)) = (tiles.parent_of(row), tiles.rect(row)) else {
+        return;
+    };
+    let Some(rect) = tiles.rect(linear) else {
+        return;
+    };
+    let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) = tiles.get(linear)
+    else {
+        return;
+    };
+    let shown: Vec<TileId> = l
+        .children
+        .iter()
+        .copied()
+        .filter(|&c| tiles.is_visible(c))
+        .collect();
+    let room = rect.height() - 8.0 * (shown.len() as f32 - 1.0);
+    if l.dir != LinearDir::Vertical || shown.len() < 2 || now.height() <= h || room <= h {
+        return;
+    }
+    let others: f32 = shown
+        .iter()
+        .filter(|&&c| c != row)
+        .map(|&c| l.shares[c])
+        .sum();
+    let f = h / room;
+    if let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
+        tiles.get_mut(linear)
+    {
+        l.shares.set_share(row, others * f / (1.0 - f));
     }
 }
 
@@ -5541,6 +5592,7 @@ impl TimegrapherApp {
         let ask = match what {
             Confirm::PickWatch(_) => self.line_pick_asks(),
             Confirm::NewTake(_) => self.new_take_asks(),
+            Confirm::ReserveStart => self.line_pick_asks(),
             _ => self.needs_save_confirmation(),
         };
         if !ask {
@@ -5557,7 +5609,9 @@ impl TimegrapherApp {
             ui.label(
                 RichText::new(match what {
                     Confirm::NewSession => "Start a new session?",
-                    Confirm::NewTake(_) => "Start a new take without saving?",
+                    Confirm::NewTake(_) | Confirm::ReserveStart => {
+                        "Start a new take without saving?"
+                    }
                     // A watch picked on the Watch line is the next take's.
                     Confirm::PickWatch(_) => "Start a new take without saving?",
                     Confirm::Quit => "Quit without saving?",
@@ -5592,6 +5646,7 @@ impl TimegrapherApp {
                         None,
                         Confirm::NewSession
                         | Confirm::NewTake(_)
+                        | Confirm::ReserveStart
                         | Confirm::PickWatch(_)
                         | Confirm::Open { .. }
                         | Confirm::Microphone
@@ -5683,6 +5738,7 @@ impl TimegrapherApp {
         match what {
             Confirm::NewSession => self.new_session(),
             Confirm::NewTake(kind) => self.new_take(kind, true),
+            Confirm::ReserveStart => self.start_reserve_asked(true),
             Confirm::PickWatch(id) => {
                 // Asked over a Quick Listen still listening: it stops now.
                 self.pause();
@@ -13076,19 +13132,33 @@ impl TimegrapherApp {
                 ],
             );
         });
-        if !running {
-            theme::bar_gap(ui);
+        theme::bar_gap(ui);
+        if running {
             if theme::tool_word_button(
                 ui,
-                Icon::Listen,
-                "Start Test",
-                "Start listening in the Current Position card's position and run until the \
-                 watch stops, keeping the computer awake. Wind the watch fully first.",
+                Icon::Stop,
+                "Stop Test",
+                "End the run now and keep the take: its run time then says it was stopped by \
+                 hand. A closed lid or Sleep from a menu still stops the computer, and the run \
+                 with it; a laptop is best left on mains power.",
                 true,
                 None,
             ) {
-                self.start_reserve();
+                if let Some(t) = self.reserve.as_mut() {
+                    t.stop();
+                }
+                self.end_reserve();
             }
+        } else if theme::tool_word_button(
+            ui,
+            Icon::Listen,
+            "Start Test",
+            "Start listening in the Current Position card's position and run until the \
+             watch stops, keeping the computer awake. Wind the watch fully first.",
+            true,
+            None,
+        ) {
+            self.start_reserve();
         }
         let done = self.reserve.as_ref().and_then(|t| t.results.clone());
         let nothing = done.is_none().then_some("No run ended yet");
@@ -13129,23 +13199,27 @@ impl TimegrapherApp {
     /// Current Position card's position, kept in the watch's takes when it
     /// ends.
     fn start_reserve(&mut self) {
+        self.start_reserve_asked(false);
+    }
+
+    /// [`Self::start_reserve`], `asked` once the question about unsaved
+    /// sound has been answered.
+    fn start_reserve_asked(&mut self, asked: bool) {
         if let Err(e) = self.reserve_takes_dir() {
             return self.error(format!("A Power Reserve Test can't keep its take: {e}"));
         }
+        // Quick Listen's sound too, listening or not: a test of a watch
+        // isn't its sound. The same question as a new take's; listening
+        // stops once it is answered.
+        if !asked && self.line_pick_asks() {
+            self.confirm = Some(Confirm::ReserveStart);
+            return;
+        }
         if self.running() {
-            self.info_msg(
-                "Stop listening first: a Power Reserve Test starts a new session.".into(),
-            );
-            return;
+            self.pause();
         }
-        // Quick Listen's sound too: a test of a watch isn't its sound.
-        if self.line_pick_asks() {
-            self.info_msg(
-                "Save or set aside this session first: a Power Reserve Test starts a new one."
-                    .into(),
-            );
-            return;
-        }
+        // Whatever the status line said before is past.
+        self.message = None;
         self.reserve_session();
         self.start_microphone();
         if !self.running() || self.session.recorder.is_none() {
@@ -13337,17 +13411,14 @@ impl TimegrapherApp {
         } else {
             None
         };
-        if self.reserve.is_some() {
-            self.note_need(ui, Pane::PowerReserve, reserve::PANE_MIN_H);
-        }
-        if reserve::pane(ui, self.reserve.as_ref(), free, self.position_card_title)
-            == Some(reserve::Action::Stop)
-        {
-            if let Some(t) = self.reserve.as_mut() {
-                t.stop();
-            }
-            self.end_reserve();
-        }
+        let watch = self.watch.trim().to_string();
+        reserve::pane(
+            ui,
+            self.reserve.as_ref(),
+            free,
+            self.position_card_title,
+            &watch,
+        );
     }
 
     /// Show a pane at the front of its tabs, or hide it: what its icon and
@@ -13362,7 +13433,13 @@ impl TimegrapherApp {
 
     /// Show a pane and bring its tab to the front.
     fn reveal_pane(&mut self, pane: Pane) {
+        let was = pane_visible(&self.panes.tiles, pane);
         set_pane_visible(&mut self.panes.tiles, pane, true);
+        // A test's pane opens at its content's height, no less than a
+        // pane's least: the Paper Strip keeps the rest until dragged.
+        if pane == Pane::PowerReserve && !was {
+            fit_row(&mut self.panes.tiles, pane, MIN_PANE_H);
+        }
         let Some(id) = self.panes.tiles.find_pane(&pane) else {
             return;
         };
@@ -18793,9 +18870,7 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(
-            watches::take_line(&take, false).starts_with("Power Reserve 0 h 00 min (still running")
-        );
+        assert!(watches::take_line(&take, false).starts_with("Power Reserve 12 s (still running"));
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.start_batch(&saved);
@@ -18921,11 +18996,12 @@ mod tests {
         // And the steps before a run.
         let out = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                reserve::pane(ui, None, None, app.position_card_title);
+                reserve::pane(ui, None, None, app.position_card_title, "");
             });
         });
         assert!(
-            painted_text(&out).contains("in the position on the Position card."),
+            painted_text(&out)
+                .contains("set the position on the Position card, then press Start Test."),
             "{}",
             painted_text(&out)
         );
@@ -24280,6 +24356,16 @@ mod tests {
         app.confirm = None;
         app.start_reserve();
         assert!(app.session.recorder.is_some() && app.reserve.is_none());
+        // Start Test asks the same question.
+        assert_eq!(app.confirm, Some(Confirm::ReserveStart));
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| app.confirm_dialog(ctx));
+        }
+        assert_eq!(
+            app.confirm,
+            Some(Confirm::ReserveStart),
+            "shown, not passed"
+        );
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

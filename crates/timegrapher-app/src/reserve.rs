@@ -170,12 +170,6 @@ impl Test {
     }
 }
 
-/// What the pane's body asks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
-    Stop,
-}
-
 /// A run's ending in words.
 pub fn ending_text(e: Ending) -> &'static str {
     match e {
@@ -185,204 +179,184 @@ pub fn ending_text(e: Ending) -> &'static str {
     }
 }
 
-/// The pane's body: the run time, how the beats stand, and at the end the
-/// result. `card` is the position card's title as drawn, for the steps.
+/// The pane's body, in no more height than it shows: before a run one
+/// line of what to do (the steps are in its "?"); while it runs the run
+/// time and one line of how the beats stand; once ended one line of the
+/// result over the hour charts and table, which take the rest of the pane
+/// and scroll in it. `card` is the position card's title as drawn, and
+/// `watch` the watch the take is kept in (none: Unsorted).
 pub fn pane(
     ui: &mut egui::Ui,
     test: Option<&Test>,
     free: Option<(u64, u64)>,
     card: &str,
-) -> Option<Action> {
+    watch: &str,
+) {
     let pal = theme::pal(ui);
-    let mut action = None;
     ui.spacing_mut().item_spacing.y = 6.0;
-    // What doesn't fit scrolls, its bar drawn at rest, from the top each
-    // time the pane is shown.
-    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
-    let viewport_h = ui.available_height();
-    let area = |ui: &egui::Ui, name: &str| {
-        let id = egui::Id::new(("reserve scroll", name));
-        let pass = ui.ctx().cumulative_pass_nr();
-        let last = ui.ctx().data_mut(|d| {
-            let last = d.get_temp::<u64>(id);
-            d.insert_temp(id, pass);
-            last
-        });
-        let area = egui::ScrollArea::vertical()
-            .id_salt(id)
-            .auto_shrink([false, false])
-            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
-        if last.is_none_or(|l| l + 1 < pass) {
-            area.vertical_scroll_offset(0.0)
-        } else {
-            area
-        }
-    };
     let Some(t) = test else {
-        area(ui, "steps").show(ui, |ui| {
-            let stop = power_reserve::STOP_AFTER_S / 60.0;
-            let steps = [
-                "1.  Wind the watch fully and set it to a minute marker.".to_string(),
-                format!("2.  Put it on the stand in the position on the {card} card."),
-                "3.  Press Start Test.".to_string(),
-            ];
-            let after = [
-                "•  The app listens until the watch stops.".to_string(),
-                format!("•  The run ends at the last beat heard before {stop} min with none."),
-                "•  The take is kept in the watch's history with its run time.".to_string(),
-                "•  While it runs the computer is kept awake and the sound is kept; the \
-                     position can't change and the listening can't pause."
-                    .to_string(),
-            ];
-            for l in steps.iter().chain(after.iter()) {
-                ui.add(egui::Label::new(RichText::new(l).color(pal.text_secondary)).wrap());
+        let mut line = ui.add(
+            egui::Label::new(
+                RichText::new(format!(
+                    "Wind fully, set the position on the {card} card, then press Start Test."
+                ))
+                .color(pal.text_secondary),
+            )
+            .truncate(),
+        );
+        if let Some((have, need)) = free {
+            let room = format!(
+                "{} free where the take is kept; a run of up to 80 h writes up to {} of sound.",
+                gb(have),
+                gb(need)
+            );
+            if have >= need {
+                line = line.on_hover_text(room);
+            } else {
+                theme::alert_label(
+                    ui,
+                    theme::Alert::Warning,
+                    &format!(
+                        "Only {} free where the take is kept: a long run could fill the disk.",
+                        gb(have)
+                    ),
+                    true,
+                )
+                .on_hover_text(room);
             }
-            if let Some((have, need)) = free {
-                let line = if have >= need {
-                    format!(
-                        "{} free where the take is kept; a run of up to 80 h writes up to {} \
-                             of sound.",
-                        gb(have),
-                        gb(need)
-                    )
-                } else {
-                    format!(
-                        "Only {} free where the take is kept; a run of up to 80 h writes up \
-                             to {} of sound, so a long run could fill the disk.",
-                        gb(have),
-                        gb(need)
-                    )
-                };
-                if have >= need {
-                    ui.label(RichText::new(line).small().color(pal.text_tertiary));
-                } else {
-                    theme::alert_label(ui, theme::Alert::Warning, &line, true);
-                }
-            }
-        });
-        return None;
+        }
+        let _ = line;
+        return;
     };
-    area(ui, "run").show(ui, |ui| {
-        let top = ui.cursor().top();
-        {
-            let run = power_reserve::run_text(t.run_so_far_s());
-            ui.label(
-                RichText::new(match &t.results {
-                    Some(r) => power_reserve::run_text(r.run_s),
-                    None => run,
-                })
+    let pauses = (!t.heard.pauses.is_empty()).then(|| {
+        format!(
+            " Beats stopped and came back {} time{} on the way.",
+            t.heard.pauses.len(),
+            if t.heard.pauses.len() == 1 { "" } else { "s" }
+        )
+    });
+    let pause_hint = format!(
+        "Silences of {:.0} s or more inside the run, after which the beats came back: a watch \
+         near the end can stop and start again with a knock",
+        power_reserve::PAUSE_S
+    );
+    if t.running() {
+        ui.label(
+            RichText::new(power_reserve::run_text(t.run_so_far_s()))
                 .size(34.0)
                 .strong()
                 .color(pal.text),
+        )
+        .on_hover_text("From the first beat heard to now");
+        let state = match t.heard.silent_s(t.now_s) {
+            None => "Waiting for the first beats…".to_string(),
+            Some(s) if s >= power_reserve::PAUSE_S => format!(
+                "No beat heard for {}; the run ends after {} min with none.",
+                crate::strip::fmt_time(s),
+                power_reserve::STOP_AFTER_S / 60.0
+            ),
+            Some(_) => format!("Running, in {}.", t.position.label()),
+        };
+        let line = ui.add(
+            egui::Label::new(
+                RichText::new(state + pauses.as_deref().unwrap_or("")).color(pal.text_secondary),
             )
-            .on_hover_text(
-                "From the first beat heard to the last (or to now while it runs), in true time \
-                 once it has ended",
-            );
-            let state = if t.running() {
-                match t.heard.silent_s(t.now_s) {
-                    None => "Waiting for the first beats…".to_string(),
-                    Some(s) if s >= power_reserve::PAUSE_S => format!(
-                        "No beat heard for {}; the run ends after {} min with none.",
-                        crate::strip::fmt_time(s),
-                        power_reserve::STOP_AFTER_S / 60.0
-                    ),
-                    Some(_) => format!("Running, in {}.", t.position.label()),
-                }
-            } else {
-                match t.ending {
-                    Some(e) => format!("{}, in {}.", ending_text(e), t.position.label()),
-                    None => String::new(),
-                }
-            };
-            ui.label(RichText::new(state).color(pal.text_secondary));
-            if !t.heard.pauses.is_empty() {
-                ui.label(
-                    RichText::new(format!(
-                        "Beats stopped and came back {} time{} on the way.",
-                        t.heard.pauses.len(),
-                        if t.heard.pauses.len() == 1 { "" } else { "s" }
-                    ))
-                    .color(pal.text_secondary),
-                )
-                .on_hover_text(format!(
-                    "Silences of {:.0} s or more inside the run, after which the beats came \
-                     back: a watch near the end can stop and start again with a knock",
-                    power_reserve::PAUSE_S
-                ));
-            }
-            if t.running() {
-                ui.add_space(6.0);
-                if ui
-                    .add(theme::primary(ui, "Stop Test"))
-                    .on_hover_text(
-                        "End the run now and keep the take: its run time then says it was \
-                         stopped by hand",
-                    )
-                    .clicked()
-                {
-                    action = Some(Action::Stop);
-                }
-                ui.label(
-                    RichText::new(
-                        "A closed lid or Sleep from a menu still stops the computer, and the \
-                         run with it; a laptop is best left on mains power.",
-                    )
-                    .small()
-                    .color(pal.text_tertiary),
-                );
-            } else if t.saving {
-                ui.label(
-                    RichText::new("Saving the test's take…")
-                        .small()
-                        .color(pal.text_secondary),
-                );
-            } else if let Some(p) = &t.saved {
-                ui.label(
-                    RichText::new(format!(
-                        "Kept as \"{}\"{}. Every pane reads it as any take.",
-                        p.file_name()
-                            .map_or_else(String::new, |n| n.to_string_lossy().into()),
-                        if t.keep_sound {
-                            ""
-                        } else {
-                            ", as its analysis only once that is written"
-                        }
-                    ))
-                    .small()
-                    .color(pal.text_tertiary),
-                );
-            }
-            // The charts take the pane's height left after the words and
-            // the hours' table (or a third of it, for a long table); what
-            // doesn't fit scrolls with the rest.
-            if let Some(r) = t.results.as_ref().filter(|r| !r.hours.is_empty()) {
-                ui.add_space(8.0);
-                // A grid row: a label's height (no less than a control's)
-                // and the grid's gap.
-                let row_h = ui
-                    .text_style_height(&egui::TextStyle::Body)
-                    .max(ui.spacing().interact_size.y)
-                    + 3.0;
-                let gap = ui.spacing().item_spacing.y;
-                let room = viewport_h - (ui.cursor().top() - top) - 8.0 - 3.0 * gap;
-                let table_h = ((r.hours.len() as f32 + 1.0) * row_h + 4.0).min(room / 3.0);
-                let chart_h = ((room - table_h - gap) / 2.0).max(CHART_MIN_H);
-                hour_chart(ui, r, chart_h);
-                ui.add_space(8.0);
-                hour_table(ui, r);
-            }
+            .truncate(),
+        );
+        if pauses.is_some() {
+            line.on_hover_text(pause_hint);
         }
+        return;
+    }
+    // Ended: one line of the result.
+    let run = power_reserve::run_text(t.results.as_ref().map_or(t.run_so_far_s(), |r| r.run_s));
+    let ending = t
+        .ending
+        .map(|e| format!(" · {}, in {}", ending_text(e), t.position.label()))
+        .unwrap_or_default();
+    let kept = if t.saving {
+        " · Saving the take…".to_string()
+    } else if t.saved.is_some() {
+        if watch.is_empty() {
+            " · Kept in Unsorted".to_string()
+        } else {
+            format!(" · Kept in {watch}")
+        }
+    } else {
+        String::new()
+    };
+    let mut hover = "The run, from the first beat heard to the last, in true time".to_string();
+    if let Some(p) = &t.saved {
+        hover.push_str(&format!(
+            ". Kept as \"{}\"{}; every pane reads it as any take",
+            p.file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into()),
+            if t.keep_sound {
+                ""
+            } else {
+                ", as its analysis only once that is written"
+            }
+        ));
+    }
+    if pauses.is_some() {
+        hover.push_str(&format!(". {pause_hint}"));
+    }
+    ui.add(
+        egui::Label::new(
+            RichText::new(format!(
+                "Ran {run}{ending}{kept}.{}",
+                pauses.as_deref().unwrap_or("")
+            ))
+            .color(pal.text),
+        )
+        .truncate(),
+    )
+    .on_hover_text(hover);
+    let Some(r) = t.results.as_ref().filter(|r| !r.hours.is_empty()) else {
+        return;
+    };
+    // The charts and the table take the rest of the pane and scroll in it,
+    // their bar drawn at rest, from the top each time the pane is shown.
+    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+    let viewport_h = ui.available_height();
+    let id = egui::Id::new("reserve run scroll");
+    let pass = ui.ctx().cumulative_pass_nr();
+    let last = ui.ctx().data_mut(|d| {
+        let last = d.get_temp::<u64>(id);
+        d.insert_temp(id, pass);
+        last
     });
-    action
+    // Never taller than the room left, however little: egui's least
+    // scrolled height of 64 would run the foot past a short pane, out of
+    // reach of the wheel.
+    let mut area = egui::ScrollArea::vertical()
+        .id_salt(id)
+        .auto_shrink([false, false])
+        .min_scrolled_height(0.0)
+        .max_height(viewport_h.max(0.0))
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
+    if last.is_none_or(|l| l + 1 < pass) {
+        area = area.vertical_scroll_offset(0.0);
+    }
+    area.show(ui, |ui| {
+        // The charts take the height left after the hours' table (or a
+        // third of it, for a long table); what doesn't fit scrolls.
+        let row_h = ui
+            .text_style_height(&egui::TextStyle::Body)
+            .max(ui.spacing().interact_size.y)
+            + 3.0;
+        let gap = ui.spacing().item_spacing.y;
+        let room = viewport_h - 8.0 - 3.0 * gap;
+        let table_h = ((r.hours.len() as f32 + 1.0) * row_h + 4.0).min(room / 3.0);
+        let chart_h = ((room - table_h - gap) / 2.0).max(CHART_MIN_H);
+        hour_chart(ui, r, chart_h);
+        ui.add_space(8.0);
+        hour_table(ui, r);
+    });
 }
 
 /// The least height of each of the Power Reserve charts, points.
 const CHART_MIN_H: f32 = 56.0;
-
-/// The least height the Power Reserve pane keeps for its run, charts and
-/// a few of its hours, points.
-pub const PANE_MIN_H: f32 = 240.0;
 
 /// A value or a dash.
 fn cell(v: Option<f64>, d: usize, unit: &str) -> String {
@@ -693,7 +667,7 @@ mod tests {
                 };
                 let out = ctx.run(input, |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        pane(ui, Some(&t), None, "Position");
+                        pane(ui, Some(&t), None, "Position", "Pepsi");
                     });
                 });
                 texts = out
@@ -781,7 +755,7 @@ mod tests {
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     if let Some(t) = t {
-                        pane(ui, Some(t), None, "Position");
+                        pane(ui, Some(t), None, "Position", "Pepsi");
                     }
                 });
             });
@@ -800,9 +774,21 @@ mod tests {
         };
         let t = run(5);
         let shown = |texts: &[(String, egui::Rect)], what: &str| texts.iter().any(|t| t.0 == what);
+        // The Rate chart's own scale, "7 s/d", at the top of what scrolls.
+        let rate_scale = |texts: &[(String, egui::Rect)]| {
+            texts
+                .iter()
+                .any(|t| t.0.ends_with(" s/d") && !t.0.contains('.'))
+        };
         let mut texts = pass(Some(&t), h, false);
         texts = pass(Some(&t), h, false).into_iter().chain(texts).collect();
-        assert!(shown(&texts, "0 h 00 min"), "the top first: {texts:?}");
+        assert!(rate_scale(&texts), "the top first: {texts:?}");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.0.starts_with("Ran ") && t.0.contains(" s · ")),
+            "one line of the result: {texts:?}"
+        );
         assert!(!shown(&texts, "4–5 h"), "{texts:?}");
         for _ in 0..12 {
             texts = pass(Some(&t), h, true);
@@ -811,15 +797,30 @@ mod tests {
             shown(&texts, "4–5 h"),
             "the last hour, scrolled to: {texts:?}"
         );
+        // A pane with under 64 points left under its line: the last hour
+        // still scrolls whole into it.
+        let low = 84.0;
+        let mut texts = Vec::new();
+        for _ in 0..30 {
+            texts = pass(Some(&t), low, true);
+        }
+        let row = texts.iter().find(|t| t.0 == "4–5 h");
+        assert!(
+            row.is_some_and(|r| r.1.bottom() <= low),
+            "{row:?} {texts:?}"
+        );
+        for _ in 0..60 {
+            pass(Some(&t), h, false);
+        }
         // The wheel's glide spent, away a pass and back: at the top again.
         for _ in 0..60 {
             pass(Some(&t), h, false);
         }
-        assert!(!shown(&pass(Some(&t), h, false), "0 h 00 min"));
+        assert!(!rate_scale(&pass(Some(&t), h, false)));
         pass(None, h, false);
         pass(Some(&t), h, false);
         let texts = pass(Some(&t), h, false);
-        assert!(shown(&texts, "0 h 00 min"), "{texts:?}");
+        assert!(rate_scale(&texts), "{texts:?}");
         // Room for it all: the one hour's row whole, nothing to scroll.
         let one = run(1);
         pass(Some(&one), 520.0, false);
@@ -830,6 +831,55 @@ mod tests {
             .unwrap_or_else(|| panic!("{texts:?}"));
         assert!(row.1.bottom() <= 520.0, "{row:?}");
         assert!(shown(&texts, "280°") || shown(&texts, "281°"), "{texts:?}");
+    }
+
+    /// The pane holds no more height than it shows: one line before a run,
+    /// the run time and one line while it runs.
+    #[test]
+    fn the_pane_holds_no_more_than_it_shows() {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let height = |t: Option<&Test>, free: Option<(u64, u64)>| {
+            let mut h = 0.0;
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let top = ui.cursor().top();
+                        pane(ui, t, free, "Position", "");
+                        h = ui.cursor().top() - top - ui.spacing().item_spacing.y;
+                    });
+                });
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+            }
+            (h, texts)
+        };
+        // Ready: the toolbar's 28 points and one line in 64.
+        let (h, texts) = height(None, Some((500_000_000_000, 100_000_000_000)));
+        assert!(h <= 64.0 - 28.0, "{h}");
+        assert_eq!(
+            texts,
+            ["Wind fully, set the position on the Position card, then press Start Test."]
+        );
+        // Running: the run time and one line, with the toolbar, in 96.
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
+        assert!(t.running());
+        let (h, texts) = height(Some(&t), None);
+        assert!(h <= 96.0 - 28.0, "{h}");
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        // Ended with no hours yet: its one line.
+        t.stop();
+        let (h, texts) = height(Some(&t), None);
+        assert!(h <= 64.0 - 28.0, "{h} {texts:?}");
+        assert!(texts[0].starts_with("Ran "), "{texts:?}");
     }
 
     /// A run of half a minute charts 0 h to 1 h, each hour named once,
