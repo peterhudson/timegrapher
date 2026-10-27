@@ -63,6 +63,9 @@ const CACHE_FORMAT: u32 = 3;
 pub const LOCK_FILE: &str = ".library.lock";
 /// The folder of takes not yet filed under a watch.
 pub const UNSORTED: &str = "Unsorted";
+/// The file a Positions Test keeps its results in, beside its take's
+/// sound: a take with it is a Positions Test's ([`is_positions_test`]).
+pub const POSITIONS_TEST_FILE: &str = "positions-test.json";
 /// The library's folder name in the user's home folder, by default.
 pub const DEFAULT_NAME: &str = "Timegrapher Data";
 
@@ -343,11 +346,16 @@ pub struct Take {
 
 impl Take {
     /// What the take measured and is, as the facts the app and
-    /// `timegrapher watches` list for it: a Power Reserve run, its
-    /// positions, its length, the readings it ended on (beat error as its
-    /// size) and its marks. Each surface joins them as it lays them out.
-    pub fn facts(&self) -> Vec<String> {
+    /// `timegrapher watches` list for it: its kind when it is a Positions
+    /// Test's (`positions_test`, from [`is_positions_test`]), a Power
+    /// Reserve run, its positions, its length, the readings it ended on
+    /// (beat error as its size) and its marks. Each surface joins them as
+    /// it lays them out.
+    pub fn facts(&self, positions_test: bool) -> Vec<String> {
         let mut parts: Vec<String> = Vec::new();
+        if positions_test {
+            parts.push("Positions Test".into());
+        }
         if let Some(r) = &self.power_reserve {
             parts.push(format!(
                 "Power Reserve {}{}",
@@ -388,6 +396,12 @@ impl Take {
         }
         parts
     }
+}
+
+/// Whether the take in the folder `take_dir` is a Positions Test's: it
+/// keeps the test's results ([`POSITIONS_TEST_FILE`]) beside its sound.
+pub fn is_positions_test(take_dir: &Path) -> bool {
+    take_dir.join(POSITIONS_TEST_FILE).is_file()
 }
 
 /// A length of time as the app writes it: `1:30:00`, or `4:05` under an

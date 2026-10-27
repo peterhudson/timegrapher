@@ -198,13 +198,14 @@ fn print_takes(e: &WatchEntry) {
         library::size_text(e.bytes())
     );
     for t in &e.takes {
-        println!("    {}: {}", t.name, take_line(t));
+        let positions_test = library::is_positions_test(&e.take_dir(t));
+        println!("    {}: {}", t.name, take_line(t, positions_test));
     }
 }
 
 /// A take's facts as the app lists them, then its size on disk.
-fn take_line(t: &Take) -> String {
-    let mut parts = t.facts();
+fn take_line(t: &Take, positions_test: bool) -> String {
+    let mut parts = t.facts(positions_test);
     parts.push(library::size_text(t.bytes));
     parts.join(" · ")
 }
@@ -233,13 +234,21 @@ mod tests {
             }),
         };
         assert_eq!(
-            take_line(&t),
+            take_line(&t, false),
             "Power Reserve 1 h 30 min · Dial Up · Analysis Only · 58.3 MB"
         );
         let t = Take {
             power_reserve: None,
             ..t
         };
-        assert_eq!(take_line(&t), "Dial Up · 1:30:00 · Analysis Only · 58.3 MB");
+        assert_eq!(
+            take_line(&t, false),
+            "Dial Up · 1:30:00 · Analysis Only · 58.3 MB"
+        );
+        // A Positions Test's take names its kind first, as the app does.
+        assert_eq!(
+            take_line(&t, true),
+            "Positions Test · Dial Up · 1:30:00 · Analysis Only · 58.3 MB"
+        );
     }
 }
