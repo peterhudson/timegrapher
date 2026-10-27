@@ -7518,11 +7518,17 @@ impl TimegrapherApp {
         } else {
             None
         };
-        let quick = self.quick_listen || file.is_none() && self.watch.is_empty();
+        // The watch the Calibre card names, else the take's own.
+        let named = self
+            .open_watch()
+            .map(|e| e.watch.name.clone())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.watch.clone());
+        let quick = self.quick_listen || file.is_none() && named.is_empty();
         let name =
             file.unwrap_or_else(|| if quick { "Quick Listen" } else { "New Take" }.to_string());
-        let watch = if !self.watch.is_empty() {
-            self.watch.clone()
+        let watch = if !named.is_empty() {
+            named.clone()
         } else if quick {
             "No watch".to_string()
         } else {
@@ -13109,9 +13115,13 @@ impl TimegrapherApp {
             );
             return;
         }
+        // In the position the card and the pane named, even where it came
+        // from a take opened over listening's own.
+        let pos = self.position;
         if self.live.is_some() || self.session.recorder.is_some() {
             self.new_session();
         }
+        self.position = pos;
         self.input = Input::Microphone;
         // Never Quick Listen, whose sound goes without a question: a test
         // keeps its take.
@@ -18700,6 +18710,38 @@ mod tests {
         assert!(!again.reserve_running());
         assert_eq!(back.results.as_ref(), Some(&r));
         assert_eq!(back.position, Position::CrownLeft);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A Power Reserve Test started with a take open runs in the position
+    /// the card and the pane named, not the one listening had before the
+    /// take was opened; and the status bar names the watch the Calibre
+    /// card names.
+    #[test]
+    fn a_power_reserve_test_over_an_opened_take_keeps_the_cards_position_and_watch() {
+        let base = std::env::temp_dir().join(format!("tg-app-reserve-pos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Daytona")).unwrap();
+        let id = lib.find("Daytona").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root));
+        app.pick_watch(&id);
+        // A take opened in Dial Down over listening's Dial Up.
+        app.reset_session(48000, "take".into());
+        app.input = Input::File;
+        app.opened_path = "/x/take.wav".into();
+        app.mic_setup = Some(WatchSetup::default());
+        app.position = Position::DialDown;
+        app.start_reserve();
+        assert_eq!(app.position, Position::DialDown);
+        // The take's own watch name gone, as after a test's Stop.
+        app.watch.clear();
+        let words = app.status_words();
+        assert!(words.contains("Daytona"), "{words}");
+        assert!(!words.contains("No watch"), "{words}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
