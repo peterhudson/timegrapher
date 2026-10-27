@@ -17414,12 +17414,79 @@ mod tests {
                     _ => None,
                 })
                 .collect();
-            (names, rings, bars)
+            let facts: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t)
+                        if ["Amplitude", "Unlock to Drop"].contains(&t.galley.text())
+                            || t.galley.text().ends_with('°')
+                            || t.galley.text().ends_with(" ms") =>
+                    {
+                        Some(t.galley.rect.translate(t.pos.to_vec2()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            (names, rings, bars, facts)
         };
-        let (names, rings, bars) = run(&mut app, 1440.0, 1000.0);
+        // Where the facts box is two rows, over a trace that rises under
+        // the left corner and is low on the right, it takes the right, and
+        // keeps off the marks.
+        let kept = app.sound_history.clone();
+        for (_, sides) in &mut app.sound_history {
+            for p in sides.iter_mut().flatten() {
+                let top = p.p90.iter().copied().fold(0.0f32, f32::max);
+                let n = p.median.len() / 5;
+                p.median[..n].fill(0.9 * top);
+            }
+        }
+        app.sound_opts.side_by_side = true;
+        let (_, rings, bars, facts) = run(&mut app, 1440.0, 820.0);
+        let plots: Vec<egui::Rect> = (0..2usize)
+            .filter_map(|k| {
+                ctx.data(|d| {
+                    d.get_temp::<(egui::Rect, egui::Rect)>(egui::Id::new(("profile plot", k)))
+                })
+                .map(|p| p.0)
+            })
+            .collect();
+        assert_eq!(plots.len(), 2);
+        for p in &plots {
+            let here: Vec<_> = facts.iter().filter(|f| p.contains_rect(**f)).collect();
+            assert_eq!(here.len(), 4, "two rows: {here:?}");
+            assert!(
+                here.iter().all(|f| f.left() > p.center().x),
+                "{p:?}: {here:?}"
+            );
+        }
+        for m in rings.iter().chain(&bars) {
+            assert!(
+                facts.iter().all(|f| !f.intersects(*m)),
+                "{m:?} under the facts: {facts:?}"
+            );
+        }
+        // Over a trace high under both corners, the box keeps no rows: the
+        // trace and its marks come first, and the hover has the facts.
+        for (_, sides) in &mut app.sound_history {
+            for p in sides.iter_mut().flatten() {
+                let top = p.p90.iter().copied().fold(0.0f32, f32::max);
+                let n = p.median.len();
+                p.median[n - n / 4..].fill(0.9 * top);
+            }
+        }
+        let (_, _, _, facts) = run(&mut app, 1440.0, 820.0);
+        assert!(
+            facts
+                .iter()
+                .all(|f| plots.iter().all(|p| !p.contains_rect(*f))),
+            "{facts:?}"
+        );
+        app.sound_history = kept;
+        app.sound_opts.side_by_side = false;
+        let (names, rings, bars, _) = run(&mut app, 1440.0, 1000.0);
         assert!(!names.is_empty(), "the edges named");
         assert!(!rings.is_empty() && !bars.is_empty(), "{rings:?} {bars:?}");
-        let (names, rings, bars) = run(&mut app, 800.0, 600.0);
+        let (names, rings, bars, _) = run(&mut app, 800.0, 600.0);
         assert!(!names.is_empty(), "the edges named in the short plot");
         for m in rings.iter().chain(&bars) {
             assert!(
