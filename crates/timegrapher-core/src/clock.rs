@@ -150,6 +150,8 @@ impl SourcesDisagree {
 /// correct on its own may measure the card before
 /// [`ClockFit::sources_disagree`] says so.
 pub const DISAGREE_PPM: f64 = 5.0;
+/// How many of the log's standard errors apart the two must also be.
+pub const DISAGREE_SE: f64 = 2.0;
 
 /// Fewest log entries a clock correction is applied from.
 pub const MIN_POINTS: usize = 10;
@@ -269,15 +271,21 @@ impl ClockFit {
     /// a clock log that would have corrected on its own (at least
     /// [`MIN_POINTS`] entries, a standard error of at most
     /// [`MAX_SD_PPM`]), the two measurements when they differ by more than
-    /// [`DISAGREE_PPM`]. The correction is the USB lines' either way.
+    /// [`DISAGREE_PPM`] and by more than [`DISAGREE_SE`] of the log's
+    /// standard error: a half-hour log measures the card to about 13 ppm,
+    /// so a gap of that size is the log's own scatter. The correction is
+    /// the USB lines' either way.
     pub fn sources_disagree(&self) -> Option<SourcesDisagree> {
         let w = self.withheld.filter(|w| w.reason == "usb_lines")?;
         let qualifies = w.points >= MIN_POINTS && w.ppm_sd <= MAX_SD_PPM;
-        (qualifies && (self.ppm - w.ppm).abs() > DISAGREE_PPM).then_some(SourcesDisagree {
-            usb_ppm: self.ppm,
-            log_ppm: w.ppm,
-            log_ppm_sd: w.ppm_sd,
-        })
+        let gap = (self.ppm - w.ppm).abs();
+        (qualifies && gap > DISAGREE_PPM && gap > DISAGREE_SE * w.ppm_sd).then_some(
+            SourcesDisagree {
+                usb_ppm: self.ppm,
+                log_ppm: w.ppm,
+                log_ppm_sd: w.ppm_sd,
+            },
+        )
     }
 
     /// What [`ClockFit::for_rates`] would withhold from this fit, and why;
@@ -1188,6 +1196,16 @@ unix_s,frames
         let unsure = noisy_log(15, 10.0, 6.0, 0.027, 0, 0.0, 8);
         assert!(!ClockFit::for_rates(&unsure).unwrap().corrects());
         assert_eq!(rated(&unsure, 120.0).sources_disagree(), None);
+        // A half-hour log an entry a minute with 34 ms of jitter measures
+        // the card to about 13 ppm: USB lines 16 ppm off it are within its
+        // scatter, 40 ppm off are not.
+        let half_hour = noisy_log(30, 60.0, 22.0, 0.034, 0, 0.0, 12);
+        let log = ClockFit::for_rates(&half_hour).unwrap();
+        assert!(log.corrects() && log.ppm_sd > 8.0, "{}", log.ppm_sd);
+        assert_eq!(rated(&half_hour, log.ppm + 16.0).sources_disagree(), None);
+        assert!(rated(&half_hour, log.ppm + 40.0)
+            .sources_disagree()
+            .is_some());
         // Nor does a log that corrects, with no USB lines.
         assert_eq!(
             ClockFit::for_rates(&exact).unwrap().sources_disagree(),

@@ -330,7 +330,7 @@ mod tests {
         // A minute of a watch, on a take whose clock log measures the card
         // 20 ppm slow, entry by entry exactly: USB lines 100 ppm off that
         // put the caveat, with both figures, on the session reading and the
-        // long run (and so `series`); lines within 5 ppm put none.
+        // long run (and so `series`); lines within 3 ppm put none.
         use crate::measure::Caveat;
         // An entry every 30 s over an hour.
         let pairs: Vec<(f64, f64)> = (0..=120)

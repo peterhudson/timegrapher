@@ -152,9 +152,9 @@ pub enum Caveat {
     /// The sound card's clock is not corrected.
     ClockUnknown,
     /// The recording's USB lines correct the rates, and its clock log, which
-    /// would correct them on its own, measures the card more than
-    /// [`crate::clock::DISAGREE_PPM`] differently
-    /// ([`crate::clock::ClockFit::sources_disagree`]): ppm the card runs
+    /// would correct them on its own, measures the card differently by
+    /// more than its own scatter ([`crate::clock::ClockFit::sources_disagree`]):
+    /// ppm the card runs
     /// slow by each, and the log's standard error.
     ClockSourcesDisagree {
         usb_ppm: f64,
