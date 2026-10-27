@@ -863,11 +863,11 @@ fn jumps_in(beats: &[Beat]) -> Vec<usize> {
     let off: Vec<f64> = beats.iter().map(|b| b.time - due(origin, b)).collect();
     let side = |p: usize| beats[p].index.rem_euclid(2);
     // The median offset of the first `JUMP_SPAN` beats of side `s` from
-    // position `p` on (forward) or before it (back), when the middle three
-    // sit within half a jump of one another: beats scattered wider than
-    // that (no watch, or a side moving between two of its sounds) say
-    // nothing, while one stray beat does not stop a jump being seen.
-    let span = |p: usize, s: i64, forward: bool| -> Option<f64> {
+    // position `p` on (forward) or before it (back), and whether the middle
+    // three sit within half a jump of one another: beats scattered wider
+    // than that (no watch, or a side moving between two of its sounds) say
+    // little, while one stray beat does not stop a jump being seen.
+    let spread = |p: usize, s: i64, forward: bool| -> Option<(f64, bool)> {
         let mut v: Vec<f64> = if forward {
             (p..off.len())
                 .filter(|&q| side(q) == s)
@@ -886,13 +886,25 @@ fn jumps_in(beats: &[Beat]) -> Vec<usize> {
             return None;
         }
         let m = med(&mut v);
-        (v[JUMP_SPAN - 2] - v[1] <= 0.5 * JUMP_S).then_some(m)
+        Some((m, v[JUMP_SPAN - 2] - v[1] <= 0.5 * JUMP_S))
     };
-    // Both sides' steps at `p`, when both sides have the beats to tell.
+    let span = |p: usize, s: i64, forward: bool| -> Option<f64> {
+        spread(p, s, forward).and_then(|(m, tight)| tight.then_some(m))
+    };
+    // Both sides' steps at `p`, when both sides have the beats to tell:
+    // each side's beats sit close together on at least one side of the
+    // step. Where the watch stumbles, one side can scatter for a while
+    // before a step while the other keeps time; its median still shows
+    // the step, and the other side must step the same.
     let steps = |p: usize| -> Option<(f64, f64)> {
         let at = |s: i64| -> Option<f64> {
-            let back = if p == 0 { 0.0 } else { span(p, s, false)? };
-            Some(span(p, s, true)? - back)
+            let (fore, fore_tight) = spread(p, s, true)?;
+            let (back, back_tight) = if p == 0 {
+                (0.0, false)
+            } else {
+                spread(p, s, false)?
+            };
+            (fore_tight || back_tight).then_some(fore - back)
         };
         Some((at(0)?, at(1)?))
     };
