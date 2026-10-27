@@ -410,6 +410,10 @@ fn add_scales(maps: &mut serde_json::Value, tf: &[timegrapher_core::timefreq::Ti
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests build the clock they expect by hand"
+)]
 mod tests {
     use super::*;
     use std::fs;
