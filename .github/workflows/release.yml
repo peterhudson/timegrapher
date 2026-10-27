@@ -49,7 +49,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Require exact-candidate CI before release-capable builds
@@ -72,7 +72,7 @@ jobs:
     outputs:
       version: ${{ steps.pick.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: pick
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Render
@@ -115,7 +115,7 @@ jobs:
             python3 packaging/docs_html.py render "docs-html/$p" "$p" --ref "$REF"
             python3 packaging/docs_html.py check "docs-html/$p"
           done
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docs-html
           path: docs-html
@@ -136,7 +136,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Version
         env:
           VERSION: ${{ needs.version.outputs.version }}
@@ -153,14 +153,17 @@ jobs:
           pkgs="-p timegrapher-cli -p timegrapher-app"
           [ -d crates/timegrapher-mcp ] && pkgs="$pkgs -p timegrapher-mcp"
           echo "PKGS=$pkgs" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: docs-html
           path: ${{ runner.temp }}/docs-html
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          # Pinned by commit, the action no longer reads the toolchain from
+          # the branch name.
+          toolchain: stable
           targets: ${{ matrix.platform == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release
 
@@ -169,10 +172,18 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y libasound2-dev
           cargo build --release --locked $PKGS
+          # Fixed releases of the AppImage tool and the runtime it puts at
+          # the front of the AppImage, checked by hash; without a runtime
+          # file the tool fetches its newest one.
           curl -sSfL -o "$RUNNER_TEMP/appimagetool" \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          curl -sSfL -o "$RUNNER_TEMP/appimage-runtime" \
+            https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          echo "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d  $RUNNER_TEMP/appimage-runtime" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/appimagetool"
           APPIMAGE_EXTRACT_AND_RUN=1 APPIMAGETOOL="$RUNNER_TEMP/appimagetool" \
+            APPIMAGE_RUNTIME="$RUNNER_TEMP/appimage-runtime" \
             packaging/linux.sh dist "$RUNNER_TEMP/docs-html/linux"
       - name: Build (macOS)
         if: matrix.platform == 'macos'
@@ -275,7 +286,7 @@ jobs:
 
       # Uploaded as the file itself, so a download from the run's page is
       # the same file the release gets, not a zip around it.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: ${{ env.ZIP }}
           archive: false
@@ -291,7 +302,7 @@ jobs:
       # Creating the release and uploading its files.
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # The history the notes list pull requests from.
@@ -309,7 +320,7 @@ jobs:
             exit 1
           fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: timegrapher-*
           path: dist
