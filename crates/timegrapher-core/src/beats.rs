@@ -718,6 +718,12 @@ pub struct SideCheck {
     /// The latest intervals, seconds, to good beats from the good beat
     /// two before.
     steps: std::collections::VecDeque<f64>,
+    /// Whether the take's sides are named by the beat error's sign
+    /// ([`SideCheck::beat`]).
+    named: bool,
+    /// The sides were just named the other way round: [`SideCheck::settle`]
+    /// owes the caller a swap of every beat.
+    swap_owed: bool,
 }
 
 impl SideCheck {
@@ -757,7 +763,41 @@ impl SideCheck {
                 if kept.len() > SIDE_BEATS {
                     kept.pop_front();
                 }
+                self.name_sides();
             }
+        }
+    }
+
+    /// Each take starts positive: once [`SIDE_BEATS`] steady beats of each
+    /// side are kept and their beat error ([`timing_split`]) has a sign
+    /// ([`SIDE_SPLIT_MIN_MS`] or more), the side that comes late is named
+    /// Tick, once. Counting names the take's first beat Tick, so this is
+    /// the first stretch with a clear sign, mostly its first 10 s. Named
+    /// the other way round, every beat so far is numbered one further.
+    /// Near no beat error the count stands.
+    fn name_sides(&mut self) {
+        if self.named || self.kept.iter().any(|k| k.len() < SIDE_BEATS) {
+            return;
+        }
+        let times = self
+            .kept
+            .each_ref()
+            .map(|k| k.iter().map(|x| x.0).collect::<Vec<f64>>());
+        let Some(split) = timing_split(&times[0], &times[1]) else {
+            return;
+        };
+        if split.abs() < SIDE_SPLIT_MIN_MS {
+            return;
+        }
+        self.named = true;
+        // A positive split is the even-to-odd half-beat longer: Tock comes
+        // late, a negative beat error.
+        if split > 0.0 {
+            self.kept.swap(0, 1);
+            for (_, index) in self.last.iter_mut().flatten() {
+                *index += 1;
+            }
+            self.swap_owed = true;
         }
     }
 
@@ -804,8 +844,13 @@ impl SideCheck {
     /// beats of each side, compare the first of them with the sides' sound
     /// before: the jump's time and what was found. On [`SideCall::Swapped`]
     /// the beats fed since are taken as numbered one further, as the caller
-    /// now numbers them.
+    /// now numbers them. When the take's sides were just named the other
+    /// way round ([`SideCheck::beat`]), the time is minus infinity: every
+    /// beat is numbered one further.
     pub fn settle(&mut self) -> Option<(f64, SideCall)> {
+        if std::mem::take(&mut self.swap_owed) {
+            return Some((f64::NEG_INFINITY, SideCall::Swapped));
+        }
         if self
             .pending
             .as_ref()
@@ -896,6 +941,38 @@ const JUMP_SPAN: usize = 5;
 /// Beats from before a chunk that [`jumps`] needs to see a jump at its
 /// start.
 pub const JUMP_CONTEXT: usize = 2 * JUMP_SPAN + 2;
+
+/// A pass's or chunk's beats numbered on from the `last` beat kept, `beat`
+/// seconds apart: `local[anchor]`, at `anchor_t` seconds, gets the whole
+/// number of beats since (at least one), and the rest follow it. The first
+/// beat of a take is numbered 0. Also how far the count is off a whole
+/// number of beats (0 for a take's first beat), which says whether it is a
+/// guess. The one numbering for a whole file and for live listening.
+pub fn number_on(
+    local: &[Beat],
+    anchor: usize,
+    anchor_t: f64,
+    last: Option<&Beat>,
+    beat: f64,
+) -> (Vec<Beat>, f64) {
+    let (anchor_index, off) = match last {
+        Some(last) => {
+            let count = (anchor_t - last.time) / beat;
+            let n = count.round().max(1.0);
+            (last.index + n as i64, count - n)
+        }
+        None => (0, 0.0),
+    };
+    let shift = anchor_index - local[anchor].index;
+    let numbered = local
+        .iter()
+        .map(|b| Beat {
+            index: b.index + shift,
+            ..*b
+        })
+        .collect();
+    (numbered, off)
+}
 
 /// Positions `p` in `beats` where the timing of both sides steps by more
 /// than [`JUMP_S`], and by about the same: where listening stopped and

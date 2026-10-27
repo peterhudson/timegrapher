@@ -417,9 +417,10 @@ and widened for the windows' lag-one correlation.
 It is model-based precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Its hover gives the amplitude from the ticks and from the tocks. The sound can't tell which beat is
-which pallet, so the first beat heard is called the tick;
-which side is the entry pallet can't be told from the sound, so the sign
-of the beat error follows which beat came first, as on tg. The big beat
+which pallet, so each take starts positive: the beat that comes late
+over the take's first few seconds is called the tick, listening live and
+reading the saved take alike (nearer no beat error than 0.1 ms, the first
+beat heard). A beat error that reads negative later turned over in the take. The big beat
 error is timed from the unlock, as tg measures it (checked against tg
 in the regression tests); its hover gives the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
