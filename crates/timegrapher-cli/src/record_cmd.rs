@@ -259,14 +259,15 @@ fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
     let set = settings(o)?;
 
     let started = recorder::utc(SystemTime::now());
-    let (rec, source, sample_rate) = capture(o, pos, &set)?;
+    let (rec, source, sample_rate, ending) = capture(o, pos, &set)?;
     let take = rec.dir().to_path_buf();
     let dir = rec
         .finish(None)
         .map_err(|e| format!("{}: {e}", take.display()))?;
     write_take_manifest(&dir, pos, &set)?;
     let reserve = if o.power_reserve {
-        let r = reserve_results(&dir, &started, pos, set.bph)?;
+        let ending = ending.unwrap_or(power_reserve::Ending::ByHand);
+        let r = reserve_results(&dir, &started, pos, set.bph, ending)?;
         power_reserve::write(o.dir(), &r)
             .map_err(|e| format!("{}: {e}", o.dir().join(power_reserve::FILE).display()))?;
         Some(r)
@@ -420,7 +421,11 @@ fn settings_with(
 }
 
 /// Record into a new take folder under the session folder.
-fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, String, u32), String> {
+/// A take recorded: its recorder, where the sound came from, its sample
+/// rate, and for a Power Reserve Test how it ended.
+type Captured = (Recorder, String, u32, Option<power_reserve::Ending>);
+
+fn capture(o: &Options, pos: Position, set: &Settings) -> Result<Captured, String> {
     let info = |device: String, sample_rate: u32, bits: u16| SessionInfo {
         watch: set.watch.clone().unwrap_or_default(),
         position: pos.common().to_string(),
@@ -460,7 +465,7 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
             rec.write(&b)
                 .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
             n += m;
-            if stop.as_mut().is_some_and(|s| s.push(&b.samples)) {
+            if stop.as_mut().and_then(|s| s.push(&b.samples)).is_some() {
                 break;
             }
             // With a live view, played back as it would have been heard.
@@ -476,7 +481,7 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<(Recorder, Stri
         if let Some(f) = feed.as_mut() {
             f.finish();
         }
-        return Ok((rec, label, fs_hz));
+        return Ok((rec, label, fs_hz, stop.map(|s| s.ended())));
     }
     live(o, pos, set, info, start)
 }
@@ -499,29 +504,43 @@ impl StopWatch {
         }
     }
 
-    /// Take in `samples`: whether the watch has now stopped.
-    fn push(&mut self, samples: &[f32]) -> bool {
+    /// Take in `samples`: how the test has ended, once it has.
+    fn push(&mut self, samples: &[f32]) -> Option<power_reserve::Ending> {
         self.live.push(samples);
         let now = self.live.duration_s();
         if now < self.next_s {
-            return false;
+            return None;
         }
         self.next_s = now + 2.0;
+        self.ending()
+    }
+
+    /// How the test has ended by the sound taken in so far, if it has
+    /// ([`power_reserve::Heard::ending`]), as the app decides it.
+    fn ending(&self) -> Option<power_reserve::Ending> {
         let beat_s = 3600.0 / f64::from(self.live.bph().unwrap_or(18_000).max(1));
-        power_reserve::heard(self.live.beats(), beat_s).stopped(now)
+        power_reserve::heard(self.live.beats(), beat_s).ending(self.live.duration_s(), 0.0)
+    }
+
+    /// How the test ended when the recording did: by hand unless the
+    /// watch had stopped or the limit was reached.
+    fn ended(&self) -> power_reserve::Ending {
+        self.ending().unwrap_or(power_reserve::Ending::ByHand)
     }
 }
 
 /// A Power Reserve Test's results from its take `dir`, read from the
 /// sound as `session` reads it, on the take's clock log: the stop, the run
-/// time and each hour.
+/// time and each hour. It ended as `ending` says, as decided while it
+/// listened.
 fn reserve_results(
     dir: &Path,
     started: &str,
     pos: Position,
     bph: Option<u32>,
+    ending: power_reserve::Ending,
 ) -> Result<power_reserve::Results, String> {
-    use power_reserve::{Ending, Results, LIMIT_S};
+    use power_reserve::Results;
     let files = timegrapher_core::recording_order::recordings_in(dir, &[])
         .map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut cfg = StreamConfig::default();
@@ -550,13 +569,6 @@ fn reserve_results(
     );
     let beat_s = 3600.0 / f64::from(log.bph.max(1));
     let heard = power_reserve::heard(&log.beats, beat_s);
-    let ending = if heard.stopped(log.duration_s) {
-        Ending::Stopped
-    } else if log.duration_s >= LIMIT_S - 1.0 {
-        Ending::Limit
-    } else {
-        Ending::ByHand
-    };
     let mut r = Results::of(&heard, ending, started, pos.common(), true, |s| {
         clock.as_ref().map_or(s, |c| c.map(s))
     })
@@ -700,7 +712,7 @@ fn live(
     set: &Settings,
     info: impl Fn(String, u32, u16) -> SessionInfo,
     start: impl Fn(SessionInfo) -> Result<Recorder, String>,
-) -> Result<(Recorder, String, u32), String> {
+) -> Result<Captured, String> {
     use timegrapher_core::capture::{self, Event};
     let (dev, device_info) = capture::find(o.device.as_deref())?;
     let (cap, _, want) = capture::open_for_duration(&dev, &device_info, None, o.seconds)?;
@@ -750,7 +762,7 @@ fn live(
             f.push(&b.samples);
         }
         got += take;
-        if stop.as_mut().is_some_and(|s| s.push(&b.samples)) {
+        if stop.as_mut().and_then(|s| s.push(&b.samples)).is_some() {
             eprintln!("the watch has stopped");
             break;
         }
@@ -769,7 +781,7 @@ fn live(
     if let Some(f) = feed.as_mut() {
         f.finish();
     }
-    Ok((rec, cap.label.clone(), fs_hz))
+    Ok((rec, cap.label.clone(), fs_hz, stop.map(|s| s.ended())))
 }
 
 #[cfg(not(feature = "live"))]
@@ -779,7 +791,7 @@ fn live(
     _: &Settings,
     _: impl Fn(String, u32, u16) -> SessionInfo,
     _: impl Fn(SessionInfo) -> Result<Recorder, String>,
-) -> Result<(Recorder, String, u32), String> {
+) -> Result<Captured, String> {
     Err("this build has no sound input support; pass --file, or build with --features live".into())
 }
 
@@ -1028,6 +1040,7 @@ mod tests {
             "2026-10-27T18:00:00Z",
             Position::parse("DU").unwrap(),
             Some(28800),
+            power_reserve::Ending::ByHand,
         )
         .unwrap();
         let heard_s = r.last_beat_s - r.first_beat_s;
