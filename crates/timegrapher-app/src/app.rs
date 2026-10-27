@@ -17726,7 +17726,7 @@ mod tests {
         let (names, rings, bars) = run(&mut app, 1440.0, 1000.0);
         assert!(!names.is_empty(), "the edges named");
         assert!(!rings.is_empty() && !bars.is_empty(), "{rings:?} {bars:?}");
-        // The shortest window that still draws the plot: at 800 x 600 it
+        // A short window that still draws the plot: at 800 x 600 it
         // says there is no room instead.
         let (names, rings, bars) = run(&mut app, 800.0, 640.0);
         assert!(!names.is_empty(), "the edges named in the short plot");
