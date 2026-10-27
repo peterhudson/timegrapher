@@ -291,6 +291,17 @@ jobs:
           path: ${{ env.ZIP }}
           archive: false
           if-no-files-found: error
+      # The compiler and runner image, for the draft's notes.
+      - name: Build information
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          echo "- $PLATFORM: $(rustc -V), runner $ImageOS $ImageVersion" > "buildinfo-$PLATFORM.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: buildinfo-${{ matrix.platform }}.txt
+          archive: false
+          if-no-files-found: error
 
   release:
     if: >-
@@ -327,6 +338,12 @@ jobs:
           merge-multiple: true
           # The zips and the disk image are the release files: keep them whole.
           skip-decompress: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: buildinfo-*
+          path: buildinfo
+          merge-multiple: true
+          skip-decompress: true
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Draft release
@@ -339,7 +356,8 @@ jobs:
           # The notes for testers and users come from
           # packaging/release-notes/X.Y.Z.md when there is one; otherwise
           # they list the pull requests merged since the newest earlier
-          # release's commit. Either way they end with the commit built.
+          # release's commit. Either way they end with the commit built and
+          # each platform's compiler and runner image.
           body="$RUNNER_TEMP/notes.md"
           notes="packaging/release-notes/${TAG#v}.md"
           if [ -f "$notes" ]; then
@@ -358,7 +376,8 @@ jobs:
               } >> "$body"
             fi
           fi
-          printf '\nBuilt from %s.\n' "$GITHUB_SHA" >> "$body"
+          printf '\nBuilt from %s with:\n\n' "$GITHUB_SHA" >> "$body"
+          cat buildinfo/buildinfo-*.txt >> "$body"
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --draft --target "$GITHUB_SHA" \
