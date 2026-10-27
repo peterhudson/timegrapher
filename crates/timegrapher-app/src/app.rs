@@ -4888,6 +4888,8 @@ impl TimegrapherApp {
             Some("Nothing to paint yet. Listen, or open a recording.")
         } else if test && self.guided_running() {
             Some("Not during a Positions Test: the test sets each position.")
+        } else if self.reserve_running() {
+            Some("Not during a Power Reserve Test: it runs in one position.")
         } else if test || self.positions_take {
             Some(POSITIONS_TAKE_PAINT)
         } else {
@@ -7533,11 +7535,17 @@ impl TimegrapherApp {
         } else {
             None
         };
-        let quick = self.quick_listen || file.is_none() && self.watch.is_empty();
+        // The watch the Calibre card names, else the take's own.
+        let named = self
+            .open_watch()
+            .map(|e| e.watch.name.clone())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.watch.clone());
+        let quick = self.quick_listen || file.is_none() && named.is_empty();
         let name =
             file.unwrap_or_else(|| if quick { "Quick Listen" } else { "New Take" }.to_string());
-        let watch = if !self.watch.is_empty() {
-            self.watch.clone()
+        let watch = if !named.is_empty() {
+            named.clone()
         } else if quick {
             "No watch".to_string()
         } else {
@@ -13138,18 +13146,27 @@ impl TimegrapherApp {
             );
             return;
         }
-        if self.live.is_some() || self.session.recorder.is_some() {
-            self.new_session();
-        }
-        self.input = Input::Microphone;
-        // Never Quick Listen, whose sound goes without a question: a test
-        // keeps its take.
-        self.quick_listen = false;
+        self.reserve_session();
         self.start_microphone();
         if !self.running() || self.session.recorder.is_none() {
             return;
         }
         self.begin_reserve();
+    }
+
+    /// A fresh microphone session for a Power Reserve Test, in the
+    /// position the card and the pane named, even where it came from a
+    /// take opened over listening's own.
+    fn reserve_session(&mut self) {
+        let pos = self.position;
+        if self.live.is_some() || self.session.recorder.is_some() {
+            self.new_session();
+        }
+        self.position = pos;
+        self.input = Input::Microphone;
+        // Never Quick Listen, whose sound goes without a question: a test
+        // keeps its take.
+        self.quick_listen = false;
     }
 
     /// The test itself, once its session is listening: in the position the
@@ -13320,6 +13337,9 @@ impl TimegrapherApp {
         } else {
             None
         };
+        if self.reserve.is_some() {
+            self.note_need(ui, Pane::PowerReserve, reserve::PANE_MIN_H);
+        }
         if reserve::pane(ui, self.reserve.as_ref(), free, self.position_card_title)
             == Some(reserve::Action::Stop)
         {
@@ -18773,7 +18793,9 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(watches::take_line(&take).starts_with("Power Reserve 0 h 00 min (still running"));
+        assert!(
+            watches::take_line(&take, false).starts_with("Power Reserve 0 h 00 min (still running")
+        );
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.start_batch(&saved);
@@ -18781,6 +18803,40 @@ mod tests {
         assert!(!again.reserve_running());
         assert_eq!(back.results.as_ref(), Some(&r));
         assert_eq!(back.position, Position::CrownLeft);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A Power Reserve Test started with a take open runs in the position
+    /// the card and the pane named, not the one listening had before the
+    /// take was opened; and the status bar names the watch the Calibre
+    /// card names.
+    #[test]
+    fn a_power_reserve_test_over_an_opened_take_keeps_the_cards_position_and_watch() {
+        let base = std::env::temp_dir().join(format!("tg-app-reserve-pos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Daytona")).unwrap();
+        let id = lib.find("Daytona").unwrap().watch.id.clone();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root));
+        app.pick_watch(&id);
+        // A take opened in Dial Down over listening's Dial Up.
+        app.reset_session(48000, "take".into());
+        app.input = Input::File;
+        app.opened_path = "/x/take.wav".into();
+        app.mic_setup = Some(WatchSetup::default());
+        app.position = Position::DialDown;
+        // The test's own session, short of opening a real input.
+        app.reserve_session();
+        assert_eq!(app.position, Position::DialDown);
+        assert_eq!(app.input, Input::Microphone);
+        // The take's own watch name gone, as after a test's Stop.
+        app.watch.clear();
+        let words = app.status_words();
+        assert!(words.contains("Daytona"), "{words}");
+        assert!(!words.contains("No watch"), "{words}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -20584,6 +20640,32 @@ mod tests {
         let t = app.free_table(&egui::Context::default()).unwrap();
         let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
         assert_eq!(cu.2, guided::FreeCell::Short, "{t:?}");
+        // Seven seconds more: 12 s measured.
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 7.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let live = app.live.as_mut().unwrap();
+        for b in audio.samples.chunks(960) {
+            live.push(b);
+        }
+        let t = app.free_table(&egui::Context::default()).unwrap();
+        let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
+        assert!(
+            matches!(cu.2, guided::FreeCell::Read(Some(_), Some(_), Some(_))),
+            "{t:?}"
+        );
+        // A second masked in its middle leaves 11 s with no 10 s clear to
+        // read: the row says so, never a row of dashes.
+        let end = app.latest_s();
+        app.masked.push((end - 7.0, end - 6.0));
+        let t = app.free_table(&egui::Context::default()).unwrap();
+        let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
+        assert_eq!(cu.2, guided::FreeCell::Unread, "{t:?}");
     }
 
     #[test]
@@ -21473,6 +21555,40 @@ mod tests {
         draw(&mut app);
         assert_eq!(app.brush, None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The Position Brush is put down and greyed while a Power Reserve
+    /// Test runs, as for a Positions Test: the run keeps one position.
+    #[test]
+    fn the_brush_waits_for_a_power_reserve_run() {
+        let mut app = synthetic(60.0, 0.0);
+        let ctx = themed();
+        let draw = |app: &mut TimegrapherApp| {
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    theme::pane_toolbar(ui, "Paper Strip", &[], |ui| app.strip_settings(ui))
+                });
+            });
+        };
+        app.brush = Some(Position::DialUp);
+        draw(&mut app);
+        assert_eq!(app.brush, Some(Position::DialUp));
+        let mut t = reserve::Test::new(Position::DialUp, true, String::new(), 0.0);
+        let beats: Vec<timegrapher_core::beats::Beat> = (0..100)
+            .map(|i| timegrapher_core::beats::Beat {
+                index: i,
+                time: 1.0 + i as f64 * 0.125,
+                quality: 1.0,
+            })
+            .collect();
+        t.update(&beats, 0.125, 20.0);
+        app.reserve = Some(t);
+        assert!(app.reserve_running());
+        draw(&mut app);
+        assert_eq!(app.brush, None);
+        app.brush = Some(Position::CrownUp);
+        draw(&mut app);
+        assert_eq!(app.brush, None, "it stays down while the run goes on");
     }
 
     /// After a masked stretch the charts stay empty until a whole
