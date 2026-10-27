@@ -501,7 +501,9 @@ sound, or a knock that costs part of a beat) shows in the beats. It is a
 jump when the first beat heard after it is more than a quarter of a beat
 off the count, when it follows a stretch too quiet to follow, or when the
 timing of both sides steps by more than 4 ms, and by about the same, as a
-whole recording's reading finds one. A step is found ten or more beats
+whole recording's reading finds one. The watch can make that step itself,
+its beats falling behind with no sound lost, and it counts as a break
+all the same. A step is found ten or more beats
 after it, and the chart points read since are dropped; after a silent hole
 one can show up to 4 s after the sound returns, even when no beat was
 lost, as the silence leaves the 4 s of sound the beats are found in. No
@@ -641,7 +643,9 @@ CR, as in `session.toml`), `rate_s_per_day`, `amplitude_deg` and
 Positions Test to begin with (its icon a fuel gauge near empty), runs the
 watch down from full wind to stop in one position, the one on the
 Current Position card. Its toolbar says which ("Runs in Dial Up (DU), set
-on the Current Position card"; it has no position setting of its own),
+on the Current Position card"; it has no position setting of its own; its
+words, its hovers and its "?" name the card by its caption, the Position
+card where it is captioned Position),
 then holds **Keep Sound** or **Analysis Only**, and **Start Test** (**Stop Test**
 while it runs). The pane takes no more height than it shows, and once a run has charts it keeps room for its first chart at a readable height, the rest scrolling under it, taken from the panes with room to spare; a run that ends, an opened run's take and the first whole hour each grow the pane to show the charts and the table, up to half the room and never into another pane's least. Before a test it
 is one line, "Wind fully, set the position on the Position card, then press
