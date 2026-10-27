@@ -78,17 +78,16 @@ pub fn facts(p: &TickProfile) -> [String; 5] {
 
 /// Which of a side's five facts its box shows, top to bottom: on a plot
 /// `plot_h` tall with room for `fit_frame` rows inside it, all five, else
-/// (as on a short plot) two; and never more than `fit_floor`, the rows
-/// that fit above the noise floor, shedding Drop, then Unlock, then
-/// Beats, then Unlock to Drop, so Amplitude goes last. The hover has all
-/// five.
-fn keep_rows(plot_h: f32, fit_frame: usize, fit_floor: usize) -> Vec<usize> {
+/// (as on a short plot) two, Unlock to Drop and Amplitude, Amplitude last
+/// to go. The same in dB as in linear, so nothing moves with the scale.
+/// The hover has all five.
+fn keep_rows(plot_h: f32, fit_frame: usize) -> Vec<usize> {
     let by_height = if plot_h >= SHORT_PLOT && fit_frame >= 5 {
         5
     } else {
         fit_frame.min(2)
     };
-    let mut keep = [4, 3, 0, 1, 2][..by_height.min(fit_floor)].to_vec();
+    let mut keep = [4, 3, 0, 1, 2][..by_height].to_vec();
     keep.sort_unstable();
     keep
 }
@@ -103,8 +102,6 @@ struct FactBox {
     /// The five facts, or the one line saying there are none yet.
     rows: Vec<(String, String)>,
     plot_h: f32,
-    /// The noise floor's level: the box stays above it.
-    floor: Option<f64>,
     /// The values' column, right-aligned, as wide as the widest value on
     /// either side; and the names' column likewise.
     name_w: f32,
@@ -169,8 +166,7 @@ impl FactBox {
         }
     }
 
-    /// The rows shown in the plot as `t` draws it: inside the plot and
-    /// above its noise floor by 6 pt.
+    /// The rows shown in the plot as `t` draws it: inside the plot.
     fn shown(&self, t: &egui_plot::PlotTransform) -> Vec<usize> {
         let frame = *t.frame();
         let top = frame.top() + FACT_INSET;
@@ -186,18 +182,9 @@ impl FactBox {
             (FACT_PAD_SHORT, FACT_ROW_SHORT)
         };
         let fit_frame = room(frame.bottom() - FACT_INSET, pad, row);
-        // Above the noise floor where there is room; never no facts at all
-        // where the plot holds two rows.
-        let fit_floor = self
-            .floor
-            .map_or(fit_frame, |y| {
-                room(t.position_from_point_y(y) - 6.0, pad, row)
-            })
-            .max(fit_frame.min(2))
-            .min(fit_frame);
         match self.rows.len() {
-            5 => keep_rows(self.plot_h, fit_frame, fit_floor),
-            1 if fit_floor >= 1 => vec![0],
+            5 => keep_rows(self.plot_h, fit_frame),
+            1 if fit_frame >= 1 => vec![0],
             _ => Vec::new(),
         }
     }
@@ -378,9 +365,6 @@ pub fn draw(
         FactBox {
             base: egui_plot::PlotItemBase::new(format!("{} facts", ["Tick", "Tock"][k])),
             plot_h,
-            floor: profiles[k]
-                .as_ref()
-                .map(|p| scaled(&[p.floor], top, scale)[0]),
             name_w: if facts[k].is_some() { name_w } else { none_w },
             value_w: if facts[k].is_some() { value_w } else { 0.0 },
             short_name_w,
@@ -503,6 +487,15 @@ pub fn draw(
         });
         let resp = plot.show(ui, |pl| {
             pl.set_plot_bounds_y(y_lo..=y_hi);
+            // The noise floor, under the facts box, which keeps its rows
+            // over it in either scale.
+            if let Some(p) = p {
+                pl.hline(
+                    HLine::new("noise floor", scaled(&[p.floor], top, scale)[0])
+                        .color(pal.text_tertiary)
+                        .style(LineStyle::dashed_dense()),
+                );
+            }
             // Over the grid, under the band and the trace.
             pl.add(facts_here.clone());
             let Some(p) = p else { return };
@@ -550,12 +543,6 @@ pub fn draw(
                 )
                 .color(c)
                 .width(1.8_f32),
-            );
-            let floor = scaled(&[p.floor], top, scale)[0];
-            pl.hline(
-                HLine::new("noise floor", floor)
-                    .color(pal.text_tertiary)
-                    .style(LineStyle::dashed_dense()),
             );
             med = m;
         });
@@ -1238,25 +1225,15 @@ mod tests {
         // A short plot keeps Unlock to Drop and Amplitude.
         let names = |k: Vec<usize>| k.into_iter().map(|i| FACT_NAMES[i]).collect::<Vec<_>>();
         // A short plot keeps Unlock to Drop and Amplitude.
-        assert_eq!(
-            names(keep_rows(80.0, 3, 3)),
-            ["Unlock to Drop", "Amplitude"]
-        );
-        assert_eq!(keep_rows(150.0, 6, 6), [0, 1, 2, 3, 4]);
+        assert_eq!(names(keep_rows(80.0, 3)), ["Unlock to Drop", "Amplitude"]);
+        assert_eq!(keep_rows(150.0, 6), [0, 1, 2, 3, 4]);
         // Two or five: a tall plot without room for five keeps two.
-        assert_eq!(keep_rows(110.0, 4, 4), [3, 4]);
+        assert_eq!(keep_rows(110.0, 4), [3, 4]);
         // Never taller than the plot: one row, then none.
-        assert_eq!(names(keep_rows(40.0, 1, 1)), ["Amplitude"]);
-        assert_eq!(keep_rows(30.0, 0, 0), Vec::<usize>::new());
-        // Above the noise floor: Drop goes first, then Unlock, then Beats.
-        assert_eq!(
-            names(keep_rows(150.0, 6, 4)),
-            ["Beats", "Unlock", "Unlock to Drop", "Amplitude"]
-        );
-        assert_eq!(
-            names(keep_rows(150.0, 6, 3)),
-            ["Beats", "Unlock to Drop", "Amplitude"]
-        );
+        assert_eq!(names(keep_rows(40.0, 1)), ["Amplitude"]);
+        assert_eq!(keep_rows(30.0, 0), Vec::<usize>::new());
+        // The noise floor sheds nothing: the box is the same in dB.
+        assert_eq!(keep_rows(150.0, 6).len(), 5);
     }
 
     /// The facts box sits in the plot's top-left corner, as tall as its
@@ -1267,7 +1244,6 @@ mod tests {
             base: egui_plot::PlotItemBase::new("Tick facts".into()),
             rows: vec![(String::new(), String::new()); 5],
             plot_h: 150.0,
-            floor: None,
             name_w: 90.0,
             value_w: 60.0,
             short_name_w: 80.0,
@@ -1285,11 +1261,9 @@ mod tests {
         let r = b.rect(frame, 2);
         assert_eq!(r.width(), 80.0 + FACT_GAP + 40.0 + 2.0 * FACT_PAD_SHORT);
         assert_eq!(r.height(), 2.0 * FACT_ROW_SHORT + 2.0 * FACT_PAD_SHORT);
-        // A plot 44 pt tall holds the two rows, even over a high noise
-        // floor; never none.
+        // A plot 44 pt tall holds the two rows; never none.
         let short = FactBox {
             plot_h: 44.0,
-            floor: Some(0.9),
             ..b.clone()
         };
         let frame = egui::Rect::from_min_size(egui::pos2(50.0, 30.0), egui::vec2(300.0, 44.0));

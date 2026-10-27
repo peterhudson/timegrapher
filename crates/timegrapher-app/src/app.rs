@@ -7438,7 +7438,7 @@ impl TimegrapherApp {
                 accent,
                 "dB Scale",
                 &mut self.periods_db,
-                "dB Scale: show the scores in decibels. Off: linear.",
+                "Show the scores in decibels. Off: linear.",
             );
         }
         if view == steady::View::Fft {
@@ -7461,7 +7461,7 @@ impl TimegrapherApp {
                 accent,
                 "dB Scale",
                 &mut self.maps_db,
-                "dB Scale: show the sizes in decibels. Off: linear.",
+                "Show the sizes in decibels. Off: linear.",
             );
         }
         if matches!(
@@ -7595,6 +7595,17 @@ impl TimegrapherApp {
             format!("{} ", self.position.name())
         };
         self.steady_working(ui);
+        // A map at a readable height, never a strip of colour: its pane
+        // keeps room for one map row.
+        let pane = if view == steady::View::Wavelet {
+            Pane::SteadyWavelet
+        } else {
+            Pane::SteadyStft
+        };
+        if view.is_map() {
+            let above = ui.cursor().top() - self.pane_top;
+            self.pane_need.insert(pane, above + view.min_row() + 6.0);
+        }
         let status = match upto {
             Some(u) => format!("Tested over {} of {of}beats", strip::fmt_time(u)),
             None if working => String::new(),

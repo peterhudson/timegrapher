@@ -33,6 +33,9 @@ const MAX_DRAWN: usize = 3000;
 /// Shortest row, and narrowest column, in which a series' plot stays
 /// readable, points.
 const MIN_ROW: f32 = 120.0;
+/// Shortest row for a map: its title, a picture as tall as the other
+/// views' plots and its key under it.
+pub const MIN_MAP_ROW: f32 = 200.0;
 const MIN_COLUMN: f32 = 260.0;
 
 /// What a Steadiness pane draws under each series: each view is a pane of
@@ -57,6 +60,15 @@ impl View {
     /// The STFT and Wavelet Maps: one map at a time, the choice shared.
     pub fn is_map(self) -> bool {
         matches!(self, View::Stft | View::Wavelet)
+    }
+
+    /// The shortest row in which this view's plot stays readable.
+    pub fn min_row(self) -> f32 {
+        if self.is_map() {
+            MIN_MAP_ROW
+        } else {
+            MIN_ROW
+        }
     }
 
     #[cfg(test)]
@@ -886,11 +898,12 @@ fn rows(
     // Each gap also takes the layout's spacing either side of it.
     let step_gap = gap + 2.0 * ui.spacing().item_spacing.y;
     let fits = |count: usize, room: f32| (room - step_gap * (count as f32 - 1.0)) / count as f32;
-    if fits(n, h) - 4.0 >= MIN_ROW || fits(n, w) < MIN_COLUMN {
+    let min_row = view.min_row();
+    if fits(n, h) - 4.0 >= min_row || fits(n, w) < MIN_COLUMN {
         // One above another, filling the pane, or scrolling when it is too
         // short for every row to be readable.
         // A little short of the room, so the last axis isn't clipped.
-        let row_h = (fits(n, h) - 4.0).max(MIN_ROW);
+        let row_h = (fits(n, h) - 4.0).max(min_row);
         // The bar always shows, so a row below the pane's edge is not
         // missed.
         egui::ScrollArea::vertical()

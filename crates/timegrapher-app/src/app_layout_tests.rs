@@ -997,6 +997,43 @@ fn a_finished_runs_pane_is_never_a_sliver() {
     }
 }
 
+/// A map's pane opened under the Paper Strip keeps room for one map at
+/// the height of the other views' plots, its title and key: never a strip
+/// of colour, at the design size or a small window.
+#[test]
+fn a_maps_pane_is_never_a_sliver() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    for pane in [Pane::SteadyStft, Pane::SteadyWavelet] {
+        for (w, h) in [(1280.0, 820.0), (1000.0, 700.0)] {
+            let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
+            let pass = |app: &mut TimegrapherApp| {
+                let input = egui::RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                };
+                let _ = ctx.run(input, |ctx| app.panels(ctx));
+            };
+            app.reveal_pane(pane);
+            for _ in 0..4 {
+                pass(&mut app);
+            }
+            let need = app.pane_need.get(&pane).copied().unwrap();
+            assert!(need >= steady::MIN_MAP_ROW, "{pane:?} {w}: {need}");
+            let tall = {
+                let id = app.panes.tiles.find_pane(&pane).unwrap();
+                let tabs = app.panes.tiles.parent_of(id).unwrap();
+                app.panes.tiles.rect(tabs).unwrap().height()
+            };
+            assert!(
+                tall + 1.0 >= need + TAB_BAR_H,
+                "{pane:?} {w}: {tall} for {need}"
+            );
+        }
+    }
+}
+
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and
 /// share the choice: picking Amplitude on one picks it on the other.
 /// Every other steadiness pane keeps its own switches.
