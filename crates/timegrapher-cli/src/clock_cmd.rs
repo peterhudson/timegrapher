@@ -11,6 +11,7 @@ use timegrapher_core::audio;
 use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::clockstore::{self, ClockStore, DeviceClock};
 use timegrapher_core::recorder::utc;
+use timegrapher_core::take;
 
 pub enum Action {
     List,
@@ -161,6 +162,10 @@ fn store(d: DeviceClock, json: bool) -> Result<(), String> {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "measures the sound card from its log; opens no take"
+)]
 fn from_log(log: &Path, recording: &Path) -> Result<ClockFit, String> {
     let info = audio::info(recording).map_err(|e| format!("{}: {e}", recording.display()))?;
     let text = fs::read_to_string(log).map_err(|e| format!("{}: {e}", log.display()))?;
@@ -283,6 +288,78 @@ pub fn recorded_device(file: &Path) -> Option<String> {
     v.get("device")?.as_str().map(String::from)
 }
 
+/// A take's clock as every command reads it ([`take::clock`]), with where
+/// it came from in words.
+pub struct AppliedClock {
+    pub fit: ClockFit,
+    /// The USB lines' or the correction's ppm, when they give the rate.
+    pub ppm: Option<f64>,
+    pub from: String,
+}
+
+/// The clock for a take `total_s` long, read as `info` says: from the clock
+/// `log` when there is one, with the recording's `usb` lines setting its
+/// rate; else a `correction` known for the input, else the USB lines
+/// ([`take::clock_from`]). A log makes a correction unneeded, so
+/// `correction` is only asked for without one.
+pub fn resolve(
+    log: Option<&Path>,
+    info: &audio::AudioInfo,
+    total_s: f64,
+    usb: impl FnOnce() -> Result<Option<(f64, String)>, String>,
+    correction: impl FnOnce() -> Result<Option<(f64, String)>, String>,
+) -> Result<Option<AppliedClock>, String> {
+    let text = match log {
+        Some(path) => {
+            Some(fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?)
+        }
+        None => None,
+    };
+    let correction = match log {
+        Some(_) => None,
+        None => correction()?,
+    };
+    let usb = usb()?;
+    let fit = take::clock(
+        text.as_deref(),
+        info.sample_rate,
+        info.bytes_per_frame,
+        usb.as_ref().map(|(ppm, _)| *ppm),
+        correction.as_ref().map(|(ppm, _)| *ppm),
+        total_s,
+    )
+    .map_err(|e| match log {
+        Some(path) => format!("{}: {e}", path.display()),
+        None => e,
+    })?;
+    let Some(source) = take::clock_from(
+        log.is_some(),
+        usb.as_ref().map(|(ppm, _)| *ppm),
+        correction.as_ref().map(|(ppm, _)| *ppm),
+    ) else {
+        return Ok(None);
+    };
+    let ppm = match source {
+        take::ClockFrom::Log => None,
+        take::ClockFrom::LogRatedByUsb | take::ClockFrom::Usb => usb.as_ref().map(|(p, _)| *p),
+        take::ClockFrom::Correction => correction.as_ref().map(|(p, _)| *p),
+    };
+    let from = match source {
+        take::ClockFrom::LogRatedByUsb => format!(
+            "{}; clock log {} for its breaks",
+            usb.map(|(_, f)| f).unwrap_or_default(),
+            log.map(|p| p.display().to_string()).unwrap_or_default()
+        ),
+        take::ClockFrom::Log => format!(
+            "from clock log {}",
+            log.map(|p| p.display().to_string()).unwrap_or_default()
+        ),
+        take::ClockFrom::Correction => correction.map(|(_, f)| f).unwrap_or_default(),
+        take::ClockFrom::Usb => usb.map(|(_, f)| f).unwrap_or_default(),
+    };
+    Ok(fit.map(|fit| AppliedClock { fit, ppm, from }))
+}
+
 /// The correction to apply to a recording: `--card-ppm`, else the stored
 /// one for `--device`, else the stored one for the input the recording
 /// says it was made on. The text says where it came from.
@@ -308,23 +385,6 @@ pub fn correction(
     }
 }
 
-/// [`correction`], else the sound card's error read from the USB lines in
-/// the first of `files` (as `analyze` does), so every command corrects a
-/// take the same way.
-pub fn correction_or_usb(
-    files: &[std::path::PathBuf],
-    device: Option<&str>,
-    card_ppm: Option<f64>,
-) -> Result<Option<(f64, String)>, String> {
-    let Some(first) = files.first() else {
-        return Ok(None);
-    };
-    if let Some(c) = correction(first, device, card_ppm)? {
-        return Ok(Some(c));
-    }
-    usb(files)
-}
-
 /// The sound card's error read from the USB lines in the first of
 /// `files`, with its source text; `None` when the recording has none.
 pub fn usb(files: &[std::path::PathBuf]) -> Result<Option<(f64, String)>, String> {
@@ -344,6 +404,10 @@ fn stored_text(e: &DeviceClock) -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests build the clock they expect by hand"
+)]
 mod tests {
     use super::*;
 

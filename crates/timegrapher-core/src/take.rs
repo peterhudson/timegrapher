@@ -11,17 +11,48 @@ use crate::session::{Manifest, RecordingEntry};
 use crate::stream::BeatLog;
 use std::path::Path;
 
-/// The clock a take's readings are put on, for a take `duration_s` long.
+/// Where a take's clock comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClockFrom {
+    /// Its clock log, fitted for rates.
+    Log,
+    /// Its USB lines set the rate; its clock log gives the breaks.
+    LogRatedByUsb,
+    /// A correction known for the input (stored, or given), as one steady
+    /// error over the take.
+    Correction,
+    /// Its USB lines, as one steady error over the take.
+    Usb,
+}
+
+/// Where the clock comes from for a take with a clock log (`log`), USB
+/// lines (`usb_ppm`) and a known correction (`correction_ppm`), as
+/// [`clock`] picks it; `None` when the readings stay on the sound card's
+/// clock. USB lines set the rate whenever there is a log; without one, a
+/// known correction comes before them.
+pub fn clock_from(
+    log: bool,
+    usb_ppm: Option<f64>,
+    correction_ppm: Option<f64>,
+) -> Option<ClockFrom> {
+    match (log, usb_ppm, correction_ppm) {
+        (true, Some(_), _) => Some(ClockFrom::LogRatedByUsb),
+        (true, None, _) => Some(ClockFrom::Log),
+        (false, _, Some(_)) => Some(ClockFrom::Correction),
+        (false, Some(_), None) => Some(ClockFrom::Usb),
+        (false, None, None) => None,
+    }
+}
+
+/// The clock a take's readings are put on, for a take `duration_s` long,
+/// from where [`clock_from`] says.
 ///
-/// - With a clock log (`log_text`, read at `sample_rate` and
-///   `bytes_per_frame`), the log fitted for rates
-///   ([`ClockFit::for_rates`]); where the recording has USB lines
-///   (`usb_ppm`, slow positive), they set the rate and the log keeps only
-///   its breaks ([`ClockFit::rate_from_usb`]).
-/// - Without one, a correction known for the input (`correction_ppm`:
-///   stored, or given), else the USB lines, as one steady error over the
+/// - A clock log (`log_text`, read at `sample_rate` and
+///   `bytes_per_frame`) is fitted for rates ([`ClockFit::for_rates`]); where
+///   the recording has USB lines (`usb_ppm`, slow positive), they set the
+///   rate and the log keeps only its breaks ([`ClockFit::rate_from_usb`]).
+/// - A correction or the USB lines alone are one steady error over the
 ///   take ([`ClockFit::fixed`]).
-/// - Otherwise none: the readings stay on the sound card's clock.
 pub fn clock(
     log_text: Option<&str>,
     sample_rate: u32,
@@ -30,17 +61,28 @@ pub fn clock(
     correction_ppm: Option<f64>,
     duration_s: f64,
 ) -> Result<Option<ClockFit>, String> {
-    let Some(text) = log_text else {
-        return Ok(correction_ppm
-            .or(usb_ppm)
-            .map(|ppm| ClockFit::fixed(ppm, duration_s)));
+    let fitted = |text: &str| -> Result<ClockFit, String> {
+        let pairs = clock::parse_log(text, sample_rate, bytes_per_frame)?;
+        ClockFit::for_rates(&pairs).map_err(|e| e.to_string())
     };
-    let pairs = clock::parse_log(text, sample_rate, bytes_per_frame)?;
-    let mut fit = ClockFit::for_rates(&pairs).map_err(|e| e.to_string())?;
-    if let Some(ppm) = usb_ppm {
-        fit.rate_from_usb(ppm);
-    }
-    Ok(Some(fit))
+    Ok(
+        match (
+            clock_from(log_text.is_some(), usb_ppm, correction_ppm),
+            log_text,
+        ) {
+            (Some(ClockFrom::Log), Some(text)) => Some(fitted(text)?),
+            (Some(ClockFrom::LogRatedByUsb), Some(text)) => {
+                let mut fit = fitted(text)?;
+                fit.rate_from_usb(usb_ppm.unwrap_or_default());
+                Some(fit)
+            }
+            (Some(ClockFrom::Correction), _) => {
+                correction_ppm.map(|p| ClockFit::fixed(p, duration_s))
+            }
+            (Some(ClockFrom::Usb), _) => usb_ppm.map(|p| ClockFit::fixed(p, duration_s)),
+            _ => None,
+        },
+    )
 }
 
 /// Where a take lists its breaks.
@@ -162,6 +204,16 @@ mod tests {
             Some(fixed(12.0))
         );
         assert!(clock(None, 48_000, 2, None, None, 600.0).unwrap().is_none());
+    }
+
+    #[test]
+    fn the_clock_comes_from_the_log_and_usb_lines_else_a_correction_else_usb() {
+        use ClockFrom::*;
+        assert_eq!(clock_from(true, Some(1.0), Some(2.0)), Some(LogRatedByUsb));
+        assert_eq!(clock_from(true, None, Some(2.0)), Some(Log));
+        assert_eq!(clock_from(false, Some(1.0), Some(2.0)), Some(Correction));
+        assert_eq!(clock_from(false, Some(1.0), None), Some(Usb));
+        assert_eq!(clock_from(false, None, None), None);
     }
 
     #[test]

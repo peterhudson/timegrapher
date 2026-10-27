@@ -81,6 +81,11 @@ pub struct BeatLog {
 /// 48 kHz).
 pub const SNIPPETS_KEPT_S: f64 = 60.0;
 
+/// Beats kept so far that a chunk looks back through for the good beats
+/// before a jump at its start: about four minutes at 28,800 bph, longer
+/// than the tracker follows noise after a dropout.
+const JUMP_LOOK_BACK: usize = 2000;
+
 impl BeatLog {
     /// [`crate::measure::beat_sound_found`] for `beats`, a stretch's
     /// beats as this log holds them (audio time): the profiles of their
@@ -178,14 +183,17 @@ impl State {
             .iter()
             .position(|b| b.time + off >= core_b)
             .map_or(numbered.len(), |p| anchor + p);
-        let before: Vec<Beat> = self.beats[self.beats.len().saturating_sub(beats::JUMP_CONTEXT)..]
+        // The good beats before the chunk, reaching back past a stretch of
+        // noise beats after a dropout ([`beats::jumps_among_good`]).
+        let back = &self.beats[self.beats.len().saturating_sub(JUMP_LOOK_BACK)..];
+        let before: Vec<Beat> = back[beats::good_tail_start(back, beats::JUMP_CONTEXT)..]
             .iter()
             .map(|b| Beat {
                 time: b.time - off,
                 ..*b
             })
             .collect();
-        let cuts: Vec<usize> = beats::jumps(&numbered[anchor..end], &before)
+        let cuts: Vec<usize> = beats::jumps_among_good(&numbered[anchor..end], &before)
             .into_iter()
             .map(|p| p + anchor)
             .collect();
