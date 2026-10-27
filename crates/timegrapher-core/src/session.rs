@@ -264,9 +264,11 @@ pub struct Measurement {
     /// Signed beat error from the drop (the fitted beat times), ms (even
     /// beats late is positive).
     pub beat_error_ms: Option<f64>,
-    /// Signed beat error from the unlock, the figure checked against tg's
-    /// beat error in regress (median of the amplitude windows), ms.
+    /// Diagnostic median from the unlock windows, ms; signed except when
+    /// the existing known-break logic combines opposing signs as sizes.
     pub beat_error_unlock_ms: Option<f64>,
+    /// Magnitudes combined before averaging; use these for BE displays and summaries.
+    pub beat_error_magnitudes: crate::beat_error::Magnitudes,
     pub amplitude_deg: Option<f64>,
     pub amplitude_even_deg: Option<f64>,
     pub amplitude_odd_deg: Option<f64>,
@@ -321,9 +323,7 @@ impl Measurement {
     /// The beat error the report shows: from the unlock where it was
     /// found, else from the drop. Unsigned, ms.
     pub fn beat_error(&self) -> Option<f64> {
-        self.beat_error_unlock_ms
-            .or(self.beat_error_ms)
-            .map(f64::abs)
+        self.beat_error_magnitudes.primary()
     }
 
     /// The seconds measured: the stretch read, less what was masked out.
@@ -543,6 +543,12 @@ pub fn measure_masked(
         },
     );
     let no_watch = crate::measure::no_watch_reason(jitter_us, log.bph, listened_s, beat_sound);
+    let mut beat_error_magnitudes = crate::beat_error::Magnitudes::of(amp.iter().copied());
+    // Beat-only records can lack amplitude windows; combine their local fits,
+    // rather than taking the magnitude of the whole take's signed fit.
+    beat_error_magnitudes.drop_ms = beat_error_magnitudes
+        .drop_ms
+        .or_else(|| crate::beat_error::median(windows.iter().map(|w| w.fit.beat_error_ms)));
     let mut m = Measurement {
         start_s: from_s,
         end_s: to_s,
@@ -561,6 +567,7 @@ pub fn measure_masked(
             amp.iter().filter_map(|w| w.beat_error_unlock_ms),
             turned,
         ),
+        beat_error_magnitudes,
         amplitude_deg: median_of(amps.iter().copied()),
         amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
         amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
@@ -630,6 +637,7 @@ pub fn measure_masked(
         m.rate_s_per_day = None;
         m.beat_error_ms = None;
         m.beat_error_unlock_ms = None;
+        m.beat_error_magnitudes = Default::default();
         m.amplitude_deg = None;
         m.amplitude_even_deg = None;
         m.amplitude_odd_deg = None;

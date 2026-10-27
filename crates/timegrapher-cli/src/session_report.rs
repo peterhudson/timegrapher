@@ -349,7 +349,7 @@ fn readings_table(sn: &Session) -> String {
             opt(m.amplitude_even_deg, 0),
             opt(m.amplitude_odd_deg, 0),
             cell(opt(m.beat_error(), 2)),
-            opt(m.beat_error_ms.map(f64::abs), 2),
+            opt(m.beat_error_magnitudes.drop_ms, 2),
             opt(m.jitter_us, 0),
             signed(m.rate_p05, 0),
             signed(m.rate_p95, 0),
@@ -421,7 +421,7 @@ fn reference_table(sn: &Session) -> String {
             signed(m.amplitude_deg.zip(f.amplitude_deg).map(|(a, b)| a - b), 0),
             opt(be, 2),
             opt(f.beat_error_ms, 2),
-            opt(m.beat_error_ms.map(f64::abs), 2),
+            opt(m.beat_error_magnitudes.drop_ms, 2),
             esc(f.source.as_deref().unwrap_or("")),
             esc(&r.label)
         );

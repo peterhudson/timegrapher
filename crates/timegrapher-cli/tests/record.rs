@@ -170,7 +170,6 @@ fn takes_build_up_a_session() {
     for (check, report) in [
         ("rate_s_per_day", "rate_s_per_day"),
         ("amplitude_deg", "amplitude_deg"),
-        ("beat_error_ms", "beat_error_unlock_ms"),
     ] {
         let a = du[check].as_f64().unwrap();
         let b = r0[report]
@@ -178,6 +177,10 @@ fn takes_build_up_a_session() {
             .unwrap_or_else(|| panic!("{report} in {r0}"));
         assert!((a - b).abs() < 1e-9, "{check}: record {a}, session {b}");
     }
+    let recorded_be = du["beat_error_ms"].as_f64().unwrap();
+    let report_be = r0["beat_error_magnitudes"]["unlock_ms"].as_f64().unwrap();
+    assert!((recorded_be - report_be).abs() < 1e-9);
+    assert!(recorded_be >= 0.0);
     let _ = fs::remove_dir_all(&d);
 }
 

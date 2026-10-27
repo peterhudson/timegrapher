@@ -678,7 +678,7 @@ impl SideMeasures {
 pub struct Measures {
     pub even: SideMeasures,
     pub odd: SideMeasures,
-    /// Median of the signed beat error from the unlock over the first and
+    /// Median of the beat-error magnitudes from the unlock over the first and
     /// the last quarter of the 2 s amplitude windows that have one, ms.
     pub beat_error_first_quarter_ms: Option<f64>,
     pub beat_error_last_quarter_ms: Option<f64>,
@@ -690,7 +690,7 @@ impl Measures {
     pub fn of(r: &ShapeReport, windows: &[crate::amplitude::AmplitudeWindow]) -> Measures {
         let be: Vec<f64> = windows
             .iter()
-            .filter_map(|w| w.beat_error_unlock_ms)
+            .filter_map(|w| w.beat_error_unlock_ms.map(f64::abs))
             .filter(|v| v.is_finite())
             .collect();
         let q = be.len() / 4;

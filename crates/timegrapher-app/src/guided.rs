@@ -1508,6 +1508,10 @@ pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<C
             measurement.amplitude_deg = k.amplitude_deg;
             measurement.beat_error_unlock_ms = k.beat_error_ms;
             measurement.beat_error_ms = k.beat_error_ms;
+            measurement.beat_error_magnitudes = timegrapher_core::beat_error::Magnitudes {
+                unlock_ms: k.beat_error_ms.map(f64::abs),
+                drop_ms: k.beat_error_ms.map(f64::abs),
+            };
             Some(Reading {
                 label: position_label(position),
                 position,

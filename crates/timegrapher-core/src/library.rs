@@ -300,7 +300,7 @@ pub fn take_name(started: &str, positions: &[Position]) -> String {
 pub struct AtEnd {
     pub rate_s_per_day: Option<f64>,
     pub amplitude_deg: Option<f64>,
-    /// Signed, from the unlock.
+    /// Display magnitude, preferring the unlock. Older saves can be signed.
     pub beat_error_ms: Option<f64>,
     /// `rate_s_per_day` corrected for the take's sound card from its clock
     /// log, as `timegrapher session` and the app read the take; left out
@@ -1277,7 +1277,10 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
             AtEnd {
                 rate_s_per_day: rate,
                 amplitude_deg: at(r, "amplitude_deg"),
-                beat_error_ms: at(r, "beat_error_unlock_ms"),
+                beat_error_ms: match r.get("beat_error_magnitudes") {
+                    Some(sizes) => at(sizes, "unlock_ms").or_else(|| at(sizes, "drop_ms")),
+                    None => at(r, "beat_error_unlock_ms"),
+                },
                 rate_corrected_s_per_day: rate
                     .and_then(|v| Some(crate::clockstore::correct_rate(v, ppm()?))),
             }

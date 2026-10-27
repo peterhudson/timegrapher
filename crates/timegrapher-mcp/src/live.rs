@@ -138,10 +138,16 @@ pub fn summary(doc: &Value) -> String {
         if let Some(v) = r["amplitude_deg"].as_f64() {
             s += &format!(" · {v:.0}°");
         }
-        if let Some(v) = r["beat_error_unlock_ms"]
-            .as_f64()
-            .or(r["beat_error_ms"].as_f64())
-        {
+        let be = if r["beat_error_magnitudes"].is_object() {
+            r["beat_error_magnitudes"]["unlock_ms"]
+                .as_f64()
+                .or(r["beat_error_magnitudes"]["drop_ms"].as_f64())
+        } else {
+            r["beat_error_unlock_ms"]
+                .as_f64()
+                .or(r["beat_error_ms"].as_f64())
+        };
+        if let Some(v) = be {
             s += &format!(" · {:.1} ms", v.abs());
         }
     }

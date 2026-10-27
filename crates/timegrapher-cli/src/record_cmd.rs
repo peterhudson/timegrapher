@@ -638,7 +638,7 @@ impl Feed {
                 Some(t),
                 r.rate_s_per_day,
                 r.amplitude_deg,
-                r.beat_error_unlock_ms,
+                r.beat_error_magnitudes.unlock_ms,
             ]);
             if self.trend.len() > MAX_TREND {
                 // Every other point of the older half goes.
@@ -816,7 +816,7 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
         beats_expected: beats::expected_beats(m.end_s - m.start_s, log.bph).round() as usize,
         rate_s_per_day: m.rate_s_per_day.filter(|_| heard),
         amplitude_deg: m.amplitude_deg.filter(|_| heard),
-        beat_error_ms: m.beat_error_unlock_ms.filter(|_| heard),
+        beat_error_ms: m.beat_error_magnitudes.unlock_ms.filter(|_| heard),
         clipping: whole.clipping,
     })
 }

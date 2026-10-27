@@ -9,6 +9,7 @@ pub mod analysis;
 pub mod analysis_take;
 pub mod archive;
 pub mod audio;
+pub mod beat_error;
 pub mod beats;
 pub mod breaks;
 pub mod calibre_store;

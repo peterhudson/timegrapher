@@ -677,7 +677,7 @@ Every pane reads the take as any other.
 (true seconds from the first to the last), `pauses[]` (`from_s`, `to_s`:
 the silences of 30 s or more inside the run) and `hours[]`: `hour` (0,
 1, 2, ...), `span_s` (true seconds, 3,600 but for the last),
-`rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (signed, from the
+`rate_s_per_day`, `amplitude_deg`, `beat_error_ms` (magnitude, from the
 unlock) and `read_s` (seconds of whole 10 s readings), each value null
 when not read.
 

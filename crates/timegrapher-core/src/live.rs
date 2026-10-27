@@ -76,10 +76,11 @@ pub struct LiveReading {
     pub rate_s_per_day: Option<f64>,
     /// Signed beat error from the fit to the beat times (near the drop), ms.
     pub beat_error_ms: Option<f64>,
-    /// Signed beat error measured from the unlock, the figure checked
-    /// against tg's beat error in regress: median over the amplitude
-    /// windows, ms. Positive means Tick (the run's first beat) comes late.
+    /// Signed diagnostic median over the unlock windows, ms.
+    /// Positive means Tick (the run's first beat) comes late.
     pub beat_error_unlock_ms: Option<f64>,
+    /// Magnitudes combined before averaging; use these for BE displays and summaries.
+    pub beat_error_magnitudes: crate::beat_error::Magnitudes,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
     /// the 2 s windows alone, as `confidence::standard_error` gives it for a
@@ -120,7 +121,7 @@ pub struct LiveReading {
     /// scaled to the averaging time. `None` until about 30 s of unbroken
     /// beats, and when no regular beat is found.
     pub rate_error_s_per_day: Option<f64>,
-    /// `beat_error_unlock_ms`'s ±: the standard error of its 2 s windows
+    /// `beat_error_magnitudes.unlock_ms`'s ±, from its 2 s magnitude windows
     /// in the averaging time.
     pub beat_error_unlock_error_ms: Option<f64>,
     /// What limits the readings, in `measure`'s order.
@@ -900,6 +901,24 @@ impl LiveAnalyzer {
             measure::add(&mut caveats, Caveat::Masked { seconds: masked_s });
         }
         let whole = holes.whole(&self.beats, window_from, end_s, GAP_S);
+        let mut beat_error_magnitudes = crate::beat_error::Magnitudes::of(wins.iter().copied());
+        // Beat-only logs still combine local fits before averaging. Only a
+        // reading shorter than one 10 s local fit can use its own fit directly.
+        beat_error_magnitudes.drop_ms = sided(beat_error_magnitudes.drop_ms.or_else(|| {
+            if listened_s <= 10.0 {
+                fit.map(|f| f.beat_error_ms.abs())
+            } else {
+                bph.and_then(|b| {
+                    crate::beat_error::median(
+                        holes
+                            .windows(&self.beats[lo..hi], b, from, end_s, 10.0, 5.0, GAP_S)
+                            .iter()
+                            .map(|w| w.fit.beat_error_ms),
+                    )
+                })
+            }
+        }));
+        beat_error_magnitudes.unlock_ms = sided(beat_error_magnitudes.unlock_ms);
         LiveReading {
             time_s: end_s,
             bph,
@@ -909,6 +928,7 @@ impl LiveAnalyzer {
             }),
             beat_error_ms: sided(fit.map(|f| f.beat_error_ms)),
             beat_error_unlock_ms: sided(med(&|w| w.beat_error_unlock_ms)),
+            beat_error_magnitudes,
             amplitude_deg: heard(med(&|w| w.mean())),
             amplitude_error_deg: heard(amplitude_error_deg),
             amplitude_even_deg: sided(med(&|w| w.even_deg)),

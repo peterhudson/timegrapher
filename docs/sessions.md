@@ -334,12 +334,12 @@ of the recording or for `measure_s`:
   fitted on its own, a stretch whose beats span under 10 s is left out,
   and the rest are combined weighted by their beats;
 - beat error measured from the unlock, as tg and bench timegraphers do
-  (median of the 2 s windows); this is the value the report shows first.
-  The beat error from the drop (the same fit as the rate) is
-  shown beside it, and used when no unlock is found. Both are shown as a
-  size. Which beat is longer is not shown: Tick is the first beat the
+  (median of the magnitudes of the 2 s estimates); this is the value the report
+  shows first. The drop's local estimates are combined the same way and shown
+  beside it, or used when no unlock is found. Which beat is longer is not shown: Tick is the first beat the
   analysis locks on, so the sign can change from one run to the next.
-  `summary.json` keeps the signed values;
+  `summary.json` adds `beat_error_magnitudes` for these readings and keeps the
+  previous signed fields for diagnostics; see [the BE contract](beat-error.md);
 - amplitude, the median of the 2 s windows, with Tick and Tock beside it
   (the two kinds of beat, one per pallet stone, since the sound can't
   say which stone is which; in the JSON, Tick is `amplitude_even_deg`

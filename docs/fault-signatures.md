@@ -46,7 +46,7 @@ of its text) gives, for the Tick (`even`) and the Tock (`odd`):
 | `tail_ratio` | mean level 3 to 15 ms after the drop over the drop's level |
 
 and, for the beat error measured from the unlock,
-`beat_error_first_quarter_ms` and `beat_error_last_quarter_ms`: its median
+`beat_error_first_quarter_ms` and `beat_error_last_quarter_ms`: the median magnitude
 over the first and the last quarter of the 2 s windows
 (`beat_error_quarter_windows` in each). `timegrapher shape` gives the full
 set of measures.

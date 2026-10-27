@@ -1081,6 +1081,7 @@ mod tests {
                 beats_used: 480,
             }),
             beat_error_unlock_ms: None,
+            beat_error_magnitudes: Default::default(),
             rate_p05: None,
             rate_p95: None,
             jitter_us: None,

@@ -603,9 +603,9 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
         o(r.rate_p05, 1),
         o(r.rate_p95, 1),
         r.overall
-            .map_or("-".into(), |f| esc(&crate::beat_error_text(
-                r.beat_error_unlock_ms,
-                f.beat_error_ms
+            .map_or("-".into(), |_| esc(&crate::beat_error_text(
+                r.beat_error_magnitudes.unlock_ms,
+                r.beat_error_magnitudes.drop_ms
             ))),
         o(r.amplitude_deg, 0),
         o(r.amplitude_p05, 0),

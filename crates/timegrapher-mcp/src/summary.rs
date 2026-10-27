@@ -62,10 +62,16 @@ fn readings(m: &Value, rate: Option<f64>) -> Option<String> {
     if let Some(a) = m["amplitude_deg"].as_f64() {
         parts.push(format!("amplitude {a:.0}{}°", pm(&conf["amplitude"], 0)));
     }
-    let be = m["beat_error_unlock_ms"]
-        .as_f64()
-        .or(m["beat_error_ms"].as_f64())
-        .or(m["overall"]["beat_error_ms"].as_f64());
+    let be = if m["beat_error_magnitudes"].is_object() {
+        m["beat_error_magnitudes"]["unlock_ms"]
+            .as_f64()
+            .or(m["beat_error_magnitudes"]["drop_ms"].as_f64())
+    } else {
+        m["beat_error_unlock_ms"]
+            .as_f64()
+            .or(m["beat_error_ms"].as_f64())
+            .or(m["overall"]["beat_error_ms"].as_f64())
+    };
     if let Some(b) = be {
         parts.push(format!(
             "beat error {:.2}{} ms",

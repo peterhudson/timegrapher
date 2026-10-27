@@ -44,11 +44,11 @@ timegrapher series take/ --lift 55 --clock take/clocklog.txt
 It reads the same input as `long`: one recording, several segments in
 order, or a folder. `--clock` corrects for the sound card's clock. The
 other options are the same as for `long`. `--reading` sets the length of
-each rate reading, 10 s by default. The beat error is the one measured
-from the unlock; where its sign turns over across a break, its readings
-are sizes, given as positive, as the take's beat error is (see
-[long-runs.md](long-runs.md)), and a `Conditions` line and the
-`beat_error_as_size` caveat say so. Where Tick and Tock were named by the
+each rate reading, 10 s by default. The beat error is the magnitude measured
+from the unlock. Its 2 s estimates become magnitudes before averaging or any
+subsequent analysis, regardless of whether a sign change or break was detected.
+See [Beat error: magnitude and signed timing](beat-error.md) for the aggregation
+rule and the effect on cycles that cross zero. Where Tick and Tock were named by the
 beat count across a break, not told apart by their sound, a `Sides` line
 says so. A 2 h take takes about 30 s, and a 16 h run about 4
 minutes.
@@ -361,7 +361,7 @@ headlines state facts. Everything else is as in version 1.
 | Field | Contents |
 |---|---|
 | `duration_s`, `bph` | the take |
-| `caveats[]` | conditions detected, each with a `code`: `sides_by_count` (`count`: the breaks across which Tick and Tock were named by the beat count, not told apart by their sound) and `beat_error_as_size` (the beat error's sign differs either side of a break, so its readings are sizes, positive, not signed), as for `analyze`; empty when none |
+| `caveats[]` | conditions detected, each with a `code`: `sides_by_count` (`count`: the breaks across which Tick and Tock were named by the beat count, not told apart by their sound) and `beat_error_as_size` (the beat error's sign differs either side of a break, so the legacy diagnostic fields combine as sizes; the plotted series always uses magnitudes), as for `analyze`; empty when none |
 | `config` | the detection settings used |
 | `series[]` | one entry each for `rate` (s/d), `amplitude` (deg) and `beat_error` (ms, from the unlock), in that order |
 | `isochronism` | the rate by amplitude: `step_s`, `bin_deg`, `bins[]` (`amplitude_deg`, `readings`, `rate_s_per_day`, `rate_q25`, `rate_q75`, `from_wind_h`, `to_wind_h`), `amplitude_from_deg`, `amplitude_to_deg`, `s_per_day_per_deg`, `rate_change_s_per_day`, `curve_centre_deg`, `curve` (`[c0, c1, c2]` in A − centre), `curve_explained`, `turn_deg`, `headline`; null with fewer than three bins |

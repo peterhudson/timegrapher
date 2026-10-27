@@ -310,7 +310,7 @@ pub fn assess(
         let amps: Vec<f64> = amplitude_windows.iter().filter_map(|w| w.mean()).collect();
         let bes: Vec<f64> = amplitude_windows
             .iter()
-            .filter_map(|w| w.beat_error_unlock_ms)
+            .filter_map(|w| w.beat_error_unlock_ms.map(f64::abs))
             .collect();
         Confidence::new(
             match c.average_s {
