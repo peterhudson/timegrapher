@@ -13162,6 +13162,10 @@ impl TimegrapherApp {
             .as_ref()
             .map_or_else(String::new, |r| r.started_utc().to_string());
         let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+        if let Some(l) = self.live.as_mut() {
+            let n = l.config().max_beats.max(reserve::RUN_BEATS_KEPT);
+            l.set_max_beats(n);
+        }
         self.reserve = Some(reserve::Test::new(
             pos,
             self.reserve_keep_sound,
@@ -18778,6 +18782,35 @@ mod tests {
         assert_eq!(back.results.as_ref(), Some(&r));
         assert_eq!(back.position, Position::CrownLeft);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A Power Reserve run longer than the beats the Bench keeps (about a
+    /// day) still starts at its first beat: the engine keeps every beat of
+    /// the run, so its run time and hours aren't read from its last day.
+    #[test]
+    fn a_power_reserve_run_keeps_its_first_beat_past_the_benchs_limit() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.reset_session(48000, "syn".into());
+        // The Bench's limit made small, as a day's beats are to a long run.
+        app.live.as_mut().unwrap().set_max_beats(100);
+        app.begin_reserve();
+        let cfg = SynthConfig {
+            duration_s: 40.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let live = app.live.as_mut().unwrap();
+        for b in audio.samples.chunks(960) {
+            live.push(b);
+        }
+        let beats = live.beats().to_vec();
+        let now = live.duration_s();
+        assert!(beats.len() > 200, "{}", beats.len());
+        let t = app.reserve.as_mut().unwrap();
+        assert!(t.update(&beats, 0.125, now).is_none());
+        let first = t.heard.first_s.unwrap();
+        assert!(first < 3.0, "{first}");
+        assert!(t.run_so_far_s() > 35.0, "{}", t.run_so_far_s());
     }
 
     #[test]

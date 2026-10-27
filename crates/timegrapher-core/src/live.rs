@@ -524,6 +524,11 @@ impl LiveAnalyzer {
         }
     }
 
+    /// Keep up to `n` beats from now on, the oldest dropped beyond them.
+    pub fn set_max_beats(&mut self, n: usize) {
+        self.cfg.max_beats = n;
+    }
+
     /// The sound as it came in, from `from_s` for `len_s` seconds, while it
     /// is still held (the last few seconds).
     pub fn sound(&self, from_s: f64, len_s: f64) -> Option<&[f32]> {
