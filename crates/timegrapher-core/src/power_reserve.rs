@@ -69,6 +69,20 @@ impl Heard {
         self.last_s.is_some_and(|l| now_s - l >= STOP_AFTER_S)
     }
 
+    /// How a test that began at `began_s` has ended by `now_s` (audio
+    /// seconds), while it is listening: the watch stopped, or the test
+    /// reached [`LIMIT_S`]; `None` while it runs. A test ended before
+    /// either is ended by hand ([`Ending::ByHand`]).
+    pub fn ending(&self, now_s: f64, began_s: f64) -> Option<Ending> {
+        if self.stopped(now_s) {
+            Some(Ending::Stopped)
+        } else if now_s - began_s >= LIMIT_S {
+            Some(Ending::Limit)
+        } else {
+            None
+        }
+    }
+
     /// Seconds since the last beat heard, at `now_s`.
     pub fn silent_s(&self, now_s: f64) -> Option<f64> {
         self.last_s.map(|l| (now_s - l).max(0.0))
@@ -326,6 +340,21 @@ mod tests {
         assert!(!h.stopped(last + STOP_AFTER_S - 1.0));
         assert!(h.stopped(last + STOP_AFTER_S));
         assert!(!heard(&[], step).stopped(1e6), "never before a first beat");
+    }
+
+    #[test]
+    fn a_test_ends_when_the_watch_stops_or_at_the_limit() {
+        let step = 0.125;
+        let h = heard(&beats(100.0, 200.0, step, 1.0), step);
+        let last = h.last_s.unwrap();
+        // Begun at 100 s: running, then stopped ten minutes after the last beat.
+        assert_eq!(h.ending(last + STOP_AFTER_S - 1.0, 100.0), None);
+        assert_eq!(h.ending(last + STOP_AFTER_S, 100.0), Some(Ending::Stopped));
+        // Still beating at the limit, counted from when it began.
+        let h = heard(&beats(100.0, 300.0, step, 1.0), step);
+        let n = 300.0 - step;
+        assert_eq!(h.ending(n, n - LIMIT_S + 1.0), None);
+        assert_eq!(h.ending(n, n - LIMIT_S), Some(Ending::Limit));
     }
 
     #[test]

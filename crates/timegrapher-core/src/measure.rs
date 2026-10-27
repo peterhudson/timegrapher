@@ -156,9 +156,9 @@ pub enum Caveat {
     /// The take was paused or resumed inside the stretch.
     Breaks { count: usize },
     /// At `count` of those breaks Tick and Tock were not told apart by
-    /// their sound (too alike, too few good beats, or no jump in the beats
-    /// for the side check to run at), so the sides after each are named by
-    /// the beat count across it alone.
+    /// their sound or by the beat error's sign (too alike, too few good
+    /// beats, or no jump in the beats for the side check to run at), so the
+    /// sides after each are named by the beat count across it alone.
     SidesByCount { count: usize },
     /// The beat error's sign differs either side of a cut in the stretch
     /// ([`crate::timing::sign_turns`]), so it is given as a size, positive,

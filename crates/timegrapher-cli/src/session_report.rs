@@ -718,6 +718,10 @@ fn wind_words(w: f64) -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests build the clock they expect by hand"
+)]
 mod tests {
     use super::*;
     use timegrapher_core::{

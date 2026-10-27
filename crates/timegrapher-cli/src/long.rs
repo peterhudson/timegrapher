@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 use timegrapher_core::calibre_store::{self, Catalog, Entry, UserCalibres};
 #[cfg(test)]
 use timegrapher_core::calibres::{self, Calibre};
-use timegrapher_core::clock::{self, ClockFit};
+use timegrapher_core::clock::ClockFit;
 use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{common_escape_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{audio, breaks, session, timing};
+use timegrapher_core::{audio, session, take, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
 /// number of teeth, or both common escape wheels when neither is given.
@@ -341,45 +341,24 @@ pub fn run(
     if let Some(note) = resolved_train.lift_default_note(lift) {
         eprintln!("{note}");
     }
-    let clock_log = clock_args.log;
-    let mut clock = match clock_log {
-        Some(p) => {
-            let text = fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
-            let pairs = clock::parse_log(&text, info.sample_rate, info.bytes_per_frame)
-                .map_err(|e| format!("{}: {e}", p.display()))?;
-            Some(ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", p.display()))?)
-        }
-        None => None,
-    };
-    // Without a log, a stored (or given) correction for the input: one
-    // steady error over the run, which cannot follow drift.
-    let fixed = match clock_log {
-        Some(_) => None,
-        None => {
-            crate::clock_cmd::correction_or_usb(&files, clock_args.device, clock_args.card_ppm)?
-        }
-    };
     let total_s = info
         .frames
         .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-    // With a log, the recording's USB lines, when it has them, correct the
-    // rates; the log then gives its breaks.
-    let usb = match (clock_log, clock.as_mut()) {
-        (Some(p), Some(fit)) => crate::clock_cmd::usb(&files)?.map(|(ppm, from)| {
-            fit.rate_from_usb(ppm);
-            (
-                ppm,
-                format!("{from}; clock log {} for its breaks", p.display()),
-            )
-        }),
-        _ => None,
-    };
-    let fixed = fixed.or(usb);
-    let mut clock = match (&fixed, clock_log) {
-        (Some((ppm, _)), None) => session::fixed_clock(*ppm, total_s),
-        _ => clock,
-    };
+    let applied = crate::clock_cmd::resolve(
+        clock_args.log,
+        &info,
+        total_s,
+        || crate::clock_cmd::usb(&files),
+        || crate::clock_cmd::correction(&files[0], clock_args.device, clock_args.card_ppm),
+    )?;
+    // Said beside the readings, except a clock log's own (the report
+    // gives its fit).
+    let clock_log = clock_args.log;
+    let fixed = applied
+        .as_ref()
+        .and_then(|a| a.ppm.map(|ppm| (ppm, a.from.clone())));
     let clock_note = fixed.as_ref().map(|(_, from)| from.as_str());
+    let mut clock = applied.map(|a| a.fit);
     let out = out.unwrap_or_else(|| {
         let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("run");
         file.with_file_name(format!("{stem}_long"))
@@ -414,17 +393,7 @@ pub fn run(
     };
     lc.wheels.extend(extra);
     let mut log = log;
-    let breaks = breaks::with_jumps(
-        breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
-        &log.jumps,
-    );
-    log.by_count = breaks::renumber(
-        &mut log.beats,
-        &mut log.amplitude_windows,
-        &breaks,
-        &log.sided,
-        log.bph,
-    );
+    let breaks = take::breaks(&mut log, take::Listed::Files(&paths), clock.as_mut());
     let rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;

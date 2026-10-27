@@ -328,11 +328,12 @@ fn a_negative_pause_moves_no_beat_numbers_back() {
 }
 
 #[test]
-fn sides_too_alike_to_tell_keep_the_count_and_say_so() {
+fn sides_too_alike_to_tell_keep_the_beat_errors_sign() {
     // As above, but Tick and Tock sound alike, so the side sounds can't
-    // tell them apart at the jump: the beat count carries the sides across
-    // it, the change of sign stands, and the reading says the sides there
-    // were named by the count.
+    // tell them apart at the jump. The beat error is 0.6 ms either side of
+    // it, clearly away from zero, so its sign names the sides: a turn of
+    // sign at such a hole reads as the sides swapped by the count, and the
+    // beat error keeps its sign across it (the project's rule, 2026-10-27).
     let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
         generate(
             &SynthConfig {
@@ -354,7 +355,7 @@ fn sides_too_alike_to_tell_keep_the_count_and_say_so() {
     samples.extend(b.samples);
     let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
     assert_eq!(log.jumps.len(), 1, "{:?}", log.jumps);
-    assert!(log.sided.is_empty(), "{:?}", log.sided);
+    assert_eq!(log.sided, log.jumps);
     let found = breaks::with_jumps(Vec::new(), &log.jumps);
     log.by_count = breaks::renumber(
         &mut log.beats,
@@ -363,7 +364,7 @@ fn sides_too_alike_to_tell_keep_the_count_and_say_so() {
         &log.sided,
         log.bph,
     );
-    assert_eq!(log.by_count, log.jumps);
+    assert!(log.by_count.is_empty(), "{:?}", log.by_count);
     let be = |from: f64, to: f64| {
         let run: Vec<_> = log
             .beats
@@ -375,9 +376,54 @@ fn sides_too_alike_to_tell_keep_the_count_and_say_so() {
     };
     let (before, after) = (be(5.0, join_s - 1.0), be(join_s + 5.0, 175.0));
     assert!(
-        before * after < 0.0 && before.abs() > 0.4 && after.abs() > 0.4,
+        before * after > 0.0 && before.abs() > 0.4 && after.abs() > 0.4,
         "{before} {after}"
     );
+    let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+    assert!(
+        !m.caveats
+            .iter()
+            .any(|c| matches!(c, Caveat::SidesByCount { .. })),
+        "{:?}",
+        m.caveats
+    );
+}
+
+#[test]
+fn sides_too_alike_to_tell_near_no_beat_error_keep_the_count_and_say_so() {
+    // As above, but the beat error is near zero, too small for its sign to
+    // name the sides: the beat count carries them across the jump, and the
+    // reading says the sides there were named by the count.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, -0.03, 1);
+    let b = piece(90.0, 0.03, 2);
+    let fs = a.sample_rate;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    assert_eq!(log.jumps.len(), 1, "{:?}", log.jumps);
+    assert!(log.sided.is_empty(), "{:?}", log.sided);
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    assert_eq!(log.by_count, log.jumps);
     let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
     assert!(
         m.caveats.contains(&Caveat::SidesByCount { count: 1 }),
@@ -388,10 +434,11 @@ fn sides_too_alike_to_tell_keep_the_count_and_say_so() {
 
 #[test]
 fn a_reading_across_a_turn_of_sign_gives_the_size_either_side() {
-    // The beat error turns from -0.6 to +0.6 ms at a hole whose sides the
-    // sound can't tell apart, so the count keeps the turn: a reading
-    // across the hole gives the size, 0.6 ms, rather than the near-zero
-    // mean of the two signs.
+    // The beat error turns from -0.6 to +0.3 ms at a hole whose sides the
+    // sound can't tell apart, and its size changes there too, so neither
+    // the sound nor the sign names the sides and the count keeps the turn:
+    // a reading across the hole gives the size, about 0.45 ms, rather than
+    // the near-zero mean of the two signs.
     let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
         generate(
             &SynthConfig {
@@ -406,7 +453,7 @@ fn a_reading_across_a_turn_of_sign_gives_the_size_either_side() {
         )
     };
     let a = piece(90.03, -0.6, 1);
-    let b = piece(90.0, 0.6, 2);
+    let b = piece(90.0, 0.3, 2);
     let fs = a.sample_rate;
     let mut samples = a.samples;
     samples.extend(b.samples);
@@ -422,8 +469,8 @@ fn a_reading_across_a_turn_of_sign_gives_the_size_either_side() {
     let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
     let drop = m.beat_error_ms.expect("beat error");
     let unlock = m.beat_error_unlock_ms.expect("unlock beat error");
-    assert!((drop - 0.6).abs() < 0.1, "drop {drop}");
-    assert!((unlock - 0.6).abs() < 0.15, "unlock {unlock}");
+    assert!((drop - 0.45).abs() < 0.1, "drop {drop}");
+    assert!((unlock - 0.45).abs() < 0.15, "unlock {unlock}");
     assert!(
         m.caveats.contains(&Caveat::BeatErrorAsSize),
         "{:?}",

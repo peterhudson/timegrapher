@@ -19,7 +19,7 @@
 //! edges this is the drop's beat error minus the difference between the
 //! two sides' unlock-to-drop times.
 
-use crate::beats::{trimmed_template, Beat, PRE_S};
+use crate::beats::{trimmed_template, trimmed_template_from, Beat, PRE_S};
 use crate::dsp::{median_f32, moving_average};
 use crate::timing;
 use serde::Serialize;
@@ -55,6 +55,8 @@ pub struct Edges {
     /// Drop peak and its level.
     pub peak: usize,
     pub peak_level: f32,
+    /// Top of sound 1, the unlock.
+    pub unlock_level: f32,
     /// Median of the template's first 3 ms.
     pub floor: f32,
 }
@@ -133,14 +135,37 @@ fn edges_after(
         drop,
         peak,
         peak_level: peak_v,
+        unlock_level: top,
         floor,
     })
 }
 
 /// How far before the unlock on a template of all the beats given a short
-/// window's sound 1 may be found, seconds. Amplitude falling from 300° to
-/// 250° moves the unlock about 1.3 ms earlier.
+/// window's sound 1 is looked for first, seconds. Amplitude falling from
+/// 300° to 250° moves the unlock about 1.3 ms earlier.
 const UNLOCK_SEARCH_S: f64 = 0.003;
+
+/// A sound 1 found from the start of a template [`template_pre_s`] long,
+/// earlier than the one found from the guide and at least this share of
+/// its height, is taken instead: the unlock lay before the search from the
+/// guide (an amplitude that fell within the chunk, or a low one that put
+/// the unlock before the 20 ms template), and what was found from the guide
+/// is the impulse. A bump of noise is far quieter than either sound.
+const EARLIER_SOUND_MIN: f32 = 0.5;
+
+/// Lowest amplitude a window reads, degrees.
+pub const MIN_AMPLITUDE_DEG: f64 = 100.0;
+
+/// Seconds before the drop a template must start for sound 1 to be found
+/// at [`MIN_AMPLITUDE_DEG`] at this oscillation period and lift: the unlock,
+/// after the 3 ms the floor is taken on and a margin for its edge; never
+/// less than [`PRE_S`]. At 18,000 bph and a 52° lift, 180° puts the unlock
+/// 18.5 ms before the drop, inside the floor of a 20 ms template.
+pub fn template_pre_s(osc_period_s: f64, lift_deg: f64) -> f64 {
+    let s = (lift_deg / (2.0 * MIN_AMPLITUDE_DEG)).clamp(0.0, 1.0);
+    let unlock_s = osc_period_s / std::f64::consts::PI * s.asin();
+    (unlock_s + 0.005).max(PRE_S)
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AmplitudeWindow {
@@ -287,8 +312,10 @@ pub fn windows_between(
     cfg: &AmplitudeConfig,
 ) -> Vec<AmplitudeWindow> {
     let mut out = Vec::new();
-    let plausible = |a: f64| (100.0..=380.0).contains(&a);
+    let plausible = |a: f64| (MIN_AMPLITUDE_DEG..=380.0).contains(&a);
     let origin = (PRE_S * fs).round() as usize;
+    let long_pre_s = template_pre_s(osc_period_s, cfg.lift_deg);
+    let long_origin = (long_pre_s * fs).round() as usize;
     let side_times = |win: &[Beat], even: bool| -> Vec<f64> {
         win.iter()
             .filter(|b| b.quality > 0.4 && (b.index.rem_euclid(2) == 0) == even)
@@ -299,7 +326,8 @@ pub fn windows_between(
     // guide for the short windows: on a few beats a bump of noise well
     // before the unlock can pass for sound 1 (the Daytona read 130–170° in
     // about one window in 40 that way), so a window's sound 1 is looked for
-    // from UNLOCK_SEARCH_S before this one.
+    // from UNLOCK_SEARCH_S before this one, unless a sound as loud as
+    // EARLIER_SOUND_MIN comes before it.
     let guide = |even: bool| -> usize {
         let times = side_times(beats, even);
         let e = (times.len() >= 3)
@@ -334,16 +362,34 @@ pub fn windows_between(
                 return None;
             }
             let tmpl = trimmed_template(env, fs, &times);
-            let e = edges_after(
+            let guided = edges_after(
                 &tmpl,
                 fs,
                 origin,
                 cfg.onset_fraction,
                 from[usize::from(!even)],
             )?;
-            let a = amplitude_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg);
-            let at = |i: f64| (i - origin as f64) / fs;
-            plausible(a).then_some((a, at(e.unlock), at(e.drop)))
+            // Sound 1 looked for from the start of a template long enough
+            // for the lowest amplitude, as seconds from the beat time.
+            let height = |e: &Edges| e.unlock_level - e.floor;
+            let at = |i: f64, origin: usize| (i - origin as f64) / fs;
+            let earlier = edges_after(
+                &trimmed_template_from(env, fs, &times, long_pre_s),
+                fs,
+                long_origin,
+                cfg.onset_fraction,
+                0,
+            )
+            .filter(|e| {
+                at(e.unlock, long_origin) < at(guided.unlock, origin) - 0.0003
+                    && height(e) >= EARLIER_SOUND_MIN * height(&guided)
+            });
+            let (unlock, drop) = match earlier {
+                Some(e) => (at(e.unlock, long_origin), at(e.drop, long_origin)),
+                None => (at(guided.unlock, origin), at(guided.drop, origin)),
+            };
+            let a = amplitude_deg(drop - unlock, osc_period_s, cfg.lift_deg);
+            plausible(a).then_some((a, unlock, drop))
         };
         let (even, odd) = (side(true), side(false));
         let beat_error_ms = timing::beat_error_ms(win);
@@ -462,5 +508,96 @@ mod tests {
             (b - c).abs() < 0.1,
             "unlock at {b} ms with the bump, {c} without"
         );
+    }
+
+    /// Each side's amplitude in the 2 s windows from `from_s` to `to_s`
+    /// of a 48 kHz synthetic watch at `bph` whose amplitude is `amp(t)`.
+    fn read_windows(
+        bph: u32,
+        duration_s: f64,
+        amp: impl Fn(f64) -> f64,
+        from_s: f64,
+        to_s: f64,
+    ) -> Vec<(f64, Option<f64>, Option<f64>)> {
+        use crate::stream::{analyze_samples, StreamConfig};
+        use crate::synth::{generate, SynthConfig};
+        let audio = generate(
+            &SynthConfig {
+                duration_s,
+                bph,
+                ..Default::default()
+            },
+            amp,
+            |_| 0.0,
+        );
+        let cfg = StreamConfig {
+            analysis: crate::analysis::AnalysisConfig {
+                bph: Some(bph),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        analyze_samples(&audio.samples, audio.sample_rate, &cfg)
+            .amplitude_windows
+            .iter()
+            .filter(|w| w.start_s >= from_s && w.end_s <= to_s)
+            .map(|w| (w.start_s, w.even_deg, w.odd_deg))
+            .collect()
+    }
+
+    #[test]
+    fn a_low_amplitude_on_a_slow_watch_reads_low() {
+        // At 18,000 bph and a 52° lift, 180° puts the unlock 18.5 ms before
+        // the drop, which a 20 ms template with its first 3 ms taken as the
+        // floor left out: the impulse was taken for it, reading 326°.
+        for (bph, amp) in [
+            (14_400, 150.0),
+            (18_000, 110.0),
+            (18_000, 180.0),
+            (21_600, 150.0),
+            (28_800, 110.0),
+            (28_800, 270.0),
+        ] {
+            // A side whose edge lands on noise in one window is left out
+            // there, as a side outlier; every side read is right.
+            let w = read_windows(bph, 20.0, |_| amp, 4.0, 18.0);
+            let read: Vec<f64> = w.iter().flat_map(|w| [w.1, w.2]).flatten().collect();
+            assert!(read.len() + 1 >= 2 * w.len() && w.len() == 7, "{w:?}");
+            for a in read {
+                assert!((a - amp).abs() < 8.0, "{bph} bph at {amp}°: {w:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_dip_in_amplitude_reads_as_a_dip() {
+        // 270° with 10 s at a lower amplitude: the unlock moves earlier than
+        // the search from the guide allows, which read the impulse as the
+        // unlock (a dip to 180° read 326°).
+        for low in [140.0, 180.0, 200.0] {
+            let amp = move |t: f64| {
+                if (30.0..40.0).contains(&t) {
+                    low
+                } else {
+                    270.0
+                }
+            };
+            for (start, even, odd) in read_windows(28_800, 70.0, amp, 24.0, 46.0) {
+                let want = amp(start + 1.0);
+                if (start - 30.0).abs() < 1.0 || (start - 40.0).abs() < 1.0 {
+                    continue;
+                }
+                for a in [even, odd].into_iter().flatten() {
+                    assert!(
+                        (a - want).abs() < 8.0,
+                        "dip to {low}°: {a}° in the window from {start} s, {want}° heard"
+                    );
+                }
+                assert!(
+                    even.is_some() || odd.is_some(),
+                    "dip to {low}°: none at {start} s"
+                );
+            }
+        }
     }
 }
