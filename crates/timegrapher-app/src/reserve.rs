@@ -174,12 +174,17 @@ impl Test {
 }
 
 /// A run's ending in words.
-pub fn ending_text(e: Ending) -> &'static str {
+pub fn ending_text(e: Ending) -> String {
     match e {
-        Ending::Stopped => "The watch stopped",
-        Ending::ByHand => "Stopped by hand while the watch still ran",
-        Ending::Limit => "Reached the 80 h limit while the watch still ran",
+        Ending::Stopped => "The watch stopped".to_string(),
+        Ending::ByHand => "Stopped by hand while the watch still ran".to_string(),
+        Ending::Limit => format!("Reached the {} limit while the watch still ran", limit_h()),
     }
+}
+
+/// The longest run, as the words say it: "80 h".
+fn limit_h() -> String {
+    format!("{} h", power_reserve::LIMIT_S / 3600.0)
 }
 
 /// The pane's body, in no more height than it shows: before a run one
@@ -209,8 +214,9 @@ pub fn pane(
         );
         if let Some((have, need)) = free {
             let room = format!(
-                "{} free where the take is kept; a run of up to 80 h writes up to {} of sound.",
+                "{} free where the take is kept; a run of up to {} writes up to {} of sound.",
                 gb(have),
+                limit_h(),
                 gb(need)
             );
             if have >= need {
@@ -580,7 +586,7 @@ pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
     out += &line(&["Started (UTC)".into(), r.started_utc.clone()]);
     out += &line(&["Position".into(), r.position.clone()]);
     out += &line(&["Power reserve".into(), power_reserve::run_text(r.run_s)]);
-    out += &line(&["Ended".into(), ending_text(r.ending).into()]);
+    out += &line(&["Ended".into(), ending_text(r.ending)]);
     out += "\n";
     out += &line(&[
         "Hour".into(),
