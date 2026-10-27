@@ -1318,14 +1318,16 @@ fn opt(v: Option<f64>, digits: usize) -> String {
 }
 
 /// Beat error from the unlock as the headline, with the drop's alongside.
-pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
-    match unlock_ms {
-        Some(u) => format!(
+pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: Option<f64>) -> String {
+    match (unlock_ms, drop_ms) {
+        (Some(u), Some(d)) => format!(
             "{:.2} ms (from the unlock; {:.2} ms from the drop)",
             u.abs(),
-            drop_ms.abs()
+            d.abs()
         ),
-        None => format!("{:.2} ms from the drop (unlock not found)", drop_ms.abs()),
+        (Some(u), None) => format!("{:.2} ms from the unlock", u.abs()),
+        (None, Some(d)) => format!("{:.2} ms from the drop (unlock not found)", d.abs()),
+        (None, None) => "-".into(),
     }
 }
 
@@ -1379,15 +1381,18 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
         }
         // The ± is the unlock figure's.
         let be_se = c.and_then(|c| c.beat_error.se);
-        match (s.beat_error_unlock_ms, be_se) {
+        match (s.beat_error_magnitudes.unlock_ms, be_se) {
             (Some(u), Some(e)) => println!(
-                "Beat error   {:.2} ± {e:.2} ms (from the unlock; {:.2} ms from the drop)",
+                "Beat error   {:.2} ± {e:.2} ms (from the unlock; {} ms from the drop)",
                 u.abs(),
-                f.beat_error_ms.abs()
+                opt(s.beat_error_magnitudes.drop_ms, 2)
             ),
             _ => println!(
                 "Beat error   {}",
-                beat_error_text(s.beat_error_unlock_ms, f.beat_error_ms)
+                beat_error_text(
+                    s.beat_error_magnitudes.unlock_ms,
+                    s.beat_error_magnitudes.drop_ms
+                )
             ),
         }
     } else {

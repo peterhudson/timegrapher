@@ -2556,7 +2556,7 @@ mod tests {
     }
 
     #[test]
-    fn the_beat_error_view_gives_sizes_where_its_sign_turns() {
+    fn the_beat_error_view_always_gives_sizes() {
         use timegrapher_core::amplitude::AmplitudeWindow;
         // `after` ms of beat error after the jump at 60.03 s, 0.6 ms before.
         let log_with = |after: f64| {
@@ -2597,13 +2597,13 @@ mod tests {
         let be = finite(&turned);
         assert!(be.iter().all(|&v| v > 0.0), "{be:?}");
         assert!(be.iter().any(|&v| (v - 0.4).abs() < 1e-9), "{be:?}");
-        // Where the beats' sign agrees either side, the readings keep theirs.
+        // Even when the signed measurements agree, the views use magnitudes.
         let mut agree = log_with(0.4);
         for w in &mut agree.amplitude_windows {
             w.beat_error_unlock_ms = w.beat_error_unlock_ms.map(|v| -v);
         }
         let both_slow = compute(&agree, None);
-        assert!(finite(&both_slow).iter().any(|&v| v < 0.0));
+        assert!(finite(&both_slow).iter().all(|&v| v >= 0.0));
     }
 
     /// A watch whose rate swings once a minute (a fourth wheel fault) is

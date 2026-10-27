@@ -196,12 +196,12 @@ fn strip(csv: &str, duration_s: f64) -> Value {
                 if let Some(v) = tock {
                     tocks.push([t, v]);
                 }
-                // Signed, as the app draws them: the unlock's is the headline.
+                // Magnitudes for the plots; the source CSV retains signed diagnostics.
                 if let Some(v) = get(be_unlock) {
-                    unlocks.push([t, v]);
+                    unlocks.push([t, v.abs()]);
                 }
                 if let Some(v) = get(be) {
-                    drops.push([t, v]);
+                    drops.push([t, v.abs()]);
                 }
             }
             _ => {}
@@ -489,8 +489,8 @@ mod tests {
         assert_eq!(s["amplitude"], json!([[1.0, 269.0], [3.0, 272.0]]));
         assert_eq!(s["amplitude_tick"], json!([[1.0, 270.0], [3.0, 272.0]]));
         assert_eq!(s["amplitude_tock"], json!([[1.0, 268.0]]));
-        assert_eq!(s["beat_error_unlock"], json!([[1.0, -0.38]]));
-        assert_eq!(s["beat_error_drop"], json!([[1.0, -0.39], [3.0, -0.41]]));
+        assert_eq!(s["beat_error_unlock"], json!([[1.0, 0.38]]));
+        assert_eq!(s["beat_error_drop"], json!([[1.0, 0.39], [3.0, 0.41]]));
     }
 
     #[test]

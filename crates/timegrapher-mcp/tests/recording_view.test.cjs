@@ -21,7 +21,7 @@ const context = vm.createContext({
   stripCards: () => "", profileCard: () => "", limitsCard: () => "",
   noRegularBeat: () => "No regular beat found.",
 });
-vm.runInContext(["esc", "num", "signed", "abs", "tile", "recordingView"]
+vm.runInContext(["esc", "num", "signed", "abs", "tile", "beatErrorMagnitudes", "recordingView"]
   .map(n => definition(n)).concat(definition("analyzeRate", true)).join("\n"), context);
 
 function render(doc) { return context.recordingView(doc, null, null); }
@@ -65,4 +65,16 @@ test("corrected headline identifies raw percentile basis and escapes the source"
   assert.ok(markup.includes("Card-clock 90% of windows +5.0 to +8.0"));
   assert.ok(markup.includes("&lt;img"));
   assert.ok(!markup.includes("<img"));
+});
+
+test("BE uses magnitude medians without changing signed profile timing", () => {
+  let profileBE;
+  context.profileCard = (_profile, _title, value) => { profileBE = value; return ""; };
+  const doc = { overall: { beat_error_ms: -0.3 }, beat_error_unlock_ms: 0,
+    beat_error_magnitudes: { unlock_ms: 0.5, drop_ms: 0.3 } };
+  const markup = render(doc);
+  assert.match(markup, /Beat Error<\/div>\s*<div class="value">0.50/);
+  assert.equal(profileBE, -0.3);
+  assert.equal(doc.beat_error_unlock_ms, 0);
+  assert.match(render({ ...doc, beat_error_magnitudes: { unlock_ms: null, drop_ms: null } }), /Beat Error<\/div>\s*<div class="value">–/);
 });

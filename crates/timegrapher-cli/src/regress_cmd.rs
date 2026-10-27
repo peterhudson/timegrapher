@@ -102,8 +102,8 @@ impl Values {
             label: r.label.clone(),
             rate_s_per_day: m.rate_s_per_day,
             amplitude_deg: m.amplitude_deg,
-            beat_error_unlock_ms: m.beat_error_unlock_ms,
-            beat_error_ms: m.beat_error_ms,
+            beat_error_unlock_ms: m.beat_error_magnitudes.unlock_ms,
+            beat_error_ms: m.beat_error_magnitudes.drop_ms,
             beats: m.beats,
             provenance: None,
         }
@@ -950,7 +950,7 @@ fn holdout(root: &Path, sessions: &[String], o: &Options) -> Result<bool, String
                 amplitude_deg: judge(tg.amplitude_deg, me.amplitude_deg, mg.amplitude_deg, false),
                 beat_error_ms: judge(
                     tg.beat_error_ms,
-                    me.beat_error_unlock_ms,
+                    me.beat_error_magnitudes.unlock_ms,
                     mg.beat_error_ms,
                     true,
                 ),

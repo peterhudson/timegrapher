@@ -528,6 +528,13 @@ function analyzeRate(doc) {
   return { value: (doc.overall || {}).rate_s_per_day, basis: "on the sound card's clock" };
 }
 
+// New readings carry magnitude medians separately from signed diagnostics.
+// Only old documents fall back to taking the magnitude of their scalar value.
+function beatErrorMagnitudes(doc) {
+  if (doc.beat_error_magnitudes) return doc.beat_error_magnitudes;
+  return { unlock_ms: abs(doc.beat_error_unlock_ms), drop_ms: abs(Number.isFinite(doc.beat_error_ms) ? doc.beat_error_ms : (doc.overall || {}).beat_error_ms) };
+}
+
 function recordingView(doc, extra, limits) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
@@ -538,7 +545,7 @@ function recordingView(doc, extra, limits) {
   // The headline beat error is the unlock's, with the drop's beside it, as
   // on the app's card. Both show the size only: which side is Tick can
   // change between runs of the same take, so a sign would mean nothing.
-  const unlock = doc.beat_error_unlock_ms, drop = o.beat_error_ms;
+  const { unlock_ms: unlock, drop_ms: drop } = beatErrorMagnitudes(doc);
   const be = Number.isFinite(unlock) ? unlock : drop;
   const beNote = Number.isFinite(unlock)
     ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${num(abs(drop), 2)} ms` : ""}` : "from the drop";
@@ -599,7 +606,7 @@ function sessionView(doc, limits) {
     const heard = m.watch_heard !== false;
     html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
       (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
-        cell(abs(Number.isFinite(m.beat_error_unlock_ms) ? m.beat_error_unlock_ms : m.beat_error_ms), 2)
+        cell(beatErrorMagnitudes(m).unlock_ms ?? beatErrorMagnitudes(m).drop_ms, 2)
         : `<td colspan="3" style="text-align:center;color:var(--text2)">No regular beat found</td>`) +
       `<td>${esc(r.wind_h == null ? 0 : r.wind_h)}</td></tr>`;
   });
@@ -1571,11 +1578,12 @@ function liveView(l) {
   }
   const heard = r.beats_used > 0;
   const wait = "Listening…";
-  const be = Number.isFinite(r.beat_error_unlock_ms) ? r.beat_error_unlock_ms : r.beat_error_ms;
+  const sizes = beatErrorMagnitudes(r);
+  const be = sizes.unlock_ms ?? sizes.drop_ms;
   html += `<div class="tiles">
     ${tile("Rate", "--rate", heard ? signed(r.rate_s_per_day, 1) : "–", "seconds per day", heard ? `${num(d.average_s, 0)} s average` : wait)}
     ${tile("Amplitude", "--amplitude", heard ? num(r.amplitude_deg, 0) : "–", heard && Number.isFinite(r.amplitude_error_deg) ? `± ${Math.max(1, Math.round(r.amplitude_error_deg))}°` : "", heard ? "" : wait, "°")}
-    ${tile("Beat Error", "--beat-error", heard ? num(abs(be), 2) : "–", "milliseconds", heard ? (Number.isFinite(r.beat_error_unlock_ms) ? "from the unlock" : "from the drop") : wait)}
+    ${tile("Beat Error", "--beat-error", heard ? num(abs(be), 2) : "–", "milliseconds", heard ? (Number.isFinite(sizes.unlock_ms) ? "from the unlock" : "from the drop") : wait)}
     ${tile("Beats Heard", "", esc(d.beats_heard || 0), "", heard ? `${esc(r.beats_used)} in the last ${num(r.span_s, 0)} s` : wait)}
   </div>`;
   if (r.clipped_fraction > 0.01) html += `<div class="card notice"><b>Clipping</b>${num(r.clipped_fraction * 100, 0)}% of beats are clipped.</div>`;

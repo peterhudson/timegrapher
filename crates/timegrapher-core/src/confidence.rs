@@ -155,7 +155,7 @@ pub fn rate_se(windows: &[WindowFit]) -> Option<f64> {
 pub fn beat_error_se(windows: &[AmplitudeWindow]) -> Option<f64> {
     let v: Vec<f64> = windows
         .iter()
-        .filter_map(|w| w.beat_error_unlock_ms)
+        .filter_map(|w| w.beat_error_unlock_ms.map(f64::abs))
         .collect();
     standard_error(&v)
 }

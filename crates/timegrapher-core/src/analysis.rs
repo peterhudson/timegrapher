@@ -60,10 +60,11 @@ pub struct Summary {
     pub watch_heard: bool,
     /// Fit over the whole recording; its beat error is the drop's.
     pub overall: Option<TimingFit>,
-    /// Signed beat error measured from the unlock, the figure checked
-    /// against tg's beat error in regress: median over the amplitude
-    /// windows, ms. Positive means Tick (the run's first beat) comes late.
+    /// Signed diagnostic median over the unlock windows, ms.
+    /// Positive means Tick (the run's first beat) comes late.
     pub beat_error_unlock_ms: Option<f64>,
+    /// Magnitudes combined before averaging; use these for BE displays and summaries.
+    pub beat_error_magnitudes: crate::beat_error::Magnitudes,
     /// Spread of the windowed rate (5th and 95th percentiles), s/d.
     pub rate_p05: Option<f64>,
     pub rate_p95: Option<f64>,
@@ -119,6 +120,7 @@ impl Summary {
     pub fn withhold_readings(&mut self) {
         self.overall = None;
         self.beat_error_unlock_ms = None;
+        self.beat_error_magnitudes = Default::default();
         self.rate_p05 = None;
         self.rate_p95 = None;
         self.amplitude_deg = None;
@@ -320,9 +322,10 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let usb_clock = usbclock::measure(&audio.samples, audio.sample_rate);
     let amplitude_se_deg = se(&|w| w.mean());
     let expected = crate::beats::expected_beats(duration, bph);
+    let clean_amplitude = holes.amplitude_windows(&amplitude_windows);
     let assessment = crate::measure::assess(
         &rate_windows,
-        &amplitude_windows.iter().collect::<Vec<_>>(),
+        &clean_amplitude,
         &crate::measure::Context {
             watch_heard,
             no_watch_reason: no_watch.unwrap_or_default(),
@@ -350,7 +353,13 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         let r = crate::shape::analyze(&env, fs, &beats, beat_s, &Default::default());
         crate::shape::Measures::of(&r, &amplitude_windows)
     });
+    let mut beat_error_magnitudes =
+        crate::beat_error::Magnitudes::of(clean_amplitude.iter().copied());
+    beat_error_magnitudes.drop_ms = beat_error_magnitudes
+        .drop_ms
+        .or_else(|| crate::beat_error::median(rate_windows.iter().map(|w| w.fit.beat_error_ms)));
     let mut summary = Summary {
+        beat_error_magnitudes,
         duration_s: duration,
         sample_rate: audio.sample_rate,
         bph,

@@ -224,7 +224,7 @@ pub fn hours(
             span_s: tb - ta,
             rate_s_per_day: m.rate_s_per_day,
             amplitude_deg: m.amplitude_deg,
-            beat_error_ms: m.beat_error_unlock_ms,
+            beat_error_ms: m.beat_error_magnitudes.unlock_ms,
             read_s,
         });
         a = b;

@@ -23,6 +23,8 @@ pub struct Slice {
     /// ([`beat_error_turns`]), as the take's figures are.
     pub beat_error_ms: Option<f64>,
     pub beat_error_unlock_ms: Option<f64>,
+    /// Magnitudes combined before averaging; use these for BE displays and summaries.
+    pub beat_error_magnitudes: crate::beat_error::Magnitudes,
     pub amplitude_deg: Option<f64>,
 }
 
@@ -80,6 +82,8 @@ pub struct LongReport {
     pub overall: Option<TimingFit>,
     /// Signed beat error from the unlock, median of the amplitude windows, ms.
     pub beat_error_unlock_ms: Option<f64>,
+    /// Magnitudes combined before averaging; use these for BE displays and summaries.
+    pub beat_error_magnitudes: crate::beat_error::Magnitudes,
     pub rate_p05: Option<f64>,
     pub rate_p95: Option<f64>,
     pub amplitude_deg: Option<f64>,
@@ -232,6 +236,9 @@ pub fn analyse_with_breaks(
     // A slice that is not whole (reaching into a gap, or with 2 s or more
     // without beats) holds part of its span only and reads nothing.
     let slice_s = (duration / 400.0).clamp(10.0, 600.0).round();
+    let clean_amplitude = holes.amplitude_windows(&log.amplitude_windows);
+    // Beat-only logs need local estimates too; a long slice fit can cancel signs.
+    let local_drop = holes.windows(&beats, log.bph, 0.0, duration, 10.0, 5.0, amp_w);
     let mut slices = Vec::new();
     let mut jitters = Vec::new();
     let mut s = 0.0;
@@ -265,7 +272,24 @@ pub fn analyse_with_breaks(
             }
             ui += 1;
         }
+        let mut beat_error_magnitudes =
+            crate::beat_error::Magnitudes::of(clean_amplitude.iter().copied().filter(|a| {
+                let t = map((a.start_s + a.end_s) / 2.0);
+                whole && t >= s && t < e
+            }));
+        beat_error_magnitudes.drop_ms = beat_error_magnitudes.drop_ms.or_else(|| {
+            crate::beat_error::median(
+                local_drop
+                    .iter()
+                    .filter(|w| {
+                        let t = (w.start_s + w.end_s) / 2.0;
+                        whole && t >= s && t < e
+                    })
+                    .map(|w| w.fit.beat_error_ms),
+            )
+        });
         slices.push(Slice {
+            beat_error_magnitudes,
             start_s: s,
             end_s: e,
             rate_s_per_day: w.map(|f| f.rate_s_per_day),
@@ -286,7 +310,13 @@ pub fn analyse_with_breaks(
     let amps: Vec<f64> = slices.iter().filter_map(|s| s.amplitude_deg).collect();
     let listened = duration - breaks.iter().map(|b| b.gap_s.max(0.0)).sum::<f64>();
     let expected = crate::beats::expected_beats(listened, log.bph);
+    let mut beat_error_magnitudes =
+        crate::beat_error::Magnitudes::of(clean_amplitude.iter().copied());
+    beat_error_magnitudes.drop_ms = beat_error_magnitudes
+        .drop_ms
+        .or_else(|| crate::beat_error::median(local_drop.iter().map(|w| w.fit.beat_error_ms)));
     LongReport {
+        beat_error_magnitudes,
         duration_s: duration,
         sample_rate: log.sample_rate,
         bph: log.bph,

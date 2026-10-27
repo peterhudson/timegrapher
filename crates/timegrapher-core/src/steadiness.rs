@@ -2432,8 +2432,8 @@ fn windows_grid(
 /// The amplitude and beat error windows on true time, one grid point
 /// every window length, so each gap is left empty. A window that reaches
 /// into a break's gap is left out, as the rate readings are. The beat
-/// errors are sizes, given as positive, when the sign turns over across a
-/// break ([`crate::longrun::beat_error_turns`]).
+/// errors are always magnitudes of the fitted local estimates, before any
+/// averaging or subsequent analysis. Signed source windows are unchanged.
 pub(crate) fn window_grids(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -2443,13 +2443,9 @@ pub(crate) fn window_grids(
         windows_grid(log, clock, breaks, f)
     };
     let amp_grid = grid_of(&|w| w.mean());
-    // As sizes when the sign turns over across a break, as the take's
-    // beat errors are.
-    let turned = crate::longrun::beat_error_turns(log, clock, breaks);
-    let be_grid = grid_of(&|w| {
-        w.beat_error_unlock_ms
-            .map(|v| if turned { v.abs() } else { v })
-    });
+    // Convert fitted local estimates before rebinning, centring or testing.
+    // No knowledge of a missing beat or a change of side identity is needed.
+    let be_grid = grid_of(&|w| w.beat_error_unlock_ms.map(f64::abs));
     [amp_grid, be_grid]
 }
 

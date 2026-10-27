@@ -531,6 +531,7 @@ struct Summary<'a> {
     clock: &'a Option<ClockFit>,
     overall: &'a Option<timing::TimingFit>,
     beat_error_unlock_ms: Option<f64>,
+    beat_error_magnitudes: timegrapher_core::beat_error::Magnitudes,
     rate_p05: Option<f64>,
     rate_p95: Option<f64>,
     amplitude_deg: Option<f64>,
@@ -593,6 +594,7 @@ impl<'a> From<&'a LongReport> for Summary<'a> {
             clock: &r.clock,
             overall: &r.overall,
             beat_error_unlock_ms: r.beat_error_unlock_ms,
+            beat_error_magnitudes: r.beat_error_magnitudes,
             rate_p05: r.rate_p05,
             rate_p95: r.rate_p95,
             amplitude_deg: r.amplitude_deg,
@@ -709,10 +711,13 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
         ),
         None => println!("Rate         not enough clean beats to fit"),
     }
-    if let Some(f) = &r.overall {
+    if r.overall.is_some() {
         println!(
             "Beat error   {}",
-            crate::beat_error_text(r.beat_error_unlock_ms, f.beat_error_ms)
+            crate::beat_error_text(
+                r.beat_error_magnitudes.unlock_ms,
+                r.beat_error_magnitudes.drop_ms
+            )
         );
     }
     for (label, line) in caveat_lines(&r.caveats) {
@@ -799,18 +804,20 @@ fn write_slices(p: &Path, r: &LongReport) -> std::io::Result<()> {
     let mut w = BufWriter::new(File::create(p)?);
     writeln!(
         w,
-        "start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_deg"
+        "start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_deg,beat_error_drop_magnitude_ms,beat_error_unlock_magnitude_ms"
     )?;
     for s in &r.slices {
         writeln!(
             w,
-            "{:.1},{:.1},{},{},{},{}",
+            "{:.1},{:.1},{},{},{},{},{},{}",
             s.start_s,
             s.end_s,
             opt(s.rate_s_per_day, 2),
             opt(s.beat_error_ms, 3),
             opt(s.beat_error_unlock_ms, 3),
-            opt(s.amplitude_deg, 1)
+            opt(s.amplitude_deg, 1),
+            opt(s.beat_error_magnitudes.drop_ms, 3),
+            opt(s.beat_error_magnitudes.unlock_ms, 3)
         )?;
     }
     w.flush()

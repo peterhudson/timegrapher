@@ -85,7 +85,8 @@ pub const BEAT_ERROR: &[&str] = &[
      whole, nearer the drop: it is the gap between the two lines of dots on the strip.",
     "It is shown as a size. Which beat is the tick depends on where the analysis first \
      locks on, so which side is longer can flip from one run to the next. \
-     The ± is the scatter of its 2-second pieces; anything it can't show (clipped \
+     Each 2-second estimate becomes a size before the pieces are combined. \
+     The ± comes from the scatter of those sizes; anything it can't show (clipped \
      beats, a short stretch) is named beside the title.",
 ];
 

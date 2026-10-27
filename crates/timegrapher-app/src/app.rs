@@ -1711,6 +1711,7 @@ struct TrendPoint {
     amplitude_b: Option<f64>,
     beat_error_unlock: Option<f64>,
     beat_error_drop: Option<f64>,
+    signed_beat_error_drop: Option<f64>,
     /// The beats were spaced like a watch's, not scattered like noise.
     heard: bool,
 }
@@ -1730,6 +1731,7 @@ impl TrendPoint {
                 amplitude_b: None,
                 beat_error_unlock: None,
                 beat_error_drop: None,
+                signed_beat_error_drop: None,
                 heard: false,
             };
         }
@@ -1739,8 +1741,9 @@ impl TrendPoint {
             amplitude: r.amplitude_deg,
             amplitude_a: r.amplitude_even_deg,
             amplitude_b: r.amplitude_odd_deg,
-            beat_error_unlock: r.beat_error_unlock_ms,
-            beat_error_drop: r.beat_error_ms,
+            beat_error_unlock: r.beat_error_magnitudes.unlock_ms,
+            beat_error_drop: r.beat_error_magnitudes.drop_ms,
+            signed_beat_error_drop: r.beat_error_ms,
             heard: r.beats_used > 0 && r.watch_heard,
         }
     }
@@ -11741,8 +11744,8 @@ impl TimegrapherApp {
         // Beat Error, the size only: which beat is the tick can flip
         // between runs.
         {
-            let unlock = r.and_then(|r| r.beat_error_unlock_ms);
-            let drop = r.and_then(|r| r.beat_error_ms);
+            let unlock = r.and_then(|r| r.beat_error_magnitudes.unlock_ms);
+            let drop = r.and_then(|r| r.beat_error_magnitudes.drop_ms);
             title(
                 ui,
                 cards[4].title,
@@ -13764,7 +13767,9 @@ impl TimegrapherApp {
             }
         };
         let i = self.trend.partition_point(|p| p.t <= end + 1e-9);
-        let drop_be = i.checked_sub(1).and_then(|i| self.trend[i].beat_error_drop);
+        let drop_be = i
+            .checked_sub(1)
+            .and_then(|i| self.trend[i].signed_beat_error_drop);
         // The moment shown goes in the toolbar, drawn before the pane: a
         // change shows on the next frame.
         if note != self.sound_note {
@@ -14250,7 +14255,7 @@ impl TimegrapherApp {
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
-                    .filter_map(|w| w.beat_error_unlock_ms)
+                    .filter_map(|w| w.beat_error_unlock_ms.map(f64::abs))
                     .collect(),
                 0.01,
                 " ms",
@@ -16623,6 +16628,26 @@ mod tests {
         assert!(app.resume_refusal("Mic A", "Mic A", 44_100).is_some());
     }
 
+    #[test]
+    fn beat_error_plot_points_keep_signed_profile_timing_separate() {
+        let mut reading = synthetic(60.0, 12.0).reading().unwrap();
+        reading.beat_error_unlock_ms = Some(0.0); // opposite signed windows cancel
+        reading.beat_error_ms = Some(-0.3);
+        reading.beat_error_magnitudes = timegrapher_core::beat_error::Magnitudes {
+            unlock_ms: Some(0.5),
+            drop_ms: Some(0.3),
+        };
+        let p = TrendPoint::of(60.0, &reading);
+        assert_eq!(p.beat_error_unlock, Some(0.5));
+        assert_eq!(p.beat_error_drop, Some(0.3));
+        assert_eq!(p.signed_beat_error_drop, Some(-0.3));
+        reading.whole = false;
+        let missing = TrendPoint::of(60.0, &reading);
+        assert!(missing.beat_error_unlock.is_none());
+        assert!(missing.beat_error_drop.is_none());
+        assert!(missing.signed_beat_error_drop.is_none());
+    }
+
     /// The whole take's beat error, where its sign turns over at a jump
     /// in the beats, combines the sizes either side and says so, as
     /// `session` does, not a figure that cancels to nothing; where the
@@ -16670,7 +16695,8 @@ mod tests {
         let be = w.m.beat_error_ms.unwrap();
         assert!(sizes(&w));
         assert!((be - size).abs() < 1e-3, "{be} vs {size}");
-        assert_eq!(w.m.beat_error(), Some(be));
+        // The display combines magnitudes of local windows, whose median is 0.6.
+        assert!((w.m.beat_error().unwrap() - 0.6).abs() < 1e-3);
         assert!((be - cancelled).abs() > 0.2, "{be} all but cancelled");
         // Where the beats keep one sign either side, the figure keeps it:
         // the same size, signed.

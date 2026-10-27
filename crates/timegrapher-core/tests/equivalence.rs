@@ -104,6 +104,18 @@ fn analyze_vs_session(s: &Summary, m: &Measurement) -> Vec<String> {
             m.beat_error_ms,
             BEAT_ERROR,
         ),
+        close(
+            "display beat error (unlock magnitude)",
+            s.beat_error_magnitudes.unlock_ms,
+            m.beat_error_magnitudes.unlock_ms,
+            BEAT_ERROR,
+        ),
+        close(
+            "display beat error (drop magnitude)",
+            s.beat_error_magnitudes.drop_ms,
+            m.beat_error_magnitudes.drop_ms,
+            BEAT_ERROR,
+        ),
         (s.watch_heard == m.watch_heard)
             .then_some(())
             .ok_or_else(|| format!("watch heard: {} against {}", s.watch_heard, m.watch_heard)),
