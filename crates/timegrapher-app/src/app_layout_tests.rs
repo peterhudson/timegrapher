@@ -997,16 +997,57 @@ fn a_finished_runs_pane_is_never_a_sliver() {
     }
 }
 
-/// A map's pane opened under the Paper Strip keeps room for one map at
-/// the height of the other views' plots, its title and key: never a strip
-/// of colour, at the design size or a small window.
+/// A take with readings, `seconds` long, through the live engine.
+fn ticking(seconds: f64) -> TimegrapherApp {
+    let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    app.reset_session(48000, "syn".into());
+    let audio = generate(
+        &SynthConfig {
+            duration_s: seconds,
+            rate_s_per_day: 20.0,
+            ..Default::default()
+        },
+        |_| 280.0,
+        |_| 0.0,
+    );
+    let live = app.live.as_mut().unwrap();
+    for b in audio.samples.chunks(960) {
+        if live.push(b) {
+            let r = live.reading(app.average_s);
+            app.trend.push(TrendPoint::of(r.time_s, &r));
+        }
+    }
+    app.poll();
+    app
+}
+
+/// The height of the row holding `pane`: its tabs, or the pane itself.
+fn row_h(app: &TimegrapherApp, pane: Pane) -> f32 {
+    let id = app.panes.tiles.find_pane(&pane).unwrap();
+    let row = match app.panes.tiles.parent_of(id) {
+        Some(p)
+            if matches!(
+                app.panes.tiles.get(p),
+                Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(_)))
+            ) =>
+        {
+            p
+        }
+        _ => id,
+    };
+    app.panes.tiles.rect(row).unwrap().height()
+}
+
+/// A pane opened under the Paper Strip, a map among them, takes only the
+/// room left: the strip keeps its least, 100 pt of dots, at the design
+/// size and in a small window alike.
 #[test]
-fn a_maps_pane_is_never_a_sliver() {
+fn the_paper_strip_keeps_its_dots_under_a_map() {
     let ctx = egui::Context::default();
     theme::install(&ctx);
-    for pane in [Pane::SteadyStft, Pane::SteadyWavelet] {
-        for (w, h) in [(1280.0, 820.0), (1000.0, 700.0)] {
-            let mut app = TimegrapherApp::with_devices(mac_devices(), None);
+    for pane in [Pane::SteadyStft, Pane::SteadyWavelet, Pane::SteadyPeriods] {
+        for (w, h) in [(1280.0, 820.0), (1000.0, 700.0), (800.0, 600.0)] {
+            let mut app = ticking(12.0);
             let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
             let pass = |app: &mut TimegrapherApp| {
                 let input = egui::RawInput {
@@ -1019,19 +1060,79 @@ fn a_maps_pane_is_never_a_sliver() {
             for _ in 0..4 {
                 pass(&mut app);
             }
-            let need = app.pane_need.get(&pane).copied().unwrap();
-            assert!(need >= steady::MIN_MAP_ROW, "{pane:?} {w}: {need}");
-            let tall = {
-                let id = app.panes.tiles.find_pane(&pane).unwrap();
-                let tabs = app.panes.tiles.parent_of(id).unwrap();
-                app.panes.tiles.rect(tabs).unwrap().height()
-            };
-            assert!(
-                tall + 1.0 >= need + TAB_BAR_H,
-                "{pane:?} {w}: {tall} for {need}"
-            );
+            let need = app.pane_need.get(&Pane::Strip).copied().unwrap();
+            assert!(need >= STRIP_MIN_PLOT_H, "{pane:?} {w}: {need}");
+            let strip = row_h(&app, Pane::Strip);
+            assert!(strip + 1.0 >= need, "{pane:?} {w}x{h}: {strip} for {need}");
         }
     }
+}
+
+/// A divider the user drags stands, even into the Paper Strip's least, and
+/// is kept with the layout; showing or hiding a pane in its row shares
+/// the room out afresh.
+#[test]
+fn a_dragged_divider_stands_until_a_pane_in_its_row_changes() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1000.0, 700.0));
+    let pass = |app: &mut TimegrapherApp| {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| app.panels(ctx));
+    };
+    let mut app = ticking(12.0);
+    app.reveal_pane(Pane::SteadyStft);
+    for _ in 0..3 {
+        pass(&mut app);
+    }
+    // The strip's row (its tabs, if any), and the column it is in.
+    let mut strip_id = app.panes.tiles.find_pane(&Pane::Strip).unwrap();
+    let mut column = app.panes.tiles.parent_of(strip_id).unwrap();
+    if matches!(
+        app.panes.tiles.get(column),
+        Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(_)))
+    ) {
+        strip_id = column;
+        column = app.panes.tiles.parent_of(column).unwrap();
+    }
+    // As a drag leaves it: the strip a sliver, the map the rest.
+    let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) =
+        app.panes.tiles.get_mut(column)
+    else {
+        panic!("the strip's column");
+    };
+    let total: f32 = l.children.iter().map(|&c| l.shares[c]).sum();
+    let others: Vec<TileId> = l
+        .children
+        .iter()
+        .copied()
+        .filter(|&c| c != strip_id)
+        .collect();
+    l.shares.set_share(strip_id, total * 0.05);
+    for &c in &others {
+        l.shares.set_share(c, total * 0.95 / others.len() as f32);
+    }
+    app.panes_dragged.insert(column);
+    for _ in 0..3 {
+        pass(&mut app);
+    }
+    let low = row_h(&app, Pane::Strip);
+    assert!(low < STRIP_MIN_H, "{low}");
+    // Kept with the layout.
+    let saved = app.settings();
+    assert_eq!(saved.panes_dragged, vec![column]);
+    // A pane shown in its row: every pane at its least again.
+    app.show_pane(Pane::SteadyStft, false);
+    app.show_pane(Pane::SteadyStft, true);
+    assert!(app.panes_dragged.is_empty());
+    for _ in 0..4 {
+        pass(&mut app);
+    }
+    let need = app.pane_need.get(&Pane::Strip).copied().unwrap();
+    assert!(row_h(&app, Pane::Strip) + 1.0 >= need);
 }
 
 /// The STFT and Wavelet Maps show one map at a time, Rate first, and

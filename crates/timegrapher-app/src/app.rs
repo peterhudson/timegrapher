@@ -1373,9 +1373,29 @@ const TAB_BAR_H: f32 = 24.0;
 /// taken from the panes with room to spare, so opening a pane never
 /// crushes the others into a sliver. Worked from the sizes of the last
 /// frame; a window too small for them all shares its room in proportion.
-fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
+fn keep_room(
+    tiles: &mut Tiles<Pane>,
+    need: impl Fn(Pane) -> Option<f32>,
+    dragged: &std::collections::HashSet<TileId>,
+) {
+    // The Paper Strip's row, whose least is kept first.
+    let strip_row: Vec<TileId> = tiles
+        .find_pane(&Pane::Strip)
+        .map(|mut id| {
+            let mut up = vec![id];
+            while let Some(p) = tiles.parent_of(id) {
+                up.push(p);
+                id = p;
+            }
+            up
+        })
+        .unwrap_or_default();
     let ids: Vec<TileId> = tiles.tile_ids().collect();
     for id in ids {
+        // A divider the user dragged stands where they left it.
+        if dragged.contains(&id) {
+            continue;
+        }
         let Some(rect) = tiles.rect(id) else { continue };
         let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) = tiles.get(id)
         else {
@@ -1423,11 +1443,25 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
                 more.unwrap_or(0.0).max(MIN_PANE_H)
             })
             .collect();
-        // A window too small for them all shares it out in proportion.
+        // A window too small for them all keeps the Paper Strip's least,
+        // and shares the rest out in proportion.
         let sum: f32 = least.iter().sum();
         if sum > room {
-            for l in &mut least {
-                *l *= room / sum;
+            let first: f32 = shown
+                .iter()
+                .zip(&least)
+                .filter(|(c, _)| strip_row.contains(c))
+                .map(|(_, l)| *l)
+                .sum();
+            let (keep, k) = if first < room && sum > first {
+                (first, (room - first) / (sum - first))
+            } else {
+                (0.0, room / sum)
+            };
+            for (c, l) in shown.iter().zip(&mut least) {
+                if keep == 0.0 || !strip_row.contains(c) {
+                    *l *= k;
+                }
             }
         }
         let least: Vec<f32> = least.iter().map(|l| l / room).collect();
@@ -1470,6 +1504,20 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
             }
         }
     }
+}
+
+/// Each row or column of panes' shares, to see which a drag changed.
+fn shares_of(tiles: &Tiles<Pane>) -> std::collections::HashMap<TileId, Vec<u32>> {
+    tiles
+        .tile_ids()
+        .filter_map(|id| match tiles.get(id) {
+            Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) => Some((
+                id,
+                l.children.iter().map(|&c| l.shares[c].to_bits()).collect(),
+            )),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The status bar's progress words while a take is read: how far, as the
@@ -2195,6 +2243,10 @@ pub struct TimegrapherApp {
     /// The height each pane with plots needed last frame for its toolbar
     /// and one plot at a readable size, kept clear by [`keep_room`].
     pane_need: std::collections::HashMap<Pane, f32>,
+    /// Rows and columns of panes whose divider the user dragged: their
+    /// sizes stand, a pane's least apart, until a pane in them is shown
+    /// or hidden.
+    panes_dragged: std::collections::HashSet<TileId>,
     /// The top of the pane being drawn, for working out its need.
     pane_top: f32,
     /// Show the cumulative share instead of the probability plot.
@@ -2398,6 +2450,7 @@ impl TimegrapherApp {
             positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
+            panes_dragged: self.panes_dragged.iter().copied().collect(),
             layout: LAYOUT,
             // Drop legacy entries only after their user-catalogue save succeeds.
             custom_calibres: self.cal.pending_legacy().to_vec(),
@@ -2447,6 +2500,7 @@ impl TimegrapherApp {
             positions_measure_s,
             scope,
             panes,
+            panes_dragged,
             layout,
             custom_calibres,
             recent_calibres,
@@ -2557,7 +2611,10 @@ impl TimegrapherApp {
             }
             p
         }) {
-            Some(p) if layout_is_whole(&p) => p,
+            Some(p) if layout_is_whole(&p) => {
+                self.panes_dragged = panes_dragged.into_iter().collect();
+                p
+            }
             _ => default_layout(self.strip.horizontal),
         };
     }
@@ -2686,6 +2743,7 @@ impl TimegrapherApp {
             dist_series: RATE_ONLY,
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
+            panes_dragged: std::collections::HashSet::new(),
             pane_top: 0.0,
             hist_cumulative: false,
             steady_series: Default::default(),
@@ -7595,17 +7653,6 @@ impl TimegrapherApp {
             format!("{} ", self.position.name())
         };
         self.steady_working(ui);
-        // A map at a readable height, never a strip of colour: its pane
-        // keeps room for one map row.
-        let pane = if view == steady::View::Wavelet {
-            Pane::SteadyWavelet
-        } else {
-            Pane::SteadyStft
-        };
-        if view.is_map() {
-            let above = ui.cursor().top() - self.pane_top;
-            self.pane_need.insert(pane, above + view.min_row() + 6.0);
-        }
         let status = match upto {
             Some(u) => format!("Tested over {} of {of}beats", strip::fmt_time(u)),
             None if working => String::new(),
@@ -9727,6 +9774,7 @@ impl TimegrapherApp {
             ui.close();
             self.show_readings = true;
             self.panes = default_layout(self.strip.horizontal);
+            self.panes_dragged.clear();
         }
     }
 
@@ -12751,6 +12799,7 @@ impl TimegrapherApp {
             .map(|p| (p, pane_visible(&self.panes.tiles, p)))
             .collect();
         self.panes = default_layout(horizontal);
+        self.panes_dragged.clear();
         for (p, on) in shown {
             set_pane_visible(&mut self.panes.tiles, p, on);
         }
@@ -13797,13 +13846,27 @@ impl TimegrapherApp {
         if on {
             self.reveal_pane(pane);
         } else {
+            self.undrag(pane);
             set_pane_visible(&mut self.panes.tiles, pane, false);
+        }
+    }
+
+    /// A pane shown or hidden: the rows holding it share their room out
+    /// afresh, each pane at its least, rather than as last dragged.
+    fn undrag(&mut self, pane: Pane) {
+        let mut at = self.panes.tiles.find_pane(&pane);
+        while let Some(id) = at {
+            self.panes_dragged.remove(&id);
+            at = self.panes.tiles.parent_of(id);
         }
     }
 
     /// Show a pane and bring its tab to the front.
     fn reveal_pane(&mut self, pane: Pane) {
         let was = pane_visible(&self.panes.tiles, pane);
+        if !was {
+            self.undrag(pane);
+        }
         set_pane_visible(&mut self.panes.tiles, pane, true);
         // A test's pane opens at its content's height, no less than a
         // pane's least: the Paper Strip keeps the rest until dragged.
@@ -14124,7 +14187,12 @@ impl TimegrapherApp {
         let mut panes = std::mem::replace(&mut self.panes, Tree::empty("panes-swap"));
         repair_tabs(&mut panes);
         let need = self.pane_need.clone();
-        keep_room(&mut panes.tiles, |p| need.get(&p).copied());
+        keep_room(
+            &mut panes.tiles,
+            |p| need.get(&p).copied(),
+            &self.panes_dragged,
+        );
+        let before = shares_of(&panes.tiles);
         panes.ui(
             &mut PaneBehavior {
                 app: self,
@@ -14132,6 +14200,12 @@ impl TimegrapherApp {
             },
             ui,
         );
+        // Shares changed while drawn were dragged by hand: they stand.
+        for (id, s) in shares_of(&panes.tiles) {
+            if before.get(&id).is_some_and(|b| *b != s) {
+                self.panes_dragged.insert(id);
+            }
+        }
         self.panes = panes;
     }
 
@@ -15628,9 +15702,13 @@ const STACKED_MIN_H: f32 = 70.0;
 const DIST_MIN_H: f32 = 100.0;
 /// The line under stacked plots naming those with no room.
 const STACKED_NOTE_H: f32 = 18.0;
-/// The least height of the Paper Strip under its toolbar: its lane, the
-/// dots and the time axis, the amplitude scale's labels apart.
-const STRIP_MIN_H: f32 = 72.0;
+/// The least height of the Paper Strip under its toolbar: its lane, at
+/// least 100 pt of dots and the time axis, the amplitude scale's labels
+/// apart. The strip keeps it whatever pane is opened under it; only a
+/// divider dragged by hand takes it lower.
+const STRIP_MIN_H: f32 = STRIP_MIN_PLOT_H + 39.0;
+/// The least height of the Paper Strip's dots.
+const STRIP_MIN_PLOT_H: f32 = 100.0;
 
 /// A chart's value labels, small, beside its grid lines in the gutter.
 fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {

@@ -65,6 +65,8 @@ pub struct Settings {
     pub positions_measure_s: f64,
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
+    /// The rows and columns of `panes` whose divider was dragged by hand.
+    pub panes_dragged: Vec<egui_tiles::TileId>,
     /// The version of the layout in `panes`: an older one is replaced by
     /// the default.
     #[serde(default)]
@@ -154,6 +156,7 @@ impl Default for Settings {
             positions_measure_s: crate::guided::MEASURE_S,
             scope: scope::View::default(),
             panes: None,
+            panes_dragged: Vec::new(),
             layout: crate::app::LAYOUT,
             custom_calibres: Vec::new(),
             recent_calibres: Vec::new(),
