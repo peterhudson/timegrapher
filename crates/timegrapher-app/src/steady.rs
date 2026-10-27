@@ -319,7 +319,7 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
 /// rate share, with both usual escape wheels (15 and 20 teeth).
 #[cfg(test)]
 pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
-    compute_with(log, wheels, &std::sync::atomic::AtomicU8::new(0))
+    compute_with(log, wheels, None, &std::sync::atomic::AtomicU8::new(0))
 }
 
 /// What a run of [`compute_with`] is doing, from the step it last stored.
@@ -332,10 +332,14 @@ pub fn stage_text(stage: u8) -> &'static str {
 }
 
 /// [`compute`], storing each step as it starts in `stage` (see
-/// [`stage_text`]) so the panes can say what the tests are doing.
+/// [`stage_text`]) so the panes can say what the tests are doing. A take
+/// whose own clock corrects its rate (`clock`: its clock log, or its USB
+/// lines) is read on it throughout, its readings drawn as the cards and
+/// `timegrapher series` give them.
 pub fn compute_with(
     log: &BeatLog,
     wheels: Option<Vec<Wheel>>,
+    clock: Option<&timegrapher_core::clock::ClockFit>,
     stage: &std::sync::atomic::AtomicU8,
 ) -> Steadiness {
     use std::sync::atomic::Ordering::Relaxed;
@@ -355,14 +359,18 @@ pub fn compute_with(
             gap_s: 0.0,
         })
         .collect();
-    let long = longrun::analyse_with_breaks(log, None, &breaks, &lc);
+    let long = longrun::analyse_with_breaks(log, clock, &breaks, &lc);
     stage.store(2, Relaxed);
-    let report = steadiness::check(log, None, &long, &lc, &cfg);
+    let report = steadiness::check(log, clock, &long, &lc, &cfg);
     stage.store(3, Relaxed);
     // The tests' own grids: a rate reading over a dropout or a jump is left
     // out, and the beat error is given as sizes when its sign turns over
     // across a jump, as the tests beside them and the take's figures give it.
-    let grids = steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks);
+    let grids = match clock {
+        // On the take's own clock, as the tests read it.
+        Some(_) => steady_views::check_grids(log, &long, cfg.rate_reading_s),
+        None => steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks),
+    };
     let searches = steady_views::searches(&grids, &long, &lc);
     let mut fold_from = [FoldFrom::Own, FoldFrom::Own, FoldFrom::Own];
     let folds = steady_views::folds(&grids, &report, &lc);
@@ -372,8 +380,8 @@ pub fn compute_with(
         Some(fold)
     });
     let period_span = steady_views::period_span(&searches);
-    // With the same (no) clock the long-run analysis above was given.
-    let maps = timegrapher_core::timefreq::for_take(log, None, &long, &lc);
+    // With the same clock the long-run analysis above was given.
+    let maps = timegrapher_core::timefreq::for_take(log, clock, &long, &lc);
     Steadiness {
         report,
         grids,
@@ -2298,6 +2306,44 @@ mod tests {
         let (on, _) = drawn(&state, true);
         let (off, _) = drawn(&state, false);
         assert_eq!(named(&on, "1 min"), named(&off, "1 min") + 1, "{on:?}");
+    }
+
+    /// A take whose own clock corrects its rate is drawn on it: Readings
+    /// Over Time's rate dots move by the correction, as the tests' median
+    /// does, so the plot and the cards give one rate.
+    #[test]
+    fn a_takes_clock_corrects_the_readings_drawn() {
+        let mut log = context_log();
+        log.duration_s = 900.0;
+        log.jumps.clear();
+        log.clipped_beats.clear();
+        // 2 s/d fast on the card's clock.
+        let beat = 0.125 * (1.0 - 2.0 / 86_400.0);
+        log.beats = (0..7200)
+            .map(|index| timegrapher_core::beats::Beat {
+                time: index as f64 * beat,
+                index,
+                quality: 1.0,
+            })
+            .collect();
+        let median = |s: &Steadiness| {
+            let mut y: Vec<f64> = s.grids[0]
+                .y
+                .iter()
+                .copied()
+                .filter(|v| v.is_finite())
+                .collect();
+            y.sort_by(f64::total_cmp);
+            y[y.len() / 2]
+        };
+        let heard = compute(&log, None);
+        let fit = timegrapher_core::clock::ClockFit::fixed(20.0, log.duration_s);
+        let clocked = compute_with(&log, None, Some(&fit), &std::sync::atomic::AtomicU8::new(0));
+        let shift = timegrapher_core::clock::rate_error_s_per_day(20.0);
+        let moved = median(&clocked) - median(&heard);
+        assert!((moved.abs() - shift.abs()).abs() < 0.05, "{moved} {shift}");
+        let tested = clocked.report.series[0].median.expect("a median");
+        assert!((tested - median(&clocked)).abs() < 0.05, "{tested}");
     }
 
     // Known beat records only: these controls do not run the detector.
