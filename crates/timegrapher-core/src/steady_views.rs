@@ -190,7 +190,7 @@ pub fn searches(grids: &[Grid; 3], long: &LongReport, lc: &LongConfig) -> [Optio
 /// lacks beats in any of its 2 s stretches.
 /// Built with the tests' own functions, so the views draw, search and fold
 /// the readings the tests were made on.
-fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
+pub fn check_grids(log: &BeatLog, long: &LongReport, rate_s: f64) -> [Grid; 3] {
     use crate::steadiness::{rate_grid, rate_windows, window_grids};
     let clock = long.clock.as_ref();
     let rate = rate_grid(&rate_windows(log, clock, &long.breaks, rate_s), rate_s);
