@@ -1022,6 +1022,7 @@ pub fn pane(
     live: Option<&FreeCell>,
     settle_s: f64,
     measure_s: f64,
+    card: &str,
 ) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
@@ -1069,8 +1070,10 @@ pub fn pane(
             heading(
                 ui,
                 "This Take",
-                "Each position marked on the Current Position card, read as \
-                     `timegrapher session` reads a take",
+                &format!(
+                    "Each position marked on the {card} card, read as \
+                     `timegrapher session` reads a take"
+                ),
             );
             free_grid(ui, f);
             ui.add_space(4.0);
@@ -1804,7 +1807,17 @@ mod tests {
         for _ in 0..2 {
             let out = ctx.run(egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    pane(ui, Some(test), Some(phase), None, None, live, 20.0, 60.0);
+                    pane(
+                        ui,
+                        Some(test),
+                        Some(phase),
+                        None,
+                        None,
+                        live,
+                        20.0,
+                        60.0,
+                        "Current Position",
+                    );
                 });
             });
             found = out

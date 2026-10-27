@@ -311,20 +311,47 @@ pub const NO_REGULAR_BEAT: &str = "The beats found don't come at regular interva
      or more, as on an empty stand, where it is about 5%. No rate, amplitude or beat \
      error is shown then, since those figures would describe noise.";
 
-pub const POWER_RESERVE: &[&str] = &[
-    "Wind the watch fully, set it to a minute marker, put it on the stand in the \
-     position set on the Position card, and press Start Test. The app starts a new \
+/// The Power Reserve pane's "?", its limits from core's and the position
+/// card named by its title at this width.
+pub fn power_reserve(card: &str) -> Vec<String> {
+    use timegrapher_core::power_reserve::STOP_AFTER_S;
+    vec![
+        format!(
+            "Wind the watch fully, set it to a minute marker, put it on the stand in the \
+     position set on the {card} card, and press Start Test. The app starts a new \
      session and listens until the watch stops. The run ends at the last beat heard \
-     before ten minutes with none. Beats that come back sooner join the run, and the \
+     before {} min with none. Beats that come back sooner join the run, and the \
      pane says how many times they stopped and came back.",
-    "While the test runs, the computer is kept awake whatever Keep Awake is set to, \
+            STOP_AFTER_S / 60.0
+        ),
+        format!(
+            "While the test runs, the computer is kept awake whatever Keep Awake is set to, \
      the sound is kept, the position can't change, and Stop ends the test. A closed \
      lid or Sleep from a menu still stops the computer. A run that hasn't stopped \
-     after 80 hours ends there.",
-    "When it ends, the take is kept in the picked watch's history (or in Unsorted with \
+     after {} ends there.",
+            crate::reserve::limit_h()
+        ),
+        "When it ends, the take is kept in the picked watch's history (or in Unsorted with \
      no watch picked), named by the date and time it started and \"Power Reserve\", \
      with its results in power-reserve.json: the run time from the first beat heard \
      to the last, in true time, and how it ended. With Analysis Only, the take is then \
      kept as its analysis alone and its sound deleted. Every pane reads the take as \
-     any other.",
-];
+     any other."
+            .to_string(),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    /// The Power Reserve "?" names the position card as it is captioned
+    /// and gives core's limits: ten minutes with no beat, and 80 h.
+    #[test]
+    fn the_power_reserve_help_names_the_card_and_core_limits() {
+        for card in ["Current Position", "Position"] {
+            let text = super::power_reserve(card).join(" ");
+            assert!(text.contains(&format!("set on the {card} card,")), "{text}");
+            assert!(text.contains("before 10 min with none"), "{text}");
+            assert!(text.contains("after 80 h ends there"), "{text}");
+        }
+    }
+}

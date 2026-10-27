@@ -839,7 +839,7 @@ pub fn take_cells(t: &Take, positions_test: bool) -> [String; 7] {
     let length = match (&t.power_reserve, t.duration_s) {
         // One format down the column, a Power Reserve Test's run included.
         // Whole seconds, as the run's own words count them.
-        (Some(r), _) => crate::strip::fmt_time(r.run_s.floor()),
+        (Some(r), _) => crate::strip::fmt_time(timegrapher_core::power_reserve::whole_s(r.run_s)),
         (None, Some(d)) => crate::strip::fmt_time(d),
         _ => String::new(),
     };
@@ -1151,17 +1151,12 @@ pub fn takes_table(
             }
             let mut cells = take_cells(t, test);
             // Date and tags share Started's room, never the columns after
-            // it: when both don't fit, the date keeps most of it and each
-            // is cut short with "…", the tags left out when too little is
-            // left for them.
+            // it: the date, which tells takes apart, comes first, cut short
+            // with "…" only when it alone doesn't fit; the tags take what
+            // is left, cut short too, or are left out when too little is.
             let tags = tags_of(t);
             let room = widths[0] - 18.0;
-            let date_room = if text_w(&cells[0], 12.5) + tags_w(&tags) <= room {
-                room
-            } else {
-                (room - tags_w(&tags)).max(0.6 * room)
-            };
-            cells[0] = fit(&cells[0], date_room, &font);
+            cells[0] = fit(&cells[0], room, &font);
             draw(ui, rect, &cells, pal.text, &font);
             let date_w = text_w(&cells[0], 12.5);
             let tags_room = room - date_w - 10.0;
@@ -2005,8 +2000,16 @@ mod tests {
             }
             texts
         };
-        // With the room, the tags are read whole.
-        assert!(render(1000.0).iter().any(|t| t.0 == "Analysis Only"));
+        // With the room, the dates and the tags are read whole.
+        let wide = render(1000.0);
+        assert!(wide.iter().any(|t| t.0 == "Analysis Only"), "{wide:?}");
+        assert!(
+            wide.iter()
+                .filter(|t| t.0.starts_with("2026-10-27"))
+                .count()
+                == 2,
+            "{wide:?}"
+        );
         let w = 560.0;
         let texts = render(w);
         let find = |what: &str| {

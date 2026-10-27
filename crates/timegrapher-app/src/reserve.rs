@@ -183,7 +183,7 @@ pub fn ending_text(e: Ending) -> String {
 }
 
 /// The longest run, as the words say it: "80 h".
-fn limit_h() -> String {
+pub fn limit_h() -> String {
     format!("{} h", power_reserve::LIMIT_S / 3600.0)
 }
 
@@ -363,7 +363,7 @@ fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
         let chart_h = ((room - table_h - gap) / 2.0).max(CHART_MIN_H);
         // While it runs the charts gain a point as each hour is whole.
         let whole = if so_far {
-            hours.iter().take_while(|h| h.span_s >= 3599.0).count()
+            hours.iter().take_while(|h| h.whole()).count()
         } else {
             hours.len()
         };
@@ -385,7 +385,7 @@ pub fn least_h(test: Option<&Test>) -> Option<f32> {
     let t = test?;
     let charts = match t.results.as_ref() {
         Some(r) => !r.hours.is_empty(),
-        None => t.so_far.iter().any(|h| h.span_s >= 3599.0),
+        None => t.so_far.iter().any(|h| h.whole()),
     };
     charts.then_some(22.0 + CHART_MIN_H + 12.0)
 }
@@ -433,14 +433,14 @@ fn cell(v: Option<f64>, d: usize, unit: &str) -> String {
 
 /// The hour column's words: "0–1 h", and the last part hour's length.
 fn hour_label(h: &power_reserve::Hour) -> String {
-    if h.span_s >= 3599.0 {
+    if h.whole() {
         format!("{}–{} h", h.hour, h.hour + 1)
     } else {
         // Whole seconds, as the run's own words count them.
         format!(
             "{} h + {}",
             h.hour,
-            crate::strip::fmt_time(h.span_s.floor())
+            crate::strip::fmt_time(power_reserve::whole_s(h.span_s))
         )
     }
 }
