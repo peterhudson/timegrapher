@@ -139,6 +139,8 @@ pub struct LiveAnalyzer {
     /// Beats before this time (seconds) are final.
     settled_to: f64,
     bph: Option<u32>,
+    /// Whether `bph` is the rate Auto found, not one set.
+    found_bph: bool,
     template: Option<Vec<f32>>,
     beats: Vec<Beat>,
     /// Times of the settled beats whose sound clipped, oldest first.
@@ -199,6 +201,7 @@ impl LiveAnalyzer {
         LiveAnalyzer {
             fs: sample_rate as f64,
             bph: cfg.analysis.bph,
+            found_bph: false,
             cfg,
             buf: Vec::new(),
             buf0: 0,
@@ -316,6 +319,7 @@ impl LiveAnalyzer {
     pub fn restart(&mut self) {
         self.template = None;
         self.bph = self.cfg.analysis.bph;
+        self.found_bph = false;
         self.logged_bph = self.bph;
         self.beats.clear();
         self.clipped.clear();
@@ -463,17 +467,25 @@ impl LiveAnalyzer {
     }
 
     /// Fix the beat rate, or `None` to guess it. Starts the beat log again
-    /// unless the beats are read at that rate already (or it is `None`,
-    /// which keeps the rate found).
-    pub fn set_bph(&mut self, bph: Option<u32>) {
+    /// unless the beats are read at that rate already (or it is `None` and
+    /// Auto found that rate). True when beats were heard and stand.
+    pub fn set_bph(&mut self, bph: Option<u32>) -> bool {
+        let heard = self.bph.is_some();
         if bph != self.cfg.analysis.bph {
             self.cfg.analysis.bph = bph;
-            // The rate the beats are already read at, or Auto, which found
-            // it: the beats so far stand.
-            if bph.is_some_and(|b| Some(b) != self.bph) {
+            // The rate the beats are already read at, or Auto where Auto
+            // found that rate: the beats so far stand. Auto after a rate
+            // set by hand listens for the rate afresh.
+            let stands = match bph {
+                Some(b) => Some(b) == self.bph,
+                None => self.found_bph,
+            };
+            if !stands {
                 self.restart();
+                return false;
             }
         }
+        heard
     }
 
     /// Say whether the lift angle is the calibre's and the sound card's
@@ -620,6 +632,7 @@ impl LiveAnalyzer {
                 if heard && b.len() >= 8 {
                     self.template = Some(t);
                     self.bph = Some(bph);
+                    self.found_bph = a.bph.is_none();
                     self.logged_bph = Some(bph);
                 }
                 (bph, b)
@@ -649,6 +662,7 @@ impl LiveAnalyzer {
             {
                 self.template = None;
                 self.bph = None;
+                self.found_bph = false;
             }
             self.settled_to = to;
             self.next_amp_s = None;
@@ -1750,14 +1764,21 @@ mod tests {
         assert_eq!(a.bph(), Some(28_800));
         let heard = a.beats().len();
         assert!(heard > 100, "{heard}");
-        a.set_bph(Some(28_800));
+        assert!(a.set_bph(Some(28_800)));
         assert_eq!(a.beats().len(), heard);
         assert!(a.reading(10.0).rate_s_per_day.is_some());
-        a.set_bph(None);
+        assert!(a.set_bph(None));
         assert_eq!(a.beats().len(), heard);
         assert_eq!(a.bph(), Some(28_800));
-        a.set_bph(Some(21_600));
+        assert!(!a.set_bph(Some(21_600)));
         assert!(a.beats().is_empty());
+        // Auto after a rate set by hand listens afresh and finds 28800.
+        feed(&mut a, &audio.samples);
+        assert!(!a.set_bph(None));
+        assert!(a.beats().is_empty());
+        feed(&mut a, &audio.samples);
+        assert_eq!(a.bph(), Some(28_800));
+        assert!(a.beats().len() > 100, "{}", a.beats().len());
     }
 
     #[test]
