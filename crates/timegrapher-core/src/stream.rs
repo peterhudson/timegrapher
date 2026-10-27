@@ -81,6 +81,11 @@ pub struct BeatLog {
 /// 48 kHz).
 pub const SNIPPETS_KEPT_S: f64 = 60.0;
 
+/// Beats kept so far that a chunk looks back through for the good beats
+/// before a jump at its start: about four minutes at 28,800 bph, longer
+/// than the tracker follows noise after a dropout.
+const JUMP_LOOK_BACK: usize = 2000;
+
 impl BeatLog {
     /// [`crate::measure::beat_sound_found`] for `beats`, a stretch's
     /// beats as this log holds them (audio time): the profiles of their
@@ -178,16 +183,31 @@ impl State {
             .iter()
             .position(|b| b.time + off >= core_b)
             .map_or(numbered.len(), |p| anchor + p);
-        let before: Vec<Beat> = self.beats[self.beats.len().saturating_sub(beats::JUMP_CONTEXT)..]
+        // Only the good beats, as live listening looks for jumps: where the
+        // sound was lost for a few seconds (a dropout in the audio) the
+        // tracker follows noise until it finds the beats again, and those
+        // noise beats would hide a step from the beats either side of it.
+        // The count across such a stretch is a guess, and half the time it
+        // swaps Tick and Tock.
+        let good = |b: &&Beat| b.quality > 0.4;
+        let mut before: Vec<Beat> = self
+            .beats
             .iter()
+            .rev()
+            .take(JUMP_LOOK_BACK)
+            .filter(good)
+            .take(beats::JUMP_CONTEXT)
             .map(|b| Beat {
                 time: b.time - off,
                 ..*b
             })
             .collect();
-        let cuts: Vec<usize> = beats::jumps(&numbered[anchor..end], &before)
+        before.reverse();
+        let at: Vec<usize> = (anchor..end).filter(|&k| good(&&numbered[k])).collect();
+        let found: Vec<Beat> = at.iter().map(|&k| numbered[k]).collect();
+        let cuts: Vec<usize> = beats::jumps(&found, &before)
             .into_iter()
-            .map(|p| p + anchor)
+            .map(|p| at[p])
             .collect();
         let kept_from = self.beats.len();
         for k in anchor..end {

@@ -1189,4 +1189,76 @@ mod tests {
             }
         }
     }
+
+    /// Sound lost for half a beat and more (a dropout in the audio) puts
+    /// the watch's beats half a beat off the count. The tracker then
+    /// follows noise for a few seconds before it finds them again, and the
+    /// count across that stretch picks the sides by chance. A whole file
+    /// finds the jump from the good beats either side, as live listening
+    /// does, and its side check keeps the sides.
+    #[test]
+    fn a_dropout_the_tracker_follows_noise_through_keeps_the_sides() {
+        use crate::stream::{analyze_samples, StreamConfig};
+        use crate::synth::{render_beat, Rng, SynthConfig};
+        const HOLE_S: f64 = 30.0;
+        // With the Tock's unlock louder, and with both sides at one gain.
+        for louder in [true, false] {
+            let c = SynthConfig {
+                duration_s: 70.0,
+                rate_s_per_day: 10.0,
+                beat_error_ms: 0.5,
+                odd_gains: louder.then_some([0.9, 0.25, 1.0]),
+                ..Default::default()
+            };
+            let fs = c.sample_rate as f64;
+            let nominal = 3600.0 / c.bph as f64;
+            for beats_lost in [0.55, 1.5, 3.5] {
+                let mut x = vec![0.0f64; (c.duration_s * fs) as usize];
+                let mut rng = Rng::new(11);
+                let (mut t, mut k, mut holed) = (0.05, 0u64, false);
+                while t < c.duration_s - 0.05 {
+                    if t >= HOLE_S && !holed {
+                        t += beats_lost * nominal;
+                        holed = true;
+                    }
+                    render_beat(&c, k, t, 270.0, c.beat_error_ms, &mut rng, |i, v| {
+                        if let Some(s) = usize::try_from(i).ok().and_then(|i| x.get_mut(i)) {
+                            *s += v;
+                        }
+                    });
+                    t += nominal * (1.0 - c.rate_s_per_day / 86400.0);
+                    k += 1;
+                }
+                let noise = 10f64.powf(-c.snr_db / 20.0);
+                let samples: Vec<f32> = x
+                    .iter()
+                    .map(|&v| ((v + noise * rng.normal()) * 0.5) as f32)
+                    .collect();
+                let file = analyze_samples(&samples, c.sample_rate, &StreamConfig::default());
+                let side = |from: f64, to: f64| {
+                    let run: Vec<Beat> = file
+                        .beats
+                        .iter()
+                        .filter(|b| b.time >= from && b.time < to && b.quality > 0.4)
+                        .copied()
+                        .collect();
+                    crate::timing::beat_error_ms(&run).expect("beat error")
+                };
+                assert!(
+                    file.jumps
+                        .iter()
+                        .any(|&j| (HOLE_S..HOLE_S + 10.0).contains(&j)),
+                    "louder {louder}, {beats_lost} beats lost: jumps {:?}",
+                    file.jumps
+                );
+                let (was, now) = (side(5.0, HOLE_S - 1.0), side(HOLE_S + 15.0, 65.0));
+                assert!(
+                    was.abs() > 0.3 && (was - now).abs() < 0.1,
+                    "louder {louder}, {beats_lost} beats lost: beat error {was} then {now} \
+                     (jumps {:?})",
+                    file.jumps
+                );
+            }
+        }
+    }
 }
