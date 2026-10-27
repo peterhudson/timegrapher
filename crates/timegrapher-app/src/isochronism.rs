@@ -32,10 +32,11 @@ pub fn ui(ui: &mut egui::Ui, curve: Option<&IsochronismCurve>) {
 
 /// The line under the headline naming what the chart draws.
 fn caption(c: &IsochronismCurve) -> String {
+    // The slope and its amplitudes are the headline's: said once.
     let mut s = format!(
         "Dots: the median rate in each {:.0}° of amplitude, with bars over its middle half · \
-         Line: the curve through them · {:+.2} s/day per degree over {:.0}° to {:.0}°",
-        c.bin_deg, c.s_per_day_per_deg, c.amplitude_from_deg, c.amplitude_to_deg
+         Line: the curve through them",
+        c.bin_deg
     );
     if let Some(t) = c.turn_deg {
         s += &format!(" · Upright line: where the curve turns, {t:.0}°");
@@ -61,7 +62,7 @@ fn rate_label(v: f64, step: f64) -> String {
     // What rounds to zero prints as zero, not "-0".
     let scale = 10f64.powi(d as i32);
     let v = (v * scale).round() / scale + 0.0;
-    format!("{v:+.d$} s/day")
+    format!("{v:+.d$} s/d")
 }
 
 fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
@@ -185,8 +186,14 @@ mod tests {
             headline: "The rate falls as the amplitude does.".into(),
         };
         assert!(caption(&curve).contains("where the curve turns, 257°"));
+        // The slope and its amplitudes only in the headline.
+        assert!(
+            !caption(&curve).contains("per degree"),
+            "{}",
+            caption(&curve)
+        );
         assert!((curve_at(&curve, 250.0) - 16.8).abs() < 1e-12);
-        assert_eq!(rate_label(-0.0001, 0.5), "+0.0 s/day");
+        assert_eq!(rate_label(-0.0001, 0.5), "+0.0 s/d");
 
         let ctx = egui::Context::default();
         theme::install(&ctx);
