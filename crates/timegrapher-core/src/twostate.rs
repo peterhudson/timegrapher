@@ -260,12 +260,27 @@ fn blocks(samples: &[Sample], p: &Params) -> (Vec<Block>, f64) {
 
 /// Fit of two Gaussians of one width: means, width, weights, log
 /// likelihood and each point's probability of the second.
+///
+/// The fit is started from several splits of the sorted blocks (the 20th
+/// and 80th percentiles, and each tail's 5th percentile against the
+/// median), and the one with the highest likelihood is kept: a clean
+/// level held 10-15% of the time has no block between the 20th and 80th
+/// percentiles, so a fit started there alone can settle with both levels
+/// in the other.
 fn mixture(y: &[f64]) -> ([f64; 2], f64, f64, Vec<f64>) {
-    let n = y.len() as f64;
     let mut s: Vec<f64> = y.to_vec();
     s.sort_by(|a, b| a.total_cmp(b));
     let q = |f: f64| s[((s.len() - 1) as f64 * f).round() as usize];
-    let mut mu = [q(0.2), q(0.8)];
+    [(0.2, 0.8), (0.05, 0.5), (0.5, 0.95)]
+        .iter()
+        .map(|&(a, b)| mixture_from(y, [q(a), q(b)]))
+        .reduce(|best, f| if f.2 > best.2 { f } else { best })
+        .unwrap()
+}
+
+/// [`mixture`] from one start, the two levels at `mu`.
+fn mixture_from(y: &[f64], mut mu: [f64; 2]) -> ([f64; 2], f64, f64, Vec<f64>) {
+    let n = y.len() as f64;
     let mean = y.iter().sum::<f64>() / n;
     let mut sd = ((y.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n).sqrt() / 2.0).max(1e-6);
     let mut w = [0.5, 0.5];
@@ -739,6 +754,44 @@ mod tests {
         // one that is 4 s low and 6 s high has its median high.
         assert!((r.low_share - 1.0 / 3.0).abs() < 0.02, "{r:?}");
         assert_eq!(r.period_s, Some(60.0), "{r:?}");
+    }
+
+    #[test]
+    fn a_clean_minority_state_is_found_whatever_split_the_fit_starts_from() {
+        // 2 s amplitude windows over 30 minutes: 280° with a dip to 265° for
+        // 10 s every 80 s (12.5% of the time), and a scatter of about 0.5°.
+        // A fit started from the 20th and 80th percentiles starts both
+        // levels inside 280°; started from other splits as well, it finds
+        // the dip.
+        let mut seed = 4242u64;
+        let mut noise = || {
+            (0..12)
+                .map(|_| {
+                    seed = seed
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    (seed >> 11) as f64 / (1u64 << 53) as f64
+                })
+                .sum::<f64>()
+                - 6.0
+        };
+        let samples: Vec<Sample> = (0..900)
+            .map(|i| {
+                let t = i as f64 * 2.0;
+                let v = if t % 80.0 < 10.0 { 265.0 } else { 280.0 };
+                Sample {
+                    start_s: t,
+                    end_s: t + 2.0,
+                    value: v + 0.5 * noise(),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        let r = find(&samples, &Params::default());
+        assert!(r.two_levels, "{r:?}");
+        assert!((r.low - 265.0).abs() < 1.0, "{r:?}");
+        assert!((r.high - 280.0).abs() < 1.0, "{r:?}");
+        assert!((r.low_share - 0.125).abs() < 0.02, "{r:?}");
     }
 
     #[test]
