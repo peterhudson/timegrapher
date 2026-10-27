@@ -6750,16 +6750,14 @@ impl TimegrapherApp {
 
     /// Set the beat rate, and the live analysis's; true when the beats heard
     /// so far stand, being read at that rate already (such as a calibre's
-    /// 28800 after Auto found 28800, or Auto after a set rate), so the
-    /// strip and trends keep all heard so far.
+    /// 28800 after Auto found 28800, or Auto where Auto found the rate, as
+    /// core's `set_bph` says), so the strip and trends keep all heard so far.
     fn set_live_bph(&mut self, bph: Option<u32>) -> bool {
         self.bph = bph;
         let Some(l) = self.live.as_mut() else {
             return false;
         };
-        let heard = l.bph();
-        l.set_bph(bph);
-        heard.is_some() && (bph.is_none() || bph == heard)
+        l.set_bph(bph)
     }
 
     /// Quick Listen's settings: no watch, no calibre, the default lift
