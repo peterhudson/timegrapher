@@ -2247,6 +2247,8 @@ pub struct TimegrapherApp {
     /// sizes stand, a pane's least apart, until a pane in them is shown
     /// or hidden.
     panes_dragged: std::collections::HashSet<TileId>,
+    /// Panes drawn too short for their plot, last frame.
+    panes_short: std::collections::HashSet<Pane>,
     /// The top of the pane being drawn, for working out its need.
     pane_top: f32,
     /// Show the cumulative share instead of the probability plot.
@@ -2744,6 +2746,7 @@ impl TimegrapherApp {
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
             panes_dragged: std::collections::HashSet::new(),
+            panes_short: std::collections::HashSet::new(),
             pane_top: 0.0,
             hist_cumulative: false,
             steady_series: Default::default(),
@@ -15143,6 +15146,37 @@ impl TimegrapherApp {
         self.charts_drawn = stacked(ui, shown, STACKED_MIN_H, |ui, k| self.chart(ui, k));
     }
 
+    /// Whether `pane`'s plot would be under [`SHORT_PLOT_H`] tall here
+    /// (with a little give, so it doesn't flicker at the edge): then the
+    /// pane says so in one line in its place.
+    fn too_short(&mut self, ui: &mut egui::Ui, pane: Pane) -> bool {
+        let below = match pane {
+            // Their own least is kept, or they hold no plot.
+            Pane::Watch | Pane::Strip | Pane::PositionsTest | Pane::PowerReserve => return false,
+            // A map's key sits under its picture.
+            Pane::SteadyStft | Pane::SteadyWavelet => 22.0,
+            _ => 0.0,
+        };
+        let was = self.panes_short.contains(&pane);
+        let least = SHORT_PLOT_H + below + if was { 2.0 } else { 0.0 };
+        if ui.available_height() >= least {
+            self.panes_short.remove(&pane);
+            return false;
+        }
+        self.panes_short.insert(pane);
+        let pal = theme::pal(ui);
+        ui.centered_and_justified(|ui| {
+            ui.label(
+                RichText::new(format!(
+                    "No room for the {}. Drag the divider up or make the window taller.",
+                    pane.title()
+                ))
+                .color(pal.text_secondary),
+            );
+        });
+        true
+    }
+
     /// Keep the height `pane` needs: what is above its plots, one plot
     /// `least` tall, the line naming those with no room, and the margin.
     fn note_need(&mut self, ui: &egui::Ui, pane: Pane, least: f32) {
@@ -15710,6 +15744,9 @@ const STACKED_MIN_H: f32 = 70.0;
 /// The least height a distribution is drawn at, its summary line and
 /// axis included: about 60 pt of plot.
 const DIST_MIN_H: f32 = 100.0;
+/// The least height of a pane's plot; under it the pane says it has no
+/// room instead of drawing a sliver.
+const SHORT_PLOT_H: f32 = 48.0;
 /// The line under stacked plots naming those with no room.
 const STACKED_NOTE_H: f32 = 18.0;
 /// The least height of the Paper Strip under its toolbar: its lane, at
@@ -15913,6 +15950,11 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 ui.add_space(4.0);
             } else if self.app.pane_tools(ui, *pane) {
                 ui.add_space(4.0);
+            }
+            // A plot with no room to be read: one line in its place, never
+            // a sliver.
+            if self.app.too_short(ui, *pane) {
+                return;
             }
             match pane {
                 Pane::Watch => self.app.watch_pane(ui),

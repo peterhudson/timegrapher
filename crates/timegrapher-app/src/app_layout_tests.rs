@@ -1068,6 +1068,46 @@ fn the_paper_strip_keeps_its_dots_under_a_map() {
     }
 }
 
+/// A pane left too short for its plot under the Paper Strip, as at
+/// 800 x 600, says so in one line in its place instead of drawing a
+/// sliver; with room again it draws its plot.
+#[test]
+fn a_pane_too_short_for_its_plot_says_so() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    for pane in [Pane::SteadyWavelet, Pane::Sound] {
+        let mut app = ticking(12.0);
+        app.reveal_pane(pane);
+        let run = |app: &mut TimegrapherApp, w: f32, h: f32| {
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
+            let mut out = None;
+            for _ in 0..4 {
+                let input = egui::RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                };
+                out = Some(ctx.run(input, |ctx| app.panels(ctx)));
+            }
+            out.unwrap()
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let words = format!("No room for the {}.", pane.title());
+        let text = run(&mut app, 800.0, 600.0);
+        assert!(text.contains(&words), "{pane:?}: {text}");
+        assert!(app.panes_short.contains(&pane));
+        let text = run(&mut app, 1280.0, 1000.0);
+        assert!(!text.contains(&words), "{pane:?}: {text}");
+        assert!(!app.panes_short.contains(&pane));
+    }
+}
+
 /// A divider the user drags stands, even into the Paper Strip's least, and
 /// is kept with the layout; showing or hiding a pane in its row shares
 /// the room out afresh.
