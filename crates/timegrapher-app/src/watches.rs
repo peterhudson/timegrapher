@@ -2015,7 +2015,7 @@ mod tests {
                 position: "DU".into(),
             }),
         };
-        assert_eq!(take_cells(&t, false)[2], "1:53");
+        assert_eq!(take_cells(&t, None)[2], "1:53");
         assert!(take_line(&t, false).starts_with("Power Reserve 1 min 53 s"));
     }
 
