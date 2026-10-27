@@ -13182,18 +13182,16 @@ impl TimegrapherApp {
                 }
                 self.end_reserve();
             }
-        } else {
-            if theme::tool_word_button(
-                ui,
-                Icon::Listen,
-                "Start Test",
-                "Start listening in the Current Position card's position and run until the \
-                 watch stops, keeping the computer awake. Wind the watch fully first.",
-                true,
-                None,
-            ) {
-                self.start_reserve();
-            }
+        } else if theme::tool_word_button(
+            ui,
+            Icon::Listen,
+            "Start Test",
+            "Start listening in the Current Position card's position and run until the \
+             watch stops, keeping the computer awake. Wind the watch fully first.",
+            true,
+            None,
+        ) {
+            self.start_reserve();
         }
         let done = self.reserve.as_ref().and_then(|t| t.results.clone());
         let nothing = done.is_none().then_some("No run ended yet");
@@ -18946,9 +18944,7 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(
-            watches::take_line(&take, false).starts_with("Power Reserve 0 h 00 min (still running")
-        );
+        assert!(watches::take_line(&take, false).starts_with("Power Reserve 12 s (still running"));
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.start_batch(&saved);
