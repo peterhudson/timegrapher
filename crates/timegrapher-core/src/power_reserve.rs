@@ -136,6 +136,14 @@ pub struct Hour {
     pub read_s: f64,
 }
 
+impl Hour {
+    /// A whole hour, not the run's last part: its span is 3600 s, within
+    /// a second for the sums that make it.
+    pub fn whole(&self) -> bool {
+        self.span_s >= 3599.0
+    }
+}
+
 /// A run's results, as `power-reserve.json` keeps them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Results {
@@ -273,15 +281,21 @@ pub fn write(dir: &std::path::Path, r: &Results) -> std::io::Result<()> {
     std::fs::rename(&tmp, dir.join(FILE))
 }
 
+/// The whole seconds a run time counts, so every place that gives it
+/// agrees with its words and none reads a second over.
+pub fn whole_s(s: f64) -> f64 {
+    s.max(0.0).floor()
+}
+
 /// A run time in words: hours and minutes from an hour ("46 h 12 min"),
 /// minutes and seconds under it ("1 min 52 s"), seconds under a minute
 /// ("13 s"), so a short run never reads a minute short.
 pub fn run_text(s: f64) -> String {
-    let s = s.max(0.0);
+    let s = whole_s(s);
     if s < 60.0 {
-        format!("{} s", s.floor() as u64)
+        format!("{} s", s as u64)
     } else if s < 3600.0 {
-        let s = s.floor() as u64;
+        let s = s as u64;
         format!("{} min {:02} s", s / 60, s % 60)
     } else {
         let m = (s / 60.0).floor() as i64;
@@ -417,5 +431,24 @@ mod tests {
         assert_eq!(run_text(13.7), "13 s");
         assert_eq!(run_text(3600.0), "1 h 00 min");
         assert_eq!(run_text(166_320.0), "46 h 12 min");
+    }
+
+    /// Whole seconds are counted down, as the words count them, and an
+    /// hour is whole within a second of 3600 s.
+    #[test]
+    fn whole_seconds_and_whole_hours() {
+        assert_eq!(whole_s(113.6), 113.0);
+        assert_eq!(whole_s(-2.0), 0.0);
+        let hour = |span_s| Hour {
+            hour: 0,
+            span_s,
+            rate_s_per_day: None,
+            amplitude_deg: None,
+            beat_error_ms: None,
+            read_s: 0.0,
+        };
+        assert!(hour(3600.0).whole());
+        assert!(hour(3599.4).whole());
+        assert!(!hour(3598.0).whole());
     }
 }
