@@ -450,7 +450,8 @@ needs about 30 s of unbroken beats. What the ± can't show is named, as a
 plain fact, in a chip beside the reading's caption, with its sentence on
 hover (a click keeps it open, as the ? does; with several, the chip
 shows the first and how many more, "12 s of Beats +1", and the hover
-lists them all): "12 s of beats" when the beats span under 10 s, "540 of 600
+lists them all; with no room for its words beside the caption, the
+caption's hover gives them): "12 s of beats" when the beats span under 10 s, "540 of 600
 beats" when under 95% of the beats expected were found, "3% clipped"
 when over 1% of beats clip (amplitude and beat error), a beat rate set that differs from the one heard, and breaks
 in listening in the stretch (such as the computer sleeping). Chips are in Title Case ("3% Clipped"). When no calibre or lift angle is set, "Default"

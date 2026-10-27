@@ -180,8 +180,13 @@ pub fn ending_text(e: Ending) -> &'static str {
 }
 
 /// The pane's body: the run time, how the beats stand, and at the end the
-/// result.
-pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) -> Option<Action> {
+/// result. `card` is the position card's title as drawn, for the steps.
+pub fn pane(
+    ui: &mut egui::Ui,
+    test: Option<&Test>,
+    free: Option<(u64, u64)>,
+    card: &str,
+) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
     egui::ScrollArea::vertical()
@@ -192,8 +197,7 @@ pub fn pane(ui: &mut egui::Ui, test: Option<&Test>, free: Option<(u64, u64)>) ->
                 let stop = power_reserve::STOP_AFTER_S / 60.0;
                 let steps = [
                     "1.  Wind the watch fully and set it to a minute marker.".to_string(),
-                    "2.  Put it on the stand in the position on the Current Position card."
-                        .to_string(),
+                    format!("2.  Put it on the stand in the position on the {card} card."),
                     "3.  Press Start Test.".to_string(),
                 ];
                 let after = [
@@ -378,6 +382,9 @@ fn hour_table(ui: &mut egui::Ui, r: &Results) {
         });
 }
 
+/// The steps, in hours, the Power Reserve charts' hours go up in.
+const HOUR_STEPS: [f64; 7] = [1.0, 2.0, 3.0, 6.0, 12.0, 24.0, 48.0];
+
 /// Rate and amplitude against hours since the first beat, one above the
 /// other on the same hours.
 fn hour_chart(ui: &mut egui::Ui, r: &Results) {
@@ -398,13 +405,24 @@ fn hour_chart(ui: &mut egui::Ui, r: &Results) {
             .iter()
             .filter_map(|h| get(h).map(|v| [x(h), v]))
             .collect();
+        // Whole hours from 0 h, an hour at least, so a short run reads
+        // 0 h to 1 h rather than the one hour over and over.
+        let last = pts.iter().map(|p| p[0]).fold(1.0, f64::max);
         Plot::new(format!("reserve {name}"))
             .height(110.0)
             .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)
-            .x_axis_formatter(|m, _| format!("{:.0} h", m.value))
-            .y_axis_formatter(move |m, _| format!("{:.0}{unit}", m.value))
+            .include_x(0.0)
+            .include_x(last)
+            .x_grid_spacer(|g| theme::even_grid(g, 48.0, &HOUR_STEPS))
+            // Plus zero: never "-0 h".
+            .x_axis_formatter(|m, _| format!("{:.0} h", m.value + 0.0))
+            .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
+            .y_axis_formatter(move |m, _| {
+                let places = if m.step_size < 1.0 { 1 } else { 0 };
+                format!("{:.*}{unit}", places, m.value)
+            })
             .show(ui, |p| {
                 p.line(
                     Line::new(name, PlotPoints::from(pts))
@@ -573,5 +591,47 @@ mod tests {
             "{text}"
         );
         assert_eq!(hour_label(&r.hours[0]), "0 h + 1:40");
+    }
+
+    /// A run of half a minute charts 0 h to 1 h, each hour named once,
+    /// none "-0 h".
+    #[test]
+    fn a_short_runs_chart_names_each_hour_once() {
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
+        t.stop();
+        let mut r = t.finish(|s| s).unwrap().clone();
+        r.hours = vec![power_reserve::Hour {
+            hour: 0,
+            span_s: 32.0,
+            rate_s_per_day: Some(7.0),
+            amplitude_deg: Some(281.0),
+            beat_error_ms: Some(0.4),
+            read_s: 30.0,
+        }];
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut texts = Vec::new();
+        for _ in 0..2 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| hour_chart(ui, &r));
+            });
+            texts = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+        }
+        let hours: Vec<_> = texts.iter().filter(|t| t.ends_with(" h")).collect();
+        assert!(!hours.is_empty(), "{texts:?}");
+        assert!(texts.iter().all(|t| !t.starts_with("-0")), "{texts:?}");
+        // Two charts, each naming 0 h and 1 h once.
+        for h in ["0 h", "1 h"] {
+            assert_eq!(hours.iter().filter(|t| **t == h).count(), 2, "{texts:?}");
+        }
+        assert_eq!(hours.len(), 4, "{texts:?}");
     }
 }

@@ -866,6 +866,8 @@ const WATCH_SIDE_MAX: f32 = 1100.0;
 /// The Watches view's width from which the list and the watch sit side by
 /// side; narrower, one shows at a time.
 const WATCHES_SIDE_BY_SIDE: f32 = 900.0;
+/// Why Keep in a Watch is greyed while a take is heard.
+const KEEP_AFTER_STOP: &str = "Stop listening first, then keep the take in a watch.";
 /// Why a Positions Test's take takes no Position Brush.
 const POSITIONS_TAKE_PAINT: &str = "A Positions Test sets its own positions; paint a Listen take.";
 /// The hover on a test's setting it can't change while it runs.
@@ -1363,8 +1365,9 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
         if n < 2 || room <= 0.0 {
             continue;
         }
-        // Each child's least: a tab bar's active pane may need more than
-        // the usual height, under its tab bar.
+        // Each child's least: a tab bar's panes may need more than the
+        // usual height, under its tab bar. The most any of its tabs needs,
+        // not the one on show, so changing tabs never moves the divider.
         let mut least: Vec<f32> = shown
             .iter()
             .map(|&c| {
@@ -1373,11 +1376,14 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
                 }
                 let more = match tiles.get(c) {
                     Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t))) => t
-                        .active
-                        .and_then(|a| match tiles.get(a) {
+                        .children
+                        .iter()
+                        .filter(|&&a| tiles.is_visible(a))
+                        .filter_map(|&a| match tiles.get(a) {
                             Some(egui_tiles::Tile::Pane(p)) => need(*p),
                             _ => None,
                         })
+                        .reduce(f32::max)
                         .map(|h| h + TAB_BAR_H),
                     _ => None,
                 };
@@ -1888,6 +1894,8 @@ pub struct TimegrapherApp {
     results_rects: [Option<egui::Rect>; 2],
     /// This take ran a Positions Test.
     positions_take: bool,
+    /// The position card's title as last drawn, for the words naming it.
+    position_card_title: &'static str,
     /// A question about a take (Delete, Keep Analysis Only, Add to
     /// a Watch), and the take being kept as its analysis in the background.
     take_ask: Option<watches::Ask>,
@@ -2508,6 +2516,7 @@ impl TimegrapherApp {
             test_keep: None,
             results_rects: [None; 2],
             positions_take: false,
+            position_card_title: "Current Position",
             take_ask: None,
             keep_back: None,
             take_keep: None,
@@ -7582,6 +7591,11 @@ impl TimegrapherApp {
     /// free live take; on a take on show or during a test they only show
     /// it.
     fn position_card(&mut self, ui: &mut egui::Ui, compact: bool) {
+        self.position_card_title = if compact {
+            "Position"
+        } else {
+            "Current Position"
+        };
         let pal = theme::pal(ui);
         let here = self.shown_position();
         let editable = self.position_editable();
@@ -7647,7 +7661,7 @@ impl TimegrapherApp {
             });
         let painter = ui.painter().clone();
         if compact {
-            caption_row(ui, rows.title, "Position");
+            caption_row(ui, rows.title, self.position_card_title);
             // The two-letter code beside the picture, the name in its
             // hover: a name doesn't fit a compact card whole.
             let x = pic.right() + 8.0;
@@ -7705,7 +7719,7 @@ impl TimegrapherApp {
         }
         let x = pic.right() + theme::GAP;
         let beside = |r: egui::Rect| egui::Rect::from_min_max(egui::pos2(x, r.top()), r.max);
-        caption_row(ui, beside(rows.title), "Current Position");
+        caption_row(ui, beside(rows.title), self.position_card_title);
         // The name, and both its codes under it, inside the figure row.
         let fig = beside(rows.figure);
         let clip = painter.with_clip_rect(fig);
@@ -7958,6 +7972,7 @@ impl TimegrapherApp {
         };
         let into_watch = self.addable_take().is_some() || self.quick_listen;
         let into_unsorted = can && self.saves_into_unsorted();
+        let listening = self.running();
         // A take opened with painting or masks changed: kept in its folder.
         let changes = self.marks_unsaved();
         let mut picked = None;
@@ -8000,14 +8015,22 @@ impl TimegrapherApp {
                                 .small()
                                 .color(pal.text_secondary),
                         );
+                        // A take goes into a watch once it ends: greyed,
+                        // saying so, while it is heard.
+                        let keeps = !listening;
                         for (id, name) in &watches {
-                            if ui.button(name).clicked() {
+                            if ui
+                                .add_enabled(keeps, egui::Button::new(name))
+                                .on_disabled_hover_text(KEEP_AFTER_STOP)
+                                .clicked()
+                            {
                                 picked = Some(id.clone());
                             }
                         }
                         if ui
-                            .button("New Watch…")
+                            .add_enabled(keeps, egui::Button::new("New Watch…"))
                             .on_hover_text("Add a watch, and keep this in it when you add it")
+                            .on_disabled_hover_text(KEEP_AFTER_STOP)
                             .clicked()
                         {
                             new = true;
@@ -11491,8 +11514,9 @@ impl TimegrapherApp {
                             .on_hover_text(hover);
                     }
                 }
-                // Limits with no room for even their count beside the whole
-                // caption are in the caption's hover.
+                // Limits with no room for their words beside the whole
+                // caption are in the caption's hover: a bare count says
+                // nothing.
                 let mut caption_hover = None;
                 if let Some(first) = limits.first() {
                     let more = if limits.len() > 1 {
@@ -11501,18 +11525,9 @@ impl TimegrapherApp {
                         String::new()
                     };
                     let sentences: Vec<String> = limits.iter().map(|l| l.1.clone()).collect();
-                    // Where the words would push the caption off the
-                    // card, how many limits there are, the words in the
-                    // hover.
                     let words = format!("{}{more}", chip_words(&first.0));
-                    let count = limits.len().to_string();
-                    let fits = |ui: &mut egui::Ui, t: &str| {
-                        small_w(ui, t) + 14.0 + 4.0 + caption_w <= ui.available_width()
-                    };
-                    if fits(ui, &words) {
+                    if small_w(ui, &words) + 14.0 + 4.0 + caption_w <= ui.available_width() {
                         theme::chip(ui, &words, caption, &sentences, ui.available_width());
-                    } else if fits(ui, &count) {
-                        theme::chip(ui, &count, caption, &sentences, ui.available_width());
                     } else {
                         caption_hover = Some(sentences.join("\n\n"));
                     }
@@ -12878,9 +12893,10 @@ impl TimegrapherApp {
             format!("Runs in {} ({})", p.name(), p.code())
         } else {
             format!(
-                "Runs in {} ({}), set on the Current Position card",
+                "Runs in {} ({}), set on the {} card",
                 p.name(),
-                p.code()
+                p.code(),
+                self.position_card_title
             )
         };
         ui.add(egui::Label::new(
@@ -13167,7 +13183,9 @@ impl TimegrapherApp {
         } else {
             None
         };
-        if reserve::pane(ui, self.reserve.as_ref(), free) == Some(reserve::Action::Stop) {
+        if reserve::pane(ui, self.reserve.as_ref(), free, self.position_card_title)
+            == Some(reserve::Action::Stop)
+        {
             if let Some(t) = self.reserve.as_mut() {
                 t.stop();
             }
@@ -13503,7 +13521,13 @@ impl TimegrapherApp {
         repair_tabs(&mut panes);
         let need = self.pane_need.clone();
         keep_room(&mut panes.tiles, |p| need.get(&p).copied());
-        panes.ui(&mut PaneBehavior { app: self }, ui);
+        panes.ui(
+            &mut PaneBehavior {
+                app: self,
+                row: None,
+            },
+            ui,
+        );
         self.panes = panes;
     }
 
@@ -13570,6 +13594,7 @@ impl TimegrapherApp {
         if guessing && candidates.is_empty() {
             return self.no_watch(ui);
         }
+        self.note_need(ui, Pane::Strip, STRIP_MIN_H);
         self.follow_fit();
         if self.follow {
             self.centre();
@@ -14999,6 +15024,9 @@ const STACKED_MIN_H: f32 = 70.0;
 const DIST_MIN_H: f32 = 100.0;
 /// The line under stacked plots naming those with no room.
 const STACKED_NOTE_H: f32 = 18.0;
+/// The least height of the Paper Strip under its toolbar: its lane, the
+/// dots and the time axis, the amplitude scale's labels apart.
+const STRIP_MIN_H: f32 = 72.0;
 
 /// A chart's value labels, small, beside its grid lines in the gutter.
 fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
@@ -15070,6 +15098,105 @@ struct PaneExport {
 
 struct PaneBehavior<'a> {
     app: &'a mut TimegrapherApp,
+    /// The tab row being drawn, set before its tabs are.
+    row: Option<TabRow>,
+}
+
+/// A tab row too long for its width: its two arrows stay in their places,
+/// greyed at the row's ends, so nothing slides under the pointer.
+#[derive(Clone, Copy)]
+struct TabRow {
+    container: TileId,
+    first: Option<TileId>,
+    last: Option<TileId>,
+    /// Room before the first tab and after the last, which keeps the row's
+    /// own arrows drawn at its ends.
+    lead: f32,
+    trail: f32,
+    /// The left and right arrows' places.
+    slots: [egui::Rect; 2],
+    /// Whether each arrow has further to go.
+    can: [bool; 2],
+    /// How far a click moves the row.
+    step: f32,
+    /// The row's own arrow buttons' width.
+    arrow: f32,
+    layer: egui::LayerId,
+    drawn: bool,
+}
+
+impl PaneBehavior<'_> {
+    /// egui_tiles' default tab (its `Behavior::tab_ui`, 0.14), which an
+    /// override can't call.
+    fn plain_tab(
+        &mut self,
+        tiles: &mut Tiles<Pane>,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        tile_id: TileId,
+        state: &egui_tiles::TabState,
+    ) -> egui::Response {
+        use egui_tiles::Behavior as _;
+        let text = self.tab_title_for_tile(tiles, tile_id);
+        let close_btn_size = Vec2::splat(self.close_button_outer_size());
+        let close_btn_left_padding = 4.0;
+        let font_id = egui::TextStyle::Button.resolve(ui.style());
+        let galley = text.into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, font_id);
+        let x_margin = self.tab_title_spacing(ui.visuals());
+        let button_width = galley.size().x
+            + 2.0 * x_margin
+            + f32::from(state.closable) * (close_btn_left_padding + close_btn_size.x);
+        let (_, tab_rect) = ui.allocate_space(Vec2::new(button_width, ui.available_height()));
+        let tab_response = ui
+            .interact(tab_rect, id, egui::Sense::click_and_drag())
+            .on_hover_cursor(self.tab_hover_cursor_icon());
+        // A gap where a tab is dragged from.
+        if ui.is_rect_visible(tab_rect) && !state.is_being_dragged {
+            let bg_color = self.tab_bg_color(ui.visuals(), tiles, tile_id, state);
+            let stroke = self.tab_outline_stroke(ui.visuals(), tiles, tile_id, state);
+            ui.painter().rect(
+                tab_rect.shrink(0.5),
+                0.0,
+                bg_color,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+            if state.active {
+                // The tab joins the pane below it.
+                ui.painter().hline(
+                    tab_rect.x_range(),
+                    tab_rect.bottom(),
+                    egui::Stroke::new(stroke.width + 1.0, bg_color),
+                );
+            }
+            let text_color = self.tab_text_color(ui.visuals(), tiles, tile_id, state);
+            let text_position = egui::Align2::LEFT_CENTER
+                .align_size_within_rect(galley.size(), tab_rect.shrink(x_margin))
+                .min;
+            ui.painter().galley(text_position, galley, text_color);
+            if state.closable {
+                let close_btn_rect = egui::Align2::RIGHT_CENTER
+                    .align_size_within_rect(close_btn_size, tab_rect.shrink(x_margin));
+                let close_btn_id = ui.auto_id_with("tab_close_btn");
+                let close_btn_response = ui
+                    .interact(close_btn_rect, close_btn_id, egui::Sense::click_and_drag())
+                    .on_hover_cursor(egui::CursorIcon::Default);
+                let visuals = ui.style().interact(&close_btn_response);
+                let rect = close_btn_rect
+                    .shrink(self.close_button_inner_margin())
+                    .expand(visuals.expansion);
+                let stroke = visuals.fg_stroke;
+                ui.painter()
+                    .line_segment([rect.left_top(), rect.right_bottom()], stroke);
+                ui.painter()
+                    .line_segment([rect.right_top(), rect.left_bottom()], stroke);
+                if close_btn_response.clicked() && self.on_tab_close(tiles, tile_id) {
+                    tiles.remove(tile_id);
+                }
+            }
+        }
+        self.on_tab_button(tiles, tile_id, tab_response)
+    }
 }
 
 impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
@@ -15190,9 +15317,15 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
     fn on_tab_button(
         &mut self,
         _tiles: &Tiles<Pane>,
-        _tile_id: TileId,
+        tile_id: TileId,
         button_response: egui::Response,
     ) -> egui::Response {
+        // Where each tab was drawn, for the tab row to scroll to one just
+        // picked.
+        let rect = button_response.rect;
+        button_response
+            .ctx
+            .data_mut(|d| d.insert_temp(egui::Id::new(("tab rect", tile_id)), rect));
         button_response.on_hover_text(
             "Drag a tab to move the pane, or beside another to show both. The × hides it; \
              its icon at the top, or the View menu, brings it back.",
@@ -15207,6 +15340,153 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
         _state: &egui_tiles::TabState,
     ) -> egui::Stroke {
         egui::Stroke::NONE
+    }
+
+    /// Scroll the tab row to a tab just picked, by its tab or by its icon,
+    /// that is out of its view, from where the tabs were last drawn. A row
+    /// too long for its width keeps both arrows in their places, greyed at
+    /// its ends.
+    fn top_bar_right_ui(
+        &mut self,
+        tiles: &Tiles<Pane>,
+        ui: &mut egui::Ui,
+        tile_id: TileId,
+        tabs: &egui_tiles::Tabs,
+        scroll_offset: &mut f32,
+    ) {
+        self.row = None;
+        let shown: Vec<TileId> = tabs
+            .children
+            .iter()
+            .copied()
+            .filter(|&c| tiles.is_visible(c))
+            .collect();
+        let rects: Vec<Option<egui::Rect>> = ui.ctx().data(|d| {
+            shown
+                .iter()
+                .map(|&c| d.get_temp(egui::Id::new(("tab rect", c))))
+                .collect()
+        });
+        let tabs_w: f32 = rects.iter().flatten().map(|r| r.width()).sum();
+        // The row's own arrows: buttons of at least 20 points and a gap,
+        // which it counts as 20. It draws the left one once scrolled past
+        // 20 points, the right one while there is more to its right; room
+        // before the first tab and after the last keeps both drawn at the
+        // ends.
+        let gap = ui.spacing().item_spacing.x;
+        let glyph = ui.fonts_mut(|f| {
+            f.layout_no_wrap(
+                "⏴".into(),
+                egui::TextStyle::Button.resolve(ui.style()),
+                Color32::WHITE,
+            )
+            .size()
+            .x
+        });
+        let arrow = (glyph + 2.0 * ui.spacing().button_padding.x).max(TAB_ARROW);
+        let (counted, slot) = (TAB_ARROW + gap, arrow + gap);
+        let (lead, trail) = (slot, 2.0 * slot - counted + 1.0);
+        let avail = ui.available_width();
+        let over_key = egui::Id::new(("tab row over", tile_id));
+        let step_key = egui::Id::new(("tab row step", tile_id));
+        let (was, step) = ui.ctx().data_mut(|d| {
+            (
+                d.get_temp::<bool>(over_key).unwrap_or(false),
+                d.remove_temp::<f32>(step_key),
+            )
+        });
+        let over = tabs_w + lead + trail > avail + 0.1;
+        ui.ctx().data_mut(|d| d.insert_temp(over_key, over));
+        if !over {
+            *scroll_offset = 0.0;
+            return;
+        }
+        let view = avail - 2.0 * slot;
+        let (least, most) = (lead, (lead + tabs_w - view).max(lead));
+        let mut off = scroll_offset.max(least);
+        let pick_key = egui::Id::new(("tab picked", tile_id));
+        if let Some(step) = step {
+            off += step;
+            // An arrow's click ends any move toward a tab just picked.
+            if let Some(active) = tabs.active {
+                ui.ctx()
+                    .data_mut(|d| d.insert_temp(pick_key, (active, TAB_REVEAL_TRIES)));
+            }
+        } else if let Some(active) = tabs.active {
+            let shown_before = ui.ctx().data(|d| d.get_temp::<(TileId, u8)>(pick_key));
+            let tries = match shown_before {
+                Some((t, n)) if t == active => n,
+                _ => 0,
+            };
+            // A tab new to the row has no place yet: the next frame. Moved
+            // a frame at a time, from where it was last drawn, until it is
+            // whole in view between the arrows.
+            let rect = shown
+                .iter()
+                .position(|&c| c == active)
+                .and_then(|i| rects[i]);
+            if let (true, Some(rect)) = (tries < TAB_REVEAL_TRIES, rect) {
+                let row = ui.max_rect();
+                let (left, right) = (row.left() + slot, row.right() - slot);
+                let done = if rect.right() > right + 0.5 {
+                    off += rect.right() - right;
+                    tries + 1
+                } else if rect.left() < left - 0.5 {
+                    off -= left - rect.left();
+                    tries + 1
+                } else {
+                    TAB_REVEAL_TRIES
+                };
+                ui.ctx()
+                    .data_mut(|d| d.insert_temp(pick_key, (active, done)));
+                ui.ctx().request_repaint();
+            }
+        }
+        let off = off.clamp(least, most);
+        // The row moves itself a slot when its left arrow first shows.
+        *scroll_offset = if was { off } else { (off - counted).max(20.5) };
+        let row = ui.max_rect();
+        self.row = Some(TabRow {
+            container: tile_id,
+            first: shown.first().copied(),
+            last: shown.last().copied(),
+            lead,
+            trail,
+            slots: [
+                egui::Rect::from_min_max(row.min, egui::pos2(row.left() + slot, row.bottom())),
+                egui::Rect::from_min_max(egui::pos2(row.right() - slot, row.top()), row.max),
+            ],
+            can: [off > least + 0.5, off < most - 0.5],
+            step: (view / 3.0).max(20.0),
+            arrow,
+            layer: ui.layer_id(),
+            drawn: false,
+        });
+    }
+
+    /// egui_tiles' own tab, with room before the first and after the last
+    /// of a long row, and the row's arrows drawn over its own.
+    fn tab_ui(
+        &mut self,
+        tiles: &mut Tiles<Pane>,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        tile_id: TileId,
+        state: &egui_tiles::TabState,
+    ) -> egui::Response {
+        if let Some(row) = self.row.as_mut().filter(|r| !r.drawn) {
+            row.drawn = true;
+            tab_row_arrows(ui.ctx(), *row);
+        }
+        let row = self.row;
+        if let Some(row) = row.filter(|r| r.first == Some(tile_id)) {
+            ui.add_space(row.lead);
+        }
+        let response = self.plain_tab(tiles, ui, id, tile_id, state);
+        if let Some(row) = row.filter(|r| r.last == Some(tile_id)) {
+            ui.add_space(row.trail);
+        }
+        response
     }
 
     fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
@@ -15248,6 +15528,75 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 egui::Stroke::new(2.0_f32, accent.gamma_multiply(0.6))
             }
             egui_tiles::ResizeState::Dragging => egui::Stroke::new(2.0_f32, accent),
+        }
+    }
+}
+
+/// Frames a tab just picked is moved toward the tab row's view.
+const TAB_REVEAL_TRIES: u8 = 8;
+
+/// egui_tiles' tab row arrow, points.
+const TAB_ARROW: f32 = 20.0;
+
+/// A long tab row's two arrows, in fixed places over the row's own, which
+/// they keep from being clicked: greyed where the row has no further to go.
+fn tab_row_arrows(ctx: &egui::Context, row: TabRow) {
+    let p = theme::palette(ctx.style().visuals.dark_mode);
+    for (side, (glyph, sign)) in [("⏴", -1.0_f32), ("⏵", 1.0)].into_iter().enumerate() {
+        let rect = row.slots[side];
+        let ui = egui::Ui::new(
+            ctx.clone(),
+            egui::Id::new(("tab arrow ui", row.container, side)),
+            egui::UiBuilder::new().layer_id(row.layer).max_rect(rect),
+        );
+        let can = row.can[side];
+        let response = ui.interact(
+            rect,
+            egui::Id::new(("tab arrow", row.container, side)),
+            egui::Sense::click(),
+        );
+        let painter = ui.painter();
+        painter.rect_filled(rect, 0.0, p.window);
+        let button = egui::Rect::from_center_size(
+            egui::pos2(
+                if side == 0 {
+                    rect.left() + row.arrow / 2.0
+                } else {
+                    rect.right() - row.arrow / 2.0
+                },
+                rect.center().y,
+            ),
+            Vec2::new(row.arrow, TAB_ARROW),
+        );
+        if can && response.hovered() {
+            painter.rect_filled(button, 4.0, p.control_hover);
+        }
+        let colour = if can {
+            p.text_secondary
+        } else {
+            p.text_tertiary.gamma_multiply(0.45)
+        };
+        painter.text(
+            button.center(),
+            egui::Align2::CENTER_CENTER,
+            glyph,
+            egui::TextStyle::Button.resolve(&ctx.style()),
+            colour,
+        );
+        let response = response.on_hover_text(match (side, can) {
+            (0, true) => "Scroll the tabs to the left.",
+            (_, true) => "Scroll the tabs to the right.",
+            (0, false) => "The first tab is in view.",
+            _ => "The last tab is in view.",
+        });
+        if can && response.clicked() {
+            ctx.data_mut(|d| {
+                d.insert_temp(
+                    egui::Id::new(("tab row step", row.container)),
+                    sign * row.step,
+                )
+            });
+            ctx.request_repaint();
         }
     }
 }
@@ -18272,6 +18621,32 @@ mod tests {
             "{texts:?}"
         );
         assert!(!texts.iter().any(|t| t == "Position"), "{texts:?}");
+        // A compact card is titled Position: the words name it so.
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.position_card(ui, true));
+        });
+        assert!(painted_text(&out).contains("Position"));
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.horizontal(|ui| app.reserve_settings(ui));
+            });
+        });
+        assert!(
+            painted_text(&out).contains("Runs in Crown Up (CU), set on the Position card"),
+            "{}",
+            painted_text(&out)
+        );
+        // And the steps before a run.
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                reserve::pane(ui, None, None, app.position_card_title);
+            });
+        });
+        assert!(
+            painted_text(&out).contains("in the position on the Position card."),
+            "{}",
+            painted_text(&out)
+        );
     }
 
     #[test]
@@ -18626,6 +19001,92 @@ mod tests {
             (app.watch.as_str(), app.bph, app.lift_deg),
             ("Meteorite", Some(21600), 50.0)
         );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// While a take is heard, Save's Keep in a Watch items are greyed and
+    /// say why: a take goes into a watch once it ends, so a pick is never
+    /// a silent no-op.
+    #[test]
+    fn keep_in_a_watch_waits_for_the_take_to_end() {
+        let base = std::env::temp_dir().join(format!("tg-app-keep-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Pepsi")).unwrap();
+        drop(lib);
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        app.quick_listen = true;
+        app.session.listen();
+        let info = app.info("", 48000, 16);
+        let mut r = Recorder::start(&base.join("unsaved"), info).unwrap();
+        r.write(&timegrapher_core::capture::Block {
+            samples: vec![0.0; 48000 * 5],
+            at: std::time::SystemTime::now(),
+        })
+        .unwrap();
+        app.session.recorder = Some(r);
+        let _tx = queued_capture(&mut app, &base);
+        assert!(app.running() && app.session.allows(Action::Save));
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut time = 0.0;
+        let mut pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+            time += 0.25;
+            let input = egui::RawInput {
+                time: Some(time),
+                events,
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.save_menu(ui, 32.0));
+            });
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some((
+                        t.galley.text().to_string(),
+                        t.galley.rect.translate(t.pos.to_vec2()).center(),
+                    )),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let click = |at: egui::Pos2| {
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            vec![egui::Event::PointerMoved(at), button(true), button(false)]
+        };
+        pass(&mut app, Vec::new());
+        // The Save button at the panel's top left: its menu opens.
+        pass(&mut app, click(egui::pos2(8.0 + 16.0, 8.0 + 16.0)));
+        let drawn = pass(&mut app, Vec::new());
+        let pepsi = drawn
+            .iter()
+            .find(|t| t.0 == "Pepsi")
+            .unwrap_or_else(|| panic!("{drawn:?}"))
+            .1;
+        assert!(drawn.iter().any(|t| t.0 == "New Watch…"), "{drawn:?}");
+        // Over the watch: greyed, it says why.
+        let mut said = false;
+        pass(&mut app, vec![egui::Event::PointerMoved(pepsi)]);
+        for _ in 0..8 {
+            let drawn = pass(&mut app, Vec::new());
+            said |= drawn.iter().any(|t| t.0 == KEEP_AFTER_STOP);
+        }
+        assert!(said, "the hover says why");
+        // A click on it keeps nothing and changes no watch.
+        pass(&mut app, click(pepsi));
+        pass(&mut app, Vec::new());
+        assert!(app.watch_open.is_none() && app.keep_back.is_none());
+        assert!(app.session.saved_to().is_none());
+        app.capture = None;
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -23406,14 +23867,11 @@ mod tests {
         for caption in ["Rate", "Amplitude", "Beat Error"] {
             assert!(wide.iter().any(|t| t == caption), "{caption}: {wide:?}");
         }
-        // Too narrow for the words beside the caption, the chip gives how
-        // many limits there are.
+        // Too narrow for the words beside the caption, they go to the
+        // caption's hover: never a bare count.
         let narrow = drawn(800.0);
         let count = limits.len().to_string();
-        assert!(
-            narrow.iter().any(|t| *t == chip || *t == count),
-            "{chip} or {count}: {narrow:?}"
-        );
+        assert!(!narrow.contains(&count), "{count}: {narrow:?}");
         assert!(narrow.iter().any(|t| t == "Rate"), "{narrow:?}");
     }
 

@@ -50,6 +50,8 @@ const FACT_NAMES: [&str; 5] = ["Beats", "Unlock", "Drop", "Unlock to Drop", "Amp
 /// Below this height a plot's facts keep only their last two rows, Unlock
 /// to Drop and Amplitude; the rest are in the hover.
 const SHORT_PLOT: f32 = 100.0;
+/// The least height a side takes stacked: its name and a plot of 40 pt.
+const STACKED_MIN: f32 = 64.0;
 
 /// A side's facts before it has beats.
 const NO_FACTS: &str = "Not enough beats yet";
@@ -107,6 +109,9 @@ struct FactBox {
     /// either side; and the names' column likewise.
     name_w: f32,
     value_w: f32,
+    /// The same for the two rows a short plot keeps.
+    short_name_w: f32,
+    short_value_w: f32,
     fill: Color32,
     name_color: Color32,
     value_color: Color32,
@@ -117,6 +122,9 @@ const FACT_INSET: f32 = 4.0;
 /// Room inside the box around its rows, and each row's height, points.
 const FACT_PAD: f32 = 8.0;
 const FACT_ROW: f32 = 16.0;
+/// The room around the rows in a short plot's box, and each row's height.
+const FACT_PAD_SHORT: f32 = 3.0;
+const FACT_ROW_SHORT: f32 = 14.0;
 /// Between the names' column and the values'.
 const FACT_GAP: f32 = 16.0;
 /// The facts' type size.
@@ -124,14 +132,41 @@ const FACT_SIZE: f32 = 12.0;
 
 impl FactBox {
     /// Where the box goes in a plot whose frame is `frame`, `rows` tall.
+    /// Fewer than five rows of facts make a short box, as narrow as its
+    /// rows and tight around them.
     fn rect(&self, frame: egui::Rect, rows: usize) -> egui::Rect {
+        let short = rows < 5 && self.rows.len() == 5;
+        let (name_w, value_w) = if short {
+            (self.short_name_w, self.short_value_w)
+        } else {
+            (self.name_w, self.value_w)
+        };
+        let pad = Self::pad(rows, self.rows.len());
         egui::Rect::from_min_size(
             frame.min + egui::vec2(FACT_INSET, FACT_INSET),
             egui::vec2(
-                self.name_w + FACT_GAP + self.value_w + 2.0 * FACT_PAD,
-                rows as f32 * FACT_ROW + 2.0 * FACT_PAD,
+                name_w + FACT_GAP + value_w + 2.0 * pad,
+                rows as f32 * Self::row_h(rows, self.rows.len()) + 2.0 * pad,
             ),
         )
+    }
+
+    /// The room around `rows` of a box holding `of` facts.
+    fn pad(rows: usize, of: usize) -> f32 {
+        if rows < 5 && of == 5 {
+            FACT_PAD_SHORT
+        } else {
+            FACT_PAD
+        }
+    }
+
+    /// Each row's height in a box of `rows` holding `of` facts.
+    fn row_h(rows: usize, of: usize) -> f32 {
+        if rows < 5 && of == 5 {
+            FACT_ROW_SHORT
+        } else {
+            FACT_ROW
+        }
     }
 
     /// The rows shown in the plot as `t` draws it: inside the plot and
@@ -139,15 +174,26 @@ impl FactBox {
     fn shown(&self, t: &egui_plot::PlotTransform) -> Vec<usize> {
         let frame = *t.frame();
         let top = frame.top() + FACT_INSET;
-        let room = |bottom: f32| {
-            ((bottom - top - 2.0 * FACT_PAD) / FACT_ROW)
-                .floor()
-                .max(0.0) as usize
+        let room = |bottom: f32, pad: f32, row: f32| {
+            ((bottom - top - 2.0 * pad) / row).floor().max(0.0) as usize
         };
-        let fit_frame = room(frame.bottom() - FACT_INSET);
+        // A short plot's box is tight around its rows.
+        let full =
+            self.plot_h >= SHORT_PLOT && room(frame.bottom() - FACT_INSET, FACT_PAD, FACT_ROW) >= 5;
+        let (pad, row) = if full || self.rows.len() != 5 {
+            (FACT_PAD, FACT_ROW)
+        } else {
+            (FACT_PAD_SHORT, FACT_ROW_SHORT)
+        };
+        let fit_frame = room(frame.bottom() - FACT_INSET, pad, row);
+        // Above the noise floor where there is room; never no facts at all
+        // where the plot holds two rows.
         let fit_floor = self
             .floor
-            .map_or(fit_frame, |y| room(t.position_from_point_y(y) - 6.0))
+            .map_or(fit_frame, |y| {
+                room(t.position_from_point_y(y) - 6.0, pad, row)
+            })
+            .max(fit_frame.min(2))
             .min(fit_frame);
         match self.rows.len() {
             5 => keep_rows(self.plot_h, fit_frame, fit_floor),
@@ -159,10 +205,11 @@ impl FactBox {
     /// Where the box ends, from the plot's left edge, as `t` draws it:
     /// nothing names itself over it.
     fn right(&self, t: &egui_plot::PlotTransform) -> f32 {
-        if self.shown(t).is_empty() {
+        let shown = self.shown(t).len();
+        if shown == 0 {
             0.0
         } else {
-            FACT_INSET + self.rect(egui::Rect::ZERO, 1).width()
+            FACT_INSET + self.rect(egui::Rect::ZERO, shown).width()
         }
     }
 }
@@ -179,16 +226,18 @@ impl egui_plot::PlotItem for FactBox {
             return;
         }
         let r = self.rect(*transform.frame(), shown.len());
+        let pad = Self::pad(shown.len(), self.rows.len());
+        let row = Self::row_h(shown.len(), self.rows.len());
         shapes.push(egui::Shape::rect_filled(r, 6.0, self.fill));
         let font = egui::FontId::proportional(FACT_SIZE);
         for (i, (name, value)) in shown.iter().map(|&k| &self.rows[k]).enumerate() {
-            let y = r.top() + FACT_PAD + (i as f32 + 0.5) * FACT_ROW;
+            let y = r.top() + pad + (i as f32 + 0.5) * row;
             ui.fonts_mut(|f| {
                 let g = f.layout_no_wrap(name.clone(), font.clone(), self.name_color);
-                let at = egui::pos2(r.left() + FACT_PAD, y - g.size().y / 2.0);
+                let at = egui::pos2(r.left() + pad, y - g.size().y / 2.0);
                 shapes.push(egui::Shape::galley(at, g, self.name_color));
                 let g = f.layout_no_wrap(value.clone(), font.clone(), self.value_color);
-                let at = egui::pos2(r.right() - FACT_PAD - g.size().x, y - g.size().y / 2.0);
+                let at = egui::pos2(r.right() - pad - g.size().x, y - g.size().y / 2.0);
                 shapes.push(egui::Shape::galley(at, g, self.value_color));
             });
         }
@@ -306,6 +355,15 @@ pub fn draw(
             .flatten()
             .flat_map(|f| f.iter().map(String::as_str)),
     );
+    // The two rows a short plot keeps, Unlock to Drop and Amplitude.
+    let short_name_w = widest(ui, FACT_NAMES[3..].iter().copied());
+    let short_value_w = widest(
+        ui,
+        facts
+            .iter()
+            .flatten()
+            .flat_map(|f| f[3..].iter().map(String::as_str)),
+    );
     let none_w = widest(ui, [NO_FACTS].into_iter());
     let box_fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
     let fact_box = |k: usize, plot_h: f32| {
@@ -325,6 +383,8 @@ pub fn draw(
                 .map(|p| scaled(&[p.floor], top, scale)[0]),
             name_w: if facts[k].is_some() { name_w } else { none_w },
             value_w: if facts[k].is_some() { value_w } else { 0.0 },
+            short_name_w,
+            short_value_w,
             rows,
             fill: box_fill,
             name_color: pal.text_secondary,
@@ -522,7 +582,11 @@ pub fn draw(
             label_marks(ui, &resp.transform, p, &med, opt, dx, k, inside);
         }
     };
-    if opt.side_by_side {
+    // Stacked, each side's share; too short for two plots one above the
+    // other, they go side by side, each the pane's height.
+    let gap = 6.0;
+    let stacked_h = (ui.available_height() - gap - AXIS_H - 2.0) / 2.0;
+    if opt.side_by_side || stacked_h < STACKED_MIN {
         ui.columns(2, |cols| {
             for (k, ui) in cols.iter_mut().enumerate() {
                 side(ui, k, true);
@@ -531,10 +595,9 @@ pub fn draw(
     } else {
         // Tick above Tock, the one time axis under Tock: Tock's share is
         // the axis taller, so the two plots are the same height.
-        let gap = 6.0;
         ui.spacing_mut().item_spacing.y = 0.0;
         let w = ui.available_width();
-        let h = ((ui.available_height() - gap - AXIS_H - 2.0) / 2.0).max(40.0);
+        let h = stacked_h;
         for k in 0..2 {
             let h = if k == 1 { h + AXIS_H + 2.0 } else { h };
             ui.allocate_ui(egui::vec2(w, h), |ui| {
@@ -586,8 +649,8 @@ fn inside_name_rect(frame: egui::Rect, left: f32, w: f32) -> egui::Rect {
 /// Where the edges' names go inside a short plot, one row along its top:
 /// `names` are each one's label, line x and width, left to right. Each is
 /// centred on its line within the plot; one that would touch the facts
-/// box (ending at `box_right`) starts at its line instead, right of it;
-/// one that would come within a word space of the name before it isn't
+/// box (ending at `box_right`) starts at its line instead, right of it,
+/// or isn't named if its line is under the box; one that would come within a word space of the name before it isn't
 /// named (its line's hover names it). Each name's left edge, or none.
 pub fn inside_places(
     names: &[(&str, f32, f32)],
@@ -602,6 +665,11 @@ pub fn inside_places(
             let mut at = (x - w / 2.0).clamp(left + 4.0, (right - 4.0 - w).max(left + 4.0));
             if at - 3.0 < box_right + 4.0 {
                 at = x + 4.0;
+                // Its line under the facts box: unnamed rather than over
+                // the facts (its line's hover names it).
+                if at - 3.0 < box_right + 4.0 {
+                    return None;
+                }
             }
             if at - 3.0 < end + NAME_GAP {
                 return None;
@@ -1112,6 +1180,8 @@ mod tests {
             floor: None,
             name_w: 90.0,
             value_w: 60.0,
+            short_name_w: 80.0,
+            short_value_w: 40.0,
             fill: Color32::WHITE,
             name_color: Color32::GRAY,
             value_color: Color32::BLACK,
@@ -1121,6 +1191,24 @@ mod tests {
         assert_eq!(r.min, egui::pos2(54.0, 34.0));
         assert_eq!(r.width(), 90.0 + FACT_GAP + 60.0 + 2.0 * FACT_PAD);
         assert_eq!(r.height(), 5.0 * FACT_ROW + 2.0 * FACT_PAD);
+        // A short plot's two rows: as narrow as they are, tight around them.
+        let r = b.rect(frame, 2);
+        assert_eq!(r.width(), 80.0 + FACT_GAP + 40.0 + 2.0 * FACT_PAD_SHORT);
+        assert_eq!(r.height(), 2.0 * FACT_ROW_SHORT + 2.0 * FACT_PAD_SHORT);
+        // A plot 44 pt tall holds the two rows, even over a high noise
+        // floor; never none.
+        let short = FactBox {
+            plot_h: 44.0,
+            floor: Some(0.9),
+            ..b.clone()
+        };
+        let frame = egui::Rect::from_min_size(egui::pos2(50.0, 30.0), egui::vec2(300.0, 44.0));
+        let t = egui_plot::PlotTransform::new(
+            frame,
+            egui_plot::PlotBounds::from_min_max([0.0, 0.0], [1.0, 1.0]),
+            egui::Vec2b::new(false, false),
+        );
+        assert_eq!(short.shown(&t), vec![3, 4]);
         // It adds nothing to the plot's bounds.
         assert!(!egui_plot::PlotItem::bounds(&b).is_valid());
     }
@@ -1144,6 +1232,9 @@ mod tests {
         // Unlock under the facts box: it starts at its line, right of it.
         let at = inside_places(&[("Unlock", 210.0, 40.0)], 0.0, 1000.0, 200.0);
         assert_eq!(at, vec![Some(214.0)]);
+        // Its line under the box: unnamed, the facts left clear.
+        let at = inside_places(&[("Unlock", 150.0, 40.0)], 0.0, 1000.0, 200.0);
+        assert_eq!(at, vec![None]);
         // Peak 15 pt after Drop: not named.
         let at = inside_places(
             &[("Drop", 700.0, 30.0), ("Peak", 715.0, 30.0)],
