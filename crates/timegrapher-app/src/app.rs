@@ -15168,7 +15168,7 @@ impl TimegrapherApp {
         ui.centered_and_justified(|ui| {
             ui.label(
                 RichText::new(format!(
-                    "No room for the {}. Drag the divider up or make the window taller.",
+                    "{} not shown: no room. Drag the divider up or make the window taller.",
                     pane.title()
                 ))
                 .color(pal.text_secondary),

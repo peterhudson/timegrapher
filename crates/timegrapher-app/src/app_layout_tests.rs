@@ -1098,7 +1098,7 @@ fn a_pane_too_short_for_its_plot_says_so() {
                 .collect::<Vec<_>>()
                 .join("\n")
         };
-        let words = format!("No room for the {}.", pane.title());
+        let words = format!("{} not shown: no room.", pane.title());
         let text = run(&mut app, 800.0, 600.0);
         assert!(text.contains(&words), "{pane:?}: {text}");
         assert!(app.panes_short.contains(&pane));
