@@ -273,10 +273,20 @@ pub fn write(dir: &std::path::Path, r: &Results) -> std::io::Result<()> {
     std::fs::rename(&tmp, dir.join(FILE))
 }
 
-/// A run time as hours and minutes: "46 h 12 min".
+/// A run time in words: hours and minutes from an hour ("46 h 12 min"),
+/// minutes and seconds under it ("1 min 52 s"), seconds under a minute
+/// ("13 s"), so a short run never reads a minute short.
 pub fn run_text(s: f64) -> String {
-    let m = (s / 60.0).floor() as i64;
-    format!("{} h {:02} min", m / 60, m % 60)
+    let s = s.max(0.0);
+    if s < 60.0 {
+        format!("{} s", s.floor() as u64)
+    } else if s < 3600.0 {
+        let s = s.floor() as u64;
+        format!("{} min {:02} s", s / 60, s % 60)
+    } else {
+        let m = (s / 60.0).floor() as i64;
+        format!("{} h {:02} min", m / 60, m % 60)
+    }
 }
 
 #[cfg(test)]
@@ -395,5 +405,17 @@ mod tests {
         assert_eq!(Results::from_json(&r.to_json()).unwrap(), r);
         assert!(r.to_json().contains("\"ending\": \"stopped\""));
         assert!(Results::of(&heard(&[], 0.2), Ending::ByHand, "", "DU", true, |s| s).is_none());
+    }
+
+    /// A run under a minute reads its seconds, under an hour its minutes
+    /// and seconds, never a minute short; an hour or more, hours and
+    /// minutes.
+    #[test]
+    fn a_short_run_reads_its_seconds() {
+        assert_eq!(run_text(112.4), "1 min 52 s");
+        assert_eq!(run_text(59.0), "59 s");
+        assert_eq!(run_text(13.7), "13 s");
+        assert_eq!(run_text(3600.0), "1 h 00 min");
+        assert_eq!(run_text(166_320.0), "46 h 12 min");
     }
 }

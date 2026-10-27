@@ -558,10 +558,19 @@ pub struct TakesContext<'a> {
     pub on_show: Option<&'a std::path::Path>,
 }
 
-/// What a take measured and is, in a line: its positions, length, rate,
-/// amplitude, beat error (its size) and marks.
-pub fn take_line(t: &Take) -> String {
+/// Whether the take in `dir` is a Positions Test's: it keeps the test's
+/// results beside its sound.
+pub fn is_positions_test(dir: &std::path::Path) -> bool {
+    dir.join(crate::guided::RESULTS_FILE).is_file()
+}
+
+/// What a take measured and is, in a line: a test's kind, its positions,
+/// length, rate, amplitude, beat error (its size) and marks.
+pub fn take_line(t: &Take, positions_test: bool) -> String {
     let mut parts: Vec<String> = Vec::new();
+    if positions_test {
+        parts.push("Positions Test".into());
+    }
     let names: Vec<String> = t
         .positions
         .iter()
@@ -811,7 +820,7 @@ pub fn started_words(t: &Take) -> String {
 /// A take's row in the takes table: Started, Position, Length, Rate (s/d,
 /// on the take's clock log where it has one), Amplitude (°), Beat Error
 /// (ms, its size) and Size (MB).
-pub fn take_cells(t: &Take) -> [String; 7] {
+pub fn take_cells(t: &Take, positions_test: bool) -> [String; 7] {
     let codes: Vec<String> = t
         .positions
         .iter()
@@ -819,6 +828,9 @@ pub fn take_cells(t: &Take) -> [String; 7] {
         .collect();
     let position = if t.power_reserve.is_some() {
         "Power Reserve".to_string()
+    } else if positions_test {
+        // The test's kind; its positions are in the row's hover.
+        "Positions Test".to_string()
     } else if codes.len() == 6 {
         "All 6".to_string()
     } else {
@@ -1023,7 +1035,11 @@ pub fn takes_table(
         let w = ui.available_width();
         // Each column as wide as its heading or its widest cell; Started
         // takes what the others leave.
-        let rows: Vec<[String; 7]> = e.takes.iter().map(take_cells).collect();
+        let rows: Vec<[String; 7]> = e
+            .takes
+            .iter()
+            .map(|t| take_cells(t, is_positions_test(&e.take_dir(t))))
+            .collect();
         let text_w = |t: &str, size: f32| {
             ui.fonts_mut(|f| {
                 f.layout_no_wrap(t.to_string(), egui::FontId::proportional(size), pal.text)
@@ -1079,13 +1095,14 @@ pub fn takes_table(
             let dir = e.take_dir(t);
             let on_show = cx.on_show == Some(dir.as_path());
             let picked = cx.picked == Some(dir.as_path());
+            let test = is_positions_test(&dir);
             let (rect, r) = ui.allocate_exact_size(Vec2::new(w, row_h), Sense::click());
             if picked {
                 ui.painter().rect_filled(rect, 4.0, pal.control_active);
             } else if r.hovered() {
                 ui.painter().rect_filled(rect, 4.0, pal.control_hover);
             }
-            let cells = take_cells(t);
+            let cells = take_cells(t, test);
             draw(ui, rect, &cells, pal.text, &font);
             // Its state after the date, in small grey words.
             let mut tags = Vec::new();
@@ -1114,7 +1131,7 @@ pub fn takes_table(
             }
             let r = r.on_hover_text(format!(
                 "{}\n\n{}",
-                take_line(t),
+                take_line(t, test),
                 if on_show {
                     "This take is on show on the Bench. Right-click for more."
                 } else if t.incomplete {
@@ -1806,7 +1823,7 @@ mod tests {
             power_reserve: None,
         };
         assert_eq!(
-            take_cells(&t),
+            take_cells(&t, false),
             [
                 "2026-10-22 09.10",
                 "DU",
@@ -1822,14 +1839,14 @@ mod tests {
         // reads it.
         let mut c = t.clone();
         c.at_end.as_mut().unwrap().rate_corrected_s_per_day = Some(21.5);
-        assert_eq!(take_cells(&c)[3], "+21.5");
+        assert_eq!(take_cells(&c, false)[3], "+21.5");
         let all = Take {
             positions: ["DU", "DD", "CU", "CD", "CL", "CR"]
                 .map(String::from)
                 .to_vec(),
             ..t
         };
-        assert_eq!(take_cells(&all)[1], "All 6");
+        assert_eq!(take_cells(&all, false)[1], "All 6");
         // A Power Reserve Test's run in the same format as the others.
         let pr = Take {
             power_reserve: Some(timegrapher_core::power_reserve::Summary {
@@ -1839,10 +1856,38 @@ mod tests {
             }),
             ..all.clone()
         };
-        let cells = take_cells(&pr);
+        let cells = take_cells(&pr, false);
         assert_eq!(cells[1], "Power Reserve");
         assert_eq!(cells[2], crate::strip::fmt_time(166_320.0));
         assert_eq!(TAKE_HEADS.len(), 7);
+    }
+
+    /// A Positions Test's take names its kind in the table's Position
+    /// column and leads its line with it, its positions after.
+    #[test]
+    fn a_positions_test_take_names_its_kind() {
+        let dir = std::env::temp_dir().join(format!("tg-app-kind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!is_positions_test(&dir));
+        std::fs::write(dir.join(crate::guided::RESULTS_FILE), "{}").unwrap();
+        assert!(is_positions_test(&dir));
+        let t = Take {
+            name: "2026-10-26 12.00".into(),
+            bytes: 1_000_000,
+            audio: true,
+            incomplete: false,
+            started_utc: Some("2026-10-26T19:00:00Z".into()),
+            duration_s: Some(153.0),
+            positions: vec!["DU".into()],
+            at_end: None,
+            power_reserve: None,
+        };
+        assert_eq!(take_cells(&t, false)[1], "DU");
+        assert_eq!(take_cells(&t, true)[1], "Positions Test");
+        let line = take_line(&t, true);
+        assert!(line.starts_with("Positions Test · Dial Up · "), "{line}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1863,7 +1908,7 @@ mod tests {
             }),
             power_reserve: None,
         };
-        let line = take_line(&t);
+        let line = take_line(&t, false);
         assert!(line.starts_with("Dial Up, Crown Left · "), "{line}");
         assert!(
             line.contains("+3.5 s/d · 281° · 0.4 ms · Analysis Only · Incomplete"),
@@ -1874,9 +1919,9 @@ mod tests {
         let mut c = t.clone();
         c.at_end.as_mut().unwrap().rate_corrected_s_per_day = Some(15.0);
         assert!(
-            take_line(&c).contains("+15.0 s/d · 281°"),
+            take_line(&c, false).contains("+15.0 s/d · 281°"),
             "{}",
-            take_line(&c)
+            take_line(&c, false)
         );
         // A Power Reserve take leads with its run, not its length.
         let r = Take {
@@ -1888,7 +1933,7 @@ mod tests {
             }),
             ..t.clone()
         };
-        let line = take_line(&r);
+        let line = take_line(&r, false);
         assert!(
             line.starts_with("Power Reserve 46 h 12 min · Crown Left · +3.5"),
             "{line}"
