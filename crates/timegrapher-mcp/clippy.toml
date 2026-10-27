@@ -1,0 +1,17 @@
+# One source (issue #514): a take's clock, breaks and measured stretch are
+# opened by core `take`, never assembled here from its building blocks.
+# A call that is not opening a take says why with
+# `#[expect(clippy::disallowed_methods, reason = "...")]`.
+disallowed-methods = [
+    { path = "timegrapher_core::clock::parse_log", reason = "open a take with timegrapher_core::take::clock" },
+    { path = "timegrapher_core::clock::ClockFit::for_rates", reason = "open a take with timegrapher_core::take::clock" },
+    { path = "timegrapher_core::clock::ClockFit::rate_from_usb", reason = "open a take with timegrapher_core::take::clock" },
+    { path = "timegrapher_core::clock::ClockFit::fixed", reason = "open a take with timegrapher_core::take::clock" },
+    { path = "timegrapher_core::session::fixed_clock", reason = "open a take with timegrapher_core::take::clock" },
+    { path = "timegrapher_core::breaks::of_files", reason = "open a take with timegrapher_core::take::breaks" },
+    { path = "timegrapher_core::breaks::of_files_on_clock", reason = "open a take with timegrapher_core::take::breaks" },
+    { path = "timegrapher_core::breaks::for_take", reason = "open a take with timegrapher_core::take::breaks" },
+    { path = "timegrapher_core::breaks::on_clock", reason = "open a take with timegrapher_core::take::breaks" },
+    { path = "timegrapher_core::breaks::with_jumps", reason = "open a take with timegrapher_core::take::breaks" },
+    { path = "timegrapher_core::breaks::renumber", reason = "open a take with timegrapher_core::take::breaks" },
+]

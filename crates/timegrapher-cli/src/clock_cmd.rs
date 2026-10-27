@@ -162,6 +162,10 @@ fn store(d: DeviceClock, json: bool) -> Result<(), String> {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "measures the sound card from its log; opens no take"
+)]
 fn from_log(log: &Path, recording: &Path) -> Result<ClockFit, String> {
     let info = audio::info(recording).map_err(|e| format!("{}: {e}", recording.display()))?;
     let text = fs::read_to_string(log).map_err(|e| format!("{}: {e}", log.display()))?;
@@ -400,6 +404,10 @@ fn stored_text(e: &DeviceClock) -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests build the clock they expect by hand"
+)]
 mod tests {
     use super::*;
 
