@@ -333,7 +333,7 @@ fn sides_too_alike_to_tell_keep_the_beat_errors_sign() {
     // tell them apart at the jump. The beat error is 0.6 ms either side of
     // it, clearly away from zero, so its sign names the sides: a turn of
     // sign at such a hole reads as the sides swapped by the count, and the
-    // beat error keeps its sign across it (Peter's call, 2026-10-27).
+    // beat error keeps its sign across it (the project's rule, 2026-10-27).
     let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
         generate(
             &SynthConfig {
