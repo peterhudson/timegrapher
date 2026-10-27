@@ -535,6 +535,15 @@ pub const SIDE_BEATS: usize = 2 * MIN_SIDE_BEATS;
 /// A beat whose sound a side check reads is better than this
 /// ([`Beat::quality`]).
 pub const SIDE_QUALITY: f32 = 0.5;
+/// A beat whose sound a side check reads comes this near, ms, the typical
+/// interval from the beat two before it (of its own side, so the beat
+/// error doesn't enter, whichever side is which). Where the watch stumbles
+/// the tracker can follow other sounds for a minute or two, beats that
+/// pass for good ones but come at the wrong times; the sides read there
+/// would be neither Tick nor Tock.
+pub const SIDE_STEADY_MS: f64 = 1.0;
+/// Intervals the typical one is the median of.
+const SIDE_STEPS: usize = 32;
 
 /// How a jump's stretch compares with the side sounds before it: the
 /// correlation of each side with the same side before, less its correlation
@@ -629,17 +638,41 @@ pub struct SideCheck {
     unsided: Vec<(f64, f64)>,
     /// The jumps whose sides were told apart by their sound, seconds.
     sided: Vec<f64>,
+    /// The last two good beats' times and numbers, newest last.
+    last: [Option<(f64, i64)>; 2],
+    /// The latest intervals, seconds, to good beats from the good beat
+    /// two before.
+    steps: std::collections::VecDeque<f64>,
 }
 
 impl SideCheck {
     /// A beat at `t` seconds, numbered `index`, of quality `quality`, with
     /// its window as [`crate::profile::snippet`] cuts it. Beats no better
-    /// than [`SIDE_QUALITY`] are passed over.
+    /// than [`SIDE_QUALITY`] are passed over, and so are beats not
+    /// [`SIDE_STEADY_MS`] near the typical interval from the beat two
+    /// before.
     pub fn beat(&mut self, t: f64, index: i64, quality: f32, window: &[f32]) {
         if quality <= SIDE_QUALITY {
             return;
         }
         let side = index.rem_euclid(2) as usize;
+        let two_before = self.last[0];
+        self.last = [self.last[1], Some((t, index))];
+        let Some(step) = two_before.and_then(|(lt, li)| (index == li + 2).then_some(t - lt)) else {
+            return;
+        };
+        let steps = &mut self.steps;
+        steps.push_back(step);
+        if steps.len() > SIDE_STEPS {
+            steps.pop_front();
+        }
+        if steps.len() < MIN_SIDE_BEATS {
+            return;
+        }
+        let typical = crate::dsp::median(&mut steps.iter().copied().collect::<Vec<f64>>());
+        if (step - typical).abs() * 1000.0 > SIDE_STEADY_MS {
+            return;
+        }
         let snip = (t, window.to_vec());
         match &mut self.pending {
             Some((_, got)) => got[side].push(snip),
