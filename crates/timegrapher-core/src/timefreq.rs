@@ -152,6 +152,11 @@ fn period_axis(lo: f64, hi: f64, rows: usize) -> Vec<f64> {
 /// The STFT of `g`: windows of `window_s` stepped `hop_s`, each with
 /// every reading present, its line taken off and a Hann window applied,
 /// read at `ROWS` periods from 4 readings to a third of the window.
+/// Each row reads the strongest of its own period and the window's
+/// frequencies in its band (halfway, in log period, to its neighbours), as
+/// the kurtogram does: rows are far wider apart than a window's
+/// frequencies at short periods, and a line between two rows read at the
+/// rows' periods alone was lost.
 /// `scale` multiplies the values (1000 for seconds to ms). `None` when no
 /// window fits.
 pub fn stft(
@@ -173,6 +178,21 @@ pub fn stft(
         .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * (i as f64 + 0.5) / nw as f64).cos())
         .collect();
     let wsum: f64 = w.iter().sum();
+    let fwd = RealFftPlanner::<f64>::new().plan_fft_forward(nw);
+    let mut spec = fwd.make_output_vec();
+    let mut wx = fwd.make_input_vec();
+    // The window's frequencies (bin k turns k times a window) in each
+    // row's band.
+    let span = nw as f64 * g.step;
+    let half = (period_s[0] / period_s[1]).sqrt();
+    let bands: Vec<(usize, usize)> = period_s
+        .iter()
+        .map(|&p| {
+            let a = ((span / (p * half)).ceil() as usize).max(1);
+            let b = ((span * half / p).floor() as usize).min(nw / 2);
+            (a, b)
+        })
+        .collect();
     let (mut t_s, mut values) = (Vec::new(), Vec::new());
     let mut x = vec![0.0; nw];
     let mut start = 0;
@@ -181,9 +201,14 @@ pub fn stft(
         if part.iter().all(|v| v.is_finite()) {
             x.copy_from_slice(part);
             detrend_line(&mut x);
+            for ((o, v), wi) in wx.iter_mut().zip(&x).zip(&w) {
+                *o = v * wi;
+            }
+            let binned = fwd.process(&mut wx, &mut spec).is_ok();
             let col = period_s
                 .iter()
-                .map(|&p| {
+                .zip(&bands)
+                .map(|(&p, &(a, b))| {
                     // A phasor turned one reading at a time.
                     let d = Complex::from_polar(1.0, -std::f64::consts::TAU * g.step / p);
                     let mut e = Complex::new(1.0, 0.0);
@@ -192,7 +217,12 @@ pub fn stft(
                         acc += e * (v * wi);
                         e *= d;
                     }
-                    2.0 * acc.norm() / wsum * scale
+                    let band = if binned && a <= b {
+                        spec[a..=b].iter().map(|c| c.norm()).fold(0.0, f64::max)
+                    } else {
+                        0.0
+                    };
+                    2.0 * acc.norm().max(band) / wsum * scale
                 })
                 .collect();
             t_s.push(g.t0 + (start as f64 + nw as f64 / 2.0) * g.step);
@@ -1029,6 +1059,38 @@ mod tests {
                 read += 1;
             }
             assert!(read > 10, "{}: {read} columns", tf.method);
+        }
+    }
+
+    #[test]
+    fn a_line_between_two_rows_reads_its_size() {
+        // A sine of size 1 at periods across the band between two rows near
+        // 5 s, on 1 s readings: read at the rows' periods alone, a line
+        // halfway between them read 0.0001 in a 20 min window.
+        let probe = stft(
+            &grid(1.0, 2400, |_| 0.0),
+            "rate",
+            "",
+            1.0,
+            STFT_WINDOW_S,
+            STFT_HOP_S,
+        )
+        .unwrap();
+        let r = row(&probe, 5.0);
+        let (p0, p1) = (probe.period_s[r], probe.period_s[r + 1]);
+        for k in 0..=8 {
+            let p = p0 * (p1 / p0).powf(k as f64 / 8.0);
+            let g = grid(1.0, 2400, |t| (std::f64::consts::TAU * t / p).sin());
+            let tf = stft(&g, "rate", "", 1.0, STFT_WINDOW_S, STFT_HOP_S).unwrap();
+            for col in &tf.values {
+                let (pr, size) = peak(col);
+                assert!(
+                    pr == r || pr == r + 1,
+                    "{p} s: row {pr}, want {r} or {}",
+                    r + 1
+                );
+                assert!(size > 0.8 && size < 1.05, "{p} s: size {size}");
+            }
         }
     }
 
