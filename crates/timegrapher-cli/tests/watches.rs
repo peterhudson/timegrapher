@@ -170,7 +170,7 @@ fn watches_prints_text_and_says_when_there_is_nothing_to_list() {
     let out = run(&["watches", "show", "Pepsi", "--library", &lib]);
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(
-        text.contains("2026-10-20 14.32 Dial Up: Dial Up, 600 s, +4.2 s/d, 285°, 0.6 ms"),
+        text.contains("2026-10-20 14.32 Dial Up: Dial Up · 10:00 · +4.2 s/d · 285° · 0.6 ms · "),
         "{text}"
     );
 
