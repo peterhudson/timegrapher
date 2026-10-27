@@ -4131,6 +4131,10 @@ impl TimegrapherApp {
         if self.file_path.trim() != path.display().to_string() {
             self.file_path = path.display().to_string();
         }
+        // Nothing of the take before's clock carries over, whichever
+        // way this one is kept.
+        self.take_clock = None;
+        self.usb_job = None;
         if analysis_take::is_analysis_only(path) {
             return self.open_analysis_only(path, manifest);
         }
@@ -4169,7 +4173,6 @@ impl TimegrapherApp {
             self.set_watch_setup(WatchSetup::default());
             self.open_note = None;
         }
-        self.take_clock = None;
         if let Some(log) = manifest
             .as_ref()
             .and_then(|(_, e)| e.first()?.clock.clone())
@@ -4325,6 +4328,20 @@ impl TimegrapherApp {
         self.keep_mic_setup();
         self.set_watch_setup(WatchSetup::default());
         self.open_note = None;
+        // Its own clock log, read as its sound's would be, with its USB
+        // lines' figure as measured when it was kept, as `timegrapher
+        // session` reads such a take.
+        if let Some(log) = entries.first().and_then(|e| e.clock.clone()) {
+            match analysis_clock(path, &log, &header) {
+                Ok(fit) => self.take_clock = Some(fit),
+                Err(e) => {
+                    self.open_note = Some(format!(
+                        "Its clock log can't be read ({e}), so its rates aren't corrected \
+                         for the sound card's clock."
+                    ))
+                }
+            }
+        }
         let (stretches, settles) = self.apply_manifest(&m, &entries);
         self.watch_fills_in(path, &m);
         let label = format!("{name} (analysis only)");
@@ -15719,6 +15736,30 @@ fn settle_hint(s: f64) -> String {
     )
 }
 
+/// The clock of a take kept as its analysis alone, from its log `log` read
+/// at the sound's rate and frame size its header keeps, its USB lines'
+/// figure applied and its breaks placed as its `session.json` lists them.
+fn analysis_clock(
+    dir: &Path,
+    log: &str,
+    header: &analysis_take::Header,
+) -> Result<timegrapher_core::clock::ClockFit, String> {
+    use timegrapher_core::{breaks, clock};
+    let file = dir.join(log);
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let pairs = clock::parse_log(&text, header.sample_rate, header.bytes_per_frame)?;
+    let mut fit = clock::ClockFit::for_rates(&pairs).map_err(|e| e.to_string())?;
+    if let Some(u) = &header.usb_clock {
+        fit.rate_from_usb(u.ppm);
+    }
+    let json = std::fs::read_to_string(dir.join("session.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+    let listed = breaks::for_take(json.as_ref(), Some(&fit), header.sample_rate);
+    breaks::on_clock(listed, Some(&mut fit));
+    Ok(fit)
+}
+
 /// Where a bug report starts: the repository's bug form.
 const BUG_REPORT_URL: &str =
     "https://github.com/peterhudson/timegrapher/issues/new?template=bug.yml";
@@ -20020,6 +20061,80 @@ mod tests {
         app.session.set_settle_s(app.guided_settle_s);
         let hint = settle_hint(app.session.settle_len());
         assert!(hint.starts_with("For the first 30 seconds"), "{hint}");
+    }
+
+    /// A take kept as its analysis alone is read on its own clock log, and
+    /// never on the clock of the take opened before it.
+    #[test]
+    fn an_analysis_only_take_reads_its_own_clock() {
+        let base = std::env::temp_dir().join(format!("tg-app-clock-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (a, b) = (base.join("a"), base.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let wav = a.join("audio-001.wav");
+        timegrapher_core::audio::write_wav(&wav, &audio).unwrap();
+        // A log of 13 entries 10 s apart on a card `ppm` slow.
+        let log = |ppm: f64| {
+            let mut log = String::from("unix_s,frames\n");
+            for k in 0..13 {
+                let audio_s = 10.0 * k as f64;
+                log += &format!(
+                    "{:.6},{}\n",
+                    1_700_000_000.0 + audio_s * (1.0 + ppm * 1e-6),
+                    (audio_s * audio.sample_rate as f64) as u64
+                );
+            }
+            log
+        };
+        let manifest = |audio: bool| {
+            format!(
+                "{}bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n\
+                 clock = 'clock.csv'\nsettle_s = 0.0\n",
+                if audio { "" } else { "audio = false\n" }
+            )
+        };
+        std::fs::write(a.join("clock.csv"), log(50.0)).unwrap();
+        std::fs::write(a.join(MANIFEST), manifest(true)).unwrap();
+        // The same sound kept as its analysis, with a log of its own.
+        let stored = analysis_take::measure(
+            &[wav.as_path()],
+            &timegrapher_core::stream::StreamConfig::default(),
+            &[],
+            serde_json::json!({"name": "timegrapher", "version": "test"}),
+            |_| {},
+        )
+        .unwrap();
+        analysis_take::write(&b, &stored).unwrap();
+        std::fs::write(b.join("clock.csv"), log(10.0)).unwrap();
+        std::fs::write(b.join(MANIFEST), manifest(false)).unwrap();
+        let ppm = |app: &TimegrapherApp| app.take_clock.as_ref().map(|f| f.ppm);
+        let mut app = reopened(&a);
+        assert!((ppm(&app).expect("a's log") - 50.0).abs() < 1.0);
+        app.start_batch(&b);
+        let t = Instant::now();
+        while app.batch.is_some() && t.elapsed().as_secs() < 120 {
+            app.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(app.live.is_some(), "{:?}", app.message);
+        assert!(
+            (ppm(&app).expect("b's own log") - 10.0).abs() < 1.0,
+            "{:?}",
+            ppm(&app)
+        );
+        // Opened fresh, the same.
+        let app = reopened(&b);
+        assert!((ppm(&app).expect("b's own log") - 10.0).abs() < 1.0);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A take whose recording carries USB lines has its rate set by them,
