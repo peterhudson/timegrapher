@@ -148,7 +148,10 @@ A take that was paused, or saved and then continued, has audio that runs
 straight on across each break while the clock jumps. `long`, `series` and
 `session` find the breaks in the take's `session.json` (`breaks`), plus
 any step in `clock.csv` that none of those explains (for older takes,
-the steps alone), and read each stretch on its own:
+the steps alone), plus any jump in the beats that none of those
+explains (Tick and Tock both stepping more than 4 ms off their expected
+times together, as where the watch stumbles), as a break of unknown
+length, `gap_s` 0, and read each stretch on its own:
 the clock fit takes the gap out before fitting, so a pause no longer reads
 as a huge sound-card error; rate and beat error are fitted per stretch and
 combined weighted by beats (where the beat error's sign turns over across
@@ -161,7 +164,9 @@ the clock log shows it took up again, so sound inside it belongs to
 neither stretch; and the period search and Steadiness run on true time,
 so a gap is a missing stretch. The JSON lists the breaks as `breaks`.
 Where Tick and Tock were not told apart by their sound across a break,
-the sides after it are named by the beat count across it; the printed
+nor by the beat error's sign (kept the same either side when it is
+0.1 ms or more on both sides and its size changes by under half), the
+sides after it are named by the beat count across it; the printed
 `Sides` line and the JSON's `caveats` (`sides_by_count`, `count`) say so.
 Where the beat error is given as a size, a `Conditions` line ("beat error
 given as a size: its sign differs either side of a cut") and the caveat
