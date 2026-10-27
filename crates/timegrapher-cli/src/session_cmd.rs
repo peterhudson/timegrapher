@@ -8,7 +8,6 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use timegrapher_core::calibre_store::{self, UserCalibres};
 use timegrapher_core::calibres;
-use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
@@ -18,7 +17,7 @@ use timegrapher_core::session::{
 };
 use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{analysis_take, audio, beats, breaks, timing, twostate};
+use timegrapher_core::{analysis_take, audio, beats, breaks, take, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
 
@@ -416,24 +415,6 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     Ok(())
 }
 
-fn read_clock(path: &Path, first: &Path) -> Result<(ClockFit, String), String> {
-    let info = audio::info(first).map_err(|e| format!("{}: {e}", first.display()))?;
-    read_clock_as(path, info.sample_rate, info.bytes_per_frame)
-}
-
-/// [`read_clock`] for a sound at `sample_rate` with `bytes_per_frame`.
-fn read_clock_as(
-    path: &Path,
-    sample_rate: u32,
-    bytes_per_frame: u32,
-) -> Result<(ClockFit, String), String> {
-    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let pairs = clock::parse_log(&text, sample_rate, bytes_per_frame)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    let fit = ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok((fit, crate::archive::sha256_hex(text.as_bytes())))
-}
-
 /// Up to `len_s` seconds of audio from `from_s`, across segment files.
 fn excerpt(files: &[PathBuf], from_s: f64, len_s: f64) -> Result<(Vec<f32>, f64), String> {
     let mut out = Vec::new();
@@ -494,6 +475,10 @@ pub(crate) struct Ctx<'a> {
     pub tty: bool,
     /// No progress lines (the file names stay out of logs).
     pub quiet: bool,
+    /// Rates on the sound card's own clock, uncorrected: for setting
+    /// beside references read from the same recordings on that clock
+    /// ([`session::Reference::same_clock_as`]), as `regress` does.
+    pub card_clock: bool,
 }
 
 /// The stretch of a recording an entry reads, seconds from its start:
@@ -610,66 +595,66 @@ fn read_one_inner(
         None => stream::analyze_files(&paths, &cfg, |_| {})
             .map_err(|err| format!("{}: {err}", e.file))?,
     };
-    let (mut clock, clock_input_sha256) = match (&e.clock, c.m.card_ppm) {
-        (Some(p), _) => {
-            let (mut fit, digest) = match &kept {
-                Some(k) => read_clock_as(
-                    &c.base.join(p),
-                    k.header.sample_rate,
-                    k.header.bytes_per_frame,
-                )?,
-                None => read_clock(&c.base.join(p), &files[0])?,
-            };
-            // The recording's USB lines, when it has them, correct the
-            // rates; the log then gives its breaks.
-            let usb = match &kept {
-                Some(k) => k.header.usb_clock.map(|u| u.ppm),
-                None => crate::clock_cmd::usb(&files)?.map(|(ppm, _)| ppm),
-            };
-            if let Some(ppm) = usb {
-                fit.rate_from_usb(ppm);
-            }
-            (Some(fit), Some(digest))
+    // Its clock and breaks, as every surface opens a take.
+    let log_text = match &e.clock {
+        Some(p) => {
+            let f = c.base.join(p);
+            Some(fs::read_to_string(&f).map_err(|err| format!("{}: {err}", f.display()))?)
         }
-        (None, Some(ppm)) => (session::fixed_clock(ppm, log.duration_s), None),
-        (None, None) => (None, None),
+        None => None,
     };
+    let clock_input_sha256 = log_text
+        .as_ref()
+        .map(|t| crate::archive::sha256_hex(t.as_bytes()));
+    let mut clock = match &kept {
+        _ if c.card_clock => None,
+        // Read as it was recorded: its sound is not here.
+        Some(k) => take::clock(
+            log_text.as_deref(),
+            k.header.sample_rate,
+            k.header.bytes_per_frame,
+            k.header.usb_clock.map(|u| u.ppm),
+            c.m.card_ppm,
+            log.duration_s,
+        )
+        .map_err(|err| match &e.clock {
+            Some(p) => format!("{}: {err}", c.base.join(p).display()),
+            None => err,
+        })?,
+        None => {
+            let info =
+                audio::info(&files[0]).map_err(|err| format!("{}: {err}", files[0].display()))?;
+            let log_path = e.clock.as_ref().map(|p| c.base.join(p));
+            crate::clock_cmd::resolve(
+                log_path.as_deref(),
+                &info,
+                log.duration_s,
+                || crate::clock_cmd::usb(&files),
+                || crate::clock_cmd::correction(&files[0], None, c.m.card_ppm),
+            )?
+            .map(|a| a.fit)
+        }
+    };
+    // A take kept as its analysis alone: every part of the take was in
+    // it, so its session.json lists its breaks for the whole take's sound.
+    let json = kept.as_ref().and_then(|_| {
+        fs::read_to_string(path.join("session.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+    });
     let listed = match &kept {
-        // Every part of the take was in it, so its session.json lists its
-        // breaks as for the whole take's sound, and they go on the clock as
-        // `of_files_on_clock` puts them.
-        Some(_) => {
-            let json = fs::read_to_string(path.join("session.json"))
-                .ok()
-                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
-            let listed = breaks::for_take(json.as_ref(), clock.as_ref(), log.sample_rate);
-            breaks::on_clock(listed, clock.as_mut())
-        }
-        None => breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
+        Some(_) => take::Listed::Session(json.as_ref()),
+        None => take::Listed::Files(&paths),
     };
-    let breaks = breaks::with_jumps(listed, &log.jumps);
-    log.by_count = breaks::renumber(
-        &mut log.beats,
-        &mut log.amplitude_windows,
-        &breaks,
-        &log.sided,
-        log.bph,
-    );
+    let breaks = take::breaks(&mut log, listed, clock.as_mut());
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
     session::mask_log(&mut log, &masked);
     let (start, stop) = span_of(e, log.duration_s)?;
-    let settle = start
-        + e.settle_s
-            .or(c.o.settle)
-            .or(c.m.settle_s)
-            .unwrap_or(20.0)
-            .min((stop - start) / 2.0);
-    let end = e
-        .measure_s
-        .or(c.m.measure_s)
-        .map_or(stop, |m| settle + m)
-        .min(stop);
+    let (settle_s, measure_s) = take::entry_times(e, c.m);
+    // A settling time given to the command comes before the session file's.
+    let settle_s = e.settle_s.or(c.o.settle).or(settle_s);
+    let (settle, end) = take::measured(start, stop, settle_s, measure_s);
     let mut measurement =
         session::measure_masked(&log, clock.as_ref(), &breaks, &masked, settle, end);
     if !lift_known(c, cal) {
@@ -840,6 +825,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         o,
         tty: std::io::stderr().is_terminal(),
         quiet: false,
+        card_clock: false,
     };
     let readings: Vec<Reading> = m
         .recordings
@@ -1208,6 +1194,7 @@ mod tests {
                 o,
                 tty: false,
                 quiet: true,
+                card_clock: false,
             };
             lift_known(&c, cal)
         };
@@ -1249,6 +1236,7 @@ mod tests {
                 o: &o,
                 tty: false,
                 quiet: true,
+                card_clock: false,
             };
             let (cfg, cal) = stream_config(&c).unwrap();
             assert_eq!(lift_known(&c, cal), expected, "{text}, {flag:?}");
@@ -1367,6 +1355,7 @@ mod tests {
                 o: &o,
                 tty: false,
                 quiet: true,
+                card_clock: false,
             };
             let (cfg, _) = stream_config(&ctx).unwrap();
             assert_eq!(
@@ -1396,6 +1385,7 @@ mod tests {
             o: &o,
             tty: false,
             quiet: true,
+            card_clock: false,
         };
         assert_eq!(
             stream_config(&ctx).unwrap().0.analysis.amplitude.lift_deg,
@@ -1630,6 +1620,69 @@ mod tests {
             .to_string();
         assert_eq!(row.split(',').nth(3), Some("102.0"), "{row}");
         assert!(v["readings"][0]["shape"].is_object(), "no shape");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Without a clock log, a recording's USB lines set the rate, as in
+    /// `series` and `long`; read on the sound card's clock, as `regress`
+    /// sets readings beside tg's, they don't.
+    #[test]
+    fn usb_lines_set_the_rate_without_a_clock_log() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-session-usb-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = SynthConfig {
+            duration_s: 120.0,
+            rate_s_per_day: 0.0,
+            ..Default::default()
+        };
+        let mut audio = generate(&cfg, |_| 280.0, |_| 3.0);
+        // The lines of a card 20 ppm slow: a true 5, 6 and 7 kHz lands
+        // 20 ppm high on its clock.
+        let fs_hz = audio.sample_rate as f64;
+        for (f, a) in [(5000.0, 0.002), (6000.0, 0.003), (7000.0, 0.002)] {
+            let f = f * (1.0 + 20e-6);
+            for (i, v) in audio.samples.iter_mut().enumerate() {
+                *v += (a * (2.0 * std::f64::consts::PI * f * i as f64 / fs_hz).sin()) as f32;
+            }
+        }
+        audio::write_wav(&dir.join("take.wav"), &audio).unwrap();
+        fs::write(
+            dir.join(MANIFEST),
+            "bph = 28800\nlift = 52\n\n[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\n",
+        )
+        .unwrap();
+        let (m, base, _) = load_manifest_file(&dir.join(MANIFEST)).unwrap();
+        let o = options(None, None, None);
+        let selection = o.calibre(&m).unwrap();
+        let read = |card_clock| {
+            let c = Ctx {
+                m: &m,
+                calibre: &selection,
+                base: &base,
+                o: &o,
+                tty: false,
+                quiet: true,
+                card_clock,
+            };
+            read_one(&m.recordings[0], &c).unwrap().measurement
+        };
+        let card = read(true);
+        assert!(!card.calibrated);
+        let on_card = card.rate_s_per_day.unwrap();
+        assert!(
+            (on_card - 3.0).abs() < 0.3,
+            "rate on the card's clock {on_card}"
+        );
+        let usb = read(false);
+        assert!(usb.calibrated, "the USB lines were not used");
+        let corrected = usb.rate_s_per_day.unwrap();
+        // 20 ppm is 1.728 s/d.
+        assert!(
+            (on_card - corrected - 1.728).abs() < 0.1,
+            "{on_card} on the card's clock, {corrected} on the USB lines'"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

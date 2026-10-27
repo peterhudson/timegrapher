@@ -328,8 +328,10 @@ After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
 of the recording or for `measure_s`:
 
 - rate from one fit over every beat (Tick and Tock fitted together),
-  corrected for the sound card's clock when the session file names a clock log
-  or the session gives `card_ppm`. A reading with a mask or a restart in
+  corrected for the sound card's clock: by the clock log the session file
+  names, with the recording's USB lines setting its rate when it has them;
+  without a log, by `card_ppm` or a correction stored for the input, else by
+  the USB lines, as `series` and `long` correct it. A reading with a mask or a restart in
   listening is cut at both ends of each: each stretch between cuts is
   fitted on its own, a stretch whose beats span under 10 s is left out,
   and the rest are combined weighted by their beats;

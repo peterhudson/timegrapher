@@ -2,17 +2,16 @@
 //! shows in time order (a cycle, two levels, level changes, a trend,
 //! correlation between readings), with the statistics behind it.
 
-use std::fs;
+use crate::clock_cmd::{resolve as resolve_clock, AppliedClock};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
 use timegrapher_core::steady_views;
 use timegrapher_core::stream::{self, StreamConfig};
-use timegrapher_core::{audio, breaks};
+use timegrapher_core::{audio, take};
 
 pub struct Options<'a> {
     pub files: &'a [PathBuf],
@@ -58,7 +57,7 @@ pub fn run(o: Options) -> Result<(), String> {
         &info,
         total_s,
         || crate::clock_cmd::usb(&files),
-        || crate::clock_cmd::correction_or_usb(&files, None, None),
+        || crate::clock_cmd::correction(&files[0], None, None),
     )?;
 
     let total = info.frames.map(|f| f as f64 / info.sample_rate as f64);
@@ -90,20 +89,12 @@ pub fn run(o: Options) -> Result<(), String> {
     };
     lc.wheels.extend(extra);
     let mut log = log;
-    let listed = breaks::of_files_on_clock(
-        &paths,
+    let breaks = take::breaks(
+        &mut log,
+        take::Listed::Files(&paths),
         applied_clock.as_mut().map(|c| &mut c.fit),
-        log.sample_rate,
     );
     let clock = applied_clock.as_ref().map(|c| &c.fit);
-    let breaks = breaks::with_jumps(listed, &log.jumps);
-    log.by_count = breaks::renumber(
-        &mut log.beats,
-        &mut log.amplitude_windows,
-        &breaks,
-        &log.sided,
-        log.bph,
-    );
     let long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
 
@@ -166,42 +157,6 @@ pub fn run(o: Options) -> Result<(), String> {
         print_text(&rep, clock.is_some_and(|c| c.corrects()));
         Ok(())
     }
-}
-
-/// The fit actually supplied to analysis and the resolver's source text.
-struct AppliedClock {
-    fit: ClockFit,
-    from: String,
-}
-
-fn resolve_clock(
-    log: Option<&Path>,
-    info: &audio::AudioInfo,
-    total_s: f64,
-    usb: impl FnOnce() -> Result<Option<(f64, String)>, String>,
-    fallback: impl FnOnce() -> Result<Option<(f64, String)>, String>,
-) -> Result<Option<AppliedClock>, String> {
-    if let Some(path) = log {
-        let named = |e| format!("{}: {e}", path.display());
-        let text = fs::read_to_string(path).map_err(|e| named(e.to_string()))?;
-        let pairs =
-            clock::parse_log(&text, info.sample_rate, info.bytes_per_frame).map_err(named)?;
-        let mut fit = ClockFit::for_rates(&pairs).map_err(|e| named(e.to_string()))?;
-        // The recording's USB lines, when it has them, correct the rates;
-        // the log then gives its breaks.
-        let from = match usb()? {
-            Some((ppm, from)) => {
-                fit.rate_from_usb(ppm);
-                format!("{from}; clock log {} for its breaks", path.display())
-            }
-            None => format!("from clock log {}", path.display()),
-        };
-        return Ok(Some(AppliedClock { fit, from }));
-    }
-    // Keep the existing stored-before-USB resolver and fixed fit unchanged.
-    Ok(fallback()?.and_then(|(ppm, from)| {
-        timegrapher_core::session::fixed_clock(ppm, total_s).map(|fit| AppliedClock { fit, from })
-    }))
 }
 
 fn report_document(
@@ -457,6 +412,8 @@ fn add_scales(maps: &mut serde_json::Value, tf: &[timegrapher_core::timefreq::Ti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use timegrapher_core::clock::{self, ClockFit};
 
     #[test]
     fn each_map_carries_the_scale_the_app_draws_it_in() {
