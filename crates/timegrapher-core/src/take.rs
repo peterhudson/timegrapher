@@ -64,7 +64,7 @@ pub enum Listed<'a> {
 /// beats show that none of those explains, as a break of unknown length
 /// ([`breaks::with_jumps`]). The beats after each break are numbered on
 /// by the beats its gap held, and `log.by_count` names the breaks whose
-/// sides are kept by the count alone ([`breaks::renumber`]). Sorted.
+/// sides are kept by the count alone ([`breaks::renumber`]). In time order.
 pub fn breaks(log: &mut BeatLog, listed: Listed, mut clock: Option<&mut ClockFit>) -> Vec<Break> {
     let listed = match listed {
         Listed::Files(files) => {
@@ -75,8 +75,7 @@ pub fn breaks(log: &mut BeatLog, listed: Listed, mut clock: Option<&mut ClockFit
             breaks::on_clock(listed, clock)
         }
     };
-    let mut all = breaks::with_jumps(listed, &log.jumps);
-    all.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
+    let all = breaks::with_jumps(listed, &log.jumps);
     log.by_count = breaks::renumber(
         &mut log.beats,
         &mut log.amplitude_windows,
