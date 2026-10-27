@@ -13037,7 +13037,7 @@ impl TimegrapherApp {
                 format!(
                     "The run so far, {} from the first beat heard, is kept{kept}. Its run time \
                      then says it was stopped by hand.",
-                    reserve::run_words(run)
+                    power_reserve::run_text(run)
                 ),
             )
         } else {
@@ -19421,9 +19421,7 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(
-            watches::take_line(&take, false).starts_with("Power Reserve 0 h 00 min (still running")
-        );
+        assert!(watches::take_line(&take, false).starts_with("Power Reserve 12 s (still running"));
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.start_batch(&saved);
