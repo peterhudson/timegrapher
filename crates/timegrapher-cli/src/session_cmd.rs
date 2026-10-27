@@ -8,7 +8,6 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use timegrapher_core::calibre_store::{self, UserCalibres};
 use timegrapher_core::calibres;
-use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
@@ -18,7 +17,7 @@ use timegrapher_core::session::{
 };
 use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
-use timegrapher_core::{analysis_take, audio, beats, breaks, timing, twostate};
+use timegrapher_core::{analysis_take, audio, beats, breaks, take, timing, twostate};
 
 pub const MANIFEST: &str = "session.toml";
 
@@ -416,24 +415,6 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     Ok(())
 }
 
-fn read_clock(path: &Path, first: &Path) -> Result<(ClockFit, String), String> {
-    let info = audio::info(first).map_err(|e| format!("{}: {e}", first.display()))?;
-    read_clock_as(path, info.sample_rate, info.bytes_per_frame)
-}
-
-/// [`read_clock`] for a sound at `sample_rate` with `bytes_per_frame`.
-fn read_clock_as(
-    path: &Path,
-    sample_rate: u32,
-    bytes_per_frame: u32,
-) -> Result<(ClockFit, String), String> {
-    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let pairs = clock::parse_log(&text, sample_rate, bytes_per_frame)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    let fit = ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok((fit, crate::archive::sha256_hex(text.as_bytes())))
-}
-
 /// Up to `len_s` seconds of audio from `from_s`, across segment files.
 fn excerpt(files: &[PathBuf], from_s: f64, len_s: f64) -> Result<(Vec<f32>, f64), String> {
     let mut out = Vec::new();
@@ -610,66 +591,65 @@ fn read_one_inner(
         None => stream::analyze_files(&paths, &cfg, |_| {})
             .map_err(|err| format!("{}: {err}", e.file))?,
     };
-    let (mut clock, clock_input_sha256) = match (&e.clock, c.m.card_ppm) {
-        (Some(p), _) => {
-            let (mut fit, digest) = match &kept {
-                Some(k) => read_clock_as(
-                    &c.base.join(p),
-                    k.header.sample_rate,
-                    k.header.bytes_per_frame,
-                )?,
-                None => read_clock(&c.base.join(p), &files[0])?,
-            };
-            // The recording's USB lines, when it has them, correct the
-            // rates; the log then gives its breaks.
-            let usb = match &kept {
-                Some(k) => k.header.usb_clock.map(|u| u.ppm),
-                None => crate::clock_cmd::usb(&files)?.map(|(ppm, _)| ppm),
-            };
-            if let Some(ppm) = usb {
-                fit.rate_from_usb(ppm);
-            }
-            (Some(fit), Some(digest))
+    // Its clock and breaks, as every surface opens a take.
+    let log_text = match &e.clock {
+        Some(p) => {
+            let f = c.base.join(p);
+            Some(fs::read_to_string(&f).map_err(|err| format!("{}: {err}", f.display()))?)
         }
-        (None, Some(ppm)) => (session::fixed_clock(ppm, log.duration_s), None),
-        (None, None) => (None, None),
+        None => None,
     };
+    let clock_input_sha256 = log_text
+        .as_ref()
+        .map(|t| crate::archive::sha256_hex(t.as_bytes()));
+    let mut clock = match &kept {
+        // Read as it was recorded: its sound is not here.
+        Some(k) => take::clock(
+            log_text.as_deref(),
+            k.header.sample_rate,
+            k.header.bytes_per_frame,
+            k.header.usb_clock.map(|u| u.ppm),
+            c.m.card_ppm,
+            log.duration_s,
+        )
+        .map_err(|err| match &e.clock {
+            Some(p) => format!("{}: {err}", c.base.join(p).display()),
+            None => err,
+        })?,
+        None => {
+            let info =
+                audio::info(&files[0]).map_err(|err| format!("{}: {err}", files[0].display()))?;
+            let log_path = e.clock.as_ref().map(|p| c.base.join(p));
+            crate::clock_cmd::resolve(
+                log_path.as_deref(),
+                &info,
+                log.duration_s,
+                || crate::clock_cmd::usb(&files),
+                || crate::clock_cmd::correction(&files[0], None, c.m.card_ppm),
+            )?
+            .map(|a| a.fit)
+        }
+    };
+    // A take kept as its analysis alone: every part of the take was in
+    // it, so its session.json lists its breaks for the whole take's sound.
+    let json = kept.as_ref().and_then(|_| {
+        fs::read_to_string(path.join("session.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+    });
     let listed = match &kept {
-        // Every part of the take was in it, so its session.json lists its
-        // breaks as for the whole take's sound, and they go on the clock as
-        // `of_files_on_clock` puts them.
-        Some(_) => {
-            let json = fs::read_to_string(path.join("session.json"))
-                .ok()
-                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
-            let listed = breaks::for_take(json.as_ref(), clock.as_ref(), log.sample_rate);
-            breaks::on_clock(listed, clock.as_mut())
-        }
-        None => breaks::of_files_on_clock(&paths, clock.as_mut(), log.sample_rate),
+        Some(_) => take::Listed::Session(json.as_ref()),
+        None => take::Listed::Files(&paths),
     };
-    let breaks = breaks::with_jumps(listed, &log.jumps);
-    log.by_count = breaks::renumber(
-        &mut log.beats,
-        &mut log.amplitude_windows,
-        &breaks,
-        &log.sided,
-        log.bph,
-    );
+    let breaks = take::breaks(&mut log, listed, clock.as_mut());
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
     session::mask_log(&mut log, &masked);
     let (start, stop) = span_of(e, log.duration_s)?;
-    let settle = start
-        + e.settle_s
-            .or(c.o.settle)
-            .or(c.m.settle_s)
-            .unwrap_or(20.0)
-            .min((stop - start) / 2.0);
-    let end = e
-        .measure_s
-        .or(c.m.measure_s)
-        .map_or(stop, |m| settle + m)
-        .min(stop);
+    let (settle_s, measure_s) = take::entry_times(e, c.m);
+    // A settling time given to the command comes before the session file's.
+    let settle_s = e.settle_s.or(c.o.settle).or(settle_s);
+    let (settle, end) = take::measured(start, stop, settle_s, measure_s);
     let mut measurement =
         session::measure_masked(&log, clock.as_ref(), &breaks, &masked, settle, end);
     if !lift_known(c, cal) {

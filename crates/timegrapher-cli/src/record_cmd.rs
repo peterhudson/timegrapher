@@ -527,23 +527,27 @@ fn reserve_results(
     let mut cfg = StreamConfig::default();
     cfg.analysis.bph = bph;
     let paths: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
-    let log = stream::analyze_files(&paths, &cfg, |_| {})
+    let mut log = stream::analyze_files(&paths, &cfg, |_| {})
         .map_err(|e| format!("{}: {e}", dir.display()))?;
     let info = audio::info(paths[0]).map_err(|e| format!("{}: {e}", paths[0].display()))?;
-    let clock = fs::read_to_string(dir.join("clock.csv"))
-        .ok()
-        .and_then(|t| {
-            timegrapher_core::clock::parse_log(&t, info.sample_rate, info.bytes_per_frame).ok()
-        })
-        .and_then(|pairs| timegrapher_core::clock::ClockFit::for_rates(&pairs).ok())
-        .map(|mut fit| {
-            // The recording's USB lines, when it has them, correct the
-            // rates; the log then gives its breaks.
-            if let Ok(Some((ppm, _))) = crate::clock_cmd::usb(&files) {
-                fit.rate_from_usb(ppm);
-            }
-            fit
-        });
+    // Its clock and breaks, as every command opens a take. A clock log
+    // that cannot be read leaves the results on the sound card's clock.
+    let log_path = dir.join("clock.csv");
+    let mut clock = crate::clock_cmd::resolve(
+        log_path.is_file().then_some(log_path.as_path()),
+        &info,
+        log.duration_s,
+        || crate::clock_cmd::usb(&files),
+        || crate::clock_cmd::correction(&files[0], None, None),
+    )
+    .ok()
+    .flatten()
+    .map(|a| a.fit);
+    let breaks = timegrapher_core::take::breaks(
+        &mut log,
+        timegrapher_core::take::Listed::Files(&paths),
+        clock.as_mut(),
+    );
     let beat_s = 3600.0 / f64::from(log.bph.max(1));
     let heard = power_reserve::heard(&log.beats, beat_s);
     let ending = if heard.stopped(log.duration_s) {
@@ -557,7 +561,6 @@ fn reserve_results(
         clock.as_ref().map_or(s, |c| c.map(s))
     })
     .ok_or("no beat was heard in the take")?;
-    let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
     r.hours = power_reserve::hours(
         &log,
         clock.as_ref(),
