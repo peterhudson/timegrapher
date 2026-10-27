@@ -7,7 +7,8 @@
 #
 # Expects target/release/timegrapher and timegrapher-app built (and
 # timegrapher-mcp, the MCP server for AI chat apps, where the workspace has
-# it), appimagetool on PATH (or APPIMAGETOOL naming it) and zip. DOCS is
+# it), appimagetool on PATH (or APPIMAGETOOL naming it; APPIMAGE_RUNTIME
+# names the runtime file it uses, else it fetches one) and zip. DOCS is
 # the folder packaging/docs_html.py rendered for linux; without it the
 # pages are rendered here, which needs pandoc. Writes into DIST.
 set -euo pipefail
@@ -43,7 +44,8 @@ cp "$here/linux/timegrapher.desktop" "$app/"
 cp "$here/icon.png" "$app/timegrapher.png"
 cp "$here/linux/AppRun" "$app/AppRun"
 chmod +x "$app/AppRun"
-ARCH="$arch" "${APPIMAGETOOL:-appimagetool}" --no-appstream "$app" "$folder/Timegrapher.AppImage"
+ARCH="$arch" "${APPIMAGETOOL:-appimagetool}" --no-appstream \
+  ${APPIMAGE_RUNTIME:+--runtime-file "$APPIMAGE_RUNTIME"} "$app" "$folder/Timegrapher.AppImage"
 chmod +x "$folder/Timegrapher.AppImage" "$folder/Command Line/"*
 
 # Info-ZIP keeps the programs' executable bits.
