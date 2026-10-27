@@ -154,6 +154,35 @@ fn line_sd(p: &[(f64, f64)]) -> (f64, f64, f64) {
     (a, b, sd)
 }
 
+/// Standard error of the slope `b` shared by stretches that each have
+/// their own intercept (split at `gaps`): from the scatter within each
+/// stretch about its own mean, with a degree of freedom spent on each
+/// stretch's offset. Where the stretches are short, it is far wider than
+/// the error of one line through them all.
+fn slope_sd_within(p: &[(f64, f64)], gaps: &[Break], b: f64) -> f64 {
+    let mut per: Vec<Vec<(f64, f64)>> = vec![Vec::new(); gaps.len() + 1];
+    for q in p {
+        per[breaks::piece(gaps, q.0)].push(*q);
+    }
+    let (mut ss, mut sxx, mut used) = (0.0, 0.0, 0usize);
+    for r in per.iter().filter(|r| !r.is_empty()) {
+        let n = r.len() as f64;
+        let mx = r.iter().map(|q| q.0).sum::<f64>() / n;
+        let my = r.iter().map(|q| q.1).sum::<f64>() / n;
+        for q in r {
+            ss += (q.1 - my - b * (q.0 - mx)).powi(2);
+            sxx += (q.0 - mx).powi(2);
+        }
+        used += 1;
+    }
+    let df = p.len() as f64 - used as f64 - 1.0;
+    if df > 0.0 && sxx > 0.0 {
+        (ss / df / sxx).sqrt()
+    } else {
+        f64::INFINITY
+    }
+}
+
 /// Two log entries closer than this, in audio seconds, either side of a
 /// step are the recorder's pair at a pause (its lines are otherwise 10 s
 /// apart): a capture block is far shorter.
@@ -367,7 +396,10 @@ impl ClockFit {
         if p.len() < 3 {
             return Err(ClockError::TooFewPoints(p.len()));
         }
-        let (a, b, b_sd) = line_sd(&p);
+        let (a, b, mut b_sd) = line_sd(&p);
+        if !gaps.is_empty() {
+            b_sd = slope_sd_within(&p, &gaps, b);
+        }
         let span = p[p.len() - 1].0 - p[0].0;
         let mut knots = Vec::new();
         if span > DRIFT_SPAN_S {
@@ -1012,6 +1044,56 @@ unix_s,frames
         // A well-measured card close to right is applied too.
         let fit = ClockFit::for_rates(&noisy_log(361, 10.0, 0.3, 0.002, 0, 0.0, 10)).unwrap();
         assert!(fit.corrects(), "{:?}", fit.withheld);
+    }
+
+    /// `stretches` stretches of `per` entries 10 s apart with `jitter_s`
+    /// of timestamp noise from a card that is right, each after the first
+    /// following a pause of `pause_s` (audio runs straight on).
+    fn paused_log(
+        stretches: usize,
+        per: usize,
+        jitter_s: f64,
+        pause_s: f64,
+        seed: u64,
+    ) -> Vec<(f64, f64)> {
+        let mut rng = Rng::new(seed);
+        (0..stretches * per)
+            .map(|i| {
+                let audio = i as f64 * 10.0;
+                let gap = (i / per) as f64 * pause_s;
+                (audio, 1.7e9 + audio + gap + jitter_s * rng.normal())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn pauses_widen_the_standard_error() {
+        // A Positions Test's log: six 2 min stretches, an entry every 10 s
+        // with 2 ms of jitter, pauses between them. Each stretch's offset is
+        // fitted, so only the scatter within each stretch measures the
+        // card: about 6 ppm, where a log as long without pauses measures it
+        // to about 1 ppm. Over 300 logs from a card that is right, the
+        // reported standard error matches the scatter of what was measured.
+        for pause_s in [30.0, 600.0] {
+            let fits: Vec<ClockFit> = (0..300)
+                .map(|seed| ClockFit::new(&paused_log(6, 13, 0.002, pause_s, seed)).unwrap())
+                .collect();
+            assert!(fits.iter().all(|f| f.breaks.len() == 5));
+            let n = fits.len() as f64;
+            let scatter = (fits.iter().map(|f| f.ppm * f.ppm).sum::<f64>() / n).sqrt();
+            let sd = fits.iter().map(|f| f.ppm_sd).sum::<f64>() / n;
+            assert!(
+                (scatter - 6.0).abs() < 1.0,
+                "{pause_s} s pauses: scatter {scatter}"
+            );
+            assert!(
+                (sd / scatter - 1.0).abs() < 0.15,
+                "{pause_s} s pauses: SE {sd}, scatter {scatter}"
+            );
+        }
+        let unbroken = ClockFit::new(&paused_log(6, 13, 0.002, 0.0, 1)).unwrap();
+        assert!(unbroken.breaks.is_empty());
+        assert!(unbroken.ppm_sd < 1.5, "{}", unbroken.ppm_sd);
     }
 
     #[test]

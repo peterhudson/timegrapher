@@ -939,6 +939,13 @@ fn clear_of_edge(
     }
 }
 
+/// The two levels a series switches between, dashed across its readings:
+/// only where every two-level test holds, never for a fit the tests
+/// turned down.
+fn state_levels(t: Option<&timegrapher_core::twostate::TwoState>) -> Option<[f64; 2]> {
+    t.filter(|t| t.two_levels).map(|t| [t.low, t.high])
+}
+
 /// One series' title and plot. Its findings and statistics are in the
 /// Info panel.
 fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
@@ -1013,8 +1020,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                         }
                     }
                 }
-                if let Some(ts) = &c.two_state {
-                    for v in [ts.low, ts.high] {
+                if let Some(levels) = state_levels(c.two_state.as_ref()) {
+                    for v in levels {
                         p.hline(
                             HLine::new("state", v)
                                 .color(pal.text)
@@ -2354,6 +2361,27 @@ mod tests {
         let (on, _) = drawn(&state, true);
         let (off, _) = drawn(&state, false);
         assert_eq!(named(&on, "1 min"), named(&off, "1 min") + 1, "{on:?}");
+    }
+
+    /// The Readings view dashes a series' two levels only where every
+    /// two-level test holds: a fit the tests turned down draws nothing.
+    #[test]
+    fn the_two_levels_are_dashed_only_when_the_tests_hold() {
+        use timegrapher_core::twostate::{find, Params, Sample};
+        let samples: Vec<Sample> = (0..200)
+            .map(|i| Sample {
+                start_s: i as f64 * 10.0,
+                end_s: (i + 1) as f64 * 10.0,
+                value: if (i / 10) % 2 == 0 { 1.0 } else { 3.0 } + (i % 3) as f64 * 0.01,
+                ..Default::default()
+            })
+            .collect();
+        let mut ts = find(&samples, &Params::default());
+        ts.two_levels = true;
+        assert_eq!(state_levels(Some(&ts)), Some([ts.low, ts.high]));
+        ts.two_levels = false;
+        assert_eq!(state_levels(Some(&ts)), None);
+        assert_eq!(state_levels(None), None);
     }
 
     /// A take whose own clock corrects its rate is drawn on it: Readings
