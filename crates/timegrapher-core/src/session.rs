@@ -1135,11 +1135,17 @@ pub fn evaluate(readings: &[Reading]) -> SessionReport {
     let im_all = largest(isochronism.iter().map(|i| i.rate_change));
     let ie = match (states.first(), states.last()) {
         (Some(a), Some(b)) if states.len() >= 2 => {
+            // The positions with a rate in both states, so each mean is
+            // over the same positions.
             let common = |s: &StateIndices, o: &StateIndices| {
                 mean(
                     s.positions
                         .iter()
-                        .filter(|v| o.positions.iter().any(|w| w.position == v.position))
+                        .filter(|v| {
+                            o.positions
+                                .iter()
+                                .any(|w| w.position == v.position && w.rate_s_per_day.is_some())
+                        })
                         .filter_map(|v| v.rate_s_per_day),
                 )
             };
