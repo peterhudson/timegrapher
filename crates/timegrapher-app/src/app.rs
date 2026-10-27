@@ -859,7 +859,7 @@ const LIFT_HINT: &str = "No calibre or lift angle is set, so every amplitude is 
      it.";
 /// The takes a watch's row starts, each saved into the watch.
 /// The Watches view's list column, pt.
-const WATCH_LIST_W: f32 = 280.0;
+pub(crate) const WATCH_LIST_W: f32 = 280.0;
 /// How wide the watch's side grows, pt: across a 2560 window a figure
 /// would sit far from its date.
 const WATCH_SIDE_MAX: f32 = 1100.0;
@@ -2023,6 +2023,10 @@ pub struct TimegrapherApp {
     /// it, fitted as `timegrapher session` fits it: the readings, tables
     /// and True Clock use it in place of the clock kept for the input.
     take_clock: Option<timegrapher_core::clock::ClockFit>,
+    /// The take's USB lines being read off the window's thread (up to
+    /// 600 s of its sound), for the take opened at this path: their ppm,
+    /// when it has them, sets the rate over its clock log.
+    usb_job: Option<(String, std::sync::mpsc::Receiver<Option<f64>>)>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2529,6 +2533,7 @@ impl TimegrapherApp {
             carried_positions: None,
             pending_recorded: None,
             take_clock: None,
+            usb_job: None,
             brush: None,
             confirm: None,
             remove_masks_asked: false,
@@ -4175,7 +4180,22 @@ impl TimegrapherApp {
                 path.parent().unwrap_or(path)
             };
             match timegrapher_core::clock::of_take(dir, &log, &files) {
-                Ok(fit) => self.take_clock = Some(fit),
+                Ok(fit) => {
+                    self.take_clock = Some(fit);
+                    // The recording's USB lines set the rate wherever it
+                    // has them, as `timegrapher series` reads it; read off
+                    // this thread, as they take a while.
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let files = files.clone();
+                    std::thread::spawn(move || {
+                        let ppm = timegrapher_core::clock::usb_lines(&files)
+                            .ok()
+                            .flatten()
+                            .map(|u| u.ppm);
+                        let _ = tx.send(ppm);
+                    });
+                    self.usb_job = Some((path.display().to_string(), rx));
+                }
                 Err(e) => {
                     let n = format!("Its clock log can't be read ({e}), so its rates aren't corrected for the sound card's clock.");
                     self.open_note = Some(match self.open_note.take() {
@@ -4699,7 +4719,7 @@ impl TimegrapherApp {
         }
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
-        live.set_rate_clock(self.take_clock.as_ref().map(|f| f.ppm));
+        live.set_rate_clock(self.take_rate_ppm());
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -7322,12 +7342,13 @@ impl TimegrapherApp {
             let joined = !self.session.stretches().is_empty();
             if let Some(log) = log.map(|l| if joined { steady::join(&l, &spans) } else { l }) {
                 let wheels = self.calibre_wheels();
+                let clock = self.take_clock.clone().filter(|f| f.corrects());
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
                 self.steady_work = (stage.clone(), std::time::Instant::now());
                 std::thread::spawn(move || {
-                    let _ = tx.send(steady::compute_with(&log, wheels, &stage));
+                    let _ = tx.send(steady::compute_with(&log, wheels, clock.as_ref(), &stage));
                     ctx.request_repaint();
                 });
                 self.steady_job = Some(rx);
@@ -11662,8 +11683,9 @@ impl TimegrapherApp {
                     Some((
                         format!("Settling, {:.0} s", left.ceil()),
                         format!(
-                            "Settling in the new position for {:.0} s more.\n\n{SETTLE_HINT}",
-                            left.ceil()
+                            "Settling in the new position for {:.0} s more.\n\n{}",
+                            left.ceil(),
+                            settle_hint(self.session.settle_len())
                         ),
                     ))
                 } else if heard {
@@ -11684,9 +11706,15 @@ impl TimegrapherApp {
                     )
                 })
             };
-            // While a clock is kept, the rate on it in the figure's hover.
+            // While a clock is kept, the rate on it in the figure's hover:
+            // first when the figure itself is corrected, as it says what
+            // the figure is.
             if let Some(t) = rate.and_then(|rate| self.true_clock_words(rate)) {
-                behind += &format!("\n\n{t}");
+                behind = if self.take_rate_ppm().is_some() {
+                    format!("{t}\n\n{}", behind.trim_start())
+                } else {
+                    behind + &format!("\n\n{t}")
+                };
             }
             figure_row(
                 ui,
@@ -11851,6 +11879,49 @@ impl TimegrapherApp {
         })
     }
 
+    /// The take's USB lines read: where it has them, they set its rate,
+    /// its clock log keeping only its breaks, and the charts are read
+    /// again on them.
+    fn usb_poll(&mut self) {
+        let Some((at, rx)) = &self.usb_job else {
+            return;
+        };
+        let got = match rx.try_recv() {
+            Ok(ppm) => ppm,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+        };
+        let same = *at == self.opened_path;
+        self.usb_job = None;
+        self.usb_lines_read(got.filter(|_| same));
+    }
+
+    /// The take's USB lines measured the card at `ppm`, or found none.
+    fn usb_lines_read(&mut self, ppm: Option<f64>) {
+        let (Some(ppm), Some(fit)) = (ppm, self.take_clock.as_mut()) else {
+            return;
+        };
+        fit.rate_from_usb(ppm);
+        let rate_ppm = self.take_rate_ppm();
+        if let Some(l) = self.live.as_mut() {
+            l.set_rate_clock(rate_ppm);
+            self.rebuild_trend();
+        }
+        // The Steadiness panes read again on the corrected clock.
+        self.steady = None;
+        self.steady_job = None;
+    }
+
+    /// The take's own clock error the readings are corrected by, ppm slow:
+    /// none where its clock log measures the clock too loosely to correct
+    /// by (core's `ClockFit::corrects`).
+    fn take_rate_ppm(&self) -> Option<f64> {
+        self.take_clock
+            .as_ref()
+            .filter(|f| f.corrects())
+            .map(|f| f.ppm)
+    }
+
     /// The error of [`Self::reading_clock`], ppm slow, for what is read
     /// with it to be read again when it changes.
     fn reading_ppm(&self) -> Option<f64> {
@@ -11864,6 +11935,37 @@ impl TimegrapherApp {
     /// figure's hover, while one is kept. A take with its own clock log
     /// is read on it, the big figure included, so the hover says so.
     fn true_clock_words(&self, rate: f64) -> Option<String> {
+        // A log that measures the clock too loosely corrects nothing: what
+        // it measured, and why not, in the same place.
+        // The recording's USB lines set the rate: the log only places
+        // breaks, and what it measured is in the same place.
+        if let Some(f) = self.take_clock.as_ref().filter(|f| f.corrects()) {
+            if let Some(w) = f.withheld {
+                let ppm = format!("{:.1}", f.ppm.abs());
+                let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
+                let note = w.note();
+                let mut c = note.chars();
+                let note = c
+                    .next()
+                    .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                    .unwrap_or_default();
+                return Some(format!(
+                    "On this take's USB lines: the rate corrected for the sound card's own \
+                     clock, {ppm} ppm {way}. {note}; the log places only its breaks."
+                ));
+            }
+        }
+        if let Some(w) = self.take_clock.as_ref().and_then(|f| f.withheld) {
+            let note = w.note();
+            let mut c = note.chars();
+            let note = c
+                .next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default();
+            return Some(format!(
+                "{note}. The rate stays on the sound card's clock, as tg reads the recording."
+            ));
+        }
         if let Some(f) = &self.take_clock {
             let ppm = format!("{:.1}", f.ppm.abs());
             let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
@@ -15604,12 +15706,18 @@ fn tab_row_arrows(ctx: &egui::Context, row: TabRow) {
 /// The least a pane is squeezed to, points.
 const PANE_MIN_H: f32 = 120.0;
 
-/// What the settling after a move is, wherever it is shown.
-const SETTLE_HINT: &str = "For the first 10 seconds after the watch is put in a new position \
-     it settles: the hand leaves the stand and the \
-     balance steadies. Those beats are drawn faintly on the Paper Strip and left out of the \
-     readings, the charts' points, the Distributions and the Steadiness tests. The sound is \
-     still kept, and a saved take's positions start after it.";
+/// What the settling after a move is, wherever it is shown, for a
+/// settling of `s` seconds: the Positions Test pane's Settle, one for
+/// every change of position.
+fn settle_hint(s: f64) -> String {
+    format!(
+        "For the first {s:.0} seconds after the watch is put in a new position (the \
+         Positions Test pane's Settle) it settles: the hand leaves the stand and the \
+         balance steadies. Those beats are drawn faintly on the Paper Strip and left out of \
+         the readings, the charts' points, the Distributions and the Steadiness tests. The \
+         sound is still kept, and a saved take's positions start after it."
+    )
+}
 
 /// Where a bug report starts: the repository's bug form.
 const BUG_REPORT_URL: &str =
@@ -16295,7 +16403,8 @@ impl eframe::App for TimegrapherApp {
         // clock.
         let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
-        let rate_ppm = self.take_clock.as_ref().map(|f| f.ppm);
+        self.usb_poll();
+        let rate_ppm = self.take_rate_ppm();
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
             l.set_rate_clock(rate_ppm);
@@ -19836,6 +19945,147 @@ mod tests {
         // The card's figure is on the same clock as the table.
         let want = timegrapher_core::clockstore::correct_rate(card_heard, ppm);
         assert!((card - want).abs() < 0.02, "{card} {want} {card_heard}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take's clock log of too few entries corrects nothing: the card's
+    /// rate is the rate heard, and the Rate hover says what the log
+    /// measured and why it isn't applied.
+    #[test]
+    fn a_loose_clock_log_corrects_nothing_and_says_why() {
+        let base = std::env::temp_dir().join(format!("tg-app-clock-loose-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&base.join("audio-001.wav"), &audio).unwrap();
+        // Five entries, the card 50 ppm off: under the ten a correction
+        // needs.
+        let mut log = String::from("unix_s,frames\n");
+        for k in 0..5 {
+            let audio_s = 25.0 * k as f64;
+            log += &format!(
+                "{:.6},{}\n",
+                1_700_000_000.0 + audio_s * (1.0 + 50e-6),
+                (audio_s * audio.sample_rate as f64) as u64
+            );
+        }
+        std::fs::write(base.join("clock.csv"), log).unwrap();
+        let manifest = |clock: bool| {
+            let c = if clock { "clock = 'clock.csv'\n" } else { "" };
+            format!(
+                "bph = 28800\nlift = 52.0\n\n\
+                 [[recording]]\nfile = '.'\nposition = 'DU'\n{c}settle_s = 0.0\n"
+            )
+        };
+        let card = |clock: bool| {
+            std::fs::write(base.join(MANIFEST), manifest(clock)).unwrap();
+            let app = reopened(&base);
+            let card = app
+                .live
+                .as_ref()
+                .unwrap()
+                .reading_at(110.0, 10.0)
+                .rate_s_per_day
+                .expect("a card figure");
+            (app, card)
+        };
+        let (_, heard) = card(false);
+        let (app, rate) = card(true);
+        let fit = app.take_clock.as_ref().expect("the log read");
+        assert!(!fit.corrects());
+        assert_eq!(app.take_rate_ppm(), None);
+        assert!((rate - heard).abs() < 1e-9, "{rate} {heard}");
+        let words = app.true_clock_words(rate).expect("said");
+        assert!(words.starts_with("The clock log's 5 entries"), "{words}");
+        assert!(words.contains("not applied"), "{words}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The settling's hint names the settling the app uses, the Positions
+    /// Test pane's Settle, in a free take as in a test: 20 s unless set.
+    #[test]
+    fn the_settle_hint_names_the_settle_in_use() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        assert_eq!(app.session.settle_len(), guided::SETTLE_S);
+        let hint = settle_hint(app.session.settle_len());
+        assert!(hint.starts_with("For the first 20 seconds"), "{hint}");
+        app.guided_settle_s = 30.0;
+        app.session.set_settle_s(app.guided_settle_s);
+        let hint = settle_hint(app.session.settle_len());
+        assert!(hint.starts_with("For the first 30 seconds"), "{hint}");
+    }
+
+    /// A take whose recording carries USB lines has its rate set by them,
+    /// over a clock log loose or not, as `timegrapher series` reads it: the
+    /// card figure and charts corrected, and the hover saying so with
+    /// what the log measured.
+    #[test]
+    fn a_takes_usb_lines_set_its_rate() {
+        let base = std::env::temp_dir().join(format!("tg-app-clock-usb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 120.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&base.join("audio-001.wav"), &audio).unwrap();
+        let mut log = String::from("unix_s,frames\n");
+        for k in 0..5 {
+            let audio_s = 25.0 * k as f64;
+            log += &format!(
+                "{:.6},{}\n",
+                1_700_000_000.0 + audio_s * (1.0 + 50e-6),
+                (audio_s * audio.sample_rate as f64) as u64
+            );
+        }
+        std::fs::write(base.join("clock.csv"), log).unwrap();
+        std::fs::write(
+            base.join(MANIFEST),
+            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n\
+             clock = 'clock.csv'\nsettle_s = 0.0\n",
+        )
+        .unwrap();
+        let mut app = reopened(&base);
+        let card = |app: &TimegrapherApp| {
+            app.live
+                .as_ref()
+                .unwrap()
+                .reading_at(110.0, 10.0)
+                .rate_s_per_day
+                .expect("a card figure")
+        };
+        let heard = card(&app);
+        assert_eq!(app.take_rate_ppm(), None, "the log alone is too loose");
+        // As the lines read off the window's thread would give.
+        app.usb_lines_read(Some(19.5));
+        assert_eq!(app.take_rate_ppm(), Some(19.5));
+        let rate = card(&app);
+        let want = timegrapher_core::clockstore::correct_rate(heard, 19.5);
+        assert!((rate - want).abs() < 1e-6, "{rate} {want}");
+        let last = app.trend.last().and_then(|p| p.rate).expect("charts");
+        assert!(
+            (last - heard).abs() > 1.0,
+            "the charts read again: {last} {heard}"
+        );
+        let words = app.true_clock_words(rate).expect("said");
+        assert!(words.starts_with("On this take's USB lines"), "{words}");
+        assert!(words.contains("19.5 ppm slow"), "{words}");
+        assert!(words.contains("The clock log's 5 entries"), "{words}");
+        // No lines: the log stands as it was.
+        let mut app = reopened(&base);
+        app.usb_lines_read(None);
+        assert_eq!(app.take_rate_ppm(), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 
