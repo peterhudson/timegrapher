@@ -714,23 +714,17 @@ fn is_audio_name(c: &str) -> bool {
 }
 
 /// The clock fit of a take whose session file names the clock log `log`,
-/// a file in the take's folder `dir`, read as `timegrapher session` reads
-/// it: the log fitted for rates ([`ClockFit::for_rates`]), and the
-/// breaks the take lists (or its log shows) placed on the fit. `files` are the take's sound files, in order.
+/// a file in the take's folder `dir`, without its USB lines: its log fitted
+/// for rates, with the breaks the take lists placed on it. `files` are the
+/// take's sound files, in order. Kept for the app until it opens takes
+/// with [`crate::take::clock_of_files`] (#509), which also reads the USB
+/// lines; it is that function.
 pub fn of_take(
     dir: &std::path::Path,
     log: &str,
     files: &[std::path::PathBuf],
 ) -> Result<ClockFit, String> {
-    let first = files.first().ok_or("no sound files")?;
-    let info = crate::audio::info(first).map_err(|e| format!("{}: {e}", first.display()))?;
-    let file = dir.join(log);
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let pairs = parse_log(&text, info.sample_rate, info.bytes_per_frame)?;
-    let mut fit = ClockFit::for_rates(&pairs).map_err(|e| format!("{}: {e}", file.display()))?;
-    let paths: Vec<&std::path::Path> = files.iter().map(|f| f.as_path()).collect();
-    breaks::of_files_on_clock(&paths, Some(&mut fit), info.sample_rate);
-    Ok(fit)
+    crate::take::clock_of_files(dir, Some(log), files, None, None)?.ok_or_else(|| "no clock".into())
 }
 
 /// The sound card's error read from the USB lines in the first

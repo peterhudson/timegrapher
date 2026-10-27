@@ -1352,19 +1352,18 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
     }
     let at = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_f64);
     // The rate kept is as heard, on the sound card's clock; the take's
-    // clock log corrects it, as reading the take does, when it measures
-    // the clock well enough to, and the recording's USB lines set the
-    // rate instead wherever they are, the log then placing only breaks.
+    // clock reads it again as reading the take does
+    // ([`crate::take::clock_of_files`]):
+    // the recording's USB lines set the rate wherever they are, its clock
+    // log placing only breaks, else the log when it measures the clock
+    // well enough to.
     let ppm = || {
         let m = manifest.as_ref().filter(|_| audio && !incomplete)?;
         let first = m.recordings.first()?;
         let listed: Vec<String> = m.recordings.iter().map(|r| r.file.clone()).collect();
         let files = crate::recording_order::recordings_in(dir, &listed).ok()?;
-        let mut fit = crate::clock::of_take(dir, first.clock.as_deref()?, &files).ok()?;
-        if let Some(ppm) = usb_ppm(&files) {
-            fit.rate_from_usb(ppm);
-        }
-        Some(fit)
+        crate::take::clock_of_files(dir, first.clock.as_deref(), &files, usb_ppm(&files), None)
+            .ok()?
             .filter(crate::clock::ClockFit::corrects)
             .map(|f| f.ppm)
     };
@@ -1583,6 +1582,15 @@ mod tests {
             .expect("lines found");
         assert!((usb.ppm - 20.0).abs() < 0.5, "{}", usb.ppm);
         let want = crate::clockstore::correct_rate(3.5, usb.ppm);
+        assert_eq!(a.rate_corrected_s_per_day, Some(want));
+        // Without a clock log the USB lines still set it, as reading the
+        // take does.
+        fs::write(
+            dir.join("session.toml"),
+            "bph = 28800\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n",
+        )
+        .unwrap();
+        let a = read_take(&dir, 0).unwrap().at_end.unwrap();
         assert_eq!(a.rate_corrected_s_per_day, Some(want));
     }
 
