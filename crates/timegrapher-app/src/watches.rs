@@ -604,10 +604,26 @@ impl TakeReadings {
         let (tx, _) = self.work.get_or_insert_with(|| {
             let (tx, jobs) = mpsc::channel::<PathBuf>();
             let (done, rx) = mpsc::channel();
+            // A take whose reading is kept is answered on a thread of its
+            // own, at once, not left blank behind a take still being read.
+            let (to_read, reads) = mpsc::channel::<PathBuf>();
+            let (kept_done, kept_ctx) = (done.clone(), ctx.clone());
+            std::thread::spawn(move || {
+                for dir in jobs {
+                    let sent = match timegrapher_core::library::kept_reading(&dir) {
+                        Some(r) => kept_done.send((dir, Ok(r))).is_ok(),
+                        None => to_read.send(dir).is_ok(),
+                    };
+                    if !sent {
+                        break;
+                    }
+                    kept_ctx.request_repaint();
+                }
+            });
             let ctx = ctx.clone();
             let now = self.now.clone();
             std::thread::spawn(move || {
-                for dir in jobs {
+                for dir in reads {
                     *now.lock().unwrap() = Some(dir.clone());
                     let r = timegrapher_core::library::reading(&dir);
                     *now.lock().unwrap() = None;
@@ -2301,6 +2317,56 @@ mod tests {
         x.want(&dir, 2, &ctx);
         assert_eq!(x.of(&dir), Some(&TakeReading::Reading));
         read(&mut x).unwrap_err();
+    }
+
+    /// A take whose reading is kept comes back while another take is still
+    /// being read, not after it.
+    #[test]
+    fn a_kept_reading_comes_back_while_another_take_is_read() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let base = std::env::temp_dir().join(format!("tg-app-kept-first-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let kept = base.join("kept");
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(
+            kept.join(timegrapher_core::take::MANIFEST),
+            "bph = 28800\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+        )
+        .unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 20.0,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&kept.join("audio-001.wav"), &audio).unwrap();
+        let want = timegrapher_core::library::reading(&kept).unwrap();
+        let ctx = egui::Context::default();
+        let mut x = TakeReadings::default();
+        // Hold the reading thread at the start of its first take.
+        let held = x.now.clone();
+        let guard = held.lock().unwrap();
+        let slow = base.join("slow");
+        x.want(&slow, 1, &ctx);
+        // Kept again just before it is asked for, in case another test's
+        // reading rewrote the readings file meanwhile.
+        assert_eq!(timegrapher_core::library::reading(&kept).unwrap(), want);
+        x.want(&kept, 1, &ctx);
+        for _ in 0..500 {
+            x.poll();
+            if x.reading(&kept).is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(x.reading(&kept), Some(&want));
+        assert_eq!(x.of(&slow), Some(&TakeReading::Reading));
+        drop(guard);
+        x.wait();
+        assert!(matches!(x.of(&slow), Some(TakeReading::Read(Err(_)))));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A Positions Test's take names its kind in the table's Position

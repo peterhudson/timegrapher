@@ -4865,7 +4865,12 @@ impl TimegrapherApp {
                     }
                 }
                 Ok(None) => {}
-                Err(e) => self.error(format!("Analysis failed: {e}")),
+                Err(e) => {
+                    // Nothing opened: end the opening, so the window
+                    // isn't left saying Opening.
+                    let _ = self.session.stop(0.0);
+                    self.error(format!("Analysis failed: {e}"));
+                }
             }
         }
 
@@ -12570,8 +12575,8 @@ impl TimegrapherApp {
             let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
             return Some(format!(
                 "On this take's clock log: the rate corrected for the sound card's own \
-                 clock, {ppm} ppm {way}, as the Positions table and `timegrapher session` \
-                 read it. tg reads the recording on the card's clock."
+                 clock, {ppm} ppm {way}, as the Positions table reads it. tg reads the \
+                 recording on the card's clock."
             ));
         }
         let c = self.clock.as_ref()?;
@@ -23395,6 +23400,50 @@ mod tests {
         );
         assert!(app.batch.is_none() && app.live.is_some());
         assert_eq!(app.take_breaks, breaks);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take refused while it is read (here, a clock log of one line)
+    /// says why and leaves the window no longer opening.
+    #[test]
+    fn a_take_refused_while_read_is_no_longer_opening() {
+        let base = std::env::temp_dir().join(format!("tg-app-refused-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 20.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&base.join("audio-001.wav"), &audio).unwrap();
+        std::fs::write(base.join("clock.csv"), "1700000000.000000,0\n").unwrap();
+        std::fs::write(
+            base.join(MANIFEST),
+            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n\
+             clock = 'clock.csv'\nsettle_s = 0.0\n",
+        )
+        .unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.start_batch(&base);
+        assert!(app.batch.is_some(), "{:?}", app.message);
+        assert_eq!(app.session.state(), session::State::Analysing);
+        let t = Instant::now();
+        while app.batch.is_some() && t.elapsed().as_secs() < 120 {
+            app.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(app.batch.is_none());
+        assert!(
+            app.message
+                .as_ref()
+                .is_some_and(|m| m.1 && m.0.contains("need at least 2")),
+            "{:?}",
+            app.message
+        );
+        assert_eq!(app.session.state(), session::State::Idle);
         let _ = std::fs::remove_dir_all(&base);
     }
 
