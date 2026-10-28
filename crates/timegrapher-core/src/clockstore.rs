@@ -123,6 +123,28 @@ pub fn path() -> Option<PathBuf> {
     config_dir().map(|d| d.join("clocks.json"))
 }
 
+/// A recording's provenance sidecar: its own name with `.json` added.
+pub fn sidecar_path(file: &Path) -> PathBuf {
+    let mut s = file.as_os_str().to_owned();
+    s.push(".json");
+    PathBuf::from(s)
+}
+
+/// The input a recording was made on, from its provenance sidecar
+/// (`take.wav.json`, written by `doctor --save`) or the `session.json` of
+/// an app recording folder.
+pub fn recorded_device(file: &Path) -> Option<String> {
+    let read = |p: PathBuf| -> Option<serde_json::Value> {
+        serde_json::from_str(&fs::read_to_string(p).ok()?).ok()
+    };
+    if let Some(v) = read(sidecar_path(file)) {
+        let name = v.pointer("/recording/source/device/name")?;
+        return name.as_str().map(String::from);
+    }
+    let v = read(file.parent()?.join("session.json"))?;
+    v.get("device")?.as_str().map(String::from)
+}
+
 impl ClockStore {
     /// The user's store; empty if there is none yet.
     pub fn load() -> Result<ClockStore, String> {

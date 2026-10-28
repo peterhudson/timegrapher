@@ -11,7 +11,7 @@ use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::periodicity::{Component, Wheel};
 
 /// Lift angle when neither `--lift` nor the calibre gives one, degrees.
-pub const DEFAULT_LIFT_DEG: f64 = 52.0;
+pub use timegrapher_core::take::DEFAULT_LIFT_DEG;
 /// Escape wheel teeth when neither `--escape-teeth` nor the calibre gives
 /// a count.
 pub const DEFAULT_ESCAPE_TEETH: u32 = 15;

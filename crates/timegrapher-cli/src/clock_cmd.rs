@@ -274,20 +274,6 @@ fn measure(_: Option<&str>, _: f64, _: bool, _: bool) -> Result<(), String> {
     Err("this build has no sound input support; use `clock from-log`, or build with --features live".into())
 }
 
-/// The input a recording was made on, from its provenance sidecar
-/// (`take.wav.json`, written by `doctor --save`) or the `session.json` of
-/// an app recording folder.
-pub fn recorded_device(file: &Path) -> Option<String> {
-    let read =
-        |p: PathBuf| -> Option<Value> { serde_json::from_str(&fs::read_to_string(p).ok()?).ok() };
-    if let Some(v) = read(output::sidecar_path(file)) {
-        let name = v.pointer("/recording/source/device/name")?;
-        return name.as_str().map(String::from);
-    }
-    let v = read(file.parent()?.join("session.json"))?;
-    v.get("device")?.as_str().map(String::from)
-}
-
 /// A take's clock as every command reads it ([`take::clock`]), with where
 /// it came from in words.
 pub struct AppliedClock {
@@ -371,17 +357,14 @@ pub fn correction(
     if let Some(p) = card_ppm {
         return Ok(Some((p, "given with --card-ppm".into())));
     }
-    let store = ClockStore::load()?;
     match device {
-        Some(d) => match store.get(d) {
+        Some(d) => match ClockStore::load()?.get(d) {
             Some(e) => Ok(Some((e.ppm, stored_text(e)))),
             None => Err(format!(
                 "no clock correction stored for '{d}'; see `timegrapher clock list`"
             )),
         },
-        None => Ok(recorded_device(file)
-            .and_then(|d| store.get(&d).cloned())
-            .map(|e| (e.ppm, stored_text(&e)))),
+        None => Ok(take::stored_correction(file)?.map(|e| (e.ppm, stored_text(&e)))),
     }
 }
 
