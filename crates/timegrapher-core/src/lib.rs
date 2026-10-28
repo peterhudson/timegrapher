@@ -39,6 +39,7 @@ pub mod power_reserve;
 pub mod profile;
 pub mod recorder;
 pub mod recording_order;
+pub mod redact;
 pub mod scenarios;
 pub mod session;
 pub mod shape;
