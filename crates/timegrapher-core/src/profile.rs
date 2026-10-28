@@ -7,7 +7,7 @@
 //! [`crate::amplitude`], so the marks are exactly the ones behind the
 //! numbers on screen.
 
-use crate::amplitude::{amplitude_deg, edges, AmplitudeConfig};
+use crate::amplitude::{amplitude_deg, edges_guided, AmplitudeConfig};
 use crate::beats::{Beat, POST_S, PRE_S, TEMPLATE_TRIM};
 use crate::dsp::envelope;
 use crate::shape::{self, ShapeConfig};
@@ -79,17 +79,23 @@ pub fn profiles(
 }
 
 /// Profiles of both sides from raw audio and beats found in it. `beats`
-/// times are seconds from the start of `x`.
+/// times are seconds from the start of `x`. A few seconds of beats are
+/// guided as [`from_snippets`] says, by `guides`: Tick's and Tock's.
 pub fn profiles_from_audio(
     x: &[f32],
     fs: f64,
     beats: &[Beat],
     osc_period_s: f64,
     cfg: &crate::analysis::AnalysisConfig,
+    guides: [Option<f64>; 2],
 ) -> [Option<TickProfile>; 2] {
     let env = envelope(x, fs, &cfg.envelope);
     let to = x.len() as f64 / fs;
-    profiles(&env, fs, beats, osc_period_s, 0.0, to, &cfg.amplitude)
+    let [a, b] = guides;
+    [(Side::A, a), (Side::B, b)].map(|(side, guide)| {
+        let snips = side_snippets(&env, fs, beats, side, 0.0, to);
+        from_snippets(&snips, fs, side, osc_period_s, &cfg.amplitude, guide)
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -103,6 +109,19 @@ pub fn profile(
     to_s: f64,
     cfg: &AmplitudeConfig,
 ) -> Option<TickProfile> {
+    let snips = side_snippets(env, fs, beats, side, from_s, to_s);
+    from_snippets(&snips, fs, side, osc_period_s, cfg, None)
+}
+
+/// The windows of one side's good beats in `[from_s, to_s)`.
+fn side_snippets<'a>(
+    env: &'a [f32],
+    fs: f64,
+    beats: &[Beat],
+    side: Side,
+    from_s: f64,
+    to_s: f64,
+) -> Vec<&'a [f32]> {
     let times: Vec<f64> = beats
         .iter()
         .filter(|b| {
@@ -114,11 +133,10 @@ pub fn profile(
         .map(|b| b.time)
         .collect();
     let len = template_len(fs);
-    let snips: Vec<&[f32]> = windows(env, fs, &times)
+    windows(env, fs, &times)
         .into_iter()
         .map(|w| &env[w..w + len])
-        .collect();
-    from_snippets(&snips, fs, side, osc_period_s, cfg)
+        .collect()
 }
 
 /// Samples in one beat's window: `PRE_S` before the beat to `POST_S` after.
@@ -136,13 +154,18 @@ pub fn snippet(env: &[f32], fs: f64, t: f64) -> Option<&[f32]> {
 
 /// A profile from beat windows already cut out of the envelope (each
 /// [`template_len`] samples, the beat `PRE_S` in), so a live view can keep
-/// windows from many passes.
+/// windows from many passes. On a few seconds of beats a bump of noise
+/// before the unlock can pass for sound 1 for a moment; `guide_unlock_ms`,
+/// where this side's latest amplitude reading put its unlock (ms from the
+/// beat time, [`crate::amplitude::AmplitudeWindow`]), keeps the marks on
+/// the sound the reading measured ([`edges_guided`]).
 pub fn from_snippets(
     snips: &[&[f32]],
     fs: f64,
     side: Side,
     osc_period_s: f64,
     cfg: &AmplitudeConfig,
+    guide_unlock_ms: Option<f64>,
 ) -> Option<TickProfile> {
     let len = template_len(fs);
     let snips: Vec<&[f32]> = snips.iter().copied().filter(|w| w.len() == len).collect();
@@ -164,7 +187,8 @@ pub fn from_snippets(
         .collect();
     let origin = (PRE_S * fs).round() as usize;
     let to_ms = |s: f64| (s - origin as f64) / fs * 1000.0;
-    let e = edges(&tmpl, fs, origin, cfg.onset_fraction);
+    let guide = guide_unlock_ms.map(|ms| origin as f64 + ms / 1000.0 * fs);
+    let e = edges_guided(&tmpl, fs, origin, cfg.onset_fraction, guide);
     let amp = e
         .map(|e| amplitude_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg))
         .filter(|a| (100.0..=380.0).contains(a));
@@ -224,6 +248,42 @@ mod tests {
     use crate::synth::{generate, SynthConfig};
 
     #[test]
+    fn a_bump_before_sound_1_is_not_the_unlock_when_guided() {
+        // Twelve beats whose envelope has a bump of noise 15 ms before the
+        // drop, sound 1 at 8 ms and the drop at the beat time.
+        let fs = 48_000.0;
+        let len = template_len(fs);
+        let origin = (PRE_S * fs).round() as usize;
+        let pulse = |i: usize, at_ms: f64, h: f32| {
+            let d = (i as f64 - origin as f64) / fs * 1000.0 - at_ms;
+            h * (-(d / 0.3).powi(2)).exp() as f32
+        };
+        let snips: Vec<Vec<f32>> = (0..12)
+            .map(|k| {
+                (0..len)
+                    .map(|i| {
+                        0.01 + 0.001 * ((i * 7 + k * 13) % 5) as f32
+                            + pulse(i, -15.0, 0.2)
+                            + pulse(i, -8.0, 0.3)
+                            + pulse(i, 0.0, 1.0)
+                    })
+                    .collect()
+            })
+            .collect();
+        let snips: Vec<&[f32]> = snips.iter().map(Vec::as_slice).collect();
+        let cfg = AmplitudeConfig::default();
+        let unlock = |guide| {
+            from_snippets(&snips, fs, Side::B, 0.25, &cfg, guide)
+                .and_then(|p| p.unlock_ms)
+                .expect("an unlock")
+        };
+        assert!(unlock(None) < -14.0, "unguided, the bump: {}", unlock(None));
+        // Guided by where the reading put the unlock, sound 1.
+        let u = unlock(Some(-8.3));
+        assert!((-8.8..-7.8).contains(&u), "guided: {u}");
+    }
+
+    #[test]
     fn profile_marks_match_the_amplitude_reading() {
         let sc = SynthConfig {
             duration_s: 12.0,
@@ -234,7 +294,8 @@ mod tests {
         let cfg = AnalysisConfig::default();
         let a = analyze(&audio, &cfg);
         let beat = 3600.0 / a.summary.bph as f64;
-        let [pa, pb] = profiles_from_audio(&audio.samples, fs, &a.beats, 2.0 * beat, &cfg);
+        let [pa, pb] =
+            profiles_from_audio(&audio.samples, fs, &a.beats, 2.0 * beat, &cfg, [None, None]);
         for p in [pa.unwrap(), pb.unwrap()] {
             assert!(p.beats > 20, "{} beats", p.beats);
             assert_eq!(p.median.len(), p.p10.len());
