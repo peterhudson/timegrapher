@@ -584,11 +584,11 @@ pub struct TakeReadings {
     /// Each take asked for, by its folder, with its size when asked: a
     /// take that changes size (kept as its analysis alone) is read again.
     known: HashMap<PathBuf, (u64, TakeReading)>,
-    work: Option<(
-        mpsc::Sender<PathBuf>,
-        mpsc::Receiver<(PathBuf, Result<Reading, String>)>,
-    )>,
+    work: Option<(mpsc::Sender<PathBuf>, mpsc::Receiver<ReadDone>)>,
 }
+
+/// A take's folder with its reading, or why it couldn't be worked out.
+type ReadDone = (PathBuf, Result<Reading, String>);
 
 impl TakeReadings {
     /// Ask for the reading of the take in `dir`, of `bytes`, unless it is
