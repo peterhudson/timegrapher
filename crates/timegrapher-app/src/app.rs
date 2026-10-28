@@ -9009,6 +9009,18 @@ impl TimegrapherApp {
         };
     }
 
+    /// How long until the full-wind search should run again, at the next
+    /// minute after `now` (Unix seconds), while a Positions Test waits on
+    /// one: an idle Bench draws nothing, so without this a full-wind test
+    /// reaching its 12 hour mark, or a take added or removed, is seen only
+    /// when the mouse moves.
+    fn full_wind_recheck(&self, now: f64) -> Option<Duration> {
+        (self.ready_test() == Some(NewTake::Positions)
+            && self.guided_after
+            && self.open_watch().is_some())
+        .then(|| Duration::from_secs_f64(60.0 - now.rem_euclid(60.0) + 0.05))
+    }
+
     /// Whether a new take asks first: a take of a watch asks about Quick
     /// Listen's sound too, as picking a watch does, as it isn't that
     /// watch's sound.
@@ -17020,6 +17032,9 @@ impl TimegrapherApp {
     fn panels(&mut self, ctx: &egui::Context) {
         // A test set up against another watch than the one picked now.
         self.find_full_wind();
+        if let Some(wait) = self.full_wind_recheck(guided::unix_now()) {
+            ctx.request_repaint_after(wait);
+        }
         let pal = theme::palette(ctx.style().visuals.dark_mode);
         let bar = egui::Frame::new().fill(pal.window);
         egui::TopBottomPanel::top("menus")
@@ -21856,6 +21871,12 @@ mod tests {
         app.new_take(NewTake::Positions, false);
         app.find_full_wind_at(now);
         assert!(app.start_test_why_not().is_some(), "too soon");
+        // An idle window still draws at the next minute, to search again.
+        let at = (now / 60.0).floor() * 60.0 + 15.0;
+        let wait = app
+            .full_wind_recheck(at)
+            .expect("waits on its full-wind test");
+        assert!((wait.as_secs_f64() - 45.05).abs() < 1e-6, "{wait:?}");
         // An hour on, past the mark, with nothing else changed.
         app.find_full_wind_at(now + 3600.0);
         assert_eq!(app.start_test_why_not(), None);
@@ -21863,6 +21884,9 @@ mod tests {
         std::fs::remove_dir_all(&take).unwrap();
         app.find_full_wind_at(now + 3600.0);
         assert!(app.start_test_why_not().is_some(), "removed");
+        // With 24 Hours After off, nothing waits on the minute.
+        app.guided_after = false;
+        assert_eq!(app.full_wind_recheck(at), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 
