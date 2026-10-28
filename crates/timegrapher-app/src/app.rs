@@ -2220,6 +2220,9 @@ pub struct TimegrapherApp {
     /// `None` for a session heard here, whose readings go by the clock
     /// kept for the input.
     take_breaks: Option<Vec<timegrapher_core::breaks::Break>>,
+    /// The beats of the take on show numbered on its audio seconds, for
+    /// the strip, where core numbers them on across the take's breaks.
+    audio_beats: Option<Vec<timegrapher_core::beats::Beat>>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2743,6 +2746,7 @@ impl TimegrapherApp {
             pending_recorded: None,
             take_clock: None,
             take_breaks: None,
+            audio_beats: None,
             brush: None,
             confirm: None,
             remove_masks_asked: false,
@@ -3019,6 +3023,7 @@ impl TimegrapherApp {
                 self.opened_positions = None;
                 self.take_clock = None;
                 self.take_breaks = None;
+                self.audio_beats = None;
                 self.masking = false;
                 self.brush = None;
                 self.reset_session(
@@ -3215,6 +3220,7 @@ impl TimegrapherApp {
         self.opened_positions = None;
         self.take_clock = None;
         self.take_breaks = None;
+        self.audio_beats = None;
         self.masking = false;
         self.brush = None;
         self.clear_trends();
@@ -4187,6 +4193,7 @@ impl TimegrapherApp {
         self.pending_recorded = None;
         self.take_clock = None;
         self.take_breaks = None;
+        self.audio_beats = None;
         self.masked.clear();
         self.masking = false;
         self.brush = None;
@@ -4369,10 +4376,6 @@ impl TimegrapherApp {
         if self.file_path.trim() != path.display().to_string() {
             self.file_path = path.display().to_string();
         }
-        // Nothing of the take before's clock carries over, whichever
-        // way this one is kept.
-        self.take_clock = None;
-        self.take_breaks = None;
         if analysis_take::is_analysis_only(path) {
             return self.open_analysis_only(path, manifest);
         }
@@ -4463,6 +4466,11 @@ impl TimegrapherApp {
         self.load_reserve(path);
         self.session.analyse();
         self.live = None;
+        // Nothing of the take before's clock carries over, whichever
+        // way this one is kept; a take that fails to open leaves it.
+        self.take_clock = None;
+        self.take_breaks = None;
+        self.audio_beats = None;
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4543,6 +4551,11 @@ impl TimegrapherApp {
         self.no_sound = true;
         self.session.analyse();
         self.live = None;
+        // Nothing of the take before's clock carries over, whichever
+        // way this one is kept; a take that fails to open leaves it.
+        self.take_clock = None;
+        self.take_breaks = None;
+        self.audio_beats = None;
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4895,11 +4908,14 @@ impl TimegrapherApp {
             .flatten()
             .map(|b| b.audio_s)
             .collect();
-        if stretches.len() > 1 {
+        // A take of one position settles too, unless its session file
+        // says it was read from its start.
+        if stretches.len() > 1 || !settles.is_empty() {
             // Nor across a move, nor across a settling's end.
             breaks.extend(
-                stretches[1..]
+                stretches
                     .iter()
+                    .skip(1)
                     .map(|s| s.0)
                     .chain(settles.iter().map(|s| s.1)),
             );
@@ -4917,6 +4933,21 @@ impl TimegrapherApp {
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
         live.set_rate_clock(self.take_rate_clock());
+        // The strip draws beats on audio seconds: the beats core numbers on
+        // across the take's breaks have that taken off again for it.
+        self.audio_beats = live.bph().and_then(|bph| {
+            use timegrapher_core::breaks::{index_shift_at, index_shifts};
+            let shifts = index_shifts(self.take_breaks.as_deref()?, bph);
+            shifts.iter().any(|s| s.1 != 0).then(|| {
+                live.beats()
+                    .iter()
+                    .map(|b| timegrapher_core::beats::Beat {
+                        index: b.index - index_shift_at(&shifts, b.time),
+                        ..*b
+                    })
+                    .collect()
+            })
+        });
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -5526,7 +5557,7 @@ impl TimegrapherApp {
         let Some(live) = &self.live else { return };
         let Some(bph) = live.bph() else { return };
         let period = 3600.0 / bph as f64;
-        let beats = live.beats();
+        let beats = strip_beats(live, &self.audio_beats);
         let centred = if self.follow {
             Anchor::centre_on(beats, period, 8)
         } else {
@@ -5614,8 +5645,9 @@ impl TimegrapherApp {
         let end = self.strip_end_s();
         if let Some(l) = &self.live {
             if let Some(bph) = l.bph() {
-                let hi = l.beats().partition_point(|b| b.time <= end);
-                if let Some(a) = Anchor::centre_on(&l.beats()[..hi], 3600.0 / bph as f64, 8) {
+                let beats = strip_beats(l, &self.audio_beats);
+                let hi = beats.partition_point(|b| b.time <= end);
+                if let Some(a) = Anchor::centre_on(&beats[..hi], 3600.0 / bph as f64, 8) {
                     self.anchor = Some(a);
                 }
             }
@@ -14499,7 +14531,11 @@ impl TimegrapherApp {
         };
         let input = strip::draw_strip(
             ui,
-            if guessing { &candidates } else { live.beats() },
+            if guessing {
+                &candidates
+            } else {
+                strip_beats(live, &self.audio_beats)
+            },
             period,
             anchor,
             end,
@@ -16398,6 +16434,18 @@ fn settle_hint(s: f64) -> String {
          the readings, the charts' points, the Distributions and the Steadiness tests. The \
          sound is still kept, and a saved take's positions start after it."
     )
+}
+
+/// The beats the strip draws: `live`'s, or the take's numbered on its
+/// audio seconds (`audio`) while they are the same beats.
+fn strip_beats<'a>(
+    live: &'a LiveAnalyzer,
+    audio: &'a Option<Vec<timegrapher_core::beats::Beat>>,
+) -> &'a [timegrapher_core::beats::Beat] {
+    match audio {
+        Some(b) if b.len() == live.beats().len() => b,
+        _ => live.beats(),
+    }
 }
 
 /// The clock readings are put on, for a log `duration_s` long: for a
@@ -22553,12 +22601,15 @@ mod tests {
             )
         };
         // Painted, so nothing settles at either edge; what was recorded,
-        // Dial Up throughout, is kept under it.
+        // Dial Up throughout, is kept under it. The take's own settling
+        // at its start is cut where the paint begins (the design guide's
+        // mark 51), so its Dial Up before the paint is all settling and
+        // nothing of it is read.
         let want = format!(
             "# A hand-written note\nwatch = \"Test\"\nlift = 52.0\n\n{}\n{}\n{}\n\
              [[recording]]\nfile = \"other.wav\"\nposition = \"CD\"\n\n\
              [[recorded]]\nposition = \"DU\"\n",
-            entry("DU", "start_s = 0.0\nend_s = 10.0\nsettle_s = 0.0", true),
+            entry("DU", "start_s = 10.0\nend_s = 10.0\nsettle_s = 0.0", true),
             entry("CU", "start_s = 10.0\nend_s = 40.0\nsettle_s = 0.0", false),
             entry("DU", "start_s = 40.0\nsettle_s = 0.0", false),
         );
@@ -22951,6 +23002,77 @@ mod tests {
         let m: Manifest = toml::from_str(&text).unwrap();
         let (_, settles) = app.apply_manifest(&m, &m.recordings);
         assert!(settles.is_empty(), "{settles:?}");
+    }
+
+    /// A take of one position whose session file gives no settling (one
+    /// made by `timegrapher record`) is read once settled, as `session`
+    /// reads it: its first 20 s are left out of its row.
+    #[test]
+    fn a_recorded_take_of_one_position_is_read_once_settled() {
+        let dir = std::env::temp_dir().join(format!("tg-app-one-settle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 50.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&dir.join("audio-001.wav"), &audio).unwrap();
+        std::fs::write(
+            dir.join(MANIFEST),
+            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n",
+        )
+        .unwrap();
+        let app = reopened(&dir);
+        assert_eq!(app.session.settles(), [(0.0, 20.0)]);
+        let spans = app.session.settled_spans(app.position, Position::DialUp);
+        assert_eq!(spans.len(), 1, "{spans:?}");
+        assert_eq!(spans[0].0, 20.0, "{spans:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A take that fails to open leaves the take on show as it was, read
+    /// on its own clock and breaks.
+    #[test]
+    fn a_failed_open_leaves_the_takes_clock() {
+        let base = std::env::temp_dir().join(format!("tg-app-failed-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let good = base.join("good");
+        std::fs::create_dir_all(&good).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 30.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&good.join("audio-001.wav"), &audio).unwrap();
+        std::fs::write(
+            good.join(MANIFEST),
+            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n",
+        )
+        .unwrap();
+        let mut app = reopened(&good);
+        let breaks = app.take_breaks.clone();
+        assert!(breaks.is_some());
+        // Sound that can't be read: found, then refused.
+        let bad = base.join("bad");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(bad.join("audio-001.wav"), b"not a wav").unwrap();
+        std::fs::write(bad.join(MANIFEST), "[[recording]]\nfile = '.'\n").unwrap();
+        app.start_batch(&bad);
+        assert!(
+            app.message.as_ref().is_some_and(|m| m.1),
+            "{:?}",
+            app.message
+        );
+        assert!(app.batch.is_none() && app.live.is_some());
+        assert_eq!(app.take_breaks, breaks);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// Guided elapsed-time endpoints use the recorder timeline even when
