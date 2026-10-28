@@ -410,7 +410,10 @@ impl Test {
     /// The test ended at `now` before it finished: what this position
     /// measured so far isn't used either.
     pub fn stop(&mut self, now: f64) {
-        self.close_step(now, true);
+        // A position already measured, waiting to be turned, keeps its
+        // measurement: only the wait since is unused.
+        let measured = self.spans.len() > self.step;
+        self.close_step(now, !measured);
         if let Some(p) = self.paused.take().filter(|&p| now > p) {
             self.unused.push((p, now, NOT_USED));
         }
@@ -702,11 +705,21 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
 }
 
 /// The figures as the pane writes them: a signed figure with a true minus
-/// sign, a plain one, or a dash when missing.
+/// sign, a plain one, or a dash when missing. A figure that rounds to zero
+/// takes no sign.
 fn signed(v: Option<f64>, d: usize) -> String {
     v.map_or_else(
         || "—".to_string(),
-        |x| format!("{x:+.d$}").replace('-', "−"),
+        |x| {
+            let s = format!("{:.d$}", x.abs());
+            if s.bytes().all(|b| b == b'0' || b == b'.') {
+                s
+            } else if x < 0.0 {
+                format!("−{s}")
+            } else {
+                format!("+{s}")
+            }
+        },
     )
 }
 
@@ -1798,6 +1811,16 @@ mod tests {
     use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
 
+    /// A figure that rounds to zero reads 0.0, with no sign.
+    #[test]
+    fn a_zero_reads_without_a_sign() {
+        assert_eq!(signed(Some(-0.01), 1), "0.0");
+        assert_eq!(signed(Some(0.04), 1), "0.0");
+        assert_eq!(signed(Some(-0.06), 1), "−0.1");
+        assert_eq!(signed(Some(2.0), 1), "+2.0");
+        assert_eq!(signed(None, 1), "—");
+    }
+
     /// The pane drawn for `test` in `phase` with `live` figures: each
     /// piece of text and where it is.
     fn drawn(test: &Test, phase: Phase, live: Option<&FreeCell>) -> Vec<(String, egui::Rect)> {
@@ -2324,6 +2347,21 @@ mod tests {
         let u = t.unused(s3 + 100.0);
         assert_eq!(u.last(), Some(&(s3 + sm, s3 + sm + 5.0, NOT_USED)));
         assert_eq!(t.stretches().len(), 1);
+    }
+
+    /// Stopped while waiting to turn the watch, the position just measured
+    /// keeps its measured stretch: only the wait since is unused.
+    #[test]
+    fn a_stop_while_turning_keeps_the_measured_position() {
+        let (sm, m) = (SETTLE_S, MEASURE_S);
+        let mut t = Test::new();
+        t.tick(0.0);
+        let end = sm + m;
+        assert_eq!(t.tick(end + 1.0), Phase::Turn);
+        t.stop(end + 30.0);
+        let u = t.unused(end + 40.0);
+        assert_eq!(u, [(0.0, sm, SETTLING), (end, end + 30.0, NOT_USED)]);
+        assert_eq!(t.stretches(), [(Position::DialUp, sm, end)]);
     }
 
     /// A test begun ten minutes into the sound: the time before it is

@@ -259,6 +259,13 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         .collect();
     let holes = crate::clean::Cuts::new(None, &jumps, &[]);
     let cuts = holes.piece_cuts();
+    // The readings take only the amplitude windows clear of the jumps, as
+    // `session` does: the windows themselves are kept whole.
+    let clear: Vec<AmplitudeWindow> = holes
+        .amplitude_windows(&amplitude_windows)
+        .into_iter()
+        .cloned()
+        .collect();
     let overall = timing::fit_pieces(&beats, bph, &cuts);
     let turned = timing::sign_turns(&beats, bph, &cuts);
     let residuals =
@@ -302,17 +309,17 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         1.0,
     );
     let amp_series = Series {
-        t: amplitude_windows
+        t: clear
             .iter()
             .filter(|w| w.mean().is_some())
             .map(|w| (w.start_s + w.end_s) / 2.0)
             .collect(),
-        y: amplitude_windows.iter().filter_map(|w| w.mean()).collect(),
+        y: clear.iter().filter_map(|w| w.mean()).collect(),
     };
 
     let jitter_us = median_of(rate_windows.iter().map(|w| w.fit.jitter_us));
     let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
-        let v: Vec<f64> = amplitude_windows.iter().filter_map(f).collect();
+        let v: Vec<f64> = clear.iter().filter_map(f).collect();
         crate::confidence::standard_error(&v)
     };
     let no_watch = crate::measure::no_watch_reason(jitter_us, bph, duration, beat_sound);
@@ -323,7 +330,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let expected = crate::beats::expected_beats(duration, bph);
     let assessment = crate::measure::assess(
         &rate_windows,
-        &amplitude_windows.iter().collect::<Vec<_>>(),
+        &clear.iter().collect::<Vec<_>>(),
         &crate::measure::Context {
             watch_heard,
             no_watch_reason: no_watch.unwrap_or_default(),
@@ -349,7 +356,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let shape = watch_heard.then(|| {
         let beat_s = overall.map_or(3600.0 / bph as f64, |f| f.period_s);
         let r = crate::shape::analyze(&env, fs, &beats, beat_s, &Default::default());
-        crate::shape::Measures::of(&r, &amplitude_windows)
+        crate::shape::Measures::of(&r, &clear)
     });
     let mut summary = Summary {
         duration_s: duration,
@@ -365,18 +372,16 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         watch_heard,
         overall,
         beat_error_unlock_ms: timing::median_signed(
-            amplitude_windows
-                .iter()
-                .filter_map(|w| w.beat_error_unlock_ms),
+            clear.iter().filter_map(|w| w.beat_error_unlock_ms),
             turned,
         ),
         rate_p05: percentile(&rates, 0.05),
         rate_p95: percentile(&rates, 0.95),
         jitter_us,
         timing_scatter_fraction: beats::timing_scatter_fraction(jitter_us, bph),
-        amplitude_deg: median_of(amplitude_windows.iter().filter_map(|w| w.mean())),
-        amplitude_even_deg: median_of(amplitude_windows.iter().filter_map(|w| w.even_deg)),
-        amplitude_odd_deg: median_of(amplitude_windows.iter().filter_map(|w| w.odd_deg)),
+        amplitude_deg: median_of(clear.iter().filter_map(|w| w.mean())),
+        amplitude_even_deg: median_of(clear.iter().filter_map(|w| w.even_deg)),
+        amplitude_odd_deg: median_of(clear.iter().filter_map(|w| w.odd_deg)),
         amplitude_se_deg,
         amplitude_even_se_deg: se(&|w| w.even_deg),
         amplitude_odd_se_deg: se(&|w| w.odd_deg),
@@ -403,5 +408,64 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         residuals,
         rate_windows,
         amplitude_windows,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::synth::{generate, SynthConfig};
+
+    #[test]
+    fn analyze_reads_the_same_amplitude_windows_as_session() {
+        // 90 s at 28,800 bph with 6 ms of silence every 11.1 s: listening
+        // stopped and started, so the beats jump there. A window across a
+        // jump reads a beat error far off (−0.65 ms where the watch has
+        // −0.40), and neither reading takes one.
+        let a = generate(
+            &SynthConfig {
+                duration_s: 90.0,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        let fs = a.sample_rate as f64;
+        let mut samples = Vec::new();
+        for (k, c) in a.samples.chunks((fs * 11.1).round() as usize).enumerate() {
+            if k > 0 {
+                samples.extend(vec![0.0; (fs * 0.006) as usize]);
+            }
+            samples.extend_from_slice(c);
+        }
+        let audio = Audio {
+            sample_rate: a.sample_rate,
+            samples,
+        };
+        let cfg = AnalysisConfig {
+            bph: Some(28800),
+            ..Default::default()
+        };
+        let summary = analyze(&audio, &cfg).summary;
+        let log = crate::stream::analyze_samples(
+            &audio.samples,
+            audio.sample_rate,
+            &crate::stream::StreamConfig {
+                analysis: cfg.clone(),
+                ..Default::default()
+            },
+        );
+        assert!(log.jumps.len() >= 7, "{:?}", log.jumps);
+        let breaks: Vec<crate::breaks::Break> = log
+            .jumps
+            .iter()
+            .map(|&audio_s| crate::breaks::Break {
+                audio_s,
+                gap_s: 0.0,
+            })
+            .collect();
+        let m = crate::session::measure_with_breaks(&log, None, &breaks, 0.0, log.duration_s);
+        assert_eq!(summary.amplitude_deg, m.amplitude_deg);
+        assert_eq!(summary.beat_error_unlock_ms, m.beat_error_unlock_ms);
     }
 }

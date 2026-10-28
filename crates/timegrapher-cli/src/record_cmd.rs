@@ -720,12 +720,13 @@ fn live(
     let fs_hz = cap.sample_rate;
     if o.power_reserve {
         eprintln!(
-            "recording {} ({}) from '{}' into {} until the watch stops (at most 80 h); \
+            "recording {} ({}) from '{}' into {} until the watch stops (at most {}); \
              keep the watch still and the computer awake",
             pos.common(),
             pos.description(),
             cap.label,
-            rec.dir().display()
+            rec.dir().display(),
+            power_reserve::limit_text()
         );
     } else {
         eprintln!(
@@ -982,13 +983,9 @@ fn print_report(r: &Report) {
     }
     if let Some(p) = &r.power_reserve {
         println!(
-            "Power reserve {} ({})",
+            "Power reserve {}. {}.",
             power_reserve::run_text(p.run_s),
-            match p.ending {
-                power_reserve::Ending::Stopped => "the watch stopped",
-                power_reserve::Ending::ByHand => "the recording ended while the watch still ran",
-                power_reserve::Ending::Limit => "reached the 80 h limit while the watch still ran",
-            }
+            p.ending.text()
         );
     }
     println!("Added to     {}", r.session_file);
