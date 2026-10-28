@@ -1269,7 +1269,13 @@ read as the grid or a reading. With no calibre picked, or none of its
 wheels known, one minute and one hour are marked in grey instead, periods
 alone named after no wheel. **Wheel Periods**, in the toolbars of
 Periods, FFT, STFT Map and Wavelet Map, shows or hides these marks; it
-starts on. The tests need 5 minutes
+starts on. A marked point (the period found, the lag the readings repeat
+at, the tallest peak) keeps its dot on the trace, and its note sits in
+the nearest clear space the trace doesn't cross, above right first, on a
+plate with a thin leader to the dot; it keeps its place until the trace
+crosses it, and the plot keeps a row clear above its highest point so
+there is always room. On a short plot, or with nowhere clear, the note is
+the dot's hover. The tests need 5 minutes
 of beats. They run over the whole session in the background, again every
 minute while it grows; for a recording they cover the whole file once
 it is opened. Rows stack and fill the pane when it is
