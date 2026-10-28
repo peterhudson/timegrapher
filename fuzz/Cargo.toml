@@ -1,0 +1,54 @@
+# The file readers under libFuzzer (`cargo fuzz`, nightly). Not a member of
+# the workspace and not run in CI; see README.md.
+[package]
+name = "timegrapher-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+flate2 = "1"
+toml = "0.8"
+serde_json = "1"
+timegrapher-core = { path = "../crates/timegrapher-core", default-features = false }
+
+[workspace]
+
+[[bin]]
+name = "analysis_take"
+path = "fuzz_targets/analysis_take.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "session_toml"
+path = "fuzz_targets/session_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "clock_log"
+path = "fuzz_targets/clock_log.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "report_zip"
+path = "fuzz_targets/report_zip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "seeds"
+path = "seeds.rs"
+test = false
+doc = false
+bench = false
