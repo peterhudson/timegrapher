@@ -2,25 +2,43 @@
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use timegrapher_core::library::{Library, Watch, CACHE_FILE, TAKES, UNSORTED};
+use timegrapher_core::library::{self, Library, Watch, CACHE_FILE, TAKES, UNSORTED};
+
+/// The settings folder the commands keep the takes' readings in, apart
+/// from the user's own.
+fn config_dir() -> PathBuf {
+    std::env::temp_dir().join(format!("tg-cli-watches-config-{}", std::process::id()))
+}
 
 fn run(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_timegrapher"))
         .args(args)
+        .env("TIMEGRAPHER_CONFIG_DIR", config_dir())
         .output()
         .unwrap()
 }
 
-/// A take as the app saves one: its session file, one sound file and the
-/// readings at the end in session.json.
+/// A take as the app saves one: its session file, 40 s of a watch 10 s/d
+/// fast and the readings at the end in session.json.
 fn take(dir: &Path, position: &str, started: &str) {
+    use timegrapher_core::synth::{generate, SynthConfig};
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(
         dir.join("session.toml"),
         format!("bph = 28800\n\n[[recording]]\nfile = \".\"\nposition = \"{position}\"\n"),
     )
     .unwrap();
-    std::fs::write(dir.join("take_part01-001.flac"), vec![0u8; 2000]).unwrap();
+    let audio = generate(
+        &SynthConfig {
+            duration_s: 40.0,
+            rate_s_per_day: 10.0,
+            beat_error_ms: 0.6,
+            ..Default::default()
+        },
+        |_| 270.0,
+        |_| 0.0,
+    );
+    timegrapher_core::audio::write_wav(&dir.join("take_part01-001.wav"), &audio).unwrap();
     std::fs::write(
         dir.join("session.json"),
         format!(
@@ -126,8 +144,48 @@ fn watches_lists_and_shows_the_library_as_json() {
     assert_eq!(t["duration_s"], 600.0);
     assert_eq!(t["audio"], true);
     assert_eq!(t["incomplete"], false);
+    // Its own reading, as `session` reads it: not the figures the app
+    // showed when it saved the take, which stay as `at_end`.
+    let r = &t["reading"];
+    assert_eq!(r["position"], "DU", "{t}");
+    assert_eq!(r["watch_heard"], true, "{t}");
+    assert_eq!(r["calibrated"], false, "{t}");
+    assert!(
+        (r["rate_s_per_day"].as_f64().unwrap() - 10.0).abs() < 1.0,
+        "{t}"
+    );
+    assert!(
+        (r["beat_error_ms"].as_f64().unwrap().abs() - 0.6).abs() < 0.2,
+        "{t}"
+    );
+    // The watch was made to swing 270°.
+    assert!(
+        (r["amplitude_deg"].as_f64().unwrap() - 270.0).abs() < 5.0,
+        "{t}"
+    );
     assert_eq!(t["at_end"]["rate_s_per_day"], 4.2);
     assert_eq!(t["at_end"]["beat_error_ms"], -0.6);
+    // Kept in the settings folder, not in the library, and read from there
+    // the next time.
+    assert!(config_dir().join(library::READINGS_FILE).is_file());
+    let again = run(&["watches", "show", "pepsi", "--library", &lib, "--json"]);
+    assert!(!String::from_utf8_lossy(&again.stderr).contains("reading "));
+    let doc2: Value = serde_json::from_slice(&again.stdout).unwrap();
+    assert_eq!(doc2["takes"][0]["reading"], *r);
+    // The same figures `session` gives for the take (which writes its
+    // summary.json into the folder, so it comes last).
+    let out = run(&["session", &path.to_string_lossy(), "--json"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let session: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let m = &session["readings"][0]["measurement"];
+    assert_eq!(r["rate_s_per_day"], m["rate_s_per_day"], "{m}");
+    assert_eq!(r["amplitude_deg"], m["amplitude_deg"], "{m}");
+    assert_eq!(r["beat_error_ms"], m["beat_error_unlock_ms"], "{m}");
+    assert_eq!(r["calibrated"], m["calibrated"], "{m}");
     assert!(t["bytes"].as_u64().unwrap() >= 2000);
     let out = run(&["watches", "show", "Sold Seiko", "--library", &lib, "--json"]);
     let doc: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -167,12 +225,21 @@ fn watches_prints_text_and_says_when_there_is_nothing_to_list() {
         assert!(text.contains(s), "{s}: {text}");
     }
     assert!(!text.contains("Archived"), "{text}");
+    // The line shows the take's own reading, as the JSON gives it.
+    let doc: Value = serde_json::from_slice(
+        &run(&["watches", "show", "Pepsi", "--library", &lib, "--json"]).stdout,
+    )
+    .unwrap();
+    let r = &doc["takes"][0]["reading"];
+    let line = format!(
+        "2026-10-20 14.32 Dial Up: Dial Up · 10:00 · {:+.1} s/d · {:.0}° · {:.1} ms · ",
+        r["rate_s_per_day"].as_f64().unwrap(),
+        r["amplitude_deg"].as_f64().unwrap(),
+        r["beat_error_ms"].as_f64().unwrap().abs()
+    );
     let out = run(&["watches", "show", "Pepsi", "--library", &lib]);
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        text.contains("2026-10-20 14.32 Dial Up: Dial Up · 10:00 · +4.2 s/d · 285° · 0.6 ms · "),
-        "{text}"
-    );
+    assert!(text.contains(&line), "{line}: {text}");
     // A Positions Test's take names its kind first, as the app's line does.
     std::fs::write(
         root.join("Pepsi")

@@ -354,6 +354,27 @@ impl Take {
     /// stand for the test: its figures are in its table, or hour by hour)
     /// and its marks. Each surface joins them as it lays them out.
     pub fn facts(&self, positions_test: bool) -> Vec<String> {
+        let figures = self
+            .at_end
+            .as_ref()
+            .map(|a| (a.rate(), a.amplitude_deg, a.beat_error_ms));
+        self.facts_with(positions_test, figures)
+    }
+
+    /// [`Take::facts`] with the figures of the take's own reading
+    /// ([`reading`]) in place of the ones the app showed when it saved
+    /// it: none when it has no reading, nor for a test, as there.
+    pub fn facts_read(&self, positions_test: bool, reading: Option<&Reading>) -> Vec<String> {
+        let figures = reading.map(|r| (r.rate_s_per_day, r.amplitude_deg, r.beat_error_ms));
+        self.facts_with(positions_test, figures)
+    }
+
+    /// The facts with `figures`: rate, amplitude and signed beat error.
+    fn facts_with(
+        &self,
+        positions_test: bool,
+        figures: Option<(Option<f64>, Option<f64>, Option<f64>)>,
+    ) -> Vec<String> {
         let mut parts: Vec<String> = Vec::new();
         if positions_test {
             parts.push("Positions Test".into());
@@ -380,14 +401,14 @@ impl Take {
             parts.push(length_text(d));
         }
         let test = positions_test || self.power_reserve.is_some();
-        if let Some(a) = self.at_end.as_ref().filter(|_| !test) {
-            if let Some(r) = a.rate() {
+        if let Some((rate, amplitude, beat_error)) = figures.filter(|_| !test) {
+            if let Some(r) = rate {
                 parts.push(format!("{r:+.1} s/d"));
             }
-            if let Some(x) = a.amplitude_deg {
+            if let Some(x) = amplitude {
                 parts.push(format!("{x:.0}°"));
             }
-            if let Some(b) = a.beat_error_ms {
+            if let Some(b) = beat_error {
                 parts.push(format!("{:.1} ms", b.abs()));
             }
         }
@@ -399,6 +420,125 @@ impl Take {
         }
         parts
     }
+}
+
+/// A take's own reading, as `timegrapher session` reads it: its last
+/// recorded position, after the watch settled, on the take's clock. What
+/// the Watches list shows for a take, worked out from its sound (or its
+/// kept analysis) once and kept ([`reading`]).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Reading {
+    /// The position read, as the take's `session.toml` names it.
+    pub position: Option<String>,
+    pub rate_s_per_day: Option<f64>,
+    /// Whether the rate is on the take's clock (a clock log, USB lines or
+    /// a stored correction) rather than the sound card's.
+    pub calibrated: bool,
+    pub amplitude_deg: Option<f64>,
+    /// Signed, from the unlock.
+    pub beat_error_ms: Option<f64>,
+    /// False where no regular beat was found; the figures are then none.
+    pub watch_heard: bool,
+}
+
+/// The file the readings are kept in, in the user's settings folder
+/// ([`crate::clockstore::config_dir`]), not in the library, so a library
+/// opened to read only can still keep them.
+pub const READINGS_FILE: &str = "readings.json";
+
+type Readings = BTreeMap<String, (Stamp, Reading)>;
+
+fn readings_path() -> Option<PathBuf> {
+    crate::clockstore::config_dir().map(|d| d.join(READINGS_FILE))
+}
+
+fn readings_kept() -> Readings {
+    readings_path()
+        .and_then(|p| fs::read(p).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn reading_key(take_dir: &Path) -> String {
+    std::path::absolute(take_dir)
+        .unwrap_or_else(|_| take_dir.to_path_buf())
+        .display()
+        .to_string()
+}
+
+/// The reading kept for the take in `take_dir`, when it was worked out
+/// since the take last changed; quick, it reads no sound.
+pub fn kept_reading(take_dir: &Path) -> Option<Reading> {
+    let (s, r) = readings_kept().remove(&reading_key(take_dir))?;
+    (s == stamp(take_dir)).then_some(r)
+}
+
+/// The take in `take_dir`'s own reading ([`Reading`]): the one kept when
+/// the take hasn't changed since, else worked out and kept. Working it out
+/// reads the take's sound through the stream engine, as `session` does,
+/// about a minute for a 9 h take; a reading that can't be kept is only
+/// worked out again next time.
+pub fn reading(take_dir: &Path) -> Result<Reading, String> {
+    if let Some(r) = kept_reading(take_dir) {
+        return Ok(r);
+    }
+    let stamp = stamp(take_dir);
+    let r = measure_take(take_dir)?;
+    if let Some(p) = readings_path() {
+        let mut kept = readings_kept();
+        kept.insert(reading_key(take_dir), (stamp, r.clone()));
+        if let (Some(dir), Ok(b)) = (p.parent(), serde_json::to_vec(&kept)) {
+            let _ = fs::create_dir_all(dir).map(|_| write_atomic(&p, &b));
+        }
+    }
+    Ok(r)
+}
+
+/// The take's last position read as `timegrapher session` reads it, with
+/// no flags: its settings from its `session.toml` and calibre
+/// ([`crate::take::stream_settings`]), its clock from its log, its USB
+/// lines, its `card_ppm` or the correction stored for its input
+/// ([`crate::take::measure_entry`]).
+fn measure_take(dir: &Path) -> Result<Reading, String> {
+    let file = dir.join(crate::take::MANIFEST);
+    let text = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let Some(e) = m.recordings.last() else {
+        return Err(format!("{}: no recording listed", file.display()));
+    };
+    let user = match (&m.calibre, crate::calibre_store::default_path()) {
+        (Some(_), Some(p)) => crate::calibre_store::UserCalibres::load(&p)?,
+        _ => crate::calibre_store::UserCalibres::default(),
+    };
+    let cal = m
+        .calibre
+        .as_deref()
+        .and_then(|n| crate::take::calibre_named(n, &user));
+    let settings = crate::take::EntrySettings {
+        stream: crate::take::stream_settings(&m, cal.as_ref(), crate::take::Given::default()),
+        card_clock: false,
+        settle_s: None,
+    };
+    let read = crate::take::measure_entry(
+        dir,
+        &m,
+        e,
+        &settings,
+        |files| Ok(crate::clock::usb_lines(files)?.map(|u| u.ppm)),
+        |first| match m.card_ppm {
+            Some(p) => Ok(Some(p)),
+            None => Ok(crate::take::stored_correction(first)?.map(|c| c.ppm)),
+        },
+    )?;
+    let x = &read.measurement;
+    Ok(Reading {
+        position: e.position.clone(),
+        rate_s_per_day: x.rate_s_per_day,
+        calibrated: x.calibrated,
+        amplitude_deg: x.amplitude_deg,
+        beat_error_ms: x.beat_error_unlock_ms,
+        watch_heard: x.watch_heard,
+    })
 }
 
 /// Whether the take in the folder `take_dir` is a Positions Test's: it

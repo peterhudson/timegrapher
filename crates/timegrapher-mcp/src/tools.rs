@@ -403,10 +403,13 @@ pub const TOOLS: &[ToolSpec] = &[
             end ignored), or \"Unsorted\" \
             for the Quick Listen takes: its details, the fields the person added, and every \
             take, newest first, with its full folder `path`, start, length, positions, \
-            whether it kept its sound (`audio`), and the readings the app showed at its end \
-            (`at_end`, not a new analysis). Pass a take's `path` to run_session, long_run or \
+            whether it kept its sound (`audio`), its own `reading` (its last position as \
+            run_session reads it: rate, whether the rate is `calibrated` on the take's \
+            clock, amplitude, signed beat error; the first show of a take reads its sound, which \
+            takes a while, about a minute per 9 h of sound, and later shows are immediate), and the readings the app showed when it saved the \
+            take (`at_end`, to be retired). Pass a take's `path` to run_session, long_run or \
             check_steadiness to analyse it; a take with `audio` false holds only its \
-            analysis. It only reads.",
+            analysis. It changes nothing in the library.",
         command: &["watches", "show"],
         params: &[
             p(
