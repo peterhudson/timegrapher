@@ -551,7 +551,7 @@ mod tests {
             assert!(!s.contains(word), "{word}: {s}");
         }
         assert!(
-            s.contains("What limits these readings:\n- No calibre or lift angle"),
+            s.contains("What limits these readings:\n- The lift angle is the default 52°"),
             "{s}"
         );
     }
