@@ -220,13 +220,21 @@ fn watches_prints_text_and_says_when_there_is_nothing_to_list() {
         assert!(text.contains(s), "{s}: {text}");
     }
     assert!(!text.contains("Archived"), "{text}");
+    // The line shows the take's own reading, as the JSON gives it.
+    let doc: Value = serde_json::from_slice(
+        &run(&["watches", "show", "Pepsi", "--library", &lib, "--json"]).stdout,
+    )
+    .unwrap();
+    let r = &doc["takes"][0]["reading"];
+    let line = format!(
+        "2026-10-20 14.32 Dial Up: Dial Up · 10:00 · {:+.1} s/d · {:.0}° · {:.1} ms · ",
+        r["rate_s_per_day"].as_f64().unwrap(),
+        r["amplitude_deg"].as_f64().unwrap(),
+        r["beat_error_ms"].as_f64().unwrap().abs()
+    );
     let out = run(&["watches", "show", "Pepsi", "--library", &lib]);
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        text.contains("2026-10-20 14.32 Dial Up: Dial Up · 10:00 · +10.")
-            && text.contains(" s/d · "),
-        "{text}"
-    );
+    assert!(text.contains(&line), "{line}: {text}");
     // A Positions Test's take names its kind first, as the app's line does.
     std::fs::write(
         root.join("Pepsi")
