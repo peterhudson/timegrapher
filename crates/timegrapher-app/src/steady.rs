@@ -1696,11 +1696,14 @@ fn wheel_marks(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::
 const AXIS_H: f32 = 20.0;
 
 /// Whether a plot's point note is hover only: on a short plot, as the
-/// wheels' `names` judged it where they are on, else the plot's own
-/// height. Call before the plot is laid out.
+/// wheels' `names` judged it where they are on, else by the plot's own
+/// height inside its x axis. Call before the plot is laid out.
 fn note_short(ui: &egui::Ui, names: &Option<WheelNames>, id: impl std::hash::Hash) -> bool {
     names.as_ref().map_or_else(
-        || marks::short(ui, ui.id().with(("note short", id)), ui.available_height()),
+        || {
+            let h = ui.available_height() - AXIS_H;
+            marks::short(ui, ui.id().with(("note short", id)), h)
+        },
         |n| n.short,
     )
 }
@@ -2998,6 +3001,102 @@ mod tests {
             let t = drawn(&s, v);
             assert!(t.contains("not read") && !t.contains("needs"), "{v:?}: {t}");
         }
+    }
+
+    /// The lag a once-a-minute swing repeats at is noted beside its dot
+    /// on a plot of room, and is the dot's hover only on a short one, as
+    /// every point note is.
+    #[test]
+    fn a_repeats_note_is_hover_only_on_a_short_plot() {
+        // Twenty minutes of beats whose timing swings once a minute.
+        let beats = (0..9600)
+            .map(|index| {
+                let t = index as f64 * 0.125;
+                timegrapher_core::beats::Beat {
+                    time: t + 0.002 * (std::f64::consts::TAU * t / 60.0).sin(),
+                    index,
+                    quality: 1.0,
+                }
+            })
+            .collect();
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: 1200.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats,
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: vec![],
+            by_count: vec![],
+            snippets: Vec::new(),
+        };
+        let s = compute(&log, None);
+        let a = s.report.series[0].autocorrelation.as_ref().expect("acf");
+        assert!(a.repeat_lag_s.is_some(), "no repeat found");
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let drawn = |h: f32| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(900.0, h),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let opts = Opts::default();
+                    draw(
+                        ui,
+                        Some(&s),
+                        "repeats",
+                        View::Autocorrelation,
+                        &[true, false, false],
+                        opts,
+                    );
+                });
+            });
+            fn texts(shape: &egui::Shape, into: &mut String) {
+                match shape {
+                    egui::Shape::Text(t) => into.push_str(&format!("{}\n", t.galley.text())),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                    _ => {}
+                }
+            }
+            let mut all = String::new();
+            out.shapes.iter().for_each(|c| texts(&c.shape, &mut all));
+            all
+        };
+        assert!(drawn(500.0).contains("repeats at"));
+        assert!(!drawn(150.0).contains("repeats at"));
+
+        // Short is the plot's own height inside its x axis: given 110 pt,
+        // the plot is under 100 pt and its note is hover only; given 130,
+        // it isn't.
+        let short_in = |h: f32| {
+            let mut short = None;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(900.0, 900.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.allocate_ui(Vec2::new(400.0, h), |ui| {
+                        ui.set_max_height(h);
+                        short = Some(note_short(ui, &None, ("short", h as u32)));
+                    });
+                });
+            });
+            short.unwrap()
+        };
+        assert!(short_in(110.0));
+        assert!(!short_in(130.0));
     }
 
     /// Two wild readings among a hundred steady ones don't set the scale.
