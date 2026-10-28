@@ -81,7 +81,15 @@ pub fn limits(doc: &Value) -> Vec<Value> {
         Some("no_watch") => Some(no_regular_beat(m, m["bph"].as_f64().or(bph))),
         _ => fact(c, lift),
     };
-    if schema.starts_with("timegrapher.analyze/") {
+    // `long` and `series` carry theirs at the top, for the whole take.
+    if [
+        "timegrapher.analyze/",
+        "timegrapher.long/",
+        "timegrapher.series/",
+    ]
+    .iter()
+    .any(|k| schema.starts_with(k))
+    {
         return doc["caveats"]
             .as_array()
             .into_iter()
@@ -302,5 +310,26 @@ mod tests {
     #[test]
     fn other_documents_have_none() {
         assert!(limits(&json!({ "schema": "timegrapher.series/2" })).is_empty());
+        assert!(limits(&json!({ "schema": "timegrapher.watch/1", "caveats": [{ "code": "breaks", "count": 2 }] })).is_empty());
+    }
+
+    #[test]
+    fn a_long_run_and_a_series_say_their_caveats_for_the_whole_take() {
+        let caveats = json!([
+            { "code": "sides_by_count", "count": 1 },
+            { "code": "beat_error_as_size" },
+            { "code": "clock_sources_disagree", "usb_ppm": 120.0, "log_ppm": 20.0, "log_ppm_sd": 2.0 }]);
+        // In core's words, each said once for the whole take.
+        let said: Vec<Value> = caveats
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| json!({ "where": null, "text": fact(c, None).unwrap() }))
+            .collect();
+        assert_eq!(said.len(), 3);
+        for schema in ["timegrapher.long/1", "timegrapher.series/2"] {
+            let doc = json!({ "schema": schema, "caveats": caveats });
+            assert_eq!(limits(&doc), said, "{schema}");
+        }
     }
 }
