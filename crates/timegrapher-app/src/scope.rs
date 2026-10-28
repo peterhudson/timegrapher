@@ -8,6 +8,7 @@
 //! The latest beats are drawn over each other, the newest strongest, so a
 //! sound that changes from beat to beat shows as a blur.
 
+use crate::marks::{self, Rank};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use timegrapher_core::beats::Beat;
@@ -141,9 +142,24 @@ pub struct Row {
     pub label: &'static str,
     pub traces: Vec<Vec<f32>>,
     pub color: Color32,
-    /// Where the profile found the unlock and the drop, ms from the
-    /// reference point, for the spans up to 50 ms.
-    pub marks: Vec<(f64, Color32, &'static str)>,
+    /// Where the profile found the unlock and the drop, for the spans up
+    /// to 50 ms.
+    pub marks: Vec<Mark>,
+}
+
+/// An edge the profile found, marked on a row: ms from the reference
+/// point, its line's colour and its name.
+pub struct Mark {
+    pub ms: f64,
+    pub color: Color32,
+    pub name: &'static str,
+}
+
+impl Mark {
+    /// What its hover says: "Drop: −0.27 ms", as the Profile words it.
+    fn hover(&self) -> String {
+        format!("{}: {}", self.name, crate::profiles::ms_text(self.ms))
+    }
 }
 
 /// Draw the rows one above the other, sharing a time axis.
@@ -194,10 +210,18 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
     );
     let n = rows.len().max(1);
     let gap = 6.0;
-    let h = (plot.height() - gap * (n as f32 - 1.0)) / n as f32;
+    // With the marks on, each row keeps a lane of one row of names above
+    // it, so the rows don't jump; a row too short for that takes its names
+    // inside, along its top, and the lane gives way.
+    let names_id = ui.id().with("scope names");
+    let lane_h = marks::ROW_H + marks::LANE_GAP;
+    let with_lane = (plot.height() - gap * (n as f32 - 1.0) - lane_h * n as f32) / n as f32;
+    let inside = zoom.marks() && marks::short(ui, names_id.with("short"), with_lane);
+    let lane = if zoom.marks() && !inside { lane_h } else { 0.0 };
+    let h = (plot.height() - gap * (n as f32 - 1.0) - lane * n as f32) / n as f32;
     for (k, row) in rows.iter().enumerate() {
         let r = egui::Rect::from_min_size(
-            egui::pos2(plot.left(), plot.top() + k as f32 * (h + gap)),
+            egui::pos2(plot.left(), plot.top() + k as f32 * (h + gap + lane) + lane),
             Vec2::new(plot.width(), h),
         );
         painter.text(
@@ -212,25 +236,18 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
             [egui::pos2(r.left(), mid), egui::pos2(r.right(), mid)],
             egui::Stroke::new(1.0_f32, pal.separator),
         );
-        for &(ms, color, name) in &row.marks {
-            let x = x_of(ms);
-            if x >= r.left() && x <= r.right() {
-                // Unlock solid, Drop dashed: both grey, named beside.
-                let line = [egui::pos2(x, r.top()), egui::pos2(x, r.bottom())];
-                let stroke = egui::Stroke::new(1.0_f32, color);
-                if name == "Unlock" {
-                    painter.line_segment(line, stroke);
-                } else {
-                    painter.extend(egui::Shape::dashed_line(&line, stroke, 4.0, 3.0));
-                }
-                painter.text(
-                    egui::pos2(x + 3.0, r.top() + 1.0),
-                    egui::Align2::LEFT_TOP,
-                    name,
-                    egui::FontId::proportional(11.0),
-                    color,
-                );
-            }
+        // The edges, solid and under the trace, as on the Profile.
+        let edges: Vec<(f32, &Mark)> = row
+            .marks
+            .iter()
+            .map(|m| (x_of(m.ms), m))
+            .filter(|(x, _)| *x >= r.left() && *x <= r.right())
+            .collect();
+        for (x, m) in &edges {
+            painter.line_segment(
+                [egui::pos2(*x, r.top()), egui::pos2(*x, r.bottom())],
+                egui::Stroke::new(1.0_f32, m.color),
+            );
         }
         let top = row
             .traces
@@ -241,6 +258,32 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
         let half = r.height() * 0.48;
         let cols = r.width().max(1.0) as usize;
         let count = row.traces.len();
+        // Each column's highest point over every trace, for the names
+        // inside a short row to keep clear of.
+        let mut tops: Vec<(f32, f32)> = Vec::new();
+        if inside {
+            for col in 0..cols {
+                let x = r.left() + col as f32 + 0.5;
+                let hi = row
+                    .traces
+                    .iter()
+                    .filter_map(|t| {
+                        let per = t.len() as f32 / cols as f32;
+                        let j0 = (col as f32 * per) as usize;
+                        let j1 = (((col + 1) as f32 * per).ceil() as usize).min(t.len());
+                        t.get(j0..j1)?.iter().copied().reduce(f32::max)
+                    })
+                    .fold(f32::MIN, f32::max);
+                if hi > f32::MIN {
+                    let y = mid - (hi / top).clamp(-1.0, 1.0) * half;
+                    tops.push((x, y));
+                }
+            }
+        }
+        if inside {
+            // Over the lines, under the trace.
+            inside_names(ui, &painter, r, &edges, &tops, names_id.with(k));
+        }
         for (i, t) in row.traces.iter().enumerate() {
             // The newest strongest; the older ones fade.
             let a = if i + 1 == count {
@@ -290,6 +333,68 @@ pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
                 pal.text_tertiary,
             );
         }
+        if !inside {
+            let named: Vec<marks::Named> = edges
+                .iter()
+                .map(|(x, m)| marks::Named {
+                    x: *x,
+                    name: m.name.to_string(),
+                    rank: Rank::Strong,
+                    ink: m.color,
+                    hover: m.hover(),
+                })
+                .collect();
+            marks::lane_above_one(ui, r, &named, names_id.with(k));
+        }
+    }
+}
+
+/// The edges' names inside a short row, along its top on boxes, each
+/// where [`marks::inside`] puts it clear of the newest trace (`tops`, each
+/// column's screen x and highest point), or left to its line's hover.
+/// Drawn before the trace, so it runs over the boxes.
+fn inside_names(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    r: egui::Rect,
+    edges: &[(f32, &Mark)],
+    tops: &[(f32, f32)],
+    id: egui::Id,
+) {
+    let galleys: Vec<_> = edges
+        .iter()
+        .map(|(_, m)| marks::galley(ui, m.name, Rank::Strong, false))
+        .collect();
+    let spans: Vec<(f32, f32, Rank)> = edges
+        .iter()
+        .zip(&galleys)
+        .map(|((x, _), g)| (*x, g.size().x, Rank::Strong))
+        .collect();
+    let row_foot = r.top() + marks::INSIDE_TOP + marks::ROW_H;
+    let clear = |a: f32, b: f32| {
+        tops.iter()
+            .filter(|(x, _)| (a..=b).contains(x))
+            .all(|(_, y)| *y > row_foot + 1.0)
+    };
+    let at = marks::inside(
+        &spans,
+        r.left(),
+        r.right(),
+        (f32::NEG_INFINITY, f32::NEG_INFINITY),
+        &clear,
+    );
+    let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
+    for (((x, m), g), a) in edges.iter().zip(galleys).zip(at) {
+        let line = egui::Rect::from_x_y_ranges(x - 3.0..=x + 3.0, r.top()..=r.bottom());
+        let hit = match a {
+            Some(a) => {
+                let rect = marks::inside_rect(r, a, g.size().x);
+                painter.extend(marks::inside_name(rect, a, g, fill));
+                line.union(rect)
+            }
+            None => line,
+        };
+        marks::hover(ui, id.with(("edge", m.name)), hit, m.hover());
     }
 }
 

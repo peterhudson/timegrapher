@@ -14893,11 +14893,19 @@ impl TimegrapherApp {
                 let mut marks = Vec::new();
                 if view.zoom.marks() {
                     if let Some(p) = &profiles[usize::from(!even)] {
-                        if let Some(u) = p.unlock_ms {
-                            marks.push((u, pal.unlock, "Unlock"));
+                        if let Some(ms) = p.unlock_ms {
+                            marks.push(scope::Mark {
+                                ms,
+                                color: pal.unlock,
+                                name: "Unlock",
+                            });
                         }
-                        if let Some(d) = p.drop_ms {
-                            marks.push((d, pal.drop, "Drop"));
+                        if let Some(ms) = p.drop_ms {
+                            marks.push(scope::Mark {
+                                ms,
+                                color: pal.drop,
+                                name: "Drop",
+                            });
                         }
                     }
                 }
