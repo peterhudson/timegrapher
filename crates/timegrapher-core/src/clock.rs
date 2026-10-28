@@ -75,6 +75,8 @@ pub struct ClockFit {
 pub enum ClockError {
     TooFewPoints(usize),
     NotIncreasing,
+    /// The entries' audio times span more than [`MAX_SPAN_S`], seconds.
+    TooLong(f64),
 }
 
 impl std::fmt::Display for ClockError {
@@ -82,6 +84,12 @@ impl std::fmt::Display for ClockError {
         match self {
             ClockError::TooFewPoints(n) => write!(f, "clock log has {n} usable entries; need 3"),
             ClockError::NotIncreasing => write!(f, "clock log times do not increase"),
+            ClockError::TooLong(s) => write!(
+                f,
+                "clock log audio times span {:.3e} s; a recording is at most {} days",
+                s,
+                MAX_SPAN_S / 86400.0
+            ),
         }
     }
 }
@@ -220,6 +228,11 @@ fn slope_sd_within(p: &[(f64, f64)], gaps: &[Break], b: f64) -> f64 {
 /// step are the recorder's pair at a pause (its lines are otherwise 10 s
 /// apart): a capture block is far shorter.
 pub const PAUSE_PAIR_S: f64 = 1.0;
+
+/// Longest span of audio a clock log may cover, seconds: a month, past
+/// any power reserve. An entry further out is a broken line, and fitting
+/// it would step drift knots across years.
+pub const MAX_SPAN_S: f64 = 31.0 * 86400.0;
 
 /// Runs longer than this get a mapping that follows drift.
 const DRIFT_SPAN_S: f64 = 4.0 * 3600.0;
@@ -372,6 +385,9 @@ impl ClockFit {
         if p[p.len() - 1].0 <= 0.0 || p[p.len() - 1].1 <= 0.0 {
             return Err(ClockError::NotIncreasing);
         }
+        if p[p.len() - 1].0 > MAX_SPAN_S {
+            return Err(ClockError::TooLong(p[p.len() - 1].0));
+        }
         // A pause in listening steps the system time ahead of the audio.
         // Fitted across, it would read as a huge clock error, so each
         // stretch is brought down by its own offset first (the gaps), and
@@ -458,9 +474,10 @@ impl ClockFit {
         let mut knots = Vec::new();
         if span > DRIFT_SPAN_S {
             let step = 600.0;
+            let end = p[p.len() - 1].0;
             let mut k = Vec::new();
-            let mut x = p[0].0;
-            loop {
+            for i in 0..=((end - p[0].0) / step).ceil() as usize {
+                let x = (p[0].0 + i as f64 * step).min(end);
                 let near: Vec<(f64, f64)> = p
                     .iter()
                     .copied()
@@ -470,10 +487,6 @@ impl ClockFit {
                     let (la, lb) = line(&near);
                     k.push((x, la + lb * x));
                 }
-                if x >= p[p.len() - 1].0 {
-                    break;
-                }
-                x = (x + step).min(p[p.len() - 1].0);
             }
             knots = k;
         }
@@ -1362,6 +1375,22 @@ unix_s,frames
     fn rejects_an_audio_column_of_unknown_unit() {
         let text = "1791484354 1000\n1791484414 2000\n";
         assert!(parse_log(text, 48000, 2).is_err());
+    }
+
+    #[test]
+    fn refuses_an_audio_time_past_any_recording() {
+        // Ten good lines and one whose audio time is 1e20 s: fitted, the
+        // drift knots 600 s apart never reached it.
+        let mut pairs: Vec<(f64, f64)> = (0..10)
+            .map(|i| (i as f64 * 60.0, 1.79e9 + i as f64 * 60.0))
+            .collect();
+        pairs.push((1e20, 1_790_000_013.0));
+        assert!(matches!(
+            ClockFit::new(&pairs),
+            Err(ClockError::TooLong(s)) if s > MAX_SPAN_S
+        ));
+        let err = ClockFit::new(&pairs).unwrap_err().to_string();
+        assert!(err.contains("31 days"), "{err}");
     }
 
     #[test]
