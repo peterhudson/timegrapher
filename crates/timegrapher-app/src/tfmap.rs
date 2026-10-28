@@ -231,7 +231,7 @@ pub fn draw(
             y: t.position_from_point_y(l.x),
             name: l.short.clone(),
             rank: l.rank(),
-            ink: ink(l, pal),
+            ink: l.ink(pal),
             hover: l.hover.clone(),
         })
         .collect();
@@ -251,16 +251,6 @@ pub fn draw(
     key_row(ui, m, scale, pal);
 }
 
-/// A line's colour on a map: the wheels' grey, a reference period's
-/// secondary grey.
-fn ink(l: &WheelLine, pal: &theme::Palette) -> Color32 {
-    if l.turn == Turn::Reference {
-        pal.text_secondary
-    } else {
-        pal.wheel
-    }
-}
-
 /// The wheels' turns across the map, dotted; their names are in the lane
 /// beside it ([`marks::lane_right`]), so nothing else is drawn over the
 /// colour.
@@ -268,7 +258,7 @@ fn wheel_rows(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::P
     for l in lines {
         p.hline(
             egui_plot::HLine::new(l.name.clone(), l.x)
-                .color(ink(l, pal))
+                .color(l.ink(pal))
                 .style(LineStyle::dotted_dense())
                 .width(1.25_f32),
         );

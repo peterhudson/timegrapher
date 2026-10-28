@@ -1604,7 +1604,7 @@ impl WheelLine {
 
     /// Its line's colour: the wheels' grey, a ×2 fainter, a reference in
     /// the tertiary grey.
-    fn ink(&self, pal: &theme::Palette) -> Color32 {
+    pub fn ink(&self, pal: &theme::Palette) -> Color32 {
         match self.turn {
             Turn::Wheel => pal.wheel,
             Turn::Twice => pal.wheel.gamma_multiply(0.6),
