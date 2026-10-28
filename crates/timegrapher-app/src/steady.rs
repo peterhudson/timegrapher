@@ -7,6 +7,7 @@
 //! they run over the whole session in the background, again every minute
 //! while it grows, and the pane shows the latest answer.
 
+use crate::marks::{self, Rank};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{
@@ -1072,13 +1073,31 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             };
             let pts: Vec<[f64; 2]> = pts.iter().map(|q| [q[0], y_of(q[1])]).collect();
             let (y_lo, top) = if db {
-                // Room above the tallest for the wheels' names.
-                (-30.0, 4.5)
+                (-30.0, 0.5)
             } else {
-                (0.0, tallest * 1.15)
+                (0.0, tallest * 1.03)
             };
             let threshold = y_of(search.threshold);
+            let lines = wheel_lines(marked(s, opts), (x_lo, x_hi));
+            let names = WheelNames::reserve(ui, (i, view), opts.wheels);
+            // The period found, its dot and note; the note is hover only
+            // where the names are inside the plot, on its top.
+            let found = c.period.as_ref().map(|per| {
+                let x = per.period_s.log10();
+                let y = pts
+                    .iter()
+                    .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
+                    .map_or(0.0, |q| q[1]);
+                let mut t = secs(per.period_s);
+                if let Some(w) = &per.wheel {
+                    t += &format!(", {}", wheel_title(w));
+                }
+                ([x, y], t)
+            });
+            let hover_only = names.as_ref().is_some_and(|n| n.short);
+            let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
             let mut plot = base
+                .height(ui.available_height().max(40.0))
                 .x_grid_spacer(period_grid(ui.available_width()))
                 .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .default_x_bounds(x_lo, x_hi)
@@ -1090,35 +1109,32 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 plot.y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                     .y_axis_formatter(|m, _| plain(m.value, m.step_size))
             };
-            // The names stay clear of the tallest peak's label.
-            let label_y = if db { top } else { top * 0.97 };
-            plot.show(ui, |p| {
-                wheel_marks(p, marked(s, opts), (x_lo, x_hi), label_y, pal);
+            let resp = plot.show(ui, |p| {
+                wheel_marks(p, &lines, pal);
                 p.hline(
                     HLine::new("threshold", threshold)
                         .color(pal.text_secondary)
                         .style(dashed)
                         .width(1.0_f32),
                 );
+                // Over the lines, under the trace.
+                if let Some(n) = &names {
+                    n.inside(p, &lines, &pts, fill);
+                }
                 p.line(Line::new("score", pts.clone()).color(colour).width(1.5_f32));
-                if let Some(per) = &c.period {
-                    let x = per.period_s.log10();
-                    let y = pts
-                        .iter()
-                        .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
-                        .map_or(0.0, |q| q[1]);
-                    p.points(
-                        Points::new("peak", vec![[x, y]])
-                            .color(colour)
-                            .radius(3.5_f32),
-                    );
-                    let mut t = secs(per.period_s);
-                    if let Some(w) = &per.wheel {
-                        t += &format!(", {}", wheel_title(w));
+                if let Some((at, t)) = &found {
+                    p.points(Points::new("peak", vec![*at]).color(colour).radius(3.5_f32));
+                    if !hover_only {
+                        mark_label(p, *at, t.clone(), pal.text, false);
                     }
-                    mark_label(p, [x, y], t, pal.text, false);
                 }
             });
+            if let Some(n) = &names {
+                n.draw(ui, &resp.transform, &lines, &pts);
+            }
+            if hover_only {
+                point_hover(ui, &resp.transform, found, (i, view));
+            }
         }
         View::Cycle => {
             let Some(f) = &s.folds[i] else {
@@ -1468,7 +1484,6 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                     .small()
                     .color(pal.text_tertiary),
             );
-            let base = base.height(ui.available_height().max(40.0));
             let (x_lo, x_hi) = pts
                 .iter()
                 .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
@@ -1479,8 +1494,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
                     (lo.min(p[1]), hi.max(p[1]))
                 });
-            // Room above the tallest line for the wheels' names.
-            let top = y_hi + (y_hi - y_lo).max(0.5) * 0.25;
+            let top = y_hi + (y_hi - y_lo).max(0.5) * 0.05;
             let unit = match sp.unit {
                 _ if as_rate => " s/d",
                 "deg" => "°",
@@ -1489,35 +1503,55 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let size =
                 move |v: f64| format!("{}{unit}", timegrapher_core::timefreq::size_number(v));
             let peak = tallest_peak(&pts);
-            base.x_grid_spacer(period_grid(ui.available_width()))
+            let lines = wheel_lines(marked(s, opts), (x_lo, x_hi));
+            let names = WheelNames::reserve(ui, (i, view), opts.wheels);
+            let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
+            let tops = pts.clone();
+            // The tallest peak's dot and note; the note is hover only where
+            // the names are inside the plot, on its top.
+            let tallest = peak.map(|peak| {
+                (
+                    peak,
+                    format!(
+                        "tallest peak at {}: {}{}",
+                        secs(10f64.powf(peak[0])),
+                        size(10f64.powf(peak[1])),
+                        if as_rate { " peak to peak" } else { "" }
+                    ),
+                )
+            });
+            let hover_only = names.as_ref().is_some_and(|n| n.short);
+            let resp = base
+                .height(ui.available_height().max(40.0))
+                .x_grid_spacer(period_grid(ui.available_width()))
                 .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .y_grid_spacer(log_grid)
                 .y_axis_formatter(move |m, r| log_label(m, r, size))
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(y_lo, top)
                 .show(ui, |p| {
-                    wheel_marks(p, marked(s, opts), (x_lo, x_hi), top, pal);
+                    wheel_marks(p, &lines, pal);
+                    if let Some(n) = &names {
+                        n.inside(p, &lines, &tops, fill);
+                    }
                     p.line(Line::new("spectrum", pts).color(colour).width(1.5_f32));
-                    if let Some(peak) = peak {
+                    if let Some((at, t)) = &tallest {
                         p.points(
-                            Points::new("tallest", vec![peak])
+                            Points::new("tallest", vec![*at])
                                 .color(colour)
                                 .radius(3.5_f32),
                         );
-                        mark_label(
-                            p,
-                            peak,
-                            format!(
-                                "tallest peak at {}: {}{}",
-                                secs(10f64.powf(peak[0])),
-                                size(10f64.powf(peak[1])),
-                                if as_rate { " peak to peak" } else { "" }
-                            ),
-                            pal.text,
-                            false,
-                        );
+                        if !hover_only {
+                            mark_label(p, *at, t.clone(), pal.text, false);
+                        }
                     }
                 });
+            if let Some(n) = &names {
+                n.draw(ui, &resp.transform, &lines, &tops);
+            }
+            if hover_only {
+                point_hover(ui, &resp.transform, tallest, (i, view));
+            }
         }
     }
 }
@@ -1541,7 +1575,7 @@ pub struct Opts {
 
 /// What Wheel Periods does, for its hint.
 pub const WHEELS_HINT: &str = "Mark the period each of the calibre's wheels turns in, in \
-     a grey dotted line named beside it, and half of it fainter, where a wheel that is off centre \
+     a grey dotted line named above the plot, and half of it fainter, where a wheel that is off centre \
      shows twice a turn. With no calibre picked, or none of its wheels known, one minute and \
      one hour are marked in grey instead: periods alone, named after no wheel.";
 
@@ -1550,90 +1584,192 @@ fn marked(s: &Steadiness, opts: Opts) -> Option<&[Wheel]> {
     opts.wheels.then_some(&s.wheels[..])
 }
 
-/// The wheels' turns on a log10 period axis spanning `span`, in the
-/// wheels' own colour: a bold line and name at each wheel's period, and a
-/// fainter dashed one at half of it ("×2"), where a wheel that is off
-/// centre shows twice a turn. Names sit at height `label_y`. With no
-/// wheels, the reference periods in grey; with `None`, nothing.
-fn wheel_marks(
-    p: &mut egui_plot::PlotUi<'_>,
-    wheels: Option<&[Wheel]>,
-    (x_lo, x_hi): (f64, f64),
-    label_y: f64,
-    pal: &theme::Palette,
-) {
+/// What a line on the period axis marks: a wheel's turn, half of it (a
+/// wheel off centre shows twice a turn), or a reference period.
+#[derive(Clone, Copy, PartialEq)]
+enum Turn {
+    Wheel,
+    Twice,
+    Reference,
+}
+
+/// A line on the period axis (log10 seconds), its name and what its
+/// hover says.
+struct WheelLine {
+    x: f64,
+    turn: Turn,
+    name: String,
+    hover: String,
+}
+
+impl WheelLine {
+    /// A wheel's name is strong, a ×2 or a reference faint.
+    fn rank(&self) -> Rank {
+        if self.turn == Turn::Wheel {
+            Rank::Strong
+        } else {
+            Rank::Faint
+        }
+    }
+
+    /// Its line's colour: the wheels' grey, a ×2 fainter, a reference in
+    /// the tertiary grey.
+    fn ink(&self, pal: &theme::Palette) -> Color32 {
+        match self.turn {
+            Turn::Wheel => pal.wheel,
+            Turn::Twice => pal.wheel.gamma_multiply(0.6),
+            Turn::Reference => pal.text_tertiary,
+        }
+    }
+}
+
+/// The lines to mark on a period axis spanning `span`: each wheel's turn
+/// and half of it ("×2", where a wheel that is off centre shows twice a
+/// turn, unless another wheel turns there); with no wheels, the
+/// reference periods; with `None` (the marks off), nothing.
+fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelLine> {
     let inside = |x: f64| x > x_lo && x < x_hi;
     let Some(wheels) = wheels else {
-        return;
+        return Vec::new();
     };
     if wheels.is_empty() {
-        for r in reference_lines() {
-            let x = r.period_s.log10();
-            if inside(x) {
-                p.vline(
-                    VLine::new(r.label, x)
-                        .color(pal.text_tertiary)
-                        .width(1.25_f32),
-                );
-                p.text(
-                    Text::new("reference", PlotPoint::new(x, label_y), r.label)
-                        .color(pal.text_secondary)
-                        .anchor(egui::Align2::LEFT_TOP),
-                );
-            }
-        }
-        return;
+        return reference_lines()
+            .into_iter()
+            .map(|r| WheelLine {
+                x: r.period_s.log10(),
+                turn: Turn::Reference,
+                name: r.label.to_string(),
+                hover: r.label.to_string(),
+            })
+            .filter(|l| inside(l.x))
+            .collect();
     }
-    for (k, w) in wheels.iter().enumerate() {
-        // Two candidates of one name (the escape wheel at 15 and at 20
-        // teeth): the shorter one is labelled on its left, so the two
-        // names don't overlap.
-        let shorter_twin = wheels
-            .iter()
-            .enumerate()
-            .any(|(j, o)| j != k && o.name == w.name && o.period_s > w.period_s);
-        let x = w.period_s.log10();
-        if inside(x) {
-            p.vline(
-                VLine::new(w.name.clone(), x)
-                    .color(pal.wheel)
-                    .style(LineStyle::dotted_dense())
-                    .width(2.0_f32),
-            );
-            p.text(
-                Text::new("wheel", PlotPoint::new(x, label_y), wheel_title(&w.name))
-                    .color(pal.wheel)
-                    .anchor(if shorter_twin {
-                        egui::Align2::RIGHT_TOP
-                    } else {
-                        egui::Align2::LEFT_TOP
-                    }),
-            );
-        }
-        // Twice a turn, unless another wheel turns there.
+    let mut out = Vec::new();
+    for w in wheels {
+        let title = wheel_title(&w.name);
+        out.push(WheelLine {
+            x: w.period_s.log10(),
+            turn: Turn::Wheel,
+            name: title.clone(),
+            hover: format!("{title}: {}", secs(w.period_s)),
+        });
         let half = w.period_s / 2.0;
-        let x2 = half.log10();
-        let taken = wheels
+        if !wheels
             .iter()
-            .any(|o| (o.period_s / half - 1.0).abs() < 0.03);
-        if inside(x2) && !taken && !shorter_twin {
-            p.vline(
-                VLine::new(format!("{} ×2", w.name), x2)
-                    .color(pal.wheel.gamma_multiply(0.6))
-                    .style(LineStyle::dotted_loose())
-                    .width(1.25_f32),
-            );
-            p.text(
-                Text::new(
-                    "wheel ×2",
-                    PlotPoint::new(x2, label_y),
-                    format!("{} ×2", wheel_title(&w.name)),
-                )
-                .color(pal.wheel.gamma_multiply(0.8))
-                .anchor(egui::Align2::LEFT_TOP),
-            );
+            .any(|o| (o.period_s / half - 1.0).abs() < 0.03)
+        {
+            out.push(WheelLine {
+                x: half.log10(),
+                turn: Turn::Twice,
+                name: format!("{title} ×2"),
+                hover: format!("{title} ×2: {}", secs(half)),
+            });
         }
     }
+    out.retain(|l| inside(l.x));
+    out
+}
+
+/// The lines in the plot, under its trace: a wheel's dotted, a ×2's
+/// looser and fainter, a reference's solid. Their names are drawn by
+/// [`wheel_names`].
+fn wheel_marks(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::Palette) {
+    for l in lines {
+        let v = VLine::new(l.name.clone(), l.x).color(l.ink(pal));
+        p.vline(match l.turn {
+            Turn::Wheel => v.style(LineStyle::dotted_dense()).width(2.0_f32),
+            Turn::Twice => v.style(LineStyle::dotted_loose()).width(1.25_f32),
+            Turn::Reference => v.width(1.25_f32),
+        });
+    }
+}
+
+/// Where the wheels' names go on a period plot, by the rules every named
+/// line follows ([`marks`]): in a lane of two rows above the plot, or
+/// inside along its top where the plot is short.
+struct WheelNames {
+    id: egui::Id,
+    short: bool,
+}
+
+impl WheelNames {
+    /// Room for the names above a plot, kept whenever the marks are on so
+    /// the plot never jumps; on a plot that would be short with it, none,
+    /// the names going inside. Call before the plot is laid out.
+    fn reserve(ui: &mut egui::Ui, id: impl std::hash::Hash, on: bool) -> Option<Self> {
+        if !on {
+            return None;
+        }
+        let id = ui.id().with(("wheel names", id));
+        let room = marks::LANE + marks::LANE_GAP;
+        let short = marks::short(ui, id.with("short"), ui.available_height() - room);
+        if !short {
+            ui.add_space(room);
+        }
+        Some(Self { id, short })
+    }
+
+    /// The names inside a short plot, as an item of it: added after the
+    /// lines and before the trace (`tops`).
+    fn inside(
+        &self,
+        p: &mut egui_plot::PlotUi<'_>,
+        lines: &[WheelLine],
+        tops: &[[f64; 2]],
+        fill: Color32,
+    ) {
+        if self.short {
+            p.add(marks::InsideNames {
+                base: egui_plot::PlotItemBase::new("wheel names".into()),
+                names: names_of(lines),
+                tops: tops.to_vec(),
+                fill,
+            });
+        }
+    }
+
+    /// The names in the lane, or the hovers of those inside, once the plot
+    /// (`t`) is drawn.
+    fn draw(
+        &self,
+        ui: &egui::Ui,
+        t: &egui_plot::PlotTransform,
+        lines: &[WheelLine],
+        tops: &[[f64; 2]],
+    ) {
+        let frame = *t.frame();
+        if self.short {
+            let placed = marks::inside_placed(ui, t, &names_of(lines), tops);
+            let hover_of = |name: &str| {
+                lines
+                    .iter()
+                    .find(|l| l.name == name)
+                    .map_or_else(String::new, |l| l.hover.clone())
+            };
+            marks::inside_hovers(ui, frame, &placed, &hover_of, self.id);
+        } else {
+            let pal = theme::pal(ui);
+            let named: Vec<marks::Named> = lines
+                .iter()
+                .map(|l| marks::Named {
+                    x: t.position_from_point_x(l.x),
+                    name: l.name.clone(),
+                    rank: l.rank(),
+                    ink: l.ink(pal),
+                    hover: l.hover.clone(),
+                })
+                .collect();
+            marks::lane_above(ui, frame, &named, self.id);
+        }
+    }
+}
+
+/// Each line's place, name and rank, for [`marks`].
+fn names_of(lines: &[WheelLine]) -> Vec<(f64, String, Rank)> {
+    lines
+        .iter()
+        .map(|l| (l.x, l.name.clone(), l.rank()))
+        .collect()
 }
 
 /// A note beside a marked point, on whichever side keeps it inside the
@@ -1677,6 +1813,23 @@ fn mark_label(
             .color(color)
             .anchor(egui::Align2([h, v])),
     );
+}
+
+/// A marked point's note as its hover, where there is no room to show it:
+/// the dot (`found`, plot coordinates) says the note when pointed at.
+fn point_hover(
+    ui: &egui::Ui,
+    t: &egui_plot::PlotTransform,
+    found: Option<([f64; 2], String)>,
+    id: impl std::hash::Hash,
+) {
+    if let Some((at, note)) = found {
+        let dot = t.position_from_point(&PlotPoint::new(at[0], at[1]));
+        if t.frame().contains(dot) {
+            let hit = egui::Rect::from_center_size(dot, egui::vec2(12.0, 12.0));
+            marks::hover(ui, ui.id().with(("point note", id)), hit, note);
+        }
+    }
 }
 
 /// A plain number for a linear axis, with no "-0.0".

@@ -26,6 +26,7 @@ mod guided;
 mod help;
 mod icons;
 mod isochronism;
+mod marks;
 mod photos;
 mod profiles;
 mod pump;
