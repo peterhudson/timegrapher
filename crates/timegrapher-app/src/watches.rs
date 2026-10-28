@@ -914,10 +914,14 @@ pub fn take_cells(t: &Take, means: Option<[Option<f64>; 3]>) -> [String; 7] {
 fn figures_hover(count: Option<usize>, reserve: bool) -> String {
     match count {
         Some(0) => String::new(),
-        Some(6) => "\n\nRate, Amplitude and Beat Error: Mean of the six positions.".into(),
         Some(1) => "\n\nRate, Amplitude and Beat Error: the one position measured.".into(),
         Some(n) => {
-            format!("\n\nRate, Amplitude and Beat Error: Mean of the {n} positions measured.")
+            let of = if n == 6 {
+                "six positions".to_string()
+            } else {
+                format!("{n} positions measured")
+            };
+            format!("\n\nRate, Amplitude and Beat Error: Mean of the {of}.")
         }
         None if reserve => {
             "\n\nRate, Amplitude and Beat Error: hour by hour in the take: open it.".into()

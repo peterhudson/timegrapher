@@ -2093,6 +2093,9 @@ pub struct TimegrapherApp {
     /// The full-wind test's results, loaded for the next test to run as
     /// its 24 hour half.
     guided_earlier: Option<guided::FullWind>,
+    /// The watch and Wind setting `guided_earlier` was found for: picked
+    /// otherwise, it is searched for again.
+    guided_earlier_for: Option<(Option<String>, bool)>,
     /// For a watch, the next Positions Test is its 24 hours after half,
     /// set against the watch's own full-wind test (Wind on its toolbar).
     guided_after: bool,
@@ -2662,6 +2665,7 @@ impl TimegrapherApp {
             guided_unused: Vec::new(),
             guided_measured: Vec::new(),
             guided_earlier: None,
+            guided_earlier_for: None,
             guided_after: false,
             test_ready: None,
             stop_test_ask: false,
@@ -7784,7 +7788,7 @@ impl TimegrapherApp {
         };
         // A test set up or under way is named, with how it stands.
         let test = if let Some(kind) = self.ready_test() {
-            Some((kind, "Ready, not started".to_string()))
+            Some((kind, self.state_words().to_string()))
         } else if self.reserve_running() {
             Some((NewTake::PowerReserve, self.state_words().to_string()))
         } else if let Some(t) = self.guided.as_ref().filter(|_| self.test_listening()) {
@@ -7816,6 +7820,7 @@ impl TimegrapherApp {
     /// Whether the take on show is listening, stopped or opened.
     fn state_words(&self) -> &'static str {
         match self.session.state() {
+            session::State::Idle if self.ready_test().is_some() => "Ready, not started",
             session::State::Idle => "Not Started",
             session::State::Listening => "Listening",
             session::State::Paused { .. } => "Stopped",
@@ -8910,6 +8915,7 @@ impl TimegrapherApp {
         if kind == NewTake::Positions {
             // Where the test begins.
             self.set_position(guided::ORDER[0]);
+            self.guided_earlier_for = None;
             self.find_full_wind();
             self.reveal_pane(Pane::PositionsTest);
         } else {
@@ -8938,8 +8944,9 @@ impl TimegrapherApp {
             && self.guided_earlier.is_none())
         .then(|| {
             format!(
-                "{} has no Full Wind Positions Test from 12 to 36 hours ago.",
-                w.watch.name
+                "{} has no Full Wind Positions Test from {}.",
+                w.watch.name,
+                guided::full_wind_ago()
             )
         })
     }
@@ -8949,6 +8956,7 @@ impl TimegrapherApp {
         let Some(kind) = self.ready_test() else {
             return;
         };
+        self.find_full_wind();
         if self.start_test_why_not().is_some() {
             return;
         }
@@ -8960,16 +8968,23 @@ impl TimegrapherApp {
     }
 
     /// For a watch, the half the next Positions Test is set against: none
-    /// for a full-wind test, else the watch's newest full-wind test from 12
-    /// to 36 hours ago, kept in its takes.
+    /// for a full-wind test, else the watch's newest full-wind test from
+    /// [`guided::FULL_WIND_HOURS`] ago, kept in its takes. Searched again
+    /// only when the watch or Wind has changed since; with no watch, the
+    /// half is what Load Full-Wind Results… loads.
     fn find_full_wind(&mut self) {
-        let Some(dir) = self.open_watch().map(|e| e.dir.join(library::TAKES)) else {
+        if self.test_ready != Some(NewTake::Positions) {
             return;
-        };
-        self.guided_earlier = if self.guided_after {
-            guided::full_wind_in(&dir, guided::unix_now())
-        } else {
-            None
+        }
+        let key = (self.watch_open.clone(), self.guided_after);
+        if self.guided_earlier_for.as_ref() == Some(&key) {
+            return;
+        }
+        self.guided_earlier_for = Some(key);
+        let dir = self.open_watch().map(|e| e.dir.join(library::TAKES));
+        self.guided_earlier = match dir {
+            Some(dir) if self.guided_after => guided::full_wind_in(&dir, guided::unix_now()),
+            _ => None,
         };
     }
 
@@ -13110,10 +13125,8 @@ impl TimegrapherApp {
                 ),
             )
         } else {
-            let n = self
-                .guided
-                .as_ref()
-                .map_or(0, |t| t.readings_so_far().len());
+            // Each position measured, read or not: what Stop Test keeps.
+            let n = self.guided.as_ref().map_or(0, |t| t.stretches().len());
             let what = match n {
                 0 => "The take so far is kept, with no position measured yet".to_string(),
                 1 => "The 1 position measured so far is kept".to_string(),
@@ -13267,8 +13280,11 @@ impl TimegrapherApp {
                 theme::tool_choice(
                     ui,
                     "Wind",
-                    "When the test is run: just after a full wind, or 24 hours after it, set \
-                     against the watch's full-wind test from 12 to 36 hours ago",
+                    &format!(
+                        "When the test is run: just after a full wind, or 24 hours after it, \
+                         set against the watch's full-wind test from {}",
+                        guided::full_wind_ago()
+                    ),
                     &mut self.guided_after,
                     &[
                         (
@@ -16989,6 +17005,8 @@ impl TimegrapherApp {
     /// bottom and the readings and panes between, all on the window colour
     /// with the content in cards.
     fn panels(&mut self, ctx: &egui::Context) {
+        // A test set up against another watch than the one picked now.
+        self.find_full_wind();
         let pal = theme::palette(ctx.style().visuals.dark_mode);
         let bar = egui::Frame::new().fill(pal.window);
         egui::TopBottomPanel::top("menus")
@@ -21704,6 +21722,83 @@ mod tests {
         );
         // With no watch, nothing holds Start Test back.
         assert_eq!(app.start_test_why_not(), None);
+    }
+
+    /// A Positions Test set up for 24 Hours After is set against the
+    /// picked watch's own full-wind test: picking another watch while it
+    /// waits finds that watch's, and Start Test follows.
+    #[test]
+    fn a_ready_test_finds_the_picked_watchs_full_wind() {
+        let base = std::env::temp_dir().join(format!("tg-app-ready-wind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Seiko 5")).unwrap();
+        lib.add(&library::Watch::new("Daytona")).unwrap();
+        let seiko = lib.find("Seiko 5").unwrap().watch.id.clone();
+        let daytona = lib.find("Daytona").unwrap();
+        let (daytona, take) = (
+            daytona.watch.id.clone(),
+            daytona.dir.join(library::TAKES).join("full wind"),
+        );
+        drop(lib);
+        // Daytona's full-wind test, begun 31 h ago.
+        std::fs::create_dir_all(&take).unwrap();
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: String::new(),
+            began_unix: guided::unix_now() - 31.0 * 3600.0,
+            watch: "Daytona".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![guided::KeptRow {
+                position: "DU".into(),
+                rate_s_per_day: Some(4.0),
+                amplitude_deg: Some(290.0),
+                beat_error_ms: Some(0.3),
+            }],
+        };
+        std::fs::write(take.join(guided::RESULTS_FILE), full.to_json()).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root));
+        app.pick_watch(&seiko);
+        app.guided_after = true;
+        app.new_take(NewTake::Positions, false);
+        assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        let why = app.start_test_why_not();
+        assert!(
+            why.as_deref()
+                .is_some_and(|w| w.starts_with("Seiko 5 has no")),
+            "{why:?}"
+        );
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let frame = |app: &mut TimegrapherApp| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| app.panels(ctx));
+        };
+        app.pick_watch(&daytona);
+        frame(&mut app);
+        assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        assert_eq!(app.start_test_why_not(), None);
+        assert_eq!(
+            app.guided_earlier.as_ref().map(|f| f.watch.as_str()),
+            Some("Daytona")
+        );
+        // And back: Seiko 5 has none.
+        app.pick_watch(&seiko);
+        frame(&mut app);
+        assert!(app.start_test_why_not().is_some());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// The sixth position measured and read, the Positions Test ends by
