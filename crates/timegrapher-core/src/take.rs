@@ -427,6 +427,48 @@ pub fn stored_correction(file: &Path) -> Result<Option<crate::clockstore::Device
     Ok(crate::clockstore::recorded_device(file).and_then(|d| store.get(&d).cloned()))
 }
 
+/// The correction to apply to a recording: `card_ppm` when given, else
+/// the one stored for `device`, else the one stored for the input the
+/// recording `file` says it was made on ([`stored_correction`]). The text
+/// says where it came from.
+pub fn correction(
+    file: &Path,
+    device: Option<&str>,
+    card_ppm: Option<f64>,
+) -> Result<Option<(f64, String)>, String> {
+    if let Some(p) = card_ppm {
+        return Ok(Some((p, "given with --card-ppm".into())));
+    }
+    match device {
+        Some(d) => match crate::clockstore::ClockStore::load()?.get(d) {
+            Some(e) => Ok(Some((e.ppm, e.source_text()))),
+            None => Err(format!(
+                "no clock correction stored for '{d}'; see `timegrapher clock list`"
+            )),
+        },
+        None => Ok(stored_correction(file)?.map(|e| (e.ppm, e.source_text()))),
+    }
+}
+
+/// The sound card's error read from the USB lines in the first of
+/// `files` ([`clock::usb_lines`]), with its source text; `None` when the
+/// recording has none.
+pub fn usb(files: &[PathBuf]) -> Result<Option<(f64, String)>, String> {
+    Ok(clock::usb_lines(files)?.map(|c| c.correction()))
+}
+
+/// [`usb`]'s rate alone, as [`open_entry`] and [`measure_entry`] take it.
+pub fn usb_ppm(files: &[PathBuf]) -> Result<Option<f64>, String> {
+    Ok(usb(files)?.map(|(ppm, _)| ppm))
+}
+
+/// [`correction`]'s rate alone for a take with session file `m`, as
+/// [`open_entry`] and [`measure_entry`] take it: its `card_ppm`, else the
+/// one stored for the input its first recording `first` was made on.
+pub fn correction_ppm(m: &Manifest, first: &Path) -> Result<Option<f64>, String> {
+    Ok(correction(first, None, m.card_ppm)?.map(|(ppm, _)| ppm))
+}
+
 /// How an entry of a take is read, as the caller has resolved it.
 pub struct EntrySettings {
     /// The analysis settings: beat rate, lift angle, whether the lift is
@@ -686,6 +728,23 @@ pub fn measure_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A take's own `card_ppm` is its correction, said as given, before
+    /// any stored one is looked for.
+    #[test]
+    fn a_takes_card_ppm_is_its_correction() {
+        let m = Manifest {
+            card_ppm: Some(-12.5),
+            ..Default::default()
+        };
+        let first = Path::new("no-such-take/audio-001.wav");
+        assert_eq!(correction_ppm(&m, first).unwrap(), Some(-12.5));
+        let (ppm, from) = correction(first, Some("no such device"), Some(3.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(ppm, 3.0);
+        assert_eq!(from, "given with --card-ppm");
+    }
 
     /// An entry whose stretch starts where it ends has nothing to read;
     /// one with a stretch, or no times at all, has.

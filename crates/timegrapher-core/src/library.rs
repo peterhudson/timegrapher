@@ -528,17 +528,9 @@ fn measure_take(dir: &Path) -> Result<Reading, String> {
         card_clock: false,
         settle_s: None,
     };
-    let read = crate::take::measure_entry(
-        dir,
-        &m,
-        e,
-        &settings,
-        |files| Ok(crate::clock::usb_lines(files)?.map(|u| u.ppm)),
-        |first| match m.card_ppm {
-            Some(p) => Ok(Some(p)),
-            None => Ok(crate::take::stored_correction(first)?.map(|c| c.ppm)),
-        },
-    )?;
+    let read = crate::take::measure_entry(dir, &m, e, &settings, crate::take::usb_ppm, |first| {
+        crate::take::correction_ppm(&m, first)
+    })?;
     let x = &read.measurement;
     Ok(Reading {
         position: e.position.clone(),
@@ -1848,6 +1840,10 @@ mod tests {
             .unwrap()
             .expect("lines found");
         assert!((usb.ppm - 20.0).abs() < 0.5, "{}", usb.ppm);
+        // Core's reading of them, for every surface, is the same.
+        let files = [dir.join("audio-001.wav")];
+        assert_eq!(crate::take::usb_ppm(&files).unwrap(), Some(usb.ppm));
+        assert_eq!(crate::take::usb(&files).unwrap(), Some(usb.correction()));
         let want = crate::clockstore::correct_rate(3.5, usb.ppm);
         assert_eq!(a.rate_corrected_s_per_day, Some(want));
         // Without a clock log the USB lines still set it, as reading the

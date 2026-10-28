@@ -339,33 +339,10 @@ pub fn resolve(
     Ok(fit.map(|fit| AppliedClock { fit, ppm, from }))
 }
 
-/// The correction to apply to a recording: `--card-ppm`, else the stored
-/// one for `--device`, else the stored one for the input the recording
-/// says it was made on. The text says where it came from.
-pub fn correction(
-    file: &Path,
-    device: Option<&str>,
-    card_ppm: Option<f64>,
-) -> Result<Option<(f64, String)>, String> {
-    if let Some(p) = card_ppm {
-        return Ok(Some((p, "given with --card-ppm".into())));
-    }
-    match device {
-        Some(d) => match ClockStore::load()?.get(d) {
-            Some(e) => Ok(Some((e.ppm, e.source_text()))),
-            None => Err(format!(
-                "no clock correction stored for '{d}'; see `timegrapher clock list`"
-            )),
-        },
-        None => Ok(take::stored_correction(file)?.map(|e| (e.ppm, e.source_text()))),
-    }
-}
-
-/// The sound card's error read from the USB lines in the first of
-/// `files`, with its source text; `None` when the recording has none.
-pub fn usb(files: &[std::path::PathBuf]) -> Result<Option<(f64, String)>, String> {
-    Ok(timegrapher_core::clock::usb_lines(files)?.map(|c| c.correction()))
-}
+/// The correction to apply to a recording, and the sound card's error
+/// read from its USB lines, each with its source text, as core reads
+/// them for every surface.
+pub use take::{correction, usb};
 
 #[cfg(test)]
 #[expect(
