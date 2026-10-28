@@ -76,7 +76,7 @@ enum Slot {
 /// Seconds of listening before the input's clock, timed against the
 /// computer's, is offered to keep: the twenty minutes `timegrapher clock
 /// measure` takes by default. It is timed again each minute after.
-const CLOCK_MEASURE_S: f64 = 1200.0;
+const CLOCK_MEASURE_S: f64 = timegrapher_core::clock::MEASURE_S;
 
 /// How far the clock timed while listening may be from the one kept for
 /// the input's name before the Rate card says so and offers the new one.

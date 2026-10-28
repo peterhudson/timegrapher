@@ -289,7 +289,7 @@ the timegrapher app draws them:
   Wavelet Map views draw each series' size at each period and time, as the
   app's panes do: viridis from the core's table, on the colour scale the
   document gives each map (Log Scale switches it to the log one), empty
-  where nothing was read, with the named wheels' turns (or 1 min and 1 h) dashed across them;
+  where nothing was read, with the named wheels' turns (or 1 min and 1 h) dotted across them;
   pointing at a map reads a cell under it. The model reads each map's
   outline in `time_frequency_maps` (its periods, times, cells read and
   scale) rather than its cells, and the coherences without their
@@ -304,13 +304,20 @@ the scale. Beat error is shown as a size, without a sign, because which
 beat counts as the Tick can change between runs of the same recording.
 A period axis is marked, as in the app, at times a watchmaker reads (5 s,
 1 min, 1 h, 24 h), as many as have room, from the same list in the core.
-The Periods and FFT views and the maps mark the named wheels' turns in
-the wheels' own green, from the core's palette, as the app does. With no
-calibre, no wheel is named, and they mark 1 min and 1 h instead, the
-document's `reference_lines`, in grey: periods alone, named after no
-wheel. A Wheel Periods switch beside each of those views' own switch
+The Periods and FFT views and the maps mark the named wheels' turns
+with a grey dotted line, from the core's palette, as the app does, and
+the Periods and FFT views mark half a turn fainter (a wheel off centre
+shows twice a turn). With no calibre, no wheel is named, and they mark
+1 min and 1 h instead, the document's `reference_lines`, with a solid
+grey line on Periods and FFT: periods alone, named after no wheel. The lines are named by the
+app's rules for named lines: above the Periods and FFT plots in a lane of
+two rows, a wheel's name placed first, a name that would touch another a
+row out and slid along with a leader where that row is taken, or inside
+along the plot's top when it is short; beside a map, at its right, by the
+wheel's short name ("4th Wheel"). The app's tests and the view's run the
+same cases for these rules. A Wheel Periods switch beside each of those views' own switch
 turns the marks off and on, as in the app.
-Nothing is drawn outside a chart's plot. Hover over a chart over time to read its
+Nothing but the lines' names is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results
 as text.

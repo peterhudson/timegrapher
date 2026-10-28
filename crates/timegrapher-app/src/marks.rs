@@ -643,12 +643,268 @@ pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::
     on
 }
 
+/// How far a note beside a point stands off from it, each way, points.
+const NOTE_OFF: f32 = 8.0;
+
+/// The places a note `size` big may take beside a point (`dot`, screen),
+/// in the order they are tried: above right, above left, below right,
+/// below left, then up a row at a time, right and left, to the plot's
+/// `top`.
+pub fn beside_spots(dot: egui::Pos2, size: egui::Vec2, top: f32) -> Vec<egui::Rect> {
+    let (w, h) = (size.x, size.y);
+    let at = |dx: f32, dy: f32| egui::Rect::from_min_size(dot + egui::vec2(dx, dy), size);
+    let (right, left) = (NOTE_OFF, -NOTE_OFF - w);
+    let (above, below) = (-NOTE_OFF - h, NOTE_OFF);
+    let mut spots = vec![
+        at(right, above),
+        at(left, above),
+        at(right, below),
+        at(left, below),
+    ];
+    let mut up = above - ROW_H;
+    while dot.y + up >= top {
+        spots.extend([at(right, up), at(left, up)]);
+        up -= ROW_H;
+    }
+    spots
+}
+
+/// Whether a trace (`pts`, screen) crosses `r`: any of its segments
+/// passes through it, clipped as Liang and Barsky do.
+pub fn crosses(r: egui::Rect, pts: &[egui::Pos2]) -> bool {
+    let through = |a: egui::Pos2, b: egui::Pos2| {
+        let d = b - a;
+        let (mut t0, mut t1) = (0.0_f32, 1.0_f32);
+        for (p, q) in [
+            (-d.x, a.x - r.left()),
+            (d.x, r.right() - a.x),
+            (-d.y, a.y - r.top()),
+            (d.y, r.bottom() - a.y),
+        ] {
+            if p == 0.0 {
+                if q < 0.0 {
+                    return false;
+                }
+            } else {
+                let t = q / p;
+                if p < 0.0 {
+                    t0 = t0.max(t);
+                } else {
+                    t1 = t1.min(t);
+                }
+            }
+        }
+        t0 <= t1
+    };
+    match pts {
+        [] => false,
+        [p] => r.contains(*p),
+        _ => pts.windows(2).any(|s| through(s[0], s[1])),
+    }
+}
+
+/// Which of `spots` a note takes: the one it took last frame (`was`)
+/// while that is still `clear`, so it doesn't hop as the trace moves a
+/// little, else the first that is; none where none is.
+pub fn beside_place(
+    spots: &[egui::Rect],
+    clear: &dyn Fn(egui::Rect) -> bool,
+    was: Option<u8>,
+) -> Option<u8> {
+    if was.is_some_and(|w| spots.get(w as usize).is_some_and(|r| clear(*r))) {
+        return was;
+    }
+    (0..spots.len()).find(|&i| clear(spots[i])).map(|i| i as u8)
+}
+
+/// The room a note beside a point takes above it: its row and its
+/// stand-off, and a little air.
+const NOTE_ROOM: f32 = NOTE_OFF + ROW_H + 4.0;
+
+/// The top of a plot's y range (from `lo`, at least `top`) that leaves a
+/// note's room clear above the trace's highest point (at `y`) on a plot
+/// `h` points tall, so a note always has a row the trace doesn't cross:
+/// a plot's tallest peak would otherwise touch its top.
+pub fn room_above(lo: f64, y: f64, top: f64, h: f32) -> f64 {
+    let r = f64::from(NOTE_ROOM / h.max(2.0 * NOTE_ROOM));
+    top.max((y - lo * r) / (1.0 - r))
+}
+
+/// A marked point's note (a plot's tallest peak, the lag a series
+/// repeats at, the period found), drawn over the plot after it is shown:
+/// the dot (`at`, plot coordinates) stays on the trace, and the note goes
+/// on a plate of `fill` (80% of the plot's background) in the nearest
+/// clear space [`beside_place`] finds, joined to the dot by a thin
+/// leader. Clear is inside the plot, not crossed by the trace (`trace`,
+/// plot coordinates) and off `avoid` (other notes on the plot, screen).
+/// On a `short` plot, or where nothing is clear, the note is the dot's
+/// hover. `id` keeps the place it took.
+#[allow(clippy::too_many_arguments)]
+pub fn beside(
+    ui: &egui::Ui,
+    t: &egui_plot::PlotTransform,
+    at: [f64; 2],
+    note: &str,
+    trace: &[[f64; 2]],
+    avoid: &[egui::Rect],
+    fill: Color32,
+    short: bool,
+    id: egui::Id,
+) {
+    let frame = *t.frame();
+    let dot = t.position_from_point(&egui_plot::PlotPoint::new(at[0], at[1]));
+    if !frame.contains(dot) {
+        return;
+    }
+    let pal = theme::pal(ui);
+    let mut job = egui::text::LayoutJob::single_section(
+        note.to_string(),
+        egui::TextFormat {
+            font_id: egui::FontId::proportional(NAME_SIZE),
+            color: pal.text,
+            ..Default::default()
+        },
+    );
+    job.wrap.max_rows = 1;
+    let g = ui.fonts_mut(|f| f.layout_job(job));
+    let size = egui::vec2(g.size().x + 6.0, ROW_H);
+    let pts: Vec<egui::Pos2> = trace
+        .iter()
+        .map(|p| t.position_from_point(&egui_plot::PlotPoint::new(p[0], p[1])))
+        .collect();
+    let spots = beside_spots(dot, size, frame.top());
+    let inner = frame.shrink(1.0);
+    let clear = |r: egui::Rect| {
+        inner.contains_rect(r)
+            && !crosses(r.expand(2.0), &pts)
+            && !avoid.iter().any(|a| a.intersects(r))
+    };
+    let was = ui.data(|d| d.get_temp::<Option<u8>>(id)).flatten();
+    let place = if short {
+        None
+    } else {
+        beside_place(&spots, &clear, was)
+    };
+    ui.data_mut(|d| d.insert_temp(id, place));
+    let Some(k) = place else {
+        let hit = egui::Rect::from_center_size(dot, egui::vec2(12.0, 12.0));
+        return hover(ui, id.with("hover"), hit, note);
+    };
+    let rect = spots[k as usize];
+    let painter = ui.painter_at(frame);
+    // The leader, from the dot's edge to the plate's nearest point.
+    let near = rect.clamp(dot);
+    let d = near - dot;
+    if d.length() > 4.0 {
+        painter.line_segment(
+            [dot + d.normalized() * 4.0, near],
+            egui::Stroke::new(1.0_f32, pal.text_secondary),
+        );
+    }
+    painter.rect_filled(rect, 3.0, fill);
+    painter.galley(
+        egui::pos2(rect.left() + 3.0, rect.center().y - g.size().y / 2.0),
+        g,
+        Color32::PLACEHOLDER,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const S: Rank = Rank::Strong;
     const F: Rank = Rank::Faint;
+
+    /// The cases in marks_cases.json, which the MCP view's tests run on
+    /// its copy of these rules too: each gives the places these rules
+    /// give.
+    #[test]
+    fn the_shared_cases_place_as_given() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("marks_cases.json")).expect("marks_cases.json");
+        let f = |v: &serde_json::Value| v.as_f64().expect("a number") as f32;
+        let names = |c: &serde_json::Value| -> Vec<(f32, f32, Rank)> {
+            c["names"]
+                .as_array()
+                .expect("names")
+                .iter()
+                .map(|n| {
+                    let rank = if n[2] == "faint" { F } else { S };
+                    (f(&n[0]), f(&n[1]), rank)
+                })
+                .collect()
+        };
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-3;
+        let list = |k: &str| cases[k].as_array().expect(k).clone();
+        for c in list("place") {
+            let was: Vec<u8> = c["was"]
+                .as_array()
+                .expect("was")
+                .iter()
+                .map(|r| r.as_u64().expect("a row") as u8)
+                .collect();
+            let got = place(&names(&c), f(&c["left"]), f(&c["right"]), &was);
+            let want = c["at"].as_array().expect("at");
+            assert_eq!(got.len(), want.len(), "{}", c["case"]);
+            for (g, w) in got.iter().zip(want) {
+                assert!(
+                    close(g.0, f(&w[0])) && u64::from(g.1) == w[1],
+                    "{}: {got:?}",
+                    c["case"]
+                );
+            }
+        }
+        for c in list("place_row") {
+            let got = place_row(&names(&c), f(&c["left"]), f(&c["right"]));
+            let want: Vec<f32> = c["at"].as_array().expect("at").iter().map(f).collect();
+            assert!(
+                got.len() == want.len() && got.iter().zip(&want).all(|(g, w)| close(*g, *w)),
+                "{}: {got:?}",
+                c["case"]
+            );
+        }
+        for c in list("inside") {
+            let facts = match c["facts"].as_array() {
+                Some(b) => (f(&b[0]), f(&b[1])),
+                None => (f32::NEG_INFINITY, f32::NEG_INFINITY),
+            };
+            let trace: Vec<(f32, f32)> = c["trace"]
+                .as_array()
+                .expect("trace")
+                .iter()
+                .map(|s| (f(&s[0]), f(&s[1])))
+                .collect();
+            let clear = |a: f32, b: f32| trace.iter().all(|&(lo, hi)| b < lo || a > hi);
+            let got = inside(&names(&c), f(&c["left"]), f(&c["right"]), facts, &clear);
+            let want: Vec<Option<f32>> = c["at"]
+                .as_array()
+                .expect("at")
+                .iter()
+                .map(|v| v.as_f64().map(|v| v as f32))
+                .collect();
+            assert!(
+                got.len() == want.len()
+                    && got.iter().zip(&want).all(|(g, w)| match (g, w) {
+                        (Some(g), Some(w)) => close(*g, *w),
+                        (None, None) => true,
+                        _ => false,
+                    }),
+                "{}: {got:?}",
+                c["case"]
+            );
+        }
+        for c in list("stack") {
+            let ys: Vec<f32> = c["ys"].as_array().expect("ys").iter().map(f).collect();
+            let got = stack(&ys, f(&c["top"]), f(&c["bottom"]));
+            let want: Vec<f32> = c["at"].as_array().expect("at").iter().map(f).collect();
+            assert!(
+                got.len() == want.len() && got.iter().zip(&want).all(|(g, w)| close(*g, *w)),
+                "{}: {got:?}",
+                c["case"]
+            );
+        }
+    }
 
     /// Names in a lane: centred on their marks, out a row where they would
     /// touch, slid along where the second row is taken, inside the plot,
@@ -866,5 +1122,66 @@ mod tests {
             place_row(&[(470.0, 40.0, S), (490.0, 40.0, S)], 0.0, 500.0),
             vec![450.0, 398.0]
         );
+    }
+
+    /// A note beside a point: tried above right first, then round the
+    /// point and a row up; never where the trace crosses it; and kept
+    /// where it was while that stays clear, though an earlier place has
+    /// come clear.
+    #[test]
+    fn a_point_note_goes_in_the_nearest_clear_space_and_stays() {
+        let dot = egui::pos2(100.0, 100.0);
+        let size = egui::vec2(40.0, ROW_H);
+        let spots = beside_spots(dot, size, 0.0);
+        assert_eq!(spots[0].min, egui::pos2(108.0, 100.0 - 8.0 - ROW_H));
+        assert_eq!(spots[1].max.x, 92.0);
+        assert_eq!(spots[2].min, egui::pos2(108.0, 108.0));
+        assert_eq!(spots[3].min.y, 108.0);
+        assert_eq!(spots[4].min.y, spots[0].min.y - ROW_H);
+        // Up a row at a time, right and left, as far as the plot's top.
+        assert_eq!(spots.len(), 4 + 2 * 5);
+        assert!(spots[13].min.y >= 0.0);
+
+        // A trace rising to the right through the dot crosses above right
+        // and below left; the note goes above left.
+        let trace = [egui::pos2(0.0, 200.0), dot, egui::pos2(200.0, 0.0)];
+        assert!(crosses(spots[0], &trace));
+        assert!(!crosses(spots[1], &trace));
+        assert!(crosses(spots[3], &trace));
+        let clear = |r: egui::Rect| !crosses(r, &trace);
+        assert_eq!(beside_place(&spots, &clear, None), Some(1));
+
+        // Taken below right last frame and still clear there: it stays.
+        assert_eq!(beside_place(&spots, &clear, Some(2)), Some(2));
+        // Where the trace now crosses its place, it moves.
+        assert_eq!(beside_place(&spots, &clear, Some(0)), Some(1));
+        // Nowhere clear: none, and the note is the dot's hover.
+        assert_eq!(beside_place(&spots, &|_| false, Some(1)), None);
+    }
+
+    /// A trace crosses a note's place only where one of its segments
+    /// passes through it, not where it passes by.
+    #[test]
+    fn a_trace_crosses_a_place_only_through_it() {
+        let r = egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(20.0, 20.0));
+        let by = [egui::pos2(0.0, 25.0), egui::pos2(30.0, 25.0)];
+        let through = [egui::pos2(0.0, 15.0), egui::pos2(30.0, 15.0)];
+        let corner = [egui::pos2(0.0, 0.0), egui::pos2(30.0, 30.0)];
+        let flat_inside = [egui::pos2(12.0, 12.0), egui::pos2(18.0, 12.0)];
+        assert!(!crosses(r, &by));
+        assert!(crosses(r, &through));
+        assert!(crosses(r, &corner));
+        assert!(crosses(r, &flat_inside));
+        assert!(!crosses(r, &[]));
+    }
+
+    /// A plot keeps a note's room above its marked point: the point sits
+    /// that far below the top, and a top already higher stays.
+    #[test]
+    fn a_plot_keeps_room_above_its_marked_point() {
+        let top = room_above(0.0, 10.0, 10.3, 200.0);
+        let px = (top - 10.0) / top * 200.0;
+        assert!((px - f64::from(NOTE_ROOM)).abs() < 1e-3, "{px}");
+        assert_eq!(room_above(0.0, 10.0, 20.0, 200.0), 20.0);
     }
 }

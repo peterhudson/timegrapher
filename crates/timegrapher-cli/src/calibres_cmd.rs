@@ -9,6 +9,7 @@ use serde_json::json;
 use timegrapher_core::calibre_store::{self, Catalog, Entry, Origin, UserCalibres};
 use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::periodicity::{Component, Wheel};
+use timegrapher_core::steadiness;
 
 /// Lift angle when neither `--lift` nor the calibre gives one, degrees.
 pub use timegrapher_core::take::DEFAULT_LIFT_DEG;
@@ -71,10 +72,7 @@ fn wheels(train: &Train, bph: u32) -> Result<Vec<Wheel>, String> {
 /// its period, as the period search does, or after none.
 pub fn rename(components: &mut [Component], wheels: &[Wheel]) {
     for c in components {
-        c.wheel = wheels
-            .iter()
-            .find(|w| (c.period_s / w.period_s - 1.0).abs() < 0.06)
-            .map(|w| w.name.clone());
+        c.wheel = steadiness::wheel_for(c.period_s, wheels);
     }
 }
 

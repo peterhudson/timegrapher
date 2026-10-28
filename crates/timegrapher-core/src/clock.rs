@@ -161,6 +161,10 @@ pub const DISAGREE_PPM: f64 = 5.0;
 /// How many of the log's standard errors apart the two must also be.
 pub const DISAGREE_SE: f64 = 2.0;
 
+/// How long `clock measure` listens by default, seconds: twenty minutes
+/// gives a card's error to a fraction of a ppm.
+pub const MEASURE_S: f64 = 1200.0;
+
 /// Fewest log entries a clock correction is applied from.
 pub const MIN_POINTS: usize = 10;
 /// Largest standard error, ppm (1.7 s/d), a clock correction is applied
