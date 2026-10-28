@@ -238,7 +238,8 @@ pub const SCOPE: &[&str] = &[
 ];
 
 pub const POSITIONS_TEST: &[&str] = &[
-    "Start Test leads the watch through the six positions in turn: dial up, dial down, \
+    "New Test sets the test up on a clear Bench, and Start Test on the Listen card \
+     starts it. It leads the watch through the six positions in turn: dial up, dial down, \
      crown down, crown left, crown up and crown right. In each, the watch settles for \
      the time under Settle (20 s unless set otherwise), then is measured for the time \
      under Measure (60 s unless set otherwise); the banner says which position comes \
@@ -249,7 +250,8 @@ pub const POSITIONS_TEST: &[&str] = &[
      horizontal.",
     "Pause holds the test: what the position measured so far isn't used, and Resume \
      settles and measures it again from the start. Restart Measurement does the same at \
-     once, as after a knock. Stop ends the test; the session and its positions stay. \
+     once, as after a knock. Stop Test… on the Listen card asks, then ends the test; the \
+     session and its positions stay. After the sixth position the test ends by itself. \
      The Paper Strip marks Before Test, Settling, each measured stretch and the time Not \
      Used for Positions Test.",
     "For the test 24 hours after winding: run it just after winding and keep its results \
@@ -319,7 +321,8 @@ pub fn power_reserve(card: &str) -> Vec<String> {
     vec![
         format!(
             "Wind the watch fully, set it to a minute marker, put it on the stand in the \
-     position set on the {card} card, and press Start Test. The app starts a new \
+     position set on the {card} card. New Test sets the run up, and Start Test \
+     on the Listen card starts it. The app starts a new \
      session and listens until the watch stops. The run ends at the last beat heard \
      before {} min with none. Beats that come back sooner join the run, and the \
      pane says how many times they stopped and came back.",
@@ -327,7 +330,8 @@ pub fn power_reserve(card: &str) -> Vec<String> {
         ),
         format!(
             "While the test runs, the computer is kept awake whatever Keep Awake is set to, \
-     the sound is kept, the position can't change, and Stop ends the test. A closed \
+     the sound is kept, the position can't change, and Stop Test… on the Listen card \
+     asks, then ends the test, keeping the run so far. A closed \
      lid or Sleep from a menu still stops the computer. A run that hasn't stopped \
      after {} ends there.",
             crate::reserve::limit_h()
@@ -350,7 +354,7 @@ mod tests {
     fn the_power_reserve_help_names_the_card_and_core_limits() {
         for card in ["Current Position", "Position"] {
             let text = super::power_reserve(card).join(" ");
-            assert!(text.contains(&format!("set on the {card} card,")), "{text}");
+            assert!(text.contains(&format!("set on the {card} card")), "{text}");
             assert!(text.contains("before 10 min with none"), "{text}");
             assert!(text.contains("after 80 h ends there"), "{text}");
         }

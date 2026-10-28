@@ -191,27 +191,27 @@ pub fn limit_h() -> String {
 /// line of what to do (the steps are in its "?"); while it runs the run
 /// time and one line of how the beats stand; once ended one line of the
 /// result over the hour charts and table, which take the rest of the pane
-/// and scroll in it. `card` is the position card's title as drawn, and
-/// `watch` the watch the take is kept in (none: Unsorted).
+/// and scroll in it. `card` is the position card's title as drawn,
+/// `watch` the watch the take is kept in (none: Unsorted), and `ready`
+/// whether a run is set up, waiting for Start Test on the Listen card.
 pub fn pane(
     ui: &mut egui::Ui,
     test: Option<&Test>,
     free: Option<(u64, u64)>,
     card: &str,
     watch: &str,
+    ready: bool,
 ) {
     let pal = theme::pal(ui);
     ui.spacing_mut().item_spacing.y = 6.0;
     let Some(t) = test else {
-        let mut line = ui.add(
-            egui::Label::new(
-                RichText::new(format!(
-                    "Wind fully, set the position on the {card} card, then press Start Test."
-                ))
-                .color(pal.text_secondary),
-            )
-            .truncate(),
-        );
+        let words = if ready {
+            format!("Wind fully, set the position on the {card} card, then press Start Test.")
+        } else {
+            "New Test sets a run up on a clear Bench.".to_string()
+        };
+        let mut line =
+            ui.add(egui::Label::new(RichText::new(words).color(pal.text_secondary)).truncate());
         if let Some((have, need)) = free {
             let room = format!(
                 "{} free where the take is kept; a run of up to {} writes up to {} of sound.",
@@ -742,7 +742,7 @@ mod tests {
                 };
                 let out = ctx.run(input, |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        pane(ui, Some(&t), None, "Position", "Pepsi");
+                        pane(ui, Some(&t), None, "Position", "Pepsi", true);
                     });
                 });
                 texts = out
@@ -830,7 +830,7 @@ mod tests {
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     if let Some(t) = t {
-                        pane(ui, Some(t), None, "Position", "Pepsi");
+                        pane(ui, Some(t), None, "Position", "Pepsi", true);
                     }
                 });
             });
@@ -921,7 +921,7 @@ mod tests {
                 let out = ctx.run(egui::RawInput::default(), |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         let top = ui.cursor().top();
-                        pane(ui, t, free, "Position", "");
+                        pane(ui, t, free, "Position", "", true);
                         h = ui.cursor().top() - top - ui.spacing().item_spacing.y;
                     });
                 });
@@ -990,7 +990,7 @@ mod tests {
                 };
                 let out = ctx.run(input, |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        pane(ui, Some(t), None, "Position", "Pepsi");
+                        pane(ui, Some(t), None, "Position", "Pepsi", true);
                     });
                 });
                 texts = out

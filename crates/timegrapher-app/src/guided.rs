@@ -61,7 +61,7 @@ pub struct KeptRow {
     pub beat_error_ms: Option<f64>,
 }
 
-fn unix_now() -> f64 {
+pub fn unix_now() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |d| d.as_secs_f64())
@@ -89,6 +89,31 @@ impl FullWind {
         }
         Ok(f)
     }
+}
+
+/// The newest full-wind test kept in the takes folder `takes` (each
+/// take's [`RESULTS_FILE`]) that began [`FULL_WIND_HOURS`] before
+/// `now_unix`: the half a watch's 24 hours after test is set against.
+pub fn full_wind_in(takes: &std::path::Path, now_unix: f64) -> Option<FullWind> {
+    std::fs::read_dir(takes)
+        .ok()?
+        .flatten()
+        .filter_map(|e| std::fs::read_to_string(e.path().join(RESULTS_FILE)).ok())
+        .filter_map(|t| FullWind::from_json(&t).ok())
+        .filter(|f| FULL_WIND_HOURS.contains(&f.hours_ago(now_unix)))
+        .max_by(|a, b| a.began_unix.total_cmp(&b.began_unix))
+}
+
+/// How long before a 24 hours after test its full-wind test began, hours.
+pub const FULL_WIND_HOURS: std::ops::RangeInclusive<f64> = 12.0..=36.0;
+
+/// [`FULL_WIND_HOURS`] in words: "12 to 36 hours ago".
+pub fn full_wind_ago() -> String {
+    format!(
+        "{:.0} to {:.0} hours ago",
+        FULL_WIND_HOURS.start(),
+        FULL_WIND_HOURS.end()
+    )
 }
 
 /// Seconds the watch is left to settle after it is turned, and then
@@ -150,7 +175,6 @@ pub enum Action {
     Redo,
     Pause,
     Resume,
-    Stop,
     /// Set aside the earlier results loaded for the 24 hour half.
     ClearEarlier,
 }
@@ -510,8 +534,10 @@ fn step_title(test: &Test) -> String {
     }
 }
 
-/// The banner at the top of the pane while the test runs: the position, a
-/// progress bar for its settling and measuring, and what to do next.
+/// The step panel at the top of the pane while the test runs, one height
+/// throughout: the position, a chip for each of the six (done, now, to
+/// come), a progress bar for its settling and measuring, one line of what
+/// happens next, and Pause and Restart. Stop Test… is on the Listen card.
 fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
@@ -553,27 +579,14 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                 ),
                 None => (
                     "All six positions measured".to_string(),
-                    "press Finish to read them together".to_string(),
+                    "Reading them together and keeping the take…".to_string(),
                     1.0,
                 ),
             },
             Phase::Finished => ("Positions Test done".to_string(), String::new(), 1.0),
         };
-        ui.label(
-            RichText::new(title)
-                .font(theme::semibold(15.0))
-                .color(pal.text),
-        );
-        ui.add(egui::Label::new(RichText::new(detail).small().color(pal.text_secondary)).wrap());
-        ui.add_space(4.0);
-        ui.add(
-            egui::ProgressBar::new(frac.clamp(0.0, 1.0))
-                .desired_height(6.0)
-                .fill(pal.accent),
-        );
-        ui.add_space(4.0);
         // Each button has its own slot, as wide as the widest it holds, so
-        // none moves as the phase changes: Stop is always where it was.
+        // none moves as the phase changes.
         let pad = 2.0 * ui.spacing().button_padding.x;
         let widest = |ui: &egui::Ui, words: &mut dyn Iterator<Item = String>| {
             let font = theme::semibold(13.0);
@@ -586,7 +599,7 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
             &mut ORDER
                 .iter()
                 .map(|p| format!("Start {} Measurement", p.code()))
-                .chain(["Finish", "Resume", "Pause"].map(String::from)),
+                .chain(["Resume", "Pause"].map(String::from)),
         );
         let restart_w = widest(
             ui,
@@ -608,10 +621,33 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
             )
             .inner
         };
+        // The step's buttons on the title's line, in reach in the shortest
+        // pane; the chips and what is happening on the line under it.
+        let slots_w = first_w + restart_w + 2.0 * ui.spacing().item_spacing.x;
         ui.horizontal(|ui| {
+            let title_w = (ui.available_width() - slots_w).max(40.0);
+            ui.allocate_ui_with_layout(
+                Vec2::new(title_w, 26.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_width(title_w);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&title)
+                                .font(theme::semibold(15.0))
+                                .color(pal.text),
+                        )
+                        .truncate(),
+                    );
+                },
+            );
             let code = test.position().code();
             let name = test.position().name();
             match phase {
+                // The sixth measured: the test ends by itself.
+                Phase::Turn if test.next_position().is_none() => {
+                    ui.allocate_space(Vec2::new(0.0, 26.0));
+                }
                 Phase::Turn => {
                     let (next, next_hint) = match test.next_position() {
                         Some(p) => (
@@ -623,10 +659,7 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                                 p.name()
                             ),
                         ),
-                        None => (
-                            "Finish".to_string(),
-                            "Read the six positions together".to_string(),
-                        ),
+                        None => (String::new(), String::new()),
                     };
                     if slot(ui, first_w, theme::primary(ui, &next))
                         .on_hover_text(next_hint)
@@ -687,21 +720,88 @@ fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
                     }
                 }
                 Phase::Finished => {
-                    ui.add_space(first_w + restart_w + 2.0 * ui.spacing().item_spacing.x);
+                    ui.allocate_space(Vec2::new(0.0, 26.0));
                 }
             }
-            if slot(ui, 0.0, theme::destructive(ui, "Stop"))
-                .on_hover_text(
-                    "End the test without finishing it. The session and its positions stay; \
-                     the table is cleared.",
-                )
-                .clicked()
-            {
-                action = Some(Action::Stop);
-            }
         });
+        // One line, whole in its hover: the panel never grows.
+        ui.horizontal(|ui| {
+            let chips_w = ORDER.len() as f32 * 30.0 + 8.0;
+            let room = ui.available_width();
+            let detail_w = if room >= chips_w + 60.0 {
+                room - chips_w
+            } else {
+                room
+            };
+            ui.allocate_ui_with_layout(
+                Vec2::new(detail_w, 18.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_width(detail_w);
+                    ui.add(
+                        egui::Label::new(RichText::new(&detail).small().color(pal.text_secondary))
+                            .truncate(),
+                    )
+                    .on_hover_text(&detail);
+                },
+            );
+            step_chips(ui, test);
+        });
+        ui.add_space(4.0);
+        ui.add(
+            egui::ProgressBar::new(frac.clamp(0.0, 1.0))
+                .desired_height(6.0)
+                .fill(pal.accent),
+        );
     });
     action
+}
+
+/// The six positions as chips after what the step is doing: done, the one
+/// under way, and those to come, each its code. Left out where the panel
+/// has no room for them.
+fn step_chips(ui: &mut egui::Ui, test: &Test) {
+    let pal = theme::pal(ui);
+    let font = egui::FontId::proportional(11.0);
+    let (w, h, gap) = (26.0, 16.0, 4.0);
+    let all = ORDER.len() as f32 * (w + gap);
+    if ui.available_width() < all + 8.0 {
+        return;
+    }
+    ui.add_space(ui.available_width() - all);
+    let done = test.stretches().len();
+    for (i, p) in ORDER.iter().enumerate() {
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover());
+        let (fill, ink) = if i < done {
+            (pal.accent.gamma_multiply(0.35), pal.text)
+        } else if i == test.step {
+            (pal.accent, egui::Color32::WHITE)
+        } else {
+            (egui::Color32::TRANSPARENT, pal.text_tertiary)
+        };
+        ui.painter().rect(
+            rect,
+            4.0,
+            fill,
+            egui::Stroke::new(1.0_f32, pal.accent.gamma_multiply(0.6)),
+            egui::StrokeKind::Inside,
+        );
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            p.code(),
+            font.clone(),
+            ink,
+        );
+        let state = if i < done {
+            "measured"
+        } else if i == test.step {
+            "under way"
+        } else {
+            "to come"
+        };
+        resp.on_hover_text(format!("{}: {state}", p.name()));
+    }
 }
 
 /// The figures as the pane writes them: a signed figure with a true minus
@@ -1035,6 +1135,8 @@ pub fn pane(
     live: Option<&FreeCell>,
     settle_s: f64,
     measure_s: f64,
+    watch: bool,
+    note: Option<&str>,
     card: &str,
 ) -> Option<Action> {
     let pal = theme::pal(ui);
@@ -1051,6 +1153,9 @@ pub fn pane(
     }
     area.show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
+        if let Some(n) = note {
+            ui.label(RichText::new(n).color(pal.text_secondary));
+        }
         if let (Some(t), Some(ph)) = (test, phase) {
             if ph != Phase::Finished {
                 action = banner(ui, t, ph);
@@ -1148,17 +1253,27 @@ pub fn pane(
         ui.add_space(10.0);
         let about = match (test, earlier) {
             (None, None) => format!(
-                "Start Test leads you through the six positions:\n\
+                "Start Test, on the Listen card, leads you through the six positions:\n\
                      1. It says which position to turn the watch to.\n\
                      2. It lets the watch settle {settle_s:.0} s.\n\
                      3. It measures it for {measure_s:.0} s and fills in its row.\n\
-                     For the test 24 hours after winding, save the results, leave the watch \
-                     unwound and off the wrist, then load them with Load Full-Wind Results… \
-                     and run it again."
+                     After the sixth it ends by itself and keeps the take. {}",
+                if watch {
+                    "For the test 24 hours after winding, leave the watch unwound and off the \
+                     wrist, then set Wind to 24 Hours After."
+                } else {
+                    "For the test 24 hours after winding, save the results, leave the watch \
+                     unwound and off the wrist, then load them with Load Full-Wind Results… before Start Test."
+                }
             ),
             (None, Some(_)) => "Start Test runs the six positions again and sets them \
                      against these results."
                 .to_string(),
+            (Some(t), _) if t.readings.is_some() && t.full.is_none() && watch => {
+                "For the same test 24 hours after winding, leave the watch unwound and off \
+                     the wrist, then set Wind to 24 Hours After and press New Test."
+                    .to_string()
+            }
             (Some(t), _) if t.readings.is_some() && t.full.is_none() => {
                 "For the same test 24 hours after winding, save these results with Save \
                      Results for 24 Hours… (or save the session, which keeps them), leave the \
@@ -1811,6 +1926,48 @@ mod tests {
     use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
 
+    /// The 24 Hours After half finds the newest full-wind test kept in the
+    /// watch's takes that began 12 to 36 hours ago, and no other.
+    #[test]
+    fn the_full_wind_test_is_the_newest_from_12_to_36_hours_ago() {
+        // The words the hovers give, from the same window.
+        assert_eq!(full_wind_ago(), "12 to 36 hours ago");
+        let dir = std::env::temp_dir().join(format!("tg-full-wind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let now = 1_800_000_000.0;
+        let keep = |name: &str, hours: f64| {
+            let take = dir.join(name);
+            std::fs::create_dir_all(&take).unwrap();
+            let f = FullWind {
+                format: RESULTS_FORMAT.into(),
+                began_utc: String::new(),
+                began_unix: now - hours * 3600.0,
+                watch: "W".into(),
+                calibre: String::new(),
+                bph: None,
+                lift_angle_deg: None,
+                settle_s: None,
+                measure_s: None,
+                positions: vec![KeptRow {
+                    position: "DU".into(),
+                    rate_s_per_day: Some(1.0),
+                    amplitude_deg: None,
+                    beat_error_ms: None,
+                }],
+            };
+            std::fs::write(take.join(RESULTS_FILE), f.to_json()).unwrap();
+        };
+        assert_eq!(full_wind_in(&dir, now), None, "no takes folder");
+        keep("a", 40.0);
+        keep("b", 6.0);
+        assert_eq!(full_wind_in(&dir, now), None, "too old and too new");
+        keep("c", 30.0);
+        keep("d", 20.0);
+        let found = full_wind_in(&dir, now).expect("found");
+        assert_eq!(found.hours_ago(now), 20.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A figure that rounds to zero reads 0.0, with no sign.
     #[test]
     fn a_zero_reads_without_a_sign() {
@@ -1839,6 +1996,8 @@ mod tests {
                         live,
                         20.0,
                         60.0,
+                        false,
+                        None,
                         "Current Position",
                     );
                 });
@@ -1880,32 +2039,39 @@ mod tests {
         let measuring = drawn(&test, measuring_phase, None);
         assert_eq!(test.tick(85.0), Phase::Turn);
         let turn = drawn(&test, Phase::Turn, None);
-        let stop = at(&measuring, "Stop");
+        // Stop Test is on the Listen card; the banner keeps the rest in
+        // their places.
+        for found in [&settling, &measuring, &turn] {
+            assert!(!found.iter().any(|(t, _)| t == "Stop"), "{found:?}");
+        }
         let restart = at(&measuring, "Restart DU Measurement");
-        assert_eq!(at(&settling, "Stop"), stop);
-        assert_eq!(at(&turn, "Stop"), stop);
+        assert_eq!(at(&settling, "Restart DU Measurement"), restart);
         assert_eq!(at(&turn, "Restart DU Measurement"), restart);
         test.advance(86.0);
         test.pause(90.0);
         let ph = test.tick(91.0);
         let paused = drawn(&test, ph, None);
         at(&paused, "Resume");
-        assert_eq!(at(&paused, "Stop"), stop);
         // One line: every button's words start at the same height (their
         // ink ends lower where a letter has a tail).
-        let y = rect(&measuring, "Stop").top();
+        let y = rect(&measuring, "Restart DU Measurement").top();
         for (found, text) in [
             (&measuring, "Pause"),
-            (&measuring, "Restart DU Measurement"),
             (&turn, "Start DD Measurement"),
             (&turn, "Restart DU Measurement"),
-            (&turn, "Stop"),
             (&paused, "Resume"),
-            (&paused, "Stop"),
         ] {
             let top = rect(found, text).top();
-            assert!((top - y).abs() < 0.5, "{text} at {top}, Stop at {y}");
+            assert!((top - y).abs() < 0.5, "{text} at {top}, Restart at {y}");
         }
+        // On the title's line, so the step's button is in reach in the
+        // shortest pane: never under the progress bar.
+        let title = rect(&turn, "Turn the watch to Dial Down");
+        let start = rect(&turn, "Start DD Measurement");
+        assert!(
+            (start.center().y - title.center().y).abs() < 6.0,
+            "{title:?} {start:?}"
+        );
         // Pause is its own width at the left of the first slot, where
         // Start begins, not stretched across it: its words sit well short
         // of the slot's middle, where a stretched button would centre them.
