@@ -17460,17 +17460,21 @@ type Entries = Vec<(Option<f64>, Option<f64>, String)>;
 /// The positions a session file lists, each stretch's start, the start
 /// of what is read once it has settled, its end and its position, as
 /// changes oldest first and the settling before each: from the end of the
-/// one before (or its own start) to where its reading starts.
+/// one before (or the take's start, for the first) to where its reading
+/// starts.
 fn positions_of(listed: impl Iterator<Item = (f64, f64, Option<f64>, Position)>) -> Positions {
     let mut listed: Vec<(f64, f64, Option<f64>, Position)> = listed.collect();
     listed.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut out = Vec::new();
     let mut settles = Vec::new();
     for (i, &(start, from, _, p)) in listed.iter().enumerate() {
-        // The position began where the one before it ended.
-        let began = match i.checked_sub(1).and_then(|j| listed[j].2) {
-            Some(end) if end < start => end,
-            _ => start,
+        // The position began where the one before it ended, the first at
+        // the take's start: the app saves each entry from the end of its
+        // settling, the first's too.
+        let began = match i.checked_sub(1).map(|j| listed[j].2) {
+            None => 0.0,
+            Some(Some(end)) if end < start => end,
+            Some(_) => start,
         };
         if from > began {
             settles.push((began, from));
@@ -22614,6 +22618,16 @@ mod tests {
             entry("DU", "start_s = 40.0\nsettle_s = 0.0", false),
         );
         assert_eq!(text, want);
+        // That Dial Up has nothing to read, which every surface leaves
+        // out of the take's readings rather than failing on it.
+        let saved: Manifest = toml::from_str(&text).unwrap();
+        let read: Vec<bool> = saved
+            .recordings
+            .iter()
+            .filter(|e| e.file == "take.wav")
+            .map(timegrapher_core::take::reads_nothing)
+            .collect();
+        assert_eq!(read, [true, false, false]);
         let mut again = reopened(&base.join("take.wav"));
         assert_eq!(again.session.stretches(), app.session.stretches());
         assert_eq!(again.session.settles(), app.session.settles());
