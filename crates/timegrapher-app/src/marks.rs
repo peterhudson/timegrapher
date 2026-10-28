@@ -217,15 +217,16 @@ pub fn galley(ui: &egui::Ui, name: &str, rank: Rank, italic: bool) -> Arc<egui::
     ui.fonts_mut(|f| f.layout_job(job))
 }
 
-/// The name `g` in a lane, at `rect`, on a box of the panel's colour, so
-/// no other line runs through it.
+/// The name `g` in a lane, at `rect`, as plain text: under it, a patch
+/// of the pane's own colour hides any leader that would cross it, and
+/// shows nothing else.
 pub fn paint_lane_name(
     ui: &egui::Ui,
     painter: &egui::Painter,
     rect: egui::Rect,
     g: Arc<egui::Galley>,
 ) {
-    painter.rect_filled(rect.expand(2.0), 2.0, ui.visuals().panel_fill);
+    painter.rect_filled(rect.expand(2.0), 2.0, theme::pal(ui).card);
     painter.galley(rect.min, g, Color32::PLACEHOLDER);
 }
 
@@ -299,7 +300,12 @@ pub fn lane_above(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::I
         .zip(&galleys)
         .map(|(l, g)| (l.x, g.size().x, l.rank))
         .collect();
-    let placed = place(&names, frame.left(), frame.right(), &rows_were(ui, id));
+    // Within the part of the plot on screen, the patch under each name
+    // included, so no name is cut at an edge.
+    let seen = frame
+        .intersect(ui.clip_rect())
+        .shrink2(egui::vec2(2.0, 0.0));
+    let placed = place(&names, seen.left(), seen.right(), &rows_were(ui, id));
     keep_rows(ui, id, &placed);
     let painter = ui.painter_at(frame.expand2(egui::vec2(0.0, LANE + LANE_GAP + 2.0)));
     let mut boxes = Vec::new();

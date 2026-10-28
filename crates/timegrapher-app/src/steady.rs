@@ -1080,6 +1080,21 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let threshold = y_of(search.threshold);
             let lines = wheel_lines(marked(s, opts), (x_lo, x_hi));
             let names = WheelNames::reserve(ui, (i, view), opts.wheels);
+            // The period found, its dot and note; the note is hover only
+            // where the names are inside the plot, on its top.
+            let found = c.period.as_ref().map(|per| {
+                let x = per.period_s.log10();
+                let y = pts
+                    .iter()
+                    .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
+                    .map_or(0.0, |q| q[1]);
+                let mut t = secs(per.period_s);
+                if let Some(w) = &per.wheel {
+                    t += &format!(", {}", wheel_title(w));
+                }
+                ([x, y], t)
+            });
+            let hover_only = names.as_ref().is_some_and(|n| n.short);
             let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
             let mut plot = base
                 .height(ui.available_height().max(40.0))
@@ -1107,26 +1122,18 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                     n.inside(p, &lines, &pts, fill);
                 }
                 p.line(Line::new("score", pts.clone()).color(colour).width(1.5_f32));
-                if let Some(per) = &c.period {
-                    let x = per.period_s.log10();
-                    let y = pts
-                        .iter()
-                        .min_by(|a, b| (a[0] - x).abs().total_cmp(&(b[0] - x).abs()))
-                        .map_or(0.0, |q| q[1]);
-                    p.points(
-                        Points::new("peak", vec![[x, y]])
-                            .color(colour)
-                            .radius(3.5_f32),
-                    );
-                    let mut t = secs(per.period_s);
-                    if let Some(w) = &per.wheel {
-                        t += &format!(", {}", wheel_title(w));
+                if let Some((at, t)) = &found {
+                    p.points(Points::new("peak", vec![*at]).color(colour).radius(3.5_f32));
+                    if !hover_only {
+                        mark_label(p, *at, t.clone(), pal.text, false);
                     }
-                    mark_label(p, [x, y], t, pal.text, false);
                 }
             });
             if let Some(n) = &names {
                 n.draw(ui, &resp.transform, &lines, &pts);
+            }
+            if hover_only {
+                point_hover(ui, &resp.transform, found, (i, view));
             }
         }
         View::Cycle => {
@@ -1500,6 +1507,20 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let names = WheelNames::reserve(ui, (i, view), opts.wheels);
             let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
             let tops = pts.clone();
+            // The tallest peak's dot and note; the note is hover only where
+            // the names are inside the plot, on its top.
+            let tallest = peak.map(|peak| {
+                (
+                    peak,
+                    format!(
+                        "tallest peak at {}: {}{}",
+                        secs(10f64.powf(peak[0])),
+                        size(10f64.powf(peak[1])),
+                        if as_rate { " peak to peak" } else { "" }
+                    ),
+                )
+            });
+            let hover_only = names.as_ref().is_some_and(|n| n.short);
             let resp = base
                 .height(ui.available_height().max(40.0))
                 .x_grid_spacer(period_grid(ui.available_width()))
@@ -1514,28 +1535,22 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                         n.inside(p, &lines, &tops, fill);
                     }
                     p.line(Line::new("spectrum", pts).color(colour).width(1.5_f32));
-                    if let Some(peak) = peak {
+                    if let Some((at, t)) = &tallest {
                         p.points(
-                            Points::new("tallest", vec![peak])
+                            Points::new("tallest", vec![*at])
                                 .color(colour)
                                 .radius(3.5_f32),
                         );
-                        mark_label(
-                            p,
-                            peak,
-                            format!(
-                                "tallest peak at {}: {}{}",
-                                secs(10f64.powf(peak[0])),
-                                size(10f64.powf(peak[1])),
-                                if as_rate { " peak to peak" } else { "" }
-                            ),
-                            pal.text,
-                            false,
-                        );
+                        if !hover_only {
+                            mark_label(p, *at, t.clone(), pal.text, false);
+                        }
                     }
                 });
             if let Some(n) = &names {
                 n.draw(ui, &resp.transform, &lines, &tops);
+            }
+            if hover_only {
+                point_hover(ui, &resp.transform, tallest, (i, view));
             }
         }
     }
@@ -1798,6 +1813,23 @@ fn mark_label(
             .color(color)
             .anchor(egui::Align2([h, v])),
     );
+}
+
+/// A marked point's note as its hover, where there is no room to show it:
+/// the dot (`found`, plot coordinates) says the note when pointed at.
+fn point_hover(
+    ui: &egui::Ui,
+    t: &egui_plot::PlotTransform,
+    found: Option<([f64; 2], String)>,
+    id: impl std::hash::Hash,
+) {
+    if let Some((at, note)) = found {
+        let dot = t.position_from_point(&PlotPoint::new(at[0], at[1]));
+        if t.frame().contains(dot) {
+            let hit = egui::Rect::from_center_size(dot, egui::vec2(12.0, 12.0));
+            marks::hover(ui, ui.id().with(("point note", id)), hit, note);
+        }
+    }
 }
 
 /// A plain number for a linear axis, with no "-0.0".
