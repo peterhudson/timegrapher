@@ -26,7 +26,7 @@
 use crate::amplitude::AmplitudeWindow;
 use crate::confidence::{self, Confidence, Doubts};
 use crate::timing::WindowFit;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Seconds of sound needed to assess whether the beats are regular, and
 /// below which a stretch of beats is named `short_span`.
@@ -119,7 +119,7 @@ pub fn no_watch_text(
 }
 
 /// What the `no_watch` caveat ([`Caveat::NoWatch`]) was found on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NoWatchReason {
     /// The beat timing scatter, with at least [`SHORT_SPAN_S`] of sound.
@@ -131,7 +131,7 @@ pub enum NoWatchReason {
 }
 
 /// Something that limits how far a measurement can be trusted.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum Caveat {
     /// No regular beat found: the beat timing scatter is at or above
@@ -139,7 +139,10 @@ pub enum Caveat {
     /// `scatter`), or, with under [`SHORT_SPAN_S`] of sound, neither the
     /// Tick's nor the Tock's averaged sound shows an unlock or a drop
     /// (`no_beat_sound`). No readings are given.
-    NoWatch { reason: NoWatchReason },
+    NoWatch {
+        #[serde(default)]
+        reason: NoWatchReason,
+    },
     /// A set beat rate (`--bph`, `--calibre`) differs from the one heard.
     SetRateDisagrees { heard: u32 },
     /// More than [`crate::analysis::Clipping::NOTED_FRACTION`] of the beats
@@ -181,6 +184,112 @@ pub enum Caveat {
 }
 
 impl Caveat {
+    /// The caveat in a few words, for a line of conditions or a mark beside
+    /// a reading, as the app words it: "2 breaks", "input clock not
+    /// corrected". `lift_deg` is the lift angle the amplitude used, and
+    /// `beats` the beats found. `None` for no regular beat (said by
+    /// [`no_watch_text`]) and for a masked sliver under 0.05 s.
+    pub fn short(&self, lift_deg: f64, beats: usize) -> Option<String> {
+        Some(match self {
+            Caveat::NoWatch { .. } => return None,
+            Caveat::SetRateDisagrees { heard } => format!("{heard} bph heard"),
+            Caveat::ShortSpan { span_s } => format!("{span_s:.0} s of beats"),
+            Caveat::Clipped { fraction } => format!("{:.0}% clipped", fraction * 100.0),
+            Caveat::BeatsMissing { fraction } => {
+                let expected = (beats as f64 / fraction.max(1e-9)).round() as usize;
+                if beats > 0 {
+                    format!("{beats} of {expected} beats")
+                } else {
+                    format!("{:.0}% of beats found", fraction * 100.0)
+                }
+            }
+            Caveat::LiftUnknown => format!("lift angle {lift_deg}°, the default"),
+            Caveat::ClockUnknown => "input clock not corrected".to_string(),
+            Caveat::ClockSourcesDisagree {
+                usb_ppm, log_ppm, ..
+            } => format!(
+                "USB lines and clock log {:.0} ppm apart",
+                (usb_ppm - log_ppm).abs()
+            ),
+            Caveat::Breaks { count } => format!("{count} break{}", plural(*count)),
+            Caveat::SidesByCount { .. } => "sides named by count".to_string(),
+            Caveat::BeatErrorAsSize => {
+                "beat error given as a size: its sign differs either side of a cut".to_string()
+            }
+            Caveat::Masked { seconds } => format!("{} s masked", masked_seconds(*seconds)?),
+        })
+    }
+
+    /// The caveat as a plain fact, a sentence, as the app words it in a
+    /// reading's hover: what limits the reading, with no advice. `lift_deg`
+    /// is the lift angle the amplitude used, when known. `None` as for
+    /// [`Caveat::short`].
+    pub fn long(&self, lift_deg: Option<f64>) -> Option<String> {
+        Some(match self {
+            Caveat::NoWatch { .. } => return None,
+            Caveat::SetRateDisagrees { heard } => {
+                format!("The beat rate set differs from the {heard} bph heard.")
+            }
+            Caveat::ShortSpan { span_s } => format!(
+                "The beats span {span_s:.0} s, under the {SHORT_SPAN_S:.0} s needed to judge \
+                 whether they are regular."
+            ),
+            Caveat::Clipped { fraction } => format!(
+                "{:.0}% of the beats have a clipped sample, which moves the timing of the \
+                 sounds inside a beat.",
+                fraction * 100.0
+            ),
+            Caveat::BeatsMissing { fraction } => format!(
+                "{:.0}% of the beats the beat rate expects in this stretch were found.",
+                fraction * 100.0
+            ),
+            Caveat::LiftUnknown => match lift_deg {
+                Some(l) => format!(
+                    "The lift angle is the default {l}°, not one set for the calibre. Every \
+                     amplitude is worked out from it."
+                ),
+                None => "The lift angle is the default, not one set for the calibre. Every \
+                         amplitude is worked out from it."
+                    .to_string(),
+            },
+            Caveat::ClockUnknown => "This input's clock hasn't been measured, so the rate \
+                                     includes the sound card's own clock error."
+                .to_string(),
+            Caveat::ClockSourcesDisagree {
+                usb_ppm,
+                log_ppm,
+                log_ppm_sd,
+            } => {
+                let note = crate::clock::SourcesDisagree {
+                    usb_ppm: *usb_ppm,
+                    log_ppm: *log_ppm,
+                    log_ppm_sd: *log_ppm_sd,
+                }
+                .note();
+                format!("{}{}.", note[..1].to_uppercase(), &note[1..])
+            }
+            Caveat::Breaks { count } => format!(
+                "{count} break{} in this stretch: a hole in the sound, such as when the \
+                 computer slept, or a stumble where the beats stepped off together by more \
+                 than {:.0} ms.",
+                plural(*count),
+                crate::beats::JUMP_S * 1000.0
+            ),
+            Caveat::SidesByCount { count } => format!(
+                "Tick and Tock are named by the beat count across {count} break{} in this \
+                 stretch, not told apart by their sound.",
+                plural(*count)
+            ),
+            Caveat::BeatErrorAsSize => "The beat error's sign differs either side of a cut \
+                                        in the stretch, so it is given as a size."
+                .to_string(),
+            Caveat::Masked { seconds } => format!(
+                "{} s of this stretch were masked out and left out of the readings.",
+                masked_seconds(*seconds)?
+            ),
+        })
+    }
+
     /// Where the caveat sits in a list.
     fn rank(&self) -> u8 {
         match self {
@@ -207,6 +316,27 @@ impl From<crate::clock::SourcesDisagree> for Caveat {
             log_ppm: d.log_ppm,
             log_ppm_sd: d.log_ppm_sd,
         }
+    }
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
+/// Masked seconds as the words give them: a tenth under 10 s, so a mask
+/// reaching just into a stretch doesn't read 0, and nothing under 0.05 s,
+/// where that would read 0.0.
+fn masked_seconds(s: f64) -> Option<String> {
+    if s < 0.05 {
+        None
+    } else if s < 9.95 {
+        Some(format!("{s:.1}"))
+    } else {
+        Some(format!("{s:.0}"))
     }
 }
 
@@ -577,5 +707,70 @@ mod tests {
                 "breaks"
             ]
         );
+    }
+
+    #[test]
+    fn caveats_are_worded_once_for_every_surface() {
+        assert_eq!(
+            Caveat::Breaks { count: 1 }.short(52.0, 0).unwrap(),
+            "1 break"
+        );
+        assert_eq!(
+            Caveat::Breaks { count: 2 }.short(52.0, 0).unwrap(),
+            "2 breaks"
+        );
+        assert_eq!(
+            Caveat::BeatsMissing { fraction: 0.5 }
+                .short(52.0, 400)
+                .unwrap(),
+            "400 of 800 beats"
+        );
+        assert_eq!(
+            Caveat::LiftUnknown.short(52.0, 0).unwrap(),
+            "lift angle 52°, the default"
+        );
+        assert_eq!(
+            Caveat::Masked { seconds: 12.4 }.short(0.0, 0).unwrap(),
+            "12 s masked"
+        );
+        assert_eq!(
+            Caveat::Masked { seconds: 0.3 }.short(0.0, 0).unwrap(),
+            "0.3 s masked"
+        );
+        assert_eq!(Caveat::Masked { seconds: 0.02 }.short(0.0, 0), None);
+        assert_eq!(
+            Caveat::NoWatch {
+                reason: NoWatchReason::default()
+            }
+            .long(None),
+            None
+        );
+        assert_eq!(
+            Caveat::SidesByCount { count: 1 }.long(None).unwrap(),
+            "Tick and Tock are named by the beat count across 1 break in this stretch, not \
+             told apart by their sound."
+        );
+        assert!(Caveat::LiftUnknown
+            .long(Some(52.0))
+            .unwrap()
+            .contains("default 52°"));
+        // Both clocks' figures, and which one corrects (#498).
+        let d = Caveat::ClockSourcesDisagree {
+            usb_ppm: 120.0,
+            log_ppm: 20.0,
+            log_ppm_sd: 2.0,
+        };
+        assert_eq!(
+            d.short(52.0, 0).unwrap(),
+            "USB lines and clock log 100 ppm apart"
+        );
+        assert_eq!(
+            d.long(None).unwrap(),
+            "The USB lines measure the sound card at +120.0 ppm and the clock log at +20 ± 2 \
+             ppm; the rates are corrected by the USB lines."
+        );
+        // The JSON a caveat is written as reads back into the same words.
+        let c: Caveat = serde_json::from_str(r#"{"code":"clipped","fraction":0.04}"#).unwrap();
+        assert_eq!(c.short(52.0, 0).unwrap(), "4% clipped");
     }
 }

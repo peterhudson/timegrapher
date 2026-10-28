@@ -411,28 +411,24 @@ pub fn run(
     Ok(())
 }
 
-/// The `sides_by_count` and `beat_error_as_size` caveats in words, each
-/// with its label, as `analyze` words them.
+/// The `clock_sources_disagree`, `sides_by_count` and `beat_error_as_size`
+/// caveats in core's short words
+/// ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
     caveats: &[timegrapher_core::measure::Caveat],
 ) -> Vec<(&'static str, String)> {
     use timegrapher_core::measure::Caveat;
     caveats
         .iter()
-        .filter_map(|c| match c {
-            Caveat::SidesByCount { count } => Some((
-                "Sides",
-                format!(
-                    "Tick and Tock named by the beat count across {count} break{}, \
-                     not told apart by their sound",
-                    if *count == 1 { "" } else { "s" }
-                ),
-            )),
-            Caveat::BeatErrorAsSize => Some((
-                "Conditions",
-                "beat error given as a size: its sign differs either side of a cut".to_string(),
-            )),
-            _ => None,
+        .filter_map(|c| {
+            let label = match c {
+                Caveat::ClockSourcesDisagree { .. } => "Clock",
+                Caveat::SidesByCount { .. } => "Sides",
+                Caveat::BeatErrorAsSize => "Conditions",
+                _ => return None,
+            };
+            // None of their words use the lift angle or the beats found.
+            Some((label, c.short(0.0, 0)?))
         })
         .collect()
 }
@@ -1088,6 +1084,37 @@ mod catalogue_tests {
         assert_eq!(
             pairs(train.wheels(28800)),
             pairs(common_escape_wheels(28800))
+        );
+    }
+}
+
+#[cfg(test)]
+mod caveat_tests {
+    use super::caveat_lines;
+    use timegrapher_core::measure::Caveat;
+
+    /// Long's and series' text say the caveats they have no line of their
+    /// own for in core's short words, each with its label.
+    #[test]
+    fn caveats_with_no_line_of_their_own_are_said_in_cores_words() {
+        let lines = caveat_lines(&[
+            Caveat::ClockSourcesDisagree {
+                usb_ppm: 120.0,
+                log_ppm: 20.0,
+                log_ppm_sd: 2.0,
+            },
+            Caveat::LiftUnknown,
+            Caveat::BeatErrorAsSize,
+        ]);
+        assert_eq!(
+            lines,
+            [
+                ("Clock", "USB lines and clock log 100 ppm apart".to_string()),
+                (
+                    "Conditions",
+                    "beat error given as a size: its sign differs either side of a cut".to_string()
+                ),
+            ]
         );
     }
 }
