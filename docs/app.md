@@ -422,9 +422,10 @@ and widened for the windows' lag-one correlation.
 It is model-based precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Its hover gives the amplitude from the ticks and from the tocks. The sound can't tell which beat is
-which pallet, so the first beat heard is called the tick;
-which side is the entry pallet can't be told from the sound, so the sign
-of the beat error follows which beat came first, as on tg. The big beat
+which pallet, so each take starts positive: the beat that comes late
+over the take's first few seconds is called the tick, listening live and
+reading the saved take alike (nearer no beat error than 0.1 ms, the first
+beat heard). A beat error that reads negative later turned over in the take. The big beat
 error is timed from the unlock, as tg measures it (checked against tg
 in the regression tests); its hover gives the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
@@ -838,7 +839,7 @@ where that row is taken too it slides along with a short angled leader.
 A name changes row only once an overlap starts or ends by 2 points, so
 names don't hop as the sound drifts. Where an edge and a sound meet the trace together, the bar sits inside
 the ring. On a short plot the bars and rings are smaller, and one that
-would cross an edge's name drawn in the plot is left off. A name drawn in the plot sits on whichever side of its line the trace stays below it, and stays centred only when the trace crosses both sides. Each name sits on a box of the pane's colour, so another mark's
+would cross an edge's name drawn in the plot is left off. A name drawn in the plot sits on whichever side of its line the trace stays below it, never over another edge's line (where it would read as that edge's name), and is left to its line's hover when no side is clear. Each name sits on a box of the pane's colour, so another mark's
 line passing behind it doesn't run through its letters. Hovering a line, a ring or a name
 gives its name and time. The edges and the sounds are two different
 measurements of the same averaged sound, not single beats, so they sit

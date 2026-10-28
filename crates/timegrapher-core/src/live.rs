@@ -78,7 +78,8 @@ pub struct LiveReading {
     pub beat_error_ms: Option<f64>,
     /// Signed beat error measured from the unlock, the figure checked
     /// against tg's beat error in regress: median over the amplitude
-    /// windows, ms. Positive means Tick (the run's first beat) comes late.
+    /// windows, ms. Positive means Tick comes late; each take starts
+    /// positive ([`crate::beats::SideCheck`]).
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
@@ -679,30 +680,15 @@ impl LiveAnalyzer {
         let resumed = self.quiet_passes > 0;
         self.quiet_passes = 0;
         let anchor_t = local[anchor].time + off;
-        let anchor_index = match self.beats.last() {
-            Some(last) => {
-                let count = (anchor_t - last.time) / beat;
-                let n = count.round().max(1.0);
-                // Off the count by more than a quarter of a beat, or after
-                // a stretch too quiet to follow: the watch's phase moved
-                // across a hole (a dropout, a knock that cost a beat), so
-                // the count is a guess. It is a jump.
-                let index = last.index + n as i64;
-                if resumed || (count - n).abs() > 0.25 {
-                    self.jump_at(anchor_t, false);
-                }
-                index
-            }
-            None => 0,
-        };
-        let shift = anchor_index - local[anchor].index;
-        let numbered: Vec<Beat> = local
-            .iter()
-            .map(|b| Beat {
-                index: b.index + shift,
-                ..*b
-            })
-            .collect();
+        let (numbered, count_off) =
+            beats::number_on(&local, anchor, anchor_t, self.beats.last(), beat);
+        // Off the count by more than a quarter of a beat, or after a
+        // stretch too quiet to follow: the watch's phase moved across a
+        // hole (a dropout, a knock that cost a beat), so the count is a
+        // guess. It is a jump.
+        if self.beats.last().is_some() && (resumed || count_off.abs() > 0.25) {
+            self.jump_at(anchor_t, false);
+        }
         // One scan of the window finds whether anything clipped; only then
         // is each new beat looked at on its own.
         let any_clipped = Clipping::measure(x, fs, &[]).samples > 0;
@@ -731,8 +717,7 @@ impl LiveAnalyzer {
         // A step in the beats' timing within a quarter of a beat of the
         // count (a hole that cost close to a whole number of beats) is a
         // jump too, found as a whole file's reading finds one.
-        let tail = &self.beats[self.beats.len().saturating_sub(2 * JUMP_LOOK)..];
-        let tail = &tail[beats::good_tail_start(tail, JUMP_LOOK)..];
+        let tail = beats::good_tail(&self.beats, JUMP_LOOK);
         let found: Vec<f64> = beats::jumps_among_good(tail, &[])
             .into_iter()
             .map(|p| tail[p].time)
@@ -1176,6 +1161,109 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    #[test]
+    fn each_take_starts_positive_live_and_from_the_file() {
+        // The same watch with its beat error either way round reads
+        // positive from its first steady stretch on, listened to and from
+        // the file alike; near no beat error the count names the sides.
+        let read = |beat_error_ms: f64| {
+            let audio = generate(
+                &SynthConfig {
+                    duration_s: 40.0,
+                    beat_error_ms,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            let mut a = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+            feed(&mut a, &audio.samples);
+            let log = crate::stream::analyze_samples(
+                &audio.samples,
+                audio.sample_rate,
+                &crate::stream::StreamConfig::default(),
+            );
+            let file: Vec<Beat> = log
+                .beats
+                .iter()
+                .filter(|b| b.time >= 5.0)
+                .copied()
+                .collect();
+            let live = a.reading(30.0);
+            (
+                live.beat_error_ms.unwrap(),
+                live.beat_error_unlock_ms.unwrap(),
+                crate::timing::beat_error_ms(&file).unwrap(),
+            )
+        };
+        for be in [0.6, -0.6, 0.3, -0.3] {
+            let (live, unlock, file) = read(be);
+            for v in [live, unlock, file] {
+                assert!((v - be.abs()).abs() < 0.1, "{be}: {live} {unlock} {file}");
+            }
+        }
+        // Too small for a sign, both read the size with one sign.
+        let (live, _, file) = read(-0.03);
+        assert!(live.abs() < 0.1 && file.abs() < 0.1, "{live} {file}");
+    }
+
+    #[test]
+    fn one_silence_is_one_break() {
+        // A 6 s silence while listening: the beats step more than once
+        // before they are found again, but the whole take counts one
+        // break. Two silences 20 s apart count two.
+        let breaks = |silences: &[f64]| {
+            let audio = generate(
+                &SynthConfig {
+                    duration_s: 70.0,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            let fs = audio.sample_rate as usize;
+            let mut x = audio.samples;
+            for &at in silences {
+                let at = (at * fs as f64) as usize;
+                x[at..at + 6 * fs].fill(0.0);
+            }
+            let mut a = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+            feed(&mut a, &x);
+            let log = BeatLog {
+                sample_rate: a.sample_rate(),
+                duration_s: a.duration_s(),
+                bph: a.bph().unwrap(),
+                lift_deg: a.config().analysis.amplitude.lift_deg,
+                beats: a.beats().to_vec(),
+                amplitude_windows: a.amplitude_windows().to_vec(),
+                clipped_beats: Vec::new(),
+                clipped_samples: 0,
+                jumps: a.breaks().to_vec(),
+                sided: Vec::new(),
+                by_count: Vec::new(),
+                snippets: Vec::new(),
+            };
+            let cuts: Vec<Break> = log
+                .jumps
+                .iter()
+                .map(|&audio_s| Break {
+                    audio_s,
+                    gap_s: 0.0,
+                })
+                .collect();
+            let m = crate::session::measure_masked(&log, None, &cuts, &[], 0.0, log.duration_s);
+            let count = m.caveats.iter().find_map(|c| match c {
+                Caveat::Breaks { count } => Some(*count),
+                _ => None,
+            });
+            (count, log.jumps)
+        };
+        let (one, jumps) = breaks(&[16.0]);
+        assert_eq!(one, Some(1), "{jumps:?}");
+        let (two, jumps) = breaks(&[16.0, 42.0]);
+        assert_eq!(two, Some(2), "{jumps:?}");
     }
 
     #[test]

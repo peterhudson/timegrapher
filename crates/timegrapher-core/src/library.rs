@@ -63,6 +63,9 @@ const CACHE_FORMAT: u32 = 3;
 pub const LOCK_FILE: &str = ".library.lock";
 /// The folder of takes not yet filed under a watch.
 pub const UNSORTED: &str = "Unsorted";
+/// The file a Positions Test keeps its results in, beside its take's
+/// sound: a take with it is a Positions Test's ([`is_positions_test`]).
+pub const POSITIONS_TEST_FILE: &str = "positions-test.json";
 /// The library's folder name in the user's home folder, by default.
 pub const DEFAULT_NAME: &str = "Timegrapher Data";
 
@@ -339,6 +342,89 @@ pub struct Take {
     /// For a Power Reserve Test's take, its run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub power_reserve: Option<crate::power_reserve::Summary>,
+}
+
+impl Take {
+    /// What the take measured and is, as the facts the app and
+    /// `timegrapher watches` list for it: its kind when it is a Positions
+    /// Test's (`positions_test`, from [`is_positions_test`]), a Power
+    /// Reserve run, its positions, its length, the readings it ended on
+    /// (beat error as its size) and its marks. Each surface joins them as
+    /// it lays them out.
+    pub fn facts(&self, positions_test: bool) -> Vec<String> {
+        let mut parts: Vec<String> = Vec::new();
+        if positions_test {
+            parts.push("Positions Test".into());
+        }
+        if let Some(r) = &self.power_reserve {
+            parts.push(format!(
+                "Power Reserve {}",
+                crate::power_reserve::run_text(r.run_s)
+            ));
+            // A run the watch didn't end says how it ended.
+            if r.ending != crate::power_reserve::Ending::Stopped {
+                parts.push(r.ending.text());
+            }
+        }
+        let names: Vec<String> = self
+            .positions
+            .iter()
+            .map(|p| Position::parse(p).map_or_else(|| p.clone(), |x| x.name().to_string()))
+            .collect();
+        if !names.is_empty() {
+            parts.push(names.join(", "));
+        }
+        if let Some(d) = self.duration_s.filter(|_| self.power_reserve.is_none()) {
+            parts.push(length_text(d));
+        }
+        if let Some(a) = &self.at_end {
+            if let Some(r) = a.rate() {
+                parts.push(format!("{r:+.1} s/d"));
+            }
+            if let Some(x) = a.amplitude_deg {
+                parts.push(format!("{x:.0}°"));
+            }
+            if let Some(b) = a.beat_error_ms {
+                parts.push(format!("{:.1} ms", b.abs()));
+            }
+        }
+        if !self.audio {
+            parts.push("Analysis Only".into());
+        }
+        if self.incomplete {
+            parts.push("Incomplete".into());
+        }
+        parts
+    }
+}
+
+/// Whether the take in the folder `take_dir` is a Positions Test's: it
+/// keeps the test's results ([`POSITIONS_TEST_FILE`]) beside its sound.
+pub fn is_positions_test(take_dir: &Path) -> bool {
+    take_dir.join(POSITIONS_TEST_FILE).is_file()
+}
+
+/// A length of time as the app writes it: `1:30:00`, or `4:05` under an
+/// hour.
+pub fn length_text(t: f64) -> String {
+    let s = t.max(0.0).round() as u64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+/// A size on disk as the app shows it: `7.7 GB`, `58.3 MB`, `912 kB`,
+/// `40 bytes`.
+pub fn size_text(n: u64) -> String {
+    let n = n as f64;
+    match n {
+        n if n >= 1e9 => format!("{:.1} GB", n / 1e9),
+        n if n >= 1e6 => format!("{:.1} MB", n / 1e6),
+        n if n >= 1e3 => format!("{:.0} kB", n / 1e3),
+        n => format!("{n:.0} bytes"),
+    }
 }
 
 /// One watch and its takes, newest first.
@@ -1280,19 +1366,18 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
     }
     let at = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_f64);
     // The rate kept is as heard, on the sound card's clock; the take's
-    // clock log corrects it, as reading the take does, when it measures
-    // the clock well enough to, and the recording's USB lines set the
-    // rate instead wherever they are, the log then placing only breaks.
+    // clock reads it again as reading the take does
+    // ([`crate::take::clock_of_files`]):
+    // the recording's USB lines set the rate wherever they are, its clock
+    // log placing only breaks, else the log when it measures the clock
+    // well enough to.
     let ppm = || {
         let m = manifest.as_ref().filter(|_| audio && !incomplete)?;
         let first = m.recordings.first()?;
         let listed: Vec<String> = m.recordings.iter().map(|r| r.file.clone()).collect();
         let files = crate::recording_order::recordings_in(dir, &listed).ok()?;
-        let mut fit = crate::clock::of_take(dir, first.clock.as_deref()?, &files).ok()?;
-        if let Some(ppm) = usb_ppm(&files) {
-            fit.rate_from_usb(ppm);
-        }
-        Some(fit)
+        crate::take::clock_of_files(dir, first.clock.as_deref(), &files, usb_ppm(&files), None)
+            .ok()?
             .filter(crate::clock::ClockFit::corrects)
             .map(|f| f.ppm)
     };
@@ -1511,6 +1596,15 @@ mod tests {
             .expect("lines found");
         assert!((usb.ppm - 20.0).abs() < 0.5, "{}", usb.ppm);
         let want = crate::clockstore::correct_rate(3.5, usb.ppm);
+        assert_eq!(a.rate_corrected_s_per_day, Some(want));
+        // Without a clock log the USB lines still set it, as reading the
+        // take does.
+        fs::write(
+            dir.join("session.toml"),
+            "bph = 28800\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n",
+        )
+        .unwrap();
+        let a = read_take(&dir, 0).unwrap().at_end.unwrap();
         assert_eq!(a.rate_corrected_s_per_day, Some(want));
     }
 
@@ -2159,5 +2253,15 @@ value = "£9,000"
         let back: Watch = toml::from_str(&toml::to_string_pretty(&w).unwrap()).unwrap();
         assert_eq!(back, w);
         assert_ne!(Watch::new("a").id, Watch::new("a").id);
+    }
+
+    #[test]
+    fn sizes_and_lengths_read_as_the_app_shows_them() {
+        assert_eq!(size_text(40), "40 bytes");
+        assert_eq!(size_text(912_400), "912 kB");
+        assert_eq!(size_text(58_300_000), "58.3 MB");
+        assert_eq!(size_text(7_700_000_000), "7.7 GB");
+        assert_eq!(length_text(245.0), "4:05");
+        assert_eq!(length_text(5400.0), "1:30:00");
     }
 }
