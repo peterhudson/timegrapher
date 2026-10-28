@@ -317,8 +317,11 @@ pub fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String
 /// Whether entry `e` has nothing to read: its stretch settles right to
 /// its end, which the app saves as `start_s` equal to `end_s` (the watch
 /// was put in a position and moved again, or painted over, before it
-/// settled). Every surface leaves such an entry out of a take's readings,
-/// with a note, rather than failing on it as [`span_of`] would.
+/// settled). Every surface leaves such an entry out of a take's readings
+/// rather than failing on it as [`span_of`] would: `session` and
+/// `regress` with a note, the Watches list by reading the last entry with
+/// something to read. An entry whose settling runs past its `end_s` is not
+/// one of these.
 pub fn reads_nothing(e: &RecordingEntry) -> bool {
     matches!((e.start_s, e.end_s), (Some(a), Some(b)) if a == b)
 }

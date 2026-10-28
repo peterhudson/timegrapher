@@ -712,11 +712,11 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         quiet: false,
         card_clock: false,
     };
-    // A position that settled right to its end has nothing to read: it is
-    // left out, with a note.
+    // An entry with nothing to read (`take::reads_nothing`) is left out,
+    // with a note.
     for e in m.recordings.iter().filter(|e| take::reads_nothing(e)) {
         eprintln!(
-            "note: {} ({}) at {:.0} s settles right to its end, so nothing of it is read",
+            "note: {} ({}) at {:.0} s has nothing to read, so it is left out",
             e.file,
             e.position.as_deref().unwrap_or("-"),
             e.start_s.unwrap_or(0.0)
@@ -1809,8 +1809,7 @@ mod tests {
             .iter()
             .map(|r| r["position"].as_str().unwrap())
             .collect();
-        assert_eq!(read.len(), 2, "{read:?}");
-        assert!(read[0] != read[1], "Crown Up then Dial Up: {read:?}");
+        assert_eq!(read, ["3H", "CH"], "crown up, then dial up");
         let nothing = format!(
             "bph = 28800\n\n{}",
             entry("DU", "start_s = 10.0\nend_s = 10.0\n")
