@@ -160,29 +160,19 @@ pub fn shape_stretches(m: &Manifest, duration_s: f64) -> Vec<Option<(f64, f64)>>
             if m.shape == Some(false) {
                 return None;
             }
-            let start = e.start_s.unwrap_or(0.0);
-            let stop = e.end_s.unwrap_or(duration_s).min(duration_s);
-            if start < 0.0 || start >= stop {
-                return None;
-            }
-            let settle = start
-                + e.settle_s
-                    .or(m.settle_s)
-                    .unwrap_or(20.0)
-                    .min((stop - start) / 2.0);
-            let end = e
-                .measure_s
-                .or(m.measure_s)
-                .map_or(stop, |s| settle + s)
-                .min(stop);
+            let (start, stop) = crate::take::span_of(e, duration_s).ok()?;
+            let (settle_s, measure_s) = crate::take::entry_times(e, m);
+            let (settle, end) = crate::take::measured(start, stop, settle_s, measure_s);
             shape_stretch(&session::masked_spans(&e.masked), settle, end)
+                .map(|(from, len)| (from, from + len))
         })
         .collect()
 }
 
-/// The first unmasked stretch from `from_s` to `to_s` that is [`SHAPE_S`]
-/// long, else the longest; start and end, seconds.
-fn shape_stretch(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> Option<(f64, f64)> {
+/// Where the beat shape is measured, clear of masked stretches: the first
+/// unmasked stretch from `from_s` to `to_s` that is [`SHAPE_S`] long, else
+/// the longest; start and length, seconds. None when all of it is masked.
+pub fn shape_stretch(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> Option<(f64, f64)> {
     let mut clear = Vec::new();
     let mut at = from_s;
     for &(a, b) in masked {
@@ -198,7 +188,7 @@ fn shape_stretch(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> Option<(f64, 
             .iter()
             .max_by(|x, y| (x.1 - x.0).total_cmp(&(y.1 - y.0)))
     })?;
-    Some((pick.0, pick.0 + SHAPE_S.min(pick.1 - pick.0)))
+    Some((pick.0, SHAPE_S.min(pick.1 - pick.0)))
 }
 
 /// Measure the take whose sound is `files` (in the order it is read) for
@@ -941,6 +931,32 @@ pub fn save(dest: &Path, companions: &[(String, Vec<u8>)], stored: &Stored) -> i
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shape_is_measured_clear_of_masked_stretches() {
+        assert_eq!(shape_stretch(&[], 30.0, 600.0), Some((30.0, SHAPE_S)));
+        // A bump in the first minute: the next clear minute.
+        assert_eq!(
+            shape_stretch(&[(50.0, 58.0)], 30.0, 600.0),
+            Some((58.0, SHAPE_S))
+        );
+        // No clear minute: the longest clear stretch.
+        assert_eq!(
+            shape_stretch(&[(40.0, 50.0), (70.0, 75.0)], 30.0, 100.0),
+            Some((75.0, 25.0))
+        );
+        // A short clear stretch first: passed over for a whole minute.
+        assert_eq!(
+            shape_stretch(&[(40.0, 50.0)], 30.0, 600.0),
+            Some((50.0, SHAPE_S))
+        );
+        // The longest clear stretch is the first one, not the last.
+        assert_eq!(
+            shape_stretch(&[(70.0, 75.0), (85.0, 95.0)], 30.0, 100.0),
+            Some((30.0, 40.0))
+        );
+        assert_eq!(shape_stretch(&[(0.0, 700.0)], 30.0, 600.0), None);
+    }
     use crate::synth::{generate, SynthConfig};
 
     fn take(dir: &Path, seconds: f64) -> PathBuf {

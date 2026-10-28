@@ -729,6 +729,49 @@ pub fn measure_entry(
 mod tests {
     use super::*;
 
+    /// A kept take read at another lift has its amplitudes in proportion
+    /// to the lift (58° on a take kept at 52° reads 58/52 as high), its
+    /// lift said as the new one; read at its own lift, or with no lift on
+    /// either side, it is as kept.
+    #[test]
+    fn a_kept_take_read_at_another_lift_scales_its_amplitudes() {
+        let s = crate::scenarios::find("control").unwrap();
+        let kept = crate::scenarios::beat_log(&s, 1);
+        let at = kept.lift_deg + 6.0;
+        let read = kept_at_lift(&kept, at);
+        assert_eq!(read.lift_deg, at);
+        let k = at / kept.lift_deg;
+        assert!(k > 1.0);
+        for (r, w) in read.amplitude_windows.iter().zip(&kept.amplitude_windows) {
+            assert!((r.even_deg.unwrap() - w.even_deg.unwrap() * k).abs() < 1e-9);
+            assert!((r.odd_deg.unwrap() - w.odd_deg.unwrap() * k).abs() < 1e-9);
+        }
+        // No lift to scale from or to: as kept.
+        for (log, at) in [
+            (kept.clone(), 0.0),
+            (
+                BeatLog {
+                    lift_deg: 0.0,
+                    ..kept.clone()
+                },
+                58.0,
+            ),
+        ] {
+            let read = kept_at_lift(&log, at);
+            assert_eq!(read.lift_deg, log.lift_deg);
+            assert_eq!(
+                read.amplitude_windows[0].even_deg,
+                log.amplitude_windows[0].even_deg
+            );
+        }
+        let same = kept_at_lift(&kept, kept.lift_deg);
+        assert_eq!(same.lift_deg, kept.lift_deg);
+        assert_eq!(
+            same.amplitude_windows[0].even_deg,
+            kept.amplitude_windows[0].even_deg
+        );
+    }
+
     /// A take's own `card_ppm` is its correction, said as given, before
     /// any stored one is looked for.
     #[test]
