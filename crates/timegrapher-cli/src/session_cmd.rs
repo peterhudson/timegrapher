@@ -818,8 +818,9 @@ pub fn opt(v: Option<f64>, digits: usize) -> String {
 }
 
 pub fn signed(v: Option<f64>, digits: usize) -> String {
-    v.filter(|x| x.is_finite())
-        .map_or("-".into(), |x| format!("{x:+.digits$}"))
+    v.filter(|x| x.is_finite()).map_or("-".into(), |x| {
+        timegrapher_core::library::signed_text(x, digits)
+    })
 }
 
 /// The state of wind in words: `wind_h` is hours since the watch was

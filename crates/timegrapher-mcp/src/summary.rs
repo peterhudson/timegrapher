@@ -21,7 +21,7 @@ fn pm(c: &Value, digits: usize) -> String {
 }
 
 fn signed(v: f64, digits: usize) -> String {
-    format!("{v:+.digits$}")
+    timegrapher_core::library::signed_text(v, digits)
 }
 
 /// The CLI's preferred correction wins over its USB estimate; both stay
