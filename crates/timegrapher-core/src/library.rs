@@ -358,13 +358,13 @@ impl Take {
         }
         if let Some(r) = &self.power_reserve {
             parts.push(format!(
-                "Power Reserve {}{}",
-                crate::power_reserve::run_text(r.run_s),
-                match r.ending {
-                    crate::power_reserve::Ending::Stopped => "",
-                    _ => " (still running at the end)",
-                }
+                "Power Reserve {}",
+                crate::power_reserve::run_text(r.run_s)
             ));
+            // A run the watch didn't end says how it ended.
+            if r.ending != crate::power_reserve::Ending::Stopped {
+                parts.push(r.ending.text());
+            }
         }
         let names: Vec<String> = self
             .positions

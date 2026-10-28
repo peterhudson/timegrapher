@@ -155,23 +155,13 @@ impl State {
         else {
             return;
         };
-        let anchor_index = match self.beats.last() {
-            Some(last) => {
-                last.index
-                    + ((local[anchor].time + off - last.time) / beat)
-                        .round()
-                        .max(1.0) as i64
-            }
-            None => 0,
-        };
-        let shift = anchor_index - local[anchor].index;
-        let mut numbered: Vec<Beat> = local
-            .iter()
-            .map(|b| Beat {
-                index: b.index + shift,
-                ..*b
-            })
-            .collect();
+        let (mut numbered, _) = beats::number_on(
+            &local,
+            anchor,
+            local[anchor].time + off,
+            self.beats.last(),
+            beat,
+        );
         // Jumps in the timing, with the beats just before the chunk so one
         // at its start is seen too.
         let end = numbered[anchor..]

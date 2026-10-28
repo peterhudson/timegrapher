@@ -591,6 +591,61 @@ const REAL_TAKES: [&str; 4] = [
 ];
 const REAL_FILE: &str = "take_part01-001.flac";
 
+/// The Dandong 3235 take a calibre at its own rate is picked on, then
+/// Auto, mid-listen.
+const SWITCH_TAKE: &str = "dd3235_DU_30min";
+
+/// Picking a calibre at the rate Auto found (Dandong 3235, 28800), then
+/// Auto again, mid-listen keeps the beats heard so far: every reading and
+/// each side's averaged sound after it, every 2 s for over a minute, are
+/// exactly a listener's that never switched. Runs where
+/// `TIMEGRAPHER_CORPUS` is set.
+#[test]
+fn a_calibre_then_auto_at_the_found_rate_keeps_every_reading() {
+    let Some(root) = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from) else {
+        assert!(
+            std::env::var_os("TIMEGRAPHER_REQUIRE_CORPUS").is_none(),
+            "TIMEGRAPHER_CORPUS is not set"
+        );
+        eprintln!("SKIP calibre then Auto: TIMEGRAPHER_CORPUS not set");
+        return;
+    };
+    let audio = cut(
+        load(&root.join("takes").join(SWITCH_TAKE).join(REAL_FILE)).unwrap(),
+        120.0,
+    );
+    let block = audio.sample_rate as usize / 10;
+    let at = |s: f64| (s * audio.sample_rate as f64) as usize / block;
+    let (pick, auto) = (at(40.0), at(50.0));
+    let mut never = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+    let mut kept = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+    let mut compared = 0;
+    for (i, c) in audio.samples.chunks(block).enumerate() {
+        if i == pick {
+            assert_eq!(kept.bph(), Some(28_800));
+            assert!(kept.set_bph(Some(28_800)), "the beats stand");
+        }
+        if i == auto {
+            assert!(kept.set_bph(None), "the beats stand");
+        }
+        never.push(c);
+        kept.push(c);
+        if i < pick || i % 20 != 0 {
+            continue;
+        }
+        let (n, k) = (never.reading(10.0), kept.reading(10.0));
+        let t = n.time_s;
+        assert_eq!(format!("{k:?}"), format!("{n:?}"), "{t:.1} s: the reading");
+        assert_eq!(
+            format!("{:?}", kept.tick_profiles()),
+            format!("{:?}", never.tick_profiles()),
+            "{t:.1} s: the averaged sound"
+        );
+        compared += usize::from(n.amplitude_deg.is_some());
+    }
+    assert!(compared >= 30, "{compared} moments with readings");
+}
+
 fn corpus_files() -> Vec<PathBuf> {
     let root = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from);
     corpus_files_at(

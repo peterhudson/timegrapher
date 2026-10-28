@@ -62,7 +62,8 @@ pub struct Summary {
     pub overall: Option<TimingFit>,
     /// Signed beat error measured from the unlock, the figure checked
     /// against tg's beat error in regress: median over the amplitude
-    /// windows, ms. Positive means Tick (the run's first beat) comes late.
+    /// windows, ms. Positive means Tick comes late; each take starts
+    /// positive ([`crate::beats::SideCheck`]).
     pub beat_error_unlock_ms: Option<f64>,
     /// Spread of the windowed rate (5th and 95th percentiles), s/d.
     pub rate_p05: Option<f64>,
@@ -344,7 +345,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
                 _ => 0.0,
             },
             listened_s: duration,
-            breaks: cuts.len(),
+            breaks: crate::breaks::events(&log.jumps, &beats, bph),
             sides_by_count: log.by_count.len(),
             beat_error_as_size: turned && overall.is_some(),
             average_s: None,

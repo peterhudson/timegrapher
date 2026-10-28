@@ -202,6 +202,36 @@ pub fn with_jumps(listed: Vec<Break>, jumps: &[f64]) -> Vec<Break> {
     out
 }
 
+/// How many events the breaks at `at` (audio seconds, sorted) are: breaks
+/// with under [`JUMP_MATCH_S`] of the watch heard between them, by the good
+/// beats (better than [`crate::beats::SIDE_QUALITY`]) of `beats` between
+/// them at `bph`, are one, as after a silence the beats can step more than
+/// once before they are found again. This is the count the `breaks` caveat
+/// gives.
+pub fn events(at: &[f64], beats: &[Beat], bph: u32) -> usize {
+    let period = 3600.0 / bph.max(1) as f64;
+    let heard = |a: f64, b: f64| {
+        let (i, j) = (
+            beats.partition_point(|x| x.time <= a),
+            beats.partition_point(|x| x.time < b),
+        );
+        beats[i..j.max(i)]
+            .iter()
+            .filter(|x| x.quality > crate::beats::SIDE_QUALITY)
+            .count() as f64
+            * period
+    };
+    let new = at
+        .windows(2)
+        .filter(|p| heard(p[0], p[1]) >= JUMP_MATCH_S)
+        .count();
+    if at.is_empty() {
+        0
+    } else {
+        new + 1
+    }
+}
+
 /// True seconds from the start of the take for audio second `t`, adding
 /// the gaps of the breaks before it (a negative gap counts as none).
 pub fn wall(breaks: &[Break], t: f64) -> f64 {
