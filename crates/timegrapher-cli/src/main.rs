@@ -1446,6 +1446,8 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
                 Some(format!("{seconds:.1} s masked out"))
             }
             Caveat::Masked { seconds } => Some(format!("{seconds:.0} s masked out")),
+            // `analyze` reads no clock log, so no two clocks to disagree.
+            Caveat::ClockSourcesDisagree { .. } => None,
             // Said on their own lines.
             Caveat::NoWatch { .. }
             | Caveat::SetRateDisagrees { .. }

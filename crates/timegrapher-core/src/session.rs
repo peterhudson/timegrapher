@@ -630,6 +630,9 @@ pub fn measure_masked(
             crate::measure::Caveat::Masked { seconds: masked_s },
         );
     }
+    if let Some(d) = clock.and_then(ClockFit::sources_disagree) {
+        crate::measure::add(&mut m.caveats, d.into());
+    }
     if !m.watch_heard {
         m.rate_s_per_day = None;
         m.beat_error_ms = None;
