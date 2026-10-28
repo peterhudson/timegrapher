@@ -330,19 +330,12 @@ pub fn resolve(
         take::ClockFrom::LogRatedByUsb | take::ClockFrom::Usb => usb.as_ref().map(|(p, _)| *p),
         take::ClockFrom::Correction => correction.as_ref().map(|(p, _)| *p),
     };
-    let from = match source {
-        take::ClockFrom::LogRatedByUsb => format!(
-            "{}; clock log {} for its breaks",
-            usb.map(|(_, f)| f).unwrap_or_default(),
-            log.map(|p| p.display().to_string()).unwrap_or_default()
-        ),
-        take::ClockFrom::Log => format!(
-            "from clock log {}",
-            log.map(|p| p.display().to_string()).unwrap_or_default()
-        ),
-        take::ClockFrom::Correction => correction.map(|(_, f)| f).unwrap_or_default(),
-        take::ClockFrom::Usb => usb.map(|(_, f)| f).unwrap_or_default(),
-    };
+    let from = take::clock_source_text(
+        source,
+        usb.as_ref().map(|(_, f)| f.as_str()),
+        correction.as_ref().map(|(_, f)| f.as_str()),
+        log,
+    );
     Ok(fit.map(|fit| AppliedClock { fit, ppm, from }))
 }
 
@@ -359,31 +352,19 @@ pub fn correction(
     }
     match device {
         Some(d) => match ClockStore::load()?.get(d) {
-            Some(e) => Ok(Some((e.ppm, stored_text(e)))),
+            Some(e) => Ok(Some((e.ppm, e.source_text()))),
             None => Err(format!(
                 "no clock correction stored for '{d}'; see `timegrapher clock list`"
             )),
         },
-        None => Ok(take::stored_correction(file)?.map(|e| (e.ppm, stored_text(&e)))),
+        None => Ok(take::stored_correction(file)?.map(|e| (e.ppm, e.source_text()))),
     }
 }
 
 /// The sound card's error read from the USB lines in the first of
 /// `files`, with its source text; `None` when the recording has none.
 pub fn usb(files: &[std::path::PathBuf]) -> Result<Option<(f64, String)>, String> {
-    Ok(timegrapher_core::clock::usb_lines(files)?.map(|c| {
-        (
-            c.ppm,
-            format!(
-                "from {} USB lines in the recording, {:.1} ppm apart",
-                c.lines, c.spread_ppm
-            ),
-        )
-    }))
-}
-
-fn stored_text(e: &DeviceClock) -> String {
-    format!("stored for '{}', {}", e.device, e.measured_utc)
+    Ok(timegrapher_core::clock::usb_lines(files)?.map(|c| c.correction()))
 }
 
 #[cfg(test)]

@@ -90,6 +90,30 @@ pub fn clock(
     )
 }
 
+/// Where a take's clock came from, in words, as `from` ([`clock_from`])
+/// picks it: the USB lines' text (`usb`, as
+/// [`crate::usbclock::UsbClock::correction`] words it), the correction's
+/// (`correction`, such as [`crate::clockstore::DeviceClock::source_text`])
+/// and the clock log's path (`log`).
+pub fn clock_source_text(
+    from: ClockFrom,
+    usb: Option<&str>,
+    correction: Option<&str>,
+    log: Option<&Path>,
+) -> String {
+    let log = || log.map(|p| p.display().to_string()).unwrap_or_default();
+    match from {
+        ClockFrom::LogRatedByUsb => format!(
+            "{}; clock log {} for its breaks",
+            usb.unwrap_or_default(),
+            log()
+        ),
+        ClockFrom::Log => format!("from clock log {}", log()),
+        ClockFrom::Correction => correction.unwrap_or_default().to_string(),
+        ClockFrom::Usb => usb.unwrap_or_default().to_string(),
+    }
+}
+
 /// The clock of a take in the folder `dir` whose sound files are `files`,
 /// in order, for a reader with no beats to hand (a library listing a
 /// take's figures): [`clock`] from the take's clock log (`log`, a file in

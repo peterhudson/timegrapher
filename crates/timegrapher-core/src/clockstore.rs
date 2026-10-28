@@ -145,6 +145,13 @@ pub fn recorded_device(file: &Path) -> Option<String> {
     v.get("device")?.as_str().map(String::from)
 }
 
+impl DeviceClock {
+    /// Where a correction taken from the store came from, in words.
+    pub fn source_text(&self) -> String {
+        format!("stored for '{}', {}", self.device, self.measured_utc)
+    }
+}
+
 impl ClockStore {
     /// The user's store; empty if there is none yet.
     pub fn load() -> Result<ClockStore, String> {
