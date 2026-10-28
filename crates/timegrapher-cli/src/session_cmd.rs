@@ -513,14 +513,9 @@ fn read_one_inner(
         card_clock: c.card_clock,
         settle_s: c.o.settle,
     };
-    let read = take::measure_entry(
-        c.base,
-        c.m,
-        e,
-        &settings,
-        |files| Ok(crate::clock_cmd::usb(files)?.map(|(ppm, _)| ppm)),
-        |first| Ok(crate::clock_cmd::correction(first, None, c.m.card_ppm)?.map(|(ppm, _)| ppm)),
-    )?;
+    let read = take::measure_entry(c.base, c.m, e, &settings, take::usb_ppm, |first| {
+        take::correction_ppm(c.m, first)
+    })?;
     if capture && read.kept.is_some() {
         return Err(format!(
             "{}: kept as its analysis alone, with no sound to record provenance for",

@@ -519,17 +519,9 @@ fn measure_take(dir: &Path) -> Result<Reading, String> {
         card_clock: false,
         settle_s: None,
     };
-    let read = crate::take::measure_entry(
-        dir,
-        &m,
-        e,
-        &settings,
-        |files| Ok(crate::clock::usb_lines(files)?.map(|u| u.ppm)),
-        |first| match m.card_ppm {
-            Some(p) => Ok(Some(p)),
-            None => Ok(crate::take::stored_correction(first)?.map(|c| c.ppm)),
-        },
-    )?;
+    let read = crate::take::measure_entry(dir, &m, e, &settings, crate::take::usb_ppm, |first| {
+        crate::take::correction_ppm(&m, first)
+    })?;
     let x = &read.measurement;
     Ok(Reading {
         position: e.position.clone(),
