@@ -559,55 +559,10 @@ pub struct TakesContext<'a> {
     pub on_show: Option<&'a std::path::Path>,
 }
 
-/// What a take measured and is, in a line: a test's kind, its positions,
-/// length, rate, amplitude, beat error (its size) and marks.
+/// What a take measured and is, in a line: core's facts for it
+/// ([`Take::facts`]), as `timegrapher watches` lists them.
 pub fn take_line(t: &Take, positions_test: bool) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    if positions_test {
-        parts.push("Positions Test".into());
-    }
-    let names: Vec<String> = t
-        .positions
-        .iter()
-        .map(|p| Position::parse(p).map_or_else(|| p.clone(), |x| x.name().to_string()))
-        .collect();
-    if let Some(r) = &t.power_reserve {
-        parts.push(format!(
-            "Power Reserve {}{}",
-            timegrapher_core::power_reserve::run_text(r.run_s),
-            match r.ending {
-                timegrapher_core::power_reserve::Ending::Stopped => "",
-                _ => " (still running at the end)",
-            }
-        ));
-    }
-    if !names.is_empty() {
-        parts.push(names.join(", "));
-    }
-    if let Some(d) = t.duration_s.filter(|_| t.power_reserve.is_none()) {
-        parts.push(length_text(d));
-    }
-    // A test's last window doesn't stand for the test: its figures are in
-    // its table, or hour by hour.
-    let test = positions_test || t.power_reserve.is_some();
-    if let Some(a) = t.at_end.as_ref().filter(|_| !test) {
-        if let Some(r) = a.rate() {
-            parts.push(format!("{r:+.1} s/d"));
-        }
-        if let Some(x) = a.amplitude_deg {
-            parts.push(format!("{x:.0}°"));
-        }
-        if let Some(b) = a.beat_error_ms {
-            parts.push(format!("{:.1} ms", b.abs()));
-        }
-    }
-    if !t.audio {
-        parts.push("Analysis Only".into());
-    }
-    if t.incomplete {
-        parts.push("Incomplete".into());
-    }
-    parts.join(" · ")
+    t.facts(positions_test).join(" · ")
 }
 
 /// The captions under the three New Take buttons: Listen, Positions Test, Power Reserve Test.

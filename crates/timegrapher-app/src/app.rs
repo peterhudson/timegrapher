@@ -4018,7 +4018,7 @@ impl TimegrapherApp {
         } else {
             path.parent().unwrap_or(path)
         };
-        self.positions_take = timegrapher_core::library::is_positions_test(&dir);
+        self.positions_take = timegrapher_core::library::is_positions_test(dir);
         // A test's take opens on its results.
         if self.positions_take {
             self.reveal_pane(Pane::PositionsTest);
@@ -16991,8 +16991,6 @@ fn folder_size(dir: &Path) -> u64 {
 /// A library move's outcome, from its thread ([`library::move_library`]).
 type LibraryMove = std::sync::mpsc::Receiver<Result<Option<String>, String>>;
 
-/// A size on disk, as a file manager shows it: 7.7 GB, 10.5 MB, 812 kB.
-
 /// Open `dir` in the system's file manager.
 fn reveal(dir: &Path) -> std::io::Result<()> {
     let program = if cfg!(target_os = "macos") {
@@ -19704,7 +19702,8 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(watches::take_line(&take, false).starts_with("Power Reserve 12 s (still running"));
+        assert!(watches::take_line(&take, false)
+            .starts_with("Power Reserve 12 s · Stopped by hand while the watch still ran"));
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.start_batch(&saved);
