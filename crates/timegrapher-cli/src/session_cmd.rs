@@ -372,7 +372,10 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
             .unwrap_or(52.0)
     ));
     t.push_str("# seconds skipped at the start of each recording while the watch settles\n");
-    t.push_str(&format!("settle_s = {}\n", o.settle.unwrap_or(20.0)));
+    t.push_str(&format!(
+        "settle_s = {}\n",
+        o.settle.unwrap_or(take::SETTLE_S)
+    ));
     t.push_str("# known sound-card error, ppm slow, for recordings without a clock log\n");
     t.push_str("# card_ppm = 0.0\n");
     for f in &files {
@@ -1015,16 +1018,12 @@ fn print_summary(s: &Session) {
         s.lift_deg
     );
     if let Some(p) = &s.power_reserve {
-        use timegrapher_core::power_reserve::{run_text, Ending};
+        use timegrapher_core::power_reserve::run_text;
         println!(
-            "Power reserve {} in {}, {}",
+            "Power reserve {} in {}. {}.",
             run_text(p.run_s),
             p.position,
-            match p.ending {
-                Ending::Stopped => "to the watch stopping",
-                Ending::ByHand => "stopped by hand while the watch still ran",
-                Ending::Limit => "reached the 80 h limit while the watch still ran",
-            }
+            p.ending.text()
         );
     }
     println!();

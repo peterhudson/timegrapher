@@ -814,6 +814,11 @@ fn period_of(r: &longterm::SeriesReport, unit: &'static str) -> Option<Period> {
     })
 }
 
+/// Fewest pairs of readings a lag of the autocorrelation is read from for
+/// the Ljung–Box test or a repeat to count it: below this its correlation
+/// strays by over a third under independent readings.
+const MIN_PAIRS: usize = 30;
+
 /// Autocorrelation of readings on a uniform grid (gaps NaN), with the
 /// Ljung–Box test, the memory and a repeat.
 fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
@@ -822,39 +827,53 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
         .min(y.len() / 3)
         .max(cfg.ljung_box_lags.min(y.len() / 3));
     let (r, pairs) = acf_pairs(y, max_lag);
-    let h = cfg.ljung_box_lags.min(r.len().saturating_sub(1)).max(1);
-    let nf = n as f64;
-    let q: f64 = (1..=h)
-        .filter(|&k| r[k].is_finite())
-        .map(|k| r[k] * r[k] / (nf - k as f64).max(1.0))
-        .sum::<f64>()
-        * nf
-        * (nf + 2.0);
-    let max_short = (1..=h)
-        .filter_map(|k| r.get(k).copied())
-        .filter(|v| v.is_finite())
-        .fold(0.0f64, |a, v| a.max(v.abs()));
+    // Gaps leave fewer pairs at a lag than a full series would have, and a
+    // correlation read from few pairs strays far: each lag is weighed by
+    // its pairs, and one read from under MIN_PAIRS counts for nothing.
+    // With every reading present this is the usual Ljung–Box Q and band.
+    let ng = y.len() as f64;
+    let full = |k: usize| (ng - k as f64).max(1.0);
+    let supported = |k: usize| pairs.get(k).is_some_and(|&m| m >= MIN_PAIRS);
+    let h_max = cfg.ljung_box_lags.min(r.len().saturating_sub(1)).max(1);
+    let lags: Vec<usize> = (1..=h_max)
+        .filter(|&k| r.get(k).is_some_and(|v| v.is_finite()) && supported(k))
+        .collect();
+    let h = lags.len();
+    let q: f64 = lags
+        .iter()
+        .map(|&k| r[k] * r[k] * pairs[k] as f64 * ng * (ng + 2.0) / (full(k) * full(k)))
+        .sum();
+    let max_short = lags.iter().fold(0.0f64, |a, &k| a.max(r[k].abs()));
     let memory = r
         .iter()
         .position(|&v| v < (-1.0f64).exp())
         .map(|k| k as f64 * step);
+    let nf = n as f64;
     let band = 1.96 / nf.sqrt();
+    // The band at lag k, from its pairs scaled to a full series' (so 1.96/√n
+    // with every reading present).
+    let band_at = |k: usize| 1.96 / (pairs[k] as f64 * ng / full(k)).sqrt();
     // A repeat: a local peak, strong, after the correlation has fallen
     // well below it, and that comes back at twice the lag (a cycle
-    // repeats; a chance bump does not).
+    // repeats; a chance bump does not), each read from enough pairs.
     let repeat = (2..r.len().saturating_sub(1)).find(|&k| {
+        let again: Vec<usize> = (2 * k * 9 / 10..=(2 * k * 11 / 10).min(r.len() - 1)).collect();
+        if !supported(k) || !again.iter().all(|&j| supported(j)) {
+            return false;
+        }
         let lo = r[1..k].iter().copied().fold(f64::INFINITY, f64::min);
-        let again = (2 * k * 9 / 10..=(2 * k * 11 / 10).min(r.len() - 1))
-            .map(|j| r[j])
+        let again = again
+            .iter()
+            .map(|&j| r[j])
             .fold(f64::NEG_INFINITY, f64::max);
         r[k] >= r[k - 1]
             && r[k] > r[k + 1]
-            && r[k] >= 0.3f64.max(4.0 * band)
+            && r[k] >= 0.3f64.max(4.0 * band_at(k))
             && lo <= r[k] - 0.3
             && again >= 0.5 * r[k]
     });
     let stride = thin(r.len(), cfg.max_points);
-    let lb_p = chi2_tail(q, h);
+    let lb_p = if h > 0 { chi2_tail(q, h) } else { 1.0 };
     Autocorrelation {
         lag_s: (0..r.len())
             .step_by(stride)
@@ -1281,10 +1300,22 @@ fn cycle(
         cands.push((refine(&d, l, 0.2), CycleSource::Autocorrelation));
     }
     // Every later peak of the autocorrelation above three times its 95% band, even one
-    // too weak to count as a repeat on its own: the fold below decides.
+    // too weak to count as a repeat on its own: the fold below decides. The
+    // band at a lag is from its pairs, scaled to a full series' (`band`
+    // with every reading present), and a lag read from under MIN_PAIRS
+    // pairs gives none.
     if let Some(a) = ac {
+        let ng = d.y.len() as f64;
+        let band_at = |k: usize| {
+            let full = (ng - a.lag_s[k] / d.step).max(1.0);
+            let pairs = (1.96 / a.band_by_lag[k]).powi(2);
+            (pairs >= MIN_PAIRS as f64 - 0.5).then(|| 1.96 / (pairs * ng / full).sqrt())
+        };
         for k in 2..a.r.len().saturating_sub(1) {
-            if a.r[k] >= a.r[k - 1] && a.r[k] > a.r[k + 1] && a.r[k] >= 3.0 * a.band {
+            if a.r[k] >= a.r[k - 1]
+                && a.r[k] > a.r[k + 1]
+                && band_at(k).is_some_and(|b| a.r[k] >= 3.0 * b)
+            {
                 cands.push((refine(&d, a.lag_s[k], 0.2), CycleSource::Autocorrelation));
             }
         }
@@ -2860,6 +2891,53 @@ fn wind_down(rate: &Grid, amp: &Grid, be: &Grid, cfg: &Config) -> Option<WindDow
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn independent_readings_with_most_missing_read_as_no_cycle() {
+        // 200 grids of 1200 independent readings 10 s apart with 90% of
+        // them missing (a fixed random mask): with the correlation at each
+        // lag read from 4 to 14 pairs as if from all 120 readings, the
+        // Ljung–Box p fell under 0.01 in 199 and "repeats every" led in
+        // 148. Every reading present, it is 1 in 200.
+        for sparse in [false, true] {
+            let mut rng = crate::synth::Rng::new(20261026);
+            let mut mask = crate::synth::Rng::new(991991);
+            let (mut low_p, mut repeats, mut correlated) = (0, 0, 0);
+            for _ in 0..200 {
+                let y: Vec<f64> = (0..1200)
+                    .map(|_| {
+                        let v = rng.normal();
+                        if sparse && mask.normal() < 1.28 {
+                            f64::NAN
+                        } else {
+                            v
+                        }
+                    })
+                    .collect();
+                let out = check_series(
+                    SeriesKind::Rate,
+                    Grid {
+                        t0: 0.0,
+                        step: 10.0,
+                        y,
+                    },
+                    None,
+                    None,
+                    None,
+                    &[],
+                    &Config::default(),
+                );
+                low_p += usize::from(out.autocorrelation.as_ref().unwrap().p_value < 0.01);
+                repeats += usize::from(out.summary.starts_with("repeats"));
+                correlated += usize::from(out.summary.starts_with("successive"));
+            }
+            assert!(low_p <= 6, "sparse {sparse}: p < 0.01 in {low_p} of 200");
+            assert!(
+                repeats + correlated <= 2,
+                "sparse {sparse}: {repeats} repeat and {correlated} correlated headlines in 200"
+            );
+        }
+    }
 
     #[test]
     fn a_cycle_of_a_non_whole_number_of_readings_reads_its_full_size() {

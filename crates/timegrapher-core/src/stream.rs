@@ -81,11 +81,6 @@ pub struct BeatLog {
 /// 48 kHz).
 pub const SNIPPETS_KEPT_S: f64 = 60.0;
 
-/// Beats kept so far that a chunk looks back through for the good beats
-/// before a jump at its start: about four minutes at 28,800 bph, longer
-/// than the tracker follows noise after a dropout.
-const JUMP_LOOK_BACK: usize = 2000;
-
 impl BeatLog {
     /// [`crate::measure::beat_sound_found`] for `beats`, a stretch's
     /// beats as this log holds them (audio time): the profiles of their
@@ -160,23 +155,13 @@ impl State {
         else {
             return;
         };
-        let anchor_index = match self.beats.last() {
-            Some(last) => {
-                last.index
-                    + ((local[anchor].time + off - last.time) / beat)
-                        .round()
-                        .max(1.0) as i64
-            }
-            None => 0,
-        };
-        let shift = anchor_index - local[anchor].index;
-        let mut numbered: Vec<Beat> = local
-            .iter()
-            .map(|b| Beat {
-                index: b.index + shift,
-                ..*b
-            })
-            .collect();
+        let (mut numbered, _) = beats::number_on(
+            &local,
+            anchor,
+            local[anchor].time + off,
+            self.beats.last(),
+            beat,
+        );
         // Jumps in the timing, with the beats just before the chunk so one
         // at its start is seen too.
         let end = numbered[anchor..]
@@ -185,8 +170,7 @@ impl State {
             .map_or(numbered.len(), |p| anchor + p);
         // The good beats before the chunk, reaching back past a stretch of
         // noise beats after a dropout ([`beats::jumps_among_good`]).
-        let back = &self.beats[self.beats.len().saturating_sub(JUMP_LOOK_BACK)..];
-        let before: Vec<Beat> = back[beats::good_tail_start(back, beats::JUMP_CONTEXT)..]
+        let before: Vec<Beat> = beats::good_tail(&self.beats, beats::JUMP_CONTEXT)
             .iter()
             .map(|b| Beat {
                 time: b.time - off,

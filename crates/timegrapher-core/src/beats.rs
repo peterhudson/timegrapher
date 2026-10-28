@@ -718,6 +718,12 @@ pub struct SideCheck {
     /// The latest intervals, seconds, to good beats from the good beat
     /// two before.
     steps: std::collections::VecDeque<f64>,
+    /// Whether the take's sides are named by the beat error's sign
+    /// ([`SideCheck::beat`]).
+    named: bool,
+    /// The sides were just named the other way round: [`SideCheck::settle`]
+    /// owes the caller a swap of every beat.
+    swap_owed: bool,
 }
 
 impl SideCheck {
@@ -757,7 +763,41 @@ impl SideCheck {
                 if kept.len() > SIDE_BEATS {
                     kept.pop_front();
                 }
+                self.name_sides();
             }
+        }
+    }
+
+    /// Each take starts positive: once [`SIDE_BEATS`] steady beats of each
+    /// side are kept and their beat error ([`timing_split`]) has a sign
+    /// ([`SIDE_SPLIT_MIN_MS`] or more), the side that comes late is named
+    /// Tick, once. Counting names the take's first beat Tick, so this is
+    /// the first stretch with a clear sign, mostly its first 10 s. Named
+    /// the other way round, every beat so far is numbered one further.
+    /// Near no beat error the count stands.
+    fn name_sides(&mut self) {
+        if self.named || self.kept.iter().any(|k| k.len() < SIDE_BEATS) {
+            return;
+        }
+        let times = self
+            .kept
+            .each_ref()
+            .map(|k| k.iter().map(|x| x.0).collect::<Vec<f64>>());
+        let Some(split) = timing_split(&times[0], &times[1]) else {
+            return;
+        };
+        if split.abs() < SIDE_SPLIT_MIN_MS {
+            return;
+        }
+        self.named = true;
+        // A positive split is the even-to-odd half-beat longer: Tock comes
+        // late, a negative beat error.
+        if split > 0.0 {
+            self.kept.swap(0, 1);
+            for (_, index) in self.last.iter_mut().flatten() {
+                *index += 1;
+            }
+            self.swap_owed = true;
         }
     }
 
@@ -804,8 +844,13 @@ impl SideCheck {
     /// beats of each side, compare the first of them with the sides' sound
     /// before: the jump's time and what was found. On [`SideCall::Swapped`]
     /// the beats fed since are taken as numbered one further, as the caller
-    /// now numbers them.
+    /// now numbers them. When the take's sides were just named the other
+    /// way round ([`SideCheck::beat`]), the time is minus infinity: every
+    /// beat is numbered one further.
     pub fn settle(&mut self) -> Option<(f64, SideCall)> {
+        if std::mem::take(&mut self.swap_owed) {
+            return Some((f64::NEG_INFINITY, SideCall::Swapped));
+        }
         if self
             .pending
             .as_ref()
@@ -897,6 +942,38 @@ const JUMP_SPAN: usize = 5;
 /// start.
 pub const JUMP_CONTEXT: usize = 2 * JUMP_SPAN + 2;
 
+/// A pass's or chunk's beats numbered on from the `last` beat kept, `beat`
+/// seconds apart: `local[anchor]`, at `anchor_t` seconds, gets the whole
+/// number of beats since (at least one), and the rest follow it. The first
+/// beat of a take is numbered 0. Also how far the count is off a whole
+/// number of beats (0 for a take's first beat), which says whether it is a
+/// guess. The one numbering for a whole file and for live listening.
+pub fn number_on(
+    local: &[Beat],
+    anchor: usize,
+    anchor_t: f64,
+    last: Option<&Beat>,
+    beat: f64,
+) -> (Vec<Beat>, f64) {
+    let (anchor_index, off) = match last {
+        Some(last) => {
+            let count = (anchor_t - last.time) / beat;
+            let n = count.round().max(1.0);
+            (last.index + n as i64, count - n)
+        }
+        None => (0, 0.0),
+    };
+    let shift = anchor_index - local[anchor].index;
+    let numbered = local
+        .iter()
+        .map(|b| Beat {
+            index: b.index + shift,
+            ..*b
+        })
+        .collect();
+    (numbered, off)
+}
+
 /// Positions `p` in `beats` where the timing of both sides steps by more
 /// than [`JUMP_S`], and by about the same: where listening stopped and
 /// started again, so the watch's phase moved on. Each side's step is the
@@ -930,13 +1007,28 @@ pub const JUMP_QUALITY: f32 = 0.4;
 /// noise beats would hide the step from the beats either side of it, and
 /// the count across such a stretch is a guess that swaps Tick and Tock
 /// half the time. Positions are in `beats`; `before` may hold noise beats
-/// too (see [`good_tail_start`]).
+/// too (see [`good_tail`]).
 pub fn jumps_among_good(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
     let good = |b: &Beat| b.quality > JUMP_QUALITY;
     let at: Vec<usize> = (0..beats.len()).filter(|&k| good(&beats[k])).collect();
     let found: Vec<Beat> = at.iter().map(|&k| beats[k]).collect();
     let before: Vec<Beat> = before.iter().copied().filter(good).collect();
     jumps(&found, &before).into_iter().map(|p| at[p]).collect()
+}
+
+/// Beats kept so far that the jump search looks back through for the good
+/// beats before a jump ([`good_tail`]): about four minutes at 28,800 bph,
+/// longer than the tracker follows noise after a dropout. The one reach for
+/// a whole file and for live listening alike, so both find the same jumps
+/// after a long stretch of noise.
+pub const JUMP_LOOK_BACK: usize = 2000;
+
+/// The last `n` good beats of `beats` (better than [`JUMP_QUALITY`]) with
+/// the noise beats among them, looking back at most [`JUMP_LOOK_BACK`]
+/// beats: the stretch [`jumps_among_good`] reads.
+pub fn good_tail(beats: &[Beat], n: usize) -> &[Beat] {
+    let back = &beats[beats.len().saturating_sub(JUMP_LOOK_BACK)..];
+    &back[good_tail_start(back, n)..]
 }
 
 /// Where in `beats` the last `n` good beats (better than [`JUMP_QUALITY`])
@@ -1138,6 +1230,42 @@ mod tests {
         let from = good_tail_start(&b[..200], JUMP_CONTEXT);
         assert_eq!(from, 200 - 24 - JUMP_CONTEXT);
         assert_eq!(jumps_among_good(&b[200..], &b[from..200]), vec![0]);
+    }
+
+    #[test]
+    fn a_jump_after_long_noise_is_seen_by_file_and_live_alike() {
+        // From beat 1700 on both sides land 30 ms later, and the 300 beats
+        // before it (about 40 s) are noise: longer than one pass of live
+        // listening's good beats.
+        let mut b = ticking(1800, |k, _| if k >= 1700 { 0.030 } else { 0.0 });
+        for (n, x) in b[1400..1700].iter_mut().enumerate() {
+            x.quality = 0.05;
+            x.time += 0.04 * rng_normal(n as i64);
+        }
+        // A whole file's chunk starting at the jump, and live listening's
+        // pass over its latest beats, reach the same good beats.
+        let before = good_tail(&b[..1700], JUMP_CONTEXT);
+        assert_eq!(jumps_among_good(&b[1700..], before), vec![0]);
+        // (Live, on a pass 40 beats after the jump; the 152 beats it used
+        // to reach back hold no good beats from before it.)
+        let tail = good_tail(&b[..1740], 4 * MIN_SIDE_BEATS + JUMP_CONTEXT);
+        assert!(b[1740 - 152..1700]
+            .iter()
+            .all(|x| x.quality <= JUMP_QUALITY));
+        let at: Vec<f64> = jumps_among_good(tail, &[])
+            .into_iter()
+            .map(|p| tail[p].time)
+            .collect();
+        assert_eq!(at, vec![b[1700].time]);
+        // Noise longer than the reach leaves no good beats in sight.
+        let mut far = ticking(2600, |k, _| if k >= 2500 { 0.030 } else { 0.0 });
+        for (n, x) in far[200..2500].iter_mut().enumerate() {
+            x.quality = 0.05;
+            x.time += 0.04 * rng_normal(n as i64);
+        }
+        let before = good_tail(&far[..2500], JUMP_CONTEXT);
+        assert_eq!(before.len(), JUMP_LOOK_BACK);
+        assert!(before.iter().all(|x| x.quality <= JUMP_QUALITY));
     }
 
     #[test]

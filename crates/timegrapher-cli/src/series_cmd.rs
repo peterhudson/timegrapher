@@ -11,6 +11,7 @@ use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
 use timegrapher_core::steady_views;
 use timegrapher_core::stream::{self, StreamConfig};
+use timegrapher_core::timefreq::size_number;
 use timegrapher_core::{audio, take};
 
 pub struct Options<'a> {
@@ -363,7 +364,7 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     }
     if let Some(c) = &s.cycle {
         println!(
-            "  {:<14} {:.1} s{}{}, {:.2} {} p-p, explains {:.0}% (found by {})",
+            "  {:<14} {:.1} s{}{}, {} {} p-p, explains {:.0}% (found by {})",
             "cycle",
             c.period_s,
             c.wheel
@@ -374,7 +375,7 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
                     format!(" = {n} × {p:.2} s (which alone explains {:.0}%)", e * 100.0),
                 _ => String::new(),
             },
-            c.peak_to_peak,
+            size_number(c.peak_to_peak),
             s.unit,
             c.explained * 100.0,
             match c.source {
@@ -386,13 +387,13 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     }
     if let Some(p) = &s.period {
         println!(
-            "  {:<14} {:.1} s{}, {:.2} {} p-p, explains {:.0}%, false alarm {}",
+            "  {:<14} {:.1} s{}, {} {} p-p, explains {:.0}%, false alarm {}",
             "period search",
             p.period_s,
             p.wheel
                 .as_ref()
                 .map_or(String::new(), |w| format!(" ({w})")),
-            p.size,
+            size_number(p.size),
             p.size_unit,
             p.explained * 100.0,
             p_text(10f64.powf(-p.significance))
