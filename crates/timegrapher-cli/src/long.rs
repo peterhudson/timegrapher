@@ -3,7 +3,7 @@
 use std::fs::{self, File};
 use std::io::{BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use timegrapher_core::calibre_store::{self, Catalog, Entry, UserCalibres};
+use timegrapher_core::calibre_store::{self, UserCalibres};
 #[cfg(test)]
 use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::clock::ClockFit;
@@ -12,7 +12,7 @@ use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{common_escape_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::timefreq::size_number;
-use timegrapher_core::{audio, session, take, timing};
+use timegrapher_core::{audio, take, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
 /// number of teeth, or both common escape wheels when neither is given.
@@ -106,14 +106,8 @@ pub(crate) struct ResolvedTrain {
     escape_teeth: Option<u32>,
 }
 
-#[derive(Debug)]
-pub(crate) struct ResolvedCalibre {
-    pub name: String,
-    pub bph: Option<u32>,
-    pub lift_angle_deg: Option<f64>,
-    pub escape_teeth: Option<u32>,
-    wheels: Vec<Wheel>,
-}
+/// A calibre as the catalogue gives it ([`take::calibre_named`]).
+pub(crate) type ResolvedCalibre = take::Calibre;
 
 impl Train<'_> {
     pub(crate) fn resolve(&self) -> Result<ResolvedTrain, String> {
@@ -139,7 +133,7 @@ impl Train<'_> {
     pub(crate) fn resolve_label_with(&self, user: &UserCalibres) -> Result<ResolvedTrain, String> {
         if self
             .calibre
-            .and_then(|name| Catalog::new(user).find(name))
+            .and_then(|name| take::calibre_named(name, user))
             .is_none()
         {
             return Train {
@@ -152,40 +146,15 @@ impl Train<'_> {
     }
 
     pub(crate) fn resolve_with(&self, user: &UserCalibres) -> Result<ResolvedTrain, String> {
-        let cat = Catalog::new(user);
         let calibre = self.calibre.map(|name| {
-            let entry = cat.find(name).ok_or_else(|| format!(
+            take::calibre_named(name, user).ok_or_else(|| format!(
                 "--calibre '{name}' is not in the catalogue; use `timegrapher calibres --search {name}`"
-            ))?;
-            Ok::<_, String>(resolved_calibre(&cat, entry))
+            ))
         }).transpose()?;
         Ok(ResolvedTrain {
             calibre,
             escape_teeth: self.escape_teeth,
         })
-    }
-}
-
-fn resolved_calibre(cat: &Catalog<'_>, entry: Entry<'_>) -> ResolvedCalibre {
-    let mut wheels = cat.wheels(entry);
-    if let Entry::Table(c) = entry {
-        // Preserve shipped first-match naming order; Catalogue supplies
-        // the effective values, overrides and additional wheel names.
-        let mut ordered = Vec::new();
-        for wheel in &c.wheels {
-            if let Some(i) = wheels.iter().position(|w| w.name == wheel.name) {
-                ordered.push(wheels.remove(i));
-            }
-        }
-        ordered.extend(wheels);
-        wheels = ordered;
-    }
-    ResolvedCalibre {
-        name: entry.name().to_string(),
-        bph: entry.bph(),
-        lift_angle_deg: entry.lift_angle_deg(),
-        escape_teeth: entry.escape_teeth(),
-        wheels,
     }
 }
 
@@ -226,7 +195,7 @@ impl ResolvedTrain {
     /// else the default.
     pub(crate) fn lift_deg(&self, flag: Option<f64>) -> f64 {
         flag.or(self.calibre.as_ref().and_then(|c| c.lift_angle_deg))
-            .unwrap_or(crate::calibres_cmd::DEFAULT_LIFT_DEG)
+            .unwrap_or(take::DEFAULT_LIFT_DEG)
     }
 
     /// What `lift_deg` fell back on, said as `analyze` says it, when
@@ -240,7 +209,7 @@ impl ResolvedTrain {
         };
         Some(format!(
             "note: lift {}°, the default; {why}",
-            crate::calibres_cmd::DEFAULT_LIFT_DEG
+            take::DEFAULT_LIFT_DEG
         ))
     }
 
@@ -279,28 +248,7 @@ pub(crate) fn parse_wheel(s: &str) -> Result<Wheel, String> {
 /// Expand each directory in place, in the desktop's manifest-first/natural
 /// order. Explicit paths and repetitions keep their argument positions.
 pub(crate) fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
-    let mut out = Vec::new();
-    for path in files {
-        let listed = if path.is_dir() {
-            fs::read_to_string(path.join("session.toml"))
-                .ok()
-                .and_then(|text| toml::from_str::<session::Manifest>(&text).ok())
-                .map(|manifest| {
-                    manifest
-                        .recordings
-                        .into_iter()
-                        .map(|entry| entry.file)
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        out.extend(timegrapher_core::recording_order::recordings_in(
-            path, &listed,
-        )?);
-    }
-    Ok(out)
+    timegrapher_core::take::sound_files(files)
 }
 
 /// Where the sound card's clock error comes from: a clock log recorded
@@ -938,6 +886,7 @@ mod recording_order_tests {
 mod catalogue_tests {
     use super::*;
     use serde_json::json;
+    use timegrapher_core::calibre_store::Catalog;
 
     fn user() -> UserCalibres {
         serde_json::from_value(json!({
@@ -998,7 +947,7 @@ mod catalogue_tests {
         }
         .resolve_with(&user)
         .unwrap();
-        assert_eq!(none.lift_deg(None), crate::calibres_cmd::DEFAULT_LIFT_DEG);
+        assert_eq!(none.lift_deg(None), take::DEFAULT_LIFT_DEG);
         assert_eq!(
             none.lift_default_note(None).as_deref(),
             Some("note: lift 52°, the default; calibre not set")
@@ -1017,7 +966,7 @@ mod catalogue_tests {
         }
         .resolve_with(&user)
         .unwrap();
-        assert_eq!(train.lift_deg(None), crate::calibres_cmd::DEFAULT_LIFT_DEG);
+        assert_eq!(train.lift_deg(None), take::DEFAULT_LIFT_DEG);
         assert_eq!(train.lift_deg(Some(48.0)), 48.0);
         assert_eq!(
             train.lift_default_note(None).as_deref(),
@@ -1098,7 +1047,7 @@ mod catalogue_tests {
                     escape_teeth: teeth,
                 };
                 let resolved = ResolvedTrain {
-                    calibre: Some(resolved_calibre(&Catalog::new(&empty), Entry::Table(c))),
+                    calibre: take::calibre_named(&c.calibre, &empty),
                     escape_teeth: teeth,
                 };
                 assert_eq!(

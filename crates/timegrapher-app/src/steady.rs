@@ -603,6 +603,25 @@ fn log_grid(input: GridInput) -> Vec<GridMark> {
     marks
 }
 
+/// Grid lines for an axis in dB: every 10 dB, at 0 dB and below.
+fn db_grid(input: GridInput) -> Vec<GridMark> {
+    let (lo, hi) = input.bounds;
+    (0..)
+        .map(|k| -10.0 * k as f64)
+        .take_while(|v| *v >= lo)
+        .filter(|v| *v <= hi)
+        .map(|value| GridMark {
+            value,
+            step_size: 10.0,
+        })
+        .collect()
+}
+
+/// A level in dB as an axis or a key gives it: "0 dB", "−10 dB".
+pub fn db_label(v: f64) -> String {
+    format!("{:.0} dB", v + 0.0).replace('-', "−")
+}
+
 /// The series the pane can show, in the order the switches list them.
 pub const SERIES: [SeriesKind; 3] = [
     SeriesKind::Rate,
@@ -930,9 +949,13 @@ fn state_levels(t: Option<&timegrapher_core::twostate::TwoState>) -> Option<[f64
 /// One series' title and plot. Its findings and statistics are in the
 /// Info panel.
 fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
-    let log_y = opts.periods_log;
+    let db = opts.periods_db;
     let pal = theme::pal(ui);
-    ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
+    // A map's key names its series ("Timing Swing (ms)"), so the map
+    // takes the title's line for its picture.
+    if !view.is_map() {
+        ui.label(theme::caption(title(c.series)).color(pal.text_secondary));
+    }
     // Too few readings: no tests ran, so there is nothing to draw; the
     // headline says how many it needs.
     if c.autocorrelation.is_none() {
@@ -1035,15 +1058,22 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             if x_lo.partial_cmp(&x_hi) != Some(std::cmp::Ordering::Less) {
                 return note(ui, "The period search needs a longer session.");
             }
-            // On a log scale the scores are drawn as log10, down to a
-            // thousandth of the tallest (a score of 0 sits on that floor).
+            // In dB the scores are drawn below the tallest, 0 dB, down to
+            // a thousandth of it, −30 dB (a score of 0 sits on that floor):
+            // a score is a power, so ten times its log.
             let tallest = pts.iter().map(|p| p[1]).fold(search.threshold, f64::max);
             let floor = tallest * 1e-3;
-            let y_of = move |v: f64| if log_y { v.max(floor).log10() } else { v };
+            let y_of = move |v: f64| {
+                if db {
+                    10.0 * (v.max(floor) / tallest).log10()
+                } else {
+                    v
+                }
+            };
             let pts: Vec<[f64; 2]> = pts.iter().map(|q| [q[0], y_of(q[1])]).collect();
-            let (y_lo, top) = if log_y {
+            let (y_lo, top) = if db {
                 // Room above the tallest for the wheels' names.
-                (floor.log10(), tallest.log10() + 0.45)
+                (-30.0, 4.5)
             } else {
                 (0.0, tallest * 1.15)
             };
@@ -1053,15 +1083,15 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .x_axis_formatter(clear_of_edge(plot_w, period_label))
                 .default_x_bounds(x_lo, x_hi)
                 .default_y_bounds(y_lo, top);
-            plot = if log_y {
-                plot.y_grid_spacer(log_grid)
-                    .y_axis_formatter(|m, r| log_label(m, r, sig))
+            plot = if db {
+                plot.y_grid_spacer(db_grid)
+                    .y_axis_formatter(|m, _| db_label(m.value))
             } else {
                 plot.y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                     .y_axis_formatter(|m, _| plain(m.value, m.step_size))
             };
             // The names stay clear of the tallest peak's label.
-            let label_y = if log_y { top } else { top * 0.97 };
+            let label_y = if db { top } else { top * 0.97 };
             plot.show(ui, |p| {
                 wheel_marks(p, marked(s, opts), (x_lo, x_hi), label_y, pal);
                 p.hline(
@@ -1394,7 +1424,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 egui::Id::new(id),
                 m,
                 s.upto_s,
-                opts.maps_log,
+                opts.maps_db,
                 marked(s, opts),
                 strip::fmt_time,
                 secs,
@@ -1505,13 +1535,13 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
 /// How the views draw what they can draw two ways.
 #[derive(Clone, Copy, Default)]
 pub struct Opts {
-    /// Periods: the scores on a log scale.
-    pub periods_log: bool,
+    /// Periods: the scores in dB below the tallest.
+    pub periods_db: bool,
     /// FFT: rate as the beat timing's spectrum in ms, not its swing in
     /// the rate readings.
     pub fft_timing: bool,
-    /// STFT and wavelet maps: the sizes' colours on a log scale.
-    pub maps_log: bool,
+    /// STFT and wavelet maps: the sizes' colours in dB.
+    pub maps_db: bool,
     /// The calibre's wheels marked on the period axis, or the reference
     /// periods when no wheel is known.
     pub wheels: bool,
@@ -1783,6 +1813,24 @@ mod tests {
     }
 
     use super::*;
+
+    /// The Periods scores in dB read down from 0 dB at the tallest, every
+    /// 10 dB to the floor, −30 dB.
+    #[test]
+    fn the_periods_db_scale_reads_down_from_0_db() {
+        let marks = |lo, hi| -> Vec<f64> {
+            db_grid(GridInput {
+                bounds: (lo, hi),
+                base_step_size: 1.0,
+            })
+            .into_iter()
+            .map(|m| m.value)
+            .collect()
+        };
+        assert_eq!(marks(-30.0, 4.5), [0.0, -10.0, -20.0, -30.0]);
+        assert_eq!(db_label(0.0), "0 dB");
+        assert_eq!(db_label(-10.0), "−10 dB");
+    }
 
     /// A period axis is marked at times a watchmaker reads, in their own
     /// units, not at 100 s and "17 min".

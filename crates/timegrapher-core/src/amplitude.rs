@@ -36,7 +36,7 @@ pub struct AmplitudeConfig {
 impl Default for AmplitudeConfig {
     fn default() -> Self {
         AmplitudeConfig {
-            lift_deg: 52.0,
+            lift_deg: crate::take::DEFAULT_LIFT_DEG,
             onset_fraction: 0.02,
         }
     }

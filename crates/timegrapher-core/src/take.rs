@@ -5,11 +5,16 @@
 //! [`crate::clock`], [`crate::breaks`] and [`crate::session`], so a take
 //! reads the same wherever it is opened.
 
+use crate::analysis_take;
 use crate::breaks::{self, Break};
 use crate::clock::{self, ClockFit};
-use crate::session::{Manifest, RecordingEntry};
-use crate::stream::BeatLog;
-use std::path::Path;
+use crate::session::{self, Manifest, Measurement, RecordingEntry};
+use crate::stream::{self, BeatLog, StreamConfig};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// The file a take folder describes itself in.
+pub const MANIFEST: &str = "session.toml";
 
 /// Where a take's clock comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +88,30 @@ pub fn clock(
             _ => None,
         },
     )
+}
+
+/// Where a take's clock came from, in words, as `from` ([`clock_from`])
+/// picks it: the USB lines' text (`usb`, as
+/// [`crate::usbclock::UsbClock::correction`] words it), the correction's
+/// (`correction`, such as [`crate::clockstore::DeviceClock::source_text`])
+/// and the clock log's path (`log`).
+pub fn clock_source_text(
+    from: ClockFrom,
+    usb: Option<&str>,
+    correction: Option<&str>,
+    log: Option<&Path>,
+) -> String {
+    let log = || log.map(|p| p.display().to_string()).unwrap_or_default();
+    match from {
+        ClockFrom::LogRatedByUsb => format!(
+            "{}; clock log {} for its breaks",
+            usb.unwrap_or_default(),
+            log()
+        ),
+        ClockFrom::Log => format!("from clock log {}", log()),
+        ClockFrom::Correction => correction.unwrap_or_default().to_string(),
+        ClockFrom::Usb => usb.unwrap_or_default().to_string(),
+    }
 }
 
 /// The clock of a take in the folder `dir` whose sound files are `files`,
@@ -205,6 +234,369 @@ pub fn measured(
     (from, to)
 }
 
+/// Whether `p` is a sound file a take keeps: WAV or FLAC.
+pub fn is_sound(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("flac"))
+}
+
+/// Whether the folder `dir` holds a sound file.
+pub fn has_sound(dir: &Path) -> bool {
+    fs::read_dir(dir).is_ok_and(|d| d.filter_map(|e| e.ok()).any(|e| is_sound(&e.path())))
+}
+
+/// The sound files `paths` name, in order: a file as it is, a folder as
+/// its recordings in the order its `session.toml` lists them, else in
+/// the order they were recorded ([`crate::recording_order::recordings_in`]).
+pub fn sound_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for path in paths {
+        let listed = if path.is_dir() {
+            fs::read_to_string(path.join(MANIFEST))
+                .ok()
+                .and_then(|text| toml::from_str::<Manifest>(&text).ok())
+                .map(|manifest| {
+                    manifest
+                        .recordings
+                        .into_iter()
+                        .map(|entry| entry.file)
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        out.extend(crate::recording_order::recordings_in(path, &listed)?);
+    }
+    Ok(out)
+}
+
+/// A kept take's beat log with its amplitudes at `lift_deg`, the lift this
+/// reading uses, where the analysis was kept at another: amplitude scales
+/// with the lift, as the app's lift change scales it.
+pub fn kept_at_lift(log: &BeatLog, lift_deg: f64) -> BeatLog {
+    let mut log = log.clone();
+    if lift_deg > 0.0 && log.lift_deg > 0.0 && lift_deg != log.lift_deg {
+        let k = lift_deg / log.lift_deg;
+        for w in &mut log.amplitude_windows {
+            w.even_deg = w.even_deg.map(|a| a * k);
+            w.odd_deg = w.odd_deg.map(|a| a * k);
+        }
+        log.lift_deg = lift_deg;
+    }
+    log
+}
+
+/// The stretch of a recording an entry reads, seconds from its start:
+/// `start_s` to `end_s`, or the whole recording when they are left out.
+pub fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String> {
+    let start = e.start_s.unwrap_or(0.0);
+    let stop = e.end_s.unwrap_or(duration_s).min(duration_s);
+    if start < 0.0 || start >= stop {
+        return Err(format!(
+            "{}: start_s {} and end_s {} leave nothing of a {:.0} s recording",
+            e.file,
+            start,
+            e.end_s.map_or("(end)".to_string(), |t| t.to_string()),
+            duration_s
+        ));
+    }
+    Ok((start, stop))
+}
+
+/// The lift angle amplitudes are worked out at when neither the reader,
+/// the session file nor the calibre gives one, degrees.
+pub const DEFAULT_LIFT_DEG: f64 = 52.0;
+
+/// Escape wheel teeth when neither the session file nor the calibre
+/// gives them.
+pub const ESCAPE_TEETH: u32 = 15;
+
+/// A calibre found in the table or the user's own calibres, with what it
+/// gives a reading: its beat rate, lift angle, escape wheel teeth and
+/// wheels.
+#[derive(Debug, Clone)]
+pub struct Calibre {
+    pub name: String,
+    pub bph: Option<u32>,
+    pub lift_angle_deg: Option<f64>,
+    pub escape_teeth: Option<u32>,
+    pub wheels: Vec<crate::periodicity::Wheel>,
+}
+
+/// The calibre `name` names in the table or `user`'s calibres, or `None`
+/// when neither has it.
+pub fn calibre_named(name: &str, user: &crate::calibre_store::UserCalibres) -> Option<Calibre> {
+    use crate::calibre_store::{Catalog, Entry};
+    let cat = Catalog::new(user);
+    let entry = cat.find(name)?;
+    let mut wheels = cat.wheels(entry);
+    if let Entry::Table(c) = entry {
+        // Preserve shipped first-match naming order; Catalogue supplies
+        // the effective values, overrides and additional wheel names.
+        let mut ordered = Vec::new();
+        for wheel in &c.wheels {
+            if let Some(i) = wheels.iter().position(|w| w.name == wheel.name) {
+                ordered.push(wheels.remove(i));
+            }
+        }
+        ordered.extend(wheels);
+        wheels = ordered;
+    }
+    Some(Calibre {
+        name: entry.name().to_string(),
+        bph: entry.bph(),
+        lift_angle_deg: entry.lift_angle_deg(),
+        escape_teeth: entry.escape_teeth(),
+        wheels,
+    })
+}
+
+/// What a reader gives that comes before the session file: a beat rate
+/// and a lift angle.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Given {
+    pub bph: Option<u32>,
+    pub lift_deg: Option<f64>,
+}
+
+/// A take's analysis settings, from what the reader gives, else the
+/// session file `m`, else its calibre `cal`:
+///
+/// - beat rate: given, else the session file's, else the calibre's;
+///   none means it is measured;
+/// - lift angle: given, else the session file's, else the calibre's,
+///   else [`DEFAULT_LIFT_DEG`]; known when given, when the session file
+///   gives it (unless it says `lift_known = false`), or when the calibre
+///   does;
+/// - escape wheel teeth: the session file's, else the calibre's, else
+///   [`ESCAPE_TEETH`].
+pub fn stream_settings(m: &Manifest, cal: Option<&Calibre>, given: Given) -> StreamConfig {
+    let mut cfg = StreamConfig::default();
+    cfg.analysis.bph = given.bph.or(m.bph).or(cal.and_then(|c| c.bph));
+    cfg.analysis.amplitude.lift_deg = given
+        .lift_deg
+        .or(m.lift)
+        .or(cal.and_then(|c| c.lift_angle_deg))
+        .unwrap_or(DEFAULT_LIFT_DEG);
+    cfg.analysis.lift_known = if given.lift_deg.is_some() {
+        true
+    } else if m.lift.is_some() {
+        m.lift_known.unwrap_or(true)
+    } else {
+        cal.is_some_and(|c| c.lift_angle_deg.is_some())
+    };
+    cfg.analysis.escape_teeth = m
+        .escape_teeth
+        .or(cal.and_then(|c| c.escape_teeth))
+        .unwrap_or(ESCAPE_TEETH);
+    cfg
+}
+
+/// The correction stored for the input `file` was recorded on
+/// ([`crate::clockstore::recorded_device`]), from the user's store; `None`
+/// when the recording names no input or none is stored for it.
+pub fn stored_correction(file: &Path) -> Result<Option<crate::clockstore::DeviceClock>, String> {
+    let store = crate::clockstore::ClockStore::load()?;
+    Ok(crate::clockstore::recorded_device(file).and_then(|d| store.get(&d).cloned()))
+}
+
+/// How an entry of a take is read, as the caller has resolved it.
+pub struct EntrySettings {
+    /// The analysis settings: beat rate, lift angle, whether the lift is
+    /// known, escape teeth.
+    pub stream: StreamConfig,
+    /// Rates on the sound card's own clock, uncorrected: for setting
+    /// beside references read from the same recordings on that clock
+    /// ([`session::Reference::same_clock_as`]).
+    pub card_clock: bool,
+    /// A settling time given to the reader: after the entry's own, before
+    /// the one the session file gives every entry.
+    pub settle_s: Option<f64>,
+}
+
+/// One entry of a take, read: what was read, and its measurement.
+pub struct EntryRead {
+    /// The sound files read, in order; empty for a take kept as its
+    /// analysis alone.
+    pub files: Vec<PathBuf>,
+    /// The kept analysis, for a take kept as its analysis alone.
+    pub kept: Option<analysis_take::Stored>,
+    /// The beats, numbered across the breaks, with the masked stretches
+    /// left out.
+    /// The beat rate and lift angle read at are `log.bph` and
+    /// `log.lift_deg`.
+    pub log: BeatLog,
+    /// The clock the readings are on, and where it came from, as
+    /// [`clock_from`] picks it; both `None` on the sound card's clock.
+    pub clock: Option<ClockFit>,
+    pub clock_from: Option<ClockFrom>,
+    /// The clock log's text, when the entry has one.
+    pub clock_text: Option<String>,
+    pub breaks: Vec<Break>,
+    /// The stretches masked by hand, start and end.
+    pub masked: Vec<(f64, f64)>,
+    /// The stretch the entry names ([`span_of`]).
+    pub start_s: f64,
+    pub stop_s: f64,
+    /// The stretch measured, once the watch has settled ([`measured`]).
+    pub settle_s: f64,
+    pub end_s: f64,
+    pub measurement: Measurement,
+}
+
+/// Read entry `e` of the take described by `m` in the folder `base`, as
+/// every surface reads a take: its beats (found in its sound, or kept as
+/// its analysis alone), its clock and breaks ([`clock`], [`breaks`]),
+/// its masks, and the stretch measured once the watch has settled
+/// ([`measured`]). `usb` gives the sound card's error from the USB lines
+/// in the files, and `correction` the correction known for the input of
+/// the first file, each ppm slow: they only fetch, and the rule that
+/// picks between them and the clock log is this function's ([`clock`]).
+/// `correction` is asked only when the entry has no clock log. An error
+/// either gives is passed through as its text, which is the caller's.
+pub fn measure_entry(
+    base: &Path,
+    m: &Manifest,
+    e: &RecordingEntry,
+    s: &EntrySettings,
+    usb: impl FnOnce(&[PathBuf]) -> Result<Option<f64>, String>,
+    correction: impl FnOnce(&Path) -> Result<Option<f64>, String>,
+) -> Result<EntryRead, String> {
+    let path = base.join(&e.file);
+    // A take kept as its analysis alone: its beats are read, not found.
+    let kept = if analysis_take::is_analysis_only(&path) {
+        if m.audio != Some(false) {
+            return Err(format!(
+                "{}: it has an {}/ folder, but {MANIFEST} doesn't say audio = false",
+                e.file,
+                analysis_take::DIR
+            ));
+        }
+        if has_sound(&path) {
+            return Err(format!(
+                "{}: it holds both sound and an {}/ folder: a take is kept either with its \
+                 sound or as its analysis alone",
+                e.file,
+                analysis_take::DIR
+            ));
+        }
+        Some(analysis_take::read(&path).map_err(|err| format!("{}: {err}", e.file))?)
+    } else if m.audio == Some(false) {
+        return Err(format!(
+            "{}: {MANIFEST} says audio = false, but there is no {}/ folder to read",
+            e.file,
+            analysis_take::DIR
+        ));
+    } else {
+        None
+    };
+    let files = match &kept {
+        Some(_) => Vec::new(),
+        None => sound_files(std::slice::from_ref(&path))?,
+    };
+    let cfg = &s.stream;
+    let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+    let mut log = match &kept {
+        Some(k) => kept_at_lift(&k.log, cfg.analysis.amplitude.lift_deg),
+        None => stream::analyze_files(&paths, cfg, |_| {})
+            .map_err(|err| format!("{}: {err}", e.file))?,
+    };
+    let clock_text = match &e.clock {
+        Some(p) => {
+            let f = base.join(p);
+            Some(fs::read_to_string(&f).map_err(|err| format!("{}: {err}", f.display()))?)
+        }
+        None => None,
+    };
+    let named = |err: String| match &e.clock {
+        Some(p) => format!("{}: {err}", base.join(p).display()),
+        None => err,
+    };
+    let has_log = clock_text.is_some();
+    let (mut fit, clock_from) = match &kept {
+        _ if s.card_clock => (None, None),
+        // Read as it was recorded: its sound is not here.
+        Some(k) => {
+            let usb_ppm = k.header.usb_clock.map(|u| u.ppm);
+            let fit = clock(
+                clock_text.as_deref(),
+                k.header.sample_rate,
+                k.header.bytes_per_frame,
+                usb_ppm,
+                m.card_ppm,
+                log.duration_s,
+            )
+            .map_err(named)?;
+            (fit, clock_from(has_log, usb_ppm, m.card_ppm))
+        }
+        None => {
+            let info = crate::audio::info(&files[0])
+                .map_err(|err| format!("{}: {err}", files[0].display()))?;
+            let correction = match &clock_text {
+                Some(_) => None,
+                None => correction(&files[0])?,
+            };
+            let usb_ppm = usb(&files)?;
+            let fit = clock(
+                clock_text.as_deref(),
+                info.sample_rate,
+                info.bytes_per_frame,
+                usb_ppm,
+                correction,
+                log.duration_s,
+            )
+            .map_err(named)?;
+            (fit, clock_from(has_log, usb_ppm, correction))
+        }
+    };
+    let clock_from = clock_from.filter(|_| fit.is_some());
+    // A take kept as its analysis alone: every part of the take was in
+    // it, so its session.json lists its breaks for the whole take's sound.
+    let json = kept.as_ref().and_then(|_| {
+        fs::read_to_string(path.join("session.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+    });
+    let listed = match &kept {
+        Some(_) => Listed::Session(json.as_ref()),
+        None => Listed::Files(&paths),
+    };
+    let breaks = breaks(&mut log, listed, fit.as_mut());
+    // Stretches masked by hand are left out of everything read below.
+    let masked = session::masked_spans(&e.masked);
+    session::mask_log(&mut log, &masked);
+    let (start_s, stop_s) = span_of(e, log.duration_s)?;
+    let (settle, measure) = entry_times(e, m);
+    let (settle_s, end_s) = measured(
+        start_s,
+        stop_s,
+        e.settle_s.or(s.settle_s).or(settle),
+        measure,
+    );
+    let mut measurement =
+        session::measure_masked(&log, fit.as_ref(), &breaks, &masked, settle_s, end_s);
+    if !cfg.analysis.lift_known {
+        measurement.lift_unknown();
+    }
+    Ok(EntryRead {
+        files,
+        kept,
+        log,
+        clock: fit,
+        clock_from,
+        clock_text,
+        breaks,
+        masked,
+        start_s,
+        stop_s,
+        settle_s,
+        end_s,
+        measurement,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,5 +684,46 @@ mod tests {
         assert_eq!(entry_times(&e, &m), (Some(30.0), Some(90.0)));
         e.settle_s = Some(0.0);
         assert_eq!(entry_times(&e, &m), (Some(0.0), Some(90.0)));
+    }
+
+    #[test]
+    fn settings_come_from_the_reader_then_the_session_file_then_the_calibre() {
+        let cal = Calibre {
+            name: "Test".into(),
+            bph: Some(21_600),
+            lift_angle_deg: Some(44.0),
+            escape_teeth: Some(20),
+            wheels: Vec::new(),
+        };
+        let bare: Manifest = toml::from_str("").unwrap();
+        let none = stream_settings(&bare, None, Given::default());
+        assert_eq!(none.analysis.bph, None);
+        assert_eq!(none.analysis.amplitude.lift_deg, DEFAULT_LIFT_DEG);
+        assert!(!none.analysis.lift_known);
+        assert_eq!(none.analysis.escape_teeth, ESCAPE_TEETH);
+
+        let from_cal = stream_settings(&bare, Some(&cal), Given::default());
+        assert_eq!(from_cal.analysis.bph, Some(21_600));
+        assert_eq!(from_cal.analysis.amplitude.lift_deg, 44.0);
+        assert!(from_cal.analysis.lift_known);
+        assert_eq!(from_cal.analysis.escape_teeth, 20);
+
+        let file: Manifest =
+            toml::from_str("bph = 18000\nlift = 50\nlift_known = false\nescape_teeth = 15")
+                .unwrap();
+        let from_file = stream_settings(&file, Some(&cal), Given::default());
+        assert_eq!(from_file.analysis.bph, Some(18_000));
+        assert_eq!(from_file.analysis.amplitude.lift_deg, 50.0);
+        assert!(!from_file.analysis.lift_known);
+        assert_eq!(from_file.analysis.escape_teeth, 15);
+
+        let given = Given {
+            bph: Some(28_800),
+            lift_deg: Some(53.0),
+        };
+        let from_reader = stream_settings(&file, Some(&cal), given);
+        assert_eq!(from_reader.analysis.bph, Some(28_800));
+        assert_eq!(from_reader.analysis.amplitude.lift_deg, 53.0);
+        assert!(from_reader.analysis.lift_known);
     }
 }

@@ -274,20 +274,6 @@ fn measure(_: Option<&str>, _: f64, _: bool, _: bool) -> Result<(), String> {
     Err("this build has no sound input support; use `clock from-log`, or build with --features live".into())
 }
 
-/// The input a recording was made on, from its provenance sidecar
-/// (`take.wav.json`, written by `doctor --save`) or the `session.json` of
-/// an app recording folder.
-pub fn recorded_device(file: &Path) -> Option<String> {
-    let read =
-        |p: PathBuf| -> Option<Value> { serde_json::from_str(&fs::read_to_string(p).ok()?).ok() };
-    if let Some(v) = read(output::sidecar_path(file)) {
-        let name = v.pointer("/recording/source/device/name")?;
-        return name.as_str().map(String::from);
-    }
-    let v = read(file.parent()?.join("session.json"))?;
-    v.get("device")?.as_str().map(String::from)
-}
-
 /// A take's clock as every command reads it ([`take::clock`]), with where
 /// it came from in words.
 pub struct AppliedClock {
@@ -344,19 +330,12 @@ pub fn resolve(
         take::ClockFrom::LogRatedByUsb | take::ClockFrom::Usb => usb.as_ref().map(|(p, _)| *p),
         take::ClockFrom::Correction => correction.as_ref().map(|(p, _)| *p),
     };
-    let from = match source {
-        take::ClockFrom::LogRatedByUsb => format!(
-            "{}; clock log {} for its breaks",
-            usb.map(|(_, f)| f).unwrap_or_default(),
-            log.map(|p| p.display().to_string()).unwrap_or_default()
-        ),
-        take::ClockFrom::Log => format!(
-            "from clock log {}",
-            log.map(|p| p.display().to_string()).unwrap_or_default()
-        ),
-        take::ClockFrom::Correction => correction.map(|(_, f)| f).unwrap_or_default(),
-        take::ClockFrom::Usb => usb.map(|(_, f)| f).unwrap_or_default(),
-    };
+    let from = take::clock_source_text(
+        source,
+        usb.as_ref().map(|(_, f)| f.as_str()),
+        correction.as_ref().map(|(_, f)| f.as_str()),
+        log,
+    );
     Ok(fit.map(|fit| AppliedClock { fit, ppm, from }))
 }
 
@@ -371,36 +350,21 @@ pub fn correction(
     if let Some(p) = card_ppm {
         return Ok(Some((p, "given with --card-ppm".into())));
     }
-    let store = ClockStore::load()?;
     match device {
-        Some(d) => match store.get(d) {
-            Some(e) => Ok(Some((e.ppm, stored_text(e)))),
+        Some(d) => match ClockStore::load()?.get(d) {
+            Some(e) => Ok(Some((e.ppm, e.source_text()))),
             None => Err(format!(
                 "no clock correction stored for '{d}'; see `timegrapher clock list`"
             )),
         },
-        None => Ok(recorded_device(file)
-            .and_then(|d| store.get(&d).cloned())
-            .map(|e| (e.ppm, stored_text(&e)))),
+        None => Ok(take::stored_correction(file)?.map(|e| (e.ppm, e.source_text()))),
     }
 }
 
 /// The sound card's error read from the USB lines in the first of
 /// `files`, with its source text; `None` when the recording has none.
 pub fn usb(files: &[std::path::PathBuf]) -> Result<Option<(f64, String)>, String> {
-    Ok(timegrapher_core::clock::usb_lines(files)?.map(|c| {
-        (
-            c.ppm,
-            format!(
-                "from {} USB lines in the recording, {:.1} ppm apart",
-                c.lines, c.spread_ppm
-            ),
-        )
-    }))
-}
-
-fn stored_text(e: &DeviceClock) -> String {
-    format!("stored for '{}', {}", e.device, e.measured_utc)
+    Ok(timegrapher_core::clock::usb_lines(files)?.map(|c| c.correction()))
 }
 
 #[cfg(test)]

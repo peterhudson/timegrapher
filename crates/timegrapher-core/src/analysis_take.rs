@@ -438,6 +438,7 @@ pub fn read(take: &Path) -> io::Result<Stored> {
     }
     let header: Header =
         serde_json::from_str(&text).map_err(|e| invalid(format!("{DIR}/{HEADER}: {e}")))?;
+    check_header(&header).map_err(|e| invalid(format!("{DIR}/{HEADER}: {e}")))?;
     let gunzip = |name: &str| -> io::Result<Vec<u8>> {
         let raw = fs::read(dir.join(name))
             .map_err(|e| io::Error::new(e.kind(), format!("{DIR}/{name}: {e}")))?;
@@ -486,6 +487,66 @@ pub fn read(take: &Path) -> io::Result<Stored> {
         log,
         profiles,
     })
+}
+
+/// `v` when it is a finite number, else an error naming `what`.
+fn finite(what: &str, v: f64) -> Result<f64, String> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(format!("{what} is {v}, not a number"))
+    }
+}
+
+/// `v` when it is a finite number above 0, else an error naming `what`.
+fn above_0(what: &str, v: f64) -> Result<f64, String> {
+    if finite(what, v)? > 0.0 {
+        Ok(v)
+    } else {
+        Err(format!("{what} is {v}: it must be above 0"))
+    }
+}
+
+/// Times that must be numbers and run forwards (equal times allowed).
+fn in_order(what: &str, times: &[f64]) -> Result<(), String> {
+    for (i, &t) in times.iter().enumerate() {
+        finite(&format!("{what} {}", i + 1), t)?;
+        if i > 0 && t < times[i - 1] {
+            return Err(format!(
+                "{what} {} runs backwards: {t} after {}",
+                i + 1,
+                times[i - 1]
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The header's figures, as a measurement would have written them: a
+/// sample rate, frame size, beat rate, lift and length above 0, and every
+/// other figure a number, with the jumps in order.
+fn check_header(h: &Header) -> Result<(), String> {
+    above_0("sample_rate", h.sample_rate as f64)?;
+    above_0("bytes_per_frame", h.bytes_per_frame as f64)?;
+    above_0("bph", h.bph as f64)?;
+    above_0("lift_deg", h.lift_deg)?;
+    above_0("duration_s", h.duration_s)?;
+    in_order("jump", &h.jumps)?;
+    in_order("sided jump", &h.sided)?;
+    if let Some(u) = &h.usb_clock {
+        finite("usb_clock.ppm", u.ppm)?;
+        finite("usb_clock.spread_ppm", u.spread_ppm)?;
+    }
+    if let Some(v) = h.signal_median {
+        finite("signal_median", v as f64)?;
+    }
+    for (i, sh) in h.shape.iter().enumerate() {
+        let what = |f: &str| format!("shape {} {f}", i + 1);
+        if finite(&what("from_s"), sh.from_s)? > finite(&what("to_s"), sh.to_s)? {
+            return Err(format!("{} ends before it starts", what("stretch")));
+        }
+    }
+    Ok(())
 }
 
 fn gzip(bytes: &[u8]) -> io::Result<Vec<u8>> {
@@ -543,8 +604,27 @@ fn parse_beats(text: &str, bph: u32) -> Result<(Vec<Beat>, Vec<f64>), String> {
         let residual: i64 = next()?.parse().map_err(|_| bad())?;
         let quality: f32 = next()?.parse().map_err(|_| bad())?;
         let clip = next()? == "1";
-        idx += step;
-        us += step * nominal + residual;
+        // Each beat comes after the one before, in number and in time, and
+        // the numbers stay in range.
+        let wrong = |why: &str| format!("row {}: {why}: {line}", n + 1);
+        if !quality.is_finite() {
+            return Err(wrong("its quality isn't a number"));
+        }
+        if n > 0 && step < 1 {
+            return Err(wrong("its number doesn't follow the beat before"));
+        }
+        let (Some(i), Some(t)) = (
+            idx.checked_add(step),
+            step.checked_mul(nominal)
+                .and_then(|d| d.checked_add(residual))
+                .and_then(|d| d.checked_add(us)),
+        ) else {
+            return Err(wrong("its number or time is out of range"));
+        };
+        if t < 0 || (n > 0 && t <= us) {
+            return Err(wrong("its time doesn't come after the beat before"));
+        }
+        (idx, us) = (i, t);
         let time = us as f64 / 1e6;
         beats.push(Beat {
             index: idx,
@@ -595,7 +675,7 @@ fn parse_windows(text: &str) -> Result<Vec<AmplitudeWindow>, String> {
             }
             let num = |s: &str| s.parse::<f64>().map_err(|_| bad());
             let opt = |s: &str| (!s.is_empty()).then(|| num(s)).transpose();
-            Ok(AmplitudeWindow {
+            let w = AmplitudeWindow {
                 start_s: num(f[0])?,
                 end_s: num(f[1])?,
                 even_deg: opt(f[2])?,
@@ -606,9 +686,32 @@ fn parse_windows(text: &str) -> Result<Vec<AmplitudeWindow>, String> {
                 odd_unlock_ms: opt(f[7])?,
                 even_drop_ms: opt(f[8])?,
                 odd_drop_ms: opt(f[9])?,
-            })
+            };
+            let figures = [
+                Some(w.start_s),
+                Some(w.end_s),
+                w.even_deg,
+                w.odd_deg,
+                w.beat_error_ms,
+                w.beat_error_unlock_ms,
+                w.even_unlock_ms,
+                w.odd_unlock_ms,
+                w.even_drop_ms,
+                w.odd_drop_ms,
+            ];
+            if figures.iter().flatten().any(|v| !v.is_finite()) || w.start_s > w.end_s {
+                return Err(bad());
+            }
+            Ok(w)
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()
+        .and_then(|ws| {
+            in_order(
+                "window start",
+                &ws.iter().map(|w| w.start_s).collect::<Vec<_>>(),
+            )?;
+            Ok(ws)
+        })
 }
 
 /// The profiles, little-endian: the 8-byte magic, the stretch length (f32
@@ -709,26 +812,37 @@ fn parse_profiles(raw: &[u8]) -> Result<Vec<StretchProfiles>, String> {
     }
     let f32_of = |b: &[u8]| f32::from_le_bytes(b.try_into().expect("4 bytes"));
     let _every = f32_of(take(4)?);
-    let t0 = f32_of(take(4)?) as f64;
-    let step = f32_of(take(4)?) as f64;
+    let t0 = finite("the first point", f32_of(take(4)?) as f64)?;
+    let step = above_0("the spacing", f32_of(take(4)?) as f64)?;
     let points = u16::from_le_bytes(take(2)?.try_into().expect("2 bytes")) as usize;
     take(2)?;
     let count = u32::from_le_bytes(take(4)?.try_into().expect("4 bytes")) as usize;
     let mut out = Vec::with_capacity(count.min(1 << 20));
     for _ in 0..count {
-        let end_s = f64::from_le_bytes(take(8)?.try_into().expect("8 bytes"));
-        let signal = Some(f32_of(take(4)?)).filter(|v| !v.is_nan());
+        let end_s = finite(
+            "a stretch's end",
+            f64::from_le_bytes(take(8)?.try_into().expect("8 bytes")),
+        )?;
+        // NaN is how a missing figure is written; any other figure is a
+        // number.
+        let mark = |v: f32| -> Result<Option<f32>, String> {
+            match v {
+                v if v.is_nan() => Ok(None),
+                v => finite("a profile figure", v as f64).map(|_| Some(v)),
+            }
+        };
+        let signal = mark(f32_of(take(4)?))?;
         let mut sides: [Option<TickProfile>; 2] = [None, None];
         for (i, side) in [Side::A, Side::B].into_iter().enumerate() {
             if take(1)?[0] == 0 {
                 continue;
             }
             let beats = u16::from_le_bytes(take(2)?.try_into().expect("2 bytes")) as usize;
-            let top = f32_of(take(4)?);
-            let floor = f32_of(take(4)?);
+            let top = finite("a profile's top", f32_of(take(4)?) as f64)? as f32;
+            let floor = finite("a profile's floor", f32_of(take(4)?) as f64)? as f32;
             let mut marks = [None; 7];
             for m in &mut marks {
-                *m = Some(f32_of(take(4)?) as f64).filter(|v| !v.is_nan());
+                *m = mark(f32_of(take(4)?))?.map(f64::from);
             }
             let mut curve = || -> Result<Vec<f32>, String> {
                 Ok(take(points)?.iter().map(|&b| byte_level(b, top)).collect())
@@ -761,6 +875,10 @@ fn parse_profiles(raw: &[u8]) -> Result<Vec<StretchProfiles>, String> {
     if at != raw.len() {
         return Err("it runs on past its last stretch".into());
     }
+    in_order(
+        "stretch end",
+        &out.iter().map(|p| p.end_s).collect::<Vec<_>>(),
+    )?;
     Ok(out)
 }
 
@@ -996,6 +1114,87 @@ mod tests {
             e.contains("timegrapher.analysis/2") && e.contains("newer"),
             "{e}"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A kept analysis with numbers no measurement writes is refused with
+    /// the file and what is wrong, and never panics: the five cases of the
+    /// 2026-10-26 audit (finding ARCH-04).
+    #[test]
+    fn corrupt_numbers_are_refused_by_name() {
+        let dir = scratch("corrupt");
+        let wav = take(&dir, 20.0);
+        let good = measure(
+            &[wav.as_path()],
+            &StreamConfig::default(),
+            &[],
+            software(),
+            |_| {},
+        )
+        .unwrap();
+        let refused = |s: &Stored, edit: &dyn Fn(&Path)| -> String {
+            write(&dir, s).unwrap();
+            edit(&dir.join(DIR));
+            read(&dir).map(|_| ()).unwrap_err().to_string()
+        };
+        let none = |_: &Path| {};
+        assert!({
+            write(&dir, &good).unwrap();
+            read(&dir).is_ok()
+        });
+        // 1. Header figures.
+        for (field, value, file) in [
+            ("sample_rate", "0", HEADER),
+            ("bph", "0", HEADER),
+            ("lift_deg", "-52.0", HEADER),
+            ("duration_s", "-10.0", HEADER),
+        ] {
+            let e = refused(&good, &|d: &Path| {
+                let p = d.join(HEADER);
+                let mut v: serde_json::Value =
+                    serde_json::from_str(&fs::read_to_string(&p).unwrap()).unwrap();
+                v[field] = serde_json::from_str(value).unwrap();
+                fs::write(&p, v.to_string()).unwrap();
+            });
+            assert!(e.contains(file) && e.contains(field), "{field}: {e}");
+        }
+        // 2. A beat's quality, and a window's amplitude and beat error,
+        // that are not numbers.
+        let set_beat = |d: &Path, i: usize, row: &str| {
+            let raw = fs::read(d.join(BEATS)).unwrap();
+            let mut text = String::new();
+            GzDecoder::new(&raw[..]).read_to_string(&mut text).unwrap();
+            let mut rows: Vec<&str> = text.lines().collect();
+            rows[i] = row;
+            fs::write(
+                d.join(BEATS),
+                gzip((rows.join("\n") + "\n").as_bytes()).unwrap(),
+            )
+            .unwrap();
+        };
+        let e = refused(&good, &|d: &Path| set_beat(d, 3, "1,0,NaN,0"));
+        assert!(e.contains(BEATS) && e.contains("row 3"), "{e}");
+        let mut s = good.clone();
+        s.log.amplitude_windows[1].even_deg = Some(f64::INFINITY);
+        let e = refused(&s, &none);
+        assert!(e.contains(WINDOWS) && e.contains("row 2"), "{e}");
+        let mut s = good.clone();
+        s.log.amplitude_windows[0].beat_error_ms = Some(f64::NAN);
+        let e = refused(&s, &none);
+        assert!(e.contains(WINDOWS) && e.contains("row 1"), "{e}");
+        // 3. Beats going backwards, by a negative step.
+        let e = refused(&good, &|d: &Path| set_beat(d, 2, "-1,0,1,0"));
+        assert!(e.contains(BEATS) && e.contains("row 2"), "{e}");
+        // 4. A step that overflows the arithmetic.
+        let e = refused(&good, &|d: &Path| {
+            set_beat(d, 2, &format!("{},0,1,0", i64::MAX))
+        });
+        assert!(e.contains(BEATS) && e.contains("out of range"), "{e}");
+        // 5. A profile stretch whose end is not a number.
+        let mut s = good.clone();
+        s.profiles[0].end_s = f64::INFINITY;
+        let e = refused(&s, &none);
+        assert!(e.contains(PROFILES), "{e}");
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -44,7 +44,7 @@ const ALL: [Icon; 79] = [
     Icon::CrownRight,
     Icon::Export,
     Icon::Bucket,
-    Icon::Log,
+    Icon::Wheel,
     Icon::Copy,
     Icon::SaveTable,
     Icon::Calipers,
@@ -231,11 +231,10 @@ fn drawing(icon: Icon) -> &'static str {
         Icon::Bucket => {
             r#"<path d="M4.5 8.5h15l-1.8 12h-11.4z"/><path d="M5.5 8.5a6.5 6.5 0 0 1 13 0" stroke-width="1.3"/><g fill="currentColor" stroke="none"><circle cx="9.5" cy="13" r="1.2"/><circle cx="13.5" cy="12.5" r="1.2"/><circle cx="11.5" cy="16.5" r="1.2"/></g>"#
         }
-        // A log of wood: A log scale. Lying down, its rings at the sawn
-        // end, bark along it, a broken far end and a branch stub, so it
-        // reads as wood and not a battery.
-        Icon::Log => {
-            r#"<ellipse cx="6.5" cy="12" rx="3.5" ry="6.5"/><ellipse cx="6.5" cy="12" rx="1.6" ry="3"/><path d="M6.5 5.5H17.5L19.8 8.6L17.6 11.2L20.3 14.4L18 18.5H6.5"/><path d="M11 9.5H15M10.5 14.8H14.5"/><path d="M13.2 5.5L15 2.6"/>"#
+        // A train wheel: thin rim, 30 fine teeth, five crossings and a
+        // hub: the calibre's wheels, each turning in its own period.
+        Icon::Wheel => {
+            r#"<circle cx="12" cy="12" r="8.6"/><path stroke-width="1" d="M20.60 12.00L22.60 12.00M20.41 13.79L22.37 14.20M19.86 15.50L21.68 16.31M18.96 17.05L20.58 18.23M17.75 18.39L19.09 19.88M16.30 19.45L17.30 21.18M14.66 20.18L15.28 22.08M12.90 20.55L13.11 22.54M11.10 20.55L10.89 22.54M9.34 20.18L8.72 22.08M7.70 19.45L6.70 21.18M6.25 18.39L4.91 19.88M5.04 17.05L3.42 18.23M4.14 15.50L2.32 16.31M3.59 13.79L1.63 14.20M3.40 12.00L1.40 12.00M3.59 10.21L1.63 9.80M4.14 8.50L2.32 7.69M5.04 6.95L3.42 5.77M6.25 5.61L4.91 4.12M7.70 4.55L6.70 2.82M9.34 3.82L8.72 1.92M11.10 3.45L10.89 1.46M12.90 3.45L13.11 1.46M14.66 3.82L15.28 1.92M16.30 4.55L17.30 2.82M17.75 5.61L19.09 4.12M18.96 6.95L20.58 5.77M19.86 8.50L21.68 7.69M20.41 10.21L22.37 9.80"/><path d="M12.00 9.80L12.00 3.40M14.09 11.32L20.18 9.34M13.29 13.78L17.05 18.96M10.71 13.78L6.95 18.96M9.91 11.32L3.82 9.34"/><circle cx="12" cy="12" r="2.2"/>"#
         }
         // Two sheets, one over the other: Copy.
         Icon::Copy => {

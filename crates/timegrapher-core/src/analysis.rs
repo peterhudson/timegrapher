@@ -33,7 +33,7 @@ impl Default for AnalysisConfig {
             amplitude: AmplitudeConfig::default(),
             rate_window_s: 10.0,
             amplitude_window_s: 2.0,
-            escape_teeth: 15,
+            escape_teeth: crate::take::ESCAPE_TEETH,
             lift_known: false,
         }
     }

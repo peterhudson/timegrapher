@@ -80,9 +80,7 @@ pub fn print<T: Serialize>(kind: &str, input: Value, body: &T) -> Result<(), Str
 
 /// Where the provenance of a recording is kept: `take.wav` -> `take.wav.json`.
 pub fn sidecar_path(file: &Path) -> PathBuf {
-    let mut s = file.as_os_str().to_owned();
-    s.push(".json");
-    PathBuf::from(s)
+    timegrapher_core::clockstore::sidecar_path(file)
 }
 
 /// Describe the input files and the settings used. A recording made by
