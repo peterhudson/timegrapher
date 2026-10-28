@@ -505,6 +505,24 @@ mod tests {
     }
 
     #[test]
+    fn the_no_watch_reason_is_read_from_its_caveat_only() {
+        assert_eq!(no_watch_reason_in(&[]), None);
+        assert_eq!(
+            no_watch_reason_in(&[Caveat::SetRateDisagrees { heard: 28_800 }]),
+            None
+        );
+        assert_eq!(
+            no_watch_reason_in(&[
+                Caveat::SetRateDisagrees { heard: 28_800 },
+                Caveat::NoWatch {
+                    reason: NoWatchReason::NoBeatSound
+                },
+            ]),
+            Some(NoWatchReason::NoBeatSound)
+        );
+    }
+
+    #[test]
     fn no_regular_beat_withholds_the_readings() {
         let a = assess(
             &[],

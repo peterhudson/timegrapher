@@ -737,11 +737,6 @@ impl ClockTracker {
         self.frames as f64 / self.fs
     }
 
-    /// The kept entries: audio seconds against system (Unix) seconds.
-    pub fn pairs(&self) -> &[(f64, f64)] {
-        &self.pairs
-    }
-
     /// The fit so far; `None` until there are a few seconds of entries.
     pub fn fit(&self) -> Option<ClockFit> {
         ClockFit::new(&self.pairs).ok()
@@ -1367,6 +1362,13 @@ unix_s,frames
     fn rejects_an_audio_column_of_unknown_unit() {
         let text = "1791484354 1000\n1791484414 2000\n";
         assert!(parse_log(text, 48000, 2).is_err());
+    }
+
+    #[test]
+    fn rejects_a_log_whose_times_run_backwards() {
+        let text = "1791484414 5760044\n1791484354 11520044\n";
+        let err = parse_log(text, 48000, 2).unwrap_err().to_string();
+        assert!(err.contains("times do not increase"), "{err}");
     }
 
     #[test]
