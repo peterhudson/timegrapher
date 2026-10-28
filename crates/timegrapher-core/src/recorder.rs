@@ -95,6 +95,14 @@ pub struct Break {
 
 const SEGMENT_S: u64 = 3600;
 const CLOCK_EVERY_S: f64 = 10.0;
+/// Over the first seconds of a take the clock log gets a line every
+/// [`CLOCK_EARLY_EVERY_S`] instead, so a take of a few seconds still has
+/// the entries a clock fit needs ([`crate::clock::ClockFit`] wants three
+/// after it drops a stray one). Few enough that a log still reaches
+/// [`crate::clock::MIN_POINTS`] entries, where it may correct a rate,
+/// only after about a minute.
+const CLOCK_EARLY_S: f64 = 3.0;
+const CLOCK_EARLY_EVERY_S: f64 = 1.0;
 
 pub struct Recorder {
     dir: PathBuf,
@@ -307,11 +315,16 @@ impl Recorder {
             self.seg_frames += 1;
         }
         self.frames += b.samples.len() as u64;
+        let every = if self.duration_s() <= CLOCK_EARLY_S + 1e-9 {
+            CLOCK_EARLY_EVERY_S
+        } else {
+            CLOCK_EVERY_S
+        };
         let due = match self.last_clock {
             None => true,
             Some(t) => {
                 b.at.duration_since(t)
-                    .map(|d| d.as_secs_f64() >= CLOCK_EVERY_S)
+                    .map(|d| d.as_secs_f64() >= every - 1e-9)
                     .unwrap_or(false)
             }
         };
@@ -1135,8 +1148,11 @@ mod tests {
         assert!((audio.samples[3] - 3.0 / 200.0).abs() < 1e-4);
         let clock = fs::read_to_string(dir.join("clock.csv")).unwrap();
         let pairs = crate::clock::parse_log(&clock, 8000, 2).unwrap();
-        assert_eq!(pairs.len(), 4); // at 0, 10 and 20 s, and the end at 24 s
-        assert!((pairs[1].0 - 11.0).abs() < 1e-9, "{:?}", pairs[1]);
+        // A line a second over the first 3 s of sound (the blocks at 0, 1
+        // and 2 s), then every 10 s (12 and 22 s), and the end at 24 s.
+        assert_eq!(pairs.len(), 6);
+        assert!((pairs[1].0 - 2.0).abs() < 1e-9, "{:?}", pairs[1]);
+        assert!((pairs[3].0 - 13.0).abs() < 1e-9, "{:?}", pairs[3]);
         let session = fs::read_to_string(dir.join("session.json")).unwrap();
         assert!(session.contains("\"position\": \"DU\""));
         // Never paused: no breaks key at all, as before there were breaks.
@@ -1618,44 +1634,49 @@ mod tests {
     }
 
     #[test]
-    fn a_take_of_a_few_seconds_has_a_clock_log_to_read() {
-        // Shorter than the 10 s between clock lines: the line at its end
-        // gives the log the two lines a clock is read from, in a copy saved
-        // while listening and in the take when it stops.
-        let base = std::env::temp_dir().join(format!("tg-short-{}", std::process::id()));
-        let info = SessionInfo {
-            watch: String::new(),
-            position: "DU".into(),
-            lift_deg: 52.0,
-            bph: Some(28800),
-            device: "test".into(),
-            sample_rate: 8000,
-            bits: 16,
-            software: "test".into(),
-        };
-        let mut r = Recorder::start(&base.join("tmp"), info).unwrap();
-        let t0 = SystemTime::now();
-        for k in 0..4 {
-            r.write(&Block {
-                samples: vec![0.1; 8000],
-                at: t0 + Duration::from_secs(k),
-            })
-            .unwrap();
+    fn a_take_of_a_few_seconds_has_a_clock_log_to_fit() {
+        // Takes far shorter than the 10 s between clock lines, in blocks of
+        // 0.1 s arriving a few ms apart from where they are due and one
+        // 60 ms late: the clock fits from the log, in a copy saved while
+        // listening and in the take when it stops, and corrects nothing.
+        for (n, take_s) in [(0, 2.5), (1, 15.0)] {
+            let base = std::env::temp_dir().join(format!("tg-short-{}-{n}", std::process::id()));
+            let info = SessionInfo {
+                watch: String::new(),
+                position: "DU".into(),
+                lift_deg: 52.0,
+                bph: Some(28800),
+                device: "test".into(),
+                sample_rate: 8000,
+                bits: 16,
+                software: "test".into(),
+            };
+            let mut r = Recorder::start(&base.join("tmp"), info).unwrap();
+            let t0 = SystemTime::now();
+            let blocks = (take_s * 10.0) as u64;
+            for k in 0..blocks {
+                let late_ms = if k == 15 { 60 } else { (k * 7) % 5 };
+                r.write(&Block {
+                    samples: vec![0.1; 800],
+                    at: t0 + Duration::from_millis(100 * (k + 1) + late_ms),
+                })
+                .unwrap();
+            }
+            let fit = |dir: &Path| {
+                let clock = fs::read_to_string(dir.join("clock.csv")).unwrap();
+                let pairs = crate::clock::parse_log(&clock, 8000, 2).unwrap();
+                let fit = crate::clock::ClockFit::for_rates(&pairs)
+                    .unwrap_or_else(|e| panic!("{take_s} s: {e}\n{clock}"));
+                assert!(!fit.corrects(), "{take_s} s: {clock}");
+                pairs.len()
+            };
+            let copy = r.save_copy(&base.join("saved"), "", None).unwrap();
+            let lines = fit(&copy);
+            let dir = r.finish(None).unwrap();
+            assert_eq!(fit(&dir), lines);
+            assert!(lines < crate::clock::MIN_POINTS, "{take_s} s: {lines}");
+            std::fs::remove_dir_all(&base).ok();
         }
-        let read = |dir: &Path| {
-            let clock = fs::read_to_string(dir.join("clock.csv")).unwrap();
-            crate::clock::parse_log(&clock, 8000, 2).unwrap()
-        };
-        let copy = r.save_copy(&base.join("saved"), "", None).unwrap();
-        assert_eq!(read(&copy).len(), 2);
-        let dir = r.finish(None).unwrap();
-        let pairs = read(&dir);
-        assert_eq!(pairs.len(), 2);
-        // Audio seconds at the end of the first block and of the last, 3 s
-        // apart on the system clock.
-        assert!((pairs[1].0 - 4.0).abs() < 1e-9, "{pairs:?}");
-        assert!((pairs[1].1 - pairs[0].1 - 3.0).abs() < 1e-6, "{pairs:?}");
-        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
@@ -1708,19 +1729,20 @@ mod tests {
         );
         let clock = fs::read_to_string(copy.join("clock.csv")).unwrap();
         let pairs = crate::clock::parse_log(&clock, 8000, 2).unwrap();
-        // The start, the last block before the pause, the first after it,
-        // and the last block at each save; frames running on, no line made
-        // up across the gap.
+        // A line a second over the first 3 s (the last of them the last
+        // block before the pause), the first block after it, and the last
+        // block at each save; frames running on, no line made up across
+        // the gap.
         let frames: Vec<u64> = clock
             .lines()
             .filter_map(|l| l.split(',').nth(1)?.parse().ok())
             .collect();
         assert_eq!(
             frames,
-            [8000, 3 * 8000, 4 * 8000, 5 * 8000, 6 * 8000],
+            [8000, 2 * 8000, 3 * 8000, 4 * 8000, 5 * 8000, 6 * 8000],
             "{clock}"
         );
-        assert_eq!(pairs.len(), 5, "{clock}");
+        assert_eq!(pairs.len(), 6, "{clock}");
         let session = fs::read_to_string(copy.join("session.json")).unwrap();
         assert!(session.contains("paused"));
         let v: serde_json::Value = serde_json::from_str(&session).unwrap();
