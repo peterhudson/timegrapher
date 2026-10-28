@@ -846,7 +846,8 @@ mod tests {
         println!("REPORT_HTML_START\n{html}\nREPORT_HTML_END");
         let cells = reference_cells(&html);
         assert!(cells[0][0].contains(&shown));
-        assert!(cells[0][0].contains("+0.0"));
+        // The reference reads zero, which takes no sign.
+        assert!(cells[0][0].contains("/ 0.0 "));
         assert!(
             html.contains(&format!("<td class=\"num\">{shown}</td>")),
             "headline remains corrected"
