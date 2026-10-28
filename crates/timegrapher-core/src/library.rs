@@ -1440,15 +1440,13 @@ fn stamp(dir: &Path) -> Stamp {
     stamp_of(dir, |_| true)
 }
 
-/// The fingerprint of what a take's reading reads: its own files (its
-/// session file, sound and clock log) and its kept analysis, not a folder
-/// another tool writes into it, such as the report `timegrapher session`
-/// leaves in `session_report/`.
+/// The fingerprint of what a take's reading reads: everything in the take
+/// (its session file, its sound wherever its entries name it, its clock
+/// log and kept analysis) but the report `timegrapher session` writes into
+/// it ([`crate::take::REPORT_DIR`]).
 fn reading_stamp(dir: &Path) -> Stamp {
-    stamp_of(dir, |sub| {
-        sub.parent() != Some(dir)
-            || sub.file_name() == Some(std::ffi::OsStr::new(crate::analysis_take::DIR))
-    })
+    let report = dir.join(crate::take::REPORT_DIR);
+    stamp_of(dir, |sub| sub != report)
 }
 
 /// The fingerprint of the files in `dir`, looking into each folder in it
@@ -1594,38 +1592,39 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     /// A take's reading is kept until what it reads changes: a report
-    /// written into the take's folder keeps it; a changed session file or
-    /// kept analysis doesn't.
+    /// written into the take's folder keeps it; a changed session file,
+    /// kept analysis or sound in a folder of its own doesn't.
     #[test]
     fn a_takes_reading_stamp_is_what_the_reading_reads() {
         let dir = std::env::temp_dir().join(format!("tg-reading-stamp-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(dir.join("parts")).unwrap();
         fs::write(dir.join("session.toml"), "bph = 28800\n").unwrap();
-        fs::write(dir.join("take_part01-001.wav"), [0u8; 64]).unwrap();
+        fs::write(dir.join("parts").join("audio-001.wav"), [0u8; 64]).unwrap();
         let first = reading_stamp(&dir);
-        fs::create_dir_all(dir.join("session_report")).unwrap();
-        fs::write(dir.join("session_report").join("summary.json"), "{}").unwrap();
+        let report = dir.join(crate::take::REPORT_DIR);
+        fs::create_dir_all(&report).unwrap();
+        fs::write(report.join("summary.json"), "{}").unwrap();
         assert_eq!(reading_stamp(&dir), first);
         assert_ne!(stamp(&dir), first, "the take's own stamp counts the report");
+        fs::write(dir.join("parts").join("audio-001.wav"), [0u8; 96]).unwrap();
+        let sound = reading_stamp(&dir);
+        assert_ne!(sound, first, "sound in a folder of its own");
         fs::create_dir_all(dir.join(crate::analysis_take::DIR)).unwrap();
-        let without = reading_stamp(&dir);
-        assert_ne!(without, first);
         fs::write(
             dir.join(crate::analysis_take::DIR).join("beats.bin"),
             [1u8; 8],
         )
         .unwrap();
-        assert_ne!(reading_stamp(&dir), without);
-        let before = reading_stamp(&dir);
+        let analysis = reading_stamp(&dir);
+        assert_ne!(analysis, sound);
         fs::write(dir.join("session.toml"), "bph = 21600\nlift = 52\n").unwrap();
-        assert_ne!(reading_stamp(&dir), before);
+        assert_ne!(reading_stamp(&dir), analysis);
         let _ = fs::remove_dir_all(&dir);
     }
-
-    use super::*;
 
     /// A take's facts give the readings it ended on, but not for a test:
     /// a Positions Test's or a Power Reserve Test's last window doesn't

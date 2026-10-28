@@ -19699,7 +19699,7 @@ mod tests {
         // A report written into the take's folder (as `timegrapher
         // session` leaves one) changes its size but not what its reading
         // reads: the figures stay on show while it is asked again.
-        let report = take.join("session_report");
+        let report = take.join(timegrapher_core::take::REPORT_DIR);
         std::fs::create_dir_all(&report).unwrap();
         std::fs::write(report.join("summary.json"), "{}").unwrap();
         app.take_readings.want(&take, t.bytes + 2, &ctx);

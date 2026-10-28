@@ -308,7 +308,7 @@ fn find_sessions(root: &Path) -> Result<Vec<String>, String> {
         for entry in entries.flatten() {
             let p = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
-            if p.is_dir() && !name.starts_with('.') && name != "session_report" {
+            if p.is_dir() && !name.starts_with('.') && name != timegrapher_core::take::REPORT_DIR {
                 walk(&p, root, depth - 1, out)?;
             }
         }
