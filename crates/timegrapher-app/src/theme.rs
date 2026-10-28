@@ -538,6 +538,68 @@ pub enum Caption<'a> {
     Alert(Alert, &'a str),
 }
 
+/// `text` cut in the middle with "…" to fit `w` points in `font`, keeping
+/// its start and its end, where similar names differ, as in "(2)".
+pub fn middle_cut(ui: &Ui, text: &str, font: &egui::FontId, w: f32) -> String {
+    let width = |t: &str| {
+        ui.fonts_mut(|f| {
+            f.layout_no_wrap(t.to_string(), font.clone(), Color32::WHITE)
+                .size()
+                .x
+        })
+    };
+    if width(text) <= w {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let cut = |keep: usize| {
+        let head = keep.div_ceil(2);
+        let tail = keep / 2;
+        let mut s: String = chars[..head].iter().collect();
+        s.push('…');
+        s.extend(&chars[chars.len() - tail..]);
+        s
+    };
+    // The most characters kept that still fit.
+    let (mut lo, mut hi) = (0, chars.len());
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        if width(&cut(mid)) <= w {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    cut(lo)
+}
+
+/// A settings row's name, with its hover, and its caption under it.
+fn name_and_caption(ui: &mut Ui, label: &str, caption: Caption, hint: &str) {
+    let p = pal(ui);
+    ui.spacing_mut().item_spacing.y = 1.0;
+    ui.add(egui::Label::new(RichText::new(label).size(13.5).color(p.text)).wrap())
+        .on_hover_text(hint);
+    match caption {
+        Caption::None => {}
+        Caption::Text(t) => {
+            ui.add(egui::Label::new(RichText::new(t).size(11.5).color(p.text_secondary)).wrap());
+        }
+        Caption::Alert(kind, t) => {
+            // As tall as a caption, one line cut short, so the row
+            // keeps its height; the row's hover says more.
+            ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.x = 5.0;
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
+                alert_icon(ui.painter(), rect.translate(Vec2::new(0.0, 1.0)), kind, p);
+                ui.add(
+                    egui::Label::new(RichText::new(t).size(11.5).color(p.text_secondary))
+                        .truncate(),
+                );
+            });
+        }
+    }
+}
+
 /// A titled group of settings: the title in small secondary text above a
 /// rounded panel no wider than [`GROUP_W`], its rows apart by hairlines.
 /// `help`, when given, is a "?" beside the title.
@@ -615,7 +677,6 @@ impl Group<'_> {
     ) -> R {
         self.next();
         let ui = &mut *self.ui;
-        let p = pal(ui);
         let w = ui.available_width();
         ui.allocate_ui_with_layout(
             Vec2::new(w, GROUP_ROW_H),
@@ -647,47 +708,37 @@ impl Group<'_> {
                     } else {
                         6.0
                     });
-                    ui.spacing_mut().item_spacing.y = 1.0;
-                    ui.add(egui::Label::new(RichText::new(label).size(13.5).color(p.text)).wrap())
-                        .on_hover_text(hint);
-                    match caption {
-                        Caption::None => {}
-                        Caption::Text(t) => {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(t).size(11.5).color(p.text_secondary),
-                                )
-                                .wrap(),
-                            );
-                        }
-                        Caption::Alert(kind, t) => {
-                            // As tall as a caption, one line cut short, so the row
-                            // keeps its height; the row's hover says more.
-                            ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                                ui.spacing_mut().item_spacing.x = 5.0;
-                                let (rect, _) =
-                                    ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
-                                alert_icon(
-                                    ui.painter(),
-                                    rect.translate(Vec2::new(0.0, 1.0)),
-                                    kind,
-                                    p,
-                                );
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(t).size(11.5).color(p.text_secondary),
-                                    )
-                                    .truncate(),
-                                );
-                            });
-                        }
-                    }
+                    name_and_caption(ui, label, caption, hint);
                     ui.add_space(6.0);
                 });
                 out
             },
         )
         .inner
+    }
+
+    /// A row with its control on its own line under the name and caption,
+    /// across the group: for a control whose words vary in length, such as
+    /// a device's name, so the row never moves as they change.
+    pub fn row_under<R>(
+        &mut self,
+        label: &str,
+        caption: Caption,
+        hint: &str,
+        control: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        self.next();
+        let ui = &mut *self.ui;
+        ui.add_space(6.0);
+        let out = ui
+            .scope(|ui| {
+                name_and_caption(ui, label, caption, hint);
+                ui.add_space(6.0);
+                ui.horizontal(control).inner
+            })
+            .inner;
+        ui.add_space(8.0);
+        out
     }
 
     /// A row of its own: whatever `add` draws, across the group.

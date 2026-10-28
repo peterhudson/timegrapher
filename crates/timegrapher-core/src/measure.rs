@@ -18,9 +18,10 @@
 //! given, `watch_heard` stays true, and `short_span` says how short the
 //! stretch is (see [`no_watch_reason`]).
 //!
-//! The beat error's sign: positive means Tick, the first beat of the run,
-//! comes late. Tick is whichever beat a reading locks on first, so the sign
-//! holds within one run only; text shows the size.
+//! The beat error's sign: positive means Tick comes late. Each take starts
+//! positive: Tick is the beat that comes late over the take's first stretch
+//! with a clear sign, live and from the file alike ([`crate::beats::SideCheck`]);
+//! near no beat error it is the take's first beat. Text shows the size.
 
 use crate::amplitude::AmplitudeWindow;
 use crate::confidence::{self, Confidence, Doubts};

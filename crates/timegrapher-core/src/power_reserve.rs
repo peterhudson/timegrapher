@@ -43,6 +43,28 @@ pub enum Ending {
     Limit,
 }
 
+impl Ending {
+    /// How the run ended, as a sentence without its full stop, the same
+    /// on every surface: "The watch stopped", "Stopped by hand while the
+    /// watch still ran", "Reached the 80 h limit while the watch still
+    /// ran".
+    pub fn text(self) -> String {
+        match self {
+            Ending::Stopped => "The watch stopped".to_string(),
+            Ending::ByHand => "Stopped by hand while the watch still ran".to_string(),
+            Ending::Limit => format!(
+                "Reached the {} limit while the watch still ran",
+                limit_text()
+            ),
+        }
+    }
+}
+
+/// The longest run, as words say it: "80 h".
+pub fn limit_text() -> String {
+    format!("{} h", LIMIT_S / 3600.0)
+}
+
 /// A silence inside the run, after which the beats came back.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Pause {
@@ -306,6 +328,20 @@ pub fn run_text(s: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_ending_reads_the_same_everywhere() {
+        assert_eq!(Ending::Stopped.text(), "The watch stopped");
+        assert_eq!(
+            Ending::ByHand.text(),
+            "Stopped by hand while the watch still ran"
+        );
+        assert_eq!(
+            Ending::Limit.text(),
+            "Reached the 80 h limit while the watch still ran"
+        );
+        assert_eq!(limit_text(), "80 h");
+    }
 
     fn beats(from: f64, to: f64, step: f64, quality: f32) -> Vec<Beat> {
         let n = ((to - from) / step).round() as i64;

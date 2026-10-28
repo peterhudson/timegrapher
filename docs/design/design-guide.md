@@ -161,8 +161,8 @@ For colour-blind viewers (protan and deutan), light mode is worst: Rate and Tock
 ### Everything else
 
 1. **Only the six data colours appear on a plot.** Everything else drawn on a plot is a neutral grey, told apart by line style and a word label:
-   - edges (Unlock, Drop, Peak): solid grey lines coming down from their names above the plot;
-   - the three sounds: white dots on the curve, each with a dotted grey leader down to its name below the plot (section 11);
+   - edges (Unlock, Drop, Peak): solid grey lines coming down from their names above the plot, each with a short solid white bar across the curve where it meets it;
+   - the three sounds: hollow grey rings on the curve, each with a dotted grey leader down to its name below the plot (section 11);
    - wheel lines: dotted, in tertiary grey;
    - masks: grey hatching; the grid: separator grey.
 2. **Pane icons are neutral grey.** A pane's icon lights in the accent while the pane is shown. The Paper Strip's pink goes, and so does pink.
@@ -312,10 +312,12 @@ No control appears or disappears with the state of the pane. A control that does
 - **Mark stretches of time in a track above the plot, not with lines on it.** The position track is the model: one row above the plot, one stretch per position, named at its start. Each stretch is solid while the watch settles, then fades over 40 s to a light, steady level that lasts to the end of the stretch. A thin line marks each change, and a recorded change always starts solid, so the eye finds every change without reading. A painted change starts at the fade (see "Settling on the position track" below). The same fade runs faintly down the plot behind the beats. See "The position track" in section 7 for its colours.
 - **Removed time is hatched, not coloured.** A masked stretch is grey diagonal hatching in the track and, fainter, down the plot. Hatching reads as "taken out" in any colour scheme, and it can't be mistaken for a faint stretch of position.
 - **Marks of different kinds look different, and every one is named in words.** On the Tick Tock Profile:
-  - an **edge** (Unlock, Drop, Peak) is a solid grey line coming down from its name, which sits above the plot;
-  - a **sound** (Unlock Sound, Impulse Sound, Drop Sound) is a white dot on the curve at its half-rise point, with a dotted leader down to its name below the plot;
+  - an **edge** (Unlock, Drop, Peak) is a solid grey line coming down from its name, which sits above the plot, and a short solid white bar across the curve where it meets it;
+  - a **sound** (Unlock Sound, Impulse Sound, Drop Sound) is a hollow grey ring on the curve at its half-rise point, the curve showing through, with a dotted leader down to its name below the plot;
+  - solid, bold and filled for an edge; dotted, italic and hollow for a sound. Where an edge and a sound meet the curve together, the bar sits inside the ring;
+  - no line runs through another mark's name: each name sits on a box of the pane's colour;
   - names never sit inside the plot. They stand a short gap away from it, so each line or leader visibly runs out to its name, and a name that would touch another moves one row further out;
-  - so a line from the top is an edge, and a dot on the curve is a sound.
+  - so a line from the top is an edge, and a ring on the curve is a sound.
 
 ### Settling on the position track
 

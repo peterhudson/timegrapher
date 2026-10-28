@@ -237,6 +237,20 @@ mod tests {
             take_line(&t, false),
             "Power Reserve 1 h 30 min · Dial Up · Analysis Only · 58.3 MB"
         );
+        // A run the watch didn't end says how it ended, in core's words.
+        let limit = Take {
+            power_reserve: Some(timegrapher_core::power_reserve::Summary {
+                run_s: 5400.0,
+                ending: timegrapher_core::power_reserve::Ending::Limit,
+                position: "DU".into(),
+            }),
+            ..t.clone()
+        };
+        assert_eq!(
+            take_line(&limit, false),
+            "Power Reserve 1 h 30 min · Reached the 80 h limit while the watch still ran \
+             · Dial Up · Analysis Only · 58.3 MB"
+        );
         let t = Take {
             power_reserve: None,
             ..t

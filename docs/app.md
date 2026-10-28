@@ -417,9 +417,10 @@ and widened for the windows' lag-one correlation.
 It is model-based precision, not accuracy: a wrong lift angle moves
 every amplitude together (1° of lift angle moves it about 4°).
 Its hover gives the amplitude from the ticks and from the tocks. The sound can't tell which beat is
-which pallet, so the first beat heard is called the tick;
-which side is the entry pallet can't be told from the sound, so the sign
-of the beat error follows which beat came first, as on tg. The big beat
+which pallet, so each take starts positive: the beat that comes late
+over the take's first few seconds is called the tick, listening live and
+reading the saved take alike (nearer no beat error than 0.1 ms, the first
+beat heard). A beat error that reads negative later turned over in the take. The big beat
 error is timed from the unlock, as tg measures it (checked against tg
 in the regression tests); its hover gives the beat error timed from the beat as a whole,
 nearer the drop, which is the gap between the two lines on the strip.
@@ -804,19 +805,23 @@ steadier shape, and after lengthening it the beat count fills in as beats
 arrive), from the drop's side of the beat back
 through the unlock, with a shaded band where the middle 80% of beats fall
 and the marks the engine read, named outside the plot: a line from the
-top is an edge, a dot on the curve is a sound. The edges (Unlock, Drop and
+top is an edge, a ring on the curve is a sound. The edges (Unlock, Drop and
 Peak, where amplitude and the unlock-based beat error come from) are solid
 grey lines coming down from their names in bold above the plot, each
-stopping just short of the trace. The three sounds (Unlock Sound, Impulse
-Sound and Drop Sound, where the engine tells them apart) are white dots on
-the trace where each sound has risen halfway up its own climb, each with a
+stopping just short of the trace, with a short white bar across the trace
+where it meets it. The three sounds (Unlock Sound, Impulse
+Sound and Drop Sound, where the engine tells them apart) are hollow grey
+rings on the trace where each sound has risen halfway up its own climb, each with a
 dotted leader straight down past the plot to its name in grey italics
 below it. Names never sit inside the plot: where two would come closer
 than 12 points (more than a word space, so two names never read as one
 phrase), the later one moves one row further out and its line runs on to it, and
 where that row is taken too it slides along with a short angled leader.
 A name changes row only once an overlap starts or ends by 2 points, so
-names don't hop as the sound drifts. Hovering a line, a dot or a name
+names don't hop as the sound drifts. Where an edge and a sound meet the trace together, the bar sits inside
+the ring. On a short plot the bars and rings are smaller, and one that
+would cross an edge's name drawn in the plot is left off. A name drawn in the plot sits on whichever side of its line the trace stays below it, and stays centred only when the trace crosses both sides. Each name sits on a box of the pane's colour, so another mark's
+line passing behind it doesn't run through its letters. Hovering a line, a ring or a name
 gives its name and time. The edges and the sounds are two different
 measurements of the same averaged sound, not single beats, so they sit
 near but not exactly on each other. A sound is missing when it can't be
@@ -828,7 +833,10 @@ same on both plots, so Tick and Tock compare row against row, and it
 sits under the band and the line, so a spike that runs into it still
 shows. On a plot under 100 points tall it keeps Unlock to Drop and
 Amplitude (fewer if even those don't fit), and hovering it gives all
-five. A plot that would be under 100 points with its names outside
+five. There the box takes the top right corner where the trace runs
+under the left and not the right; where the trace runs under both
+corners it keeps fewer rows, Amplitude last, and none where even one
+would sit on the trace, so the picture comes first. A plot that would be under 100 points with its names outside
 takes them in: the edges' names sit along its top on the plot's
 background, one row, under the trace (Unlock starts right of its line
 where the facts box has the corner, and a name that would crowd the one
@@ -1344,8 +1352,10 @@ takes that row's caption, in the same space, so no row grows.
 **General**: Appearance (Auto, Light or Dark); **Listening**, with
 **Listen When the App Opens**, on unless switched off, and **Keep
 Awake**; **Updates**, with Check for Updates at Start. **Microphone**:
-the **Microphone** group (the microphone menu and **Rescan**, **Show
-Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
+the **Microphone** group (the microphone menu and **Rescan** on their own
+line under the row's name, the group's width for every device, a name
+too long for it cut in the middle with "…" so its end shows, whole in its
+hover and in the menu; **Show Every Input**), **Level** (**Input Level**, **Automatic Gain** with its
 warning in the caption, and **Peak** with its shaded band) and **Quartz
 Correction**, each input's kept clock as a row with Forget (see True
 Clock). **Watches Folder** (below) and **Calibres** (Manage Calibres,

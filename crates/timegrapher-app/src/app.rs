@@ -1137,15 +1137,40 @@ fn figure_row(
             _ => vec![side_text.to_string()],
         }
     };
-    let side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
-    let side: Vec<_> = lines
-        .iter()
-        .map(|l| {
-            ui.painter()
-                .layout_no_wrap(l.clone(), side_font.clone(), pal.text_secondary)
-        })
-        .collect();
-    let side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    let mut side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
+    let lay_side = |font: &egui::FontId| -> Vec<_> {
+        lines
+            .iter()
+            .map(|l| {
+                ui.painter()
+                    .layout_no_wrap(l.clone(), font.clone(), pal.text_secondary)
+            })
+            .collect()
+    };
+    let mut side = lay_side(&side_font);
+    let mut side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    // Words in the figure's place ("No Regular Beat") show whole: with no
+    // figure, the dash gives them its room, and they are made smaller
+    // only when even that is too narrow.
+    let dash_w = ui
+        .painter()
+        .layout_no_wrap(
+            text.clone(),
+            theme::display(if compact {
+                theme::FIGURE_COMPACT_PT
+            } else {
+                theme::FIGURE_PT
+            }),
+            colour,
+        )
+        .size()
+        .x;
+    let no_dash = value.is_none() && status.is_some() && dash_w + 6.0 + side_w > rect.width();
+    if no_dash && side_w > rect.width() {
+        side_font.size = (side_font.size * rect.width() / side_w).floor().max(9.0);
+        side = lay_side(&side_font);
+        side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    }
     let room = rect.width() - if side_w > 0.0 { side_w + 6.0 } else { 0.0 };
     let full = if compact {
         theme::FIGURE_COMPACT_PT
@@ -1163,8 +1188,14 @@ fn figure_row(
     let top = rect.center().y - big.size().y / 2.0;
     let base = top + baseline(&big);
     let painter = ui.painter().with_clip_rect(rect.expand(2.0));
-    let x = rect.left() + big.size().x + 6.0;
-    painter.galley(egui::pos2(rect.left(), top), big, colour);
+    let x = if no_dash {
+        rect.left()
+    } else {
+        rect.left() + big.size().x + 6.0
+    };
+    if !no_dash {
+        painter.galley(egui::pos2(rect.left(), top), big, colour);
+    }
     let step = side_font.size * 1.2;
     let n = side.len();
     for (i, g) in side.into_iter().enumerate() {
@@ -1438,6 +1469,16 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
                 l.shares.set_share(c, f * total);
             }
         }
+    }
+}
+
+/// The status bar's progress words while a take is read: how far, as the
+/// take's name is already at the left of the bar.
+fn batch_words(frac: f64, known: bool) -> String {
+    if known {
+        format!("Analysing, {:.0}%", frac * 100.0)
+    } else {
+        "Analysing…".to_string()
     }
 }
 
@@ -6693,12 +6734,10 @@ impl TimegrapherApp {
     /// were worked out at the old one.
     fn change_bph(&mut self, bph: Option<u32>) {
         let shown = (!self.running()).then(|| self.take_on_show()).flatten();
-        self.bph = bph;
-        if let Some(l) = self.live.as_mut() {
-            l.set_bph(bph);
+        if !self.set_live_bph(bph) || shown.is_some() {
+            self.anchor = None;
+            self.clear_trends();
         }
-        self.anchor = None;
-        self.clear_trends();
         if let Some(take) = shown {
             let masked = self.masked.clone();
             self.carried_positions = Some((self.positions_now(), self.opened_positions.clone()));
@@ -6707,6 +6746,18 @@ impl TimegrapherApp {
             self.reread_with = None;
             self.masked = masked;
         }
+    }
+
+    /// Set the beat rate, and the live analysis's; true when the beats heard
+    /// so far stand, being read at that rate already (such as a calibre's
+    /// 28800 after Auto found 28800, or Auto where Auto found the rate, as
+    /// core's `set_bph` says), so the strip and trends keep all heard so far.
+    fn set_live_bph(&mut self, bph: Option<u32>) -> bool {
+        self.bph = bph;
+        let Some(l) = self.live.as_mut() else {
+            return false;
+        };
+        l.set_bph(bph)
     }
 
     /// Quick Listen's settings: no watch, no calibre, the default lift
@@ -6723,11 +6774,7 @@ impl TimegrapherApp {
             self.set_lift(DEFAULT_LIFT_DEG);
         }
         self.lift_context = (DEFAULT_LIFT_DEG, false);
-        if self.bph.is_some() {
-            self.bph = None;
-            if let Some(l) = self.live.as_mut() {
-                l.set_bph(None);
-            }
+        if self.bph.is_some() && !self.set_live_bph(None) {
             self.anchor = None;
             self.clear_trends();
         }
@@ -6756,11 +6803,7 @@ impl TimegrapherApp {
         }
         self.lift_context = (l, lift.is_some());
         let bph = self.cal.bph(&self.calibre).or(w.bph);
-        if bph != self.bph {
-            self.bph = bph;
-            if let Some(l) = self.live.as_mut() {
-                l.set_bph(bph);
-            }
+        if bph != self.bph && !self.set_live_bph(bph) {
             self.anchor = None;
             self.clear_trends();
         }
@@ -7091,8 +7134,9 @@ impl TimegrapherApp {
             )
     }
 
-    /// The microphone menu with Rescan after it, `w` wide.
-    fn device_menu(&mut self, ui: &mut egui::Ui, w: f32) {
+    /// The microphone menu with Rescan after it, `w` wide; a name too long
+    /// for it cut in the middle where `middle`, else at its end.
+    fn device_menu(&mut self, ui: &mut egui::Ui, w: f32, middle: bool) {
         let choices = self.input_choices();
         let listed = self.devices_listed;
         let sel = self.picked_label();
@@ -7116,9 +7160,23 @@ impl TimegrapherApp {
                     self.rescan();
                 }
                 let full = sel.clone();
+                let box_w = ui.available_width().max(60.0);
+                // Cut in the middle where it can't show whole: similar
+                // devices often differ only at the end.
+                let font = egui::TextStyle::Button.resolve(ui.style());
+                let shown = if !middle {
+                    sel.clone()
+                } else {
+                    theme::middle_cut(
+                        ui,
+                        &sel,
+                        &font,
+                        box_w - 2.0 * ui.spacing().icon_width - 12.0,
+                    )
+                };
                 egui::ComboBox::from_id_salt("device")
-                    .selected_text(sel)
-                    .width(ui.available_width().max(60.0))
+                    .selected_text(shown)
+                    .width(box_w)
                     .show_ui(ui, |ui| {
                         opened = true;
                         if !listed {
@@ -9754,7 +9812,7 @@ impl TimegrapherApp {
             ui.add_space(4.0);
             sheet_step(ui, 1, "Choose the microphone the watch sits on");
             sheet_indent(ui, |ui| {
-                self.device_menu(ui, ui.available_width());
+                self.device_menu(ui, ui.available_width(), false);
                 let hint =
                     "List every device the system offers in the microphone menu, with its id";
                 theme::switch_row(ui, "Show Every Input", &mut self.all_inputs, hint);
@@ -11250,17 +11308,15 @@ impl TimegrapherApp {
         theme::group(ui, "Microphone", None, |g| {
             let hint = "The microphone to listen to. Show Every Input lists every device the \
                         system offers.";
-            g.row(
-                "Microphone",
-                match &input_fault {
-                    Some(f) => theme::Caption::Alert(theme::Alert::Warning, f),
-                    None => theme::Caption::Text("The input the watch sits on."),
-                },
-                hint,
-                |ui| {
-                    self.device_menu(ui, 300.0);
-                },
-            );
+            // The menu on its own line, the group's width, whatever the
+            // device: a long name moves nothing.
+            let caption = match &input_fault {
+                Some(f) => theme::Caption::Alert(theme::Alert::Warning, f),
+                None => theme::Caption::Text("The input the watch sits on."),
+            };
+            g.row_under("Microphone", caption, hint, |ui| {
+                self.device_menu(ui, ui.available_width(), true);
+            });
             let hint = "List every device the system offers in the microphone menu, with its id";
             g.row(
                 "Show Every Input",
@@ -12440,7 +12496,7 @@ impl TimegrapherApp {
                     .desired_width(240.0)
                     .desired_height(14.0)
                     .fill(pal.accent)
-                    .text(RichText::new(format!("Analysing {}", b.label)).small()),
+                    .text(RichText::new(batch_words(frac, b.duration_s.is_some())).small()),
             );
         }
         // A take opened, its painting or masks changed: Save keeps them.
@@ -17263,6 +17319,213 @@ mod tests {
         assert!(app.lift_settable());
     }
 
+    /// Words in a reading's place on a narrow card show whole: "No
+    /// Regular Beat" takes the dash's room rather than being cut.
+    #[test]
+    fn a_narrow_cards_words_show_whole() {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let status = ("No Regular Beat".to_string(), String::new());
+        for compact in [true, false] {
+            let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(96.0, 40.0));
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let out = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        figure_row(ui, rect, None, "s/d", Some(&status), "", compact);
+                    });
+                });
+                texts = out
+                    .shapes
+                    .iter()
+                    .filter_map(|c| match &c.shape {
+                        egui::Shape::Text(t) => Some((
+                            t.galley.text().to_string(),
+                            t.galley.rect.translate(t.pos.to_vec2()),
+                        )),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+            }
+            let words: String = texts
+                .iter()
+                .filter(|t| t.0 != "—")
+                .map(|t| t.0.clone())
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert_eq!(words, "No Regular Beat", "{texts:?}");
+            for t in &texts {
+                assert!(t.1.right() <= rect.right() + 0.5, "{compact}: {t:?} is cut");
+            }
+        }
+    }
+
+    /// On the Tick Tock Profile an edge's bar and a sound's ring are drawn
+    /// on the trace, the ring hollow; on a short plot, with the edges'
+    /// names inside it, no bar or ring crosses a name.
+    #[test]
+    fn the_profiles_marks_keep_off_the_names() {
+        let mut app = synthetic(30.0, 0.0);
+        // Stopped, the profile is the one kept at the end.
+        let end = app.latest_s();
+        let sides = app.live.as_ref().unwrap().tick_profiles().clone();
+        app.sound_history = vec![(end, sides)];
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let run = |app: &mut TimegrapherApp, w: f32, h: f32| {
+            let mut shapes = Vec::new();
+            for _ in 0..4 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(w, h),
+                    )),
+                    ..Default::default()
+                };
+                shapes = ctx.run(input, |ctx| app.panels(ctx)).shapes;
+            }
+            let names: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t)
+                        if ["Unlock", "Drop", "Peak"].contains(&t.galley.text()) =>
+                    {
+                        Some(t.galley.rect.translate(t.pos.to_vec2()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let rings: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Circle(r) if r.fill == egui::Color32::TRANSPARENT => Some(
+                        egui::Rect::from_center_size(r.center, egui::Vec2::splat(2.0 * r.radius)),
+                    ),
+                    _ => None,
+                })
+                .collect();
+            let bars: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::LineSegment { points, stroke }
+                        if stroke.width == 2.0 && points[0].y == points[1].y =>
+                    {
+                        Some(egui::Rect::from_two_pos(points[0], points[1]))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let facts: Vec<egui::Rect> = shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t)
+                        if ["Amplitude", "Unlock to Drop"].contains(&t.galley.text())
+                            || t.galley.text().ends_with('°')
+                            || t.galley.text().ends_with(" ms") =>
+                    {
+                        Some(t.galley.rect.translate(t.pos.to_vec2()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            (names, rings, bars, facts)
+        };
+        // Where the facts box is two rows, over a trace that rises under
+        // the left corner and is low on the right, it takes the right, and
+        // keeps off the marks.
+        let kept = app.sound_history.clone();
+        for (_, sides) in &mut app.sound_history {
+            for p in sides.iter_mut().flatten() {
+                let top = p.p90.iter().copied().fold(0.0f32, f32::max);
+                let n = p.median.len() / 5;
+                p.median[..n].fill(0.9 * top);
+            }
+        }
+        app.sound_opts.side_by_side = true;
+        let (_, rings, bars, facts) = run(&mut app, 1440.0, 820.0);
+        let plots: Vec<egui::Rect> = (0..2usize)
+            .filter_map(|k| {
+                ctx.data(|d| {
+                    d.get_temp::<(egui::Rect, egui::Rect)>(egui::Id::new(("profile plot", k)))
+                })
+                .map(|p| p.0)
+            })
+            .collect();
+        assert_eq!(plots.len(), 2);
+        for p in &plots {
+            let here: Vec<_> = facts.iter().filter(|f| p.contains_rect(**f)).collect();
+            assert_eq!(here.len(), 4, "two rows: {here:?}");
+            assert!(
+                here.iter().all(|f| f.left() > p.center().x),
+                "{p:?}: {here:?}"
+            );
+        }
+        for m in rings.iter().chain(&bars) {
+            assert!(
+                facts.iter().all(|f| !f.intersects(*m)),
+                "{m:?} under the facts: {facts:?}"
+            );
+        }
+        // Over a trace high under both corners, the box keeps no rows: the
+        // trace and its marks come first, and the hover has the facts.
+        for (_, sides) in &mut app.sound_history {
+            for p in sides.iter_mut().flatten() {
+                let top = p.p90.iter().copied().fold(0.0f32, f32::max);
+                let n = p.median.len();
+                p.median[n - n / 4..].fill(0.9 * top);
+            }
+        }
+        let (_, _, _, facts) = run(&mut app, 1440.0, 820.0);
+        assert!(
+            facts
+                .iter()
+                .all(|f| plots.iter().all(|p| !p.contains_rect(*f))),
+            "{facts:?}"
+        );
+        app.sound_history = kept;
+        app.sound_opts.side_by_side = false;
+        let (names, rings, bars, _) = run(&mut app, 1440.0, 1000.0);
+        assert!(!names.is_empty(), "the edges named");
+        assert!(!rings.is_empty() && !bars.is_empty(), "{rings:?} {bars:?}");
+        let (names, rings, bars, _) = run(&mut app, 800.0, 600.0);
+        assert!(!names.is_empty(), "the edges named in the short plot");
+        for m in rings.iter().chain(&bars) {
+            assert!(
+                names.iter().all(|n| !n.intersects(*m)),
+                "{m:?} crosses a name: {names:?}"
+            );
+        }
+    }
+
+    /// In Quick Listen, a calibre picked while listening, at the beat rate
+    /// Auto already found, adds to the take: the beats and the strip's
+    /// readings heard so far stay. A calibre at another rate starts the
+    /// beats again.
+    #[test]
+    fn a_calibre_picked_while_listening_keeps_what_was_heard() {
+        let mut app = synthetic(30.0, 0.0);
+        assert_eq!(app.bph, None);
+        let heard = app.live.as_ref().unwrap().beats().len();
+        let trend = app.trend.len();
+        assert!(heard > 100 && trend > 5, "{heard} {trend}");
+        assert_eq!(app.cal.bph("ETA 2824-2"), Some(28_800));
+        app.set_calibre("ETA 2824-2".into());
+        assert_eq!(app.bph, Some(28_800));
+        assert_eq!(app.live.as_ref().unwrap().beats().len(), heard);
+        assert_eq!(app.trend.len(), trend);
+        // Auto again, with no calibre: still all of it.
+        app.set_calibre(String::new());
+        assert_eq!(app.bph, None);
+        assert_eq!(app.live.as_ref().unwrap().beats().len(), heard);
+        assert_eq!(app.trend.len(), trend);
+        let other = ["Seiko 7S26", "Seiko 7S26A", "Miyota 8215", "Seiko NH35"]
+            .into_iter()
+            .find(|c| app.cal.bph(c).is_some_and(|b| b != 28_800))
+            .expect("a calibre at another rate");
+        app.set_calibre(other.into());
+        assert!(app.live.as_ref().unwrap().beats().is_empty());
+    }
+
     /// Noise with no regular beat: the strip shows the peaks heard,
     /// faintly and said to be possible beats, rather than an empty card.
     #[test]
@@ -20971,6 +21234,14 @@ mod tests {
             panic!("{:?}", app.guided_live(&ctx));
         };
         assert!((rate - 30.0).abs() < 5.0, "{rate}");
+    }
+
+    /// While a take is read, the status bar's bar says how far, not the
+    /// take's name again: that is already at the bar's left.
+    #[test]
+    fn the_analysing_bar_says_how_far_not_the_name() {
+        assert_eq!(batch_words(0.374, true), "Analysing, 37%");
+        assert_eq!(batch_words(0.0, false), "Analysing…");
     }
 
     /// The banner's Stop keeps the positions measured in the table, stops
