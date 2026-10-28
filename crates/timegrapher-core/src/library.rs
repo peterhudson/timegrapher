@@ -202,7 +202,7 @@ fn new_id() -> String {
 
 /// Write `bytes` to a file beside `p`, then move it over `p`, so a reader
 /// never sees half of it.
-fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
+pub fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = p.with_extension("tmp");
     fs::write(&tmp, bytes)
         .and_then(|_| fs::rename(&tmp, p))
