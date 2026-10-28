@@ -718,8 +718,9 @@ fn inside_name_rect(frame: egui::Rect, left: f32, w: f32) -> egui::Rect {
 /// named (its line's hover names it). Where the trace crosses its row
 /// there (`clear` says whether a span of x is clear of it), it ends at its
 /// line on the left, else starts at it on the right, whichever is clear;
-/// with neither, it isn't named rather than sit on the trace. Each name's
-/// left edge, or none.
+/// with neither, it isn't named rather than sit on the trace. A name
+/// beside its line never covers another edge's line, where it would read
+/// as that edge's name. Each name's left edge, or none.
 pub fn inside_places(
     names: &[(&str, f32, f32)],
     left: f32,
@@ -729,6 +730,12 @@ pub fn inside_places(
 ) -> Vec<Option<f32>> {
     let mut end = f32::NEG_INFINITY;
     let on_facts = |a: f32, w: f32| a + w + 3.0 > facts.0 - 4.0 && a - 3.0 < facts.1 + 4.0;
+    // Over another edge's line, its box hiding it.
+    let on_line = |a: f32, w: f32, own: f32| {
+        names
+            .iter()
+            .any(|&(_, x, _)| x != own && x > a - 5.0 && x < a + w + 5.0)
+    };
     names
         .iter()
         .map(|&(_, x, w)| {
@@ -738,7 +745,10 @@ pub fn inside_places(
                 // box, unnamed rather than over the facts (its line's
                 // hover names it).
                 at = match [x + 4.0, x - w - 4.0].into_iter().find(|&a| {
-                    !on_facts(a, w) && a - 3.0 >= left + 1.0 && a + w + 3.0 <= right - 1.0
+                    !on_facts(a, w)
+                        && !on_line(a, w, x)
+                        && a - 3.0 >= left + 1.0
+                        && a + w + 3.0 <= right - 1.0
                 }) {
                     Some(a) => a,
                     None => return None,
@@ -749,6 +759,7 @@ pub fn inside_places(
                     a - 3.0 >= (left + 1.0).max(end + NAME_GAP)
                         && a + w + 3.0 <= right - 1.0
                         && !on_facts(a, w)
+                        && !on_line(a, w, x)
                         && clear(a - 3.0, a + w + 3.0)
                 };
                 at = [x - w - 5.0, x + 5.0].into_iter().find(|&a| fits(a))?;
@@ -1474,6 +1485,26 @@ mod tests {
             &|_, _| true,
         );
         assert_eq!(at, vec![Some(756.0)]);
+        // Drop crossed on both sides is unnamed; Peak, 20 pt after it and
+        // crossed at its line and on its right, isn't named left of its
+        // line over Drop's, where it would read as Drop's name.
+        let at = inside_places(
+            &[("Drop", 700.0, 30.0), ("Peak", 720.0, 20.0)],
+            0.0,
+            1000.0,
+            (0.0, 0.0),
+            &|a, b| b < 684.0 || (a > 690.0 && b < 722.0) || a > 736.0,
+        );
+        assert_eq!(at, vec![None, None]);
+        // 60 pt after it, clear of Drop's line, it is.
+        let at = inside_places(
+            &[("Drop", 700.0, 30.0), ("Peak", 760.0, 20.0)],
+            0.0,
+            1000.0,
+            (0.0, 0.0),
+            &|a, b| b < 684.0 || (a > 690.0 && b < 705.0) || (a > 712.0 && b < 760.0) || a > 775.0,
+        );
+        assert_eq!(at, vec![None, Some(735.0)]);
     }
 
     #[test]
