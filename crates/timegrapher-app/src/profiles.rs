@@ -193,34 +193,55 @@ impl FactBox {
         }
     }
 
-    /// The box of `rows` as `t` draws it: in the top left corner, or the
-    /// top right where the trace runs under the left and not the right.
-    fn placed(&self, t: &egui_plot::PlotTransform, rows: usize) -> egui::Rect {
+    /// The box of `rows` in the top left corner and in the top right.
+    fn corners(&self, t: &egui_plot::PlotTransform, rows: usize) -> (egui::Rect, egui::Rect) {
         let frame = *t.frame();
         let r = self.rect(frame, rows);
-        let covers = |r: egui::Rect| {
-            self.tops.iter().any(|p| {
-                let x = t.position_from_point_x(p[0]);
-                x >= r.left() && x <= r.right() && t.position_from_point_y(p[1]) < r.bottom() + 2.0
-            })
-        };
-        let right = r.translate(egui::vec2(frame.right() - FACT_INSET - r.right(), 0.0));
-        if covers(r) && !covers(right) {
-            right
-        } else {
-            r
+        (
+            r,
+            r.translate(egui::vec2(frame.right() - FACT_INSET - r.right(), 0.0)),
+        )
+    }
+
+    /// Whether the trace runs under `r`.
+    fn covers(&self, t: &egui_plot::PlotTransform, r: egui::Rect) -> bool {
+        self.tops.iter().any(|p| {
+            let x = t.position_from_point_x(p[0]);
+            x >= r.left() && x <= r.right() && t.position_from_point_y(p[1]) < r.bottom() + 2.0
+        })
+    }
+
+    /// The rows drawn and where: those [`Self::shown`] keeps, in the top
+    /// left corner, or the top right where the trace runs under the left
+    /// and not the right. Where the trace runs under both corners the
+    /// box keeps fewer rows, Amplitude last, and none where even one row
+    /// would sit on it: the picture comes first, and the box's hover has
+    /// all five.
+    fn layout(&self, t: &egui_plot::PlotTransform) -> (Vec<usize>, egui::Rect) {
+        let shown = self.shown(t);
+        if self.tops.is_empty() || shown.is_empty() {
+            let r = self.corners(t, shown.len().max(1)).0;
+            return (shown, r);
         }
+        for n in (1..=shown.len()).rev() {
+            let (left, right) = self.corners(t, n);
+            for r in [left, right] {
+                if !self.covers(t, r) {
+                    return (shown[shown.len() - n..].to_vec(), r);
+                }
+            }
+        }
+        (Vec::new(), self.corners(t, 2).0)
     }
 
     /// The span of x the box takes, as `t` draws it, its sides 0 wide at
     /// the plot's left edge with no rows shown: nothing names itself over
     /// it.
     fn span(&self, t: &egui_plot::PlotTransform) -> (f32, f32) {
-        let shown = self.shown(t).len();
-        if shown == 0 {
+        let (shown, r) = self.layout(t);
+        if shown.is_empty() {
             (t.frame().left(), t.frame().left())
         } else {
-            let r = self.placed(t, shown);
             (r.left() - FACT_INSET, r.right())
         }
     }
@@ -233,11 +254,10 @@ impl egui_plot::PlotItem for FactBox {
         transform: &egui_plot::PlotTransform,
         shapes: &mut Vec<egui::Shape>,
     ) {
-        let shown = self.shown(transform);
+        let (shown, r) = self.layout(transform);
         if shown.is_empty() {
             return;
         }
-        let r = self.placed(transform, shown.len());
         let pad = Self::pad(shown.len(), self.rows.len());
         let row = Self::row_h(shown.len(), self.rows.len());
         shapes.push(egui::Shape::rect_filled(r, 6.0, self.fill));
@@ -576,10 +596,14 @@ pub fn draw(
             med = m;
         });
         // A box that keeps fewer rows: the hover has all five.
-        let shown = facts_here.shown(&resp.transform);
+        let (shown, r) = facts_here.layout(&resp.transform);
         if let (true, Some(f)) = (shown.len() < FACT_NAMES.len(), &facts[k]) {
-            // Where no row fits, the corner a two-row box would take.
-            let r = facts_here.placed(&resp.transform, shown.len().max(2));
+            // Where no row is drawn, the corner a two-row box would take.
+            let r = if shown.is_empty() {
+                facts_here.corners(&resp.transform, 2).0
+            } else {
+                r
+            };
             if resp.response.hover_pos().is_some_and(|at| r.contains(at)) {
                 let all: Vec<String> = FACT_NAMES
                     .iter()
@@ -1311,7 +1335,8 @@ mod tests {
                 .collect(),
             ..short.clone()
         };
-        let r = rising.placed(&t, 2);
+        let (rows, r) = rising.layout(&t);
+        assert_eq!(rows, vec![3, 4]);
         assert!(
             (r.right() - (frame.right() - FACT_INSET)).abs() < 1e-3,
             "{r:?}"
@@ -1321,12 +1346,28 @@ mod tests {
             lo > frame.left() + 100.0 && hi <= frame.right(),
             "{lo} {hi}"
         );
-        // Under the trace on both sides, it keeps the left.
+        // Under a trace high on both sides, it keeps no rows (the hover
+        // has them), and nothing keeps off its corner.
         let high = FactBox {
             tops: (0..=10).map(|i| [i as f64 / 10.0, 0.95]).collect(),
             ..short.clone()
         };
-        assert_eq!(high.placed(&t, 2).left(), frame.left() + FACT_INSET);
+        assert!(high.layout(&t).0.is_empty());
+        assert_eq!(high.span(&t), (frame.left(), frame.left()));
+        // Where one row clears the trace on the right and two don't, it
+        // keeps Amplitude there.
+        let peak = FactBox {
+            tops: (0..=10)
+                .map(|i| [i as f64 / 10.0, if i < 5 { 0.95 } else { 0.4 }])
+                .collect(),
+            ..short.clone()
+        };
+        let (rows, r) = peak.layout(&t);
+        assert_eq!(rows, vec![4]);
+        assert!(
+            (r.right() - (frame.right() - FACT_INSET)).abs() < 1e-3,
+            "{r:?}"
+        );
         // It adds nothing to the plot's bounds.
         assert!(!egui_plot::PlotItem::bounds(&b).is_valid());
     }

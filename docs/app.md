@@ -851,7 +851,10 @@ same on both plots, so Tick and Tock compare row against row, and it
 sits under the band and the line, so a spike that runs into it still
 shows. On a plot under 100 points tall it keeps Unlock to Drop and
 Amplitude (fewer if even those don't fit), and hovering it gives all
-five. A plot that would be under 100 points with its names outside
+five. There the box takes the top right corner where the trace runs
+under the left and not the right; where the trace runs under both
+corners it keeps fewer rows, Amplitude last, and none where even one
+would sit on the trace, so the picture comes first. A plot that would be under 100 points with its names outside
 takes them in: the edges' names sit along its top on the plot's
 background, one row, under the trace (Unlock starts right of its line
 where the facts box has the corner, and a name that would crowd the one
