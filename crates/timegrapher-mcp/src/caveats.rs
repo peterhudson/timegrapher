@@ -13,73 +13,14 @@ pub const META_KEY: &str = "timegrapher/limits";
 /// (that is the skill's), or `None` for a code this server does not know
 /// yet (the model still reads it in the JSON).
 pub fn fact(c: &Value, lift_deg: Option<f64>) -> Option<String> {
-    let pct = |k: &str| c[k].as_f64().map(|f| f * 100.0);
-    Some(match c["code"].as_str()? {
-        "no_watch" => no_regular_beat(&json!({ "caveats": [c] }), None),
-        "set_rate_disagrees" => match c["heard"].as_u64() {
-            Some(h) => format!(
-                "The beat rate set for this watch differs from the one heard ({h} beats \
-                 per hour)."
-            ),
-            None => "The beat rate set for this watch differs from the one heard.".into(),
-        },
-        "short_span" => match c["span_s"].as_f64() {
-            Some(s) => format!("The beats heard span {s:.0} s."),
-            None => "The beats heard span only a few seconds.".into(),
-        },
-        "clipped" => match pct("fraction") {
-            Some(p) => format!("{p:.0}% of the beats were clipped."),
-            None => "Some of the beats were clipped.".into(),
-        },
-        "beats_missing" => match pct("fraction") {
-            Some(p) => format!("{p:.0}% of the beats expected were found."),
-            None => "Some of the beats expected were not found.".into(),
-        },
-        "lift_unknown" => match lift_deg {
-            Some(l) => format!(
-                "No calibre or lift angle was given, so the amplitude assumes a lift \
-                 angle of {l}°; the amplitude depends on the lift angle."
-            ),
-            None => "The lift angle is a default, not the calibre's; the amplitude \
-                     depends on the lift angle."
-                .into(),
-        },
-        "clock_unknown" => "The sound card's clock was not checked against a reference.".into(),
-        "breaks" => match c["count"].as_u64() {
-            Some(1) => "The recording was paused once; the readings leave the pause out.".into(),
-            Some(n) => {
-                format!("The recording was paused {n} times; the readings leave the pauses out.")
-            }
-            None => "The recording was paused; the readings leave the pauses out.".into(),
-        },
-        "beat_error_as_size" => "The beat error's sign differs either side of a cut in the \
-                                 stretch, so it is given as a size."
-            .into(),
-        "sides_by_count" => match c["count"].as_u64() {
-            Some(1) => "At one break Tick and Tock were not told apart by their sound, so \
-                        the sides after it are named by the beat count across it."
-                .into(),
-            Some(n) => format!(
-                "At {n} breaks Tick and Tock were not told apart by their sound, so the sides \
-                 after them are named by the beat count across them."
-            ),
-            None => "At a break Tick and Tock were not told apart by their sound, so the sides \
-                     after it are named by the beat count across it."
-                .into(),
-        },
-        // Any masked time counts, so a sliver gets a tenth of a second, and
-        // under 0.05 s, where that would read 0.0 s, no figure at all.
-        "masked" => match c["seconds"].as_f64() {
-            Some(t) if t >= 9.95 => {
-                format!("{t:.0} s of the take were masked out of the readings by hand.")
-            }
-            Some(t) if t >= 0.05 => {
-                format!("{t:.1} s of the take were masked out of the readings by hand.")
-            }
-            _ => "Stretches of the take were masked out of the readings by hand.".into(),
-        },
-        _ => return None,
-    })
+    if c["code"] == "no_watch" {
+        return Some(no_regular_beat(&json!({ "caveats": [c] }), None));
+    }
+    // Core's words, the app's
+    // ([`timegrapher_core::measure::Caveat::long`]).
+    serde_json::from_value::<timegrapher_core::measure::Caveat>(c.clone())
+        .ok()?
+        .long(lift_deg)
 }
 
 /// The canonical sentence for a measurement with no regular beat: the
@@ -235,8 +176,19 @@ mod tests {
         });
         let said = notes(&doc);
         assert_eq!(said.len(), 2, "{said:?}");
-        assert_eq!(said[0], "The beats heard span 6 s.", "{said:?}");
-        assert!(said[1].contains("lift angle of 52°"), "{said:?}");
+        assert_eq!(
+            said[0], "The beats span 6 s, under the 10 s needed to judge whether they are regular.",
+            "{said:?}"
+        );
+        assert!(said[1].contains("the default 52°"), "{said:?}");
+        // The two clocks that disagree are said with both figures, in
+        // core's words (#498).
+        let c = json!({ "code": "clock_sources_disagree", "usb_ppm": 120.0, "log_ppm": 20.0, "log_ppm_sd": 2.0 });
+        assert_eq!(
+            fact(&c, None).unwrap(),
+            "The USB lines measure the sound card at +120.0 ppm and the clock log at +20 ± 2 \
+             ppm; the rates are corrected by the USB lines."
+        );
     }
 
     #[test]
@@ -291,11 +243,16 @@ mod tests {
             { "code": "clock_unknown" }, { "code": "breaks", "count": 2 },
             { "code": "sides_by_count", "count": 1 }, { "code": "sides_by_count", "count": 2 },
             { "code": "beat_error_as_size" },
-            { "code": "masked", "seconds": 12.0 }, { "code": "masked" },
+            { "code": "masked", "seconds": 12.0 },
         ]);
         for c in codes.as_array().unwrap() {
             for lift in [Some(52.0), None] {
-                let s = fact(c, lift).unwrap().to_lowercase();
+                // "measured" holds "sure" and is a plain fact: it alone is
+                // allowed, and every other form of each word is still caught.
+                let s = fact(c, lift)
+                    .unwrap()
+                    .to_lowercase()
+                    .replace("measured", "");
                 for word in [
                     "sure",
                     "poor",
@@ -317,20 +274,19 @@ mod tests {
     fn masked_stretches_are_said_with_their_seconds() {
         assert_eq!(
             fact(&json!({ "code": "masked", "seconds": 12.4 }), None).unwrap(),
-            "12 s of the take were masked out of the readings by hand."
+            "12 s of this stretch were masked out and left out of the readings."
         );
         assert_eq!(
             fact(&json!({ "code": "masked", "seconds": 0.3 }), None).unwrap(),
-            "0.3 s of the take were masked out of the readings by hand."
+            "0.3 s of this stretch were masked out and left out of the readings."
         );
+        // A sliver that would read 0.0 s goes unsaid, as in the app and
+        // the CLI; so does a caveat whose figure the JSON leaves out.
         for c in [
             json!({ "code": "masked", "seconds": 0.02 }),
             json!({ "code": "masked" }),
         ] {
-            assert_eq!(
-                fact(&c, None).unwrap(),
-                "Stretches of the take were masked out of the readings by hand."
-            );
+            assert_eq!(fact(&c, None), None);
         }
     }
 

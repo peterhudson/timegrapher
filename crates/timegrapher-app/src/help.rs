@@ -257,7 +257,8 @@ pub const POSITIONS_TEST: &[&str] = &[
     "For the test 24 hours after winding: run it just after winding and keep its results \
      with Save Results for 24 Hours… (saving the session keeps them too, as \
      positions-test.json). 24 hours later, without winding or wearing the watch in \
-     between, Load Full-Wind Results… and start the test: the pane shows the earlier \
+     between, pick that test in Compare With (or, with no watch, Load Full-Wind \
+     Results…) and start the test: the pane shows the earlier \
      results, this test's, and both side by side with the change in each position, the \
      largest change in rate with crown right left out (Im) and the change in the mean \
      rate (Ie).",

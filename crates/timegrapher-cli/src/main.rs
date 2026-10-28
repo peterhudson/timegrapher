@@ -1418,41 +1418,22 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
         .caveats
         .iter()
         .filter_map(|c| match c {
-            Caveat::ShortSpan { span_s } => Some(format!(
-                "the beats span {span_s:.1} s (under {} s)",
-                measure::SHORT_SPAN_S
-            )),
-            Caveat::LiftUnknown => Some(format!(
-                "lift {}°, the default; {}",
-                s.lift_deg,
-                if calibre_set {
-                    "the calibre's lift angle is not in the table"
-                } else {
-                    "calibre not set"
-                }
-            )),
-            Caveat::ClockUnknown => Some("clock: card clock, not corrected".to_string()),
-            Caveat::Breaks { count } => Some(format!("{count} breaks in the take")),
-            Caveat::BeatErrorAsSize => Some(
-                "beat error given as a size: its sign differs either side of a cut".to_string(),
-            ),
-            Caveat::SidesByCount { count } => Some(format!(
-                "Tick and Tock named by the beat count across {count} break{}, \
-                 not told apart by their sound",
-                if *count == 1 { "" } else { "s" }
-            )),
-            Caveat::Masked { seconds } if *seconds < 0.05 => None,
-            Caveat::Masked { seconds } if *seconds < 9.95 => {
-                Some(format!("{seconds:.1} s masked out"))
-            }
-            Caveat::Masked { seconds } => Some(format!("{seconds:.0} s masked out")),
-            // `analyze` reads no clock log, so no two clocks to disagree.
-            Caveat::ClockSourcesDisagree { .. } => None,
             // Said on their own lines.
             Caveat::NoWatch { .. }
             | Caveat::SetRateDisagrees { .. }
             | Caveat::Clipped { .. }
             | Caveat::BeatsMissing { .. } => None,
+            Caveat::LiftUnknown => c.short(s.lift_deg, s.beats_found).map(|w| {
+                format!(
+                    "{w}; {}",
+                    if calibre_set {
+                        "the calibre's lift angle is not in the table"
+                    } else {
+                        "calibre not set"
+                    }
+                )
+            }),
+            _ => c.short(s.lift_deg, s.beats_found),
         })
         .collect();
     for (i, line) in conditions.iter().enumerate() {

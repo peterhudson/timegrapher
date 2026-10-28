@@ -128,8 +128,11 @@ user's own.
 
 `list_watches` and `show_watch` only read the library (the app's own unless
 `library` names another), so they work while the app has it open. A take's
-`at_end` is what the app showed when the take was saved, not a new analysis;
-a take with `audio` false kept only its analysis and has no sound to read.
+`reading` is its own reading, its last position as `run_session` reads it,
+worked out once (about a minute for a 9 h take) and kept in the user's
+settings folder; `at_end` is what the app showed when the take was saved,
+to be retired; a take with `audio` false kept only its analysis, which
+its reading is read from.
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.
