@@ -1675,6 +1675,22 @@ mod tests {
             let dir = r.finish(None).unwrap();
             assert_eq!(fit(&dir), lines);
             assert!(lines < crate::clock::MIN_POINTS, "{take_s} s: {lines}");
+            if n == 0 {
+                // Where each line falls: the first block (0.1 s of sound,
+                // at 0.100 s), one a second after it (1.1 s at 1.100 s and
+                // 2.1 s at 2.100 s), and the end (2.5 s at 2.503 s).
+                let clock = fs::read_to_string(dir.join("clock.csv")).unwrap();
+                let pairs = crate::clock::parse_log(&clock, 8000, 2).unwrap();
+                let audio: Vec<f64> = pairs.iter().map(|q| q.0).collect();
+                let host: Vec<f64> = pairs.iter().map(|q| q.1 - pairs[0].1).collect();
+                for (got, want) in audio.iter().zip([0.1, 1.1, 2.1, 2.5]) {
+                    assert!((got - want).abs() < 1e-9, "{audio:?}");
+                }
+                for (got, want) in host.iter().zip([0.0, 1.0, 2.0, 2.403]) {
+                    assert!((got - want).abs() < 1e-6, "{host:?}");
+                }
+                assert_eq!(pairs.len(), 4, "{clock}");
+            }
             std::fs::remove_dir_all(&base).ok();
         }
     }
