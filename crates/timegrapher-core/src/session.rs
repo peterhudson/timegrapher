@@ -432,21 +432,14 @@ pub fn measure_masked(
     let to_s = to_s.min(log.duration_s).max(0.0);
     let from_s = from_s.max(0.0).min(to_s);
     let masked_s = masked_within(masked, from_s, to_s);
-    // The recorder writes a gap under 0 s when its timestamps put the
-    // first sound after a pause before the last one before it; true time
-    // does not run backwards, so such a gap is taken as 0 s.
-    let on_time: Vec<Break> = breaks
-        .iter()
-        .map(|b| Break {
-            gap_s: b.gap_s.max(0.0),
-            ..*b
-        })
-        .collect();
     // Every cut (each gap, each mask, each clock step no break explains),
     // the beats outside the masks on true time, and which bins are whole:
     // no fit, window or sample reaches into a cut, and none takes in a
-    // ragged edge of beats beside one.
-    let holes = Cuts::new(clock, &on_time, masked);
+    // ragged edge of beats beside one. Its breaks take a gap under 0 s
+    // (the recorder's timestamps put the first sound after a pause before
+    // the last one before it) as none: true time does not run backwards.
+    let holes = Cuts::new(clock, breaks, masked);
+    let on_time = holes.breaks();
     let map = |t: f64| holes.true_time(t);
     let cuts = holes.piece_cuts();
     let in_range: Vec<Beat> = log
