@@ -1794,7 +1794,7 @@ struct RateTwoS {
 
 impl RateTwoS {
     /// Seconds of beats in each value, as the amplitude's stretches.
-    const STEP_S: f64 = 2.0;
+    const STEP_S: f64 = timegrapher_core::distribution::STRETCH_S;
 
     /// Bring the values up to `live`'s settled beats. None reaches across a
     /// break (a jump or a new position) or into a masked stretch, as no
@@ -1817,27 +1817,18 @@ impl RateTwoS {
             };
         }
         self.beats = beats.len();
-        let (Some(t0), Some(bph), Some(last)) = (first, self.bph, beats.last()) else {
+        let (Some(t0), Some(bph)) = (first, self.bph) else {
             return;
         };
-        loop {
-            let a = t0 + self.next as f64 * Self::STEP_S;
-            let b = a + Self::STEP_S;
-            if b > last.time + 1e-9 {
-                break;
-            }
-            self.next += 1;
-            if self.breaks.iter().any(|&x| a < x && x < b)
-                || self.masked.iter().any(|&(m0, m1)| a < m1 && b > m0)
-            {
-                continue;
-            }
-            let lo = beats.partition_point(|x| x.time < a);
-            let hi = beats.partition_point(|x| x.time < b);
-            if let Some(f) = timegrapher_core::timing::fit(&beats[lo..hi], bph) {
-                self.values.push((a, f.rate_s_per_day));
-            }
-        }
+        self.next = timegrapher_core::distribution::rates_2s(
+            beats,
+            bph,
+            t0,
+            self.next,
+            &self.breaks,
+            &self.masked,
+            &mut self.values,
+        );
     }
 }
 
@@ -15037,14 +15028,8 @@ impl TimegrapherApp {
                 .map(|(_, v)| v)
                 .collect()
         };
-        let (values, resolution, unit, decimals, color, per): (
-            Vec<f64>,
-            f64,
-            &str,
-            usize,
-            _,
-            &str,
-        ) = match reading {
+        use timegrapher_core::distribution::{self as dist, AMPLITUDE, BEAT_ERROR, RATE};
+        let (values, kind, color, label): (Vec<f64>, dist::Kind, _, &'static str) = match reading {
             SeriesKind::Rate if short => (
                 self.rate_2s
                     .values
@@ -15052,37 +15037,24 @@ impl TimegrapherApp {
                     .filter(|&&(a, _)| inside(a + RateTwoS::STEP_S) && self.in_position(a + 1e-6))
                     .map(|&(_, v)| v)
                     .collect(),
-                0.1,
-                " s/day",
-                1,
+                RATE,
                 pal.trace_rate,
-                "2-second stretches",
+                "2 s",
             ),
-            SeriesKind::Rate => (
-                readings(|p| p.rate),
-                0.1,
-                " s/day",
-                1,
-                pal.trace_rate,
-                "readings",
-            ),
+            SeriesKind::Rate => (readings(|p| p.rate), RATE, pal.trace_rate, "readings"),
             SeriesKind::Amplitude if short => (
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
                     .filter_map(|w| w.mean())
                     .collect(),
-                0.5,
-                "°",
-                0,
+                AMPLITUDE,
                 pal.trace_amplitude,
-                "2-second stretches",
+                "2 s",
             ),
             SeriesKind::Amplitude => (
                 readings(|p| p.amplitude),
-                0.5,
-                "°",
-                0,
+                AMPLITUDE,
                 pal.trace_amplitude,
                 "readings",
             ),
@@ -15092,27 +15064,23 @@ impl TimegrapherApp {
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
                     .filter_map(|w| w.beat_error_unlock_ms)
                     .collect(),
-                0.01,
-                " ms",
-                2,
+                BEAT_ERROR,
                 pal.trace_beat_error,
-                "2-second stretches",
+                "2 s",
             ),
             SeriesKind::BeatError => (
                 readings(|p| p.beat_error_unlock),
-                0.01,
-                " ms",
-                2,
+                BEAT_ERROR,
                 pal.trace_beat_error,
                 "readings",
             ),
         };
-        let opt = hist::Options {
-            resolution,
-            width_factor: 1.0,
-            trim: 0.005,
+        let step = if label == "2 s" {
+            dist::STRETCH_S
+        } else {
+            self.average_s
         };
-        let Some(h) = hist::histogram_with(&values, &opt) else {
+        let Some(d) = dist::distribution(&values, kind, label, step) else {
             ui.label(
                 RichText::new(format!(
                     "{}: not enough readings yet",
@@ -15123,31 +15091,16 @@ impl TimegrapherApp {
             );
             return;
         };
-        let peaks = h.peaks(0.05);
-        let f = |v: f64| format!("{v:.decimals$}{unit}");
-        let over = " in the session";
-        let mut line = format!(
-            "{}: {} {per}{over} · median {} · middle 80% {} to {}",
+        let only = (!self.session.stretches().is_empty()).then(|| self.position.name());
+        let line = format!(
+            "{}: {}",
             steady::title(reading),
-            h.n,
-            f(h.median),
-            f(h.p10),
-            f(h.p90),
+            d.line(kind, " in the session", only)
         );
-        if !self.session.stretches().is_empty() {
-            line += &format!(" · {} only", self.position.name());
-        }
-        if h.below + h.above > 0 {
-            line += &format!(" · {} outliers off the scale", h.below + h.above);
-        }
-        if peaks.len() > 1 {
-            let at: Vec<String> = peaks.iter().map(|&i| f(h.centre(i))).collect();
-            line += &format!(" · {} peaks, at {}", peaks.len(), at.join(" and "));
-        }
         ui.add(egui::Label::new(RichText::new(&line).small().color(pal.text_secondary)).truncate())
             .on_hover_text(line.clone());
-        let (x_lo, x_hi) = (h.start, h.start + h.counts.len() as f64 * h.bin_width);
-        let unit_owned = unit.to_string();
+        let (x_lo, x_hi) = (d.edges[0], d.edges[d.edges.len() - 1]);
+        let unit_owned = kind.suffix.to_string();
         let cumulative = self.hist_cumulative;
         let plot = Plot::new(format!("{} Distribution", steady::title(reading)))
             // As short as its share of the pane, rather than spilling out.
@@ -15216,8 +15169,12 @@ impl TimegrapherApp {
             .filter(|p| p[0] >= x_lo && p[0] <= x_hi)
             .collect();
         let z_top = hist::normal_quantile(1.0 - 0.5 / values.len().max(2) as f64).min(3.3) + 0.25;
-        let line = hist::normal_line(&values)
-            .map(|(mid, sd)| vec![[mid - sd * z_top, -z_top], [mid + sd * z_top, z_top]]);
+        let line = d.normal_line.map(|l| {
+            vec![
+                [l.centre - l.spread * z_top, -z_top],
+                [l.centre + l.spread * z_top, z_top],
+            ]
+        });
         plot.y_grid_spacer(move |g| {
             // From 50% outwards, leaving out a share whose label would crowd
             // the one before it.
@@ -23466,7 +23423,8 @@ mod tests {
         std::fs::write(
             dir.join(MANIFEST),
             format!(
-                "watch = 'Replay Watch'\nbph = 28800\nlift = 49.0\n\n\
+                // Settled at each entry's start, as the app writes its takes.
+                "watch = 'Replay Watch'\nbph = 28800\nlift = 49.0\nsettle_s = 0.0\n\n\
              [[recording]]\nfile = '{file}'\nposition = 'DU'\nstart_s = 0.0\nend_s = 30.0\n\n\
              [[recording]]\nfile = '{file}'\nposition = 'DD'\nstart_s = 40.0\nend_s = 60.0\n\n\
              [[recording]]\nfile = '{file}'\nposition = 'DU'\nstart_s = 70.0\n"
