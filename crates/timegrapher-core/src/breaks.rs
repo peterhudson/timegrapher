@@ -268,19 +268,37 @@ pub fn renumber(
     bph: u32,
 ) -> Vec<f64> {
     windows.retain(|w| !straddles(breaks, w.start_s, w.end_s));
-    let period = 3600.0 / bph.max(1) as f64;
-    let mut shift = 0i64;
-    for (k, b) in breaks.iter().enumerate() {
-        shift += 2 * (b.gap_s.max(0.0) / (2.0 * period)).round() as i64;
-        let end = breaks.get(k + 1).map_or(f64::INFINITY, |n| n.audio_s);
-        for beat in beats
-            .iter_mut()
-            .filter(|x| x.time >= b.audio_s && x.time < end)
-        {
-            beat.index += shift;
-        }
+    let shifts = index_shifts(breaks, bph);
+    for beat in beats.iter_mut() {
+        beat.index += index_shift_at(&shifts, beat.time);
     }
     by_count(breaks.iter().map(|b| b.audio_s), sided)
+}
+
+/// How far [`renumber`] moves the beat numbers from each break on: the
+/// break's audio second, with the beats the gaps up to it held (none for
+/// a negative gap), each gap's rounded to keep the sides. A reader drawing
+/// beats on audio seconds takes it off again.
+pub fn index_shifts(breaks: &[Break], bph: u32) -> Vec<(f64, i64)> {
+    let period = 3600.0 / bph.max(1) as f64;
+    let mut shift = 0i64;
+    breaks
+        .iter()
+        .map(|b| {
+            shift += 2 * (b.gap_s.max(0.0) / (2.0 * period)).round() as i64;
+            (b.audio_s, shift)
+        })
+        .collect()
+}
+
+/// The shift of [`index_shifts`] for a beat at audio second `t`: the last
+/// break's at or before it, none before the first.
+pub fn index_shift_at(shifts: &[(f64, i64)], t: f64) -> i64 {
+    shifts
+        .iter()
+        .take_while(|s| s.0 <= t)
+        .last()
+        .map_or(0, |s| s.1)
 }
 
 /// Of the breaks at `at` (audio seconds), those where the sides were not
@@ -290,4 +308,54 @@ pub fn by_count(at: impl IntoIterator<Item = f64>, sided: &[f64]) -> Vec<f64> {
     at.into_iter()
         .filter(|&t| !sided.iter().any(|&j| (j - t).abs() <= JUMP_MATCH_S))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shifts run on over the gaps, each rounded to whole tick-tock
+    /// pairs, none for a negative gap; renumber moves each beat by the
+    /// shift at its second, and a reader taking it off gets the numbers
+    /// back.
+    #[test]
+    fn the_index_shift_is_the_beats_the_gaps_held() {
+        let breaks = [
+            Break {
+                audio_s: 10.0,
+                gap_s: 1.0,
+            },
+            Break {
+                audio_s: 20.0,
+                gap_s: -0.5,
+            },
+            Break {
+                audio_s: 30.0,
+                gap_s: 0.3,
+            },
+        ];
+        // 28800 bph: 0.125 s a beat, 0.25 s a tick-tock pair.
+        let shifts = index_shifts(&breaks, 28800);
+        assert_eq!(shifts, [(10.0, 8), (20.0, 8), (30.0, 10)]);
+        assert_eq!(index_shift_at(&shifts, 9.9), 0);
+        assert_eq!(index_shift_at(&shifts, 10.0), 8);
+        assert_eq!(index_shift_at(&shifts, 25.0), 8);
+        assert_eq!(index_shift_at(&shifts, 31.0), 10);
+        let mut beats: Vec<Beat> = [5.0, 10.0, 15.0, 29.0, 35.0]
+            .iter()
+            .enumerate()
+            .map(|(i, &time)| Beat {
+                index: i as i64,
+                time,
+                quality: 1.0,
+            })
+            .collect();
+        let was = beats.clone();
+        renumber(&mut beats, &mut Vec::new(), &breaks, &[], 28800);
+        let moved: Vec<i64> = beats.iter().map(|b| b.index).collect();
+        assert_eq!(moved, [0, 9, 10, 11, 14]);
+        for (b, w) in beats.iter().zip(&was) {
+            assert_eq!(b.index - index_shift_at(&shifts, b.time), w.index);
+        }
+    }
 }

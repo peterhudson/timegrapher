@@ -170,7 +170,7 @@ use crate::session::{self, Action, Session};
 use timegrapher_core::analysis_take;
 use timegrapher_core::recorder::{self, Recorder, SavedCopy, SessionInfo};
 use timegrapher_core::session::{self as core_session, Manifest, RecordedPosition, RecordingEntry};
-use timegrapher_core::stream::{self, BeatLog, StreamConfig};
+use timegrapher_core::stream::{BeatLog, StreamConfig};
 
 /// The kinds of take New Take starts for the watch picked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -486,7 +486,7 @@ pub enum Position {
 
 impl Position {
     /// A position by any name the session files take: DU, CH, "dial up"…
-    fn from_name(s: &str) -> Option<Position> {
+    pub(crate) fn from_name(s: &str) -> Option<Position> {
         let common = timegrapher_core::session::Position::parse(s)?.common();
         Position::ALL.into_iter().find(|p| p.code() == common)
     }
@@ -1794,7 +1794,7 @@ struct RateTwoS {
 
 impl RateTwoS {
     /// Seconds of beats in each value, as the amplitude's stretches.
-    const STEP_S: f64 = 2.0;
+    const STEP_S: f64 = timegrapher_core::distribution::STRETCH_S;
 
     /// Bring the values up to `live`'s settled beats. None reaches across a
     /// break (a jump or a new position) or into a masked stretch, as no
@@ -1817,27 +1817,18 @@ impl RateTwoS {
             };
         }
         self.beats = beats.len();
-        let (Some(t0), Some(bph), Some(last)) = (first, self.bph, beats.last()) else {
+        let (Some(t0), Some(bph)) = (first, self.bph) else {
             return;
         };
-        loop {
-            let a = t0 + self.next as f64 * Self::STEP_S;
-            let b = a + Self::STEP_S;
-            if b > last.time + 1e-9 {
-                break;
-            }
-            self.next += 1;
-            if self.breaks.iter().any(|&x| a < x && x < b)
-                || self.masked.iter().any(|&(m0, m1)| a < m1 && b > m0)
-            {
-                continue;
-            }
-            let lo = beats.partition_point(|x| x.time < a);
-            let hi = beats.partition_point(|x| x.time < b);
-            if let Some(f) = timegrapher_core::timing::fit(&beats[lo..hi], bph) {
-                self.values.push((a, f.rate_s_per_day));
-            }
-        }
+        self.next = timegrapher_core::distribution::rates_2s(
+            beats,
+            bph,
+            t0,
+            self.next,
+            &self.breaks,
+            &self.masked,
+            &mut self.values,
+        );
     }
 }
 
@@ -1918,8 +1909,19 @@ impl TrendPoint {
 /// Where each position began, seconds, and the position, oldest first.
 type Stretches = Vec<(f64, Position)>;
 
+/// A take opened by core's `take::open_entry`, for the window: its beats,
+/// clock and breaks, and for a take kept as its analysis alone, the Tick
+/// Tock profiles it kept.
+#[derive(Debug)]
+struct Opened {
+    log: BeatLog,
+    clock: Option<timegrapher_core::clock::ClockFit>,
+    breaks: Vec<timegrapher_core::breaks::Break>,
+    profiles: Option<Vec<analysis_take::StretchProfiles>>,
+}
+
 struct Batch {
-    rx: std::sync::mpsc::Receiver<Result<Option<BeatLog>, String>>,
+    rx: std::sync::mpsc::Receiver<Result<Option<Opened>, String>>,
     progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Set to stop the analysis.
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -1936,9 +1938,6 @@ struct Batch {
     settles: Vec<(f64, f64)>,
     /// Where the files' order disagrees with when they were written.
     order_note: Option<String>,
-    /// For a take kept as its analysis alone, its Tick Tock profiles, put
-    /// here with the beats.
-    kept: Option<std::sync::Arc<std::sync::Mutex<Vec<analysis_take::StretchProfiles>>>>,
 }
 
 /// The session being kept as its analysis alone
@@ -2103,13 +2102,19 @@ pub struct TimegrapherApp {
     /// The stretches the Positions Test measured, the one under way
     /// included, kept like `guided_unused`.
     guided_measured: Vec<(f64, f64)>,
-    /// The full-wind test's results, loaded for the next test to run as
-    /// its 24 hour half.
+    /// The full-wind test's results the next test is set against as its
+    /// 24 hour half: picked from `guided_choices`, or loaded from a file.
     guided_earlier: Option<guided::FullWind>,
-    /// What `guided_earlier` was found for: the watch, the Wind setting,
-    /// the minute and when the watch's takes folder last changed. Any of
-    /// them otherwise, it is searched for again, so a test passing the
-    /// 12 hour mark, or a take added or removed, is seen.
+    /// For a watch set up for 24 Hours After, its full-wind tests from 12
+    /// to 36 hours ago, newest first, for Compare With to pick from.
+    guided_choices: Vec<guided::FullWind>,
+    /// Whether `guided_earlier` was loaded from a file, so it stays when
+    /// the watch's takes are searched again.
+    guided_earlier_file: bool,
+    /// What `guided_choices` was found for: the watch, the Wind setting,
+    /// the minute and the watch's takes folder. Any of them otherwise, it
+    /// is searched for again, so a test passing the 12 hour mark, or a
+    /// take added or removed, is seen.
     guided_earlier_for: Option<FullWindKey>,
     /// For a watch, the next Positions Test is its 24 hours after half,
     /// set against the watch's own full-wind test (Wind on its toolbar).
@@ -2210,14 +2215,20 @@ pub struct TimegrapherApp {
     /// The positions as recorded under the painting, from the session file
     /// of the recording being opened, to load with the positions shown.
     pending_recorded: Option<Positions>,
-    /// The sound card's clock as the clock log of the take on show gives
-    /// it, fitted as `timegrapher session` fits it: the readings, tables
-    /// and True Clock use it in place of the clock kept for the input.
+    /// The sound card's clock for the take on show, as core's
+    /// `take::open_entry` reads it for every surface: from its clock log,
+    /// USB lines or the correction stored for the input it was recorded
+    /// on. The readings, tables and True Clock use it in place of the
+    /// clock kept for the input.
     take_clock: Option<timegrapher_core::clock::ClockFit>,
-    /// The take's USB lines being read off the window's thread (up to
-    /// 600 s of its sound), for the take opened at this path: their ppm,
-    /// when it has them, sets the rate over its clock log.
-    usb_job: Option<(String, std::sync::mpsc::Receiver<Option<f64>>)>,
+    /// The take on show's breaks, as core reads them with its beats: the
+    /// pauses it lists, its clock's steps and the jumps in its beats.
+    /// `None` for a session heard here, whose readings go by the clock
+    /// kept for the input.
+    take_breaks: Option<Vec<timegrapher_core::breaks::Break>>,
+    /// The beats of the take on show numbered on its audio seconds, for
+    /// the strip, where core numbers them on across the take's breaks.
+    audio_beats: Option<Vec<timegrapher_core::beats::Beat>>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2680,6 +2691,8 @@ impl TimegrapherApp {
             guided_unused: Vec::new(),
             guided_measured: Vec::new(),
             guided_earlier: None,
+            guided_choices: Vec::new(),
+            guided_earlier_file: false,
             guided_earlier_for: None,
             guided_after: false,
             test_ready: None,
@@ -2740,7 +2753,8 @@ impl TimegrapherApp {
             carried_positions: None,
             pending_recorded: None,
             take_clock: None,
-            usb_job: None,
+            take_breaks: None,
+            audio_beats: None,
             brush: None,
             confirm: None,
             remove_masks_asked: false,
@@ -3016,6 +3030,8 @@ impl TimegrapherApp {
                 self.opened_masks = None;
                 self.opened_positions = None;
                 self.take_clock = None;
+                self.take_breaks = None;
+                self.audio_beats = None;
                 self.masking = false;
                 self.brush = None;
                 self.reset_session(
@@ -3211,6 +3227,8 @@ impl TimegrapherApp {
         self.opened_masks = None;
         self.opened_positions = None;
         self.take_clock = None;
+        self.take_breaks = None;
+        self.audio_beats = None;
         self.masking = false;
         self.brush = None;
         self.clear_trends();
@@ -4091,15 +4109,27 @@ impl TimegrapherApp {
         let masked: Vec<[f64; 2]> = entries.iter().flat_map(|e| e.masked.clone()).collect();
         self.masked = timegrapher_core::session::masked_spans(&masked);
         self.opened_masks = Some(self.masked.clone());
+        // Each entry read once the watch has settled, as `session` reads
+        // it: the app's own takes say `settle_s = 0`, a recorded one its
+        // settling.
         let (out, settles) = positions_of(entries.iter().filter_map(|e| {
             let p = Position::from_name(e.position.as_deref()?)?;
-            Some((e.start_s.unwrap_or(0.0), e.end_s, p))
+            let start = e.start_s.unwrap_or(0.0);
+            let (settle_s, measure_s) = timegrapher_core::take::entry_times(e, m);
+            let (from, to) = timegrapher_core::take::measured(
+                start,
+                e.end_s.unwrap_or(f64::INFINITY),
+                settle_s,
+                measure_s,
+            );
+            Some((start, from, to.is_finite().then_some(to), p))
         }));
         // What was recorded under any painting, loaded with the positions.
         self.pending_recorded = (!m.recorded.is_empty()).then(|| {
             positions_of(m.recorded.iter().filter_map(|r| {
                 let p = Position::from_name(&r.position)?;
-                Some((r.start_s.unwrap_or(0.0), r.end_s, p))
+                let start = r.start_s.unwrap_or(0.0);
+                Some((start, start, r.end_s, p))
             }))
         });
         if let Some(&(_, p)) = out.first() {
@@ -4170,6 +4200,8 @@ impl TimegrapherApp {
         self.stop();
         self.pending_recorded = None;
         self.take_clock = None;
+        self.take_breaks = None;
+        self.audio_beats = None;
         self.masked.clear();
         self.masking = false;
         self.brush = None;
@@ -4352,10 +4384,6 @@ impl TimegrapherApp {
         if self.file_path.trim() != path.display().to_string() {
             self.file_path = path.display().to_string();
         }
-        // Nothing of the take before's clock carries over, whichever
-        // way this one is kept.
-        self.take_clock = None;
-        self.usb_job = None;
         if analysis_take::is_analysis_only(path) {
             return self.open_analysis_only(path, manifest);
         }
@@ -4394,41 +4422,9 @@ impl TimegrapherApp {
             self.set_watch_setup(WatchSetup::default());
             self.open_note = None;
         }
-        if let Some(log) = manifest
-            .as_ref()
-            .and_then(|(_, e)| e.first()?.clock.clone())
-        {
-            let dir = if path.is_dir() {
-                path
-            } else {
-                path.parent().unwrap_or(path)
-            };
-            match timegrapher_core::clock::of_take(dir, &log, &files) {
-                Ok(fit) => {
-                    self.take_clock = Some(fit);
-                    // The recording's USB lines set the rate wherever it
-                    // has them, as `timegrapher series` reads it; read off
-                    // this thread, as they take a while.
-                    let (tx, rx) = std::sync::mpsc::channel();
-                    let files = files.clone();
-                    std::thread::spawn(move || {
-                        let ppm = timegrapher_core::clock::usb_lines(&files)
-                            .ok()
-                            .flatten()
-                            .map(|u| u.ppm);
-                        let _ = tx.send(ppm);
-                    });
-                    self.usb_job = Some((path.display().to_string(), rx));
-                }
-                Err(e) => {
-                    let n = format!("Its clock log can't be read ({e}), so its rates aren't corrected for the sound card's clock.");
-                    self.open_note = Some(match self.open_note.take() {
-                        Some(o) => format!("{o} {n}"),
-                        None => n,
-                    });
-                }
-            }
-        }
+        // What core opens: the whole recording, on the clock log the
+        // take's first entry names, as the app has always read it.
+        let opening = take_entry(path, manifest.as_ref());
         let (stretches, settles) = match manifest {
             Some((m, entries)) => {
                 let out = self.apply_manifest(&m, &entries);
@@ -4459,41 +4455,30 @@ impl TimegrapherApp {
         } else {
             capture_label(path)
         };
-        let mut cfg = StreamConfig::default();
-        cfg.analysis.bph = self.bph;
-        cfg.analysis.amplitude.lift_deg = self.lift_deg;
-        cfg.analysis.lift_known = self.lift_known();
+        let settings = self.entry_settings(&opening.1);
         let (tx, rx) = std::sync::mpsc::channel();
         let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let (p2, c2) = (progress.clone(), cancel.clone());
         let name = |p: &PathBuf| capture_label(p);
         let (count, first, last) = (files.len(), name(&files[0]), name(&files[files.len() - 1]));
-        std::thread::spawn(move || {
-            let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
-            // A cancel unwinds out of the analysis from its progress report
-            // (resume_unwind runs no panic hook, so nothing is printed).
-            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                stream::analyze_files(&paths, &cfg, |s| {
-                    p2.store(s.to_bits(), std::sync::atomic::Ordering::Relaxed);
-                    if c2.load(std::sync::atomic::Ordering::Relaxed) {
-                        std::panic::resume_unwind(Box::new(Cancelled));
-                    }
-                })
-            }));
-            match r {
-                Ok(r) => {
-                    let _ = tx.send(r.map(Some).map_err(|e| e.to_string()));
-                }
-                Err(e) if e.is::<Cancelled>() => {}
-                Err(e) => std::panic::resume_unwind(e),
-            }
-        });
+        open_in_background(
+            opening,
+            settings,
+            tx,
+            progress.clone(),
+            cancel.clone(),
+            None,
+        );
         self.opened_path = path.display().to_string();
         self.reset_session(info.sample_rate, label.clone());
         self.load_reserve(path);
         self.session.analyse();
         self.live = None;
+        // Nothing of the take before's clock carries over, whichever
+        // way this one is kept; a take that fails to open leaves it.
+        self.take_clock = None;
+        self.take_breaks = None;
+        self.audio_beats = None;
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4507,7 +4492,6 @@ impl TimegrapherApp {
             stretches,
             settles,
             order_note,
-            kept: None,
         });
     }
 
@@ -4549,47 +4533,37 @@ impl TimegrapherApp {
         self.keep_mic_setup();
         self.set_watch_setup(WatchSetup::default());
         self.open_note = None;
-        // Its own clock log, read as its sound's would be, with its USB
-        // lines' figure as measured when it was kept, as `timegrapher
-        // session` reads such a take.
-        if let Some(log) = entries.first().and_then(|e| e.clock.clone()) {
-            match analysis_clock(path, &log, &header) {
-                Ok(fit) => self.take_clock = Some(fit),
-                Err(e) => {
-                    self.open_note = Some(format!(
-                        "Its clock log can't be read ({e}), so its rates aren't corrected \
-                         for the sound card's clock."
-                    ))
-                }
-            }
-        }
         let (stretches, settles) = self.apply_manifest(&m, &entries);
         self.watch_fills_in(path, &m);
         let label = format!("{name} (analysis only)");
+        // Its beats, its own clock log with its USB lines' figure as
+        // measured when it was kept, and the breaks its session.json
+        // lists, read by core as `timegrapher session` reads such a take.
+        let opening = take_entry(path, Some(&(m, entries)));
+        let settings = self.entry_settings(&opening.1);
         let (tx, rx) = std::sync::mpsc::channel();
         let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let kept = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let (p2, k2, dir) = (progress.clone(), kept.clone(), path.to_path_buf());
         let duration_s = header.duration_s;
-        std::thread::spawn(move || {
-            let r = analysis_take::read(&dir)
-                .map_err(|e| e.to_string())
-                .map(|s| {
-                    if let Ok(mut k) = k2.lock() {
-                        *k = s.profiles;
-                    }
-                    p2.store(duration_s.to_bits(), std::sync::atomic::Ordering::Relaxed);
-                    Some(s.log)
-                });
-            let _ = tx.send(r);
-        });
+        open_in_background(
+            opening,
+            settings,
+            tx,
+            progress.clone(),
+            cancel.clone(),
+            Some(duration_s),
+        );
         self.opened_path = path.display().to_string();
         self.reset_session(header.sample_rate, label.clone());
         self.load_reserve(path);
         self.no_sound = true;
         self.session.analyse();
         self.live = None;
+        // Nothing of the take before's clock carries over, whichever
+        // way this one is kept; a take that fails to open leaves it.
+        self.take_clock = None;
+        self.take_breaks = None;
+        self.audio_beats = None;
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4603,7 +4577,6 @@ impl TimegrapherApp {
             stretches,
             settles,
             order_note: None,
-            kept: Some(kept),
         });
     }
 
@@ -4854,20 +4827,21 @@ impl TimegrapherApp {
             }
         }
         if let Some(r) = done {
-            let (label, stretches, settles, kept) = self
+            let (label, stretches, settles) = self
                 .batch
                 .take()
-                .map(|b| {
-                    (
-                        b.label.clone(),
-                        b.stretches.clone(),
-                        b.settles.clone(),
-                        b.kept.clone(),
-                    )
-                })
+                .map(|b| (b.label.clone(), b.stretches.clone(), b.settles.clone()))
                 .unwrap_or_default();
             match r {
-                Ok(Some(log)) => {
+                Ok(Some(o)) => {
+                    let Opened {
+                        log,
+                        clock,
+                        breaks,
+                        profiles,
+                    } = o;
+                    self.take_clock = clock;
+                    self.take_breaks = Some(breaks);
                     // Read again at a new beat rate: the positions as they were.
                     let carried = self.carried_positions.take();
                     let (stretches, settles) = match &carried {
@@ -4882,9 +4856,7 @@ impl TimegrapherApp {
                         self.opened_positions = opened;
                     }
                     // A take with no sound shows the profiles it kept.
-                    if let Some(k) =
-                        kept.and_then(|k| k.lock().ok().map(|mut k| std::mem::take(&mut *k)))
-                    {
+                    if let Some(k) = profiles {
                         self.sound_history = k.into_iter().map(|p| (p.end_s, p.sides)).collect();
                     }
                 }
@@ -4937,18 +4909,29 @@ impl TimegrapherApp {
         let mut live = LiveAnalyzer::from_log(log, self.live_config());
         self.session.load(&[], &[]);
         self.session.analysed();
-        if stretches.len() > 1 {
-            // No reading fits across a move, nor across a settling's end.
-            let mut breaks: Vec<f64> = stretches[1..]
-                .iter()
-                .map(|s| s.0)
-                .chain(settles.iter().map(|s| s.1))
-                .collect();
-            breaks.sort_by(f64::total_cmp);
-            breaks.dedup();
-            live.set_breaks(breaks);
+        // No reading fits across one of the take's breaks.
+        let mut breaks: Vec<f64> = self
+            .take_breaks
+            .iter()
+            .flatten()
+            .map(|b| b.audio_s)
+            .collect();
+        // A take of one position settles too, unless its session file
+        // says it was read from its start.
+        if stretches.len() > 1 || !settles.is_empty() {
+            // Nor across a move, nor across a settling's end.
+            breaks.extend(
+                stretches
+                    .iter()
+                    .skip(1)
+                    .map(|s| s.0)
+                    .chain(settles.iter().map(|s| s.1)),
+            );
             self.session.load(&stretches, &settles);
         }
+        breaks.sort_by(f64::total_cmp);
+        breaks.dedup();
+        live.set_breaks(breaks);
         if let Some(&(_, p)) = self.session.stretches().last() {
             self.position = p;
         }
@@ -4958,6 +4941,21 @@ impl TimegrapherApp {
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
         live.set_rate_clock(self.take_rate_clock());
+        // The strip draws beats on audio seconds: the beats core numbers on
+        // across the take's breaks have that taken off again for it.
+        self.audio_beats = live.bph().and_then(|bph| {
+            use timegrapher_core::breaks::{index_shift_at, index_shifts};
+            let shifts = index_shifts(self.take_breaks.as_deref()?, bph);
+            shifts.iter().any(|s| s.1 != 0).then(|| {
+                live.beats()
+                    .iter()
+                    .map(|b| timegrapher_core::beats::Beat {
+                        index: b.index - index_shift_at(&shifts, b.time),
+                        ..*b
+                    })
+                    .collect()
+            })
+        });
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -5381,14 +5379,7 @@ impl TimegrapherApp {
             }
             let log = steady::log_of(live)?;
             let clock = self.reading_clock(log.duration_s);
-            let breaks: Vec<_> = log
-                .jumps
-                .iter()
-                .map(|&audio_s| timegrapher_core::breaks::Break {
-                    audio_s,
-                    gap_s: 0.0,
-                })
-                .collect();
+            let breaks = self.reading_breaks(&log);
             // The time between the stretches, another position or its
             // settling, is left out as a mask is.
             let mut masked = self.masked.clone();
@@ -5488,11 +5479,15 @@ impl TimegrapherApp {
                 return t.clone();
             }
         }
-        let (take_clock, ppm) = (self.take_clock.clone(), self.clock.as_ref().map(|c| c.ppm));
+        let (take_clock, opened, ppm) = (
+            self.take_clock.clone(),
+            self.take_breaks.clone(),
+            self.clock.as_ref().map(|c| c.ppm),
+        );
         let read = move |log: BeatLog| {
-            let clock = take_clock
-                .or_else(|| ppm.and_then(|ppm| core_session::fixed_clock(ppm, log.duration_s)));
-            let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+            let clock = reading_clock(take_clock.as_ref(), opened.is_some(), ppm, log.duration_s);
+            let breaks =
+                timegrapher_core::breaks::with_jumps(opened.unwrap_or_default(), &log.jumps);
             let t = core_session::positions_table(
                 &log,
                 clock.as_ref(),
@@ -5570,7 +5565,7 @@ impl TimegrapherApp {
         let Some(live) = &self.live else { return };
         let Some(bph) = live.bph() else { return };
         let period = 3600.0 / bph as f64;
-        let beats = live.beats();
+        let beats = strip_beats(live, &self.audio_beats);
         let centred = if self.follow {
             Anchor::centre_on(beats, period, 8)
         } else {
@@ -5658,8 +5653,9 @@ impl TimegrapherApp {
         let end = self.strip_end_s();
         if let Some(l) = &self.live {
             if let Some(bph) = l.bph() {
-                let hi = l.beats().partition_point(|b| b.time <= end);
-                if let Some(a) = Anchor::centre_on(&l.beats()[..hi], 3600.0 / bph as f64, 8) {
+                let beats = strip_beats(l, &self.audio_beats);
+                let hi = beats.partition_point(|b| b.time <= end);
+                if let Some(a) = Anchor::centre_on(&beats[..hi], 3600.0 / bph as f64, 8) {
                     self.anchor = Some(a);
                 }
             }
@@ -5712,6 +5708,77 @@ impl TimegrapherApp {
                 .collect()
         } else {
             capture::choices(&self.devices)
+        }
+    }
+
+    /// Compare With: the full-wind test the 24 hours after test is set
+    /// against, picked each time from the watch's own tests from 12 to 36
+    /// hours ago, newest first, or loaded from a file.
+    fn compare_with(&mut self, ui: &mut egui::Ui) {
+        let shown = match &self.guided_earlier {
+            Some(e) if self.guided_earlier_file => {
+                format!("{} (from a file)", guided::choice_text(e))
+            }
+            Some(e) => guided::choice_text(e),
+            None if self.guided_choices.is_empty() => "None from 12 to 36 hours ago".to_string(),
+            None => "Pick a full-wind test".to_string(),
+        };
+        let mut picked: Option<usize> = None;
+        let mut from_file = false;
+        theme::tool_field(
+            ui,
+            "Compare With",
+            &format!(
+                "The full-wind test this one is set against: one of the watch's own from {}, \
+                 or results saved to a file",
+                guided::full_wind_ago()
+            ),
+            |ui| {
+                egui::ComboBox::from_id_salt("compare with")
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        for (i, f) in self.guided_choices.iter().enumerate() {
+                            let on = !self.guided_earlier_file
+                                && self.guided_earlier.as_ref() == Some(f);
+                            if ui.selectable_label(on, guided::choice_text(f)).clicked() {
+                                picked = Some(i);
+                            }
+                        }
+                        if !self.guided_choices.is_empty() {
+                            ui.separator();
+                        }
+                        if ui
+                            .selectable_label(false, RichText::new("From a File…").small())
+                            .clicked()
+                        {
+                            from_file = true;
+                        }
+                    });
+            },
+        );
+        if let Some(i) = picked {
+            self.pick_full_wind(i);
+        }
+        if from_file {
+            self.load_earlier();
+        }
+    }
+
+    /// Set the next test against the `i`th of the watch's full-wind tests
+    /// on offer.
+    fn pick_full_wind(&mut self, i: usize) {
+        if let Some(f) = self.guided_choices.get(i) {
+            self.guided_earlier = Some(f.clone());
+            self.guided_earlier_file = false;
+        }
+    }
+
+    /// Load the full-wind test's saved results from a file the user picks,
+    /// for the next test to be set against.
+    fn load_earlier(&mut self) {
+        if let Some(full) = self.load_full_wind() {
+            self.guided_earlier = Some(full);
+            self.guided_earlier_file = true;
         }
     }
 
@@ -8914,7 +8981,7 @@ impl TimegrapherApp {
         self.take_setup();
         match kind {
             NewTake::Listen => {
-                self.test_ready = None;
+                self.leave_ready_test();
                 self.start_microphone();
             }
             NewTake::Positions | NewTake::PowerReserve => self.get_ready(kind),
@@ -8938,6 +9005,17 @@ impl TimegrapherApp {
         }
     }
 
+    /// Leave the test set up, with nothing started: the full-wind test
+    /// picked or loaded for it goes too, so it isn't shown on the Bench
+    /// after.
+    fn leave_ready_test(&mut self) {
+        self.test_ready = None;
+        self.guided_earlier = None;
+        self.guided_earlier_file = false;
+        self.guided_choices.clear();
+        self.guided_earlier_for = None;
+    }
+
     /// The test set up and waiting for Start Test, while the Bench stays
     /// clear.
     fn ready_test(&self) -> Option<NewTake> {
@@ -8954,15 +9032,20 @@ impl TimegrapherApp {
     /// Why Start Test can't start the test set up, if it can't.
     fn start_test_why_not(&self) -> Option<String> {
         let w = self.open_watch()?;
-        (self.ready_test() == Some(NewTake::Positions)
-            && self.guided_after
-            && self.guided_earlier.is_none())
-        .then(|| {
+        if self.ready_test() != Some(NewTake::Positions)
+            || !self.guided_after
+            || self.guided_earlier.is_some()
+        {
+            return None;
+        }
+        Some(if self.guided_choices.is_empty() {
             format!(
                 "{} has no Full Wind Positions Test from {}.",
                 w.watch.name,
                 guided::full_wind_ago()
             )
+        } else {
+            "Pick the full-wind test to compare with, in Compare With.".to_string()
         })
     }
 
@@ -8982,10 +9065,11 @@ impl TimegrapherApp {
         }
     }
 
-    /// For a watch, the half the next Positions Test is set against: none
-    /// for a full-wind test, else the watch's newest full-wind test from
-    /// [`guided::FULL_WIND_HOURS`] ago, kept in its takes. Searched again
-    /// only when the watch or Wind has changed since; with no watch, the
+    /// For a watch set up for 24 Hours After, the full-wind tests from
+    /// [`guided::FULL_WIND_HOURS`] ago kept in its takes, for the next
+    /// Positions Test to be set against the one picked. Searched again
+    /// only when the watch, Wind, the minute or its takes have changed
+    /// since; a pick no longer among them is dropped. With no watch, the
     /// half is what Load Full-Wind Results… loads.
     fn find_full_wind(&mut self) {
         self.find_full_wind_at(guided::unix_now());
@@ -9017,11 +9101,22 @@ impl TimegrapherApp {
         if self.guided_earlier_for.as_ref() == Some(&key) {
             return;
         }
+        // Another watch, or Wind changed: nothing picked carries over.
+        let same = self
+            .guided_earlier_for
+            .as_ref()
+            .is_some_and(|k| (&k.0, k.1) == (&key.0, key.1));
         self.guided_earlier_for = Some(key);
-        self.guided_earlier = match dir {
-            Some(dir) if self.guided_after => guided::full_wind_in(&dir, now),
-            _ => None,
+        self.guided_choices = match dir {
+            Some(dir) if self.guided_after => guided::full_winds_in(&dir, now),
+            _ => Vec::new(),
         };
+        let from_file = self.guided_earlier_file;
+        let listed = |e: &guided::FullWind| self.guided_choices.contains(e);
+        if !same || !(from_file || self.guided_earlier.as_ref().is_some_and(listed)) {
+            self.guided_earlier = None;
+            self.guided_earlier_file = false;
+        }
     }
 
     /// How long until the full-wind search should run again, at the next
@@ -11842,6 +11937,31 @@ impl TimegrapherApp {
         }
     }
 
+    /// How core reads a take opened with session file `m`: at the beat
+    /// rate and lift angle on show (the session file's, or what Read Again
+    /// was asked for), whether that lift is known, and the escape teeth
+    /// as `take::stream_settings` gives them.
+    fn entry_settings(&self, m: &Manifest) -> timegrapher_core::take::EntrySettings {
+        use timegrapher_core::take;
+        let given = take::Given {
+            bph: self.bph,
+            lift_deg: Some(self.lift_deg),
+        };
+        // The take's calibre, from the user's calibres as the Watches list
+        // and `session` find it, for what its session file doesn't give.
+        let cal = m
+            .calibre
+            .as_deref()
+            .and_then(|n| take::calibre_named(n, &self.cal.user));
+        let mut stream = take::stream_settings(m, cal.as_ref(), given);
+        stream.analysis.lift_known = self.lift_known();
+        take::EntrySettings {
+            stream,
+            card_clock: false,
+            settle_s: None,
+        }
+    }
+
     /// Restore known/assumed context only for the value it described. Numeric
     /// edits and reverts keep the existing default-angle inference; this does
     /// not introduce a new way to explicitly confirm an unchanged 52° in UI.
@@ -12346,47 +12466,25 @@ impl TimegrapherApp {
     }
 
     /// The clock the readings of the take on show are put on, for a log
-    /// `duration_s` long: the take's own clock log, else the clock kept for
-    /// the input.
+    /// `duration_s` long ([`reading_clock`]).
     fn reading_clock(&self, duration_s: f64) -> Option<timegrapher_core::clock::ClockFit> {
-        self.take_clock.clone().or_else(|| {
-            self.clock
-                .as_ref()
-                .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, duration_s))
-        })
+        reading_clock(
+            self.take_clock.as_ref(),
+            self.take_breaks.is_some(),
+            self.clock.as_ref().map(|c| c.ppm),
+            duration_s,
+        )
     }
 
-    /// The take's USB lines read: where it has them, they set its rate,
-    /// its clock log keeping only its breaks, and the charts are read
-    /// again on them.
-    fn usb_poll(&mut self) {
-        let Some((at, rx)) = &self.usb_job else {
-            return;
-        };
-        let got = match rx.try_recv() {
-            Ok(ppm) => ppm,
-            Err(std::sync::mpsc::TryRecvError::Empty) => return,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
-        };
-        let same = *at == self.opened_path;
-        self.usb_job = None;
-        self.usb_lines_read(got.filter(|_| same));
-    }
-
-    /// The take's USB lines measured the card at `ppm`, or found none.
-    fn usb_lines_read(&mut self, ppm: Option<f64>) {
-        let (Some(ppm), Some(fit)) = (ppm, self.take_clock.as_mut()) else {
-            return;
-        };
-        fit.rate_from_usb(ppm);
-        let clock = self.take_rate_clock().cloned();
-        if let Some(l) = self.live.as_mut() {
-            l.set_rate_clock(clock.as_ref());
-            self.rebuild_trend();
-        }
-        // The Steadiness panes read again on the corrected clock.
-        self.steady = None;
-        self.steady_job = None;
+    /// The breaks the readings of `log` are cut at: the take's own, with
+    /// every other cut its beats show (a jump, a move, a settling's end, a
+    /// mask's ends) as a break of no length, as core's `take::breaks`
+    /// adds the jumps.
+    fn reading_breaks(&self, log: &BeatLog) -> Vec<timegrapher_core::breaks::Break> {
+        timegrapher_core::breaks::with_jumps(
+            self.take_breaks.clone().unwrap_or_default(),
+            &log.jumps,
+        )
     }
 
     /// The take's own clock error the readings are corrected by, ppm slow:
@@ -12405,10 +12503,10 @@ impl TimegrapherApp {
     /// The error of [`Self::reading_clock`], ppm slow, for what is read
     /// with it to be read again when it changes.
     fn reading_ppm(&self) -> Option<f64> {
-        self.take_clock
-            .as_ref()
-            .map(|f| f.ppm)
-            .or(self.clock.as_ref().map(|c| c.ppm))
+        match &self.take_breaks {
+            Some(_) => self.take_clock.as_ref().map(|f| f.ppm),
+            None => self.clock.as_ref().map(|c| c.ppm),
+        }
     }
 
     /// The rate `rate` on the clock kept for the input, for the Rate
@@ -13303,7 +13401,7 @@ impl TimegrapherApp {
                     false,
                     None,
                 ) {
-                    self.test_ready = None;
+                    self.leave_ready_test();
                 }
             } else if theme::tool_word_button(
                 ui,
@@ -13343,7 +13441,7 @@ impl TimegrapherApp {
                             Icon::Barrel24,
                             "24 Hours After",
                             "24 hours after the full-wind test, the watch neither wound nor \
-                             worn since: set against that test, found in the watch",
+                             worn since: set against that test, picked in Compare With",
                         ),
                     ],
                 );
@@ -13352,6 +13450,10 @@ impl TimegrapherApp {
             .on_disabled_hover_text(FIXED_IN_TEST);
             if self.guided_after != was {
                 self.find_full_wind();
+            }
+            if self.guided_after && !running {
+                theme::bar_gap(ui);
+                self.compare_with(ui);
             }
         } else if !running {
             let load_hint = format!(
@@ -13368,9 +13470,7 @@ impl TimegrapherApp {
                 false,
                 None,
             ) {
-                if let Some(full) = self.load_full_wind() {
-                    self.guided_earlier = Some(full);
-                }
+                self.load_earlier();
             }
         }
         theme::bar_gap(ui);
@@ -13517,6 +13617,7 @@ impl TimegrapherApp {
         let Some(action) = action else { return };
         if action == guided::Action::ClearEarlier {
             self.guided_earlier = None;
+            self.guided_earlier_file = false;
             self.guided_after = false;
             return;
         }
@@ -13647,7 +13748,7 @@ impl TimegrapherApp {
                     false,
                     None,
                 ) {
-                    self.test_ready = None;
+                    self.leave_ready_test();
                 }
             } else if theme::tool_word_button(
                 ui,
@@ -13846,7 +13947,7 @@ impl TimegrapherApp {
             .as_ref()
             .and_then(|c| c.fit.clone())
             .or_else(|| self.reading_clock(log.duration_s));
-        let breaks = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+        let breaks = self.reading_breaks(&log);
         power_reserve::hours(&log, fit.as_ref(), &breaks, &self.masked, from, to)
     }
 
@@ -14540,7 +14641,11 @@ impl TimegrapherApp {
         };
         let input = strip::draw_strip(
             ui,
-            if guessing { &candidates } else { live.beats() },
+            if guessing {
+                &candidates
+            } else {
+                strip_beats(live, &self.audio_beats)
+            },
             period,
             anchor,
             end,
@@ -15025,14 +15130,8 @@ impl TimegrapherApp {
                 .map(|(_, v)| v)
                 .collect()
         };
-        let (values, resolution, unit, decimals, color, per): (
-            Vec<f64>,
-            f64,
-            &str,
-            usize,
-            _,
-            &str,
-        ) = match reading {
+        use timegrapher_core::distribution::{self as dist, AMPLITUDE, BEAT_ERROR, RATE};
+        let (values, kind, color, label): (Vec<f64>, dist::Kind, _, &'static str) = match reading {
             SeriesKind::Rate if short => (
                 self.rate_2s
                     .values
@@ -15040,37 +15139,24 @@ impl TimegrapherApp {
                     .filter(|&&(a, _)| inside(a + RateTwoS::STEP_S) && self.in_position(a + 1e-6))
                     .map(|&(_, v)| v)
                     .collect(),
-                0.1,
-                " s/day",
-                1,
+                RATE,
                 pal.trace_rate,
-                "2-second stretches",
+                "2 s",
             ),
-            SeriesKind::Rate => (
-                readings(|p| p.rate),
-                0.1,
-                " s/day",
-                1,
-                pal.trace_rate,
-                "readings",
-            ),
+            SeriesKind::Rate => (readings(|p| p.rate), RATE, pal.trace_rate, "readings"),
             SeriesKind::Amplitude if short => (
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
                     .filter_map(|w| w.mean())
                     .collect(),
-                0.5,
-                "°",
-                0,
+                AMPLITUDE,
                 pal.trace_amplitude,
-                "2-second stretches",
+                "2 s",
             ),
             SeriesKind::Amplitude => (
                 readings(|p| p.amplitude),
-                0.5,
-                "°",
-                0,
+                AMPLITUDE,
                 pal.trace_amplitude,
                 "readings",
             ),
@@ -15080,27 +15166,23 @@ impl TimegrapherApp {
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
                     .filter_map(|w| w.beat_error_unlock_ms)
                     .collect(),
-                0.01,
-                " ms",
-                2,
+                BEAT_ERROR,
                 pal.trace_beat_error,
-                "2-second stretches",
+                "2 s",
             ),
             SeriesKind::BeatError => (
                 readings(|p| p.beat_error_unlock),
-                0.01,
-                " ms",
-                2,
+                BEAT_ERROR,
                 pal.trace_beat_error,
                 "readings",
             ),
         };
-        let opt = hist::Options {
-            resolution,
-            width_factor: 1.0,
-            trim: 0.005,
+        let step = if label == "2 s" {
+            dist::STRETCH_S
+        } else {
+            self.average_s
         };
-        let Some(h) = hist::histogram_with(&values, &opt) else {
+        let Some(d) = dist::distribution(&values, kind, label, step) else {
             ui.label(
                 RichText::new(format!(
                     "{}: not enough readings yet",
@@ -15111,31 +15193,16 @@ impl TimegrapherApp {
             );
             return;
         };
-        let peaks = h.peaks(0.05);
-        let f = |v: f64| format!("{v:.decimals$}{unit}");
-        let over = " in the session";
-        let mut line = format!(
-            "{}: {} {per}{over} · median {} · middle 80% {} to {}",
+        let only = (!self.session.stretches().is_empty()).then(|| self.position.name());
+        let line = format!(
+            "{}: {}",
             steady::title(reading),
-            h.n,
-            f(h.median),
-            f(h.p10),
-            f(h.p90),
+            d.line(kind, " in the session", only)
         );
-        if !self.session.stretches().is_empty() {
-            line += &format!(" · {} only", self.position.name());
-        }
-        if h.below + h.above > 0 {
-            line += &format!(" · {} outliers off the scale", h.below + h.above);
-        }
-        if peaks.len() > 1 {
-            let at: Vec<String> = peaks.iter().map(|&i| f(h.centre(i))).collect();
-            line += &format!(" · {} peaks, at {}", peaks.len(), at.join(" and "));
-        }
         ui.add(egui::Label::new(RichText::new(&line).small().color(pal.text_secondary)).truncate())
             .on_hover_text(line.clone());
-        let (x_lo, x_hi) = (h.start, h.start + h.counts.len() as f64 * h.bin_width);
-        let unit_owned = unit.to_string();
+        let (x_lo, x_hi) = (d.edges[0], d.edges[d.edges.len() - 1]);
+        let unit_owned = kind.suffix.to_string();
         let cumulative = self.hist_cumulative;
         let plot = Plot::new(format!("{} Distribution", steady::title(reading)))
             // As short as its share of the pane, rather than spilling out.
@@ -15204,8 +15271,12 @@ impl TimegrapherApp {
             .filter(|p| p[0] >= x_lo && p[0] <= x_hi)
             .collect();
         let z_top = hist::normal_quantile(1.0 - 0.5 / values.len().max(2) as f64).min(3.3) + 0.25;
-        let line = hist::normal_line(&values)
-            .map(|(mid, sd)| vec![[mid - sd * z_top, -z_top], [mid + sd * z_top, z_top]]);
+        let line = d.normal_line.map(|l| {
+            vec![
+                [l.centre - l.spread * z_top, -z_top],
+                [l.centre + l.spread * z_top, z_top],
+            ]
+        });
         plot.y_grid_spacer(move |g| {
             // From 50% outwards, leaving out a share whose label would crowd
             // the one before it.
@@ -16475,28 +16546,121 @@ fn settle_hint(s: f64) -> String {
     )
 }
 
-/// The clock of a take kept as its analysis alone, from its log `log` read
-/// at the sound's rate and frame size its header keeps, its USB lines'
-/// figure applied and its breaks placed as its `session.json` lists them.
-fn analysis_clock(
-    dir: &Path,
-    log: &str,
-    header: &analysis_take::Header,
-) -> Result<timegrapher_core::clock::ClockFit, String> {
-    use timegrapher_core::{breaks, clock};
-    let file = dir.join(log);
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let pairs = clock::parse_log(&text, header.sample_rate, header.bytes_per_frame)?;
-    let mut fit = clock::ClockFit::for_rates(&pairs).map_err(|e| e.to_string())?;
-    if let Some(u) = &header.usb_clock {
-        fit.rate_from_usb(u.ppm);
+/// The beats the strip draws: `live`'s, or the take's numbered on its
+/// audio seconds (`audio`) while they are the same beats.
+fn strip_beats<'a>(
+    live: &'a LiveAnalyzer,
+    audio: &'a Option<Vec<timegrapher_core::beats::Beat>>,
+) -> &'a [timegrapher_core::beats::Beat] {
+    match audio {
+        Some(b) if b.len() == live.beats().len() => b,
+        _ => live.beats(),
     }
-    let json = std::fs::read_to_string(dir.join("session.json"))
-        .ok()
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
-    let listed = breaks::for_take(json.as_ref(), Some(&fit), header.sample_rate);
-    breaks::on_clock(listed, Some(&mut fit));
-    Ok(fit)
+}
+
+/// The clock readings are put on, for a log `duration_s` long: for a
+/// take opened (`opened`), its own clock as core read it, or none; for a
+/// session heard here, the clock kept for the input (`ppm` slow).
+fn reading_clock(
+    take_clock: Option<&timegrapher_core::clock::ClockFit>,
+    opened: bool,
+    ppm: Option<f64>,
+    duration_s: f64,
+) -> Option<timegrapher_core::clock::ClockFit> {
+    if opened {
+        take_clock.cloned()
+    } else {
+        ppm.and_then(|ppm| timegrapher_core::session::fixed_clock(ppm, duration_s))
+    }
+}
+
+/// What core opens for the take at `path`, a recording or a take's
+/// folder: the folder its session file is read from, the session file
+/// (an empty one without), and one entry for the whole recording, on the
+/// clock log the first entry the session file gives it names. The entry
+/// leaves its masks to the window, which keeps them open to change.
+fn take_entry(
+    path: &Path,
+    manifest: Option<&(Manifest, Vec<RecordingEntry>)>,
+) -> (PathBuf, Manifest, RecordingEntry) {
+    let (base, file) = if path.is_dir() {
+        (path.to_path_buf(), ".".to_string())
+    } else {
+        (
+            path.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            file_name(path),
+        )
+    };
+    let (m, first) = match manifest {
+        Some((m, e)) => (m.clone(), e.first()),
+        None => (Manifest::default(), None),
+    };
+    let entry = RecordingEntry {
+        file,
+        clock: first.and_then(|e| e.clock.clone()),
+        ..Default::default()
+    };
+    (base, m, entry)
+}
+
+/// Open the take `opening` ([`take_entry`]) with core's `take::open_entry`
+/// on a thread of its own, sending what it read to `tx`: `progress` holds
+/// the seconds of sound read (for a take kept as its analysis alone, its
+/// length `kept_s` once read) and setting `cancel` stops it, sending
+/// nothing.
+fn open_in_background(
+    opening: (PathBuf, Manifest, RecordingEntry),
+    settings: timegrapher_core::take::EntrySettings,
+    tx: std::sync::mpsc::Sender<Result<Option<Opened>, String>>,
+    progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    kept_s: Option<f64>,
+) {
+    use std::sync::atomic::Ordering::Relaxed;
+    use timegrapher_core::take;
+    std::thread::spawn(move || {
+        let (base, m, e) = opening;
+        // A cancel unwinds out of the analysis from its progress report
+        // (resume_unwind runs no panic hook, so nothing is printed).
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            take::open_entry(
+                &base,
+                &m,
+                &e,
+                &settings,
+                |files| Ok(timegrapher_core::clock::usb_lines(files)?.map(|u| u.ppm)),
+                |first| {
+                    Ok(match m.card_ppm {
+                        Some(p) => Some(p),
+                        None => take::stored_correction(first)?.map(|c| c.ppm),
+                    })
+                },
+                |s| {
+                    progress.store(s.to_bits(), Relaxed);
+                    if cancel.load(Relaxed) {
+                        std::panic::resume_unwind(Box::new(Cancelled));
+                    }
+                },
+            )
+        }));
+        match r {
+            Ok(r) => {
+                if let Some(s) = kept_s {
+                    progress.store(s.to_bits(), Relaxed);
+                }
+                let _ = tx.send(r.map(|o| {
+                    Some(Opened {
+                        log: o.log,
+                        clock: o.clock,
+                        breaks: o.breaks,
+                        profiles: o.kept.map(|k| k.profiles),
+                    })
+                }));
+            }
+            Err(e) if e.is::<Cancelled>() => {}
+            Err(e) => std::panic::resume_unwind(e),
+        }
+    });
 }
 
 /// Where a bug report starts: the repository's bug form.
@@ -17177,7 +17341,6 @@ impl eframe::App for TimegrapherApp {
         // clock.
         let lift_known = self.lift_known();
         let clock_known = self.clock.is_some();
-        self.usb_poll();
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
             l.set_rate_clock(self.take_clock.as_ref().filter(|f| f.corrects()));
@@ -17404,23 +17567,28 @@ type Layers = (Positions, Option<Positions>);
 /// start, end and the position's code.
 type Entries = Vec<(Option<f64>, Option<f64>, String)>;
 
-/// The positions a session file lists, each stretch's start, end and
-/// position, as changes oldest first and the settling before each: a gap
-/// between one position's end and the next one's start.
-fn positions_of(listed: impl Iterator<Item = (f64, Option<f64>, Position)>) -> Positions {
-    let mut listed: Vec<(f64, Option<f64>, Position)> = listed.collect();
+/// The positions a session file lists, each stretch's start, the start
+/// of what is read once it has settled, its end and its position, as
+/// changes oldest first and the settling before each: from the end of the
+/// one before (or the take's start, for the first) to where its reading
+/// starts.
+fn positions_of(listed: impl Iterator<Item = (f64, f64, Option<f64>, Position)>) -> Positions {
+    let mut listed: Vec<(f64, f64, Option<f64>, Position)> = listed.collect();
     listed.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut out = Vec::new();
     let mut settles = Vec::new();
-    for (i, &(start, _, p)) in listed.iter().enumerate() {
-        // The position began where the one before it ended.
-        let began = match i.checked_sub(1).and_then(|j| listed[j].1) {
-            Some(end) if end < start => {
-                settles.push((end, start));
-                end
-            }
-            _ => start,
+    for (i, &(start, from, _, p)) in listed.iter().enumerate() {
+        // The position began where the one before it ended, the first at
+        // the take's start: the app saves each entry from the end of its
+        // settling, the first's too.
+        let began = match i.checked_sub(1).map(|j| listed[j].2) {
+            None => 0.0,
+            Some(Some(end)) if end < start => end,
+            Some(_) => start,
         };
+        if from > began {
+            settles.push((began, from));
+        }
         out.push((began, p));
     }
     (out, settles)
@@ -20856,17 +21024,23 @@ mod tests {
         );
         let info = app.info("test", 48000, 16);
         app.session.recorder = Some(Recorder::start(&base.join("live"), info).unwrap());
-        let block = timegrapher_core::capture::Block {
-            samples: audio.samples.clone(),
-            at: std::time::SystemTime::now(),
-        };
-        app.session
-            .recorder
-            .as_mut()
-            .unwrap()
-            .write(&block)
-            .unwrap();
-        for samples in block.samples.chunks(960) {
+        // A second of sound at a time, each arriving as its last frame is
+        // heard, as the capture delivers it, so the clock log reads as a
+        // real take's does.
+        let began = std::time::SystemTime::now();
+        for (k, second) in audio.samples.chunks(48000).enumerate() {
+            let block = timegrapher_core::capture::Block {
+                samples: second.to_vec(),
+                at: began + std::time::Duration::from_secs(k as u64 + 1),
+            };
+            app.session
+                .recorder
+                .as_mut()
+                .unwrap()
+                .write(&block)
+                .unwrap();
+        }
+        for samples in audio.samples.chunks(960) {
             app.live.as_mut().unwrap().push(samples);
         }
         app.masked = vec![(30.0, 32.0)];
@@ -21217,7 +21391,7 @@ mod tests {
     fn a_takes_usb_lines_set_its_rate() {
         let base = std::env::temp_dir().join(format!("tg-app-clock-usb-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
+        let (plain, lined) = (base.join("plain"), base.join("lined"));
         let audio = generate(
             &SynthConfig {
                 duration_s: 120.0,
@@ -21226,7 +21400,16 @@ mod tests {
             |_| 280.0,
             |_| 0.0,
         );
-        timegrapher_core::audio::write_wav(&base.join("audio-001.wav"), &audio).unwrap();
+        // The same sound with the faint 5, 6 and 7 kHz lines a USB card
+        // 19.5 ppm slow hears from its bus.
+        let mut with_lines = audio.clone();
+        let fs = with_lines.sample_rate as f64;
+        for (i, v) in with_lines.samples.iter_mut().enumerate() {
+            for (f, a) in [(5000.0, 0.002), (6000.0, 0.003), (7000.0, 0.002)] {
+                let f = f * (1.0 + 19.5e-6);
+                *v += (a * (2.0 * std::f64::consts::PI * f * i as f64 / fs).sin()) as f32;
+            }
+        }
         let mut log = String::from("unix_s,frames\n");
         for k in 0..5 {
             let audio_s = 25.0 * k as f64;
@@ -21236,14 +21419,17 @@ mod tests {
                 (audio_s * audio.sample_rate as f64) as u64
             );
         }
-        std::fs::write(base.join("clock.csv"), log).unwrap();
-        std::fs::write(
-            base.join(MANIFEST),
-            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n\
-             clock = 'clock.csv'\nsettle_s = 0.0\n",
-        )
-        .unwrap();
-        let mut app = reopened(&base);
+        for (dir, a) in [(&plain, &audio), (&lined, &with_lines)] {
+            std::fs::create_dir_all(dir).unwrap();
+            timegrapher_core::audio::write_wav(&dir.join("audio-001.wav"), a).unwrap();
+            std::fs::write(dir.join("clock.csv"), &log).unwrap();
+            std::fs::write(
+                dir.join(MANIFEST),
+                "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n\
+                 clock = 'clock.csv'\nsettle_s = 0.0\n",
+            )
+            .unwrap();
+        }
         let card = |app: &TimegrapherApp| {
             app.live
                 .as_ref()
@@ -21252,27 +21438,27 @@ mod tests {
                 .rate_s_per_day
                 .expect("a card figure")
         };
+        // No lines: the log stands, too loose to correct by.
+        let app = reopened(&plain);
         let heard = card(&app);
         assert_eq!(app.take_rate_ppm(), None, "the log alone is too loose");
-        // As the lines read off the window's thread would give.
-        app.usb_lines_read(Some(19.5));
-        assert_eq!(app.take_rate_ppm(), Some(19.5));
+        let app = reopened(&lined);
+        let ppm = app.take_rate_ppm().expect("set by the lines");
+        assert!((ppm - 19.5).abs() < 0.2, "{ppm}");
         let rate = card(&app);
-        let want = timegrapher_core::clockstore::correct_rate(heard, 19.5);
-        assert!((rate - want).abs() < 1e-6, "{rate} {want}");
+        let want = timegrapher_core::clockstore::correct_rate(heard, ppm);
+        assert!((rate - want).abs() < 0.05, "{rate} {want}");
         let last = app.trend.last().and_then(|p| p.rate).expect("charts");
         assert!(
             (last - heard).abs() > 1.0,
-            "the charts read again: {last} {heard}"
+            "the charts are on the lines' clock: {last} {heard}"
         );
         let words = app.true_clock_words(rate).expect("said");
         assert!(words.starts_with("On this take's USB lines"), "{words}");
-        assert!(words.contains("19.5 ppm slow"), "{words}");
+        // The figure the lines measured, as the hover prints it.
+        let said = format!("clock, {ppm:.1} ppm slow.");
+        assert!(words.contains(&said), "{words} {said}");
         assert!(words.contains("The clock log's 5 entries"), "{words}");
-        // No lines: the log stands as it was.
-        let mut app = reopened(&base);
-        app.usb_lines_read(None);
-        assert_eq!(app.take_rate_ppm(), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -21764,9 +21950,10 @@ mod tests {
         assert_eq!(app.start_test_why_not(), None);
     }
 
-    /// A Positions Test set up for 24 Hours After is set against the
-    /// picked watch's own full-wind test: picking another watch while it
-    /// waits finds that watch's, and Start Test follows.
+    /// A Positions Test set up for 24 Hours After is set against one of
+    /// the picked watch's own full-wind tests, picked in Compare With:
+    /// picking another watch while it waits offers that watch's, and
+    /// Start Test waits for the pick.
     #[test]
     fn a_ready_test_finds_the_picked_watchs_full_wind() {
         let base = std::env::temp_dir().join(format!("tg-app-ready-wind-{}", std::process::id()));
@@ -21829,6 +22016,16 @@ mod tests {
         app.pick_watch(&daytona);
         frame(&mut app);
         assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        // Offered, not picked for you.
+        assert_eq!(app.guided_choices.len(), 1);
+        assert_eq!(app.guided_earlier, None);
+        let why = app.start_test_why_not();
+        assert!(
+            why.as_deref()
+                .is_some_and(|w| w.starts_with("Pick the full-wind test")),
+            "{why:?}"
+        );
+        app.pick_full_wind(0);
         assert_eq!(app.start_test_why_not(), None);
         assert_eq!(
             app.guided_earlier.as_ref().map(|f| f.watch.as_str()),
@@ -21892,8 +22089,12 @@ mod tests {
             .full_wind_recheck(at)
             .expect("waits on its full-wind test");
         assert!((wait.as_secs_f64() - 45.05).abs() < 1e-6, "{wait:?}");
-        // An hour on, past the mark, with nothing else changed.
+        // An hour on, past the mark, with nothing else changed: offered,
+        // and once picked, the test can start.
         app.find_full_wind_at(now + 3600.0);
+        assert_eq!(app.guided_choices.len(), 1);
+        assert!(app.start_test_why_not().is_some(), "not yet picked");
+        app.pick_full_wind(0);
         assert_eq!(app.start_test_why_not(), None);
         // The take removed, in the same minute: no longer found, even with
         // the takes folder's time as it was, as Windows can leave it.
@@ -21913,6 +22114,7 @@ mod tests {
         let _ = was;
         app.find_full_wind_at(now + 3600.0);
         assert!(app.start_test_why_not().is_some(), "removed");
+        assert_eq!(app.guided_earlier, None, "the pick goes with its take");
         // With 24 Hours After off, nothing waits on the minute.
         app.guided_after = false;
         assert_eq!(app.full_wind_recheck(at), None);
@@ -22529,16 +22731,29 @@ mod tests {
             )
         };
         // Painted, so nothing settles at either edge; what was recorded,
-        // Dial Up throughout, is kept under it.
+        // Dial Up throughout, is kept under it. The take's own settling
+        // at its start is cut where the paint begins (the design guide's
+        // mark 51), so its Dial Up before the paint is all settling and
+        // nothing of it is read.
         let want = format!(
             "# A hand-written note\nwatch = \"Test\"\nlift = 52.0\n\n{}\n{}\n{}\n\
              [[recording]]\nfile = \"other.wav\"\nposition = \"CD\"\n\n\
              [[recorded]]\nposition = \"DU\"\n",
-            entry("DU", "start_s = 0.0\nend_s = 10.0\nsettle_s = 0.0", true),
+            entry("DU", "start_s = 10.0\nend_s = 10.0\nsettle_s = 0.0", true),
             entry("CU", "start_s = 10.0\nend_s = 40.0\nsettle_s = 0.0", false),
             entry("DU", "start_s = 40.0\nsettle_s = 0.0", false),
         );
         assert_eq!(text, want);
+        // That Dial Up has nothing to read, which every surface leaves
+        // out of the take's readings rather than failing on it.
+        let saved: Manifest = toml::from_str(&text).unwrap();
+        let read: Vec<bool> = saved
+            .recordings
+            .iter()
+            .filter(|e| e.file == "take.wav")
+            .map(timegrapher_core::take::reads_nothing)
+            .collect();
+        assert_eq!(read, [true, false, false]);
         let mut again = reopened(&base.join("take.wav"));
         assert_eq!(again.session.stretches(), app.session.stretches());
         assert_eq!(again.session.settles(), app.session.settles());
@@ -22628,6 +22843,71 @@ mod tests {
             });
         });
         assert_eq!(app.brush, None);
+    }
+
+    /// Full-wind results loaded from a file stay while the test waits, the
+    /// minutes passing, with no watch as with a watch's own tests on offer.
+    #[test]
+    fn results_loaded_from_a_file_stay_while_the_test_waits() {
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: "2026-10-25T09:00:00.000Z".into(),
+            began_unix: 1_792_918_800.0,
+            watch: "Pepsi".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![guided::KeptRow {
+                position: "DU".into(),
+                rate_s_per_day: Some(4.0),
+                amplitude_deg: None,
+                beat_error_ms: None,
+            }],
+        };
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.new_take(NewTake::Positions, false);
+        let now = guided::unix_now();
+        app.find_full_wind_at(now);
+        // As Load Full-Wind Results… leaves it.
+        app.guided_earlier = Some(full.clone());
+        app.guided_earlier_file = true;
+        for later in [60.0, 120.0, 3600.0] {
+            app.find_full_wind_at(now + later);
+            assert_eq!(app.guided_earlier.as_ref(), Some(&full), "{later} s on");
+        }
+    }
+
+    /// Cancel Test leaves nothing of the test set up: the full-wind
+    /// results loaded for it, with no watch, are gone from the Bench.
+    #[test]
+    fn a_cancelled_test_leaves_no_full_wind_results() {
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: "2026-10-25T09:00:00.000Z".into(),
+            began_unix: 1_792_918_800.0,
+            watch: "Daytona".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: Vec::new(),
+        };
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.new_take(NewTake::Positions, false);
+        app.find_full_wind_at(guided::unix_now());
+        app.guided_earlier = Some(full.clone());
+        app.guided_earlier_file = true;
+        app.leave_ready_test();
+        assert_eq!(app.test_ready, None);
+        assert_eq!(app.guided_earlier, None);
+        assert!(!app.guided_earlier_file);
+        // Set up again, it starts with nothing loaded.
+        app.new_take(NewTake::Positions, false);
+        app.find_full_wind_at(guided::unix_now());
+        assert_eq!(app.guided_earlier, None);
     }
 
     /// Load Full-Wind Results… reads the results the test just after
@@ -22867,6 +23147,139 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A take is read with its calibre's settings where its session file
+    /// gives none, as the Watches list and `session` read it.
+    #[test]
+    fn a_take_is_read_with_its_calibres_settings() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.cal
+            .user
+            .custom
+            .push(timegrapher_core::calibre_store::CustomCalibre {
+                name: "Test 21".into(),
+                maker: None,
+                aliases: Vec::new(),
+                bph: Some(21600),
+                lift_angle_deg: Some(49.0),
+                escape_teeth: Some(21),
+                wheels: Vec::new(),
+                notes: None,
+            });
+        let read = |text: &str| {
+            let m: Manifest = toml::from_str(text).unwrap();
+            app.entry_settings(&m).stream.analysis
+        };
+        let entry = "\n[[recording]]\nfile = '.'\nposition = 'DU'\n";
+        let a = read(&format!("calibre = 'Test 21'\n{entry}"));
+        assert_eq!(a.escape_teeth, 21);
+        assert_eq!(a.bph, Some(21600));
+        // The session file's own figures come first.
+        let a = read(&format!("calibre = 'Test 21'\nescape_teeth = 18\n{entry}"));
+        assert_eq!(a.escape_teeth, 18);
+        // No calibre, or one not known: core's 15 teeth.
+        assert_eq!(read(entry).escape_teeth, 15);
+        assert_eq!(
+            read(&format!("calibre = 'Unknown'\n{entry}")).escape_teeth,
+            15
+        );
+    }
+
+    /// A take whose entries say how long each position settles, as
+    /// `timegrapher record` writes them, is read once each has settled, as
+    /// `session` reads it: the settling is marked, not read. The app's own
+    /// takes say `settle_s = 0`, so theirs read from their start.
+    #[test]
+    fn a_recorded_takes_positions_are_read_once_settled() {
+        let text = "audio = true\nsettle_s = 30.0\n\n\
+                    [[recording]]\nfile = '.'\nposition = 'DU'\nstart_s = 0.0\nend_s = 90.0\n\n\
+                    [[recording]]\nfile = '.'\nposition = 'DD'\nstart_s = 90.0\nend_s = 180.0\n\
+                    measure_s = 40.0\n";
+        let m: Manifest = toml::from_str(text).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let (stretches, settles) = app.apply_manifest(&m, &m.recordings);
+        assert_eq!(
+            stretches,
+            [(0.0, Position::DialUp), (90.0, Position::DialDown)]
+        );
+        assert_eq!(settles, [(0.0, 30.0), (90.0, 120.0)]);
+        // Settled at once, as the app writes its own takes.
+        let text = text.replace("settle_s = 30.0", "settle_s = 0.0");
+        let m: Manifest = toml::from_str(&text).unwrap();
+        let (_, settles) = app.apply_manifest(&m, &m.recordings);
+        assert!(settles.is_empty(), "{settles:?}");
+    }
+
+    /// A take of one position whose session file gives no settling (one
+    /// made by `timegrapher record`) is read once settled, as `session`
+    /// reads it: its first 20 s are left out of its row.
+    #[test]
+    fn a_recorded_take_of_one_position_is_read_once_settled() {
+        let dir = std::env::temp_dir().join(format!("tg-app-one-settle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 50.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&dir.join("audio-001.wav"), &audio).unwrap();
+        std::fs::write(
+            dir.join(MANIFEST),
+            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n",
+        )
+        .unwrap();
+        let app = reopened(&dir);
+        assert_eq!(app.session.settles(), [(0.0, 20.0)]);
+        let spans = app.session.settled_spans(app.position, Position::DialUp);
+        assert_eq!(spans.len(), 1, "{spans:?}");
+        assert_eq!(spans[0].0, 20.0, "{spans:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A take that fails to open leaves the take on show as it was, read
+    /// on its own clock and breaks.
+    #[test]
+    fn a_failed_open_leaves_the_takes_clock() {
+        let base = std::env::temp_dir().join(format!("tg-app-failed-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let good = base.join("good");
+        std::fs::create_dir_all(&good).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 30.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&good.join("audio-001.wav"), &audio).unwrap();
+        std::fs::write(
+            good.join(MANIFEST),
+            "bph = 28800\nlift = 52.0\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n",
+        )
+        .unwrap();
+        let mut app = reopened(&good);
+        let breaks = app.take_breaks.clone();
+        assert!(breaks.is_some());
+        // Sound that can't be read: found, then refused.
+        let bad = base.join("bad");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(bad.join("audio-001.wav"), b"not a wav").unwrap();
+        std::fs::write(bad.join(MANIFEST), "[[recording]]\nfile = '.'\n").unwrap();
+        app.start_batch(&bad);
+        assert!(
+            app.message.as_ref().is_some_and(|m| m.1),
+            "{:?}",
+            app.message
+        );
+        assert!(app.batch.is_none() && app.live.is_some());
+        assert_eq!(app.take_breaks, breaks);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// Guided elapsed-time endpoints use the recorder timeline even when
     /// the watch never changes position and a pause spans an endpoint.
     #[test]
@@ -23034,6 +23447,9 @@ mod tests {
         app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
         app.session.set_settle_s(SETTLE_S);
         let third = audio.samples.len() / 3;
+        // Each 30 s block arrives as its last frame is heard, as the
+        // capture delivers sound, so the clock log reads as a real take's.
+        let began = std::time::SystemTime::now();
         let moves = [
             (0, None),
             (1, Some((Position::DialUp, Position::DialDown))),
@@ -23048,7 +23464,7 @@ mod tests {
             let r = app.session.recorder.as_mut().unwrap();
             r.write(&timegrapher_core::capture::Block {
                 samples: audio.samples[i * third..(i + 1) * third].to_vec(),
-                at: std::time::SystemTime::now(),
+                at: began + std::time::Duration::from_secs(30 * (i as u64 + 1)),
             })
             .unwrap();
         }
@@ -23428,7 +23844,8 @@ mod tests {
         std::fs::write(
             dir.join(MANIFEST),
             format!(
-                "watch = 'Replay Watch'\nbph = 28800\nlift = 49.0\n\n\
+                // Settled at each entry's start, as the app writes its takes.
+                "watch = 'Replay Watch'\nbph = 28800\nlift = 49.0\nsettle_s = 0.0\n\n\
              [[recording]]\nfile = '{file}'\nposition = 'DU'\nstart_s = 0.0\nend_s = 30.0\n\n\
              [[recording]]\nfile = '{file}'\nposition = 'DD'\nstart_s = 40.0\nend_s = 60.0\n\n\
              [[recording]]\nfile = '{file}'\nposition = 'DU'\nstart_s = 70.0\n"

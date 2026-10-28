@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use timegrapher_core::session::{Manifest, Reading, Reference};
+use timegrapher_core::take;
 
 /// The layout of the baseline file.
 pub const BASELINE_SCHEMA: &str = "timegrapher.regress-baseline/1";
@@ -366,7 +367,25 @@ fn measure_all(
     let opts = session_opts();
     let mut loaded = Vec::new();
     for s in sessions {
-        let (m, base, digest) = session_cmd::load_manifest_file(&root.join(s))?;
+        let (mut m, base, digest) = session_cmd::load_manifest_file(&root.join(s))?;
+        // A position that settled right to its end has nothing to read: it
+        // is left out, as `session` leaves it out, before the readings are
+        // numbered.
+        m.recordings.retain(|e| {
+            let nothing = take::reads_nothing(e);
+            if nothing && !quiet {
+                eprintln!(
+                    "{s}: note: {} ({}) at {:.0} s has nothing to read, so it is left out",
+                    e.file,
+                    e.position.as_deref().unwrap_or("-"),
+                    e.start_s.unwrap_or(0.0)
+                );
+            }
+            !nothing
+        });
+        if m.recordings.is_empty() {
+            return Err(format!("{s}: no recording listed with anything to read"));
+        }
         for e in &m.recordings {
             session_cmd::position_of(e).map_err(|err| format!("{s}: {err}"))?;
         }
@@ -1230,6 +1249,34 @@ mod tests {
     }
 
     use super::*;
+
+    /// An entry with nothing to read (`start_s` equal to `end_s`) is left
+    /// out before the readings are numbered, so the take's one reading is
+    /// its other entry; a take with nothing else to read is refused.
+    #[test]
+    fn an_entry_with_nothing_to_read_is_left_out() {
+        let root = std::env::temp_dir().join(format!("tg-regress-nothing-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("take")).unwrap();
+        let empty =
+            "[[recording]]\nfile=\"empty.wav\"\nposition=\"DU\"\nstart_s=10.0\nend_s=10.0\n";
+        fs::write(
+            root.join("take/session.toml"),
+            format!("{empty}[[recording]]\nfile=\"missing.wav\"\nposition=\"CU\"\nstart_s=10.0\n"),
+        )
+        .unwrap();
+        let measured = measure_all(&root, &["take/session.toml".into()], 1, true, None).unwrap();
+        let (m, rs) = &measured[0];
+        assert_eq!(m.recordings.len(), 1);
+        assert_eq!(m.recordings[0].file, "missing.wav");
+        assert_eq!(rs.len(), 1);
+        fs::write(root.join("take/session.toml"), empty).unwrap();
+        let Err(why) = measure_all(&root, &["take/session.toml".into()], 1, true, None) else {
+            panic!("a take with nothing to read was measured");
+        };
+        assert!(why.contains("with anything to read"), "{why}");
+        let _ = fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn changed_intervals_fail_identity_but_readable_new_entries_pass() {
