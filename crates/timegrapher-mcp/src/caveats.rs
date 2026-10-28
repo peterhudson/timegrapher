@@ -239,15 +239,24 @@ mod tests {
         ]);
         for c in codes.as_array().unwrap() {
             for lift in [Some(52.0), None] {
-                let s = fact(c, lift).unwrap().to_lowercase();
-                // Grades as whole words ("measured" holds "sure"), advice
-                // as phrases.
-                let words: Vec<&str> = s.split(|ch: char| !ch.is_alphanumeric()).collect();
-                for word in ["sure", "poor", "fair", "good", "trust"] {
-                    assert!(!words.contains(&word), "{word}: {s}");
-                }
-                for phrase in ["check the", "turn ", "ask for", "record longer"] {
-                    assert!(!s.contains(phrase), "{phrase}: {s}");
+                // "measured" holds "sure" and is a plain fact: it alone is
+                // allowed, and every other form of each word is still caught.
+                let s = fact(c, lift)
+                    .unwrap()
+                    .to_lowercase()
+                    .replace("measured", "");
+                for word in [
+                    "sure",
+                    "poor",
+                    "fair",
+                    "good",
+                    "trust",
+                    "check the",
+                    "turn ",
+                    "ask for",
+                    "record longer",
+                ] {
+                    assert!(!s.contains(word), "{word}: {s}");
                 }
             }
         }
