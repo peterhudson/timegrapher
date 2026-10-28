@@ -222,16 +222,13 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
 /// on the way and the hours read.
 fn power_reserve(p: &Value) -> Option<String> {
     let run_s = p["run_s"].as_f64()?;
-    let ending = match p["ending"].as_str()? {
-        "stopped" => "to the watch stopping",
-        "by_hand" => "stopped by hand while the watch still ran",
-        "limit" => "reached the 80 h limit while the watch still ran",
-        _ => return None,
-    };
+    let ending: timegrapher_core::power_reserve::Ending =
+        serde_json::from_value(p["ending"].clone()).ok()?;
     let position = position_name(p["position"].as_str().unwrap_or(""));
     let mut s = format!(
-        "Power reserve: {} in {position}, {ending}.",
-        timegrapher_core::power_reserve::run_text(run_s)
+        "Power reserve: {} in {position}. {}.",
+        timegrapher_core::power_reserve::run_text(run_s),
+        ending.text()
     );
     let pauses = p["pauses"].as_array().map_or(0, |a| a.len()) as u64;
     if pauses > 0 {
@@ -587,7 +584,7 @@ mod tests {
         let s = lead(&doc, &Map::new()).unwrap();
         assert!(
             s.starts_with(
-                "Power reserve: 42 h 03 min in Dial Up (DU), to the watch stopping. The \
+                "Power reserve: 42 h 03 min in Dial Up (DU). The watch stopped. The \
                  beats stopped for 30 s or more and came back once on the way. Measured \
                  hour by hour: 3 hours in `hours`.\nReadings by position:"
             ),
@@ -598,7 +595,7 @@ mod tests {
         by_hand["power_reserve"]["pauses"] = json!([]);
         by_hand["power_reserve"]["hours"] = json!([]);
         assert!(lead(&by_hand, &Map::new()).unwrap().starts_with(
-            "Power reserve: 42 h 03 min in Dial Up (DU), stopped by hand while the watch \
+            "Power reserve: 42 h 03 min in Dial Up (DU). Stopped by hand while the watch \
              still ran.\nReadings"
         ));
         let mut plain = doc.clone();

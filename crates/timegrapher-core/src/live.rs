@@ -78,7 +78,8 @@ pub struct LiveReading {
     pub beat_error_ms: Option<f64>,
     /// Signed beat error measured from the unlock, the figure checked
     /// against tg's beat error in regress: median over the amplitude
-    /// windows, ms. Positive means Tick (the run's first beat) comes late.
+    /// windows, ms. Positive means Tick comes late; each take starts
+    /// positive ([`crate::beats::SideCheck`]).
     pub beat_error_unlock_ms: Option<f64>,
     pub amplitude_deg: Option<f64>,
     /// Roughly how far `amplitude_deg` could be off from the scatter of
@@ -139,6 +140,8 @@ pub struct LiveAnalyzer {
     /// Beats before this time (seconds) are final.
     settled_to: f64,
     bph: Option<u32>,
+    /// Whether `bph` is the rate Auto found, not one set.
+    found_bph: bool,
     template: Option<Vec<f32>>,
     beats: Vec<Beat>,
     /// Times of the settled beats whose sound clipped, oldest first.
@@ -199,6 +202,7 @@ impl LiveAnalyzer {
         LiveAnalyzer {
             fs: sample_rate as f64,
             bph: cfg.analysis.bph,
+            found_bph: false,
             cfg,
             buf: Vec::new(),
             buf0: 0,
@@ -316,6 +320,7 @@ impl LiveAnalyzer {
     pub fn restart(&mut self) {
         self.template = None;
         self.bph = self.cfg.analysis.bph;
+        self.found_bph = false;
         self.logged_bph = self.bph;
         self.beats.clear();
         self.clipped.clear();
@@ -462,12 +467,26 @@ impl LiveAnalyzer {
         self.quiet_passes = 0;
     }
 
-    /// Fix the beat rate, or `None` to guess it. Starts the beat log again.
-    pub fn set_bph(&mut self, bph: Option<u32>) {
+    /// Fix the beat rate, or `None` to guess it. Starts the beat log again
+    /// unless the beats are read at that rate already (or it is `None` and
+    /// Auto found that rate). True when beats were heard and stand.
+    pub fn set_bph(&mut self, bph: Option<u32>) -> bool {
+        let heard = self.bph.is_some();
         if bph != self.cfg.analysis.bph {
             self.cfg.analysis.bph = bph;
-            self.restart();
+            // The rate the beats are already read at, or Auto where Auto
+            // found that rate: the beats so far stand. Auto after a rate
+            // set by hand listens for the rate afresh.
+            let stands = match bph {
+                Some(b) => Some(b) == self.bph,
+                None => self.found_bph,
+            };
+            if !stands {
+                self.restart();
+                return false;
+            }
         }
+        heard
     }
 
     /// Say whether the lift angle is the calibre's and the sound card's
@@ -614,6 +633,7 @@ impl LiveAnalyzer {
                 if heard && b.len() >= 8 {
                     self.template = Some(t);
                     self.bph = Some(bph);
+                    self.found_bph = a.bph.is_none();
                     self.logged_bph = Some(bph);
                 }
                 (bph, b)
@@ -643,6 +663,7 @@ impl LiveAnalyzer {
             {
                 self.template = None;
                 self.bph = None;
+                self.found_bph = false;
             }
             self.settled_to = to;
             self.next_amp_s = None;
@@ -659,30 +680,15 @@ impl LiveAnalyzer {
         let resumed = self.quiet_passes > 0;
         self.quiet_passes = 0;
         let anchor_t = local[anchor].time + off;
-        let anchor_index = match self.beats.last() {
-            Some(last) => {
-                let count = (anchor_t - last.time) / beat;
-                let n = count.round().max(1.0);
-                // Off the count by more than a quarter of a beat, or after
-                // a stretch too quiet to follow: the watch's phase moved
-                // across a hole (a dropout, a knock that cost a beat), so
-                // the count is a guess. It is a jump.
-                let index = last.index + n as i64;
-                if resumed || (count - n).abs() > 0.25 {
-                    self.jump_at(anchor_t, false);
-                }
-                index
-            }
-            None => 0,
-        };
-        let shift = anchor_index - local[anchor].index;
-        let numbered: Vec<Beat> = local
-            .iter()
-            .map(|b| Beat {
-                index: b.index + shift,
-                ..*b
-            })
-            .collect();
+        let (numbered, count_off) =
+            beats::number_on(&local, anchor, anchor_t, self.beats.last(), beat);
+        // Off the count by more than a quarter of a beat, or after a
+        // stretch too quiet to follow: the watch's phase moved across a
+        // hole (a dropout, a knock that cost a beat), so the count is a
+        // guess. It is a jump.
+        if self.beats.last().is_some() && (resumed || count_off.abs() > 0.25) {
+            self.jump_at(anchor_t, false);
+        }
         // One scan of the window finds whether anything clipped; only then
         // is each new beat looked at on its own.
         let any_clipped = Clipping::measure(x, fs, &[]).samples > 0;
@@ -1156,6 +1162,109 @@ mod tests {
         for block in x.chunks(480) {
             a.push(block);
         }
+    }
+
+    #[test]
+    fn each_take_starts_positive_live_and_from_the_file() {
+        // The same watch with its beat error either way round reads
+        // positive from its first steady stretch on, listened to and from
+        // the file alike; near no beat error the count names the sides.
+        let read = |beat_error_ms: f64| {
+            let audio = generate(
+                &SynthConfig {
+                    duration_s: 40.0,
+                    beat_error_ms,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            let mut a = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+            feed(&mut a, &audio.samples);
+            let log = crate::stream::analyze_samples(
+                &audio.samples,
+                audio.sample_rate,
+                &crate::stream::StreamConfig::default(),
+            );
+            let file: Vec<Beat> = log
+                .beats
+                .iter()
+                .filter(|b| b.time >= 5.0)
+                .copied()
+                .collect();
+            let live = a.reading(30.0);
+            (
+                live.beat_error_ms.unwrap(),
+                live.beat_error_unlock_ms.unwrap(),
+                crate::timing::beat_error_ms(&file).unwrap(),
+            )
+        };
+        for be in [0.6, -0.6, 0.3, -0.3] {
+            let (live, unlock, file) = read(be);
+            for v in [live, unlock, file] {
+                assert!((v - be.abs()).abs() < 0.1, "{be}: {live} {unlock} {file}");
+            }
+        }
+        // Too small for a sign, both read the size with one sign.
+        let (live, _, file) = read(-0.03);
+        assert!(live.abs() < 0.1 && file.abs() < 0.1, "{live} {file}");
+    }
+
+    #[test]
+    fn one_silence_is_one_break() {
+        // A 6 s silence while listening: the beats step more than once
+        // before they are found again, but the whole take counts one
+        // break. Two silences 20 s apart count two.
+        let breaks = |silences: &[f64]| {
+            let audio = generate(
+                &SynthConfig {
+                    duration_s: 70.0,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            let fs = audio.sample_rate as usize;
+            let mut x = audio.samples;
+            for &at in silences {
+                let at = (at * fs as f64) as usize;
+                x[at..at + 6 * fs].fill(0.0);
+            }
+            let mut a = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+            feed(&mut a, &x);
+            let log = BeatLog {
+                sample_rate: a.sample_rate(),
+                duration_s: a.duration_s(),
+                bph: a.bph().unwrap(),
+                lift_deg: a.config().analysis.amplitude.lift_deg,
+                beats: a.beats().to_vec(),
+                amplitude_windows: a.amplitude_windows().to_vec(),
+                clipped_beats: Vec::new(),
+                clipped_samples: 0,
+                jumps: a.breaks().to_vec(),
+                sided: Vec::new(),
+                by_count: Vec::new(),
+                snippets: Vec::new(),
+            };
+            let cuts: Vec<Break> = log
+                .jumps
+                .iter()
+                .map(|&audio_s| Break {
+                    audio_s,
+                    gap_s: 0.0,
+                })
+                .collect();
+            let m = crate::session::measure_masked(&log, None, &cuts, &[], 0.0, log.duration_s);
+            let count = m.caveats.iter().find_map(|c| match c {
+                Caveat::Breaks { count } => Some(*count),
+                _ => None,
+            });
+            (count, log.jumps)
+        };
+        let (one, jumps) = breaks(&[16.0]);
+        assert_eq!(one, Some(1), "{jumps:?}");
+        let (two, jumps) = breaks(&[16.0, 42.0]);
+        assert_eq!(two, Some(2), "{jumps:?}");
     }
 
     #[test]
@@ -1727,6 +1836,38 @@ mod tests {
             "only the new stretch: {first} then {rate}"
         );
         assert!(a.tick_profiles().iter().any(Option::is_some));
+    }
+
+    /// Setting the rate Auto already found (a calibre picked while
+    /// listening) keeps the beats heard so far, as does going back to
+    /// Auto; another rate starts the beat log again.
+    #[test]
+    fn the_rate_already_found_keeps_the_beats() {
+        let cfg = SynthConfig {
+            duration_s: 20.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        assert_eq!(a.bph(), Some(28_800));
+        let heard = a.beats().len();
+        assert!(heard > 100, "{heard}");
+        assert!(a.set_bph(Some(28_800)));
+        assert_eq!(a.beats().len(), heard);
+        assert!(a.reading(10.0).rate_s_per_day.is_some());
+        assert!(a.set_bph(None));
+        assert_eq!(a.beats().len(), heard);
+        assert_eq!(a.bph(), Some(28_800));
+        assert!(!a.set_bph(Some(21_600)));
+        assert!(a.beats().is_empty());
+        // Auto after a rate set by hand listens afresh and finds 28800.
+        feed(&mut a, &audio.samples);
+        assert!(!a.set_bph(None));
+        assert!(a.beats().is_empty());
+        feed(&mut a, &audio.samples);
+        assert_eq!(a.bph(), Some(28_800));
+        assert!(a.beats().len() > 100, "{}", a.beats().len());
     }
 
     #[test]

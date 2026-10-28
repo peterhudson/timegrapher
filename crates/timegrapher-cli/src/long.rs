@@ -11,6 +11,7 @@ use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{common_escape_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
+use timegrapher_core::timefreq::size_number;
 use timegrapher_core::{audio, session, take, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
@@ -711,8 +712,8 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     }
     for c in &r.rate_components {
         let swing = match c.size() {
-            (ms, "ms") => format!("timing swing {ms:.3} ms p-p"),
-            (sd, unit) => format!("swing {sd:.1} {unit} p-p"),
+            (ms, "ms") => format!("timing swing {} ms p-p", size_number(ms)),
+            (sd, unit) => format!("swing {} {unit} p-p", size_number(sd)),
         };
         line(&c.component, swing);
     }
@@ -721,7 +722,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
         println!("  none above the 1% false-alarm level");
     }
     for c in &r.amplitude.components {
-        line(c, format!("swing {:.1} deg p-p", c.peak_to_peak));
+        line(c, format!("swing {} deg p-p", size_number(c.peak_to_peak)));
     }
 }
 

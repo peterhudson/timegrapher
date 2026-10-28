@@ -125,6 +125,28 @@ impl Scale {
     }
 }
 
+/// How many decimals a size is written with, by its magnitude: none from
+/// 10, one from 1, two from 0.1, else three ("37", "3.1", "0.12",
+/// "0.012"). One rule for every surface: the app's map and FFT scales, the
+/// CLI's swings, and the MCP view's copy in JavaScript, which
+/// `tests/fixtures/size_numbers.json` holds to the same answers.
+pub fn size_decimals(v: f64) -> usize {
+    if v >= 10.0 {
+        0
+    } else if v >= 1.0 {
+        1
+    } else if v >= 0.1 {
+        2
+    } else {
+        3
+    }
+}
+
+/// A size's number, its unit given elsewhere, with [`size_decimals`].
+pub fn size_number(v: f64) -> String {
+    format!("{v:.d$}", d = size_decimals(v))
+}
+
 /// Rows of the period axis.
 pub const ROWS: usize = 48;
 /// STFT window and step, seconds.
@@ -986,6 +1008,19 @@ pub fn kurtograms_for_take(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The size rule, held to the fixture the MCP view's copy is tested
+    /// against too.
+    #[test]
+    fn sizes_read_with_decimals_by_magnitude() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../tests/fixtures/size_numbers.json")).unwrap();
+        assert!(!cases.is_empty());
+        for c in cases {
+            let v = c["v"].as_f64().unwrap();
+            assert_eq!(size_number(v), c["text"].as_str().unwrap(), "{v}");
+        }
+    }
 
     #[test]
     fn a_maps_scale_tops_at_the_size_most_cells_stay_under() {
