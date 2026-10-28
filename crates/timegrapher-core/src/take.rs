@@ -425,6 +425,28 @@ pub struct EntrySettings {
     pub settle_s: Option<f64>,
 }
 
+/// One entry of a take, opened: its beats, clock, breaks and masks, read
+/// as [`measure_entry`] reads them, before any stretch is measured.
+pub struct OpenedEntry {
+    /// The sound files read, in order; empty for a take kept as its
+    /// analysis alone.
+    pub files: Vec<PathBuf>,
+    /// The kept analysis, for a take kept as its analysis alone.
+    pub kept: Option<analysis_take::Stored>,
+    /// The beats, numbered across the breaks, with the masked stretches
+    /// left out.
+    pub log: BeatLog,
+    /// The clock the readings are on, and where it came from; both `None`
+    /// on the sound card's clock.
+    pub clock: Option<ClockFit>,
+    pub clock_from: Option<ClockFrom>,
+    /// The clock log's text, when the entry has one.
+    pub clock_text: Option<String>,
+    pub breaks: Vec<Break>,
+    /// The stretches masked by hand, start and end.
+    pub masked: Vec<(f64, f64)>,
+}
+
 /// One entry of a take, read: what was read, and its measurement.
 pub struct EntryRead {
     /// The sound files read, in order; empty for a take kept as its
@@ -455,24 +477,22 @@ pub struct EntryRead {
     pub measurement: Measurement,
 }
 
-/// Read entry `e` of the take described by `m` in the folder `base`, as
+/// Open entry `e` of the take described by `m` in the folder `base`, as
 /// every surface reads a take: its beats (found in its sound, or kept as
-/// its analysis alone), its clock and breaks ([`clock`], [`breaks`]),
-/// its masks, and the stretch measured once the watch has settled
-/// ([`measured`]). `usb` gives the sound card's error from the USB lines
-/// in the files, and `correction` the correction known for the input of
-/// the first file, each ppm slow: they only fetch, and the rule that
-/// picks between them and the clock log is this function's ([`clock`]).
-/// `correction` is asked only when the entry has no clock log. An error
-/// either gives is passed through as its text, which is the caller's.
-pub fn measure_entry(
+/// its analysis alone), its clock and breaks ([`clock`], [`breaks`]) and
+/// its masks. `usb` and `correction` are as [`measure_entry`] takes them.
+/// `progress` is told how far through the sound the beats have been
+/// found, from 0 to 1; a take kept as its analysis alone has no sound to
+/// go through.
+pub fn open_entry(
     base: &Path,
     m: &Manifest,
     e: &RecordingEntry,
     s: &EntrySettings,
     usb: impl FnOnce(&[PathBuf]) -> Result<Option<f64>, String>,
     correction: impl FnOnce(&Path) -> Result<Option<f64>, String>,
-) -> Result<EntryRead, String> {
+    progress: impl FnMut(f64),
+) -> Result<OpenedEntry, String> {
     let path = base.join(&e.file);
     // A take kept as its analysis alone: its beats are read, not found.
     let kept = if analysis_take::is_analysis_only(&path) {
@@ -509,7 +529,7 @@ pub fn measure_entry(
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
     let mut log = match &kept {
         Some(k) => kept_at_lift(&k.log, cfg.analysis.amplitude.lift_deg),
-        None => stream::analyze_files(&paths, cfg, |_| {})
+        None => stream::analyze_files(&paths, cfg, progress)
             .map_err(|err| format!("{}: {err}", e.file))?,
     };
     let clock_text = match &e.clock {
@@ -576,6 +596,47 @@ pub fn measure_entry(
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
     session::mask_log(&mut log, &masked);
+    Ok(OpenedEntry {
+        files,
+        kept,
+        log,
+        clock: fit,
+        clock_from,
+        clock_text,
+        breaks,
+        masked,
+    })
+}
+
+/// Read entry `e` of the take described by `m` in the folder `base`, as
+/// every surface reads a take: its beats (found in its sound, or kept as
+/// its analysis alone), its clock and breaks ([`clock`], [`breaks`]),
+/// its masks, and the stretch measured once the watch has settled
+/// ([`measured`]). `usb` gives the sound card's error from the USB lines
+/// in the files, and `correction` the correction known for the input of
+/// the first file, each ppm slow: they only fetch, and the rule that
+/// picks between them and the clock log is this function's ([`clock`]).
+/// `correction` is asked only when the entry has no clock log. An error
+/// either gives is passed through as its text, which is the caller's.
+pub fn measure_entry(
+    base: &Path,
+    m: &Manifest,
+    e: &RecordingEntry,
+    s: &EntrySettings,
+    usb: impl FnOnce(&[PathBuf]) -> Result<Option<f64>, String>,
+    correction: impl FnOnce(&Path) -> Result<Option<f64>, String>,
+) -> Result<EntryRead, String> {
+    let OpenedEntry {
+        files,
+        kept,
+        log,
+        clock: fit,
+        clock_from,
+        clock_text,
+        breaks,
+        masked,
+    } = open_entry(base, m, e, s, usb, correction, |_| {})?;
+    let cfg = &s.stream;
     let (start_s, stop_s) = span_of(e, log.duration_s)?;
     let (settle, measure) = entry_times(e, m);
     let (settle_s, end_s) = measured(
@@ -734,5 +795,64 @@ mod tests {
         assert_eq!(from_reader.analysis.bph, Some(28_800));
         assert_eq!(from_reader.analysis.amplitude.lift_deg, 53.0);
         assert!(from_reader.analysis.lift_known);
+    }
+
+    /// Opening an entry reads it as measuring it does, and tells how far
+    /// through its sound the beats have been found.
+    #[test]
+    fn an_opened_entry_is_the_entry_measure_entry_reads() {
+        use crate::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-open-entry-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = SynthConfig {
+            duration_s: 40.0,
+            ..SynthConfig::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 5.0);
+        crate::audio::write_wav(&dir.join("take.wav"), &audio).unwrap();
+        let m: Manifest = toml::from_str(
+            "bph = 28800\nlift = 52\n\n[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\nmasked = [[30.0, 32.0]]\n",
+        )
+        .unwrap();
+        let e = &m.recordings[0];
+        let s = EntrySettings {
+            stream: stream_settings(&m, None, Given::default()),
+            card_clock: false,
+            settle_s: Some(5.0),
+        };
+        let mut told = Vec::new();
+        let opened = open_entry(
+            &dir,
+            &m,
+            e,
+            &s,
+            |_| Ok(None),
+            |_| Ok(Some(20.0)),
+            |f| told.push(f),
+        )
+        .unwrap();
+        let read = measure_entry(&dir, &m, e, &s, |_| Ok(None), |_| Ok(Some(20.0))).unwrap();
+        assert_eq!(
+            serde_json::to_value(&opened.log).unwrap(),
+            serde_json::to_value(&read.log).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&opened.breaks).unwrap(),
+            serde_json::to_value(&read.breaks).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&opened.clock).unwrap(),
+            serde_json::to_value(&read.clock).unwrap()
+        );
+        assert_eq!(opened.files, read.files);
+        assert_eq!(opened.clock_from, read.clock_from);
+        assert_eq!(opened.clock_text, read.clock_text);
+        assert_eq!(opened.masked, read.masked);
+        assert_eq!(opened.masked, vec![(30.0, 32.0)]);
+        assert!(opened.kept.is_none() && opened.clock.is_some());
+        assert!(!told.is_empty() && told.windows(2).all(|w| w[0] <= w[1]));
+        assert!(*told.last().unwrap() > 0.9, "{told:?}");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

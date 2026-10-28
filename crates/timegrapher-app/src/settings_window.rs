@@ -12,6 +12,7 @@ use eframe::egui::{self, RichText, Vec2};
 use std::path::Path;
 use timegrapher_core::clockstore::{ClockStore, DeviceClock};
 use timegrapher_core::library::Library;
+use timegrapher_core::library::{length_text, size_text};
 
 /// The window's categories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,7 +228,7 @@ pub fn library_section(
                     "{}, {}, {}",
                     count(l.watches.len(), "watch", "watches"),
                     count(takes, "take", "takes"),
-                    crate::app::fmt_bytes(l.bytes())
+                    size_text(l.bytes())
                 );
                 let why = match (&l.read_only, moving) {
                     (Some(why), None) => format!("{why}."),
@@ -433,8 +434,8 @@ pub fn quartz_section(
                 None => {
                     let heard = format!(
                         "{} of {} heard",
-                        crate::strip::fmt_time(t.heard_s),
-                        crate::strip::fmt_time(t.needed_s)
+                        length_text(t.heard_s),
+                        length_text(t.needed_s)
                     );
                     g.row(&label, theme::Caption::Text(&heard), hint, |ui| {
                         let frac = (t.heard_s / t.needed_s).clamp(0.0, 1.0) as f32;
@@ -490,7 +491,7 @@ pub fn quartz_section(
                 c.device.clone()
             };
             let over = if c.span_s > 0.0 {
-                format!(" over {}", crate::strip::fmt_time(c.span_s))
+                format!(" over {}", length_text(c.span_s))
             } else {
                 String::new()
             };

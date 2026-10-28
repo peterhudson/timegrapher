@@ -334,7 +334,7 @@ pub fn power_reserve(card: &str) -> Vec<String> {
      asks, then ends the test, keeping the run so far. A closed \
      lid or Sleep from a menu still stops the computer. A run that hasn't stopped \
      after {} ends there.",
-            crate::reserve::limit_h()
+            timegrapher_core::power_reserve::limit_text()
         ),
         "When it ends, the take is kept in the picked watch's history (or in Unsorted with \
      no watch picked), named by the date and time it started and \"Power Reserve\", \

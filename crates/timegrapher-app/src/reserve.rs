@@ -14,6 +14,7 @@ use crate::theme;
 use eframe::egui::{self, RichText};
 use std::path::PathBuf;
 use timegrapher_core::beats::Beat;
+use timegrapher_core::library::length_text;
 use timegrapher_core::power_reserve::{self, Ending, Heard, Results};
 
 /// Bytes of sound written an hour at `sample_rate` and `bits`, one
@@ -173,20 +174,6 @@ impl Test {
     }
 }
 
-/// A run's ending in words.
-pub fn ending_text(e: Ending) -> String {
-    match e {
-        Ending::Stopped => "The watch stopped".to_string(),
-        Ending::ByHand => "Stopped by hand while the watch still ran".to_string(),
-        Ending::Limit => format!("Reached the {} limit while the watch still ran", limit_h()),
-    }
-}
-
-/// The longest run, as the words say it: "80 h".
-pub fn limit_h() -> String {
-    format!("{} h", power_reserve::LIMIT_S / 3600.0)
-}
-
 /// The pane's body, in no more height than it shows: before a run one
 /// line of what to do (the steps are in its "?"); while it runs the run
 /// time and one line of how the beats stand; once ended one line of the
@@ -216,7 +203,7 @@ pub fn pane(
             let room = format!(
                 "{} free where the take is kept; a run of up to {} writes up to {} of sound.",
                 gb(have),
-                limit_h(),
+                timegrapher_core::power_reserve::limit_text(),
                 gb(need)
             );
             if have >= need {
@@ -255,7 +242,7 @@ pub fn pane(
             None => "Waiting for the first beats…".to_string(),
             Some(s) if s >= power_reserve::PAUSE_S => format!(
                 "No beat heard for {}; the run ends after {} min with none.",
-                crate::strip::fmt_time(s),
+                length_text(s),
                 power_reserve::STOP_AFTER_S / 60.0
             ),
             Some(_) => format!("Running, in {}.", t.position.label()),
@@ -280,7 +267,7 @@ pub fn pane(
     let run = power_reserve::run_text(t.results.as_ref().map_or(t.run_so_far_s(), |r| r.run_s));
     let ending = t
         .ending
-        .map(|e| format!(" · {}, in {}", ending_text(e), t.position.label()))
+        .map(|e| format!(" · {}, in {}", e.text(), t.position.label()))
         .unwrap_or_default();
     let kept = if t.saving {
         " · Saving the take…".to_string()
@@ -440,7 +427,7 @@ fn hour_label(h: &power_reserve::Hour) -> String {
         format!(
             "{} h + {}",
             h.hour,
-            crate::strip::fmt_time(power_reserve::whole_s(h.span_s))
+            length_text(power_reserve::whole_s(h.span_s))
         )
     }
 }
@@ -524,7 +511,7 @@ fn hour_chart(ui: &mut egui::Ui, hours: &[power_reserve::Hour], height: f32) {
                 }
                 format!(
                     "{} into the run\n{:.d$}{unit}",
-                    crate::strip::fmt_time((v.x * 3600.0).max(0.0)),
+                    length_text((v.x * 3600.0).max(0.0)),
                     v.y,
                     d = usize::from(unit != "°")
                 )
@@ -591,7 +578,7 @@ pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
     out += &line(&["Started (UTC)".into(), r.started_utc.clone()]);
     out += &line(&["Position".into(), r.position.clone()]);
     out += &line(&["Power reserve".into(), power_reserve::run_text(r.run_s)]);
-    out += &line(&["Ended".into(), ending_text(r.ending)]);
+    out += &line(&["Ended".into(), r.ending.text()]);
     out += "\n";
     out += &line(&[
         "Hour".into(),
