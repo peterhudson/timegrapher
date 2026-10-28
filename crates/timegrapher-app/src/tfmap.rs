@@ -193,7 +193,7 @@ pub fn draw(
     let bottom = m.period_s.last().map_or(0.0, |p| p.log10()) - half;
     let left = t0 - dt / 2.0;
     let width = dt * w as f64;
-    let key_h = 22.0;
+    let key_h = KEY_H;
     let plot_h = (ui.available_height() - key_h).max(40.0);
     let plot_w = ui.available_width() as f64;
     let x_hi = upto_s.max(left + width);
@@ -283,14 +283,21 @@ fn wheel_rows(
     }
 }
 
+/// The height of the key under the map.
+pub const KEY_H: f32 = 22.0;
+
 /// The words at the key's two ends. In dB the darkest is its level below
 /// the brightest, 0 dB: a swing is a size, so twenty times its log.
 fn key_ends(s: Scale) -> (String, String) {
     if s.log {
         let db = 20.0 * (s.lo / s.hi).log10();
         (
-            format!("{:.0} dB", db + 0.0).replace('-', "−"),
-            format!("0 dB, {} and above", number_text(s.hi)),
+            crate::steady::db_label(db),
+            format!(
+                "{}, {} and above",
+                crate::steady::db_label(0.0),
+                number_text(s.hi)
+            ),
         )
     } else {
         (

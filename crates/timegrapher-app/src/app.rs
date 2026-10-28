@@ -15227,11 +15227,11 @@ impl TimegrapherApp {
             // Their own least is kept, or they hold no plot.
             Pane::Watch | Pane::Strip | Pane::PositionsTest | Pane::PowerReserve => return false,
             // A map's key sits under its picture.
-            Pane::SteadyStft | Pane::SteadyWavelet => 22.0,
+            Pane::SteadyStft | Pane::SteadyWavelet => crate::tfmap::KEY_H,
             _ => 0.0,
         };
         let was = self.panes_short.contains(&pane);
-        let least = SHORT_PLOT_H + below + if was { 2.0 } else { 0.0 };
+        let least = SHORT_PLOT_H + below + if was { SHORT_PLOT_GIVE } else { 0.0 };
         if ui.available_height() >= least {
             self.panes_short.remove(&pane);
             return false;
@@ -15240,9 +15240,9 @@ impl TimegrapherApp {
         let pal = theme::pal(ui);
         ui.centered_and_justified(|ui| {
             ui.label(
-                RichText::new(format!(
-                    "{} not shown: no room. Drag the divider up or make the window taller.",
-                    pane.title()
+                RichText::new(no_room(
+                    pane.title(),
+                    "Drag the divider up or make the window taller.",
                 ))
                 .color(pal.text_secondary),
             );
@@ -15800,10 +15800,12 @@ fn stacked(
                 format!("{picture} ({})", steady::title(k))
             })
             .collect();
-        let line = format!(
-            "{} not shown: no room. Make the pane taller, or turn off {}.",
-            names.join(" and "),
-            switches.join(" or ")
+        let line = no_room(
+            &names.join(" and "),
+            &format!(
+                "Make the pane taller, or turn off {}.",
+                switches.join(" or ")
+            ),
         );
         let pal = theme::pal(ui);
         ui.add(egui::Label::new(RichText::new(line).small().color(pal.text_secondary)).truncate());
@@ -15820,6 +15822,16 @@ const DIST_MIN_H: f32 = 100.0;
 /// The least height of a pane's plot; under it the pane says it has no
 /// room instead of drawing a sliver.
 const SHORT_PLOT_H: f32 = 48.0;
+/// The give above `SHORT_PLOT_H` a pane already saying it has no room
+/// needs before it draws its plot again, so a height on the edge doesn't
+/// flicker between the two.
+const SHORT_PLOT_GIVE: f32 = 2.0;
+
+/// The line in place of plots with no room: what is not shown, then the
+/// remedy.
+fn no_room(what: &str, remedy: &str) -> String {
+    format!("{what} not shown: no room. {remedy}")
+}
 /// The line under stacked plots naming those with no room.
 const STACKED_NOTE_H: f32 = 18.0;
 /// The least height of the Paper Strip under its toolbar: its lane, at

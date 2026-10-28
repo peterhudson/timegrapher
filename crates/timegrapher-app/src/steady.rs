@@ -617,8 +617,8 @@ fn db_grid(input: GridInput) -> Vec<GridMark> {
         .collect()
 }
 
-/// A level in dB as an axis gives it: "0 dB", "−10 dB".
-fn db_label(v: f64) -> String {
+/// A level in dB as an axis or a key gives it: "0 dB", "−10 dB".
+pub fn db_label(v: f64) -> String {
     format!("{:.0} dB", v + 0.0).replace('-', "−")
 }
 
