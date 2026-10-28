@@ -140,7 +140,15 @@ pub fn limits(doc: &Value) -> Vec<Value> {
         Some("no_watch") => Some(no_regular_beat(m, m["bph"].as_f64().or(bph))),
         _ => fact(c, lift),
     };
-    if schema.starts_with("timegrapher.analyze/") {
+    // `long` and `series` carry theirs at the top, for the whole take.
+    if [
+        "timegrapher.analyze/",
+        "timegrapher.long/",
+        "timegrapher.series/",
+    ]
+    .iter()
+    .any(|k| schema.starts_with(k))
+    {
         return doc["caveats"]
             .as_array()
             .into_iter()
@@ -346,5 +354,22 @@ mod tests {
     #[test]
     fn other_documents_have_none() {
         assert!(limits(&json!({ "schema": "timegrapher.series/2" })).is_empty());
+        assert!(limits(&json!({ "schema": "timegrapher.watch/1", "caveats": [{ "code": "breaks", "count": 2 }] })).is_empty());
+    }
+
+    #[test]
+    fn a_long_run_and_a_series_say_their_caveats_for_the_whole_take() {
+        for schema in ["timegrapher.long/1", "timegrapher.series/2"] {
+            let doc = json!({ "schema": schema, "caveats": [
+                { "code": "sides_by_count", "count": 1 }, { "code": "beat_error_as_size" }] });
+            assert_eq!(
+                limits(&doc),
+                [
+                    json!({ "where": null, "text": "At one break Tick and Tock were not told apart by their sound, so the sides after it are named by the beat count across it." }),
+                    json!({ "where": null, "text": "The beat error's sign differs either side of a cut in the stretch, so it is given as a size." }),
+                ],
+                "{schema}"
+            );
+        }
     }
 }

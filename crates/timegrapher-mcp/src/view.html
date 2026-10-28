@@ -1440,7 +1440,7 @@ function distributionCards(d) {
   }).join("");
 }
 
-function seriesView(doc, extra) {
+function seriesView(doc, extra, limits) {
   // The server sends what only the charts draw beside the document.
   if (extra) {
     doc = JSON.parse(JSON.stringify(doc));
@@ -1453,7 +1453,7 @@ function seriesView(doc, extra) {
   }
   const name = fileName(doc);
   const len = Number.isFinite(doc.duration_s) ? ` · ${timeLabel(doc.duration_s)}` : "";
-  return `<h1>Long Recording</h1><p class="sub">${esc(name)}${len}</p>${steadinessCard(doc)}${distributionCards(doc.distributions)}`;
+  return `<h1>Long Recording</h1><p class="sub">${esc(name)}${len}</p>${steadinessCard(doc)}${limits && limits.length ? limitsCard(limits) : ""}${distributionCards(doc.distributions)}`;
 }
 
 // ---- Live: a take as it is heard ------------------------------------------
@@ -1645,7 +1645,7 @@ function redraw() {
   } else if (doc.schema.startsWith("timegrapher.profile/")) {
     html = profileView(doc);
   } else if (doc.schema.startsWith("timegrapher.series/")) {
-    html = seriesView(doc, extra);
+    html = seriesView(doc, extra, limits);
   } else if (doc.schema.startsWith("timegrapher.record/")) {
     html = recordView(doc, live && live.doc);
   } else {

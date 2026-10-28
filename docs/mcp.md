@@ -344,7 +344,11 @@ document, about what the numbers alone do not say:
   was added to: every take is added.
 - `check_steadiness`: each series' headline with its number of readings,
   median, SD and reading-to-reading scatter, then the titles of the
-  findings.
+  findings, then what limits the readings, one fact for each of the take's
+  `caveats`; the Long Recording view lists the same under its Steadiness
+  card.
+- `long_run`: what limits the readings, one fact for each of the take's
+  `caveats`, and nothing when it has none; its figures are the JSON's.
 - `check_microphone`: its rate and beat error come from a few seconds of
   sound, so they are not the watch's readings.
 
