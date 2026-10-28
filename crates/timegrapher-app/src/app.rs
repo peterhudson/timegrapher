@@ -4091,15 +4091,27 @@ impl TimegrapherApp {
         let masked: Vec<[f64; 2]> = entries.iter().flat_map(|e| e.masked.clone()).collect();
         self.masked = timegrapher_core::session::masked_spans(&masked);
         self.opened_masks = Some(self.masked.clone());
+        // Each entry read once the watch has settled, as `session` reads
+        // it: the app's own takes say `settle_s = 0`, a recorded one its
+        // settling.
         let (out, settles) = positions_of(entries.iter().filter_map(|e| {
             let p = Position::from_name(e.position.as_deref()?)?;
-            Some((e.start_s.unwrap_or(0.0), e.end_s, p))
+            let start = e.start_s.unwrap_or(0.0);
+            let (settle_s, measure_s) = timegrapher_core::take::entry_times(e, m);
+            let (from, to) = timegrapher_core::take::measured(
+                start,
+                e.end_s.unwrap_or(f64::INFINITY),
+                settle_s,
+                measure_s,
+            );
+            Some((start, from, to.is_finite().then_some(to), p))
         }));
         // What was recorded under any painting, loaded with the positions.
         self.pending_recorded = (!m.recorded.is_empty()).then(|| {
             positions_of(m.recorded.iter().filter_map(|r| {
                 let p = Position::from_name(&r.position)?;
-                Some((r.start_s.unwrap_or(0.0), r.end_s, p))
+                let start = r.start_s.unwrap_or(0.0);
+                Some((start, start, r.end_s, p))
             }))
         });
         if let Some(&(_, p)) = out.first() {
@@ -17404,23 +17416,24 @@ type Layers = (Positions, Option<Positions>);
 /// start, end and the position's code.
 type Entries = Vec<(Option<f64>, Option<f64>, String)>;
 
-/// The positions a session file lists, each stretch's start, end and
-/// position, as changes oldest first and the settling before each: a gap
-/// between one position's end and the next one's start.
-fn positions_of(listed: impl Iterator<Item = (f64, Option<f64>, Position)>) -> Positions {
-    let mut listed: Vec<(f64, Option<f64>, Position)> = listed.collect();
+/// The positions a session file lists, each stretch's start, the start
+/// of what is read once it has settled, its end and its position, as
+/// changes oldest first and the settling before each: from the end of the
+/// one before (or its own start) to where its reading starts.
+fn positions_of(listed: impl Iterator<Item = (f64, f64, Option<f64>, Position)>) -> Positions {
+    let mut listed: Vec<(f64, f64, Option<f64>, Position)> = listed.collect();
     listed.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut out = Vec::new();
     let mut settles = Vec::new();
-    for (i, &(start, _, p)) in listed.iter().enumerate() {
+    for (i, &(start, from, _, p)) in listed.iter().enumerate() {
         // The position began where the one before it ended.
-        let began = match i.checked_sub(1).and_then(|j| listed[j].1) {
-            Some(end) if end < start => {
-                settles.push((end, start));
-                end
-            }
+        let began = match i.checked_sub(1).and_then(|j| listed[j].2) {
+            Some(end) if end < start => end,
             _ => start,
         };
+        if from > began {
+            settles.push((began, from));
+        }
         out.push((began, p));
     }
     (out, settles)
@@ -22865,6 +22878,31 @@ mod tests {
             .contains("masked"));
         app.session.discard_recording();
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take whose entries say how long each position settles, as
+    /// `timegrapher record` writes them, is read once each has settled, as
+    /// `session` reads it: the settling is marked, not read. The app's own
+    /// takes say `settle_s = 0`, so theirs read from their start.
+    #[test]
+    fn a_recorded_takes_positions_are_read_once_settled() {
+        let text = "audio = true\nsettle_s = 30.0\n\n\
+                    [[recording]]\nfile = '.'\nposition = 'DU'\nstart_s = 0.0\nend_s = 90.0\n\n\
+                    [[recording]]\nfile = '.'\nposition = 'DD'\nstart_s = 90.0\nend_s = 180.0\n\
+                    measure_s = 40.0\n";
+        let m: Manifest = toml::from_str(text).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let (stretches, settles) = app.apply_manifest(&m, &m.recordings);
+        assert_eq!(
+            stretches,
+            [(0.0, Position::DialUp), (90.0, Position::DialDown)]
+        );
+        assert_eq!(settles, [(0.0, 30.0), (90.0, 120.0)]);
+        // Settled at once, as the app writes its own takes.
+        let text = text.replace("settle_s = 30.0", "settle_s = 0.0");
+        let m: Manifest = toml::from_str(&text).unwrap();
+        let (_, settles) = app.apply_manifest(&m, &m.recordings);
+        assert!(settles.is_empty(), "{settles:?}");
     }
 
     /// Guided elapsed-time endpoints use the recorder timeline even when
