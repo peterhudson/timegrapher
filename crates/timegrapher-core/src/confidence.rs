@@ -166,6 +166,33 @@ mod tests {
     use crate::synth::Rng;
 
     #[test]
+    fn beat_error_se_reads_the_unlock_beat_errors() {
+        // Every third window has no unlock beat error and is skipped.
+        let windows: Vec<AmplitudeWindow> = (0..30)
+            .map(|i| AmplitudeWindow {
+                start_s: i as f64 * 10.0,
+                end_s: i as f64 * 10.0 + 10.0,
+                even_deg: None,
+                odd_deg: None,
+                beat_error_ms: Some(9.0),
+                beat_error_unlock_ms: (i % 3 != 2).then(|| 0.4 + 0.1 * (i as f64 * 1.7).sin()),
+                even_unlock_ms: None,
+                odd_unlock_ms: None,
+                even_drop_ms: None,
+                odd_drop_ms: None,
+            })
+            .collect();
+        let kept: Vec<f64> = windows
+            .iter()
+            .filter_map(|w| w.beat_error_unlock_ms)
+            .collect();
+        let se = beat_error_se(&windows).unwrap();
+        assert!(se > 0.0, "{se}");
+        assert_eq!(Some(se), standard_error(&kept));
+        assert_eq!(beat_error_se(&windows[..2]), None);
+    }
+
+    #[test]
     fn standard_error_ignores_slow_change() {
         // Gaussian noise of SD 2 from a fixed seed, alone and on a steep
         // ramp: the ramp must not count as noise.
