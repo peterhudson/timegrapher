@@ -525,7 +525,7 @@ pub fn draw(
                     return String::new();
                 }
                 match scale {
-                    Scale::Decibels => format!("{:.0} dB", m.value + 0.0),
+                    Scale::Decibels => crate::steady::db_label(m.value),
                     Scale::Linear => level_label(m.value, m.step_size),
                 }
             });

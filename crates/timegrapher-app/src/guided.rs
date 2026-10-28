@@ -19,7 +19,7 @@ use timegrapher_core::stream::BeatLog;
 /// The file a finished test just after winding is saved to, from the
 /// pane or beside a saved take, for the same six positions 24
 /// hours later.
-pub const RESULTS_FILE: &str = "positions-test.json";
+pub use timegrapher_core::library::POSITIONS_TEST_FILE as RESULTS_FILE;
 /// The file's `format`, versioned: a later version adds keys.
 pub const RESULTS_FORMAT: &str = "timegrapher.positions-test/1";
 
@@ -118,8 +118,9 @@ pub fn full_wind_ago() -> String {
 
 /// Seconds the watch is left to settle after it is turned, and then
 /// measured, unless set otherwise in the pane: the project's choice. A
-/// minute brings the rate's ± near half a second a day.
-pub const SETTLE_S: f64 = 20.0;
+/// minute brings the rate's ± near half a second a day. The settling is
+/// core's, as `session` reads a take.
+pub use timegrapher_core::take::SETTLE_S;
 pub const MEASURE_S: f64 = 60.0;
 /// The times the pane lets be set, seconds.
 pub const SETTLE_RANGE: std::ops::RangeInclusive<f64> = 5.0..=600.0;

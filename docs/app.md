@@ -702,7 +702,10 @@ is kept in the picked watch's history, named by its local start time and
 `power-reserve.json` beside the standard files; with Analysis Only it is
 then kept as its analysis alone, as Keep Analysis Only does, and its sound
 deleted. The Watches view lists it as "Power Reserve 46 h 12 min", adding
-"(still running at the end)" when it was stopped by hand or at the limit.
+how it ended when the watch didn't stop it ("Stopped by hand while the
+watch still ran", "Reached the 80 h limit while the watch still ran"),
+and, like a Positions Test's take, without its last window's figures,
+which don't stand for the test.
 Every pane reads the take as any other.
 
 `power-reserve.json` (`schema` `power-reserve/1`) holds `started_utc`,

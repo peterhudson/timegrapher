@@ -10,7 +10,7 @@
 //! person attaches the zip.
 
 use crate::theme::{DialogButton, Role};
-use crate::{applog, strip, theme};
+use crate::{applog, theme};
 use eframe::egui::{self, RichText, Sense, Vec2};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -18,6 +18,8 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use timegrapher_core::analysis::{analyze, AnalysisConfig, Summary};
+use timegrapher_core::library::length_text;
+use timegrapher_core::redact::{os_version, recent_files, Redactor};
 use timegrapher_core::{archive, audio, capture, clockstore, excerpt, recorder};
 
 /// The most sound a report holds: five minutes of FLAC is about 18 MB,
@@ -402,10 +404,10 @@ impl ReportDialog {
                 RichText::new(if src.live {
                     format!(
                         "The last {} of this session, from what the app kept as it listened.",
-                        strip::fmt_time(span)
+                        length_text(span)
                     )
                 } else {
-                    format!("{} of {}.", strip::fmt_time(span), src.name)
+                    format!("{} of {}.", length_text(span), src.name)
                 })
                 .color(pal.text_secondary),
             )
@@ -418,7 +420,7 @@ impl ReportDialog {
                 let r = ui
                     .add(
                         egui::Slider::new(&mut self.end_s, SPAN_S..=src.total_s)
-                            .custom_formatter(|v, _| strip::fmt_time(v))
+                            .custom_formatter(|v, _| length_text(v))
                             .show_value(true),
                     )
                     .on_hover_text(
@@ -546,9 +548,9 @@ impl ReportDialog {
             ui.label(
                 RichText::new(format!(
                     "{} kept, {} to {} · about {:.0} MB",
-                    strip::fmt_time(kept),
-                    strip::fmt_time(clip.from_s + self.trim.0),
-                    strip::fmt_time(clip.from_s + self.trim.1),
+                    length_text(kept),
+                    length_text(clip.from_s + self.trim.0),
+                    length_text(clip.from_s + self.trim.1),
                     // FLAC of a watch on the stand: about 60 kB a second.
                     kept * 0.06,
                 ))
@@ -875,144 +877,10 @@ pub(crate) fn software() -> Value {
     })
 }
 
-/// The OS's own name for its version, where it is easy to ask.
-fn os_version() -> Option<String> {
-    use std::process::Command;
-    if cfg!(target_os = "linux") {
-        let t = std::fs::read_to_string("/etc/os-release").ok()?;
-        t.lines()
-            .find_map(|l| l.strip_prefix("PRETTY_NAME="))
-            .map(|v| v.trim_matches('"').to_string())
-    } else if cfg!(target_os = "macos") {
-        let o = Command::new("sw_vers")
-            .arg("-productVersion")
-            .output()
-            .ok()?;
-        Some(format!(
-            "macOS {}",
-            String::from_utf8_lossy(&o.stdout).trim()
-        ))
-    } else if cfg!(target_os = "windows") {
-        let o = Command::new("cmd").args(["/C", "ver"]).output().ok()?;
-        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-    } else {
-        None
-    }
-}
-
-/// Files modified in the last week in `dir` whose names pass `keep`.
-fn recent_files(dir: &Path, keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
-    let week = SystemTime::now() - Duration::from_secs(7 * 86400);
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut v: Vec<PathBuf> = rd
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .filter(|e| keep(&e.file_name().to_string_lossy()))
-        .filter(|e| {
-            e.metadata()
-                .and_then(|m| m.modified())
-                .is_ok_and(|t| t >= week)
-        })
-        .map(|e| e.path())
-        .collect();
-    v.sort();
-    v
-}
-
-/// Removes the home folder, user name and host name from text, counting
-/// what it removed, as `timegrapher report` does.
-struct Redactor {
-    home: Vec<String>,
-    user: Option<String>,
-    host: Option<String>,
-    counts: [usize; 3],
-}
-
-impl Redactor {
-    fn from_env() -> Self {
-        let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-        let mut home = Vec::new();
-        if let Some(h) = var("HOME").or_else(|| var("USERPROFILE")) {
-            let h = h.trim_end_matches(['/', '\\']).to_string();
-            if h.contains('\\') {
-                home.push(h.replace('\\', "\\\\"));
-            }
-            home.push(h);
-        }
-        let host = var("HOSTNAME").or_else(|| var("COMPUTERNAME")).or_else(|| {
-            std::fs::read_to_string("/etc/hostname")
-                .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-        });
-        Redactor {
-            home,
-            user: var("USER").or_else(|| var("USERNAME")),
-            host,
-            counts: [0; 3],
-        }
-    }
-
-    fn apply(&mut self, text: &str) -> String {
-        let mut s = text.to_string();
-        for h in &self.home {
-            if h.len() > 1 {
-                self.counts[0] += s.matches(h.as_str()).count();
-                s = s.replace(h.as_str(), "~");
-            }
-        }
-        if let Some(u) = &self.user {
-            let (t, n) = replace_word(&s, u, "<user>");
-            s = t;
-            self.counts[1] += n;
-        }
-        if let Some(h) = &self.host {
-            let (t, n) = replace_word(&s, h, "<host>");
-            s = t;
-            self.counts[2] += n;
-        }
-        s
-    }
-
-    fn summary(&self) -> Value {
-        json!({
-            "home_folder": self.counts[0],
-            "user_name": self.counts[1],
-            "host_name": self.counts[2],
-        })
-    }
-}
-
-/// Replace whole-word occurrences of `word` (at least two characters).
-fn replace_word(s: &str, word: &str, with: &str) -> (String, usize) {
-    if word.chars().count() < 2 {
-        return (s.to_string(), 0);
-    }
-    let is_word = |c: char| c.is_alphanumeric() || c == '_';
-    let mut out = String::with_capacity(s.len());
-    let mut n = 0;
-    let mut rest = s;
-    while let Some(i) = rest.find(word) {
-        let before = rest[..i].chars().next_back();
-        let after = rest[i + word.len()..].chars().next();
-        out.push_str(&rest[..i]);
-        if !before.is_some_and(is_word) && !after.is_some_and(is_word) {
-            out.push_str(with);
-            n += 1;
-        } else {
-            out.push_str(word);
-        }
-        rest = &rest[i + word.len()..];
-    }
-    out.push_str(rest);
-    (out, n)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use timegrapher_core::redact::replace_word;
     use timegrapher_core::synth::{generate, SynthConfig};
 
     fn assert_explicit_replay_lift(bph: Option<u32>, lift: f64) {

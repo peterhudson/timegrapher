@@ -350,8 +350,9 @@ impl Take {
     /// `timegrapher watches` list for it: its kind when it is a Positions
     /// Test's (`positions_test`, from [`is_positions_test`]), a Power
     /// Reserve run, its positions, its length, the readings it ended on
-    /// (beat error as its size) and its marks. Each surface joins them as
-    /// it lays them out.
+    /// (beat error as its size; none for a test, whose last window doesn't
+    /// stand for the test: its figures are in its table, or hour by hour)
+    /// and its marks. Each surface joins them as it lays them out.
     pub fn facts(&self, positions_test: bool) -> Vec<String> {
         let mut parts: Vec<String> = Vec::new();
         if positions_test {
@@ -378,7 +379,8 @@ impl Take {
         if let Some(d) = self.duration_s.filter(|_| self.power_reserve.is_none()) {
             parts.push(length_text(d));
         }
-        if let Some(a) = &self.at_end {
+        let test = positions_test || self.power_reserve.is_some();
+        if let Some(a) = self.at_end.as_ref().filter(|_| !test) {
             if let Some(r) = a.rate() {
                 parts.push(format!("{r:+.1} s/d"));
             }
@@ -1433,6 +1435,43 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A take's facts give the readings it ended on, but not for a test:
+    /// a Positions Test's or a Power Reserve Test's last window doesn't
+    /// stand for the test.
+    #[test]
+    fn a_tests_facts_leave_out_its_last_window() {
+        let t = Take {
+            name: "t".into(),
+            bytes: 0,
+            audio: true,
+            incomplete: false,
+            started_utc: None,
+            duration_s: Some(120.0),
+            positions: vec!["DU".into()],
+            at_end: Some(AtEnd {
+                rate_s_per_day: Some(3.5),
+                amplitude_deg: Some(281.0),
+                beat_error_ms: Some(-0.4),
+                rate_corrected_s_per_day: None,
+            }),
+            power_reserve: None,
+        };
+        assert_eq!(
+            t.facts(false),
+            ["Dial Up", "2:00", "+3.5 s/d", "281°", "0.4 ms"]
+        );
+        assert_eq!(t.facts(true), ["Positions Test", "Dial Up", "2:00"]);
+        let r = Take {
+            power_reserve: Some(crate::power_reserve::Summary {
+                run_s: 5400.0,
+                ending: crate::power_reserve::Ending::Stopped,
+                position: "DU".into(),
+            }),
+            ..t
+        };
+        assert_eq!(r.facts(false), ["Power Reserve 1 h 30 min", "Dial Up"]);
+    }
 
     #[test]
     fn a_recording_without_a_session_file_is_added_as_a_new_take() {

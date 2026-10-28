@@ -13,6 +13,7 @@
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use timegrapher_core::beats::Beat;
+use timegrapher_core::library::length_text;
 pub use timegrapher_core::timing::Anchor;
 
 /// Colours of the ticks (even beats) and tocks (odd beats).
@@ -1291,7 +1292,7 @@ pub fn draw_strip(
         } else {
             (Pos2::new(r.left() - 4.0, a.y), Align2::RIGHT_CENTER)
         };
-        painter.text(at, align, fmt_time(t), font.clone(), text);
+        painter.text(at, align, length_text(t), font.clone(), text);
         t -= tstep;
     }
     let test = !extras.measured.is_empty();
@@ -1408,7 +1409,7 @@ pub fn draw_strip(
                 Stroke::new(1.0_f32, pal.positions),
                 egui::StrokeKind::Inside,
             );
-            let words = format!("{code} {} to {}", fmt_time(a), fmt_time(b));
+            let words = format!("{code} {} to {}", length_text(a), length_text(b));
             let galley = painter.layout_no_wrap(words, font.clone(), vis.strong_text_color());
             let size = galley.size();
             // Inside the plot, beside the stretch's newest end, on a backing.
@@ -1641,15 +1642,6 @@ pub fn fmt_ms(ms: f64) -> String {
         format!("{ms:.1}")
     } else {
         format!("{ms:.2}").trim_end_matches('0').to_string()
-    }
-}
-
-pub fn fmt_time(t: f64) -> String {
-    let s = t.max(0.0).round() as u64;
-    if s >= 3600 {
-        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
-    } else {
-        format!("{}:{:02}", s / 60, s % 60)
     }
 }
 
@@ -2307,7 +2299,7 @@ mod tests {
         assert!((wrap(-6.0, 5.0) - 4.0).abs() < 1e-12);
         assert_eq!(nice_step(3.0), 5.0);
         assert_eq!(nice_step(0.12), 0.2);
-        assert_eq!(fmt_time(3725.0), "1:02:05");
+        assert_eq!(length_text(3725.0), "1:02:05");
         assert_eq!(fmt_time_fine(83.456), "1:23.46");
         assert_eq!(fmt_time_fine(59.996), "1:00.00");
         assert_eq!(fmt_time_fine(3725.5), "1:02:05.50");

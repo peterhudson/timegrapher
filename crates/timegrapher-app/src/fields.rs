@@ -2,6 +2,7 @@
 //! Enter or by clicking away, with a short list of common values beside it.
 
 use eframe::egui;
+use timegrapher_core::library::length_text;
 
 /// How a field shows and reads its value.
 pub struct Format {
@@ -37,7 +38,7 @@ pub fn duration(v: f64) -> String {
     } else if s.is_multiple_of(60) && s < 7200 {
         format!("{} min", s / 60)
     } else {
-        crate::strip::fmt_time(v)
+        length_text(v)
     }
 }
 

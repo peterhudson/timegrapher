@@ -30,6 +30,7 @@ use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::capture::{self, Block, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
 use timegrapher_core::library;
+use timegrapher_core::library::{length_text, size_text};
 use timegrapher_core::live::{LiveAnalyzer, LiveConfig, LiveReading, MAX_PROFILE_S};
 use timegrapher_core::measure::Caveat;
 use timegrapher_core::mixer::{self, GainState, InputGain};
@@ -1989,6 +1990,10 @@ impl Drop for Batch {
 /// Unwound through the analysis to stop it when it is cancelled.
 struct Cancelled;
 
+/// What a full-wind search was made for: the watch, the Wind setting,
+/// the minute and when the watch's takes folder last changed.
+type FullWindKey = (Option<String>, bool, i64, Option<std::time::SystemTime>);
+
 pub struct TimegrapherApp {
     input: Input,
     devices: Vec<InputDevice>,
@@ -2093,9 +2098,11 @@ pub struct TimegrapherApp {
     /// The full-wind test's results, loaded for the next test to run as
     /// its 24 hour half.
     guided_earlier: Option<guided::FullWind>,
-    /// The watch and Wind setting `guided_earlier` was found for: picked
-    /// otherwise, it is searched for again.
-    guided_earlier_for: Option<(Option<String>, bool)>,
+    /// What `guided_earlier` was found for: the watch, the Wind setting,
+    /// the minute and when the watch's takes folder last changed. Any of
+    /// them otherwise, it is searched for again, so a test passing the
+    /// 12 hour mark, or a take added or removed, is seen.
+    guided_earlier_for: Option<FullWindKey>,
     /// For a watch, the next Positions Test is its 24 hours after half,
     /// set against the watch's own full-wind test (Wind on its toolbar).
     guided_after: bool,
@@ -3640,7 +3647,7 @@ impl TimegrapherApp {
                 }
                 self.info_msg(format!(
                     "Saved {} of sound in {}",
-                    strip::fmt_time(s.secs),
+                    length_text(s.secs),
                     copy.dir.display()
                 ));
                 self.save_dir = s.parent.display().to_string();
@@ -3815,9 +3822,9 @@ impl TimegrapherApp {
                 let size = folder_size(&dir);
                 self.info_msg(format!(
                     "Kept the analysis of {} of sound in {}, without the sound ({}).",
-                    strip::fmt_time(job.total_s),
+                    length_text(job.total_s),
                     dir.display(),
-                    fmt_bytes(size)
+                    size_text(size)
                 ));
                 self.analysis_kept_to = Some((dir, job.total_s));
             }
@@ -4011,7 +4018,7 @@ impl TimegrapherApp {
         } else {
             path.parent().unwrap_or(path)
         };
-        self.positions_take = dir.join(guided::RESULTS_FILE).is_file();
+        self.positions_take = timegrapher_core::library::is_positions_test(dir);
         // A test's take opens on its results.
         if self.positions_take {
             self.reveal_pane(Pane::PositionsTest);
@@ -4993,7 +5000,7 @@ impl TimegrapherApp {
         format!(
             " {n} {} masked, {} in all.",
             if n == 1 { "stretch" } else { "stretches" },
-            strip::fmt_time(total)
+            length_text(total)
         )
     }
 
@@ -5756,7 +5763,7 @@ impl TimegrapherApp {
             return self.confirmed(what, ctx);
         }
         let mut choice = None;
-        let unsaved = strip::fmt_time(self.unsaved_s());
+        let unsaved = length_text(self.unsaved_s());
         let metadata = self.metadata_unsaved();
         let masks = self.marks_unsaved();
         let fault = self.session.recording_fault().map(|f| f.description());
@@ -6737,8 +6744,8 @@ impl TimegrapherApp {
                 "Removed the sound from \"{}\" and kept its analysis. It now uses {}, down \
                  from {}.",
                 file_name(&take),
-                fmt_bytes(folder_size(&take)),
-                fmt_bytes(before)
+                size_text(folder_size(&take)),
+                size_text(before)
             )),
             Ok(Some(why)) => self.error(why),
             Err(e) => self.error(format!(
@@ -7627,7 +7634,7 @@ impl TimegrapherApp {
                 RichText::new(format!(
                     "{}… {}",
                     steady::stage_text(stage),
-                    strip::fmt_time(since.elapsed().as_secs_f64())
+                    length_text(since.elapsed().as_secs_f64())
                 ))
                 .small()
                 .color(pal.text_secondary),
@@ -7668,7 +7675,7 @@ impl TimegrapherApp {
         } else {
             format!(
                 "Needs 5 minutes of beats in one position; {} so far.",
-                strip::fmt_time(dur)
+                length_text(dur)
             )
         }
     }
@@ -7684,7 +7691,7 @@ impl TimegrapherApp {
         };
         self.steady_working(ui);
         let status = match upto {
-            Some(u) => format!("Tested over {} of {of}beats", strip::fmt_time(u)),
+            Some(u) => format!("Tested over {} of {of}beats", length_text(u)),
             None if working => String::new(),
             None => self.steady_wait(dur),
         };
@@ -8142,7 +8149,7 @@ impl TimegrapherApp {
     fn listen_buttons(&mut self, ui: &mut egui::Ui, compact: bool) {
         let pal = theme::pal(ui);
         let area = ui.max_rect();
-        let length = strip::fmt_time(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
+        let length = length_text(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
         let state = self.state_words();
         let top = egui::Rect::from_min_size(area.min, Vec2::new(area.width(), theme::FIGURE_ROW_H));
         let foot = egui::Rect::from_min_max(
@@ -8973,19 +8980,45 @@ impl TimegrapherApp {
     /// only when the watch or Wind has changed since; with no watch, the
     /// half is what Load Full-Wind Results… loads.
     fn find_full_wind(&mut self) {
+        self.find_full_wind_at(guided::unix_now());
+    }
+
+    /// [`Self::find_full_wind`] at `now`, Unix seconds.
+    fn find_full_wind_at(&mut self, now: f64) {
         if self.test_ready != Some(NewTake::Positions) {
             return;
         }
-        let key = (self.watch_open.clone(), self.guided_after);
+        let dir = self.open_watch().map(|e| e.dir.join(library::TAKES));
+        let changed = dir
+            .as_ref()
+            .and_then(|d| std::fs::metadata(d).ok())
+            .and_then(|m| m.modified().ok());
+        let key = (
+            self.watch_open.clone(),
+            self.guided_after,
+            (now / 60.0).floor() as i64,
+            changed,
+        );
         if self.guided_earlier_for.as_ref() == Some(&key) {
             return;
         }
         self.guided_earlier_for = Some(key);
-        let dir = self.open_watch().map(|e| e.dir.join(library::TAKES));
         self.guided_earlier = match dir {
-            Some(dir) if self.guided_after => guided::full_wind_in(&dir, guided::unix_now()),
+            Some(dir) if self.guided_after => guided::full_wind_in(&dir, now),
             _ => None,
         };
+    }
+
+    /// How long until the full-wind search should run again, at the next
+    /// minute after `now` (Unix seconds), while a Positions Test waits on
+    /// one: an idle Bench draws nothing, so without this a full-wind test
+    /// reaching its 12 hour mark, or a take added or removed, is seen only
+    /// when the mouse moves.
+    fn full_wind_recheck(&self, now: f64) -> Option<Duration> {
+        (self.ready_test() == Some(NewTake::Positions)
+            && self.guided_after
+            && self.open_watch().is_some())
+        .then(|| Duration::from_secs_f64(60.0 - now.rem_euclid(60.0) + 0.05))
     }
 
     /// Whether a new take asks first: a take of a watch asks about Quick
@@ -11316,7 +11349,7 @@ impl TimegrapherApp {
                 } else {
                     format!("{} watches", l.watches.len())
                 },
-                fmt_bytes(l.bytes())
+                size_text(l.bytes())
             ),
             _ => "Everything in it is moved there,".to_string(),
         };
@@ -12025,7 +12058,7 @@ impl TimegrapherApp {
                 "\n\nWhole take {figure}{spread} over {}. The big figure is the last stretch \
                  of Average Over; this is the take in this position, settling left out, read \
                  as timegrapher session reads a recording.{whole_breaks}",
-                strip::fmt_time(span)
+                length_text(span)
             )
         };
         let mut slots = vec![(Slot::Position, cards[0].inner)];
@@ -12035,7 +12068,7 @@ impl TimegrapherApp {
         // A compact Listen card has no room beside its buttons for the
         // take's length: it goes in the title row, before the "?".
         let length = listen_compact.then(|| {
-            let length = strip::fmt_time(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
+            let length = length_text(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
             (
                 length.clone(),
                 format!(
@@ -12130,7 +12163,7 @@ impl TimegrapherApp {
                             "Stopped while the watch settled in its new position, so \
                              these are the last readings of the position before it, \
                              before the move at {}.",
-                            strip::fmt_time(at)
+                            length_text(at)
                         ),
                     )
                 })
@@ -12459,7 +12492,7 @@ impl TimegrapherApp {
                  Keep it to show the corrected rate as True Clock from now on; the command \
                  line and the MCP server use it too. It is only right if the computer's \
                  clock is kept by internet time.",
-                strip::fmt_time(f.span_s),
+                length_text(f.span_s),
                 f.ppm.abs(),
                 f.ppm_sd,
                 f.rate_error_s_per_day
@@ -12715,7 +12748,7 @@ impl TimegrapherApp {
                 .on_hover_text(format!(
                     "Copying {} of sound into {}. Listening carries on; the take saved before \
                      stays as it was until the copy is done.",
-                    strip::fmt_time(s.secs),
+                    length_text(s.secs),
                     s.dest.display()
                 ));
         }
@@ -12755,7 +12788,7 @@ impl TimegrapherApp {
                 match self.session.saved_to() {
                     Some(p) => (
                         if since >= 1.0 {
-                            format!("The last {} not saved", strip::fmt_time(since))
+                            format!("The last {} not saved", length_text(since))
                         } else if self.metadata_unsaved() {
                             "Settings not saved".to_string()
                         } else {
@@ -12773,10 +12806,7 @@ impl TimegrapherApp {
                     None if self.analysis_kept_to.is_some() => {
                         let (dir, through_s) = self.analysis_kept_to.clone().unwrap_or_default();
                         let kept = if r.duration_s() - through_s >= 1.0 {
-                            format!(
-                                "the analysis of its first {} kept",
-                                strip::fmt_time(through_s)
-                            )
+                            format!("the analysis of its first {} kept", length_text(through_s))
                         } else {
                             "its analysis kept".to_string()
                         };
@@ -12789,7 +12819,7 @@ impl TimegrapherApp {
                                  quitting ask before throwing it away, and a quit that can't \
                                  ask keeps it when there is more than 5 s of it, \
                                  to offer back at the next start.",
-                                strip::fmt_time(through_s),
+                                length_text(through_s),
                                 dir.display()
                             ),
                         )
@@ -13009,15 +13039,15 @@ impl TimegrapherApp {
         let mut line = match b.duration_s {
             Some(d) => format!(
                 "{} of {} of sound analysed",
-                strip::fmt_time(done),
-                strip::fmt_time(d)
+                length_text(done),
+                length_text(d)
             ),
-            None => format!("{} of sound analysed", strip::fmt_time(done)),
+            None => format!("{} of sound analysed", length_text(done)),
         };
         // Time left at the pace so far, once there is a pace to go by.
         if let (Some(d), true) = (b.duration_s, done > 0.0 && elapsed > 3.0) {
             let left = (d - done).max(0.0) * elapsed / done;
-            line += &format!(" · about {} to go", strip::fmt_time(left));
+            line += &format!(" · about {} to go", length_text(left));
         }
         ui.label(RichText::new(line).color(pal.text_secondary));
         if b.files > 1 {
@@ -13814,10 +13844,7 @@ impl TimegrapherApp {
             return;
         };
         if let Some(e) = t.ending {
-            applog::info(&format!(
-                "power reserve test ended: {}",
-                reserve::ending_text(e)
-            ));
+            applog::info(&format!("power reserve test ended: {}", e.text()));
         }
         let mut results = t.finish(to_true).cloned();
         // Hour by hour, as `timegrapher session` reads each stretch.
@@ -14014,8 +14041,8 @@ impl TimegrapherApp {
                 .as_ref()
                 .map_or(String::new(), |s| format!(": started {s}")),
             k.duration_s
-                .map_or(String::new(), |d| format!(", {} long", strip::fmt_time(d))),
-            fmt_bytes(k.bytes),
+                .map_or(String::new(), |d| format!(", {} long", length_text(d))),
+            size_text(k.bytes),
         );
         notice(ui, Some(theme::Alert::Warning), &what, |ui| {
             later = ui
@@ -14371,12 +14398,8 @@ impl TimegrapherApp {
                     .to_string(),
             )
         } else {
-            looking_back.then(|| {
-                format!(
-                    "at {}, double-click for the newest beats",
-                    strip::fmt_time(end)
-                )
-            })
+            looking_back
+                .then(|| format!("at {}, double-click for the newest beats", length_text(end)))
         };
         let from = end - self.strip.span_s - 5.0;
         let (trend, step) = self.strip_trend(from, end, self.average_s);
@@ -14530,14 +14553,14 @@ impl TimegrapherApp {
             let i = self.sound_history.partition_point(|h| h.0 <= end + 1e-9);
             match i.checked_sub(1).map(|i| &self.sound_history[i]) {
                 Some((t, p)) if end - t <= SOUND_EVERY_S + 0.5 => {
-                    note = Some(format!("At {}", strip::fmt_time(*t)));
+                    note = Some(format!("At {}", length_text(*t)));
                     p.clone()
                 }
                 _ => {
                     self.poll_sound_job();
                     match &self.sound_at {
                         Some((t, p)) if (t - end).abs() < 0.5 => {
-                            note = Some(format!("At {}", strip::fmt_time(*t)));
+                            note = Some(format!("At {}", length_text(*t)));
                             p.clone()
                         }
                         _ => {
@@ -15514,7 +15537,7 @@ impl TimegrapherApp {
         if let Some(x) = hover {
             resp.response.on_hover_ui_at_pointer(|ui| {
                 ui.set_max_width(300.0);
-                ui.label(RichText::new(strip::fmt_time(x)).strong());
+                ui.label(RichText::new(length_text(x)).strong());
                 for ChartLine { name, pts, key, .. } in &lookup {
                     let v = value_at(pts, x);
                     ui.horizontal(|ui| {
@@ -15648,7 +15671,7 @@ fn chart_time_label(t: f64, step: f64, r: &std::ops::RangeInclusive<f64>) -> Str
         let fine = strip::fmt_time_fine(t);
         fine[..fine.len() - 1].to_string()
     } else {
-        strip::fmt_time(t)
+        length_text(t)
     };
     let frac = if label.len() > 5 { 0.03 } else { 0.0 };
     theme::clear_of_right_edge(label, t, r, frac)
@@ -16981,17 +17004,6 @@ fn folder_size(dir: &Path) -> u64 {
 /// A library move's outcome, from its thread ([`library::move_library`]).
 type LibraryMove = std::sync::mpsc::Receiver<Result<Option<String>, String>>;
 
-/// A size on disk, as a file manager shows it: 7.7 GB, 10.5 MB, 812 kB.
-pub(crate) fn fmt_bytes(n: u64) -> String {
-    let n = n as f64;
-    match n {
-        n if n >= 1e9 => format!("{:.1} GB", n / 1e9),
-        n if n >= 1e6 => format!("{:.1} MB", n / 1e6),
-        n if n >= 1e3 => format!("{:.0} kB", n / 1e3),
-        n => format!("{n:.0} bytes"),
-    }
-}
-
 /// Open `dir` in the system's file manager.
 fn reveal(dir: &Path) -> std::io::Result<()> {
     let program = if cfg!(target_os = "macos") {
@@ -17020,6 +17032,9 @@ impl TimegrapherApp {
     fn panels(&mut self, ctx: &egui::Context) {
         // A test set up against another watch than the one picked now.
         self.find_full_wind();
+        if let Some(wait) = self.full_wind_recheck(guided::unix_now()) {
+            ctx.request_repaint_after(wait);
+        }
         let pal = theme::palette(ctx.style().visuals.dark_mode);
         let bar = egui::Frame::new().fill(pal.window);
         egui::TopBottomPanel::top("menus")
@@ -19256,11 +19271,7 @@ mod tests {
         assert_eq!(
             app.message.as_ref(),
             Some(&(
-                format!(
-                    "Saved {} of sound in {}",
-                    strip::fmt_time(1.0),
-                    dest.display()
-                ),
+                format!("Saved {} of sound in {}", length_text(1.0), dest.display()),
                 false
             ))
         );
@@ -19707,7 +19718,8 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(watches::take_line(&take, false).starts_with("Power Reserve 12 s (still running"));
+        assert!(watches::take_line(&take, false)
+            .starts_with("Power Reserve 12 s · Stopped by hand while the watch still ran"));
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
         again.start_batch(&saved);
@@ -21811,6 +21823,70 @@ mod tests {
         app.pick_watch(&seiko);
         frame(&mut app);
         assert!(app.start_test_why_not().is_some());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A test set up just before the full-wind test's 12 hour mark can
+    /// start once the mark passes, and a full-wind take removed is no
+    /// longer found: the search sees the time and the takes, not only the
+    /// watch and the Wind setting.
+    #[test]
+    fn a_ready_tests_full_wind_search_sees_the_time_and_the_takes() {
+        let base = std::env::temp_dir().join(format!("tg-app-wind-time-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Seiko 5")).unwrap();
+        let entry = lib.find("Seiko 5").unwrap();
+        let (seiko, take) = (
+            entry.watch.id.clone(),
+            entry.dir.join(library::TAKES).join("full wind"),
+        );
+        drop(lib);
+        // Its full-wind test began 11 h 30 min ago.
+        let now = guided::unix_now();
+        std::fs::create_dir_all(&take).unwrap();
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: String::new(),
+            began_unix: now - 11.5 * 3600.0,
+            watch: "Seiko 5".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![guided::KeptRow {
+                position: "DU".into(),
+                rate_s_per_day: Some(4.0),
+                amplitude_deg: Some(290.0),
+                beat_error_ms: Some(0.3),
+            }],
+        };
+        std::fs::write(take.join(guided::RESULTS_FILE), full.to_json()).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root));
+        app.pick_watch(&seiko);
+        app.guided_after = true;
+        app.new_take(NewTake::Positions, false);
+        app.find_full_wind_at(now);
+        assert!(app.start_test_why_not().is_some(), "too soon");
+        // An idle window still draws at the next minute, to search again.
+        let at = (now / 60.0).floor() * 60.0 + 15.0;
+        let wait = app
+            .full_wind_recheck(at)
+            .expect("waits on its full-wind test");
+        assert!((wait.as_secs_f64() - 45.05).abs() < 1e-6, "{wait:?}");
+        // An hour on, past the mark, with nothing else changed.
+        app.find_full_wind_at(now + 3600.0);
+        assert_eq!(app.start_test_why_not(), None);
+        // The take removed, in the same minute: no longer found.
+        std::fs::remove_dir_all(&take).unwrap();
+        app.find_full_wind_at(now + 3600.0);
+        assert!(app.start_test_why_not().is_some(), "removed");
+        // With 24 Hours After off, nothing waits on the minute.
+        app.guided_after = false;
+        assert_eq!(app.full_wind_recheck(at), None);
         let _ = std::fs::remove_dir_all(&base);
     }
 
