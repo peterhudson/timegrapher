@@ -551,13 +551,15 @@ pub fn side_width(ui: &egui::Ui, names: &[(String, Rank)]) -> f32 {
 /// [`stack`] places them: each name joined to its line by a short tick of
 /// the line's colour, with an angled leader where it had to slide.
 /// Nothing is drawn over the plot itself. `id` keys the hovers, each the
-/// line and its name together.
-pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::Id) {
+/// line and its name together. Whether the pointer is on one, so the plot
+/// can leave out its own hover there.
+pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::Id) -> bool {
     let lines: Vec<&Across> = lines
         .iter()
         .filter(|l| l.y >= frame.top() && l.y <= frame.bottom())
         .collect();
     let ys: Vec<f32> = lines.iter().map(|l| l.y).collect();
+    let mut on = false;
     let at = stack(&ys, frame.top() - ROW_H / 2.0, frame.bottom() + ROW_H / 2.0);
     let right = frame.right();
     let painter = ui.painter_at(egui::Rect::from_min_max(
@@ -572,9 +574,18 @@ pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::
         let rect =
             egui::Rect::from_min_size(egui::pos2(right + SIDE_GAP, y - g.size().y / 2.0), g.size());
         painter.galley(rect.min, g, Color32::PLACEHOLDER);
+        // The line runs the map's width, so its hover opens by the pointer
+        // rather than under the target's left end.
         let line = egui::Rect::from_x_y_ranges(frame.left()..=right, l.y - 3.0..=l.y + 3.0);
-        hover(ui, id.with(("line", &l.name)), rect.union(line), &l.hover);
+        let r = ui.interact(
+            rect.union(line),
+            id.with(("line", &l.name)),
+            egui::Sense::hover(),
+        );
+        on |= r.hovered();
+        r.on_hover_text_at_pointer(&l.hover);
     }
+    on
 }
 
 #[cfg(test)]

@@ -235,8 +235,9 @@ pub fn draw(
             hover: l.hover.clone(),
         })
         .collect();
-    marks::lane_right(ui, *t.frame(), &across, id.with("wheel names"));
-    if let Some((t, per, v)) = resp.inner {
+    // On a wheel's line its own hover speaks, not the cell's.
+    let on_line = marks::lane_right(ui, *t.frame(), &across, id.with("wheel names"));
+    if let Some((t, per, v)) = resp.inner.filter(|_| !on_line) {
         let what = match v {
             Some(v) => size_text(m, v),
             None => "not read".into(),
