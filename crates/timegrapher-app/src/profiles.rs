@@ -2,6 +2,7 @@
 //! tocks, with the band most beats fall in and the marks the engine read
 //! the amplitude and beat error from.
 
+use crate::marks::{self, Rank, LANE, LANE_GAP, ROW_H};
 use crate::strip::side_colors;
 use crate::theme;
 use eframe::egui::{self, Color32};
@@ -48,8 +49,9 @@ fn level_label(value: f64, step: f64) -> String {
 const FACT_NAMES: [&str; 5] = ["Beats", "Unlock", "Drop", "Unlock to Drop", "Amplitude"];
 
 /// Below this height a plot's facts keep only their last two rows, Unlock
-/// to Drop and Amplitude; the rest are in the hover.
-const SHORT_PLOT: f32 = 100.0;
+/// to Drop and Amplitude; the rest are in the hover. Its names go inside
+/// it below the same height.
+const SHORT_PLOT: f32 = marks::SHORT_PLOT;
 /// The least height a side takes stacked: its name and a plot of 40 pt.
 const STACKED_MIN: f32 = 64.0;
 
@@ -471,15 +473,7 @@ pub fn draw(
         // A plot that would be short with its names outside takes them in:
         // the edges' along its top, the sounds' to their rings' hovers.
         let outside_h = ui.available_height() - top_lane - bottom_lane;
-        let short_id = ui.id().with(("profile short", k));
-        let was_short = ui.data(|d| d.get_temp::<bool>(short_id)).unwrap_or(false);
-        let short = outside_h
-            < if was_short {
-                SHORT_PLOT + HYSTERESIS
-            } else {
-                SHORT_PLOT - HYSTERESIS
-            };
-        ui.data_mut(|d| d.insert_temp(short_id, short));
+        let short = marks::short(ui, ui.id().with(("profile short", k)), outside_h);
         let (top_lane, bottom_lane) = if short {
             (ROW_H + 2.0, axis_h + 4.0)
         } else {
@@ -713,87 +707,13 @@ fn named_w(named: &[(&str, f32, f32)], label: &str) -> f32 {
     named.iter().find(|n| n.0 == label).map_or(0.0, |n| n.2)
 }
 
-/// The rectangle of an edge's name `w` wide at `left`, inside a short
-/// plot along its top.
-fn inside_name_rect(frame: egui::Rect, left: f32, w: f32) -> egui::Rect {
-    egui::Rect::from_min_size(
-        egui::pos2(left - 3.0, frame.top() + FACT_INSET),
-        egui::vec2(w + 6.0, ROW_H),
-    )
-}
-
-/// Where the edges' names go inside a short plot, one row along its top:
-/// `names` are each one's label, line x and width, left to right. Each is
-/// centred on its line within the plot; one that would touch the facts
-/// box (the span of x `facts`) starts or ends at its line instead, on the
-/// side away from the box, or isn't named if its line is under the box;
-/// one that would come within a word space of the name before it isn't
-/// named (its line's hover names it). Where the trace crosses its row
-/// there (`clear` says whether a span of x is clear of it), it ends at its
-/// line on the left, else starts at it on the right, whichever is clear;
-/// with neither, it isn't named rather than sit on the trace. A name
-/// beside its line never covers another edge's line, where it would read
-/// as that edge's name. Each name's left edge, or none.
-pub fn inside_places(
-    names: &[(&str, f32, f32)],
-    left: f32,
-    right: f32,
-    facts: (f32, f32),
-    clear: &dyn Fn(f32, f32) -> bool,
-) -> Vec<Option<f32>> {
-    let mut end = f32::NEG_INFINITY;
-    let on_facts = |a: f32, w: f32| a + w + 3.0 > facts.0 - 4.0 && a - 3.0 < facts.1 + 4.0;
-    // Over another edge's line, its box hiding it.
-    let on_line = |a: f32, w: f32, own: f32| {
-        names
-            .iter()
-            .any(|&(_, x, _)| x != own && x > a - 5.0 && x < a + w + 5.0)
-    };
-    names
+/// The edges' names, each its line's x and width, for [`marks`]: every
+/// edge is named strong.
+fn strong(named: &[(&str, f32, f32)]) -> Vec<(f32, f32, Rank)> {
+    named
         .iter()
-        .map(|&(_, x, w)| {
-            let mut at = (x - w / 2.0).clamp(left + 4.0, (right - 4.0 - w).max(left + 4.0));
-            if on_facts(at, w) {
-                // Beside its line, away from the box; its line under the
-                // box, unnamed rather than over the facts (its line's
-                // hover names it).
-                at = match [x + 4.0, x - w - 4.0].into_iter().find(|&a| {
-                    !on_facts(a, w)
-                        && !on_line(a, w, x)
-                        && a - 3.0 >= left + 1.0
-                        && a + w + 3.0 <= right - 1.0
-                }) {
-                    Some(a) => a,
-                    None => return None,
-                };
-            }
-            if !clear(at - 3.0, at + w + 3.0) {
-                let fits = |a: f32| {
-                    a - 3.0 >= (left + 1.0).max(end + NAME_GAP)
-                        && a + w + 3.0 <= right - 1.0
-                        && !on_facts(a, w)
-                        && !on_line(a, w, x)
-                        && clear(a - 3.0, a + w + 3.0)
-                };
-                at = [x - w - 5.0, x + 5.0].into_iter().find(|&a| fits(a))?;
-            }
-            if at - 3.0 < end + NAME_GAP {
-                return None;
-            }
-            end = at + w + 3.0;
-            Some(at)
-        })
+        .map(|&(_, x, w)| (x, w, Rank::Strong))
         .collect()
-}
-
-/// Whether the trace (`tops`, plot coordinates) stays below the
-/// row of edge names inside a short plot from screen x `a` to `b`.
-fn row_clear(t: &egui_plot::PlotTransform, tops: &[[f64; 2]], a: f32, b: f32) -> bool {
-    let row_foot = t.frame().top() + FACT_INSET + ROW_H;
-    tops.iter()
-        .map(|p| (t.position_from_point_x(p[0]), t.position_from_point_y(p[1])))
-        .filter(|(x, _)| (a..=b).contains(x))
-        .all(|(_, y)| y > row_foot + 1.0)
 }
 
 /// The edges' names inside a short plot, as a plot item so they sit over
@@ -828,12 +748,12 @@ impl egui_plot::PlotItem for EdgeNames {
             .map(|&(l, v, w, _)| (l, transform.position_from_point_x(v), w))
             .filter(|n| n.1 >= frame.left() && n.1 <= frame.right())
             .collect();
-        let at = inside_places(
-            &named,
+        let at = marks::inside(
+            &strong(&named),
             frame.left(),
             frame.right(),
             self.facts.span(transform),
-            &|a, b| row_clear(transform, &self.tops, a, b),
+            &|a, b| marks::row_clear(transform, &self.tops, a, b),
         );
         // The names go on after every line, on their boxes, so no other
         // edge's line runs through one.
@@ -850,7 +770,7 @@ impl egui_plot::PlotItem for EdgeNames {
             };
             let from = match at {
                 Some(a) => {
-                    let r = inside_name_rect(frame, a, *w);
+                    let r = marks::inside_rect(frame, a, *w);
                     names.push((r, a, *label));
                     r.bottom()
                 }
@@ -864,12 +784,8 @@ impl egui_plot::PlotItem for EdgeNames {
             }
         }
         for (r, a, label) in names {
-            shapes.push(egui::Shape::rect_filled(r, 3.0, self.fill));
-            let g = ui.fonts_mut(|f| {
-                f.layout_no_wrap(label.to_string(), theme::semibold(11.5), self.ink)
-            });
-            let p = egui::pos2(a, r.center().y - g.size().y / 2.0);
-            shapes.push(egui::Shape::galley(p, g, self.ink));
+            let g = marks::galley(ui, label, Rank::Strong, false);
+            shapes.extend(marks::inside_name(r, a, g, self.fill));
         }
     }
 
@@ -896,67 +812,19 @@ impl egui_plot::PlotItem for EdgeNames {
     }
 }
 
-/// One row of names in a lane, points tall.
-const ROW_H: f32 = 15.0;
-/// A lane of names: two rows.
-const LANE: f32 = 2.0 * ROW_H;
-/// The short gap between the plot and its nearest row of names, so each
-/// line or leader shows outside the plot before it reaches its name.
-const LANE_GAP: f32 = 6.0;
 /// The time axis's labels under the sounds' lane.
 const AXIS_H: f32 = 16.0;
-/// The room kept between two names in a row: a word space and more, so
-/// two names side by side never read as one phrase.
-const NAME_GAP: f32 = 12.0;
-/// How far an overlap must start or end before a name changes row, so
-/// names don't hop between frames as the averaged sound drifts.
-const HYSTERESIS: f32 = 2.0;
 
 /// How many rows of names a side's lane took last frame (`up` for the
 /// edges' above the plot): one, or two where names crowded.
 fn lane_rows(ui: &egui::Ui, side: usize, up: bool) -> u8 {
-    let rows: Vec<u8> = ui
-        .data(|d| d.get_temp(lane_id(ui, side, up)))
-        .unwrap_or_default();
+    let rows = marks::rows_were(ui, lane_id(ui, side, up));
     1 + rows.into_iter().max().unwrap_or(0).min(1)
 }
 
 /// Where a lane keeps the rows its names took, for the next frame.
 fn lane_id(ui: &egui::Ui, side: usize, up: bool) -> egui::Id {
     ui.id().with(("profile lane", side, up))
-}
-
-/// Where each name in a lane goes: `names` are each one's centre (its
-/// line's or ring's x) and width, left to right; `was` is the row each was
-/// in last frame. Each name is centred on its mark, kept within
-/// `left..right`, and goes one row further out where it would touch the
-/// one before it; where the second row is taken too, it slides right of
-/// the name there (drawn with an angled leader). Returns each name's left
-/// edge and row.
-pub fn place_names(names: &[(f32, f32)], left: f32, right: f32, was: &[u8]) -> Vec<(f32, u8)> {
-    let mut ends = [f32::NEG_INFINITY; 2];
-    let mut out = Vec::with_capacity(names.len());
-    for (i, &(x, w)) in names.iter().enumerate() {
-        let at = (x - w / 2.0).clamp(left, (right - w).max(left));
-        let before = was.get(i).copied().unwrap_or(0);
-        // The overlap with the name before in the first row, the gap
-        // between names included: a name goes out once it overlaps by
-        // the hysteresis, and comes back once it clears by as much.
-        let overlap = ends[0] + NAME_GAP - at;
-        let out_row = if before == 1 {
-            overlap > -HYSTERESIS
-        } else {
-            overlap > HYSTERESIS
-        };
-        let (at, row) = if !out_row {
-            (at, 0)
-        } else {
-            (at.max(ends[1] + NAME_GAP).min((right - w).max(left)), 1)
-        };
-        ends[row as usize] = at + w;
-        out.push((at, row));
-    }
-    out
 }
 
 /// The time axis under a side, in ms, its labels where the plot's
@@ -1056,47 +924,29 @@ fn label_marks(
     // A lane laid out and drawn: `marks` are each name, its time and its
     // hover's words; `up` for the edges above the plot.
     let lane = |marks: Vec<(&str, f64)>, up: bool| {
-        let font = if up {
-            theme::semibold(11.5)
-        } else {
-            egui::FontId::proportional(11.5)
-        };
-        let ink = if up { pal.text } else { pal.text_secondary };
         let mut marks: Vec<(f32, &str, f64)> = marks
             .into_iter()
             .map(|(l, v)| (t.position_from_point_x(v + dx), l, v))
             .filter(|(x, _, _)| *x >= frame.left() && *x <= frame.right())
             .collect();
         marks.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // The edges' names semibold, the sounds' regular, italic and
+        // secondary.
+        let rank = if up { Rank::Strong } else { Rank::Faint };
         let galleys: Vec<_> = marks
             .iter()
-            .map(|(_, l, _)| {
-                let mut job = egui::text::LayoutJob::single_section(
-                    l.to_string(),
-                    egui::TextFormat {
-                        font_id: font.clone(),
-                        color: ink,
-                        italics: !up,
-                        ..Default::default()
-                    },
-                );
-                job.wrap.max_rows = 1;
-                ui.fonts_mut(|f| f.layout_job(job))
-            })
+            .map(|(_, l, _)| marks::galley(ui, l, rank, !up))
             .collect();
         // A short plot: the edges' names are drawn in it, under the trace
         // (see `EdgeNames`), and the sounds' are their rings' hovers.
         if let Some(facts) = inside {
             let hover = |hit: egui::Rect, label: &str, v: f64| {
-                ui.interact(
-                    hit,
+                marks::hover(
+                    ui,
                     ui.id().with(("mark", side, label)),
-                    egui::Sense::hover(),
-                )
-                .on_hover_text(format!(
-                    "{label}: {}",
-                    format!("{v:+.2} ms").replace('-', "−")
-                ));
+                    hit,
+                    format!("{label}: {}", format!("{v:+.2} ms").replace('-', "−")),
+                );
             };
             if up {
                 let named: Vec<(&str, f32, f32)> = marks
@@ -1104,13 +954,17 @@ fn label_marks(
                     .zip(&galleys)
                     .map(|((x, l, _), g)| (*l, *x, g.size().x))
                     .collect();
-                let at = inside_places(&named, frame.left(), frame.right(), facts, &|a, b| {
-                    row_clear(t, tops, a, b)
-                });
+                let at = marks::inside(
+                    &strong(&named),
+                    frame.left(),
+                    frame.right(),
+                    facts,
+                    &|a, b| marks::row_clear(t, tops, a, b),
+                );
                 names_in
                     .borrow_mut()
                     .extend(named.iter().zip(&at).filter_map(|((l, _, _), a)| {
-                        a.map(|a| inside_name_rect(frame, a, named_w(&named, l)))
+                        a.map(|a| marks::inside_rect(frame, a, named_w(&named, l)))
                     }));
                 for ((x, label, v), at) in marks.iter().zip(at) {
                     if let Some(y) = trace_y(*v + 0.0) {
@@ -1121,7 +975,7 @@ fn label_marks(
                         frame.top()..=frame.bottom(),
                     );
                     let hit = at.map_or(line, |a| {
-                        line.union(inside_name_rect(frame, a, named_w(&named, label)))
+                        line.union(marks::inside_rect(frame, a, named_w(&named, label)))
                     });
                     hover(hit, label, *v);
                 }
@@ -1140,14 +994,18 @@ fn label_marks(
             return;
         }
         let id = lane_id(ui, side, up);
-        let was: Vec<u8> = ui.data(|d| d.get_temp(id)).unwrap_or_default();
-        let names: Vec<(f32, f32)> = marks
+        let names: Vec<(f32, f32, Rank)> = marks
             .iter()
             .zip(&galleys)
-            .map(|((x, _, _), g)| (*x, g.size().x))
+            .map(|((x, _, _), g)| (*x, g.size().x, Rank::Strong))
             .collect();
-        let placed = place_names(&names, frame.left(), frame.right(), &was);
-        ui.data_mut(|d| d.insert_temp(id, placed.iter().map(|p| p.1).collect::<Vec<u8>>()));
+        let placed = marks::place(
+            &names,
+            frame.left(),
+            frame.right(),
+            &marks::rows_were(ui, id),
+        );
+        marks::keep_rows(ui, id, &placed);
         // The names go on last, each on a box of the panel's colour, so no
         // other mark's line runs through one.
         let mut names = Vec::new();
@@ -1199,19 +1057,15 @@ fn label_marks(
                 x - 3.0..=x + 3.0,
                 frame.top()..=frame.bottom(),
             ));
-            ui.interact(
-                hit,
+            marks::hover(
+                ui,
                 ui.id().with(("mark", side, *label)),
-                egui::Sense::hover(),
-            )
-            .on_hover_text(format!(
-                "{label}: {}",
-                format!("{v:+.2} ms").replace('-', "−")
-            ));
+                hit,
+                format!("{label}: {}", format!("{v:+.2} ms").replace('-', "−")),
+            );
         }
         for (name, g) in names {
-            painter.rect_filled(name.expand(2.0), 2.0, ui.visuals().panel_fill);
-            painter.galley(name.min, g, ink);
+            marks::paint_lane_name(ui, &painter, name, g);
         }
     };
     if opt.edges {
@@ -1252,40 +1106,6 @@ mod tests {
         let mut seen = marks.clone();
         seen.dedup();
         assert_eq!(seen, marks);
-    }
-
-    /// Names in a lane: centred on their marks, out a row where they would
-    /// touch, slid along where the second row is taken, inside the plot,
-    /// and kept in their row while an overlap is within the hysteresis.
-    #[test]
-    fn names_that_crowd_move_out_a_row() {
-        // Apart: all in the first row, centred.
-        let p = place_names(&[(100.0, 40.0), (300.0, 40.0)], 0.0, 500.0, &[]);
-        assert_eq!(p, vec![(80.0, 0), (280.0, 0)]);
-        // Peak would touch Drop: out a row, still centred on its line.
-        let p = place_names(&[(100.0, 40.0), (130.0, 40.0)], 0.0, 500.0, &[]);
-        assert_eq!(p, vec![(80.0, 0), (110.0, 1)]);
-        // Three together: the third slides right of the second's name.
-        let p = place_names(
-            &[(100.0, 40.0), (110.0, 40.0), (120.0, 40.0)],
-            0.0,
-            500.0,
-            &[],
-        );
-        assert_eq!(p[2].1, 1);
-        assert!(p[2].0 >= p[1].0 + 40.0 + NAME_GAP - 1e-3, "{p:?}");
-        // Kept inside the plot's width.
-        let p = place_names(&[(5.0, 40.0), (495.0, 40.0)], 0.0, 500.0, &[]);
-        assert_eq!(p, vec![(0.0, 0), (460.0, 0)]);
-        // A word space apart is too close: two names side by side would
-        // read as one phrase.
-        let p = place_names(&[(100.0, 40.0), (147.0, 40.0)], 0.0, 500.0, &[]);
-        assert_eq!(p[1].1, 1, "{p:?}");
-        // Within the hysteresis a name stays in the row it was in: here
-        // the gap is 1 pt more than NAME_GAP.
-        let near = [(100.0, 40.0), (141.0 + NAME_GAP, 40.0)];
-        assert_eq!(place_names(&near, 0.0, 500.0, &[0, 0])[1].1, 0);
-        assert_eq!(place_names(&near, 0.0, 500.0, &[0, 1])[1].1, 1);
     }
 
     #[test]
@@ -1461,104 +1281,6 @@ mod tests {
             ..one.clone()
         };
         assert_eq!(clear.layout(&t).0, vec![3, 4]);
-    }
-
-    /// Inside a short plot the edges' names are one row: centred on their
-    /// lines; Unlock right of its line where the facts box has the corner;
-    /// Peak unnamed where it would crowd Drop (its line's hover names it).
-    #[test]
-    fn a_short_plots_edge_names_keep_one_row() {
-        let at = inside_places(
-            &[
-                ("Unlock", 400.0, 40.0),
-                ("Drop", 700.0, 30.0),
-                ("Peak", 900.0, 30.0),
-            ],
-            0.0,
-            1000.0,
-            (0.0, 200.0),
-            &|_, _| true,
-        );
-        assert_eq!(at, vec![Some(380.0), Some(685.0), Some(885.0)]);
-        // Unlock under the facts box: it starts at its line, right of it.
-        let at = inside_places(
-            &[("Unlock", 210.0, 40.0)],
-            0.0,
-            1000.0,
-            (0.0, 200.0),
-            &|_, _| true,
-        );
-        assert_eq!(at, vec![Some(214.0)]);
-        // Its line under the box: unnamed, the facts left clear.
-        let at = inside_places(
-            &[("Unlock", 150.0, 40.0)],
-            0.0,
-            1000.0,
-            (0.0, 200.0),
-            &|_, _| true,
-        );
-        assert_eq!(at, vec![None]);
-        // Peak 15 pt after Drop: not named.
-        let at = inside_places(
-            &[("Drop", 700.0, 30.0), ("Peak", 715.0, 30.0)],
-            0.0,
-            1000.0,
-            (0.0, 0.0),
-            &|_, _| true,
-        );
-        assert_eq!(at, vec![Some(685.0), None]);
-    }
-
-    /// Where the trace crosses a name's row at its line, the name ends at
-    /// the line on the left if that is clear, else starts at it on the
-    /// right; crossed on both sides, it isn't named (its line's hover
-    /// names it) rather than sit on the trace. Beside a facts box in the
-    /// right corner, it goes left of its line.
-    #[test]
-    fn a_short_plots_name_takes_a_clear_side() {
-        let names = [("Drop", 700.0, 30.0)];
-        // The trace in the row from `lo` to `hi`.
-        let crossing = |lo: f32, hi: f32| move |a: f32, b: f32| b < lo || a > hi;
-        let at = inside_places(&names, 0.0, 1000.0, (0.0, 0.0), &crossing(660.0, 700.0));
-        assert_eq!(at, vec![Some(705.0)], "right of its line");
-        let at = inside_places(&names, 0.0, 1000.0, (0.0, 0.0), &crossing(700.0, 760.0));
-        assert_eq!(at, vec![Some(665.0)], "left of its line");
-        let at = inside_places(&names, 0.0, 1000.0, (0.0, 0.0), &|_, _| false);
-        assert_eq!(
-            at,
-            vec![None],
-            "crossed both sides: unnamed, not on the trace"
-        );
-        // The facts box in the right corner: a name it would touch ends at
-        // its line, left of it, away from the box.
-        let at = inside_places(
-            &[("Peak", 790.0, 30.0)],
-            0.0,
-            1000.0,
-            (800.0, 1000.0),
-            &|_, _| true,
-        );
-        assert_eq!(at, vec![Some(756.0)]);
-        // Drop crossed on both sides is unnamed; Peak, 20 pt after it and
-        // crossed at its line and on its right, isn't named left of its
-        // line over Drop's, where it would read as Drop's name.
-        let at = inside_places(
-            &[("Drop", 700.0, 30.0), ("Peak", 720.0, 20.0)],
-            0.0,
-            1000.0,
-            (0.0, 0.0),
-            &|a, b| b < 684.0 || (a > 690.0 && b < 722.0) || a > 736.0,
-        );
-        assert_eq!(at, vec![None, None]);
-        // 60 pt after it, clear of Drop's line, it is.
-        let at = inside_places(
-            &[("Drop", 700.0, 30.0), ("Peak", 760.0, 20.0)],
-            0.0,
-            1000.0,
-            (0.0, 0.0),
-            &|a, b| b < 684.0 || (a > 690.0 && b < 705.0) || (a > 712.0 && b < 760.0) || a > 775.0,
-        );
-        assert_eq!(at, vec![None, Some(735.0)]);
     }
 
     #[test]
