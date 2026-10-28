@@ -125,8 +125,8 @@ pub const QUARTZ_HELP: &[&str] = &[
      asks first, then removes it: rates from that input are then read on its own clock again, uncorrected, \
      until it is timed and kept afresh. Do this after changing the microphone or sound card \
      behind an input's name.",
-    "The command line and the MCP server read the same list (`timegrapher clock list`, \
-     `timegrapher clock forget`), so Forget here forgets it for them too.",
+    "The command line and the MCP server read the same list, so \
+     Forget here forgets it for them too.",
 ];
 
 pub const LIBRARY_HELP: &[&str] = &[

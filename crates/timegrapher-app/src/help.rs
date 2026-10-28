@@ -42,8 +42,8 @@ pub const RATE: &[&str] = &[
      result with a Keep button; a busy computer delivers sound less evenly, so the offer \
      can come later. The result \
      is only right if the computer's clock is kept by internet time. Once the error is \
-     kept (by Keep, `timegrapher clock measure --save`, or `clock from-log --save` \
-     after a recording with a clock log), the corrected rate is in the big \
+     kept (by Keep, or from the command line, which can also measure it from a \
+     recording's clock log), the corrected rate is in the big \
      figure's hover. Settings > Microphone > Quartz Correction lists each input's. Until then the rate is read on the card's clock alone, as tg reads \
      it. The big figure stays on the card's clock, the same clock tg and an analysis of the \
      recording read, so the two compare directly.",
@@ -51,7 +51,7 @@ pub const RATE: &[&str] = &[
      the run so far: a property of the measurement, not of the watch. \
      It needs about 30 s of unbroken beats. Anything the ± can't show (a short stretch, \
      missing beats) is named beside the title. Stopped after a long run, a line \
-     under the figure gives the whole take as timegrapher session reads it, with \
+     under the figure gives the whole take as the command line reads it, with \
      the 5th to 95th percentile of its 10-second rates.",
 ];
 
@@ -213,7 +213,7 @@ pub const CHARTS: &[&str] = &[
 pub const STEADINESS: &[&str] = &[
     "How the rate, the amplitude and the beat error each change over the session, in \
      time order: cycles, steps and trends. The tests need about 5 minutes of beats; \
-     they are timegrapher series on the command line.",
+     the command line runs the same tests.",
     "Info, the i at the right, gives what the tests found and their statistics. A rate \
      dot is a 10 s reading; an amplitude or beat error dot is a 2 s window.",
     "Each view has its icon under Analysis. Periods: how strongly the readings repeat. \
@@ -244,7 +244,7 @@ pub const POSITIONS_TEST: &[&str] = &[
      the time under Settle (20 s unless set otherwise), then is measured for the time \
      under Measure (60 s unless set otherwise); the banner says which position comes \
      next, and Start Measurement goes on once the watch is turned. The table fills in \
-     as each position is measured, with the figures `timegrapher session` gives for the \
+     as each position is measured, with the figures the command line gives for the \
      same stretches: each rate, its difference from the mean, amplitude and beat error, \
      then the means, the largest difference between the rates and vertical less \
      horizontal.",
@@ -274,7 +274,7 @@ pub const ISOCHRONISM: &[&str] = &[
      them, and the upright line marks where it turns, if it does.",
     "The curve needs the amplitude to fall through at least three 2° bands with 10 \
      readings in each, which a session of some hours from full wind gives. It comes \
-     from the same tests as Steadiness, the same as `timegrapher series`.",
+     from the same tests as Steadiness, which the command line runs too.",
 ];
 
 pub const HISTOGRAMS: &[&str] = &[
