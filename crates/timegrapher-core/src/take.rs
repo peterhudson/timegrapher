@@ -314,6 +314,18 @@ pub fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String
     Ok((start, stop))
 }
 
+/// Whether entry `e` has nothing to read: its stretch settles right to
+/// its end, which the app saves as `start_s` equal to `end_s` (the watch
+/// was put in a position and moved again, or painted over, before it
+/// settled). Every surface leaves such an entry out of a take's readings
+/// rather than failing on it as [`span_of`] would: `session` and
+/// `regress` with a note, the Watches list by reading the last entry with
+/// something to read. An entry whose settling runs past its `end_s` is not
+/// one of these.
+pub fn reads_nothing(e: &RecordingEntry) -> bool {
+    matches!((e.start_s, e.end_s), (Some(a), Some(b)) if a == b)
+}
+
 /// The lift angle amplitudes are worked out at when neither the reader,
 /// the session file nor the calibre gives one, degrees.
 pub const DEFAULT_LIFT_DEG: f64 = 52.0;
@@ -670,6 +682,22 @@ pub fn measure_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An entry whose stretch starts where it ends has nothing to read;
+    /// one with a stretch, or no times at all, has.
+    #[test]
+    fn an_entry_that_starts_where_it_ends_reads_nothing() {
+        let e = |start_s, end_s| RecordingEntry {
+            file: ".".into(),
+            start_s,
+            end_s,
+            ..Default::default()
+        };
+        assert!(reads_nothing(&e(Some(10.0), Some(10.0))));
+        assert!(!reads_nothing(&e(Some(10.0), Some(40.0))));
+        assert!(!reads_nothing(&e(Some(40.0), None)));
+        assert!(!reads_nothing(&e(None, None)));
+    }
 
     /// A clock log every 30 s over an hour, the card `ppm` slow.
     fn log_text(ppm: f64) -> String {
