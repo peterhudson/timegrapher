@@ -315,17 +315,21 @@ mod tests {
 
     #[test]
     fn a_long_run_and_a_series_say_their_caveats_for_the_whole_take() {
+        let caveats = json!([
+            { "code": "sides_by_count", "count": 1 },
+            { "code": "beat_error_as_size" },
+            { "code": "clock_sources_disagree", "usb_ppm": 120.0, "log_ppm": 20.0, "log_ppm_sd": 2.0 }]);
+        // In core's words, each said once for the whole take.
+        let said: Vec<Value> = caveats
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| json!({ "where": null, "text": fact(c, None).unwrap() }))
+            .collect();
+        assert_eq!(said.len(), 3);
         for schema in ["timegrapher.long/1", "timegrapher.series/2"] {
-            let doc = json!({ "schema": schema, "caveats": [
-                { "code": "sides_by_count", "count": 1 }, { "code": "beat_error_as_size" }] });
-            assert_eq!(
-                limits(&doc),
-                [
-                    json!({ "where": null, "text": "At one break Tick and Tock were not told apart by their sound, so the sides after it are named by the beat count across it." }),
-                    json!({ "where": null, "text": "The beat error's sign differs either side of a cut in the stretch, so it is given as a size." }),
-                ],
-                "{schema}"
-            );
+            let doc = json!({ "schema": schema, "caveats": caveats });
+            assert_eq!(limits(&doc), said, "{schema}");
         }
     }
 }
