@@ -20862,17 +20862,23 @@ mod tests {
         );
         let info = app.info("test", 48000, 16);
         app.session.recorder = Some(Recorder::start(&base.join("live"), info).unwrap());
-        let block = timegrapher_core::capture::Block {
-            samples: audio.samples.clone(),
-            at: std::time::SystemTime::now(),
-        };
-        app.session
-            .recorder
-            .as_mut()
-            .unwrap()
-            .write(&block)
-            .unwrap();
-        for samples in block.samples.chunks(960) {
+        // A second of sound at a time, each arriving as its last frame is
+        // heard, as the capture delivers it, so the clock log reads as a
+        // real take's does.
+        let began = std::time::SystemTime::now();
+        for (k, second) in audio.samples.chunks(48000).enumerate() {
+            let block = timegrapher_core::capture::Block {
+                samples: second.to_vec(),
+                at: began + std::time::Duration::from_secs(k as u64 + 1),
+            };
+            app.session
+                .recorder
+                .as_mut()
+                .unwrap()
+                .write(&block)
+                .unwrap();
+        }
+        for samples in audio.samples.chunks(960) {
             app.live.as_mut().unwrap().push(samples);
         }
         app.masked = vec![(30.0, 32.0)];
@@ -23114,6 +23120,9 @@ mod tests {
         app.session.recorder = Some(Recorder::start(&base.join("kept"), info).unwrap());
         app.session.set_settle_s(SETTLE_S);
         let third = audio.samples.len() / 3;
+        // Each 30 s block arrives as its last frame is heard, as the
+        // capture delivers sound, so the clock log reads as a real take's.
+        let began = std::time::SystemTime::now();
         let moves = [
             (0, None),
             (1, Some((Position::DialUp, Position::DialDown))),
@@ -23128,7 +23137,7 @@ mod tests {
             let r = app.session.recorder.as_mut().unwrap();
             r.write(&timegrapher_core::capture::Block {
                 samples: audio.samples[i * third..(i + 1) * third].to_vec(),
-                at: std::time::SystemTime::now(),
+                at: began + std::time::Duration::from_secs(30 * (i as u64 + 1)),
             })
             .unwrap();
         }
