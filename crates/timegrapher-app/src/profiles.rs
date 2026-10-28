@@ -106,6 +106,12 @@ struct FactBox {
     /// right corner where it would cover the trace in the left and not
     /// there.
     tops: Vec<[f64; 2]>,
+    /// Where `held` keeps the rows and corner last drawn, and those rows'
+    /// count and whether in the right corner: another layout must clear
+    /// the trace by `FACT_HOLD` more, so a trace on the edge doesn't make
+    /// the box flick between two from frame to frame.
+    held: egui::Id,
+    was: Option<(usize, bool)>,
     /// The values' column, right-aligned, as wide as the widest value on
     /// either side; and the names' column likewise.
     name_w: f32,
@@ -128,6 +134,9 @@ const FACT_PAD_SHORT: f32 = 3.0;
 const FACT_ROW_SHORT: f32 = 14.0;
 /// Between the names' column and the values'.
 const FACT_GAP: f32 = 16.0;
+/// How much further from the trace a facts box must be to take a layout
+/// other than the one last drawn, points.
+const FACT_HOLD: f32 = 6.0;
 /// The facts' type size.
 const FACT_SIZE: f32 = 12.0;
 
@@ -203,11 +212,14 @@ impl FactBox {
         )
     }
 
-    /// Whether the trace runs under `r`.
-    fn covers(&self, t: &egui_plot::PlotTransform, r: egui::Rect) -> bool {
+    /// Whether the trace runs under `r`, or within `more` points under it
+    /// short of the plot's foot, where a trace at rest lies.
+    fn covers(&self, t: &egui_plot::PlotTransform, r: egui::Rect, more: f32) -> bool {
+        let edge = r.bottom() + 2.0;
+        let edge = edge + more.min(t.frame().bottom() - 0.5 - edge).max(0.0);
         self.tops.iter().any(|p| {
             let x = t.position_from_point_x(p[0]);
-            x >= r.left() && x <= r.right() && t.position_from_point_y(p[1]) < r.bottom() + 2.0
+            x >= r.left() && x <= r.right() && t.position_from_point_y(p[1]) < edge
         })
     }
 
@@ -216,7 +228,8 @@ impl FactBox {
     /// and not the right. Where the trace runs under both corners the
     /// box keeps fewer rows, Amplitude last, and none where even one row
     /// would sit on it: the picture comes first, and the box's hover has
-    /// all five.
+    /// all five. A layout other than the one last drawn must clear the
+    /// trace by [`FACT_HOLD`] more.
     fn layout(&self, t: &egui_plot::PlotTransform) -> (Vec<usize>, egui::Rect) {
         let shown = self.shown(t);
         if self.tops.is_empty() || shown.is_empty() {
@@ -225,8 +238,13 @@ impl FactBox {
         }
         for n in (1..=shown.len()).rev() {
             let (left, right) = self.corners(t, n);
-            for r in [left, right] {
-                if !self.covers(t, r) {
+            for (r, right) in [(left, false), (right, true)] {
+                let more = if self.was.is_none_or(|w| w == (n, right)) {
+                    0.0
+                } else {
+                    FACT_HOLD
+                };
+                if !self.covers(t, r, more) {
                     return (shown[shown.len() - n..].to_vec(), r);
                 }
             }
@@ -255,6 +273,10 @@ impl egui_plot::PlotItem for FactBox {
         shapes: &mut Vec<egui::Shape>,
     ) {
         let (shown, r) = self.layout(transform);
+        // Kept for the next frame's layout, as `held` reads it.
+        let right = r.right() >= transform.frame().right() - FACT_INSET - 0.5;
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(self.held, (shown.len(), right)));
         if shown.is_empty() {
             return;
         }
@@ -398,7 +420,9 @@ pub fn draw(
     );
     let none_w = widest(ui, [NO_FACTS].into_iter());
     let box_fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
+    let (here, ctx) = (ui.id(), ui.ctx().clone());
     let fact_box = |k: usize, plot_h: f32| {
+        let held = here.with(("facts box", k));
         let rows = match &facts[k] {
             Some(f) => FACT_NAMES
                 .iter()
@@ -411,6 +435,8 @@ pub fn draw(
             base: egui_plot::PlotItemBase::new(format!("{} facts", ["Tick", "Tock"][k])),
             plot_h,
             tops: Vec::new(),
+            held,
+            was: ctx.data(|d| d.get_temp(held)),
             name_w: if facts[k].is_some() { name_w } else { none_w },
             value_w: if facts[k].is_some() { value_w } else { 0.0 },
             short_name_w,
@@ -1309,6 +1335,8 @@ mod tests {
             rows: vec![(String::new(), String::new()); 5],
             plot_h: 150.0,
             tops: Vec::new(),
+            held: egui::Id::new("held"),
+            was: None,
             name_w: 90.0,
             value_w: 60.0,
             short_name_w: 80.0,
@@ -1381,6 +1409,58 @@ mod tests {
         );
         // It adds nothing to the plot's bounds.
         assert!(!egui_plot::PlotItem::bounds(&b).is_valid());
+    }
+
+    /// A trace on the edge of the box's rows doesn't make it flick from
+    /// frame to frame: another layout than the one last drawn must clear
+    /// the trace by `FACT_HOLD` more.
+    #[test]
+    fn a_facts_box_holds_its_layout_over_a_trace_on_the_edge() {
+        let frame = egui::Rect::from_min_size(egui::pos2(50.0, 30.0), egui::vec2(300.0, 44.0));
+        let t = egui_plot::PlotTransform::new(
+            frame,
+            egui_plot::PlotBounds::from_min_max([0.0, 0.0], [1.0, 1.0]),
+            egui::Vec2b::new(false, false),
+        );
+        // Two rows end 68 pt down; the trace runs at 73, clear of them by
+        // 5 pt: more than the 2 pt any layout needs, less than another
+        // layout's 2 pt and `FACT_HOLD`.
+        let y = (frame.bottom() - 73.0) as f64 / 44.0;
+        let b = FactBox {
+            base: egui_plot::PlotItemBase::new("Tick facts".into()),
+            rows: vec![(String::new(), String::new()); 5],
+            plot_h: 44.0,
+            tops: (0..=10).map(|i| [i as f64 / 10.0, y]).collect(),
+            held: egui::Id::new("held"),
+            was: None,
+            name_w: 90.0,
+            value_w: 60.0,
+            short_name_w: 80.0,
+            short_value_w: 40.0,
+            fill: Color32::WHITE,
+            name_color: Color32::GRAY,
+            value_color: Color32::BLACK,
+        };
+        assert_eq!(b.rect(frame, 2).bottom(), 68.0);
+        // First drawn, or drawn with two rows last frame: two rows.
+        assert_eq!(b.layout(&t).0, vec![3, 4]);
+        let two = FactBox {
+            was: Some((2, false)),
+            ..b.clone()
+        };
+        assert_eq!(two.layout(&t).0, vec![3, 4]);
+        // Drawn with one row last frame, it keeps one until the trace is
+        // clear by the hold as well, or lies at the plot's foot.
+        let one = FactBox {
+            was: Some((1, false)),
+            ..b.clone()
+        };
+        assert_eq!(one.layout(&t).0, vec![4]);
+        let clear = FactBox {
+            tops: (0..=10).map(|i| [i as f64 / 10.0, 0.0]).collect(),
+            ..one.clone()
+        };
+        assert_eq!(clear.layout(&t).0, vec![3, 4]);
     }
 
     /// Inside a short plot the edges' names are one row: centred on their
