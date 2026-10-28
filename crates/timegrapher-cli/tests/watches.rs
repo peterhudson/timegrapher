@@ -158,6 +158,11 @@ fn watches_lists_and_shows_the_library_as_json() {
         (r["beat_error_ms"].as_f64().unwrap().abs() - 0.6).abs() < 0.2,
         "{t}"
     );
+    // The watch was made to swing 270°.
+    assert!(
+        (r["amplitude_deg"].as_f64().unwrap() - 270.0).abs() < 5.0,
+        "{t}"
+    );
     assert_eq!(t["at_end"]["rate_s_per_day"], 4.2);
     assert_eq!(t["at_end"]["beat_error_ms"], -0.6);
     // Kept in the settings folder, not in the library, and read from there
