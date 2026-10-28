@@ -351,13 +351,14 @@ fn a_chat_app_reads_a_watch() {
     let limits = r["_meta"]["timegrapher/limits"].as_array().unwrap();
     assert!(limits
         .iter()
-        .any(|l| l["text"].as_str().unwrap().contains("lift angle of 52°")));
+        .any(|l| l["text"].as_str().unwrap().contains("the default 52°")));
     let said = r["content"][0]["text"].as_str().unwrap();
     assert!(said.starts_with("Readings: rate +"), "{said}");
     assert!(!said.contains("confidence"), "{said}");
     assert!(
         said.contains(
-            "- No calibre or lift angle was given, so the amplitude assumes a lift angle of 52°"
+            "- The lift angle is the default 52°, not one set for the calibre. Every amplitude \
+             is worked out from it."
         ),
         "{said}"
     );
