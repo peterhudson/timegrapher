@@ -18,7 +18,7 @@ use timegrapher_core::shape::{self, ShapeConfig};
 use timegrapher_core::stream::{BeatLog, StreamConfig};
 use timegrapher_core::{analysis_take, audio, beats, breaks, take, timing, twostate};
 
-pub const MANIFEST: &str = "session.toml";
+pub use timegrapher_core::take::MANIFEST;
 
 pub struct Options {
     pub bph: Option<u32>,
