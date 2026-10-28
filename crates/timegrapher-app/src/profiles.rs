@@ -58,13 +58,14 @@ const STACKED_MIN: f32 = 64.0;
 /// A side's facts before it has beats.
 const NO_FACTS: &str = "Not enough beats yet";
 
+/// A time from the reference point as the Profile words it: "−0.27 ms".
+pub fn ms_text(v: f64) -> String {
+    format!("{v:+.2} ms").replace('-', "−")
+}
+
 /// One side's facts with their units, in [`FACT_NAMES`]' order.
 pub fn facts(p: &TickProfile) -> [String; 5] {
-    let ms = |v: Option<f64>| {
-        v.map_or("–".to_string(), |v| {
-            format!("{v:+.2} ms").replace('-', "−")
-        })
-    };
+    let ms = |v: Option<f64>| v.map_or("–".to_string(), ms_text);
     [
         p.beats.to_string(),
         ms(p.unlock_ms),
@@ -945,7 +946,7 @@ fn label_marks(
                     ui,
                     ui.id().with(("mark", side, label)),
                     hit,
-                    format!("{label}: {}", format!("{v:+.2} ms").replace('-', "−")),
+                    format!("{label}: {}", ms_text(v)),
                 );
             };
             if up {
@@ -1061,7 +1062,7 @@ fn label_marks(
                 ui,
                 ui.id().with(("mark", side, *label)),
                 hit,
-                format!("{label}: {}", format!("{v:+.2} ms").replace('-', "−")),
+                format!("{label}: {}", ms_text(*v)),
             );
         }
         for (name, g) in names {

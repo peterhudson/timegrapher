@@ -908,7 +908,9 @@ same 20, 200 and 400 ms spans): what the engine heard, high-passed at 1 kHz, not
 tab beside the Tick Tock Profile, set in its toolbar.
 **Span 20 ms** shows the Tick and the Tock
 in rows of their own, lined up on the drop, from 14 ms before it to 6 ms
-after, with the profile's Unlock and Drop marks. **5 ms** (3.5 ms before
+after, with the profile's Unlock and Drop marks: solid lines, named in
+a row above each row as on the Profile (inside its top on boxes, where a
+row is short), with the time on the pointer. **5 ms** (3.5 ms before
 the drop to 1.5 ms after) and **10 ms** (8 ms before to 2 ms after) show
 the drop closer still, and **50 ms** (15 ms before to 35 ms after) the
 sound and what rings on after it, all with the same marks. **One Beat**

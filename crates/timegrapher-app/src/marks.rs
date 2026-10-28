@@ -98,6 +98,42 @@ pub fn place(names: &[(f32, f32, Rank)], left: f32, right: f32, was: &[u8]) -> V
     out
 }
 
+/// Where the names in a lane of one row go: `names` are each one's centre
+/// (its line's x), width and rank. Each is centred on its line within
+/// `left..right`; one that would come within [`NAME_GAP`] of a name
+/// already placed slides along past it (drawn with an angled leader), to
+/// the right where there is room, else to the left. Each name's left
+/// edge, in the order given.
+pub fn place_row(names: &[(f32, f32, Rank)], left: f32, right: f32) -> Vec<f32> {
+    let mut taken: Vec<(f32, f32)> = Vec::new();
+    let mut out = vec![0.0; names.len()];
+    for i in order(names) {
+        let (x, w, _) = names[i];
+        let last = (right - w).max(left);
+        let centred = (x - w / 2.0).clamp(left, last);
+        let hit = |a: f32, taken: &[(f32, f32)]| {
+            taken
+                .iter()
+                .find(|&&(s, e)| a < e + NAME_GAP && a + w + NAME_GAP > s)
+                .copied()
+        };
+        let mut at = centred;
+        while let Some((_, e)) = hit(at, &taken) {
+            at = e + NAME_GAP;
+        }
+        if at > last {
+            at = centred;
+            while let Some((s, _)) = hit(at, &taken) {
+                at = s - NAME_GAP - w;
+            }
+            at = at.max(left);
+        }
+        taken.push((at, at + w));
+        out[i] = at;
+    }
+    out
+}
+
 /// Where the names go inside a short plot, one row along its top: `names`
 /// are each one's line x, width and rank. Each is centred on its line
 /// within the plot; one that would touch the facts box (the span of x
@@ -287,6 +323,17 @@ pub struct Named {
 /// leader where it had to slide. The lines themselves are the plot's,
 /// drawn under its trace. `id` keeps the rows the names took.
 pub fn lane_above(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id) {
+    lane(ui, frame, lines, id, false);
+}
+
+/// As [`lane_above`], in a lane of one row: a name that would touch
+/// another slides along the row ([`place_row`]). For a plot that names
+/// only a few lines, such as the Scope's two edges.
+pub fn lane_above_one(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id) {
+    lane(ui, frame, lines, id, true);
+}
+
+fn lane(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id, one: bool) {
     let lines: Vec<&Named> = lines
         .iter()
         .filter(|l| l.x >= frame.left() && l.x <= frame.right())
@@ -305,8 +352,16 @@ pub fn lane_above(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::I
     let seen = frame
         .intersect(ui.clip_rect())
         .shrink2(egui::vec2(2.0, 0.0));
-    let placed = place(&names, seen.left(), seen.right(), &rows_were(ui, id));
-    keep_rows(ui, id, &placed);
+    let placed = if one {
+        place_row(&names, seen.left(), seen.right())
+            .into_iter()
+            .map(|a| (a, 0))
+            .collect()
+    } else {
+        let placed = place(&names, seen.left(), seen.right(), &rows_were(ui, id));
+        keep_rows(ui, id, &placed);
+        placed
+    };
     let painter = ui.painter_at(frame.expand2(egui::vec2(0.0, LANE + LANE_GAP + 2.0)));
     let mut boxes = Vec::new();
     for ((l, g), &(left, row)) in lines.iter().zip(galleys).zip(&placed) {
@@ -790,5 +845,26 @@ mod tests {
         assert_eq!(wheel_short("barrel"), "Barrel");
         assert_eq!(wheel_short("great wheel"), "Great Wheel");
         assert_eq!(title_case("escape wheel"), "Escape Wheel");
+    }
+
+    /// A lane of one row: names centred on their lines; one that would
+    /// touch slides past the name there, right where it fits, else left.
+    #[test]
+    fn in_a_lane_of_one_row_a_crowding_name_slides_along() {
+        // Apart: both centred.
+        assert_eq!(
+            place_row(&[(100.0, 40.0, S), (300.0, 40.0, S)], 0.0, 500.0),
+            vec![80.0, 280.0]
+        );
+        // Drop 20 pt right of Unlock: it slides right, a gap past it.
+        assert_eq!(
+            place_row(&[(100.0, 40.0, S), (120.0, 40.0, S)], 0.0, 500.0),
+            vec![80.0, 132.0]
+        );
+        // At the right edge there's no room to its right: it goes left.
+        assert_eq!(
+            place_row(&[(470.0, 40.0, S), (490.0, 40.0, S)], 0.0, 500.0),
+            vec![450.0, 398.0]
+        );
     }
 }
