@@ -205,6 +205,12 @@ impl Caveat {
             }
             Caveat::LiftUnknown => format!("lift angle {lift_deg}°, the default"),
             Caveat::ClockUnknown => "input clock not corrected".to_string(),
+            Caveat::ClockSourcesDisagree {
+                usb_ppm, log_ppm, ..
+            } => format!(
+                "USB lines and clock log {:.0} ppm apart",
+                (usb_ppm - log_ppm).abs()
+            ),
             Caveat::Breaks { count } => format!("{count} break{}", plural(*count)),
             Caveat::SidesByCount { .. } => "sides named by count".to_string(),
             Caveat::BeatErrorAsSize => {
@@ -249,6 +255,19 @@ impl Caveat {
             Caveat::ClockUnknown => "This input's clock hasn't been measured, so the rate \
                                      includes the sound card's own clock error."
                 .to_string(),
+            Caveat::ClockSourcesDisagree {
+                usb_ppm,
+                log_ppm,
+                log_ppm_sd,
+            } => {
+                let note = crate::clock::SourcesDisagree {
+                    usb_ppm: *usb_ppm,
+                    log_ppm: *log_ppm,
+                    log_ppm_sd: *log_ppm_sd,
+                }
+                .note();
+                format!("{}{}.", note[..1].to_uppercase(), &note[1..])
+            }
             Caveat::Breaks { count } => format!(
                 "{count} break{} in this stretch: a hole in the sound, such as when the \
                  computer slept, or a stumble where the beats stepped off together by more \
@@ -735,6 +754,21 @@ mod tests {
             .long(Some(52.0))
             .unwrap()
             .contains("default 52°"));
+        // Both clocks' figures, and which one corrects (#498).
+        let d = Caveat::ClockSourcesDisagree {
+            usb_ppm: 120.0,
+            log_ppm: 20.0,
+            log_ppm_sd: 2.0,
+        };
+        assert_eq!(
+            d.short(52.0, 0).unwrap(),
+            "USB lines and clock log 100 ppm apart"
+        );
+        assert_eq!(
+            d.long(None).unwrap(),
+            "The USB lines measure the sound card at +120.0 ppm and the clock log at +20 ± 2 \
+             ppm; the rates are corrected by the USB lines."
+        );
         // The JSON a caveat is written as reads back into the same words.
         let c: Caveat = serde_json::from_str(r#"{"code":"clipped","fraction":0.04}"#).unwrap();
         assert_eq!(c.short(52.0, 0).unwrap(), "4% clipped");

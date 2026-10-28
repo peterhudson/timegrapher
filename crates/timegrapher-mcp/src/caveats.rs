@@ -173,6 +173,14 @@ mod tests {
             "{said:?}"
         );
         assert!(said[1].contains("the default 52°"), "{said:?}");
+        // The two clocks that disagree are said with both figures, in
+        // core's words (#498).
+        let c = json!({ "code": "clock_sources_disagree", "usb_ppm": 120.0, "log_ppm": 20.0, "log_ppm_sd": 2.0 });
+        assert_eq!(
+            fact(&c, None).unwrap(),
+            "The USB lines measure the sound card at +120.0 ppm and the clock log at +20 ± 2 \
+             ppm; the rates are corrected by the USB lines."
+        );
     }
 
     #[test]
