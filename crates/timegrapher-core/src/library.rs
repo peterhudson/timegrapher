@@ -470,7 +470,7 @@ fn reading_key(take_dir: &Path) -> String {
 /// since the take last changed; quick, it reads no sound.
 pub fn kept_reading(take_dir: &Path) -> Option<Reading> {
     let (s, r) = readings_kept().remove(&reading_key(take_dir))?;
-    (s == stamp(take_dir)).then_some(r)
+    (s == reading_stamp(take_dir)).then_some(r)
 }
 
 /// The take in `take_dir`'s own reading ([`Reading`]): the one kept when
@@ -482,7 +482,7 @@ pub fn reading(take_dir: &Path) -> Result<Reading, String> {
     if let Some(r) = kept_reading(take_dir) {
         return Ok(r);
     }
-    let stamp = stamp(take_dir);
+    let stamp = reading_stamp(take_dir);
     let r = measure_take(take_dir)?;
     if let Some(p) = readings_path() {
         let mut kept = readings_kept();
@@ -1438,6 +1438,21 @@ pub fn is_image(p: &Path) -> bool {
 /// Every file under `dir`: their bytes, the newest change, and how many
 /// files and folders there are.
 fn stamp(dir: &Path) -> Stamp {
+    stamp_of(dir, |_| true)
+}
+
+/// The fingerprint of what a take's reading reads: everything in the take
+/// (its session file, its sound wherever its entries name it, its clock
+/// log and kept analysis) but the report `timegrapher session` writes into
+/// it ([`crate::take::REPORT_DIR`]).
+fn reading_stamp(dir: &Path) -> Stamp {
+    let report = dir.join(crate::take::REPORT_DIR);
+    stamp_of(dir, |sub| sub != report)
+}
+
+/// The fingerprint of the files in `dir`, looking into each folder in it
+/// that `into` takes.
+fn stamp_of(dir: &Path, into: impl Fn(&Path) -> bool) -> Stamp {
     let mut s = Stamp {
         bytes: 0,
         entries: 0,
@@ -1447,6 +1462,9 @@ fn stamp(dir: &Path) -> Stamp {
     while let Some(d) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
             let Ok(m) = e.metadata() else { continue };
+            if m.is_dir() && !into(&e.path()) {
+                continue;
+            }
             s.entries += 1;
             if m.is_dir() {
                 stack.push(e.path());
@@ -1576,6 +1594,38 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A take's reading is kept until what it reads changes: a report
+    /// written into the take's folder keeps it; a changed session file,
+    /// kept analysis or sound in a folder of its own doesn't.
+    #[test]
+    fn a_takes_reading_stamp_is_what_the_reading_reads() {
+        let dir = std::env::temp_dir().join(format!("tg-reading-stamp-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("parts")).unwrap();
+        fs::write(dir.join("session.toml"), "bph = 28800\n").unwrap();
+        fs::write(dir.join("parts").join("audio-001.wav"), [0u8; 64]).unwrap();
+        let first = reading_stamp(&dir);
+        let report = dir.join(crate::take::REPORT_DIR);
+        fs::create_dir_all(&report).unwrap();
+        fs::write(report.join("summary.json"), "{}").unwrap();
+        assert_eq!(reading_stamp(&dir), first);
+        assert_ne!(stamp(&dir), first, "the take's own stamp counts the report");
+        fs::write(dir.join("parts").join("audio-001.wav"), [0u8; 96]).unwrap();
+        let sound = reading_stamp(&dir);
+        assert_ne!(sound, first, "sound in a folder of its own");
+        fs::create_dir_all(dir.join(crate::analysis_take::DIR)).unwrap();
+        fs::write(
+            dir.join(crate::analysis_take::DIR).join("beats.bin"),
+            [1u8; 8],
+        )
+        .unwrap();
+        let analysis = reading_stamp(&dir);
+        assert_ne!(analysis, sound);
+        fs::write(dir.join("session.toml"), "bph = 21600\nlift = 52\n").unwrap();
+        assert_ne!(reading_stamp(&dir), analysis);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     /// A take's facts give the readings it ended on, but not for a test:
     /// a Positions Test's or a Power Reserve Test's last window doesn't

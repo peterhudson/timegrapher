@@ -254,8 +254,11 @@ under it its calibre, beat rate, lift angle and added fields, with
   title, acting on the take picked; then the takes as a table, newest
   first: Started, Position (such as DU, or DU, CU, or All 6; Power Reserve or
   Positions Test for those tests, a test's positions in the row's hover), Length, Rate (s/d), Amplitude (°), Beat Error (ms, its size) and
-  Size (MB), as measured when saved (the rate corrected from the take's
-  clock log, as the Bench reads the take). A test's last window never
+  Size (MB). The figures are the take's own reading, as `timegrapher
+  session` reads its last position on the take's clock, the same one
+  `timegrapher watches` gives: worked out from the take's sound the first
+  time the list shows it (about a minute for a 9 hour take, the row
+  blank until then, its hover saying it is being read), then kept. A test's last window never
   stands for the test: a Positions Test's row shows its Mean row, the
   figures its table shows ("Mean of the six positions" in the row's hover),
   and a Power Reserve Test's shows its run time as its Length and a dim

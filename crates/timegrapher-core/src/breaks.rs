@@ -33,12 +33,7 @@ pub const MIN_GAP_S: f64 = 0.5;
 
 /// Breaks seen in a clock log's `(audio_s, true_s)` entries, sorted by
 /// audio time: a step in the offset between the two clocks that the next
-/// entries keep.
-pub fn from_clock(pairs: &[(f64, f64)]) -> Vec<Break> {
-    from_clock_at(pairs, &[])
-}
-
-/// [`from_clock`], with a break also at each of `at` (audio seconds)
+/// entries keep, with a break also at each of `at` (audio seconds)
 /// whatever the size of its step: at the first entry after it, its gap the
 /// step the next entries keep. An entry at the same second is the last one
 /// before the break, as the recorder writes it at a pause.

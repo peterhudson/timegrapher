@@ -2077,6 +2077,9 @@ pub struct TimegrapherApp {
     /// one it keeps into, put back if its question is cancelled.
     keep_back: Option<(Option<String>, bool)>,
     take_keep: Option<(PathBuf, AnalysisSave)>,
+    /// The takes' own readings the Watches list shows, worked out on a
+    /// thread of their own.
+    take_readings: watches::TakeReadings,
     /// The watches' photos as thumbnails, read in the background.
     thumbs: photos::Thumbs,
     /// Report a Problem.
@@ -2744,6 +2747,7 @@ impl TimegrapherApp {
             take_ask: None,
             keep_back: None,
             take_keep: None,
+            take_readings: watches::TakeReadings::default(),
             thumbs: Default::default(),
             strip_points: None,
             masked: Vec::new(),
@@ -6351,6 +6355,15 @@ impl TimegrapherApp {
         }
         let on_show = self.take_on_show();
         let picked = self.take_picked.clone();
+        // Each take's own reading, as `timegrapher watches` gives it; a
+        // test's figures are its own.
+        self.take_readings.poll();
+        for t in &e.takes {
+            let dir = e.take_dir(t);
+            if watches::TakeReadings::read_for(t, &dir) {
+                self.take_readings.want(&dir, t.bytes, ui.ctx());
+            }
+        }
         let cx = watches::TakesContext {
             others: &others,
             writable,
@@ -6358,6 +6371,7 @@ impl TimegrapherApp {
             unsorted: e.watch.id.is_empty(),
             picked: picked.as_deref(),
             on_show: on_show.as_deref(),
+            readings: &self.take_readings,
         };
         let mut act = None;
         watches::title_row(ui, "Takes", Some(e.takes.len()), |ui| {
@@ -6537,6 +6551,13 @@ impl TimegrapherApp {
             return Some(
                 "This take's sound is already being removed. Wait for it to finish, or press \
                  Cancel."
+                    .into(),
+            );
+        }
+        if self.take_readings.being_read(take) {
+            return Some(
+                "This take is being read for the Watches list. Wait for its figures, then try \
+                 again."
                     .into(),
             );
         }
@@ -19763,6 +19784,100 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A take whose sound is open while it is read for the Watches list
+    /// isn't moved, renamed or deleted until it is done (Windows refuses
+    /// to while a file in it is open): the app says to wait.
+    #[test]
+    fn a_take_being_read_for_the_list_waits_to_be_moved() {
+        let app = TimegrapherApp::with_devices(Vec::new(), None);
+        let take = std::env::temp_dir().join("Takes").join("2026-10-20 14.32");
+        assert_eq!(app.take_busy(&take, false), None);
+        app.take_readings.set_now(Some(take.clone()));
+        for keep in [false, true] {
+            let why = app.take_busy(&take, keep).unwrap();
+            assert!(why.contains("being read for the Watches list"), "{why}");
+        }
+        app.take_readings
+            .set_now(Some(take.with_file_name("another")));
+        assert_eq!(app.take_busy(&take, false), None);
+    }
+
+    /// A take's row in the Watches list shows the figures core's
+    /// `library::reading` gives for that take, worked out from its sound:
+    /// the app's path to them, not only a reading handed to the table.
+    #[test]
+    fn a_takes_row_shows_its_own_reading_from_core() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let base = std::env::temp_dir().join(format!("tg-app-take-reading-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        let dir = lib.add(&library::Watch::new("Pepsi")).unwrap();
+        let id = lib.watches[0].watch.id.clone();
+        drop(lib);
+        // A take as the app saves one: 40 s of a watch 10 s/d fast at
+        // 270°, its session file, and other figures in session.json.
+        let take = dir.join(library::TAKES).join("2026-10-20 14.32 Dial Up");
+        std::fs::create_dir_all(&take).unwrap();
+        std::fs::write(
+            take.join(MANIFEST),
+            "bph = 28800\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+        )
+        .unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 40.0,
+                rate_s_per_day: 10.0,
+                beat_error_ms: 0.6,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&take.join("take_part01-001.wav"), &audio).unwrap();
+        std::fs::write(
+            take.join("session.json"),
+            r#"{"started_utc":"2026-10-20T21:32:00Z","duration_s":40.0,
+                "result":{"rate_s_per_day":4.2,"amplitude_deg":285.0,"beat_error_unlock_ms":-0.6}}"#,
+        )
+        .unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root.clone()));
+        app.pick_watch(&id);
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let pane = |app: &mut TimegrapherApp| {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.watch_pane(ui));
+            });
+            format!("{:?}", out.shapes)
+        };
+        pane(&mut app);
+        app.take_readings.wait();
+        let drawn = pane(&mut app);
+        let want = library::reading(&take).unwrap();
+        assert_eq!(app.take_readings.reading(&take), Some(&want));
+        let t = app.open_watch().unwrap().takes[0].clone();
+        let cells = watches::take_cells(&t, None, Some(&want));
+        for c in &cells[3..6] {
+            assert!(!c.is_empty() && drawn.contains(c.as_str()), "{c}: {drawn}");
+        }
+        // Not the figures the take was saved with.
+        assert!(!cells[3..6].contains(&"+4.2".to_string()), "{cells:?}");
+        // A report written into the take's folder (as `timegrapher
+        // session` leaves one) changes its size but not what its reading
+        // reads: the figures stay on show while it is asked again.
+        let report = take.join(timegrapher_core::take::REPORT_DIR);
+        std::fs::create_dir_all(&report).unwrap();
+        std::fs::write(report.join("summary.json"), "{}").unwrap();
+        app.take_readings.want(&take, t.bytes + 2, &ctx);
+        assert_eq!(app.take_readings.reading(&take), Some(&want));
+        app.take_readings.wait();
+        assert_eq!(app.take_readings.reading(&take), Some(&want));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// A watch's photos lead its row in the list and show as a strip in
     /// its details, read in the background; one that can't be read says
     /// so by name. Delete… asks, then deletes only that photo.
@@ -19901,7 +20016,7 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(watches::take_line(&take, false)
+        assert!(watches::take_line(&take, false, None)
             .starts_with("Power Reserve 12 s · Stopped by hand while the watch still ran"));
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
@@ -20588,6 +20703,7 @@ mod tests {
         assert!(e.watch.id.is_empty() && e.takes.len() == 1);
 
         // Filed under Pepsi while stopped: Save Again follows it there.
+        app.take_readings.wait();
         app.move_take(&saved[0], &pepsi);
         let filed = root.join("Pepsi").join(library::TAKES).join(&name);
         assert!(filed.join(MANIFEST).is_file() && !saved[0].exists());
@@ -20820,6 +20936,7 @@ mod tests {
         app.pick_watch(&pepsi_id);
 
         // Keep Analysis Only: the sound goes only once the analysis is in place.
+        app.take_readings.wait();
         app.start_take_keep(take.clone());
         assert!(app.take_busy(&take, false).is_some());
         let t = Instant::now();
@@ -20865,6 +20982,7 @@ mod tests {
         let name = file_name(&take);
 
         // Moved to Daytona, then deleted there.
+        app.take_readings.wait();
         app.move_take(&take, &daytona_id);
         let d = root.join("Daytona").join(library::TAKES).join(&name);
         assert!(d.is_dir() && !take.exists());

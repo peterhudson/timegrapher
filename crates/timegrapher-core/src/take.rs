@@ -21,6 +21,10 @@ pub const MANIFEST: &str = "session.toml";
 /// parts.
 pub const RECORD: &str = "session.json";
 
+/// The folder `timegrapher session` writes its report into, inside the
+/// take it read: not part of the take.
+pub const REPORT_DIR: &str = "session_report";
+
 /// The file the recorder logs the sound card against the computer's clock
 /// in.
 pub const CLOCK_LOG: &str = "clock.csv";
