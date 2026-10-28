@@ -141,7 +141,7 @@ pub fn recorded_device(file: &Path) -> Option<String> {
         let name = v.pointer("/recording/source/device/name")?;
         return name.as_str().map(String::from);
     }
-    let v = read(file.parent()?.join("session.json"))?;
+    let v = read(file.parent()?.join(crate::take::RECORD))?;
     v.get("device")?.as_str().map(String::from)
 }
 

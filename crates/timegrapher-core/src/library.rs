@@ -41,6 +41,7 @@
 //! ends.
 
 use crate::session::{Manifest, Position};
+use crate::take;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -639,7 +640,7 @@ impl Library {
         let folder = file_name(dir);
         let mut takes = Vec::new();
         for t in subfolders(&dir.join(TAKES)) {
-            if !(t.join("session.toml").is_file() || t.join("session.json").is_file()) {
+            if !(t.join(take::MANIFEST).is_file() || t.join(take::RECORD).is_file()) {
                 continue;
             }
             let key = format!("{folder}/{TAKES}/{}", file_name(&t));
@@ -916,7 +917,7 @@ impl Library {
         keep_original: bool,
     ) -> Result<(PathBuf, Option<String>), String> {
         self.writable()?;
-        if !(from.join("session.toml").is_file() || from.join("session.json").is_file()) {
+        if !(from.join(take::MANIFEST).is_file() || from.join(take::RECORD).is_file()) {
             return Err(format!(
                 "{} is not a take folder (it has no session.toml or session.json)",
                 from.display()
@@ -1333,14 +1334,14 @@ fn usb_ppm(files: &[PathBuf]) -> Option<f64> {
 
 /// What a take folder says about itself.
 fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
-    let manifest: Option<Manifest> = match fs::read_to_string(dir.join("session.toml")) {
+    let manifest: Option<Manifest> = match fs::read_to_string(dir.join(take::MANIFEST)) {
         Ok(text) => Some(
             toml::from_str(&text)
-                .map_err(|e| format!("{}: {e}", dir.join("session.toml").display()))?,
+                .map_err(|e| format!("{}: {e}", dir.join(take::MANIFEST).display()))?,
         ),
         Err(_) => None,
     };
-    let about: Option<serde_json::Value> = fs::read(dir.join("session.json"))
+    let about: Option<serde_json::Value> = fs::read(dir.join(take::RECORD))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok());
     let audio = manifest.as_ref().and_then(|m| m.audio) != Some(false);
@@ -1378,7 +1379,7 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
         let first = m.recordings.first()?;
         let listed: Vec<String> = m.recordings.iter().map(|r| r.file.clone()).collect();
         let files = crate::recording_order::recordings_in(dir, &listed).ok()?;
-        crate::take::clock_of_files(dir, first.clock.as_deref(), &files, usb_ppm(&files), None)
+        take::clock_of_files(dir, first.clock.as_deref(), &files, usb_ppm(&files), None)
             .ok()?
             .filter(crate::clock::ClockFit::corrects)
             .map(|f| f.ppm)

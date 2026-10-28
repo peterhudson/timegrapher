@@ -80,7 +80,7 @@ pub fn beat_sound_found<'a>(
     let (tick, tock): (Vec<_>, Vec<_>) = snippets.into_iter().partition(|s| s.0);
     let shows = |side: crate::profile::Side, w: Vec<(bool, &[f32])>| {
         let w: Vec<&[f32]> = w.into_iter().map(|s| s.1).collect();
-        crate::profile::from_snippets(&w, fs, side, osc_period_s, cfg)
+        crate::profile::from_snippets(&w, fs, side, osc_period_s, cfg, None)
             .map(|p| p.unlock_ms.is_some() || p.drop_ms.is_some())
     };
     match (

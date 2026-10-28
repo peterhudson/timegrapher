@@ -63,7 +63,7 @@ pub fn write(out: &Path, name: &str, seed: u64) -> Result<(), String> {
         "synthetic": { "scenario": s.name, "seed": seed, "summary": s.summary, "expect": s.expect },
     });
     let text = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())? + "\n";
-    std::fs::write(out.join("session.json"), text).map_err(|e| e.to_string())?;
+    std::fs::write(out.join(timegrapher_core::take::RECORD), text).map_err(|e| e.to_string())?;
     std::fs::write(out.join("README.md"), readme(&s, seed)).map_err(|e| e.to_string())
 }
 
