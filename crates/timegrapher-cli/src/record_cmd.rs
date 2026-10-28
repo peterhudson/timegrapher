@@ -48,11 +48,6 @@ use timegrapher_core::take::{self, MANIFEST};
 use timegrapher_core::timing::Anchor;
 use timegrapher_core::{analyze, AnalysisConfig};
 
-/// Seconds skipped at the start of each take in a session file this
-/// command writes: the watch has just been turned to a new position. The
-/// quick check skips the same, so it reads what `session` will.
-const SETTLE_S: f64 = 30.0;
-
 #[derive(Clone)]
 pub struct Options {
     /// The session folder; `None` to make one in the library watch
@@ -359,7 +354,7 @@ fn settings_with(
             bph,
             lift: lift.unwrap_or(take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
-            settle_s: SETTLE_S,
+            settle_s: take::SETTLE_S,
         });
     };
     // A session's takes must agree on how they are measured.
@@ -412,7 +407,7 @@ fn settings_with(
         bph: m.bph.or(bph),
         lift: m.lift.or(lift).unwrap_or(take::DEFAULT_LIFT_DEG),
         lift_known,
-        settle_s: m.settle_s.unwrap_or(SETTLE_S),
+        settle_s: m.settle_s.unwrap_or(take::SETTLE_S),
     })
 }
 
@@ -903,7 +898,7 @@ fn add_to_session(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => format!(
             "# Written by `timegrapher record`; edit freely.\n{}settle_s = {}\n",
             header(set),
-            toml::Value::Float(SETTLE_S)
+            toml::Value::Float(take::SETTLE_S)
         ),
         Err(e) => return Err(format!("{}: {e}", file.display())),
     };
@@ -1079,7 +1074,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
-            settle_s: SETTLE_S,
+            settle_s: take::SETTLE_S,
         };
         let check = || Check {
             from_s: 0.0,

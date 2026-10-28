@@ -253,7 +253,7 @@ card's control, with a peak meter marked at the −10 dBFS target and the
 - **Let it settle.** After winding or handling, give it a few minutes
   running before the first reading. After each position change, amplitude
   takes a while to settle, especially going from horizontal to vertical;
-  `record` leaves the first 30 s of each take out of its readings for this
+  `record` leaves the first 20 s of each take out of its readings for this
   (`settle_s`).
 - Note the time of winding. The 24-hour test is the same positions a day
   later without winding again.
