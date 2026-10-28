@@ -418,6 +418,20 @@ pub fn length_text(t: f64) -> String {
     }
 }
 
+/// A signed figure as the app shows it, to `digits` decimals: `+1.2`,
+/// `-1.2`, and a figure that rounds to zero takes no sign (`0.0`, never
+/// `-0.0` or `+0.0`). The app sets the minus as a true minus sign.
+pub fn signed_text(x: f64, digits: usize) -> String {
+    let s = format!("{:.digits$}", x.abs());
+    if s.bytes().all(|b| b == b'0' || b == b'.') {
+        s
+    } else if x < 0.0 {
+        format!("-{s}")
+    } else {
+        format!("+{s}")
+    }
+}
+
 /// A size on disk as the app shows it: `7.7 GB`, `58.3 MB`, `912 kB`,
 /// `40 bytes`.
 pub fn size_text(n: u64) -> String {
@@ -2303,5 +2317,18 @@ value = "£9,000"
         assert_eq!(size_text(7_700_000_000), "7.7 GB");
         assert_eq!(length_text(245.0), "4:05");
         assert_eq!(length_text(5400.0), "1:30:00");
+    }
+
+    /// A signed figure reads as the app's pane writes it: a figure that
+    /// rounds to zero takes no sign, either way.
+    #[test]
+    fn a_signed_figure_takes_no_sign_at_zero() {
+        assert_eq!(signed_text(1.24, 1), "+1.2");
+        assert_eq!(signed_text(-1.24, 1), "-1.2");
+        assert_eq!(signed_text(-0.04, 1), "0.0");
+        assert_eq!(signed_text(0.04, 1), "0.0");
+        assert_eq!(signed_text(-0.4, 0), "0");
+        assert_eq!(signed_text(0.0, 2), "0.00");
+        assert_eq!(signed_text(-0.006, 2), "-0.01");
     }
 }

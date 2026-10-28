@@ -52,7 +52,7 @@
     "name": "authoritative-zero-rate",
     "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "rate_s_per_day": 0, "from": "stored for test-device" } },
     "expected_rate": 0,
-    "expected_lead": "Readings: rate +0.0 s/day.",
+    "expected_lead": "Readings: rate 0.0 s/day.",
     "expected_basis": "corrected for the sound card's clock (stored for test-device)"
   }
 ]
