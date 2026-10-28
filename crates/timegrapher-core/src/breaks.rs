@@ -130,7 +130,7 @@ pub fn of_files(
     let json: Option<serde_json::Value> = files
         .first()
         .and_then(|f| f.parent())
-        .and_then(|d| std::fs::read_to_string(d.join("session.json")).ok())
+        .and_then(|d| std::fs::read_to_string(d.join(crate::take::RECORD)).ok())
         .and_then(|t| serde_json::from_str(&t).ok());
     let names: Vec<String> = files
         .iter()
