@@ -1263,7 +1263,7 @@ pub fn pane(
                      wrist, then set Wind to 24 Hours After."
                 } else {
                     "For the test 24 hours after winding, save the results, leave the watch \
-                     unwound and off the wrist, then load them with Load Full-Wind Results…."
+                     unwound and off the wrist, then load them with Load Full-Wind Results… before Start Test."
                 }
             ),
             (None, Some(_)) => "Start Test runs the six positions again and sets them \
