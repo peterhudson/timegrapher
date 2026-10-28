@@ -9,8 +9,10 @@ use crate::photos::{Thumb, Thumbs};
 use crate::theme::{self, DialogButton, Role};
 use eframe::egui::{self, RichText, Sense, Vec2};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use timegrapher_core::library::{length_text, size_text};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use timegrapher_core::library::{length_text, size_text, Reading};
 use timegrapher_core::library::{Field, FieldKind, Library, Take, Watch, WatchEntry};
 use timegrapher_core::session::Position;
 
@@ -28,7 +30,8 @@ pub const HELP: &[&str] = &[
      details, and the first by name leads its row in the list. Click one to open it in your \
      photo viewer, or right-click it to show its folder or delete it.",
     "Each take is a row of the Takes table: when it started, its positions, its length, \
-     what it measured when it was saved, and the space it uses. Clicking a row picks it; \
+     its own reading as `timegrapher session` reads it (worked out the first time it is \
+     shown, then kept), and the space it uses. Clicking a row picks it; \
      Open, at the right of the Takes title, or a double click opens it on the Bench, and \
      the take already on show is not read again. Right-clicking it, or …, offers Keep \
      Analysis Only… (keeping what was measured and deleting the sound, to save space), \
@@ -557,12 +560,150 @@ pub struct TakesContext<'a> {
     /// opening).
     pub picked: Option<&'a std::path::Path>,
     pub on_show: Option<&'a std::path::Path>,
+    /// The takes' own readings, as far as they are worked out.
+    pub readings: &'a TakeReadings,
 }
 
-/// What a take measured and is, in a line: core's facts for it
-/// ([`Take::facts`]), as `timegrapher watches` lists them.
-pub fn take_line(t: &Take, positions_test: bool) -> String {
-    t.facts(positions_test).join(" · ")
+/// Where the Watches list is with a take's own reading (core
+/// `library::reading`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum TakeReading {
+    /// Being worked out.
+    Reading,
+    /// Worked out, or why it couldn't be.
+    Read(Result<Reading, String>),
+}
+
+/// The takes' own readings the Watches list shows, each worked out once
+/// by core's `library::reading`, as `timegrapher watches` gives them. They
+/// are worked out one take at a time on a thread of their own, as the
+/// first read of a long take reads its whole sound (about a minute for
+/// 9 h); a reading already kept comes back at once.
+#[derive(Default)]
+pub struct TakeReadings {
+    /// Each take asked for, by its folder, with its size when asked: a
+    /// take that changes size (kept as its analysis alone) is read again.
+    known: HashMap<PathBuf, (u64, TakeReading)>,
+    work: Option<(mpsc::Sender<PathBuf>, mpsc::Receiver<ReadDone>)>,
+    /// The take being read now, whose sound is open: it can't be moved,
+    /// renamed or deleted until it is done (Windows refuses to).
+    now: std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+}
+
+/// A take's folder with its reading, or why it couldn't be worked out.
+type ReadDone = (PathBuf, Result<Reading, String>);
+
+impl TakeReadings {
+    /// Ask for the reading of the take in `dir`, of `bytes`, unless it is
+    /// already asked for at that size; `ctx` is drawn again as each comes
+    /// in.
+    pub fn want(&mut self, dir: &Path, bytes: u64, ctx: &egui::Context) {
+        if self.known.get(dir).is_some_and(|(b, _)| *b == bytes) {
+            return;
+        }
+        let (tx, _) = self.work.get_or_insert_with(|| {
+            let (tx, jobs) = mpsc::channel::<PathBuf>();
+            let (done, rx) = mpsc::channel();
+            let ctx = ctx.clone();
+            let now = self.now.clone();
+            std::thread::spawn(move || {
+                for dir in jobs {
+                    *now.lock().unwrap() = Some(dir.clone());
+                    let r = timegrapher_core::library::reading(&dir);
+                    *now.lock().unwrap() = None;
+                    if done.send((dir, r)).is_err() {
+                        break;
+                    }
+                    ctx.request_repaint();
+                }
+            });
+            (tx, rx)
+        });
+        if tx.send(dir.to_path_buf()).is_ok() {
+            // A take read before keeps its figures on show until it is read
+            // again (at once, when what the reading reads hasn't changed).
+            let was = self.known.remove(dir).map(|(_, r)| r);
+            let now = match was {
+                Some(r @ TakeReading::Read(Ok(_))) => r,
+                _ => TakeReading::Reading,
+            };
+            self.known.insert(dir.to_path_buf(), (bytes, now));
+        } else {
+            // The thread has gone: a new one next time.
+            self.work = None;
+        }
+    }
+
+    /// Take in the readings worked out since last time.
+    pub fn poll(&mut self) {
+        let Some((_, rx)) = &self.work else { return };
+        for (dir, r) in rx.try_iter() {
+            if let Some((_, s)) = self.known.get_mut(&dir) {
+                *s = TakeReading::Read(r);
+            }
+        }
+    }
+
+    /// Where the reading of the take in `dir` is, if it was asked for.
+    pub fn of(&self, dir: &Path) -> Option<&TakeReading> {
+        self.known.get(dir).map(|(_, r)| r)
+    }
+
+    /// The reading of the take in `dir`, once worked out.
+    pub fn reading(&self, dir: &Path) -> Option<&Reading> {
+        match self.of(dir) {
+            Some(TakeReading::Read(Ok(r))) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Whether the take in `dir`, or one inside it, is being read now.
+    pub fn being_read(&self, dir: &Path) -> bool {
+        self.now
+            .lock()
+            .unwrap()
+            .as_deref()
+            .is_some_and(|p| p.starts_with(dir))
+    }
+
+    /// Say the take in `dir` is being read now, or none.
+    #[cfg(test)]
+    pub fn set_now(&self, dir: Option<PathBuf>) {
+        *self.now.lock().unwrap() = dir;
+    }
+
+    /// Wait until every reading asked for is in.
+    #[cfg(test)]
+    pub fn wait(&mut self) {
+        for _ in 0..1200 {
+            self.poll();
+            if !self.known.values().any(|(_, r)| *r == TakeReading::Reading) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        panic!("the takes' readings never came in");
+    }
+
+    /// Whether the take's figures come from its own reading: not a test's,
+    /// whose figures are its Mean row or hour by hour.
+    pub fn read_for(t: &Take, dir: &Path) -> bool {
+        t.power_reserve.is_none() && !timegrapher_core::library::is_positions_test(dir)
+    }
+
+    #[cfg(test)]
+    pub fn known(takes: impl IntoIterator<Item = (PathBuf, u64, TakeReading)>) -> TakeReadings {
+        TakeReadings {
+            known: takes.into_iter().map(|(d, b, r)| (d, (b, r))).collect(),
+            ..Default::default()
+        }
+    }
+}
+
+/// What a take measured and is, in a line: core's facts for it with its
+/// own reading ([`Take::facts_read`]), as `timegrapher watches` lists them.
+pub fn take_line(t: &Take, positions_test: bool, reading: Option<&Reading>) -> String {
+    t.facts_read(positions_test, reading).join(" · ")
 }
 
 /// The captions under the three New Take buttons: Listen, Positions Test, Power Reserve Test.
@@ -806,12 +947,17 @@ pub fn positions_means(dir: &std::path::Path) -> Option<(usize, [Option<f64>; 3]
 }
 
 /// A take's row in the takes table: Started, Position, Length, Rate (s/d,
-/// on the take's clock log where it has one), Amplitude (°), Beat Error
-/// (ms, its size) and Size (MB). A Positions Test's figures are its Mean
-/// row (`means`); a Power Reserve Test's are hour by hour in the take, so
-/// its row shows a dash. Never a test's last window as if it stood for
-/// the test.
-pub fn take_cells(t: &Take, means: Option<[Option<f64>; 3]>) -> [String; 7] {
+/// on the take's clock), Amplitude (°), Beat Error (ms, its size) and Size
+/// (MB). A take's figures are its own `reading`, as `session` reads its
+/// last position; blank until it is worked out. A Positions Test's figures
+/// are its Mean row (`means`); a Power Reserve Test's are hour by hour in
+/// the take, so its row shows a dash. Never a test's last window as if it
+/// stood for the test.
+pub fn take_cells(
+    t: &Take,
+    means: Option<[Option<f64>; 3]>,
+    reading: Option<&Reading>,
+) -> [String; 7] {
     let positions_test = means.is_some();
     let codes: Vec<String> = t
         .positions
@@ -835,16 +981,15 @@ pub fn take_cells(t: &Take, means: Option<[Option<f64>; 3]>) -> [String; 7] {
         (None, Some(d)) => length_text(d),
         _ => String::new(),
     };
-    let a = t.at_end.as_ref();
     let [rate, amp, be] = if t.power_reserve.is_some() {
         [None; 3]
     } else if let Some(m) = means {
         m
     } else {
         [
-            a.and_then(|a| a.rate()),
-            a.and_then(|a| a.amplitude_deg),
-            a.and_then(|a| a.beat_error_ms),
+            reading.and_then(|r| r.rate_s_per_day),
+            reading.and_then(|r| r.amplitude_deg),
+            reading.and_then(|r| r.beat_error_ms),
         ]
     };
     let figure = |v: Option<f64>, f: &dyn Fn(f64) -> String| {
@@ -1067,7 +1212,14 @@ pub fn takes_table(
         let rows: Vec<[String; 7]> = e
             .takes
             .iter()
-            .map(|t| take_cells(t, positions_means(&e.take_dir(t)).map(|m| m.1)))
+            .map(|t| {
+                let dir = e.take_dir(t);
+                take_cells(
+                    t,
+                    positions_means(&dir).map(|m| m.1),
+                    cx.readings.reading(&dir),
+                )
+            })
             .collect();
         // Its state after the date, in small grey words.
         let tags_of = |t: &Take| {
@@ -1182,7 +1334,8 @@ pub fn takes_table(
             } else if r.hovered() {
                 ui.painter().rect_filled(rect, 4.0, pal.control_hover);
             }
-            let mut cells = take_cells(t, means.map(|m| m.1));
+            let reading = cx.readings.reading(&dir);
+            let mut cells = take_cells(t, means.map(|m| m.1), reading);
             let reserve = t.power_reserve.is_some();
             // Date and tags share Started's room, never the columns after
             // it: the date, which tells takes apart, comes first, cut short
@@ -1216,10 +1369,19 @@ pub fn takes_table(
                     pal.text_secondary,
                 );
             }
-            let figures = figures_hover(means.map(|m| m.0), reserve);
+            let mut figures = figures_hover(means.map(|m| m.0), reserve);
+            match cx.readings.of(&dir) {
+                Some(TakeReading::Reading) => figures.push_str(
+                    "\n\nRate, Amplitude and Beat Error: being read from the take's sound.",
+                ),
+                Some(TakeReading::Read(Err(why))) => figures.push_str(&format!(
+                    "\n\nRate, Amplitude and Beat Error: the take couldn't be read: {why}"
+                )),
+                _ => {}
+            }
             let r = r.on_hover_text(format!(
                 "{}{figures}\n\n{}",
-                take_line(t, test),
+                take_line(t, test, reading),
                 if on_show {
                     "This take is on show on the Bench. Right-click for more."
                 } else if t.incomplete {
@@ -1903,15 +2065,24 @@ mod tests {
             duration_s: Some(1800.0),
             positions: vec!["DU".into()],
             at_end: Some(timegrapher_core::library::AtEnd {
-                rate_s_per_day: Some(9.8),
-                amplitude_deg: Some(287.2),
-                beat_error_ms: Some(-0.21),
+                rate_s_per_day: Some(1.0),
+                amplitude_deg: Some(250.0),
+                beat_error_ms: Some(0.9),
                 rate_corrected_s_per_day: None,
             }),
             power_reserve: None,
         };
+        let reading = Reading {
+            position: Some("DU".into()),
+            rate_s_per_day: Some(9.8),
+            calibrated: true,
+            amplitude_deg: Some(287.2),
+            beat_error_ms: Some(-0.21),
+            watch_heard: true,
+        };
+        let r = Some(&reading);
         assert_eq!(
-            take_cells(&t, None),
+            take_cells(&t, None, r),
             [
                 "2026-10-22 09.10",
                 "DU",
@@ -1923,18 +2094,19 @@ mod tests {
             ]
             .map(String::from)
         );
-        // The rate on the take's clock log where it has one, as the Bench
-        // reads it.
-        let mut c = t.clone();
-        c.at_end.as_mut().unwrap().rate_corrected_s_per_day = Some(21.5);
-        assert_eq!(take_cells(&c, None)[3], "+21.5");
+        // Until its reading is worked out the figures are blank, never
+        // the ones the app showed when it saved the take.
+        assert_eq!(
+            take_cells(&t, None, None)[3..6],
+            ["", "", ""].map(String::from)
+        );
         let all = Take {
             positions: ["DU", "DD", "CU", "CD", "CL", "CR"]
                 .map(String::from)
                 .to_vec(),
             ..t
         };
-        assert_eq!(take_cells(&all, None)[1], "All 6");
+        assert_eq!(take_cells(&all, None, r)[1], "All 6");
         // A Power Reserve Test's run in the same format as the others.
         let pr = Take {
             power_reserve: Some(timegrapher_core::power_reserve::Summary {
@@ -1944,13 +2116,13 @@ mod tests {
             }),
             ..all.clone()
         };
-        let cells = take_cells(&pr, None);
+        let cells = take_cells(&pr, None, r);
         assert_eq!(cells[1], "Power Reserve");
         assert_eq!(cells[2], length_text(166_320.0));
         // Its figures are hour by hour in the take, not its last window.
         assert_eq!(cells[3..6], ["—", "—", "—"].map(String::from));
         // A Positions Test's are its Mean row.
-        let cells = take_cells(&all, Some([Some(-2.25), Some(271.6), Some(-0.34)]));
+        let cells = take_cells(&all, Some([Some(-2.25), Some(271.6), Some(-0.34)]), r);
         assert_eq!(cells[1], "Positions Test");
         assert_eq!(cells[3..6], ["−2.2", "272", "0.3"].map(String::from));
         assert_eq!(TAKE_HEADS.len(), 7);
@@ -1975,8 +2147,8 @@ mod tests {
                 position: "DU".into(),
             }),
         };
-        assert_eq!(take_cells(&t, None)[2], "1:53");
-        assert!(take_line(&t, false).starts_with("Power Reserve 1 min 53 s"));
+        assert_eq!(take_cells(&t, None, None)[2], "1:53");
+        assert!(take_line(&t, false, None).starts_with("Power Reserve 1 min 53 s"));
     }
 
     /// A table narrower than its columns keeps every one inside it: the
@@ -1992,13 +2164,16 @@ mod tests {
             started_utc: None,
             duration_s: Some(60.0),
             positions: vec!["DU".into()],
-            at_end: Some(timegrapher_core::library::AtEnd {
-                rate_s_per_day: Some(5.2),
-                amplitude_deg: Some(301.0),
-                beat_error_ms: Some(0.3),
-                rate_corrected_s_per_day: None,
-            }),
+            at_end: None,
             power_reserve: None,
+        };
+        let reading = Reading {
+            position: Some("DU".into()),
+            rate_s_per_day: Some(5.2),
+            calibrated: true,
+            amplitude_deg: Some(301.0),
+            beat_error_ms: Some(0.3),
+            watch_heard: true,
         };
         let e = WatchEntry {
             dir: "/nowhere/Unsorted".into(),
@@ -2009,6 +2184,13 @@ mod tests {
             ],
             photos: Vec::new(),
         };
+        let readings = TakeReadings::known(e.takes.iter().map(|t| {
+            (
+                e.take_dir(t),
+                t.bytes,
+                TakeReading::Read(Ok(reading.clone())),
+            )
+        }));
         let cx = TakesContext {
             others: &[],
             writable: true,
@@ -2016,6 +2198,7 @@ mod tests {
             unsorted: true,
             picked: None,
             on_show: None,
+            readings: &readings,
         };
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
@@ -2087,6 +2270,39 @@ mod tests {
         );
     }
 
+    /// A take's reading is worked out on its own thread: asked for, it is
+    /// being read, then read, or why not; asked again at the same size it
+    /// isn't read again, and at another size it is.
+    #[test]
+    fn a_takes_reading_is_worked_out_on_its_own_thread() {
+        let dir = std::env::temp_dir().join(format!("tg-app-no-take-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let ctx = egui::Context::default();
+        let mut x = TakeReadings::default();
+        assert_eq!(x.of(&dir), None);
+        x.want(&dir, 1, &ctx);
+        assert_eq!(x.of(&dir), Some(&TakeReading::Reading));
+        let read = |x: &mut TakeReadings| {
+            for _ in 0..500 {
+                x.poll();
+                if let Some(TakeReading::Read(r)) = x.of(&dir) {
+                    return r.clone();
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            panic!("never read");
+        };
+        // No take there: why not, in core's words.
+        let why = read(&mut x).unwrap_err();
+        assert!(why.contains("session.toml"), "{why}");
+        assert_eq!(x.reading(&dir), None);
+        x.want(&dir, 1, &ctx);
+        assert!(matches!(x.of(&dir), Some(TakeReading::Read(Err(_)))));
+        x.want(&dir, 2, &ctx);
+        assert_eq!(x.of(&dir), Some(&TakeReading::Reading));
+        read(&mut x).unwrap_err();
+    }
+
     /// A Positions Test's take names its kind in the table's Position
     /// column and leads its line with it, its positions after.
     #[test]
@@ -2108,9 +2324,9 @@ mod tests {
             at_end: None,
             power_reserve: None,
         };
-        assert_eq!(take_cells(&t, None)[1], "DU");
-        assert_eq!(take_cells(&t, Some([None; 3]))[1], "Positions Test");
-        let line = take_line(&t, true);
+        assert_eq!(take_cells(&t, None, None)[1], "DU");
+        assert_eq!(take_cells(&t, Some([None; 3]), None)[1], "Positions Test");
+        let line = take_line(&t, true, None);
         assert!(line.starts_with("Positions Test · Dial Up · "), "{line}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2172,29 +2388,27 @@ mod tests {
             started_utc: Some("2026-10-20T21:32:00Z".into()),
             duration_s: Some(120.0),
             positions: vec!["DU".into(), "CL".into()],
-            at_end: Some(timegrapher_core::library::AtEnd {
-                rate_s_per_day: Some(3.5),
-                amplitude_deg: Some(281.0),
-                beat_error_ms: Some(-0.4),
-                rate_corrected_s_per_day: None,
-            }),
+            at_end: None,
             power_reserve: None,
         };
-        let line = take_line(&t, false);
+        let reading = Reading {
+            position: Some("CL".into()),
+            rate_s_per_day: Some(3.5),
+            calibrated: true,
+            amplitude_deg: Some(281.0),
+            beat_error_ms: Some(-0.4),
+            watch_heard: true,
+        };
+        let r = Some(&reading);
+        let line = take_line(&t, false, r);
         assert!(line.starts_with("Dial Up, Crown Left · "), "{line}");
         assert!(
             line.contains("+3.5 s/d · 281° · 0.4 ms · Analysis Only · Incomplete"),
             "{line}"
         );
-        // A take with a clock log shows its rate on that log, as the
-        // Bench reads it.
-        let mut c = t.clone();
-        c.at_end.as_mut().unwrap().rate_corrected_s_per_day = Some(15.0);
-        assert!(
-            take_line(&c, false).contains("+15.0 s/d · 281°"),
-            "{}",
-            take_line(&c, false)
-        );
+        // Until the reading is worked out, no figures.
+        let line = take_line(&t, false, None);
+        assert!(!line.contains("s/d") && !line.contains('°'), "{line}");
         // A Power Reserve take leads with its run, not its length.
         let r = Take {
             positions: vec!["CL".into()],
@@ -2205,13 +2419,13 @@ mod tests {
             }),
             ..t.clone()
         };
-        let line = take_line(&r, false);
+        let line = take_line(&r, false, Some(&reading));
         assert!(
             line.starts_with("Power Reserve 46 h 12 min · Crown Left · Analysis Only"),
             "{line}"
         );
         // Nor does a Positions Test's last window stand for the test.
-        let line = take_line(&t, true);
+        let line = take_line(&t, true, Some(&reading));
         assert!(!line.contains("+3.5") && !line.contains("281°"), "{line}");
         assert!(local_minute("2026-10-20T21:32:00Z").is_some_and(|m| m.len() == 16));
         assert_eq!(local_minute("not a time"), None);

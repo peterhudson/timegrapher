@@ -772,7 +772,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         power_reserve: power_reserve_of(&base)?,
     };
 
-    let out = o.out.clone().unwrap_or_else(|| base.join("session_report"));
+    let out = o.out.clone().unwrap_or_else(|| base.join(take::REPORT_DIR));
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let json = serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?;
     let w = |name: &str, text: &str| {
