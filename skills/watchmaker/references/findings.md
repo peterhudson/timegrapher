@@ -86,7 +86,7 @@ judgement, and say what limits it.
 | Breaks | `breaks` (`count`; `audio_s`, `gap_s` on long runs) | A fact, not a fault: rate and beat error are fitted on each side of a break apart. Where the beat error's sign turns over across a break (or, in a `session` reading, across a masked stretch), both beat errors are given as positive sizes, and `long`'s slices and `series`' beat error readings are then sizes too; `analyze`, `session`, `long` and `series` all say so with the caveat `beat_error_as_size`. When `long`, `series` or `session` read a take's clock log (`long` and `series` read one only with `--clock`), a forward step of 0.5 s or more in it (the computer's time jumping ahead of the audio and staying ahead, not one late entry) that no pause listed in `session.json` explains counts as a break of its own, so no reading is measured across it. | Say the take was paused, if it matters. |
 | Timing scatter | `jitter_us` against the beat period | 2% of the beat or more: no regular beat (above). Below that, compare it between takes of the same watch: a jump with nothing else changed points at the set-up. | |
 | Lift angle | `lift_deg`; the `lift_unknown` caveat | No calibre or lift angle given: the amplitude rests on the 52° default. | Find the calibre's lift angle before quoting amplitude: ask what the watch is; pass `--calibre` or `--lift` ([reading-the-numbers.md](reading-the-numbers.md#lift-angle)). |
-| Clock | `clock.from`, `usb_clock`, `rate_corrected_s_per_day`; the `clock_unknown` caveat | A sound card is off by 10–50 ppm, 1–4 s/d (`timegrapher --help`); 1 ppm is 0.09 s/d. | See [the rate and the card's clock](#the-rate-and-the-cards-clock). |
+| Clock | `clock.from`, `usb_clock`, `rate_corrected_s_per_day`; the `clock_unknown` and `clock_sources_disagree` caveats | A sound card is off by 10–50 ppm, 1–4 s/d (`timegrapher --help`); 1 ppm is 0.09 s/d. | See [the rate and the card's clock](#the-rate-and-the-cards-clock). |
 | The unlock found on both sides | a `session` reading's unlock coverage | Under 60% of the 2 s amplitude windows (the project's rule of thumb): amplitude and beat error from the unlock are doubtful; the rate is not. | Check the level and the clamp, try the watch cased or on another stand; `profile` shows what was marked. |
 | Set beat rate against heard | the `set_rate_disagrees` caveat (`heard`), `bph_heard` | The recording runs at another beat rate than the one set. | Quote no reading, not even to explain it. Check the calibre; run `analyze` without `--bph`. |
 
@@ -105,7 +105,7 @@ Two points that apply to all of them:
 
 `analyze` and each `session` reading's `measurement` carry `caveats[]`,
 each with a `code`; `long` and `series` carry one too, with only
-`sides_by_count` and `beat_error_as_size`. They are facts about the
+`sides_by_count`, `beat_error_as_size` and `clock_sources_disagree`. They are facts about the
 recording. Empty means none applies. Read it before quoting any number,
 and say the ones that apply in plain words.
 
@@ -118,6 +118,7 @@ and say the ones that apply in plain words.
 | `beats_missing` | Under 95% of the expected beats found (`fraction`). | The beat rate, then the level and the clamp. | "I missed some beats; let's get a cleaner recording." |
 | `lift_unknown` | No calibre or lift angle given; the amplitude rests on the default. | Ask what the watch is. | "The amplitude depends on the movement; tell me what it is and I'll check it." |
 | `clock_unknown` | The sound card's clock error isn't known. | For a rate within a few s/d, see below. | "The rate includes the sound card's own clock error, which this recording can't measure." |
+| `clock_sources_disagree` | The USB lines correct the rates, and the clock log, good enough to correct them on its own, measures the card differently by more than its own scatter: `usb_ppm` and `log_ppm` (± `log_ppm_sd`), ppm slow by each. Never on `analyze`, which reads no clock log. | Quote the corrected rate as the USB lines give it; the two clocks are a fact to report, not a fault in the watch. | "Two ways of checking the sound card's clock disagree by about N ppm (N × 0.0864 s/d), so the rates could be off by that much." |
 | `breaks` | The take was paused or resumed (`count`). | Nothing to fix. | Only if asked. |
 | `sides_by_count` | At `count` of those breaks Tick and Tock were not told apart by their sound, so the sides after each are named by the beat count across it. | Nothing to fix. | Only if asked. |
 | `masked` | `session` readings only: `seconds` of the measured stretch were masked out of the readings by hand (a session file's `masked`, or the app's Paper Strip). | Nothing to fix; say the readings leave that time out. | "Some of the take was masked out of the readings by hand." |
