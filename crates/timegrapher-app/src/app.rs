@@ -1990,6 +1990,10 @@ impl Drop for Batch {
 /// Unwound through the analysis to stop it when it is cancelled.
 struct Cancelled;
 
+/// What a full-wind search was made for: the watch, the Wind setting,
+/// the minute and when the watch's takes folder last changed.
+type FullWindKey = (Option<String>, bool, i64, Option<std::time::SystemTime>);
+
 pub struct TimegrapherApp {
     input: Input,
     devices: Vec<InputDevice>,
@@ -2094,9 +2098,11 @@ pub struct TimegrapherApp {
     /// The full-wind test's results, loaded for the next test to run as
     /// its 24 hour half.
     guided_earlier: Option<guided::FullWind>,
-    /// The watch and Wind setting `guided_earlier` was found for: picked
-    /// otherwise, it is searched for again.
-    guided_earlier_for: Option<(Option<String>, bool)>,
+    /// What `guided_earlier` was found for: the watch, the Wind setting,
+    /// the minute and when the watch's takes folder last changed. Any of
+    /// them otherwise, it is searched for again, so a test passing the
+    /// 12 hour mark, or a take added or removed, is seen.
+    guided_earlier_for: Option<FullWindKey>,
     /// For a watch, the next Positions Test is its 24 hours after half,
     /// set against the watch's own full-wind test (Wind on its toolbar).
     guided_after: bool,
@@ -8974,17 +8980,31 @@ impl TimegrapherApp {
     /// only when the watch or Wind has changed since; with no watch, the
     /// half is what Load Full-Wind Results… loads.
     fn find_full_wind(&mut self) {
+        self.find_full_wind_at(guided::unix_now());
+    }
+
+    /// [`Self::find_full_wind`] at `now`, Unix seconds.
+    fn find_full_wind_at(&mut self, now: f64) {
         if self.test_ready != Some(NewTake::Positions) {
             return;
         }
-        let key = (self.watch_open.clone(), self.guided_after);
+        let dir = self.open_watch().map(|e| e.dir.join(library::TAKES));
+        let changed = dir
+            .as_ref()
+            .and_then(|d| std::fs::metadata(d).ok())
+            .and_then(|m| m.modified().ok());
+        let key = (
+            self.watch_open.clone(),
+            self.guided_after,
+            (now / 60.0).floor() as i64,
+            changed,
+        );
         if self.guided_earlier_for.as_ref() == Some(&key) {
             return;
         }
         self.guided_earlier_for = Some(key);
-        let dir = self.open_watch().map(|e| e.dir.join(library::TAKES));
         self.guided_earlier = match dir {
-            Some(dir) if self.guided_after => guided::full_wind_in(&dir, guided::unix_now()),
+            Some(dir) if self.guided_after => guided::full_wind_in(&dir, now),
             _ => None,
         };
     }
@@ -21788,6 +21808,61 @@ mod tests {
         app.pick_watch(&seiko);
         frame(&mut app);
         assert!(app.start_test_why_not().is_some());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A test set up just before the full-wind test's 12 hour mark can
+    /// start once the mark passes, and a full-wind take removed is no
+    /// longer found: the search sees the time and the takes, not only the
+    /// watch and the Wind setting.
+    #[test]
+    fn a_ready_tests_full_wind_search_sees_the_time_and_the_takes() {
+        let base = std::env::temp_dir().join(format!("tg-app-wind-time-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Seiko 5")).unwrap();
+        let entry = lib.find("Seiko 5").unwrap();
+        let (seiko, take) = (
+            entry.watch.id.clone(),
+            entry.dir.join(library::TAKES).join("full wind"),
+        );
+        drop(lib);
+        // Its full-wind test began 11 h 30 min ago.
+        let now = guided::unix_now();
+        std::fs::create_dir_all(&take).unwrap();
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: String::new(),
+            began_unix: now - 11.5 * 3600.0,
+            watch: "Seiko 5".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![guided::KeptRow {
+                position: "DU".into(),
+                rate_s_per_day: Some(4.0),
+                amplitude_deg: Some(290.0),
+                beat_error_ms: Some(0.3),
+            }],
+        };
+        std::fs::write(take.join(guided::RESULTS_FILE), full.to_json()).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root));
+        app.pick_watch(&seiko);
+        app.guided_after = true;
+        app.new_take(NewTake::Positions, false);
+        app.find_full_wind_at(now);
+        assert!(app.start_test_why_not().is_some(), "too soon");
+        // An hour on, past the mark, with nothing else changed.
+        app.find_full_wind_at(now + 3600.0);
+        assert_eq!(app.start_test_why_not(), None);
+        // The take removed, in the same minute: no longer found.
+        std::fs::remove_dir_all(&take).unwrap();
+        app.find_full_wind_at(now + 3600.0);
+        assert!(app.start_test_why_not().is_some(), "removed");
         let _ = std::fs::remove_dir_all(&base);
     }
 
