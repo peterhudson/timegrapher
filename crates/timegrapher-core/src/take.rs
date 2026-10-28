@@ -16,6 +16,15 @@ use std::path::{Path, PathBuf};
 /// The file a take folder describes itself in.
 pub const MANIFEST: &str = "session.toml";
 
+/// The file the recorder writes beside a take's sound: the input it was
+/// made on, its breaks, and, for a take kept as its analysis alone, its
+/// parts.
+pub const RECORD: &str = "session.json";
+
+/// The file the recorder logs the sound card against the computer's clock
+/// in.
+pub const CLOCK_LOG: &str = "clock.csv";
+
 /// Where a take's clock comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClockFrom {
@@ -555,7 +564,7 @@ pub fn measure_entry(
     // A take kept as its analysis alone: every part of the take was in
     // it, so its session.json lists its breaks for the whole take's sound.
     let json = kept.as_ref().and_then(|_| {
-        fs::read_to_string(path.join("session.json"))
+        fs::read_to_string(path.join(RECORD))
             .ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
     });

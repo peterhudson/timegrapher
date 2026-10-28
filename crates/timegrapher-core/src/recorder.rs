@@ -18,6 +18,7 @@
 //! `segment`, `utc` and `device` are for people.
 
 use crate::capture::Block;
+use crate::take;
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Seek, Write};
@@ -175,7 +176,7 @@ impl Recorder {
         let lock = File::create(lock_path(&dir))
             .ok()
             .filter(|f| f.try_lock().is_ok());
-        let mut clock = BufWriter::new(File::create(dir.join("clock.csv"))?);
+        let mut clock = BufWriter::new(File::create(dir.join(take::CLOCK_LOG))?);
         writeln!(
             clock,
             "# system time (Unix seconds) against audio frames captured"
@@ -371,7 +372,7 @@ impl Recorder {
         result: Option<&serde_json::Value>,
     ) -> io::Result<()> {
         fs::write(
-            self.dir.join("session.json"),
+            self.dir.join(take::RECORD),
             self.session_text(ended, result)?,
         )
     }
@@ -469,12 +470,12 @@ impl Recorder {
         let mut name = self.copy_name(calibre);
         name.push("_analysis");
         let session = self.session_text(Some(utc(SystemTime::now())), result)?;
-        let mut files = vec![("session.json".to_string(), session.into_bytes())];
+        let mut files = vec![(take::RECORD.to_string(), session.into_bytes())];
         let mut names: Vec<_> = fs::read_dir(&self.dir)?
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n != "session.json" && !self.segments.iter().any(|s| s == n))
+            .filter(|n| n != take::RECORD && !self.segments.iter().any(|s| s == n))
             .collect();
         names.sort();
         for n in names {
@@ -565,10 +566,7 @@ impl Recorder {
                 || !name
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-                || matches!(
-                    name.to_ascii_lowercase().as_str(),
-                    "session.json" | "clock.csv"
-                )
+                || [take::RECORD, take::CLOCK_LOG].contains(&name.to_ascii_lowercase().as_str())
                 || name.to_ascii_lowercase().starts_with("audio-")
                 || self.dir.join(name).exists()
                 || !names.insert(name.to_ascii_lowercase())
@@ -607,10 +605,10 @@ impl Recorder {
         // disappear from read_dir and turn an incomplete take into a success.
         let mut sources: std::collections::BTreeSet<PathBuf> =
             self.segment_paths().into_iter().collect();
-        sources.insert(self.dir.join("clock.csv"));
+        sources.insert(self.dir.join(take::CLOCK_LOG));
         for e in fs::read_dir(&self.dir)? {
             let e = e?;
-            if e.file_type()?.is_file() && e.file_name() != "session.json" {
+            if e.file_type()?.is_file() && e.file_name() != take::RECORD {
                 sources.insert(e.path());
             }
         }
@@ -648,7 +646,7 @@ impl Recorder {
                 closed,
             });
         }
-        let mut written = vec![("session.json".to_string(), session.into_bytes())];
+        let mut written = vec![(take::RECORD.to_string(), session.into_bytes())];
         written.extend(
             required_files
                 .iter()

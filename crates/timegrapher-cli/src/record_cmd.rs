@@ -44,10 +44,9 @@ use timegrapher_core::power_reserve;
 use timegrapher_core::recorder::{self, Recorder, SessionInfo};
 use timegrapher_core::session::{self, Manifest, Position};
 use timegrapher_core::stream::{self, StreamConfig};
+use timegrapher_core::take::{self, MANIFEST};
 use timegrapher_core::timing::Anchor;
 use timegrapher_core::{analyze, AnalysisConfig};
-
-const MANIFEST: &str = "session.toml";
 
 /// Seconds skipped at the start of each take in a session file this
 /// command writes: the watch has just been turned to a new position. The
@@ -359,7 +358,7 @@ fn settings_with(
             watch: o.watch.clone(),
             calibre,
             bph,
-            lift: lift.unwrap_or(timegrapher_core::take::DEFAULT_LIFT_DEG),
+            lift: lift.unwrap_or(take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
             settle_s: SETTLE_S,
             existing: false,
@@ -413,10 +412,7 @@ fn settings_with(
         watch: m.watch.or(o.watch.clone()),
         calibre: m.calibre.or(calibre),
         bph: m.bph.or(bph),
-        lift: m
-            .lift
-            .or(lift)
-            .unwrap_or(timegrapher_core::take::DEFAULT_LIFT_DEG),
+        lift: m.lift.or(lift).unwrap_or(take::DEFAULT_LIFT_DEG),
         lift_known,
         settle_s: m.settle_s.unwrap_or(SETTLE_S),
         existing: true,
@@ -554,7 +550,7 @@ fn reserve_results(
     let info = audio::info(paths[0]).map_err(|e| format!("{}: {e}", paths[0].display()))?;
     // Its clock and breaks, as every command opens a take. A clock log
     // that cannot be read leaves the results on the sound card's clock.
-    let log_path = dir.join("clock.csv");
+    let log_path = dir.join(take::CLOCK_LOG);
     let mut clock = crate::clock_cmd::resolve(
         log_path.is_file().then_some(log_path.as_path()),
         &info,
@@ -565,11 +561,7 @@ fn reserve_results(
     .ok()
     .flatten()
     .map(|a| a.fit);
-    let breaks = timegrapher_core::take::breaks(
-        &mut log,
-        timegrapher_core::take::Listed::Files(&paths),
-        clock.as_mut(),
-    );
+    let breaks = take::breaks(&mut log, take::Listed::Files(&paths), clock.as_mut());
     let beat_s = 3600.0 / f64::from(log.bph.max(1));
     let heard = power_reserve::heard(&log.beats, beat_s);
     let mut r = Results::of(&heard, ending, started, pos.common(), true, |s| {
