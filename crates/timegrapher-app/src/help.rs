@@ -271,7 +271,7 @@ pub const ISOCHRONISM: &[&str] = &[
     "How the rate changes with the amplitude as the mainspring lets down: a watch whose \
      rate holds as the amplitude falls is isochronous. Each dot is the median rate in a \
      band of amplitude, with a bar over its middle half; the line is the curve through \
-     them, and the upright line marks where it turns, if it does.",
+     them, and the upright line named Turn marks where it turns, if it does.",
     "The curve needs the amplitude to fall through at least three 2° bands with 10 \
      readings in each, which a session of some hours from full wind gives. It comes \
      from the same tests as Steadiness, which the command line runs too.",
