@@ -1069,8 +1069,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let threshold = y_of(search.threshold);
             let lines = wheel_lines(marked(s, opts), (x_lo, x_hi));
             let names = WheelNames::reserve(ui, (i, view), opts.wheels);
-            // The period found, its dot and note; the note is hover only
-            // where the names are inside the plot, on its top.
+            // The period found, its dot and note; the note is hover only on
+            // a short plot, where the names are inside it on its top.
             let found = c.period.as_ref().map(|per| {
                 let x = per.period_s.log10();
                 let y = pts
@@ -1083,7 +1083,13 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 }
                 ([x, y], t)
             });
-            let hover_only = names.as_ref().is_some_and(|n| n.short);
+            let short = note_short(ui, &names, (i, view));
+            let top = if found.is_some() && !short {
+                let hi = pts.iter().map(|q| q[1]).fold(y_lo, f64::max);
+                marks::room_above(y_lo, hi, top, ui.available_height() - AXIS_H)
+            } else {
+                top
+            };
             let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
             let mut plot = base
                 .height(ui.available_height().max(40.0))
@@ -1111,18 +1117,16 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                     n.inside(p, &lines, &pts, fill);
                 }
                 p.line(Line::new("score", pts.clone()).color(colour).width(1.5_f32));
-                if let Some((at, t)) = &found {
+                if let Some((at, _)) = &found {
                     p.points(Points::new("peak", vec![*at]).color(colour).radius(3.5_f32));
-                    if !hover_only {
-                        mark_label(p, *at, t.clone(), pal.text, false);
-                    }
                 }
             });
             if let Some(n) = &names {
                 n.draw(ui, &resp.transform, &lines, &pts);
             }
-            if hover_only {
-                point_hover(ui, &resp.transform, found, (i, view));
+            if let Some((at, t)) = &found {
+                let id = ui.id().with(("point note", i, view));
+                marks::beside(ui, &resp.transform, *at, t, &pts, &[], fill, short, id);
             }
         }
         View::Cycle => {
@@ -1249,7 +1253,11 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .collect();
             let x_hi = pts.last().map_or(1.0, |p| p[0]);
             let lo = pts.iter().map(|p| p[1]).fold(-a.band, f64::min).min(-0.2);
-            base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
+            let short = note_short(ui, &None, (i, view));
+            let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
+            let ljung = format!("Ljung–Box p = {} ", steadiness::p_text(a.p_value));
+            let resp = base
+                .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
                 .x_axis_formatter(clear_of_edge(plot_w, lag_text))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
@@ -1266,31 +1274,32 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                                 .width(1.0_f32),
                         );
                     }
-                    p.line(Line::new("r", pts).color(colour).width(1.5_f32));
+                    p.line(Line::new("r", pts.clone()).color(colour).width(1.5_f32));
                     if let (Some(l), Some(r)) = (a.repeat_lag_s, a.repeat_r) {
                         p.points(
                             Points::new("repeat", vec![[l, r]])
                                 .color(colour)
                                 .radius(3.5_f32),
                         );
-                        mark_label(
-                            p,
-                            [l, r],
-                            format!("repeats at {}", secs(l)),
-                            pal.text,
-                            false,
-                        );
                     }
                     p.text(
-                        Text::new(
-                            "ljung box",
-                            PlotPoint::new(x_hi, 1.35),
-                            format!("Ljung–Box p = {} ", steadiness::p_text(a.p_value)),
-                        )
-                        .color(pal.text_secondary)
-                        .anchor(egui::Align2::RIGHT_TOP),
+                        Text::new("ljung box", PlotPoint::new(x_hi, 1.35), ljung.clone())
+                            .color(pal.text_secondary)
+                            .anchor(egui::Align2::RIGHT_TOP),
                     );
                 });
+            if let (Some(l), Some(r)) = (a.repeat_lag_s, a.repeat_r) {
+                // The Ljung–Box note's place, kept clear of the repeat's.
+                let t = &resp.transform;
+                let font = egui::TextStyle::Small.resolve(ui.style());
+                let w = ui.fonts_mut(|f| f.layout_no_wrap(ljung, font, pal.text_secondary));
+                let corner = t.position_from_point(&PlotPoint::new(x_hi, 1.35));
+                let ljung =
+                    egui::Rect::from_min_size(corner - egui::vec2(w.size().x, 0.0), w.size());
+                let note = format!("repeats at {}", secs(l));
+                let id = ui.id().with(("point note", i, view));
+                marks::beside(ui, t, [l, r], &note, &pts, &[ljung], fill, short, id);
+            }
         }
         View::Allan => {
             let Some(a) = &c.allan else {
@@ -1496,8 +1505,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let names = WheelNames::reserve(ui, (i, view), opts.wheels);
             let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
             let tops = pts.clone();
-            // The tallest peak's dot and note; the note is hover only where
-            // the names are inside the plot, on its top.
+            // The tallest peak's dot and note; the note is hover only on a
+            // short plot, where the names are inside it on its top.
             let tallest = peak.map(|peak| {
                 (
                     peak,
@@ -1509,7 +1518,13 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                     ),
                 )
             });
-            let hover_only = names.as_ref().is_some_and(|n| n.short);
+            let short = note_short(ui, &names, (i, view));
+            let top = if tallest.is_some() && !short {
+                let hi = pts.iter().map(|q| q[1]).fold(y_lo, f64::max);
+                marks::room_above(y_lo, hi, top, ui.available_height() - AXIS_H)
+            } else {
+                top
+            };
             let resp = base
                 .height(ui.available_height().max(40.0))
                 .x_grid_spacer(period_grid(ui.available_width()))
@@ -1524,22 +1539,20 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                         n.inside(p, &lines, &tops, fill);
                     }
                     p.line(Line::new("spectrum", pts).color(colour).width(1.5_f32));
-                    if let Some((at, t)) = &tallest {
+                    if let Some((at, _)) = &tallest {
                         p.points(
                             Points::new("tallest", vec![*at])
                                 .color(colour)
                                 .radius(3.5_f32),
                         );
-                        if !hover_only {
-                            mark_label(p, *at, t.clone(), pal.text, false);
-                        }
                     }
                 });
             if let Some(n) = &names {
                 n.draw(ui, &resp.transform, &lines, &tops);
             }
-            if hover_only {
-                point_hover(ui, &resp.transform, tallest, (i, view));
+            if let Some((at, t)) = &tallest {
+                let id = ui.id().with(("point note", i, view));
+                marks::beside(ui, &resp.transform, *at, t, &tops, &[], fill, short, id);
             }
         }
     }
@@ -1678,6 +1691,20 @@ fn wheel_marks(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::
     }
 }
 
+/// The room a plot's x axis takes under it, points: near enough to tell
+/// its frame's height from the height it is given.
+const AXIS_H: f32 = 20.0;
+
+/// Whether a plot's point note is hover only: on a short plot, as the
+/// wheels' `names` judged it where they are on, else the plot's own
+/// height. Call before the plot is laid out.
+fn note_short(ui: &egui::Ui, names: &Option<WheelNames>, id: impl std::hash::Hash) -> bool {
+    names.as_ref().map_or_else(
+        || marks::short(ui, ui.id().with(("note short", id)), ui.available_height()),
+        |n| n.short,
+    )
+}
+
 /// Where the wheels' names go on a period plot, by the rules every named
 /// line follows ([`marks`]): in a lane of two rows above the plot, or
 /// inside along its top where the plot is short.
@@ -1807,23 +1834,6 @@ fn mark_label(
             .color(color)
             .anchor(egui::Align2([h, v])),
     );
-}
-
-/// A marked point's note as its hover, where there is no room to show it:
-/// the dot (`found`, plot coordinates) says the note when pointed at.
-fn point_hover(
-    ui: &egui::Ui,
-    t: &egui_plot::PlotTransform,
-    found: Option<([f64; 2], String)>,
-    id: impl std::hash::Hash,
-) {
-    if let Some((at, note)) = found {
-        let dot = t.position_from_point(&PlotPoint::new(at[0], at[1]));
-        if t.frame().contains(dot) {
-            let hit = egui::Rect::from_center_size(dot, egui::vec2(12.0, 12.0));
-            marks::hover(ui, ui.id().with(("point note", id)), hit, note);
-        }
-    }
 }
 
 /// A plain number for a linear axis, with no "-0.0".
