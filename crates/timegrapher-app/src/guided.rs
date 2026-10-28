@@ -1191,7 +1191,7 @@ pub fn pane(
                 ui,
                 &title,
                 "Each position's figures as soon as it is measured, read the same way as \
-                     `timegrapher session` reads them",
+                     the command line reads them",
             );
             // A word in the row under way; the banner has the seconds.
             let status = match phase {
@@ -1210,7 +1210,7 @@ pub fn pane(
                 "This Take",
                 &format!(
                     "Each position marked on the {card} card, read as \
-                     `timegrapher session` reads a take"
+                     the command line reads a take"
                 ),
             );
             free_grid(ui, f);
@@ -1312,7 +1312,7 @@ pub fn pane(
                         "Each position settles {:.0} s and is measured for {:.0} s. Beat \
                              error is a size: which beat is longer depends on the beat the \
                              analysis locked on first. Save the session to keep the positions \
-                             with the sound; `timegrapher session` reads it the same way.",
+                             with the sound; the command line reads it the same way.",
                         t.settle_s, t.measure_s
                     ))
                     .small()

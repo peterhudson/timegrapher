@@ -444,7 +444,7 @@ fn hour_table(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
                 ("Hours", "Hours since the first beat heard"),
                 (
                     "Rate",
-                    "The hour's rate, s/d, as `timegrapher session` reads a stretch",
+                    "The hour's rate, s/d, as the command line reads a stretch",
                 ),
                 ("Amplitude", "The hour's median amplitude"),
                 (
