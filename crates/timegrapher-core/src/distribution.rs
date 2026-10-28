@@ -151,28 +151,7 @@ pub fn distribution(
             .collect()
     };
     let peaks: Vec<f64> = h.peaks(0.05).into_iter().map(|i| h.centre(i)).collect();
-    let d = kind.decimals;
-    let f = |x: f64| format!("{x:.d$}{}", kind.suffix);
-    let per = if label == "2 s" {
-        "2-second stretches"
-    } else {
-        "readings"
-    };
-    let mut summary = format!(
-        "{} {per} · median {} · middle 80% {} to {}",
-        h.n,
-        f(h.median),
-        f(h.p10),
-        f(h.p90)
-    );
-    if h.below + h.above > 0 {
-        summary += &format!(" · {} outliers off the scale", h.below + h.above);
-    }
-    if peaks.len() > 1 {
-        let at: Vec<String> = peaks.iter().map(|&x| f(x)).collect();
-        summary += &format!(" · {} peaks, at {}", peaks.len(), at.join(" and "));
-    }
-    Some(Distribution {
+    let mut d = Distribution {
         series: kind.series,
         unit: kind.unit,
         values: label,
@@ -193,8 +172,86 @@ pub fn distribution(
             .map(|(centre, spread)| NormalLine { centre, spread }),
         quantiles,
         points,
-        summary,
-    })
+        summary: String::new(),
+    };
+    d.summary = d.line(kind, "", None);
+    Some(d)
+}
+
+impl Distribution {
+    /// The summary line, as the app shows it beside the histogram: the
+    /// count, the median, the middle 80%, then the outliers and the peaks
+    /// when there are any. `over` follows the count (" in the session"),
+    /// and `only` names the one position counted (" · Dial Up only").
+    /// [`Distribution::summary`] is this with neither.
+    pub fn line(&self, kind: Kind, over: &str, only: Option<&str>) -> String {
+        let d = kind.decimals;
+        let f = |x: f64| format!("{x:.d$}{}", kind.suffix);
+        let per = if self.values == "2 s" {
+            "2-second stretches"
+        } else {
+            "readings"
+        };
+        let mut line = format!(
+            "{} {per}{over} · median {} · middle 80% {} to {}",
+            self.n,
+            f(self.median),
+            f(self.p10),
+            f(self.p90)
+        );
+        if let Some(p) = only {
+            line += &format!(" · {p} only");
+        }
+        if self.below + self.above > 0 {
+            line += &format!(" · {} outliers off the scale", self.below + self.above);
+        }
+        if self.peaks.len() > 1 {
+            let at: Vec<String> = self.peaks.iter().map(|&x| f(x)).collect();
+            line += &format!(" · {} peaks, at {}", self.peaks.len(), at.join(" and "));
+        }
+        line
+    }
+}
+
+/// Seconds of beats in each "2 s" value, as the amplitude's windows.
+pub const STRETCH_S: f64 = 2.0;
+
+/// The rate over each [`STRETCH_S`] of `beats` on a grid from `t0`, as
+/// `(start, s/day)`, from stretch `from` on, up to the last stretch the
+/// beats reach the end of; returns the stretch to start from next time,
+/// so beats arriving one block at a time are worked out once. A stretch
+/// across a break (a time in `breaks`) or into a masked stretch
+/// (`masked`, start and end) gives no value, as no reading does.
+pub fn rates_2s(
+    beats: &[crate::beats::Beat],
+    bph: u32,
+    t0: f64,
+    from: usize,
+    breaks: &[f64],
+    masked: &[(f64, f64)],
+    out: &mut Vec<(f64, f64)>,
+) -> usize {
+    let Some(last) = beats.last() else {
+        return from;
+    };
+    let mut next = from;
+    loop {
+        let a = t0 + next as f64 * STRETCH_S;
+        let b = a + STRETCH_S;
+        if b > last.time + 1e-9 {
+            return next;
+        }
+        next += 1;
+        if breaks.iter().any(|&x| a < x && x < b) || masked.iter().any(|&(m0, m1)| a < m1 && b > m0)
+        {
+            continue;
+        }
+        let lo = beats.partition_point(|x| x.time < a);
+        let hi = beats.partition_point(|x| x.time < b);
+        if let Some(f) = crate::timing::fit(&beats[lo..hi], bph) {
+            out.push((a, f.rate_s_per_day));
+        }
+    }
 }
 
 /// The distributions over one stretch of the take.
@@ -390,5 +447,61 @@ mod tests {
         assert!(d.stretches.is_empty() && d.stretch_s == 0.0);
         let d = distributions(&input, 0.0, n as f64 * 10.0, 0.0);
         assert!(d.stretches.is_empty());
+    }
+
+    #[test]
+    fn two_second_rates_skip_breaks_and_masks_and_add_up_block_by_block() {
+        // 28,800 bph running 10 s/day fast, for 20 s.
+        let period = 0.125 * (1.0 - 10.0 / 86_400.0);
+        let beats: Vec<crate::beats::Beat> = (0..160)
+            .map(|k| crate::beats::Beat {
+                index: k,
+                time: 0.01 + k as f64 * period,
+                quality: 1.0,
+            })
+            .collect();
+        let mut all = Vec::new();
+        let next = rates_2s(&beats, 28_800, 0.0, 0, &[5.0], &[(13.0, 14.5)], &mut all);
+        assert_eq!(next, 9, "the last stretch the beats reach the end of");
+        // Ten stretches less the one across the break at 5 s, the two the
+        // mask reaches into, and the one the beats don't reach the end of.
+        let starts: Vec<f64> = all.iter().map(|v| v.0).collect();
+        assert_eq!(starts, [0.0, 2.0, 6.0, 8.0, 10.0, 16.0]);
+        for (_, r) in &all {
+            assert!((r - 10.0).abs() < 0.5, "{r}");
+        }
+        // The same values worked out as the beats arrive.
+        let mut part = Vec::new();
+        let mut at = 0;
+        for n in [40, 90, 160] {
+            at = rates_2s(
+                &beats[..n],
+                28_800,
+                0.0,
+                at,
+                &[5.0],
+                &[(13.0, 14.5)],
+                &mut part,
+            );
+        }
+        assert_eq!(part, all);
+    }
+
+    #[test]
+    fn the_app_line_adds_its_words_to_the_summary() {
+        let v: Vec<f64> = (0..50).map(|i| 250.0 + (i % 5) as f64).collect();
+        let d = distribution(&v, AMPLITUDE, "2 s", 2.0).unwrap();
+        assert!(
+            d.summary.starts_with("50 2-second stretches · median "),
+            "{}",
+            d.summary
+        );
+        let line = d.line(AMPLITUDE, " in the session", Some("Dial Up"));
+        assert!(
+            line.starts_with("50 2-second stretches in the session · median ")
+                && line.contains(" · Dial Up only"),
+            "{line}"
+        );
+        assert_eq!(d.line(AMPLITUDE, "", None), d.summary);
     }
 }
