@@ -208,7 +208,9 @@ const CHAR_W = 6.6;
 const TIME_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800,
   3600, 7200, 10800, 21600, 43200, 86400, 172800];
 // The app's line styles.
-const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5", wheel: "4 4" };
+// "dense" and "sparse" are egui's dotted_dense and dotted_loose: round dots
+// 5 and 10 px apart.
+const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5", wheel: "4 4", dense: "0 5", sparse: "0 10" };
 
 // Charts are drawn at the width they are shown, so their text stays at its size.
 function chartWidth() {
@@ -766,13 +768,20 @@ function linTicks(lo, hi, px, minPx, fmt, ladder) {
 // A plot as the steadiness views draw theirs: an x and a y scale with their
 // own tick labels, and lines, dots, rules and notes, all inside the plot.
 //   x, y: [lo, hi]; xTicks(lo, hi, plotW), yTicks(lo, hi, plotH): [[v, label]]
-//   hlines: [{y, color, dash}]; vlines: [{x, color, opacity, width, dash, label, ink, left}]
+//   hlines: [{y, color, dash}]; vlines: [{x, color, opacity, width, dash, name, rank, ink, hover}]
+//   named, by marks.rs's rules: in a lane of two rows above the plot, which
+//   `names` keeps room for, or inside along its top on a short plot
 //   lines: [{pts, color, width, dash}]; dots: [{pts, color, r}]
 //   notes: [{x, y, text, above}] beside a point; corner: {text, top}, a line
 //   per "\n"; rects: [{x0, x1, y0, y1, color}] outlined; a dot set's rgb
 //   overrides its color
 function xyChart(o) {
-  const W = chartWidth(), H = o.height || 150, T = 4, B = 20, R = 6;
+  const W = chartWidth(), B = 20, R = 6;
+  // With its lines named, a plot keeps the lane's room above it, so it
+  // never jumps as they come and go; a short one names them inside.
+  const short = o.names && (o.height || 150) - 4 - B < MARKS.SHORT_PLOT;
+  const room = o.names && !short ? MARKS.LANE + MARKS.LANE_GAP : 0;
+  const H = (o.height || 150) + room, T = 4 + room;
   const plotH = H - T - B;
   const [x0, x1] = o.x, [y0, y1] = o.y;
   const yt = o.yTicks(y0, y1, plotH);
@@ -793,22 +802,21 @@ function xyChart(o) {
     const anchor = sx(v) - t.length * CHAR_W / 2 < L - 8 ? "start" : sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
     g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
   }
-  const dash = (d) => d ? ` stroke-dasharray="${DASH[d]}"` : "";
+  const dash = (d) => d ? ` stroke-dasharray="${DASH[d]}"${DASH[d].startsWith("0 ") ? ` stroke-linecap="round"` : ""}` : "";
   for (const h of o.hlines || []) {
     inside += `<line x1="${L}" x2="${L + plotW}" y1="${sy(h.y)}" y2="${sy(h.y)}" stroke="var(${h.color})" stroke-width="1"${dash(h.dash)}/>`;
   }
-  // Each rule's name beside it, on its left when asked, else its right;
-  // a name with no room inside the plot, or over another, is left off.
-  const taken = [];
   for (const v of o.vlines || []) {
     inside += `<line x1="${sx(v.x)}" x2="${sx(v.x)}" y1="${T}" y2="${T + plotH}" stroke="var(${v.color})"${v.opacity ? ` stroke-opacity="${v.opacity}"` : ""} stroke-width="${v.width || 1}"${dash(v.dash)}/>`;
-    if (!v.label) continue;
-    const w = v.label.length * CHAR_W;
-    let a = v.left ? sx(v.x) - 3 - w : sx(v.x) + 3;
-    if (a < L + 2 || a + w > L + plotW - 2) a = v.left ? sx(v.x) + 3 : sx(v.x) - 3 - w;
-    if (a < L + 2 || a + w > L + plotW - 2 || taken.some(([p, q]) => a < q + 4 && a + w > p - 4)) continue;
-    taken.push([a, a + w]);
-    inside += `<text x="${a}" y="${T + 12}"${v.ink ? ` style="fill:var(${v.ink})"` : ""}>${esc(v.label)}</text>`;
+  }
+  // The lines' names: over the lines and under the trace, inside a short
+  // plot, clear of the trace; else in the lane above it.
+  const named = (o.vlines || []).filter((v) => v.name);
+  if (o.names && short) {
+    const tops = (o.lines || []).flatMap((l) => l.pts).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y)).map(([x, y]) => [sx(x), sy(y)]);
+    inside += namesInside(named, sx, L, T, plotW, tops);
+  } else if (o.names) {
+    g += laneAbove(named, sx, L, T, plotW);
   }
   for (const r of o.rects || []) {
     const [a, b] = [sx(r.x0), sx(r.x1)], [c, d] = [sy(r.y1), sy(r.y0)];
@@ -851,31 +859,249 @@ function xyChart(o) {
   return `<div class="chart"><svg${o.faint ? ` class="faint"` : ""} viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.title || "")}">${g}</svg></div>`;
 }
 
-// steady::wheel_marks: a bold rule and name at each wheel's period, in the
-// wheels' own colour, and a fainter dashed one at half of it ("×2"), where
-// a wheel that is off centre shows twice a turn, unless another wheel turns
-// there. The shorter of two wheels of one name is labelled on its left.
-// With no wheel named, the reference periods in grey; with Wheel Periods
-// off, nothing.
-function wheelMarks(doc, span) {
-  if (!showWheels) return [];
-  const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
-  const inside = (x) => x > span[0] && x < span[1];
-  const out = [];
-  wheels.forEach((w, k) => {
-    if (!(w.period_s > 0)) return;
-    const twin = wheels.some((o, j) => j !== k && o.name === w.name && o.period_s > w.period_s);
-    const x = Math.log10(w.period_s);
-    if (inside(x)) out.push({ x, color: "--wheel", width: 2, label: wheelTitle(w.name), ink: "--wheel", left: twin });
-    const half = w.period_s / 2, x2 = Math.log10(half);
-    const taken = wheels.some((o) => Math.abs(o.period_s / half - 1) < 0.03);
-    if (inside(x2) && !taken && !twin) out.push({ x: x2, color: "--wheel", opacity: 0.6, width: 1.25, dash: "wheel", label: `${wheelTitle(w.name)} ×2`, ink: "--wheel" });
-  });
-  for (const r of referenceLines(doc)) {
-    const x = Math.log10(r.period_s);
-    if (inside(x)) out.push({ x, color: "--text3", width: 1.25, label: r.label, ink: "--text2" });
+// marks.rs: names on the lines a plot marks, by the app's one set of rules
+// for every plot. Names sit in a lane outside the plot, each centred on its
+// line; a name that would touch another goes a row out, sliding along with
+// a leader where that row is taken. On a short plot they go inside, along
+// its top. Strong names (a wheel) are placed first, faint ones (a wheel's
+// ×2, a reference period) after. The app's tests and these run the same
+// cases (crates/timegrapher-app/src/marks_cases.json).
+const MARKS = { ROW_H: 15, LANE: 30, LANE_GAP: 6, NAME_GAP: 12, HYSTERESIS: 2, SHORT_PLOT: 100, INSIDE_TOP: 4, NAME_SIZE: 11.5, TICK: 4, SIDE_GAP: 12 };
+
+// marks::order: strong first, then faint, each left to right. `names` are
+// each one's [x, width, rank], rank "strong" or "faint".
+function markOrder(names) {
+  return names.map((_, i) => i).sort((a, b) =>
+    (names[a][2] === "faint") - (names[b][2] === "faint") || names[a][0] - names[b][0]);
+}
+
+// marks::place: each name's [left edge, row] in a lane of two rows, `was`
+// the row each was in before.
+function markPlace(names, left, right, was) {
+  const { NAME_GAP, HYSTERESIS } = MARKS;
+  const rows = [[], []], out = names.map(() => [0, 0]);
+  for (const i of markOrder(names)) {
+    const [x, w] = names[i];
+    const last = Math.max(right - w, left);
+    const at = Math.min(Math.max(x - w / 2, left), last);
+    const overlap = rows[0].reduce((m, [a, b]) => Math.max(m, Math.min(b + NAME_GAP - at, at + w + NAME_GAP - a)), -Infinity);
+    const outRow = (was[i] || 0) === 1 ? overlap > -HYSTERESIS : overlap > HYSTERESIS;
+    let a = at, row = 0;
+    if (outRow) {
+      for (let hit; (hit = rows[1].find(([s, e]) => a < e + NAME_GAP && a + w + NAME_GAP > s));) a = hit[1] + NAME_GAP;
+      a = Math.min(a, last);
+      row = 1;
+    }
+    rows[row].push([a, a + w]);
+    out[i] = [a, row];
   }
   return out;
+}
+
+// marks::place_row: each name's left edge in a lane of one row; one that
+// would touch slides past, right where it fits, else left.
+function markPlaceRow(names, left, right) {
+  const { NAME_GAP } = MARKS;
+  const taken = [], out = names.map(() => 0);
+  for (const i of markOrder(names)) {
+    const [x, w] = names[i];
+    const last = Math.max(right - w, left);
+    const centred = Math.min(Math.max(x - w / 2, left), last);
+    const hit = (a) => taken.find(([s, e]) => a < e + NAME_GAP && a + w + NAME_GAP > s);
+    let at = centred;
+    for (let h; (h = hit(at));) at = h[1] + NAME_GAP;
+    if (at > last) {
+      at = centred;
+      for (let h; (h = hit(at));) at = h[0] - NAME_GAP - w;
+      at = Math.max(at, left);
+    }
+    taken.push([at, at + w]);
+    out[i] = at;
+  }
+  return out;
+}
+
+// marks::inside: each name's left edge, or null, in one row along a short
+// plot's top: clear of the facts box (the span `facts`), of names already
+// placed, of other lines, and of the trace (`clear(a, b)` says whether a
+// span is clear of it); a name with no room isn't named (its line's hover
+// names it).
+function markInside(names, left, right, facts, clear) {
+  const { NAME_GAP } = MARKS;
+  const placed = [];
+  const near = (a, w) => placed.some(([s, e]) => a - 3 < e + NAME_GAP && a + w + 3 + NAME_GAP > s);
+  const onFacts = (a, w) => a + w + 3 > facts[0] - 4 && a - 3 < facts[1] + 4;
+  const onLine = (a, w, own) => names.some(([x]) => x !== own && x > a - 5 && x < a + w + 5);
+  const out = names.map(() => null);
+  for (const i of markOrder(names)) {
+    const [x, w] = names[i];
+    let at = Math.min(Math.max(x - w / 2, left + 4), Math.max(right - 4 - w, left + 4));
+    if (onFacts(at, w)) {
+      const a = [x + 4, x - w - 4].find((a) => !onFacts(a, w) && !onLine(a, w, x) && a - 3 >= left + 1 && a + w + 3 <= right - 1);
+      if (a === undefined) continue;
+      at = a;
+    }
+    if (!clear(at - 3, at + w + 3)) {
+      const fits = (a) => a - 3 >= left + 1 && !near(a, w) && a + w + 3 <= right - 1 && !onFacts(a, w) && !onLine(a, w, x) && clear(a - 3, a + w + 3);
+      const a = [x - w - 5, x + 5].find(fits);
+      if (a === undefined) continue;
+      at = a;
+    }
+    if (near(at, w)) continue;
+    placed.push([at - 3, at + w + 3]);
+    out[i] = at;
+  }
+  return out;
+}
+
+// marks::stack: names level with lines across a plot, in a column beside
+// it: each centred on its line; names that would touch spread evenly about
+// their lines' middle, within `top..bottom`. Each name's centre.
+function markStack(ys, top, bottom) {
+  const { ROW_H } = MARKS;
+  const o = ys.map((_, i) => i).sort((a, b) => ys[a] - ys[b]);
+  const first = ([s, n]) => {
+    const mid = o.slice(s, s + n).reduce((t, i) => t + ys[i], 0) / n;
+    return Math.max(Math.min(mid - (n - 1) * ROW_H / 2, bottom - ROW_H / 2 - (n - 1) * ROW_H), top + ROW_H / 2);
+  };
+  const runs = [];
+  for (let k = 0; k < o.length; k++) {
+    let run = [k, 1];
+    while (runs.length) {
+      const above = runs[runs.length - 1];
+      if (first(run) < first(above) + above[1] * ROW_H) { runs.pop(); run = [above[0], above[1] + run[1]]; } else break;
+    }
+    runs.push(run);
+  }
+  const out = ys.map(() => 0);
+  for (const run of runs) {
+    const y0 = first(run);
+    o.slice(run[0], run[0] + run[1]).forEach((i, j) => { out[i] = y0 + j * ROW_H; });
+  }
+  return out;
+}
+
+// A name's width on screen: the names' type is 11.5 px, a strong one
+// semibold.
+function markWidth(name, rank) {
+  return String(name).length * CHAR_W * MARKS.NAME_SIZE / 11 * (rank === "strong" ? 1.06 : 1);
+}
+function markText(x, y, name, rank, extra = "") {
+  const style = rank === "strong" ? "fill:var(--text);font-weight:600" : "fill:var(--text2)";
+  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" style="${style};font-size:${MARKS.NAME_SIZE}px"${extra}>${esc(name)}</text>`;
+}
+
+// marks::lane_above: lines down a plot (its frame from L, T, plotW wide),
+// named in a lane of two rows above it, each name joined to its line by a
+// short stroke of the line's colour, with an angled leader where it had
+// to slide. Each line and its name say its hover.
+function laneAbove(lines, sx, L, T, plotW) {
+  const { ROW_H, LANE_GAP } = MARKS;
+  const seen = lines.filter((l) => sx(l.x) >= L && sx(l.x) <= L + plotW);
+  const names = seen.map((l) => [sx(l.x), markWidth(l.name, l.rank), l.rank]);
+  const placed = markPlace(names, L + 2, L + plotW - 2, []);
+  let strokes = "", boxes = "";
+  seen.forEach((l, i) => {
+    const [x, w] = names[i], [left, row] = placed[i];
+    const off = LANE_GAP + row * ROW_H, top = T - off - ROW_H, centre = left + w / 2;
+    const pts = [[centre, T - off - 1]];
+    if (Math.abs(centre - x) > 1) pts.push([x, T - LANE_GAP / 2]);
+    pts.push([x, T]);
+    strokes += `<polyline points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${l.ink})"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-width="1"/>`;
+    boxes += `<g><title>${esc(l.hover)}</title><rect x="${(left - 2).toFixed(1)}" y="${(top - 2).toFixed(1)}" width="${(w + 4).toFixed(1)}" height="${ROW_H + 4}" rx="2" fill="var(--card)"/>${markText(left, top + 11.5, l.name, l.rank)}</g>`;
+  });
+  return strokes + boxes;
+}
+
+// marks::InsideNames: on a short plot, the names inside along its top, on
+// boxes of 80% of the plot's colour, clear of the trace (`tops`, screen).
+function namesInside(lines, sx, L, T, plotW, tops) {
+  const { ROW_H, INSIDE_TOP } = MARKS;
+  const seen = lines.filter((l) => sx(l.x) >= L && sx(l.x) <= L + plotW);
+  const names = seen.map((l) => [sx(l.x), markWidth(l.name, l.rank), l.rank]);
+  const foot = T + INSIDE_TOP + ROW_H;
+  const clear = (a, b) => tops.every(([x, y]) => x < a || x > b || y > foot + 1);
+  const at = markInside(names, L, L + plotW, [-Infinity, -Infinity], clear);
+  let out = "";
+  seen.forEach((l, i) => {
+    if (at[i] === null) return;
+    const a = at[i], w = names[i][1];
+    out += `<g><title>${esc(l.hover)}</title><rect x="${(a - 3).toFixed(1)}" y="${T + INSIDE_TOP}" width="${(w + 6).toFixed(1)}" height="${ROW_H}" rx="3" fill="var(--card)" fill-opacity="0.8"/>${markText(a, T + INSIDE_TOP + 11.5, l.name, l.rank)}</g>`;
+  });
+  return out;
+}
+
+// marks::lane_right: lines across a plot, named in a column right of it
+// (from `right`, between `top` and `bottom`), as markStack places them:
+// each name joined to its line by a short tick of the line's colour, with
+// an angled leader where it had to slide.
+function laneRight(lines, right, top, bottom) {
+  const { ROW_H, TICK, SIDE_GAP } = MARKS;
+  const seen = lines.filter((l) => l.y >= top && l.y <= bottom);
+  const at = markStack(seen.map((l) => l.y), top - ROW_H / 2, bottom + ROW_H / 2);
+  let out = "";
+  seen.forEach((l, i) => {
+    const pts = [[right, l.y], [right + TICK, l.y], [right + SIDE_GAP - 2, at[i]]];
+    out += `<polyline points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${l.ink})"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-width="1"/>`;
+    out += markText(right + SIDE_GAP, at[i] + 4, l.name, l.rank);
+  });
+  return out;
+}
+// marks::side_width: the room the names take beside a plot, the tick and
+// the widest name, whatever stretch it shows.
+function sideWidth(lines) {
+  const widest = Math.max(0, ...lines.map((l) => markWidth(l.name, l.rank)));
+  return widest > 0 ? MARKS.SIDE_GAP + widest + 4 : 0;
+}
+
+// marks::wheel_short: a wheel's short name, for the narrow lane beside a
+// map.
+function wheelShort(name) {
+  return { "centre wheel": "2nd Wheel", "third wheel": "3rd Wheel", "fourth wheel": "4th Wheel", "escape wheel": "Esc Wheel",
+    "seconds wheel": "Sec Wheel", "intermediate wheel": "Int Wheel" }[name] || wheelTitle(name);
+}
+
+// steady::wheel_lines: the lines to mark on a period axis spanning `span`
+// (log10 s): each wheel's turn, and half of it ("×2", where a wheel that is
+// off centre shows twice a turn) unless another wheel turns there; with no
+// wheel named, the reference periods; with Wheel Periods off, nothing.
+// Each line's x, turn ("wheel", "twice" or "reference"), name, short name
+// and hover.
+function wheelLines(doc, span) {
+  if (!showWheels) return [];
+  const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
+  const inside = (l) => l.x > span[0] && l.x < span[1];
+  if (!wheels.length) {
+    return referenceLines(doc).map((r) => ({ x: Math.log10(r.period_s), turn: "reference", name: r.label, short: r.label, hover: r.label })).filter(inside);
+  }
+  const out = [];
+  for (const w of wheels) {
+    const title = wheelTitle(w.name), short = wheelShort(w.name);
+    out.push({ x: Math.log10(w.period_s), turn: "wheel", name: title, short, hover: `${title}: ${secs(w.period_s)}` });
+    const half = w.period_s / 2;
+    if (!wheels.some((o) => Math.abs(o.period_s / half - 1) < 0.03)) {
+      out.push({ x: Math.log10(half), turn: "twice", name: `${title} ×2`, short: `${short} ×2`, hover: `${title} ×2: ${secs(half)}` });
+    }
+  }
+  return out.filter(inside);
+}
+// steady::WheelLine::rank and ink: a wheel's name is strong, a ×2's or a
+// reference's faint; a wheel's line is the wheels' grey, a ×2's fainter, a
+// reference's the tertiary grey.
+function wheelRank(l) { return l.turn === "wheel" ? "strong" : "faint"; }
+function wheelInk(l) {
+  return l.turn === "reference" ? { ink: "--text3" } : l.turn === "twice" ? { ink: "--wheel", opacity: 0.6 } : { ink: "--wheel" };
+}
+
+// steady::wheel_marks: the lines down a period plot, under its trace: a
+// wheel's dotted, a ×2's looser and fainter, a reference's solid; named
+// above the plot by the lane rules.
+function wheelMarks(doc, span) {
+  return wheelLines(doc, span).map((l) => {
+    const { ink, opacity } = wheelInk(l);
+    const style = l.turn === "wheel" ? { width: 2, dash: "dense" } : l.turn === "twice" ? { width: 1.25, dash: "sparse" } : { width: 1.25 };
+    return { x: l.x, color: ink, opacity, ...style, name: l.name, rank: wheelRank(l), ink, hover: l.hover };
+  });
 }
 
 // periodicity::reference_lines: with no wheel named, 1 min and 1 h, marked
@@ -951,7 +1177,7 @@ function steadyPlot(s, view, doc) {
         title: "Periods", x: span, y, faint: true,
         xTicks: periodTicks,
         yTicks: periodsLog ? (a, b) => logTicks(a, b, sig) : (a, b, h) => linTicks(a, b, h, 24, (y) => y.toFixed(0)),
-        vlines: wheelMarks(doc, span), hlines: [{ y: yOf(p.threshold), color: "--text2", dash: "loose" }],
+        vlines: wheelMarks(doc, span), names: showWheels, hlines: [{ y: yOf(p.threshold), color: "--text2", dash: "loose" }],
         lines: [{ pts, color, width: 1.5 }], marks, notes,
       });
     }
@@ -1033,8 +1259,9 @@ function steadyPlot(s, view, doc) {
       if (pts.length < 2) return steadyNote("The spectrum needs a longer session.");
       const x = [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))];
       const yLo = Math.min(...pts.map((q) => q[1])), yHi = Math.max(...pts.map((q) => q[1]));
-      // Room above the tallest line for the wheels' names, as in the app.
-      const y = [yLo, yHi + Math.max(yHi - yLo, 0.5) * 0.25];
+      // A little room above the tallest line, as in the app; the wheels'
+      // names are in the lane above the plot.
+      const y = [yLo, yHi + Math.max(yHi - yLo, 0.5) * 0.05];
       const u = asRate ? " s/d" : sp.unit === "deg" ? "°" : " ms";
       // steady.rs's size: decimals by magnitude.
       const size = (v) => v.toFixed(v >= 10 ? 0 : v >= 1 ? 1 : v >= 0.1 ? 2 : 3) + u;
@@ -1043,7 +1270,7 @@ function steadyPlot(s, view, doc) {
         title: "FFT", x, y, faint: true,
         xTicks: periodTicks,
         yTicks: (p, q) => logTicks(p, q, size),
-        vlines: wheelMarks(doc, x), lines: [{ pts, color, width: 1.5 }],
+        vlines: wheelMarks(doc, x), names: showWheels, lines: [{ pts, color, width: 1.5 }],
         marks: [{ x: peak[0], y: peak[1], color }],
         notes: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}${asRate ? " peak to peak" : ""}` }],
       });
@@ -1179,7 +1406,7 @@ function steadySwitch() {
 const INFO_HINT = "Info: what this view shows, and each reading's findings and statistics, in full.";
 
 // steady::WHEELS_HINT.
-const WHEELS_HINT = "Mark the period each of the calibre's wheels turns in, in green and named beside its line, and half of it dashed, where a wheel that is off centre shows twice a turn. With no calibre picked, or none of its wheels known, one minute and one hour are marked in grey instead: periods alone, named after no wheel.";
+const WHEELS_HINT = "Mark the period each of the calibre's wheels turns in, in a grey dotted line named above the plot, and half of it fainter, where a wheel that is off centre shows twice a turn. With no calibre picked, or none of its wheels known, one minute and one hour are marked in grey instead: periods alone, named after no wheel.";
 
 function wireSteadiness(root) {
   for (const b of root.querySelectorAll("button[data-steady]")) {
@@ -1266,10 +1493,17 @@ function mapChart(m, doc, log) {
   const top = Math.log10(p[0]) + half, bottom = Math.log10(p[h - 1]) - half;
   const left = t0 - dt / 2, width = dt * w;
   const x0 = Math.min(0, left), x1 = Math.max(doc.duration_s || 0, left + width);
-  const W = chartWidth(), H = 170, T = 4, B = 20, R = 6, plotH = H - T - B;
+  // T leaves room for a name level with a line at the map's top.
+  const W = chartWidth(), H = 170, T = 8, B = 20, R = 6, plotH = H - T - B;
   const yt = periodTicks(bottom, top, plotH);
   const L = Math.max(54, Math.ceil(10 + CHAR_W * Math.max(3, ...yt.map(([, t]) => t.length))));
-  const plotW = W - L - R;
+  // tfmap: the wheels' lines, named by their short names in a narrow lane
+  // right of the map, whose room is kept whatever stretch it shows; a
+  // wheel's ×2 isn't marked on a map.
+  const lines = wheelLines(doc, [bottom, top]).filter((l) => l.turn !== "twice")
+    .map((l) => ({ ...l, ...wheelInk(l), name: l.short, rank: wheelRank(l) }));
+  const side = sideWidth(lines);
+  const plotW = W - L - (side || R);
   const xt = linTicks(x0, x1, plotW, Math.min(80, plotW / 4), (t) => fmtTime(t), TIME_STEPS);
   const sx = (x) => L + (x - x0) / (x1 - x0) * plotW;
   const sy = (y) => T + (top - y) / (top - bottom) * plotH;
@@ -1285,21 +1519,14 @@ function mapChart(m, doc, log) {
     g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
   }
   g += `<g clip-path="url(#${area.id})">${grid}</g>`;
-  // tfmap::wheel_rows: each named wheel's turn across the map, dashed in
-  // the wheels' colour and named at the right, where it falls inside the
-  // map's periods; with no wheel named, the reference periods in grey;
-  // with Wheel Periods off, nothing.
+  // tfmap::wheel_rows: the wheels' turns across the map, dotted; their
+  // names are in the lane beside it, so nothing else is drawn over the
+  // colour.
   let over = "";
-  const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
-  const rows = !showWheels ? []
-    : wheels.length ? wheels.map((wh) => [wheelTitle(wh.name), wh.period_s, "--wheel"])
-      : referenceLines(doc).map((r) => [r.label, r.period_s, "--text2"]);
-  for (const [name, period, colour] of rows) {
-    const y = Math.log10(period);
-    if (!(period > 0) || y <= bottom || y >= top) continue;
-    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(${colour})" stroke-width="1.25" stroke-dasharray="${DASH.wheel}"/>`;
-    over += `<text x="${L + plotW - 3}" y="${sy(y) - 3}" text-anchor="end" style="fill:var(${colour});paint-order:stroke;stroke:var(--card);stroke-width:3px">${esc(name)}</text>`;
+  for (const l of lines) {
+    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(l.x)}" y2="${sy(l.x)}" stroke="var(${l.ink})" stroke-width="1.25"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-dasharray="${DASH.dense}" stroke-linecap="round"/>`;
   }
+  over += laneRight(lines.map((l) => ({ ...l, y: sy(l.x) })), L + plotW, T, T + plotH);
   const k = mapPaints.length;
   const box = { left: sx(left), top: sy(top), width: sx(left + width) - sx(left), height: sy(bottom) - sy(top) };
   mapPaints.push({ m, sc, t0, dt, w });

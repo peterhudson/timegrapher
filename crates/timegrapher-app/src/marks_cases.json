@@ -1,0 +1,42 @@
+{
+  "about": "Cases for where marks.rs puts the names on a plot's lines. The app's tests (marks::tests) and the MCP view's (crates/timegrapher-mcp/tests/marks_cases.test.cjs) both run every case here, so the two keep one set of rules. Each name is [line x, width, rank]; places are in points. For inside, facts is the facts box's span of x (null for none) and trace the spans of x where the trace crosses the row of names.",
+  "place": [
+    { "case": "apart: all in the first row, centred", "names": [[100, 40, "strong"], [300, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [280, 0]] },
+    { "case": "a name that would touch goes out a row, still centred", "names": [[100, 40, "strong"], [130, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [110, 1]] },
+    { "case": "three together: the third slides right of the second's name", "names": [[100, 40, "strong"], [110, 40, "strong"], [120, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [90, 1], [142, 1]] },
+    { "case": "kept inside the plot's width", "names": [[5, 40, "strong"], [495, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[0, 0], [460, 0]] },
+    { "case": "a word space apart is too close", "names": [[100, 40, "strong"], [147, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [127, 1]] },
+    { "case": "within the hysteresis a name in the first row stays there", "names": [[100, 40, "strong"], [153, 40, "strong"]], "left": 0, "right": 500, "was": [0, 0], "at": [[80, 0], [133, 0]] },
+    { "case": "within the hysteresis a name out a row stays out", "names": [[100, 40, "strong"], [153, 40, "strong"]], "left": 0, "right": 500, "was": [0, 1], "at": [[80, 0], [133, 1]] },
+    { "case": "a strong name keeps the first row from a faint one left of it", "names": [[180, 60, "faint"], [220, 60, "strong"]], "left": 0, "right": 500, "was": [], "at": [[150, 1], [190, 0]] },
+    { "case": "all strong, the left one keeps the row", "names": [[180, 60, "strong"], [220, 60, "strong"]], "left": 0, "right": 500, "was": [], "at": [[150, 0], [190, 1]] },
+    { "case": "far apart, every name in the first row", "names": [[50, 40, "faint"], [200, 40, "strong"], [400, 40, "faint"]], "left": 0, "right": 500, "was": [], "at": [[30, 0], [180, 0], [380, 0]] },
+    { "case": "a faint name out a row slides past a name already there", "names": [[100, 40, "strong"], [110, 40, "strong"], [120, 40, "faint"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [90, 1], [142, 1]] },
+    { "case": "a name sliding past the right edge stops at it", "names": [[440, 40, "strong"], [450, 40, "strong"], [460, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[420, 0], [430, 1], [460, 1]] }
+  ],
+  "place_row": [
+    { "case": "apart: both centred", "names": [[100, 40, "strong"], [300, 40, "strong"]], "left": 0, "right": 500, "at": [80, 280] },
+    { "case": "a name 20 pt right slides right, a gap past", "names": [[100, 40, "strong"], [120, 40, "strong"]], "left": 0, "right": 500, "at": [80, 132] },
+    { "case": "no room to the right at the edge: it goes left", "names": [[470, 40, "strong"], [490, 40, "strong"]], "left": 0, "right": 500, "at": [450, 398] }
+  ],
+  "inside": [
+    { "case": "centred on their lines", "names": [[400, 40, "strong"], [700, 30, "strong"], [900, 30, "strong"]], "left": 0, "right": 1000, "facts": [0, 200], "trace": [], "at": [380, 685, 885] },
+    { "case": "a name the facts box would touch starts at its line", "names": [[210, 40, "strong"]], "left": 0, "right": 1000, "facts": [0, 200], "trace": [], "at": [214] },
+    { "case": "its line under the facts box: unnamed", "names": [[150, 40, "strong"]], "left": 0, "right": 1000, "facts": [0, 200], "trace": [], "at": [null] },
+    { "case": "a name 15 pt after another: unnamed", "names": [[700, 30, "strong"], [715, 30, "strong"]], "left": 0, "right": 1000, "facts": [0, 0], "trace": [], "at": [685, null] },
+    { "case": "the trace on its left: right of its line", "names": [[700, 30, "strong"]], "left": 0, "right": 1000, "facts": [0, 0], "trace": [[660, 700]], "at": [705] },
+    { "case": "the trace on its right: left of its line", "names": [[700, 30, "strong"]], "left": 0, "right": 1000, "facts": [0, 0], "trace": [[700, 760]], "at": [665] },
+    { "case": "crossed on both sides: unnamed", "names": [[700, 30, "strong"]], "left": 0, "right": 1000, "facts": [0, 0], "trace": [[-1000000, 1000000]], "at": [null] },
+    { "case": "a facts box in the right corner: left of its line", "names": [[790, 30, "strong"]], "left": 0, "right": 1000, "facts": [800, 1000], "trace": [], "at": [756] },
+    { "case": "never over another line, where it would read as that line's name", "names": [[700, 30, "strong"], [720, 20, "strong"]], "left": 0, "right": 1000, "facts": [0, 0], "trace": [[684, 690], [722, 736]], "at": [null, null] },
+    { "case": "clear of the other line, it is named", "names": [[700, 30, "strong"], [760, 20, "strong"]], "left": 0, "right": 1000, "facts": [0, 0], "trace": [[684, 690], [705, 712], [760, 775]], "at": [null, 735] },
+    { "case": "a faint name that would crowd a strong one is the one unnamed", "names": [[200, 60, "faint"], [240, 60, "strong"]], "left": 0, "right": 1000, "facts": null, "trace": [], "at": [null, 210] },
+    { "case": "apart, both named", "names": [[100, 60, "faint"], [240, 60, "strong"]], "left": 0, "right": 1000, "facts": null, "trace": [], "at": [70, 210] }
+  ],
+  "stack": [
+    { "case": "apart: each level with its line", "ys": [100, 40], "top": 0, "bottom": 300, "at": [100, 40] },
+    { "case": "two lines 5 pt apart: a row apart, about their middle", "ys": [100, 105], "top": 0, "bottom": 300, "at": [95, 110] },
+    { "case": "a third touching the pair joins its run", "ys": [98, 104, 119], "top": 0, "bottom": 300, "at": [92, 107, 122] },
+    { "case": "at the bottom edge the run rises to stay inside", "ys": [298, 296], "top": 0, "bottom": 300, "at": [292.5, 277.5] }
+  ]
+}

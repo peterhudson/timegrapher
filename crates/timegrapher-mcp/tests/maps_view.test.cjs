@@ -25,9 +25,9 @@ const context = vm.createContext({
   plotArea: () => ({ id: "c", svg: "" }), CHAR_W: 6.6, secs: (t) => `${t} s`, wheelTitle: String,
 });
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
-vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0] + "\n" +
-  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "referenceLines", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
-    .map(definition).join("\n") + "\nthis.mapPaints = mapPaints;", context);
+vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const MARKS = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0] + "\n" +
+  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "wheelShort", "wheelRank", "wheelInk", "markOrder", "markStack", "markWidth", "markText", "laneRight", "sideWidth", "referenceLines", "viridisRgb", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
+    .map(definition).join("\n") + "\nthis.mapPaints = mapPaints; this.WHEELS_HINT = WHEELS_HINT;", context);
 
 // Values made in the renderer's context, as plain ones.
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -80,7 +80,7 @@ test("the STFT and Wavelet Maps draw each series' map or say why not", () => {
   assert.ok(drawn.includes("<span>Amplitude Swing (°)</span><span>0.000</span>") && drawn.includes("<span>4.0 and above</span>"), drawn);
   assert.equal(context.mapKeyTitle({ series: "rate", unit: "ms" }), "Timing Swing (ms)");
   assert.equal(context.mapKeyTitle({ series: "beat_error", unit: "ms" }), "Beat Error Swing (ms)");
-  assert.ok(drawn.includes("fourth wheel"));
+  assert.ok(drawn.includes(">4th Wheel<"), "named by its short name");
   assert.equal(context.mapPaints.length, 1);
   assert.ok(context.steadyPlot({ series: "amplitude" }, "wavelet", doc).includes("needs a longer stretch of unbroken readings"));
   assert.ok(context.steadyPlot({ series: "rate" }, "stft", doc).includes("needs 20 minutes of readings"));
@@ -101,30 +101,33 @@ test("period axes are marked as core's period_ticks marks them", () => {
   assert.deepEqual(plain(context.periodTicks(Math.log10(50), Math.log10(70), 640)), [[Math.log10(60), "1 min"]]);
 });
 
-test("wheels are marked in their colour, else 1 min and 1 h in grey, and Wheel Periods turns them off", () => {
+test("wheels are marked in grey dots, else 1 min and 1 h in the tertiary grey, and Wheel Periods turns them off", () => {
   const plainDoc = { input: { settings: { named_wheels: [], reference_lines: [
     { label: "1 min", period_s: 60 }, { label: "1 h", period_s: 3600 }] } } };
   context.showWheels = true;
   assert.deepEqual(plain(context.wheelMarks(plainDoc, [0, 5])), [
-    { x: Math.log10(60), color: "--text3", width: 1.25, label: "1 min", ink: "--text2" },
-    { x: Math.log10(3600), color: "--text3", width: 1.25, label: "1 h", ink: "--text2" },
+    { x: Math.log10(60), color: "--text3", width: 1.25, name: "1 min", rank: "faint", ink: "--text3", hover: "1 min" },
+    { x: Math.log10(3600), color: "--text3", width: 1.25, name: "1 h", rank: "faint", ink: "--text3", hover: "1 h" },
   ]);
   // Only those inside the axis.
   assert.equal(context.wheelMarks(plainDoc, [0, 3]).length, 1);
-  // A named wheel in the wheels' colour, and its half turn fainter; series
-  // gives no reference lines then.
+  // A named wheel in the wheels' grey, densely dotted, and its half turn
+  // fainter and looser; series gives no reference lines then.
   const named = { input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }], reference_lines: [] } } };
   assert.deepEqual(plain(context.wheelMarks(named, [0, 5])), [
-    { x: Math.log10(60), color: "--wheel", width: 2, label: "fourth wheel", ink: "--wheel", left: false },
-    { x: Math.log10(30), color: "--wheel", opacity: 0.6, width: 1.25, dash: "wheel", label: "fourth wheel ×2", ink: "--wheel" },
+    { x: Math.log10(60), color: "--wheel", width: 2, dash: "dense", name: "fourth wheel", rank: "strong", ink: "--wheel", hover: "fourth wheel: 60 s" },
+    { x: Math.log10(30), color: "--wheel", opacity: 0.6, width: 1.25, dash: "sparse", name: "fourth wheel ×2", rank: "faint", ink: "--wheel", hover: "fourth wheel ×2: 30 s" },
   ]);
-  // On a map (1 to 100 s here), a dashed row at each one inside its periods, named.
+  // On a map (1 to 100 s here), a dotted row at each one inside its
+  // periods, named by its short name in the lane right of the map, joined
+  // by a tick; a wheel's ×2 isn't marked there.
   context.mapPaints.length = 0;
   const rows = (doc) => context.steadyPlot({ series: "amplitude" }, "stft", { duration_s: 1800, time_frequency: [map], ...doc })
     .split("map-layer")[1];
-  assert.match(rows(plainDoc), /stroke="var\(--text2\)"[^>]*\/>.*>1 min</s);
+  assert.match(rows(plainDoc), /<line[^>]*stroke="var\(--text3\)"[^>]*stroke-dasharray="0 5"[^>]*\/><polyline[^>]*stroke="var\(--text3\)"[^>]*\/><text[^>]*>1 min</s);
   assert.ok(!rows(plainDoc).includes(">1 h<"));
-  assert.match(rows(named), /stroke="var\(--wheel\)"[^>]*\/>.*>fourth wheel</s);
+  assert.match(rows(named), /<line[^>]*stroke="var\(--wheel\)"[^>]*\/><polyline[^>]*\/><text[^>]*font-weight:600[^>]*>4th Wheel</s);
+  assert.ok(!rows(named).includes("×2"));
   // Wheel Periods off: nothing, on the axes or the maps.
   context.showWheels = false;
   assert.deepEqual(plain(context.wheelMarks(named, [0, 5])), []);
@@ -141,6 +144,10 @@ test("Wheel Periods sits beside each period view's own switch, with the app's hi
     assert.ok(bar.includes('data-switch="wheels" aria-pressed="true"'), bar);
     assert.ok(bar.includes("one minute and one hour are marked in grey"), bar);
   }
+  // The app's own words (steady::WHEELS_HINT), its line breaks joined.
+  const steady = fs.readFileSync(path.join(__dirname, "../../timegrapher-app/src/steady.rs"), "utf8");
+  const app = steady.match(/pub const WHEELS_HINT: &str = "([\s\S]*?)";/)[1].replace(/\\\n\s*/g, "");
+  assert.equal(context.WHEELS_HINT, app);
   context.steadyView = "readings";
   assert.equal(context.steadySwitch(), "");
 });
