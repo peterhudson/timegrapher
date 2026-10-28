@@ -2045,6 +2045,17 @@ pub struct TimegrapherApp {
     /// The full-wind test's results, loaded for the next test to run as
     /// its 24 hour half.
     guided_earlier: Option<guided::FullWind>,
+    /// The watch and Wind setting `guided_earlier` was found for: picked
+    /// otherwise, it is searched for again.
+    guided_earlier_for: Option<(Option<String>, bool)>,
+    /// For a watch, the next Positions Test is its 24 hours after half,
+    /// set against the watch's own full-wind test (Wind on its toolbar).
+    guided_after: bool,
+    /// A test set up on a clear Bench, waiting for Start Test on the
+    /// Listen card: the Positions Test or the Power Reserve Test.
+    test_ready: Option<NewTake>,
+    /// Stop Test… pressed on the Listen card, its question open.
+    stop_test_ask: bool,
     /// Seconds of settling and of measuring in each position, for the
     /// next test.
     guided_settle_s: f64,
@@ -2595,6 +2606,10 @@ impl TimegrapherApp {
             guided_unused: Vec::new(),
             guided_measured: Vec::new(),
             guided_earlier: None,
+            guided_earlier_for: None,
+            guided_after: false,
+            test_ready: None,
+            stop_test_ask: false,
             guided_settle_s: guided::SETTLE_S,
             guided_measure_s: guided::MEASURE_S,
             check_at_start: true,
@@ -3936,6 +3951,10 @@ impl TimegrapherApp {
             path.parent().unwrap_or(path)
         };
         self.positions_take = dir.join(guided::RESULTS_FILE).is_file();
+        // A test's take opens on its results.
+        if self.positions_take {
+            self.reveal_pane(Pane::PositionsTest);
+        }
         let Ok(text) = std::fs::read_to_string(dir.join(power_reserve::FILE)) else {
             return;
         };
@@ -3954,6 +3973,7 @@ impl TimegrapherApp {
         let hours = r.hours.len();
         t.results = Some(r);
         self.reserve = Some(t);
+        self.reveal_pane(Pane::PowerReserve);
         // The run's charts and table, not the line before a test.
         grow_row(
             &mut self.panes.tiles,
@@ -7706,12 +7726,41 @@ impl TimegrapherApp {
         } else {
             "No watch picked".to_string()
         };
+        // A test set up or under way is named, with how it stands.
+        let test = if let Some(kind) = self.ready_test() {
+            Some((kind, self.state_words().to_string()))
+        } else if self.reserve_running() {
+            Some((NewTake::PowerReserve, self.state_words().to_string()))
+        } else if let Some(t) = self.guided.as_ref().filter(|_| self.test_listening()) {
+            let of = guided::ORDER.len();
+            let step = (t.step + 1).min(of);
+            Some((
+                NewTake::Positions,
+                format!("{}, {step} of {of}", t.position().code()),
+            ))
+        } else {
+            None
+        };
+        if let Some((kind, state)) = test {
+            let name = if kind == NewTake::Positions {
+                "Positions Test"
+            } else {
+                "Power Reserve Test"
+            };
+            let watch = if named.is_empty() {
+                "No watch picked".to_string()
+            } else {
+                named
+            };
+            return format!("{name} · {watch} · {state}");
+        }
         format!("{name} · {watch} · {}", self.state_words())
     }
 
     /// Whether the take on show is listening, stopped or opened.
     fn state_words(&self) -> &'static str {
         match self.session.state() {
+            session::State::Idle if self.ready_test().is_some() => "Ready, not started",
             session::State::Idle => "Not Started",
             session::State::Listening => "Listening",
             session::State::Paused { .. } => "Stopped",
@@ -7762,6 +7811,8 @@ impl TimegrapherApp {
     fn position_lock_words(&self) -> &'static str {
         if self.reserve_running() {
             "A Power Reserve Test runs in this one position: Stop Test to change it."
+        } else if self.test_listening() {
+            "The Positions Test sets the position."
         } else {
             "Shown, not set here: a take's positions are kept as they were, and during a \
              Positions Test the test sets them."
@@ -8047,7 +8098,50 @@ impl TimegrapherApp {
         buttons.spacing_mut().item_spacing.x = 8.0;
         let ui_b = &mut buttons;
         let length_hint = format!("\n\n{length} · {state}");
-        if self.running() && self.session.mic() {
+        let word = |ui: &mut egui::Ui, b: egui::Button<'_>| {
+            ui.add(b.min_size(Vec2::new(0.0, LISTEN_BUTTON)))
+        };
+        if let Some(kind) = self.ready_test() {
+            // The one place a take starts, test or not.
+            let name = if kind == NewTake::Positions {
+                "Positions Test"
+            } else {
+                "Power Reserve Test"
+            };
+            let why = self.start_test_why_not();
+            let mut hint = if kind == NewTake::Positions {
+                "Start the Positions Test, from Dial Up".to_string()
+            } else {
+                format!(
+                    "Start the {name} in the position on the {} card and run until the watch \
+                     stops, keeping the computer awake. A closed lid or Sleep from a menu still \
+                     stops the computer; a laptop is best left on mains power.",
+                    self.position_card_title
+                )
+            };
+            if compact {
+                hint += &length_hint;
+            }
+            let b = theme::primary(ui_b, "Start Test");
+            let r = ui_b.add_enabled_ui(why.is_none(), |ui| word(ui, b)).inner;
+            if r.on_hover_text(hint)
+                .on_disabled_hover_text(why.unwrap_or_default())
+                .clicked()
+            {
+                self.start_ready_test();
+            }
+        } else if self.test_listening() {
+            let mut hint = "End the test now, keeping what it measured: asks first".to_string();
+            if compact {
+                hint += &length_hint;
+            }
+            if word(ui_b, theme::secondary(ui_b, "Stop Test…"))
+                .on_hover_text(hint)
+                .clicked()
+            {
+                self.stop_test_ask = true;
+            }
+        } else if self.running() && self.session.mic() {
             let mut hint = STOP_HINT.to_string();
             if compact {
                 hint += &length_hint;
@@ -8090,8 +8184,9 @@ impl TimegrapherApp {
                 }
             }
         }
-        // A watch's take saves itself at Stop.
-        if !self.session.mic() || self.quick_listen {
+        // A watch's take saves itself at Stop, and a test's at its end.
+        let testing = self.ready_test().is_some() || self.test_listening();
+        if (!self.session.mic() || self.quick_listen) && !testing {
             self.save_menu(ui_b, LISTEN_BUTTON);
         }
         if !compact {
@@ -8728,26 +8823,109 @@ impl TimegrapherApp {
     /// asking first when there is unsaved sound, then listening, or the
     /// Positions Test or the Power Reserve Test.
     fn new_take(&mut self, kind: NewTake, asked: bool) {
-        if self.running() || self.saving_busy() {
+        // A test is set up over a Quick Listen still listening, which
+        // stops once its sound is asked about; never over a test.
+        let over = kind == NewTake::Listen || self.test_listening() || !self.quick_listen;
+        if self.saving_busy() || (self.running() && over) {
             return;
         }
         if !asked && self.new_take_asks() {
             self.confirm = Some(Confirm::NewTake(kind));
             return;
         }
+        if self.running() {
+            self.pause();
+        }
         self.take_setup();
         match kind {
-            NewTake::Listen => self.start_microphone(),
-            // With the full-wind results loaded, if any, as Start Test
-            // on the pane uses them.
-            NewTake::Positions => self.start_guided(self.guided_earlier.clone()),
-            // Only set up: the Power Reserve pane shows on the Bench, and the
-            // test starts from its Start Test once the position is set.
-            NewTake::PowerReserve => {
-                self.view = View::Bench;
-                self.reveal_pane(Pane::PowerReserve);
+            NewTake::Listen => {
+                self.test_ready = None;
+                self.start_microphone();
             }
+            NewTake::Positions | NewTake::PowerReserve => self.get_ready(kind),
         }
+    }
+
+    /// Set a test up on the clear Bench: its pane shown, the Position
+    /// card live, waiting for Start Test on the Listen card.
+    fn get_ready(&mut self, kind: NewTake) {
+        self.test_ready = Some(kind);
+        self.message = None;
+        self.view = View::Bench;
+        if kind == NewTake::Positions {
+            // Where the test begins.
+            self.set_position(guided::ORDER[0]);
+            self.guided_earlier_for = None;
+            self.find_full_wind();
+            self.reveal_pane(Pane::PositionsTest);
+        } else {
+            self.reveal_pane(Pane::PowerReserve);
+        }
+    }
+
+    /// The test set up and waiting for Start Test, while the Bench stays
+    /// clear.
+    fn ready_test(&self) -> Option<NewTake> {
+        self.test_ready
+            .filter(|_| self.live.is_none() && !self.running() && self.batch.is_none())
+    }
+
+    /// Whether a test is under way and listening: the Listen card's Stop
+    /// asks first.
+    fn test_listening(&self) -> bool {
+        self.running() && (self.guided_running() || self.reserve_running())
+    }
+
+    /// Why Start Test can't start the test set up, if it can't.
+    fn start_test_why_not(&self) -> Option<String> {
+        let w = self.open_watch()?;
+        (self.ready_test() == Some(NewTake::Positions)
+            && self.guided_after
+            && self.guided_earlier.is_none())
+        .then(|| {
+            format!(
+                "{} has no Full Wind Positions Test from {}.",
+                w.watch.name,
+                guided::full_wind_ago()
+            )
+        })
+    }
+
+    /// Start the test set up, from the Listen card's Start Test.
+    fn start_ready_test(&mut self) {
+        let Some(kind) = self.ready_test() else {
+            return;
+        };
+        self.find_full_wind();
+        if self.start_test_why_not().is_some() {
+            return;
+        }
+        self.test_ready = None;
+        match kind {
+            NewTake::Positions => self.start_guided(self.guided_earlier.clone()),
+            _ => self.start_reserve_asked(true),
+        }
+    }
+
+    /// For a watch, the half the next Positions Test is set against: none
+    /// for a full-wind test, else the watch's newest full-wind test from
+    /// [`guided::FULL_WIND_HOURS`] ago, kept in its takes. Searched again
+    /// only when the watch or Wind has changed since; with no watch, the
+    /// half is what Load Full-Wind Results… loads.
+    fn find_full_wind(&mut self) {
+        if self.test_ready != Some(NewTake::Positions) {
+            return;
+        }
+        let key = (self.watch_open.clone(), self.guided_after);
+        if self.guided_earlier_for.as_ref() == Some(&key) {
+            return;
+        }
+        self.guided_earlier_for = Some(key);
+        let dir = self.open_watch().map(|e| e.dir.join(library::TAKES));
+        self.guided_earlier = match dir {
+            Some(dir) if self.guided_after => guided::full_wind_in(&dir, guided::unix_now()),
+            _ => None,
+        };
     }
 
     /// Whether a new take asks first: a take of a watch asks about Quick
@@ -12845,6 +13023,77 @@ impl TimegrapherApp {
         self.reveal_pane(Pane::PositionsTest);
     }
 
+    /// Stop Test… answered Stop Test: the test ends now, keeping what it
+    /// measured, as its natural end does.
+    fn stop_test(&mut self) {
+        self.stop_test_ask = false;
+        let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());
+        if self.reserve_running() {
+            if let Some(t) = self.reserve.as_mut() {
+                t.stop();
+            }
+            self.end_reserve();
+        } else if self.guided_running() {
+            self.end_guided(now, false);
+        }
+    }
+
+    /// The question Stop Test… on the Listen card asks once: Keep
+    /// Measuring, the default, or Stop Test, keeping what was measured.
+    fn stop_test_dialog(&mut self, ctx: &egui::Context) {
+        if !self.stop_test_ask {
+            return;
+        }
+        if !self.test_listening() {
+            self.stop_test_ask = false;
+            return;
+        }
+        let kept = match self.open_watch() {
+            Some(e) => format!(" in {}", e.watch.name),
+            None => String::new(),
+        };
+        let (title, body) = if self.reserve_running() {
+            let run = self.reserve.as_ref().map_or(0.0, |t| t.run_so_far_s());
+            (
+                "Stop the Power Reserve Test?",
+                format!(
+                    "The run so far, {} from the first beat heard, is kept{kept}. Its run time \
+                     then says it was stopped by hand.",
+                    power_reserve::run_text(run)
+                ),
+            )
+        } else {
+            // Each position measured, read or not: what Stop Test keeps.
+            let n = self.guided.as_ref().map_or(0, |t| t.stretches().len());
+            let what = match n {
+                0 => "The take so far is kept, with no position measured yet".to_string(),
+                1 => "The 1 position measured so far is kept".to_string(),
+                n => format!("The {n} positions measured so far are kept"),
+            };
+            ("Stop the Positions Test?", format!("{what}{kept}."))
+        };
+        let mut choice = None;
+        egui::Modal::new(egui::Id::new("stop test")).show(ctx, |ui| {
+            ui.set_width(360.0);
+            ui.label(RichText::new(title).font(theme::semibold(15.0)));
+            ui.add_space(4.0);
+            ui.label(body);
+            ui.add_space(8.0);
+            choice = theme::dialog_buttons(
+                ui,
+                &[
+                    DialogButton::new(Role::Default, "Keep Measuring", ""),
+                    DialogButton::new(Role::Destructive, "Stop Test", ""),
+                ],
+            );
+        });
+        match choice {
+            Some(0) => self.stop_test_ask = false,
+            Some(_) => self.stop_test(),
+            None => {}
+        }
+    }
+
     /// Move the Positions Test on with the sound, whether its pane shows
     /// or not: read each position as it is measured, and keep what the
     /// strip marks.
@@ -12873,6 +13122,35 @@ impl TimegrapherApp {
         ) {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
+        // The sixth position measured and read: the test ends by itself,
+        // stops listening and keeps its take, as Stop does.
+        let done =
+            phase == guided::Phase::Turn && test.next_position().is_none() && !test.needs_reading();
+        if done && self.running() {
+            self.end_guided(now, true);
+        }
+    }
+
+    /// The Positions Test ended at `now`, all six measured (`whole`) or
+    /// stopped part way: the positions measured stay in the table, read
+    /// together, and listening stops as at Stop, keeping the take.
+    fn end_guided(&mut self, now: f64, whole: bool) {
+        let Some(mut test) = self.guided.take() else {
+            return;
+        };
+        if whole {
+            test.advance(now);
+        } else {
+            test.stop(now);
+        }
+        if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+            let clock = self.reading_clock(log.duration_s);
+            test.finish(&log, clock.as_ref(), &self.masked);
+        }
+        self.guided_unused = test.unused(now);
+        self.guided_measured = test.measured(now);
+        self.guided = Some(test);
+        self.stop_listening();
     }
 
     /// The watch and how it is read, for the test's saved and copied
@@ -12905,37 +13183,70 @@ impl TimegrapherApp {
     /// position, and saving or copying the results.
     fn positions_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.guided_running();
-        let (settle, measure) = (self.guided_settle_s, self.guided_measure_s);
-        let start_hint = match &self.guided_earlier {
-            Some(_) => format!(
-                "Run the six positions again, {settle:.0} s settling and {measure:.0} s measuring \
-                 in each, against the full-wind results loaded, starting in Dial Up whatever \
-                 the position set. Listens to the microphone first if it isn't already."
-            ),
-            None => format!(
-                "Lead the watch through the six positions, starting in Dial Up whatever the \
-                 position set: each settles {settle:.0} s and is measured for {measure:.0} s, \
-                 and the table fills in as it goes. Listens to the microphone first if it isn't \
-                 already."
-            ),
-        };
-        let label = if self.guided.is_some() && !running {
-            "Start a New Test"
-        } else {
-            "Start Test"
-        };
-        let start_hint = if self.guided.is_some() && !running {
-            format!("{start_hint} A new take: the one with this test is left as it is.")
-        } else {
-            start_hint
-        };
-        // While it runs, the banner below carries the test's buttons.
+        // While it runs, the step panel and the Listen card carry its
+        // buttons; set up, Cancel Test leaves the Bench as it was.
         if !running {
             theme::keep_next(ui);
-            if theme::tool_word_button(ui, Icon::Listen, label, &start_hint, true, None) {
-                let earlier = self.guided_earlier.clone();
-                self.start_guided(earlier);
+            if self.ready_test() == Some(NewTake::Positions) {
+                if theme::tool_word_button(
+                    ui,
+                    Icon::Back,
+                    "Cancel Test",
+                    "Leave the test set up, with nothing started or kept",
+                    false,
+                    None,
+                ) {
+                    self.test_ready = None;
+                }
+            } else if theme::tool_word_button(
+                ui,
+                Icon::Listen,
+                "New Test",
+                "Set a Positions Test up on a clear Bench: wind the watch, then press Start \
+                 Test on the Listen card. It begins in Dial Up and leads the watch through the \
+                 six positions.",
+                true,
+                None,
+            ) {
+                self.new_take(NewTake::Positions, false);
             }
+            theme::bar_gap(ui);
+        }
+        if self.open_watch().is_some() {
+            let was = self.guided_after;
+            ui.add_enabled_ui(!running, |ui| {
+                theme::tool_choice(
+                    ui,
+                    "Wind",
+                    &format!(
+                        "When the test is run: just after a full wind, or 24 hours after it, \
+                         set against the watch's full-wind test from {}",
+                        guided::full_wind_ago()
+                    ),
+                    &mut self.guided_after,
+                    &[
+                        (
+                            false,
+                            Icon::BarrelIn,
+                            "Full Wind",
+                            "Just after winding the watch fully",
+                        ),
+                        (
+                            true,
+                            Icon::Barrel24,
+                            "24 Hours After",
+                            "24 hours after the full-wind test, the watch neither wound nor \
+                             worn since: set against that test, found in the watch",
+                        ),
+                    ],
+                );
+            })
+            .response
+            .on_disabled_hover_text(FIXED_IN_TEST);
+            if self.guided_after != was {
+                self.find_full_wind();
+            }
+        } else if !running {
             let load_hint = format!(
                 "For the test 24 hours after winding: load the results saved from the test just \
                  after it ({} in a saved session's folder, or the file Save Results for 24 \
@@ -12954,8 +13265,8 @@ impl TimegrapherApp {
                     self.guided_earlier = Some(full);
                 }
             }
-            theme::bar_gap(ui);
         }
+        theme::bar_gap(ui);
         theme::tool_field(
             ui,
             "Settle",
@@ -13080,6 +13391,9 @@ impl TimegrapherApp {
             Some(guided::Phase::Measuring(_)) => self.guided_live(ui.ctx()),
             _ => None,
         };
+        // Set up as the 24 hours after half with no full-wind test to set
+        // it against: said here, and Start Test waits.
+        let note = self.start_test_why_not();
         let action = guided::pane(
             ui,
             self.guided.as_ref(),
@@ -13089,59 +13403,37 @@ impl TimegrapherApp {
             live.as_ref(),
             self.guided_settle_s,
             self.guided_measure_s,
+            self.open_watch().is_some(),
+            note.as_deref(),
             self.position_card_title,
         );
         let Some(action) = action else { return };
         if action == guided::Action::ClearEarlier {
             self.guided_earlier = None;
+            self.guided_after = false;
             return;
         }
         let Some(now) = now else { return };
         let Some(mut test) = self.guided.take() else {
             return;
         };
-        let mut finished = false;
         match action {
-            guided::Action::Next => match test.advance(now) {
-                // Noted in the take like a position picked by hand, so its
-                // session.json follows the test.
-                Some(p) => self.change_position(p),
-                None => {
-                    if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
-                        let clock = self.reading_clock(log.duration_s);
-                        test.finish(&log, clock.as_ref(), &self.masked);
-                    }
-                    finished = true;
+            // Noted in the take like a position picked by hand, so its
+            // session.json follows the test. After the sixth there is no
+            // Next: the test ends by itself.
+            guided::Action::Next => {
+                if let Some(p) = test.advance(now) {
+                    self.change_position(p);
                 }
-            },
+            }
             guided::Action::Redo => test.redo(now),
             guided::Action::Pause => test.pause(now),
             guided::Action::Resume => test.resume(now),
             guided::Action::ClearEarlier => {}
-            guided::Action::Stop => return self.guided_stop(test, now),
         }
         self.guided_unused = test.unused(now);
         self.guided_measured = test.measured(now);
         self.guided = Some(test);
-        // Finished, it stops listening as Stop does, keeping the take.
-        if finished {
-            self.stop_listening();
-        }
-    }
-
-    /// The banner's Stop at `now`: the positions measured so far stay in
-    /// the table, finished, and listening stops as at the Listen card's
-    /// Stop, keeping the take.
-    fn guided_stop(&mut self, mut test: guided::Test, now: f64) {
-        test.stop(now);
-        if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
-            let clock = self.reading_clock(log.duration_s);
-            test.finish(&log, clock.as_ref(), &self.masked);
-        }
-        self.guided_unused = test.unused(now);
-        self.guided_measured = test.measured(now);
-        self.guided = Some(test);
-        self.stop_listening();
     }
 
     /// Whether a Power Reserve Test is under way, not yet ended.
@@ -13235,36 +13527,33 @@ impl TimegrapherApp {
                 ],
             );
         });
-        theme::bar_gap(ui);
-        if running {
-            if theme::tool_word_button(
+        // Start Test and Stop Test… are on the Listen card; set up, Cancel
+        // Test leaves the Bench as it was.
+        if !running {
+            theme::bar_gap(ui);
+            if self.ready_test() == Some(NewTake::PowerReserve) {
+                if theme::tool_word_button(
+                    ui,
+                    Icon::Back,
+                    "Cancel Test",
+                    "Leave the test set up, with nothing started or kept",
+                    false,
+                    None,
+                ) {
+                    self.test_ready = None;
+                }
+            } else if theme::tool_word_button(
                 ui,
-                Icon::Stop,
-                "Stop Test",
-                "End the run now and keep the take: its run time then says it was stopped by \
-                 hand. A closed lid or Sleep from a menu still stops the computer, and the run \
-                 with it; a laptop is best left on mains power.",
+                Icon::Listen,
+                "New Test",
+                "Set a Power Reserve Test up on a clear Bench: wind the watch fully, set the \
+                 position on the Position card, then press Start Test on the Listen card. It \
+                 runs until the watch stops, keeping the computer awake.",
                 true,
                 None,
             ) {
-                if let Some(t) = self.reserve.as_mut() {
-                    t.stop();
-                }
-                self.end_reserve();
+                self.new_take(NewTake::PowerReserve, false);
             }
-        } else if theme::tool_word_button(
-            ui,
-            Icon::Listen,
-            "Start Test",
-            &format!(
-                "Start listening in the {} card's position and run until the \
-                 watch stops, keeping the computer awake. Wind the watch fully first.",
-                self.position_card_title
-            ),
-            true,
-            None,
-        ) {
-            self.start_reserve();
         }
         let done = self.reserve.as_ref().and_then(|t| t.results.clone());
         let nothing = done.is_none().then_some("No run ended yet");
@@ -13304,6 +13593,7 @@ impl TimegrapherApp {
     /// Begin a Power Reserve Test: a new microphone session in the
     /// Current Position card's position, kept in the watch's takes when it
     /// ends.
+    #[cfg(test)]
     fn start_reserve(&mut self) {
         self.start_reserve_asked(false);
     }
@@ -13565,6 +13855,7 @@ impl TimegrapherApp {
             free,
             self.position_card_title,
             &watch,
+            self.ready_test() == Some(NewTake::PowerReserve),
         );
     }
 
@@ -16585,6 +16876,8 @@ impl TimegrapherApp {
     /// bottom and the readings and panes between, all on the window colour
     /// with the content in cards.
     fn panels(&mut self, ctx: &egui::Context) {
+        // A test set up against another watch than the one picked now.
+        self.find_full_wind();
         let pal = theme::palette(ctx.style().visuals.dark_mode);
         let bar = egui::Frame::new().fill(pal.window);
         egui::TopBottomPanel::top("menus")
@@ -16776,6 +17069,7 @@ impl eframe::App for TimegrapherApp {
         self.kept_delete_dialog(ctx);
         self.watch_form_dialog(ctx);
         self.test_keep_dialog(ctx);
+        self.stop_test_dialog(ctx);
         self.open_ask_dialog(ctx);
         self.setup_sheet_dialog(ctx);
         self.take_ask_dialog(ctx);
@@ -19395,7 +19689,7 @@ mod tests {
         // And the steps before a run.
         let out = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                reserve::pane(ui, None, None, app.position_card_title, "");
+                reserve::pane(ui, None, None, app.position_card_title, "", true);
             });
         });
         assert!(
@@ -21244,8 +21538,9 @@ mod tests {
         assert_eq!(batch_words(0.0, false), "Analysing…");
     }
 
-    /// The banner's Stop keeps the positions measured in the table, stops
-    /// listening, and leaves the position free to set again.
+    /// Stop Test… on the Listen card, answered Stop Test, keeps the
+    /// positions measured in the table, stops listening, and leaves the
+    /// position free to set again.
     #[test]
     fn a_positions_tests_stop_keeps_its_rows_and_stops_listening() {
         let base = std::env::temp_dir().join(format!("tg-app-guided-stop-{}", std::process::id()));
@@ -21259,8 +21554,8 @@ mod tests {
         test.tick(start);
         app.guided = Some(test);
         assert!(app.guided_running());
-        let test = app.guided.take().unwrap();
-        app.guided_stop(test, start + 10.0);
+        assert!(app.test_listening());
+        app.stop_test();
         assert!(app.session.paused(), "listening stopped");
         let kept = app.guided.as_ref().expect("the table stays");
         assert!(kept.readings.is_some(), "finished");
@@ -21270,6 +21565,140 @@ mod tests {
         let _tx2 = queued_capture(&mut app, &base);
         app.session.listen();
         assert!(app.running() && app.position_editable());
+        drop(tx);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// New Test sets the Positions Test up on the Bench and starts
+    /// nothing: the pane shows, the Position card reads Dial Up, and the
+    /// status bar says the test is ready, not started.
+    #[test]
+    fn a_new_positions_test_waits_ready_on_the_bench() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.view = View::Watches;
+        set_pane_visible(&mut app.panes.tiles, Pane::PositionsTest, false);
+        app.set_position(Position::CrownDown);
+        app.new_take(NewTake::Positions, false);
+        assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        assert!(app.guided.is_none() && !app.running());
+        assert_eq!(app.view, View::Bench);
+        assert!(pane_visible(&app.panes.tiles, Pane::PositionsTest));
+        assert_eq!(app.position, Position::DialUp);
+        let words = app.status_words();
+        assert!(
+            words.contains("Positions Test") && words.contains("Ready, not started"),
+            "{words}"
+        );
+        // With no watch, nothing holds Start Test back.
+        assert_eq!(app.start_test_why_not(), None);
+    }
+
+    /// A Positions Test set up for 24 Hours After is set against the
+    /// picked watch's own full-wind test: picking another watch while it
+    /// waits finds that watch's, and Start Test follows.
+    #[test]
+    fn a_ready_test_finds_the_picked_watchs_full_wind() {
+        let base = std::env::temp_dir().join(format!("tg-app-ready-wind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Timegrapher Data");
+        let mut lib = library::Library::create(&root).unwrap();
+        lib.add(&library::Watch::new("Seiko 5")).unwrap();
+        lib.add(&library::Watch::new("Daytona")).unwrap();
+        let seiko = lib.find("Seiko 5").unwrap().watch.id.clone();
+        let daytona = lib.find("Daytona").unwrap();
+        let (daytona, take) = (
+            daytona.watch.id.clone(),
+            daytona.dir.join(library::TAKES).join("full wind"),
+        );
+        drop(lib);
+        // Daytona's full-wind test, begun 31 h ago.
+        std::fs::create_dir_all(&take).unwrap();
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: String::new(),
+            began_unix: guided::unix_now() - 31.0 * 3600.0,
+            watch: "Daytona".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![guided::KeptRow {
+                position: "DU".into(),
+                rate_s_per_day: Some(4.0),
+                amplitude_deg: Some(290.0),
+                beat_error_ms: Some(0.3),
+            }],
+        };
+        std::fs::write(take.join(guided::RESULTS_FILE), full.to_json()).unwrap();
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.use_library(Some(root));
+        app.pick_watch(&seiko);
+        app.guided_after = true;
+        app.new_take(NewTake::Positions, false);
+        assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        let why = app.start_test_why_not();
+        assert!(
+            why.as_deref()
+                .is_some_and(|w| w.starts_with("Seiko 5 has no")),
+            "{why:?}"
+        );
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let frame = |app: &mut TimegrapherApp| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| app.panels(ctx));
+        };
+        app.pick_watch(&daytona);
+        frame(&mut app);
+        assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        assert_eq!(app.start_test_why_not(), None);
+        assert_eq!(
+            app.guided_earlier.as_ref().map(|f| f.watch.as_str()),
+            Some("Daytona")
+        );
+        // And back: Seiko 5 has none.
+        app.pick_watch(&seiko);
+        frame(&mut app);
+        assert!(app.start_test_why_not().is_some());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The sixth position measured and read, the Positions Test ends by
+    /// itself: listening stops and the table keeps all six.
+    #[test]
+    fn a_positions_test_ends_by_itself_after_the_sixth_position() {
+        let base = std::env::temp_dir().join(format!("tg-app-guided-end-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let mut app = synthetic(20.0, 0.0);
+        app.session.listen();
+        let tx = queued_capture(&mut app, &base);
+        let end = app.live.as_ref().unwrap().duration_s();
+        let mut test = guided::Test::new().timed(0.5, 2.0);
+        let mut t = end - 18.0;
+        test.tick(t);
+        for i in 0..guided::ORDER.len() {
+            t += 2.75;
+            assert_eq!(test.tick(t), guided::Phase::Turn, "position {i}");
+            if i + 1 < guided::ORDER.len() {
+                test.advance(t);
+            }
+        }
+        app.guided = Some(test);
+        assert!(app.test_listening());
+        let ctx = egui::Context::default();
+        app.guided_tick(&ctx);
+        assert!(!app.guided_running(), "ended");
+        assert!(app.session.paused(), "listening stopped");
+        let kept = app.guided.as_ref().expect("the table stays");
+        assert_eq!(kept.readings.as_ref().map(|r| r.len()), Some(6));
         drop(tx);
         let _ = std::fs::remove_dir_all(&base);
     }

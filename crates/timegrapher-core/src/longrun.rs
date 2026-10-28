@@ -301,6 +301,7 @@ pub fn analyse_with_breaks(
             })
             .into_iter()
             .chain((turned && overall.is_some()).then_some(crate::measure::Caveat::BeatErrorAsSize))
+            .chain(clock.and_then(ClockFit::sources_disagree).map(Into::into))
             .collect(),
         overall,
         beat_error_unlock_ms: timing::median_signed(uv.into_iter(), turned),
@@ -323,6 +324,76 @@ pub fn analyse_with_breaks(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reading_says_when_usb_lines_and_a_good_log_disagree() {
+        // A minute of a watch, on a take whose clock log measures the card
+        // 20 ppm slow, entry by entry exactly: USB lines 100 ppm off that
+        // put the caveat, with both figures, on the session reading and the
+        // long run (and so `series`); lines within 3 ppm put none.
+        use crate::measure::Caveat;
+        // An entry every 30 s over an hour.
+        let pairs: Vec<(f64, f64)> = (0..=120)
+            .map(|i| {
+                let a = i as f64 * 30.0;
+                (a, 1.79e9 + a * (1.0 + 20e-6))
+            })
+            .collect();
+        let a = crate::synth::generate(
+            &crate::synth::SynthConfig {
+                duration_s: 60.0,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        let log = crate::stream::analyze_samples(
+            &a.samples,
+            a.sample_rate,
+            &crate::stream::StreamConfig {
+                analysis: crate::analysis::AnalysisConfig {
+                    bph: Some(28800),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        );
+        let caveats = |usb: f64| {
+            let mut fit = ClockFit::for_rates(&pairs).unwrap();
+            fit.rate_from_usb(usb);
+            let m = crate::session::measure_with_breaks(&log, Some(&fit), &[], 0.0, log.duration_s);
+            let long = analyse(&log, Some(&fit), &Default::default());
+            (m.caveats, long.caveats)
+        };
+        let disagree = |c: &[Caveat]| {
+            c.iter().find_map(|c| match *c {
+                Caveat::ClockSourcesDisagree {
+                    usb_ppm,
+                    log_ppm,
+                    log_ppm_sd,
+                } => Some((usb_ppm, log_ppm, log_ppm_sd)),
+                _ => None,
+            })
+        };
+        let (reading, long) = caveats(120.0);
+        for c in [&reading, &long] {
+            let (usb, log_ppm, sd) = disagree(c).unwrap_or_else(|| panic!("{c:?}"));
+            assert_eq!(usb, 120.0);
+            assert!((log_ppm - 20.0).abs() < 0.01, "{log_ppm}");
+            assert!(sd < 0.01, "{sd}");
+        }
+        let json = serde_json::to_value(&reading).unwrap();
+        assert!(
+            json.as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["code"] == "clock_sources_disagree" && c["usb_ppm"] == 120.0),
+            "{json}"
+        );
+        let (reading, long) = caveats(23.0);
+        assert_eq!(disagree(&reading), None, "{reading:?}");
+        assert_eq!(disagree(&long), None, "{long:?}");
+    }
 
     #[test]
     fn a_gap_runs_to_the_clock_fits_own_break() {

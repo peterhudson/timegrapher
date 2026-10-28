@@ -558,12 +558,6 @@ pub struct TakesContext<'a> {
     pub on_show: Option<&'a std::path::Path>,
 }
 
-/// Whether the take in `dir` is a Positions Test's: it keeps the test's
-/// results beside its sound.
-pub fn is_positions_test(dir: &std::path::Path) -> bool {
-    dir.join(crate::guided::RESULTS_FILE).is_file()
-}
-
 /// What a take measured and is, in a line: a test's kind, its positions,
 /// length, rate, amplitude, beat error (its size) and marks.
 pub fn take_line(t: &Take, positions_test: bool) -> String {
@@ -592,7 +586,10 @@ pub fn take_line(t: &Take, positions_test: bool) -> String {
     if let Some(d) = t.duration_s.filter(|_| t.power_reserve.is_none()) {
         parts.push(crate::strip::fmt_time(d));
     }
-    if let Some(a) = &t.at_end {
+    // A test's last window doesn't stand for the test: its figures are in
+    // its table, or hour by hour.
+    let test = positions_test || t.power_reserve.is_some();
+    if let Some(a) = t.at_end.as_ref().filter(|_| !test) {
         if let Some(r) = a.rate() {
             parts.push(format!("{r:+.1} s/d"));
         }
@@ -817,10 +814,49 @@ pub fn started_words(t: &Take) -> String {
         .unwrap_or_else(|| t.name.clone())
 }
 
+/// A Positions Test take's positions measured and its Mean row: rate,
+/// amplitude and beat error over those positions, the figures its table shows (core `session::indices`
+/// on its saved results); `None` for any other take. Read once per change
+/// of the results file.
+pub fn positions_means(dir: &std::path::Path) -> Option<(usize, [Option<f64>; 3])> {
+    type Means = (usize, [Option<f64>; 3]);
+    type Cache = std::collections::HashMap<PathBuf, (Option<std::time::SystemTime>, Means)>;
+    thread_local! {
+        static MEANS: std::cell::RefCell<Cache> = Default::default();
+    }
+    let file = dir.join(crate::guided::RESULTS_FILE);
+    let modified = std::fs::metadata(&file).ok()?.modified().ok();
+    MEANS.with(|m| {
+        let mut m = m.borrow_mut();
+        if let Some((at, means)) = m.get(dir) {
+            if *at == modified {
+                return Some(*means);
+            }
+        }
+        let means = std::fs::read_to_string(&file)
+            .ok()
+            .and_then(|t| crate::guided::FullWind::from_json(&t).ok())
+            .map(|f| {
+                let t = crate::guided::kept_table(&f);
+                (
+                    t.rows.len(),
+                    [t.mean_rate, t.mean_amplitude, t.mean_beat_error],
+                )
+            })
+            .unwrap_or_default();
+        m.insert(dir.to_path_buf(), (modified, means));
+        Some(means)
+    })
+}
+
 /// A take's row in the takes table: Started, Position, Length, Rate (s/d,
 /// on the take's clock log where it has one), Amplitude (°), Beat Error
-/// (ms, its size) and Size (MB).
-pub fn take_cells(t: &Take, positions_test: bool) -> [String; 7] {
+/// (ms, its size) and Size (MB). A Positions Test's figures are its Mean
+/// row (`means`); a Power Reserve Test's are hour by hour in the take, so
+/// its row shows a dash. Never a test's last window as if it stood for
+/// the test.
+pub fn take_cells(t: &Take, means: Option<[Option<f64>; 3]>) -> [String; 7] {
+    let positions_test = means.is_some();
     let codes: Vec<String> = t
         .positions
         .iter()
@@ -844,18 +880,54 @@ pub fn take_cells(t: &Take, positions_test: bool) -> [String; 7] {
         _ => String::new(),
     };
     let a = t.at_end.as_ref();
+    let [rate, amp, be] = if t.power_reserve.is_some() {
+        [None; 3]
+    } else if let Some(m) = means {
+        m
+    } else {
+        [
+            a.and_then(|a| a.rate()),
+            a.and_then(|a| a.amplitude_deg),
+            a.and_then(|a| a.beat_error_ms),
+        ]
+    };
+    let figure = |v: Option<f64>, f: &dyn Fn(f64) -> String| {
+        if t.power_reserve.is_some() {
+            "—".to_string()
+        } else {
+            v.map_or_else(String::new, f)
+        }
+    };
     [
         started_words(t),
         position,
         length,
-        a.and_then(|a| a.rate())
-            .map_or_else(String::new, |r| format!("{r:+.1}").replace('-', "−")),
-        a.and_then(|a| a.amplitude_deg)
-            .map_or_else(String::new, |x| format!("{x:.0}")),
-        a.and_then(|a| a.beat_error_ms)
-            .map_or_else(String::new, |b| format!("{:.1}", b.abs())),
+        figure(rate, &|r| format!("{r:+.1}").replace('-', "−")),
+        figure(amp, &|x| format!("{x:.0}")),
+        figure(be, &|b| format!("{:.1}", b.abs())),
         format!("{:.1}", t.bytes as f64 / 1e6),
     ]
+}
+
+/// The takes row's hover on a test's figures: what they stand for, from
+/// the positions a Positions Test measured, or a Power Reserve Test's.
+fn figures_hover(count: Option<usize>, reserve: bool) -> String {
+    match count {
+        Some(0) => String::new(),
+        Some(1) => "\n\nRate, Amplitude and Beat Error: the one position measured.".into(),
+        Some(n) => {
+            let of = if n == 6 {
+                "six positions".to_string()
+            } else {
+                format!("{n} positions measured")
+            };
+            format!("\n\nRate, Amplitude and Beat Error: Mean of the {of}.")
+        }
+        None if reserve => {
+            "\n\nRate, Amplitude and Beat Error: hour by hour in the take: open it.".into()
+        }
+        None => String::new(),
+    }
 }
 
 /// The takes table's headings, in [`take_cells`]' order.
@@ -1039,7 +1111,7 @@ pub fn takes_table(
         let rows: Vec<[String; 7]> = e
             .takes
             .iter()
-            .map(|t| take_cells(t, is_positions_test(&e.take_dir(t))))
+            .map(|t| take_cells(t, positions_means(&e.take_dir(t)).map(|m| m.1)))
             .collect();
         // Its state after the date, in small grey words.
         let tags_of = |t: &Take| {
@@ -1113,6 +1185,7 @@ pub fn takes_table(
                     rect: egui::Rect,
                     cells: &[String],
                     color: egui::Color32,
+                    dim: Option<egui::Color32>,
                     font: &egui::FontId| {
             let p = ui.painter_at(rect);
             let mut x = rect.left() + 6.0;
@@ -1126,6 +1199,8 @@ pub fn takes_table(
                         egui::Align2::RIGHT_CENTER,
                     )
                 };
+                // A Power Reserve Test's figures are a dim dash.
+                let color = dim.filter(|_| (3..6).contains(&i)).unwrap_or(color);
                 p.text(pos, align, c, font.clone(), color);
                 x += w;
             }
@@ -1136,20 +1211,23 @@ pub fn takes_table(
             head,
             &TAKE_HEADS.map(String::from),
             pal.text_secondary,
+            None,
             &egui::FontId::proportional(11.5),
         );
         for t in &e.takes {
             let dir = e.take_dir(t);
             let on_show = cx.on_show == Some(dir.as_path());
             let picked = cx.picked == Some(dir.as_path());
-            let test = is_positions_test(&dir);
+            let means = positions_means(&dir);
+            let test = means.is_some();
             let (rect, r) = ui.allocate_exact_size(Vec2::new(w, row_h), Sense::click());
             if picked {
                 ui.painter().rect_filled(rect, 4.0, pal.control_active);
             } else if r.hovered() {
                 ui.painter().rect_filled(rect, 4.0, pal.control_hover);
             }
-            let mut cells = take_cells(t, test);
+            let mut cells = take_cells(t, means.map(|m| m.1));
+            let reserve = t.power_reserve.is_some();
             // Date and tags share Started's room, never the columns after
             // it: the date, which tells takes apart, comes first, cut short
             // with "…" only when it alone doesn't fit; the tags take what
@@ -1157,7 +1235,14 @@ pub fn takes_table(
             let tags = tags_of(t);
             let room = widths[0] - 18.0;
             cells[0] = fit(&cells[0], room, &font);
-            draw(ui, rect, &cells, pal.text, &font);
+            draw(
+                ui,
+                rect,
+                &cells,
+                pal.text,
+                reserve.then_some(pal.text_tertiary),
+                &font,
+            );
             let date_w = text_w(&cells[0], 12.5);
             let tags_room = room - date_w - 10.0;
             let small = egui::FontId::proportional(11.0);
@@ -1175,8 +1260,9 @@ pub fn takes_table(
                     pal.text_secondary,
                 );
             }
+            let figures = figures_hover(means.map(|m| m.0), reserve);
             let r = r.on_hover_text(format!(
-                "{}\n\n{}",
+                "{}{figures}\n\n{}",
                 take_line(t, test),
                 if on_show {
                     "This take is on show on the Bench. Right-click for more."
@@ -1869,7 +1955,7 @@ mod tests {
             power_reserve: None,
         };
         assert_eq!(
-            take_cells(&t, false),
+            take_cells(&t, None),
             [
                 "2026-10-22 09.10",
                 "DU",
@@ -1885,14 +1971,14 @@ mod tests {
         // reads it.
         let mut c = t.clone();
         c.at_end.as_mut().unwrap().rate_corrected_s_per_day = Some(21.5);
-        assert_eq!(take_cells(&c, false)[3], "+21.5");
+        assert_eq!(take_cells(&c, None)[3], "+21.5");
         let all = Take {
             positions: ["DU", "DD", "CU", "CD", "CL", "CR"]
                 .map(String::from)
                 .to_vec(),
             ..t
         };
-        assert_eq!(take_cells(&all, false)[1], "All 6");
+        assert_eq!(take_cells(&all, None)[1], "All 6");
         // A Power Reserve Test's run in the same format as the others.
         let pr = Take {
             power_reserve: Some(timegrapher_core::power_reserve::Summary {
@@ -1902,9 +1988,15 @@ mod tests {
             }),
             ..all.clone()
         };
-        let cells = take_cells(&pr, false);
+        let cells = take_cells(&pr, None);
         assert_eq!(cells[1], "Power Reserve");
         assert_eq!(cells[2], crate::strip::fmt_time(166_320.0));
+        // Its figures are hour by hour in the take, not its last window.
+        assert_eq!(cells[3..6], ["—", "—", "—"].map(String::from));
+        // A Positions Test's are its Mean row.
+        let cells = take_cells(&all, Some([Some(-2.25), Some(271.6), Some(-0.34)]));
+        assert_eq!(cells[1], "Positions Test");
+        assert_eq!(cells[3..6], ["−2.2", "272", "0.3"].map(String::from));
         assert_eq!(TAKE_HEADS.len(), 7);
     }
 
@@ -1927,7 +2019,7 @@ mod tests {
                 position: "DU".into(),
             }),
         };
-        assert_eq!(take_cells(&t, false)[2], "1:53");
+        assert_eq!(take_cells(&t, None)[2], "1:53");
         assert!(take_line(&t, false).starts_with("Power Reserve 1 min 53 s"));
     }
 
@@ -2046,9 +2138,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tg-app-kind-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        assert!(!is_positions_test(&dir));
+        assert!(positions_means(&dir).is_none());
         std::fs::write(dir.join(crate::guided::RESULTS_FILE), "{}").unwrap();
-        assert!(is_positions_test(&dir));
+        assert!(positions_means(&dir).is_some());
         let t = Take {
             name: "2026-10-26 12.00".into(),
             bytes: 1_000_000,
@@ -2060,11 +2152,58 @@ mod tests {
             at_end: None,
             power_reserve: None,
         };
-        assert_eq!(take_cells(&t, false)[1], "DU");
-        assert_eq!(take_cells(&t, true)[1], "Positions Test");
+        assert_eq!(take_cells(&t, None)[1], "DU");
+        assert_eq!(take_cells(&t, Some([None; 3]))[1], "Positions Test");
         let line = take_line(&t, true);
         assert!(line.starts_with("Positions Test · Dial Up · "), "{line}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A Positions Test take's row reads its Mean row from its saved
+    /// results, the figures its table shows; any other take has none.
+    #[test]
+    fn a_positions_tests_row_shows_its_mean_of_six() {
+        let dir = std::env::temp_dir().join(format!("tg-app-means-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(positions_means(&dir), None);
+        let row = |p: &str, rate: f64| crate::guided::KeptRow {
+            position: p.into(),
+            rate_s_per_day: Some(rate),
+            amplitude_deg: Some(280.0),
+            beat_error_ms: Some(0.2),
+        };
+        let full = crate::guided::FullWind {
+            format: crate::guided::RESULTS_FORMAT.into(),
+            began_utc: String::new(),
+            began_unix: 0.0,
+            watch: String::new(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![row("DU", 2.0), row("DD", 4.0), row("CD", -6.0)],
+        };
+        std::fs::write(dir.join(crate::guided::RESULTS_FILE), full.to_json()).unwrap();
+        let t = crate::guided::kept_table(&full);
+        assert_eq!(
+            positions_means(&dir),
+            Some((3, [t.mean_rate, t.mean_amplitude, t.mean_beat_error]))
+        );
+        assert!(t.mean_rate.is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The row's hover says how many positions a test's figures are the
+    /// mean of: six only when six were measured.
+    #[test]
+    fn a_tests_hover_counts_the_positions_measured() {
+        assert!(figures_hover(Some(6), false).contains("Mean of the six positions"));
+        assert!(figures_hover(Some(2), false).contains("Mean of the 2 positions measured"));
+        assert!(figures_hover(Some(1), false).contains("the one position measured"));
+        assert!(figures_hover(None, true).contains("hour by hour"));
+        assert_eq!(figures_hover(None, false), "");
     }
 
     #[test]
@@ -2112,9 +2251,12 @@ mod tests {
         };
         let line = take_line(&r, false);
         assert!(
-            line.starts_with("Power Reserve 46 h 12 min · Crown Left · +3.5"),
+            line.starts_with("Power Reserve 46 h 12 min · Crown Left · Analysis Only"),
             "{line}"
         );
+        // Nor does a Positions Test's last window stand for the test.
+        let line = take_line(&t, true);
+        assert!(!line.contains("+3.5") && !line.contains("281°"), "{line}");
         assert!(local_minute("2026-10-20T21:32:00Z").is_some_and(|m| m.len() == 16));
         assert_eq!(local_minute("not a time"), None);
     }

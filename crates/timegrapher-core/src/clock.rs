@@ -120,6 +120,39 @@ impl Withheld {
     }
 }
 
+/// The USB lines and a clock log that would correct on its own both
+/// measuring the sound card, more than [`DISAGREE_PPM`] apart
+/// ([`ClockFit::sources_disagree`]). The lines time the card against the
+/// computer's USB clock, the log against true time: on the stored takes
+/// those agree within about 1 ppm, but another computer's crystal can be
+/// tens of ppm off (30 ppm is 2.6 s/d).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SourcesDisagree {
+    /// ppm the card runs slow by the USB lines: the rates are corrected by
+    /// this.
+    pub usb_ppm: f64,
+    /// ppm by the clock log, and its standard error.
+    pub log_ppm: f64,
+    pub log_ppm_sd: f64,
+}
+
+impl SourcesDisagree {
+    /// One line for a reader: both figures, and which one corrects.
+    pub fn note(&self) -> String {
+        format!(
+            "the USB lines measure the sound card at {:+.1} ppm and the clock log at {:+.0} ± {:.0} ppm; the rates are corrected by the USB lines",
+            self.usb_ppm, self.log_ppm, self.log_ppm_sd
+        )
+    }
+}
+
+/// How far apart, ppm (0.43 s/d), the USB lines and a clock log that would
+/// correct on its own may measure the card before
+/// [`ClockFit::sources_disagree`] says so.
+pub const DISAGREE_PPM: f64 = 5.0;
+/// How many of the log's standard errors apart the two must also be.
+pub const DISAGREE_SE: f64 = 2.0;
+
 /// Fewest log entries a clock correction is applied from.
 pub const MIN_POINTS: usize = 10;
 /// Largest standard error, ppm (1.7 s/d), a clock correction is applied
@@ -232,6 +265,27 @@ impl ClockFit {
     /// for half an hour measures it to about 13 ppm.
     pub fn rate_from_usb(&mut self, ppm: f64) {
         self.hold("usb_lines", ppm);
+    }
+
+    /// Where the USB lines set the rate ([`ClockFit::rate_from_usb`]) over
+    /// a clock log that would have corrected on its own (at least
+    /// [`MIN_POINTS`] entries, a standard error of at most
+    /// [`MAX_SD_PPM`]), the two measurements when they differ by more than
+    /// [`DISAGREE_PPM`] and by more than [`DISAGREE_SE`] of the log's
+    /// standard error: a half-hour log measures the card to about 13 ppm,
+    /// so a gap of that size is the log's own scatter. The correction is
+    /// the USB lines' either way.
+    pub fn sources_disagree(&self) -> Option<SourcesDisagree> {
+        let w = self.withheld.filter(|w| w.reason == "usb_lines")?;
+        let qualifies = w.points >= MIN_POINTS && w.ppm_sd <= MAX_SD_PPM;
+        let gap = (self.ppm - w.ppm).abs();
+        (qualifies && gap > DISAGREE_PPM && gap > DISAGREE_SE * w.ppm_sd).then_some(
+            SourcesDisagree {
+                usb_ppm: self.ppm,
+                log_ppm: w.ppm,
+                log_ppm_sd: w.ppm_sd,
+            },
+        )
     }
 
     /// What [`ClockFit::for_rates`] would withhold from this fit, and why;
@@ -1108,6 +1162,55 @@ unix_s,frames
         assert!(!fit.corrects());
         assert_eq!(fit.ppm, 0.0);
         assert!((fit.map(50.0) - fit.map(40.0) - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn usb_lines_and_a_good_log_that_disagree_say_so_with_both_figures() {
+        // An exact log, an entry a minute for half an hour, with the card
+        // 20 ppm slow; USB lines put it 100 ppm off that (another
+        // computer's USB clock), or within 5 ppm of it.
+        let exact = noisy_log(31, 60.0, 20.0, 0.0, 0, 0.0, 1);
+        let rated = |pairs: &[(f64, f64)], usb: f64| {
+            let mut fit = ClockFit::for_rates(pairs).unwrap();
+            fit.rate_from_usb(usb);
+            fit
+        };
+        let fit = rated(&exact, 120.0);
+        let d = fit.sources_disagree().expect("100 ppm apart");
+        assert_eq!(d.usb_ppm, 120.0);
+        assert!((d.log_ppm - 20.0).abs() < 1e-3, "{}", d.log_ppm);
+        assert!(d.log_ppm_sd < 1e-3, "{}", d.log_ppm_sd);
+        assert_eq!(
+            d.note(),
+            "the USB lines measure the sound card at +120.0 ppm and the clock log at +20 ± 0 ppm; the rates are corrected by the USB lines"
+        );
+        // The correction is the USB lines' all the same.
+        assert_eq!(fit.ppm, 120.0);
+        assert!(fit.corrects());
+        // Lines and log that agree, to within 5 ppm: nothing said.
+        assert_eq!(rated(&exact, 24.0).sources_disagree(), None);
+        assert_eq!(rated(&exact, 16.0).sources_disagree(), None);
+        // A log that would not correct on its own says nothing either way:
+        // too few entries, or too unsure.
+        assert_eq!(rated(&exact[..9], 120.0).sources_disagree(), None);
+        let unsure = noisy_log(15, 10.0, 6.0, 0.027, 0, 0.0, 8);
+        assert!(!ClockFit::for_rates(&unsure).unwrap().corrects());
+        assert_eq!(rated(&unsure, 120.0).sources_disagree(), None);
+        // A half-hour log an entry a minute with 34 ms of jitter measures
+        // the card to about 13 ppm: USB lines 16 ppm off it are within its
+        // scatter, 40 ppm off are not.
+        let half_hour = noisy_log(30, 60.0, 22.0, 0.034, 0, 0.0, 12);
+        let log = ClockFit::for_rates(&half_hour).unwrap();
+        assert!(log.corrects() && log.ppm_sd > 8.0, "{}", log.ppm_sd);
+        assert_eq!(rated(&half_hour, log.ppm + 16.0).sources_disagree(), None);
+        assert!(rated(&half_hour, log.ppm + 40.0)
+            .sources_disagree()
+            .is_some());
+        // Nor does a log that corrects, with no USB lines.
+        assert_eq!(
+            ClockFit::for_rates(&exact).unwrap().sources_disagree(),
+            None
+        );
     }
 
     #[test]

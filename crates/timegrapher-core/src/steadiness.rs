@@ -819,6 +819,15 @@ fn period_of(r: &longterm::SeriesReport, unit: &'static str) -> Option<Period> {
 /// strays by over a third under independent readings.
 const MIN_PAIRS: usize = 30;
 
+/// The 95% band of the autocorrelation at a lag of `lag` readings read
+/// from `pairs` pairs, in a grid of `n` readings: 1.96/√ of its pairs
+/// scaled to a full series' (so 1.96/√n with every reading present).
+/// `None` for a lag read from under [`MIN_PAIRS`] pairs, which counts for
+/// nothing.
+fn band_at_lag(pairs: f64, lag: f64, n: f64) -> Option<f64> {
+    (pairs >= MIN_PAIRS as f64 - 0.5).then(|| 1.96 / (pairs * n / (n - lag).max(1.0)).sqrt())
+}
+
 /// Autocorrelation of readings on a uniform grid (gaps NaN), with the
 /// Ljung–Box test, the memory and a repeat.
 fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
@@ -850,9 +859,6 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
         .map(|k| k as f64 * step);
     let nf = n as f64;
     let band = 1.96 / nf.sqrt();
-    // The band at lag k, from its pairs scaled to a full series' (so 1.96/√n
-    // with every reading present).
-    let band_at = |k: usize| 1.96 / (pairs[k] as f64 * ng / full(k)).sqrt();
     // A repeat: a local peak, strong, after the correlation has fallen
     // well below it, and that comes back at twice the lag (a cycle
     // repeats; a chance bump does not), each read from enough pairs.
@@ -868,7 +874,8 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
             .fold(f64::NEG_INFINITY, f64::max);
         r[k] >= r[k - 1]
             && r[k] > r[k + 1]
-            && r[k] >= 0.3f64.max(4.0 * band_at(k))
+            && band_at_lag(pairs[k] as f64, k as f64, ng)
+                .is_some_and(|b| r[k] >= 0.3f64.max(4.0 * b))
             && lo <= r[k] - 0.3
             && again >= 0.5 * r[k]
     });
@@ -1301,16 +1308,12 @@ fn cycle(
     }
     // Every later peak of the autocorrelation above three times its 95% band, even one
     // too weak to count as a repeat on its own: the fold below decides. The
-    // band at a lag is from its pairs, scaled to a full series' (`band`
-    // with every reading present), and a lag read from under MIN_PAIRS
-    // pairs gives none.
+    // band at a lag is [`band_at_lag`], from the pairs `band_by_lag` was read
+    // from.
     if let Some(a) = ac {
         let ng = d.y.len() as f64;
-        let band_at = |k: usize| {
-            let full = (ng - a.lag_s[k] / d.step).max(1.0);
-            let pairs = (1.96 / a.band_by_lag[k]).powi(2);
-            (pairs >= MIN_PAIRS as f64 - 0.5).then(|| 1.96 / (pairs * ng / full).sqrt())
-        };
+        let band_at =
+            |k: usize| band_at_lag((1.96 / a.band_by_lag[k]).powi(2), a.lag_s[k] / d.step, ng);
         for k in 2..a.r.len().saturating_sub(1) {
             if a.r[k] >= a.r[k - 1]
                 && a.r[k] > a.r[k + 1]
