@@ -10939,7 +10939,7 @@ impl TimegrapherApp {
                 "Analysis",
                 "The readings over the take as charts and as distributions, how the rate, \
                  amplitude and beat error each change over the session, from the same tests \
-                 as `timegrapher series`, and how the rate moves with the amplitude: each \
+                 the command line runs, and how the rate moves with the amplitude: each \
                  view a pane of its own, so two can sit side by side",
                 &Pane::ANALYSIS,
             ),
@@ -12218,7 +12218,7 @@ impl TimegrapherApp {
             format!(
                 "\n\nWhole take {figure}{spread} over {}. The big figure is the last stretch \
                  of Average Over; this is the take in this position, settling left out, read \
-                 as timegrapher session reads a recording.{whole_breaks}",
+                 as the command line reads it.{whole_breaks}",
                 length_text(span)
             )
         };
@@ -12438,7 +12438,7 @@ impl TimegrapherApp {
                 if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
                     from += &format!(
                         " The {WHOLE_AS_SIZES}, so the sizes either side are combined \
-                         rather than the signed values, as timegrapher session does."
+                         rather than the signed values, as the command line does."
                     );
                 }
             }

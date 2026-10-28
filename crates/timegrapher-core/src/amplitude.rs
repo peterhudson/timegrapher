@@ -289,30 +289,6 @@ pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize 
     n
 }
 
-/// Amplitude in consecutive windows of `window_s` seconds.
-pub fn windows(
-    env: &[f32],
-    fs: f64,
-    beats: &[Beat],
-    osc_period_s: f64,
-    window_s: f64,
-    cfg: &AmplitudeConfig,
-) -> Vec<AmplitudeWindow> {
-    let (Some(first), Some(last)) = (beats.first(), beats.last()) else {
-        return Vec::new();
-    };
-    windows_between(
-        env,
-        fs,
-        beats,
-        osc_period_s,
-        window_s,
-        first.time,
-        last.time,
-        cfg,
-    )
-}
-
 /// Amplitude in consecutive windows of `window_s` seconds from `from_s`,
 /// up to the last window that ends by `to_s`. Beat times and the window
 /// bounds are in the envelope's time base.

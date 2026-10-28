@@ -982,3 +982,102 @@ fn a_takes_positions_table_reads_each_position_marked() {
     assert!(t.indices.d_rate.is_none(), "one position: no difference");
     assert!(t.indices.d_amplitude.is_none() && t.indices.d_beat_error.is_none());
 }
+
+/// A break the recorder wrote with a gap under 0 s (its timestamps put the
+/// first sound after a pause before the last one before it) is read as a
+/// break of no time: true time doesn't run backwards.
+#[test]
+fn a_break_with_a_gap_under_zero_reads_as_no_gap() {
+    use timegrapher_core::breaks::Break;
+    use timegrapher_core::scenarios;
+    let s = scenarios::find("control").unwrap();
+    let log = scenarios::beat_log(&s, 5);
+    let at = |gap_s| {
+        let breaks = [Break {
+            audio_s: 1800.0,
+            gap_s,
+        }];
+        serde_json::to_value(session::measure_masked(
+            &log,
+            None,
+            &breaks,
+            &[],
+            0.0,
+            3600.0,
+        ))
+        .unwrap()
+    };
+    let (mut under, mut none) = (at(-0.5), at(0.0));
+    // Everything but the breaks listed as given.
+    under["breaks"] = serde_json::Value::Null;
+    none["breaks"] = serde_json::Value::Null;
+    assert_eq!(under, none);
+}
+
+/// A rate that switches between two levels is found in the take's 10 s
+/// rate samples, at its two levels.
+#[test]
+fn a_rate_switching_between_two_levels_is_found_in_its_samples() {
+    use timegrapher_core::scenarios::{beat_log, Scenario};
+    let s = Scenario {
+        name: "two-rates",
+        summary: "",
+        expect: "",
+        finds: &[],
+        duration_s: 3600.0,
+        rate: Box::new(|t| {
+            if (t / 300.0) as i64 % 2 == 0 {
+                0.0
+            } else {
+                8.0
+            }
+        }),
+        amplitude: Box::new(|_| 270.0),
+        beat_error: Box::new(|_| 0.4),
+    };
+    let log = beat_log(&s, 3);
+    let m = session::measure_masked(&log, None, &[], &[], 0.0, log.duration_s);
+    let r = &m.rate_states;
+    assert!(r.two_levels, "{r:?}");
+    assert!(r.low.abs() < 1.5, "{r:?}");
+    assert!((r.high - 8.0).abs() < 1.5, "{r:?}");
+}
+
+/// A cycle tied to a wheel is reported with the wheel, a cycle at a whole
+/// fraction of that wheel's turn is folded into it, and a cycle tied to
+/// no wheel is reported on its own.
+#[test]
+fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
+    use timegrapher_core::session::Cycle;
+    let cycle = |period_s: f64, wheel: Option<&str>| Cycle {
+        series: "rate",
+        period_s,
+        size: 2.0,
+        size_unit: "s/d",
+        significance: 8.0,
+        explained: 0.3,
+        wheel: wheel.map(str::to_string),
+        nearest_wheel: None,
+        fraction_of: None,
+    };
+    let mut r = reading(Position::CH, 2.0, 3.0, 280.0, 0.3);
+    r.cycles = vec![
+        cycle(60.0, Some("fourth wheel")),
+        cycle(30.0, None),
+        cycle(7.3, None),
+    ];
+    let rep = evaluate(&[r]);
+    let of = |code: &str| -> Vec<&str> {
+        rep.findings
+            .iter()
+            .filter(|f| f.code == code)
+            .map(|f| f.evidence.as_str())
+            .collect()
+    };
+    let wheel = of("cycle_wheel");
+    assert_eq!(wheel.len(), 1, "{wheel:?}");
+    assert!(wheel[0].contains("(30.00 s)"), "{}", wheel[0]);
+    let other = of("cycle_other");
+    assert_eq!(other.len(), 1, "{other:?}");
+    assert!(other[0].contains("every 7.30 s"), "{}", other[0]);
+}

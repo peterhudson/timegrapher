@@ -165,32 +165,6 @@ impl Options {
     }
 }
 
-/// Seconds of audio the beat shape is measured on.
-const SHAPE_S: f64 = 60.0;
-
-/// Where the beat shape is measured, clear of masked stretches: the first
-/// unmasked stretch from `from_s` to `to_s` that is [`SHAPE_S`] long, else
-/// the longest one. Start and length, seconds; None when all of it is
-/// masked.
-fn shape_stretch(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> Option<(f64, f64)> {
-    let mut clear = Vec::new();
-    let mut at = from_s;
-    for &(a, b) in masked {
-        if a > at {
-            clear.push((at, a.min(to_s)));
-        }
-        at = at.max(b);
-    }
-    clear.push((at, to_s));
-    let clear: Vec<(f64, f64)> = clear.into_iter().filter(|(a, b)| b > a).collect();
-    let pick = clear.iter().find(|(a, b)| b - a >= SHAPE_S).or_else(|| {
-        clear
-            .iter()
-            .max_by(|x, y| (x.1 - x.0).total_cmp(&(y.1 - y.0)))
-    })?;
-    Some((pick.0, SHAPE_S.min(pick.1 - pick.0)))
-}
-
 /// Recordings named on the command line, or found in a folder: each
 /// audio file is one recording, and so is each subfolder of segments.
 fn scan(paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
@@ -513,14 +487,9 @@ fn read_one_inner(
         card_clock: c.card_clock,
         settle_s: c.o.settle,
     };
-    let read = take::measure_entry(
-        c.base,
-        c.m,
-        e,
-        &settings,
-        |files| Ok(crate::clock_cmd::usb(files)?.map(|(ppm, _)| ppm)),
-        |first| Ok(crate::clock_cmd::correction(first, None, c.m.card_ppm)?.map(|(ppm, _)| ppm)),
-    )?;
+    let read = take::measure_entry(c.base, c.m, e, &settings, take::usb_ppm, |first| {
+        take::correction_ppm(c.m, first)
+    })?;
     if capture && read.kept.is_some() {
         return Err(format!(
             "{}: kept as its analysis alone, with no sound to record provenance for",
@@ -611,7 +580,7 @@ fn read_one_inner(
                     })
                 });
         i.and_then(|i| k.shape_of(i)).map(|s| s.summary.clone())
-    } else if let Some((from, len)) = shape_stretch(&masked, settle, end) {
+    } else if let Some((from, len)) = analysis_take::shape_stretch(&masked, settle, end) {
         let (x, fs) = excerpt(&files, from, len)?;
         let env = envelope(&x, fs, &EnvelopeConfig::default());
         let (found, _) = beats::detect(&env, fs, log.bph);
@@ -1433,22 +1402,6 @@ mod tests {
         .unwrap();
         assert!(m.recordings.is_empty());
         assert!(toml::from_str::<Manifest>("no_such_key = 1\n").is_err());
-    }
-
-    #[test]
-    fn the_shape_is_measured_clear_of_masked_stretches() {
-        assert_eq!(shape_stretch(&[], 30.0, 600.0), Some((30.0, SHAPE_S)));
-        // A bump in the first minute: the next clear minute.
-        assert_eq!(
-            shape_stretch(&[(50.0, 58.0)], 30.0, 600.0),
-            Some((58.0, SHAPE_S))
-        );
-        // No clear minute: the longest clear stretch.
-        assert_eq!(
-            shape_stretch(&[(40.0, 50.0), (70.0, 75.0)], 30.0, 100.0),
-            Some((75.0, 25.0))
-        );
-        assert_eq!(shape_stretch(&[(0.0, 700.0)], 30.0, 600.0), None);
     }
 
     /// A session file with a masked bump: `session` leaves it out of the

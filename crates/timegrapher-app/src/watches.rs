@@ -30,7 +30,7 @@ pub const HELP: &[&str] = &[
      details, and the first by name leads its row in the list. Click one to open it in your \
      photo viewer, or right-click it to show its folder or delete it.",
     "Each take is a row of the Takes table: when it started, its positions, its length, \
-     its own reading as `timegrapher session` reads it (worked out the first time it is \
+     its own reading as the command line reads it (worked out the first time it is \
      shown, then kept), and the space it uses. Clicking a row picks it; \
      Open, at the right of the Takes title, or a double click opens it on the Bench, and \
      the take already on show is not read again. Right-clicking it, or …, offers Keep \
