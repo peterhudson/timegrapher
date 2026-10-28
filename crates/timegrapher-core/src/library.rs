@@ -494,8 +494,9 @@ pub fn reading(take_dir: &Path) -> Result<Reading, String> {
     Ok(r)
 }
 
-/// The take's last position read as `timegrapher session` reads it, with
-/// no flags: its settings from its `session.toml` and calibre
+/// The take's last position with anything to read
+/// ([`crate::take::reads_nothing`]), read as `timegrapher session` reads
+/// it, with no flags: its settings from its `session.toml` and calibre
 /// ([`crate::take::stream_settings`]), its clock from its log, its USB
 /// lines, its `card_ppm` or the correction stored for its input
 /// ([`crate::take::measure_entry`]).
@@ -503,8 +504,16 @@ fn measure_take(dir: &Path) -> Result<Reading, String> {
     let file = dir.join(crate::take::MANIFEST);
     let text = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-    let Some(e) = m.recordings.last() else {
-        return Err(format!("{}: no recording listed", file.display()));
+    let Some(e) = m
+        .recordings
+        .iter()
+        .rev()
+        .find(|e| !crate::take::reads_nothing(e))
+    else {
+        return Err(format!(
+            "{}: no recording listed with anything to read",
+            file.display()
+        ));
     };
     let user = match (&m.calibre, crate::calibre_store::default_path()) {
         (Some(_), Some(p)) => crate::calibre_store::UserCalibres::load(&p)?,

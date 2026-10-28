@@ -162,7 +162,11 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
         return Some(take(doc, args));
     }
     if schema.starts_with("timegrapher.series/") {
-        return series(doc);
+        return with_limits(series(doc).into_iter().collect(), doc);
+    }
+    // A long run's figures are the JSON's; the lead says only what limits them.
+    if schema.starts_with("timegrapher.long/") {
+        return with_limits(Vec::new(), doc);
     }
     if schema.starts_with("timegrapher.watches/") {
         return Some(watches(doc));
@@ -206,6 +210,12 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
     } else {
         return None;
     }
+    with_limits(lines, doc)
+}
+
+/// The lead `lines` with what limits the readings after them, or `None`
+/// when both are empty.
+fn with_limits(mut lines: Vec<String>, doc: &Value) -> Option<String> {
     // A sentence the lead already says (no regular beat found) is not repeated.
     let limits: Vec<String> = crate::caveats::notes(doc)
         .into_iter()
@@ -215,7 +225,7 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
         lines.push("What limits these readings:".to_string());
         lines.extend(limits.into_iter().map(|l| format!("- {l}")));
     }
-    Some(lines.join("\n"))
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 /// A Power Reserve take's run, as the CLI's text gives it, with the stops
@@ -806,6 +816,27 @@ mod tests {
             let text = one(step, h);
             assert!(!text.contains("readings of"), "{text}");
         }
+    }
+
+    #[test]
+    fn a_long_run_and_a_series_end_with_what_limits_their_readings() {
+        let caveats = json!([{ "code": "beat_error_as_size" }]);
+        let said = "What limits these readings:\n- The beat error's sign differs either side of \
+                    a cut in the stretch, so it is given as a size.";
+        let long = json!({ "schema": "timegrapher.long/1", "caveats": caveats });
+        assert_eq!(lead(&long, &Map::new()).unwrap(), said);
+        assert!(lead(
+            &json!({ "schema": "timegrapher.long/1", "caveats": [] }),
+            &Map::new()
+        )
+        .is_none());
+        let series = json!({ "schema": "timegrapher.series/2", "caveats": caveats,
+            "series": [{ "headline": "Rate: too few readings for the tests" }] });
+        let text = lead(&series, &Map::new()).unwrap();
+        assert!(
+            text.starts_with("Series:") && text.ends_with(said),
+            "{text}"
+        );
     }
 
     #[test]

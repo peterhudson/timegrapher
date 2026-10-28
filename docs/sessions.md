@@ -204,7 +204,13 @@ One continuous take that moved through several positions is listed once
 per position, each entry naming the same file or folder with `start_s`
 and `end_s` (seconds into the recording; left out means its start or
 end). Each stretch settles for `settle_s` from its own start, and its
-reading is labelled with the stretch, e.g. `take (600–1200 s)`.
+reading is labelled with the stretch, e.g. `take (600–1200 s)`. An
+entry whose `start_s` equals its `end_s` is a position that settled
+right to its end (the app saves one so when the watch was moved again,
+or painted over, before it settled): it has nothing to read.
+`timegrapher session` and `regress` leave it out with a note, the Watches list reads
+the last entry that has something to read, and a session file with
+nothing else to read is refused.
 
 ```toml
 [[recording]]

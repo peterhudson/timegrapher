@@ -43,3 +43,12 @@ test("the Readings view's key says what a dot is and how many are drawn", () => 
   assert.equal(context.dotKey({ step_s: 5, stride: 1 }, 40), "5 s windows (40)");
   assert.equal(context.ordinal(12), "12th");
 });
+
+test("the Long Recording view says what limits its readings, as the analyze and session views do", () => {
+  const c = vm.createContext({ steadinessCard: () => "<steady/>", distributionCards: () => "<dist/>", fileName: () => "a.wav", timeLabel: String });
+  vm.runInContext(["esc", "limitsCard", "seriesView"].map(definition).join("\n"), c);
+  const limits = [{ where: null, text: "The beat error's sign differs either side of a cut in the stretch, so it is given as a size." }];
+  const html = c.seriesView({ duration_s: 60 }, null, limits);
+  assert.ok(html.includes("<steady/><div class=\"card\"><h2>What Limits These Readings</h2>") && html.includes("given as a size.</li>"), html);
+  assert.ok(!c.seriesView({ duration_s: 60 }, null, []).includes("What Limits"));
+});

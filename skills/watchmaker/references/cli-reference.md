@@ -240,7 +240,7 @@ JSON body:
 | `bph` | Beat rate used |
 | `beats_found` | Ticks found; compare with `duration_s × bph / 3600` |
 | `watch_heard` | False when the beats are no steadier than noise (an empty stand, a stopped watch): every other number then describes noise; say no watch was heard and show none of them |
-| `caveats[]` | What limits how far the readings can be trusted, each with a `code`: `no_watch` (`reason`: `scatter` or `no_beat_sound`), `set_rate_disagrees` (`heard`), `short_span` (`span_s`), `clipped` (`fraction`), `beats_missing` (`fraction`), `lift_unknown`, `clock_unknown`, `breaks` (`count`), `sides_by_count` (`count`), `beat_error_as_size`; a `session` reading's measurement can also carry `masked` (`seconds`). Empty when nothing does; what each means and what to do is in [findings.md](findings.md#what-limits-the-readings-caveats) |
+| `caveats[]` | What limits how far the readings can be trusted, each with a `code`: `no_watch` (`reason`: `scatter` or `no_beat_sound`), `set_rate_disagrees` (`heard`), `short_span` (`span_s`), `clipped` (`fraction`), `beats_missing` (`fraction`), `lift_unknown`, `clock_unknown`, `breaks` (`count`), `sides_by_count` (`count`), `beat_error_as_size`; a `session` reading's measurement can also carry `masked` (`seconds`) and `clock_sources_disagree` (`usb_ppm`, `log_ppm`, `log_ppm_sd`), which `long` and `series` carry too. Empty when nothing does; what each means and what to do is in [findings.md](findings.md#what-limits-the-readings-caveats) |
 | `beats_found_fraction`, `timing_scatter_fraction` | Beats found over the beats the length holds; the median timing scatter as a share of the beat (0.02 or more: no regular beat) |
 | `confidence` | `rate`, `amplitude`, `beat_error`, each `se`: one standard error in the reading's unit. Null when no regular beat is found |
 | `shape` | The Tick (`even`) and the Tock (`odd`), each `windows_measured`, `share_with_sound_1`, `share_with_sound_2`, `i12_ms`, `i13_ms`, `ratio13`, `tail_ratio`; and `beat_error_first_quarter_ms`, `beat_error_last_quarter_ms`, `beat_error_quarter_windows`. Read with [tick-shape.md](tick-shape.md#rules-for-possible-faults). Null when no regular beat is found |
@@ -375,7 +375,7 @@ JSON body:
 | `overall` | As for `analyze` (rate corrected when `clock` is given) |
 | `rate_p05`, `rate_p95` | Spread of the rate over slices of about 1/400 of the run |
 | `amplitude_deg`, `amplitude_p05`, `amplitude_p95` | Median and spread |
-| `caveats[]` | `sides_by_count` (`count`) and `beat_error_as_size` (the take's beat errors and the slices' are sizes, positive, not signed) as for `analyze`; empty when none. The printed summary's `Sides` and `Conditions` lines say the same |
+| `caveats[]` | `sides_by_count` (`count`) and `beat_error_as_size` (the take's beat errors and the slices' are sizes, positive, not signed) as for `analyze`, and `clock_sources_disagree` as for a `session` reading; empty when none. The printed summary's `Sides` and `Conditions` lines say the same |
 | `rate_periods`, `amplitude_periods` | Components found: `{ period_s, resolution_s, significance, harmonics, explained, peak_to_peak, wheel, nearest_wheel }` |
 
 Component fields: `significance` is −log10 of the false-alarm chance (2 =
@@ -409,7 +409,8 @@ lines, else none (`series` has no `--card-ppm` or `--device`). The beat
 error series is the unlock's; where the drop fit's sign turns over
 across a break, its readings, and so its median and the tests on them,
 are sizes, given as positive. `caveats[]` holds `sides_by_count`
-(`count`) and `beat_error_as_size` as for `analyze`, and printed `Sides`
+(`count`) and `beat_error_as_size` as for `analyze`, and
+`clock_sources_disagree` as for a `session` reading, and printed `Sides`
 and `Conditions` lines say the same. `--views` (with `--json`) adds the
 chart data the app's Steadiness pane draws; `--maps` (with `--json`)
 adds `time_frequency[]`, an STFT and a synchrosqueezed wavelet map of

@@ -712,11 +712,28 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         quiet: false,
         card_clock: false,
     };
+    // An entry with nothing to read (`take::reads_nothing`) is left out,
+    // with a note.
+    for e in m.recordings.iter().filter(|e| take::reads_nothing(e)) {
+        eprintln!(
+            "note: {} ({}) at {:.0} s has nothing to read, so it is left out",
+            e.file,
+            e.position.as_deref().unwrap_or("-"),
+            e.start_s.unwrap_or(0.0)
+        );
+    }
     let readings: Vec<Reading> = m
         .recordings
         .iter()
+        .filter(|e| !take::reads_nothing(e))
         .map(|e| read_one(e, &ctx))
         .collect::<Result<_, _>>()?;
+    if readings.is_empty() {
+        return Err(format!(
+            "{}: no recording listed with anything to read",
+            base.join(take::MANIFEST).display()
+        ));
+    }
     if ctx.tty {
         eprintln!();
     }
@@ -1746,6 +1763,60 @@ mod tests {
             .is_none());
         fs::write(base.join(power_reserve::FILE), "{").unwrap();
         assert!(power_reserve_of(&base).is_err());
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// A position the app saved as settling right to its end (a Dial Up
+    /// painted over 10 s in, inside the take's own settling) has nothing to
+    /// read: `session` leaves it out and reads the rest, and a take with
+    /// nothing else is refused, saying so.
+    #[test]
+    fn a_position_that_settles_to_its_end_is_left_out() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let base = std::env::temp_dir().join(format!("tg-session-settled-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 80.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        audio::write_wav(&base.join("take.wav"), &audio).unwrap();
+        let entry = |pos: &str, times: &str| {
+            format!("[[recording]]\nfile = \"take.wav\"\nposition = \"{pos}\"\n{times}settle_s = 0.0\n\n")
+        };
+        let saved = format!(
+            "bph = 28800\nlift = 52\n\n{}{}{}",
+            entry("DU", "start_s = 10.0\nend_s = 10.0\n"),
+            entry("CU", "start_s = 10.0\nend_s = 40.0\n"),
+            entry("DU", "start_s = 40.0\n"),
+        );
+        fs::write(base.join(MANIFEST), &saved).unwrap();
+        let out = base.join("out");
+        let o = Options {
+            out: Some(out.clone()),
+            ..options(None, None, None)
+        };
+        run(std::slice::from_ref(&base), &o).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("summary.json")).unwrap()).unwrap();
+        let read: Vec<&str> = v["readings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["position"].as_str().unwrap())
+            .collect();
+        assert_eq!(read, ["3H", "CH"], "crown up, then dial up");
+        let nothing = format!(
+            "bph = 28800\n\n{}",
+            entry("DU", "start_s = 10.0\nend_s = 10.0\n")
+        );
+        fs::write(base.join(MANIFEST), nothing).unwrap();
+        let why = run(std::slice::from_ref(&base), &o).unwrap_err();
+        assert!(why.contains("with anything to read"), "{why}");
         let _ = fs::remove_dir_all(&base);
     }
 
