@@ -2078,6 +2078,9 @@ pub struct TimegrapherApp {
     /// one it keeps into, put back if its question is cancelled.
     keep_back: Option<(Option<String>, bool)>,
     take_keep: Option<(PathBuf, AnalysisSave)>,
+    /// The takes' own readings the Watches list shows, worked out on a
+    /// thread of their own.
+    take_readings: watches::TakeReadings,
     /// The watches' photos as thumbnails, read in the background.
     thumbs: photos::Thumbs,
     /// Report a Problem.
@@ -2731,6 +2734,7 @@ impl TimegrapherApp {
             take_ask: None,
             keep_back: None,
             take_keep: None,
+            take_readings: watches::TakeReadings::default(),
             thumbs: Default::default(),
             strip_points: None,
             masked: Vec::new(),
@@ -6284,6 +6288,15 @@ impl TimegrapherApp {
         }
         let on_show = self.take_on_show();
         let picked = self.take_picked.clone();
+        // Each take's own reading, as `timegrapher watches` gives it; a
+        // test's figures are its own.
+        self.take_readings.poll();
+        for t in &e.takes {
+            let dir = e.take_dir(t);
+            if watches::TakeReadings::read_for(t, &dir) {
+                self.take_readings.want(&dir, t.bytes, ui.ctx());
+            }
+        }
         let cx = watches::TakesContext {
             others: &others,
             writable,
@@ -6291,6 +6304,7 @@ impl TimegrapherApp {
             unsorted: e.watch.id.is_empty(),
             picked: picked.as_deref(),
             on_show: on_show.as_deref(),
+            readings: &self.take_readings,
         };
         let mut act = None;
         watches::title_row(ui, "Takes", Some(e.takes.len()), |ui| {
@@ -19733,7 +19747,7 @@ mod tests {
         assert_eq!(r.position, "CL");
         assert!((r.run_s - 99.0 * 0.125).abs() < 1e-6, "{}", r.run_s);
         let take = app.open_watch().unwrap().takes[0].clone();
-        assert!(watches::take_line(&take, false)
+        assert!(watches::take_line(&take, false, None)
             .starts_with("Power Reserve 12 s · Stopped by hand while the watch still ran"));
         // Opened again, the take brings its run back to the pane.
         let mut again = TimegrapherApp::with_devices(Vec::new(), None);
