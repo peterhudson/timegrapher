@@ -359,7 +359,7 @@ fn settings_with(
             watch: o.watch.clone(),
             calibre,
             bph,
-            lift: lift.unwrap_or(52.0),
+            lift: lift.unwrap_or(timegrapher_core::take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
             settle_s: SETTLE_S,
             existing: false,
@@ -413,7 +413,10 @@ fn settings_with(
         watch: m.watch.or(o.watch.clone()),
         calibre: m.calibre.or(calibre),
         bph: m.bph.or(bph),
-        lift: m.lift.or(lift).unwrap_or(52.0),
+        lift: m
+            .lift
+            .or(lift)
+            .unwrap_or(timegrapher_core::take::DEFAULT_LIFT_DEG),
         lift_known,
         settle_s: m.settle_s.unwrap_or(SETTLE_S),
         existing: true,

@@ -86,9 +86,10 @@ impl Options {
             inherited
         };
         // With no calibre and no `escape_teeth`, no wheel is named.
-        let teeth = m
-            .escape_teeth
-            .or(train.calibre.as_ref().map(|c| c.escape_teeth.unwrap_or(15)));
+        let teeth = m.escape_teeth.or(train
+            .calibre
+            .as_ref()
+            .map(|c| c.escape_teeth.unwrap_or(take::ESCAPE_TEETH)));
         Ok(SessionCalibre {
             train: train.with_escape_teeth(teeth),
             manifest_name,
@@ -350,7 +351,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "lift = {}\n",
         o.lift
             .or(cal.and_then(|c| c.lift_angle_deg))
-            .unwrap_or(52.0)
+            .unwrap_or(take::DEFAULT_LIFT_DEG)
     ));
     t.push_str("# seconds skipped at the start of each recording while the watch settles\n");
     t.push_str(&format!(
