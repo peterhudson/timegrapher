@@ -1,12 +1,14 @@
 //! `timegrapher watches`: the watches in the library the app keeps, each
 //! with its details and its takes, and the takes Quick Listen left in
-//! Unsorted (see `timegrapher_core::library`). It only reads: it takes no
-//! lock and writes nothing, so the app can have the library open.
+//! Unsorted (see `timegrapher_core::library`). It takes no lock and writes
+//! nothing in the library, so the app can have it open; each take's own
+//! reading is worked out once and kept in the user's settings folder
+//! ([`library::reading`]).
 
 use crate::output;
 use serde_json::{json, Value};
 use std::path::Path;
-use timegrapher_core::library::{self, Library, Take, WatchEntry, UNSORTED};
+use timegrapher_core::library::{self, Library, Reading, Take, WatchEntry, UNSORTED};
 
 /// The library at `library`, or at `~/Timegrapher Data`, read: an error
 /// naming the folder when there is none there.
@@ -107,6 +109,7 @@ pub fn show(name: &str, library: Option<&Path>, json: bool) -> Result<(), String
             )
         })?
     };
+    let readings = readings(e);
     if json {
         let w = &e.watch;
         let input = json!({ "library": lib.root.display().to_string(), "name": name });
@@ -123,13 +126,13 @@ pub fn show(name: &str, library: Option<&Path>, json: bool) -> Result<(), String
             "fields": w.fields,
             "photos": e.photos.len(),
             "bytes": e.bytes(),
-            "takes": takes_json(e),
+            "takes": takes_json(e, &readings),
             "unreadable": lib.unreadable,
             "caveats": [],
         });
         return output::print("watch", input, &body);
     }
-    print_watch(e);
+    print_watch(e, &readings);
     warn_unreadable(&lib);
     Ok(())
 }
@@ -146,10 +149,33 @@ fn last_take(e: &WatchEntry) -> Option<&str> {
         .max()
 }
 
-fn takes_json(e: &WatchEntry) -> Vec<Value> {
+/// Each take's own reading ([`library::reading`]), in the order of the
+/// takes: none for an incomplete take or one that can't be read, which is
+/// said on stderr. A take not read before is read now, which takes about a
+/// minute for a 9 h take, and said first.
+fn readings(e: &WatchEntry) -> Vec<Option<Reading>> {
     e.takes
         .iter()
         .map(|t| {
+            if t.incomplete {
+                return None;
+            }
+            let dir = e.take_dir(t);
+            if library::kept_reading(&dir).is_none() {
+                eprintln!("reading {} (once)", t.name);
+            }
+            library::reading(&dir)
+                .map_err(|why| eprintln!("couldn't read {}: {why}", t.name))
+                .ok()
+        })
+        .collect()
+}
+
+fn takes_json(e: &WatchEntry, readings: &[Option<Reading>]) -> Vec<Value> {
+    e.takes
+        .iter()
+        .zip(readings)
+        .map(|(t, reading)| {
             json!({
                 "path": e.take_dir(t).display().to_string(),
                 "name": t.name,
@@ -159,13 +185,14 @@ fn takes_json(e: &WatchEntry) -> Vec<Value> {
                 "audio": t.audio,
                 "incomplete": t.incomplete,
                 "bytes": t.bytes,
+                "reading": reading,
                 "at_end": t.at_end,
             })
         })
         .collect()
 }
 
-fn print_watch(e: &WatchEntry) {
+fn print_watch(e: &WatchEntry, readings: &[Option<Reading>]) {
     let w = &e.watch;
     println!("{}", w.name);
     println!("  Folder: {}", e.dir.display());
@@ -187,25 +214,30 @@ fn print_watch(e: &WatchEntry) {
     if let Some(n) = w.notes.as_deref().filter(|n| !n.trim().is_empty()) {
         println!("  Notes: {n}");
     }
-    print_takes(e);
+    print_takes(e, readings);
 }
 
 /// The takes, newest first, each on a line.
-fn print_takes(e: &WatchEntry) {
+fn print_takes(e: &WatchEntry, readings: &[Option<Reading>]) {
     println!(
         "  {}, {}:",
         count(e.takes.len(), "take", "takes"),
         library::size_text(e.bytes())
     );
-    for t in &e.takes {
+    for (t, reading) in e.takes.iter().zip(readings) {
         let positions_test = library::is_positions_test(&e.take_dir(t));
-        println!("    {}: {}", t.name, take_line(t, positions_test));
+        println!(
+            "    {}: {}",
+            t.name,
+            take_line(t, positions_test, reading.as_ref())
+        );
     }
 }
 
-/// A take's facts as the app lists them, then its size on disk.
-fn take_line(t: &Take, positions_test: bool) -> String {
-    let mut parts = t.facts(positions_test);
+/// A take's facts as the app lists them, with its own reading's figures,
+/// then its size on disk.
+fn take_line(t: &Take, positions_test: bool, reading: Option<&Reading>) -> String {
+    let mut parts = t.facts_read(positions_test, reading);
     parts.push(library::size_text(t.bytes));
     parts.join(" · ")
 }
@@ -234,7 +266,7 @@ mod tests {
             }),
         };
         assert_eq!(
-            take_line(&t, false),
+            take_line(&t, false, None),
             "Power Reserve 1 h 30 min · Dial Up · Analysis Only · 58.3 MB"
         );
         // A run the watch didn't end says how it ended, in core's words.
@@ -247,7 +279,7 @@ mod tests {
             ..t.clone()
         };
         assert_eq!(
-            take_line(&limit, false),
+            take_line(&limit, false, None),
             "Power Reserve 1 h 30 min · Reached the 80 h limit while the watch still ran \
              · Dial Up · Analysis Only · 58.3 MB"
         );
@@ -256,12 +288,12 @@ mod tests {
             ..t
         };
         assert_eq!(
-            take_line(&t, false),
+            take_line(&t, false, None),
             "Dial Up · 1:30:00 · Analysis Only · 58.3 MB"
         );
         // A Positions Test's take names its kind first, as the app does.
         assert_eq!(
-            take_line(&t, true),
+            take_line(&t, true, None),
             "Positions Test · Dial Up · 1:30:00 · Analysis Only · 58.3 MB"
         );
     }
