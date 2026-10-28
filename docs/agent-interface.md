@@ -10,6 +10,10 @@ The [watchmaker skill](../skills/watchmaker/SKILL.md) builds on it.
 - Every command has `--help`, and `timegrapher --help` lists them all.
 - Every command that reports something takes `--json` and then prints
   exactly one JSON document on stdout. Progress and warnings go to stderr.
+- Fields are only added. Every field path of `analyze`, `shape`,
+  `profile`, `long`, `series`, `session`, `calibres` and `watches` is
+  kept in `crates/timegrapher-cli/tests/json_shapes/`, and a field
+  renamed or removed fails the tests.
 - Exit codes: `0` success, `1` error (message on stderr), `3` from
   `regress` when the engine moved away from tg ([regress](regress.md)).
   `record` exits 0 for every take it keeps, which is every take. `doctor`
