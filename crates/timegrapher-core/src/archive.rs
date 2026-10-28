@@ -51,7 +51,7 @@ pub fn read_zip(path: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
         if f.is_dir() {
             continue;
         }
-        let name = f.name().to_string();
+        let name = f.name().map_err(|e| bad(&e))?.into_owned();
         let mut data = Vec::new();
         // One byte past the limit tells a bundle at the limit from one over.
         f.take(left + 1)
