@@ -1373,9 +1373,29 @@ const TAB_BAR_H: f32 = 24.0;
 /// taken from the panes with room to spare, so opening a pane never
 /// crushes the others into a sliver. Worked from the sizes of the last
 /// frame; a window too small for them all shares its room in proportion.
-fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
+fn keep_room(
+    tiles: &mut Tiles<Pane>,
+    need: impl Fn(Pane) -> Option<f32>,
+    dragged: &std::collections::HashSet<TileId>,
+) {
+    // The Paper Strip's row, whose least is kept first.
+    let strip_row: Vec<TileId> = tiles
+        .find_pane(&Pane::Strip)
+        .map(|mut id| {
+            let mut up = vec![id];
+            while let Some(p) = tiles.parent_of(id) {
+                up.push(p);
+                id = p;
+            }
+            up
+        })
+        .unwrap_or_default();
     let ids: Vec<TileId> = tiles.tile_ids().collect();
     for id in ids {
+        // A divider the user dragged stands where they left it.
+        if dragged.contains(&id) {
+            continue;
+        }
         let Some(rect) = tiles.rect(id) else { continue };
         let Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) = tiles.get(id)
         else {
@@ -1423,11 +1443,25 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
                 more.unwrap_or(0.0).max(MIN_PANE_H)
             })
             .collect();
-        // A window too small for them all shares it out in proportion.
+        // A window too small for them all keeps the Paper Strip's least,
+        // and shares the rest out in proportion.
         let sum: f32 = least.iter().sum();
         if sum > room {
-            for l in &mut least {
-                *l *= room / sum;
+            let first: f32 = shown
+                .iter()
+                .zip(&least)
+                .filter(|(c, _)| strip_row.contains(c))
+                .map(|(_, l)| *l)
+                .sum();
+            let (keep, k) = if first < room && sum > first {
+                (first, (room - first) / (sum - first))
+            } else {
+                (0.0, room / sum)
+            };
+            for (c, l) in shown.iter().zip(&mut least) {
+                if keep == 0.0 || !strip_row.contains(c) {
+                    *l *= k;
+                }
             }
         }
         let least: Vec<f32> = least.iter().map(|l| l / room).collect();
@@ -1470,6 +1504,20 @@ fn keep_room(tiles: &mut Tiles<Pane>, need: impl Fn(Pane) -> Option<f32>) {
             }
         }
     }
+}
+
+/// Each row or column of panes' shares, to see which a drag changed.
+fn shares_of(tiles: &Tiles<Pane>) -> std::collections::HashMap<TileId, Vec<u32>> {
+    tiles
+        .tile_ids()
+        .filter_map(|id| match tiles.get(id) {
+            Some(egui_tiles::Tile::Container(egui_tiles::Container::Linear(l))) => Some((
+                id,
+                l.children.iter().map(|&c| l.shares[c].to_bits()).collect(),
+            )),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The status bar's progress words while a take is read: how far, as the
@@ -2198,6 +2246,12 @@ pub struct TimegrapherApp {
     /// The height each pane with plots needed last frame for its toolbar
     /// and one plot at a readable size, kept clear by [`keep_room`].
     pane_need: std::collections::HashMap<Pane, f32>,
+    /// Rows and columns of panes whose divider the user dragged: their
+    /// sizes stand, a pane's least apart, until a pane in them is shown
+    /// or hidden.
+    panes_dragged: std::collections::HashSet<TileId>,
+    /// Panes drawn too short for their plot, last frame.
+    panes_short: std::collections::HashSet<Pane>,
     /// The top of the pane being drawn, for working out its need.
     pane_top: f32,
     /// Show the cumulative share instead of the probability plot.
@@ -2209,12 +2263,12 @@ pub struct TimegrapherApp {
     rate_2s: RateTwoS,
     /// The series each Steadiness pane shows: rate, amplitude, beat error.
     steady_series: std::collections::BTreeMap<steady::View, [bool; 3]>,
-    /// The Periods pane's scores on a log scale.
-    periods_log: bool,
+    /// The Periods pane's scores in dB.
+    periods_db: bool,
     /// The FFT pane's rate as the beat timing's spectrum, in ms.
     fft_timing: bool,
-    /// The STFT and Wavelet Map panes' colours on a log scale.
-    maps_log: bool,
+    /// The STFT and Wavelet Map panes' colours in dB.
+    maps_db: bool,
     /// The calibre's wheels marked on the period axes.
     show_wheels: bool,
     /// The Steadiness panes' Info panel open, in every view alike.
@@ -2392,15 +2446,16 @@ impl TimegrapherApp {
             theme: self.theme,
             steady_series: RATE_ONLY,
             steady_shown: self.steady_series.iter().map(|(v, s)| (*v, *s)).collect(),
-            periods_log: self.periods_log,
+            periods_db: self.periods_db,
             fft_timing: self.fft_timing,
-            maps_log: self.maps_log,
+            maps_db: self.maps_db,
             show_wheels: self.show_wheels,
             steady_info: self.steady_info,
             positions_settle_s: self.guided_settle_s,
             positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
+            panes_dragged: self.panes_dragged.iter().copied().collect(),
             layout: LAYOUT,
             // Drop legacy entries only after their user-catalogue save succeeds.
             custom_calibres: self.cal.pending_legacy().to_vec(),
@@ -2441,15 +2496,16 @@ impl TimegrapherApp {
             theme,
             steady_series,
             steady_shown,
-            periods_log,
+            periods_db,
             fft_timing,
-            maps_log,
+            maps_db,
             show_wheels,
             steady_info,
             positions_settle_s,
             positions_measure_s,
             scope,
             panes,
+            panes_dragged,
             layout,
             custom_calibres,
             recent_calibres,
@@ -2509,9 +2565,9 @@ impl TimegrapherApp {
         self.sound_opts = sound;
         self.folded = folded.into_iter().collect();
         self.theme = theme;
-        self.periods_log = periods_log;
+        self.periods_db = periods_db;
         self.fft_timing = fft_timing;
-        self.maps_log = maps_log;
+        self.maps_db = maps_db;
         self.show_wheels = show_wheels;
         self.steady_info = steady_info;
         self.guided_settle_s =
@@ -2560,7 +2616,10 @@ impl TimegrapherApp {
             }
             p
         }) {
-            Some(p) if layout_is_whole(&p) => p,
+            Some(p) if layout_is_whole(&p) => {
+                self.panes_dragged = panes_dragged.into_iter().collect();
+                p
+            }
             _ => default_layout(self.strip.horizontal),
         };
     }
@@ -2690,12 +2749,14 @@ impl TimegrapherApp {
             dist_series: RATE_ONLY,
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
+            panes_dragged: std::collections::HashSet::new(),
+            panes_short: std::collections::HashSet::new(),
             pane_top: 0.0,
             hist_cumulative: false,
             steady_series: Default::default(),
-            periods_log: false,
+            periods_db: false,
             fft_timing: false,
-            maps_log: false,
+            maps_db: false,
             show_wheels: true,
             steady_info: false,
             scope_view: scope::View::default(),
@@ -7461,11 +7522,11 @@ impl TimegrapherApp {
             theme::bar_gap(ui);
             theme::tool_switch(
                 ui,
-                Icon::Log,
+                Icon::Db,
                 accent,
-                "Log Scale",
-                &mut self.periods_log,
-                "Draw the scores on a log scale, so a small peak beside a tall one still shows",
+                "dB Scale",
+                &mut self.periods_db,
+                "Show the scores in decibels. Off: linear.",
             );
         }
         if view == steady::View::Fft {
@@ -7484,12 +7545,11 @@ impl TimegrapherApp {
             theme::bar_gap(ui);
             theme::tool_switch(
                 ui,
-                Icon::Log,
+                Icon::Db,
                 accent,
-                "Log Scale",
-                &mut self.maps_log,
-                "Colour the sizes on a log scale, over a range of 300 to 1, so weak lines \
-                 beside strong ones still show",
+                "dB Scale",
+                &mut self.maps_db,
+                "Show the sizes in decibels. Off: linear.",
             );
         }
         if matches!(
@@ -7498,7 +7558,7 @@ impl TimegrapherApp {
         ) {
             theme::tool_switch(
                 ui,
-                Icon::Gears,
+                Icon::Wheel,
                 accent,
                 "Wheel Periods",
                 &mut self.show_wheels,
@@ -7635,9 +7695,9 @@ impl TimegrapherApp {
             view,
             &self.series_shown(view),
             steady::Opts {
-                periods_log: self.periods_log,
+                periods_db: self.periods_db,
                 fft_timing: self.fft_timing,
-                maps_log: self.maps_log,
+                maps_db: self.maps_db,
                 wheels: self.show_wheels,
                 info: self.steady_info,
             },
@@ -9761,6 +9821,7 @@ impl TimegrapherApp {
             ui.close();
             self.show_readings = true;
             self.panes = default_layout(self.strip.horizontal);
+            self.panes_dragged.clear();
         }
     }
 
@@ -12800,6 +12861,7 @@ impl TimegrapherApp {
             .map(|p| (p, pane_visible(&self.panes.tiles, p)))
             .collect();
         self.panes = default_layout(horizontal);
+        self.panes_dragged.clear();
         for (p, on) in shown {
             set_pane_visible(&mut self.panes.tiles, p, on);
         }
@@ -13865,13 +13927,27 @@ impl TimegrapherApp {
         if on {
             self.reveal_pane(pane);
         } else {
+            self.undrag(pane);
             set_pane_visible(&mut self.panes.tiles, pane, false);
+        }
+    }
+
+    /// A pane shown or hidden: the rows holding it share their room out
+    /// afresh, each pane at its least, rather than as last dragged.
+    fn undrag(&mut self, pane: Pane) {
+        let mut at = self.panes.tiles.find_pane(&pane);
+        while let Some(id) = at {
+            self.panes_dragged.remove(&id);
+            at = self.panes.tiles.parent_of(id);
         }
     }
 
     /// Show a pane and bring its tab to the front.
     fn reveal_pane(&mut self, pane: Pane) {
         let was = pane_visible(&self.panes.tiles, pane);
+        if !was {
+            self.undrag(pane);
+        }
         set_pane_visible(&mut self.panes.tiles, pane, true);
         // A test's pane opens at its content's height, no less than a
         // pane's least: the Paper Strip keeps the rest until dragged.
@@ -14192,7 +14268,12 @@ impl TimegrapherApp {
         let mut panes = std::mem::replace(&mut self.panes, Tree::empty("panes-swap"));
         repair_tabs(&mut panes);
         let need = self.pane_need.clone();
-        keep_room(&mut panes.tiles, |p| need.get(&p).copied());
+        keep_room(
+            &mut panes.tiles,
+            |p| need.get(&p).copied(),
+            &self.panes_dragged,
+        );
+        let before = shares_of(&panes.tiles);
         panes.ui(
             &mut PaneBehavior {
                 app: self,
@@ -14200,6 +14281,12 @@ impl TimegrapherApp {
             },
             ui,
         );
+        // Shares changed while drawn were dragged by hand: they stand.
+        for (id, s) in shares_of(&panes.tiles) {
+            if before.get(&id).is_some_and(|b| *b != s) {
+                self.panes_dragged.insert(id);
+            }
+        }
         self.panes = panes;
     }
 
@@ -15132,6 +15219,37 @@ impl TimegrapherApp {
         self.charts_drawn = stacked(ui, shown, STACKED_MIN_H, |ui, k| self.chart(ui, k));
     }
 
+    /// Whether `pane`'s plot would be under [`SHORT_PLOT_H`] tall here
+    /// (with a little give, so it doesn't flicker at the edge): then the
+    /// pane says so in one line in its place.
+    fn too_short(&mut self, ui: &mut egui::Ui, pane: Pane) -> bool {
+        let below = match pane {
+            // Their own least is kept, or they hold no plot.
+            Pane::Watch | Pane::Strip | Pane::PositionsTest | Pane::PowerReserve => return false,
+            // A map's key sits under its picture.
+            Pane::SteadyStft | Pane::SteadyWavelet => crate::tfmap::KEY_H,
+            _ => 0.0,
+        };
+        let was = self.panes_short.contains(&pane);
+        let least = SHORT_PLOT_H + below + if was { SHORT_PLOT_GIVE } else { 0.0 };
+        if ui.available_height() >= least {
+            self.panes_short.remove(&pane);
+            return false;
+        }
+        self.panes_short.insert(pane);
+        let pal = theme::pal(ui);
+        ui.centered_and_justified(|ui| {
+            ui.label(
+                RichText::new(no_room(
+                    pane.title(),
+                    "Drag the divider up or make the window taller.",
+                ))
+                .color(pal.text_secondary),
+            );
+        });
+        true
+    }
+
     /// Keep the height `pane` needs: what is above its plots, one plot
     /// `least` tall, the line naming those with no room, and the margin.
     fn note_need(&mut self, ui: &egui::Ui, pane: Pane, least: f32) {
@@ -15682,10 +15800,12 @@ fn stacked(
                 format!("{picture} ({})", steady::title(k))
             })
             .collect();
-        let line = format!(
-            "{} not shown: no room. Make the pane taller, or turn off {}.",
-            names.join(" and "),
-            switches.join(" or ")
+        let line = no_room(
+            &names.join(" and "),
+            &format!(
+                "Make the pane taller, or turn off {}.",
+                switches.join(" or ")
+            ),
         );
         let pal = theme::pal(ui);
         ui.add(egui::Label::new(RichText::new(line).small().color(pal.text_secondary)).truncate());
@@ -15699,11 +15819,28 @@ const STACKED_MIN_H: f32 = 70.0;
 /// The least height a distribution is drawn at, its summary line and
 /// axis included: about 60 pt of plot.
 const DIST_MIN_H: f32 = 100.0;
+/// The least height of a pane's plot; under it the pane says it has no
+/// room instead of drawing a sliver.
+const SHORT_PLOT_H: f32 = 48.0;
+/// The give above `SHORT_PLOT_H` a pane already saying it has no room
+/// needs before it draws its plot again, so a height on the edge doesn't
+/// flicker between the two.
+const SHORT_PLOT_GIVE: f32 = 2.0;
+
+/// The line in place of plots with no room: what is not shown, then the
+/// remedy.
+fn no_room(what: &str, remedy: &str) -> String {
+    format!("{what} not shown: no room. {remedy}")
+}
 /// The line under stacked plots naming those with no room.
 const STACKED_NOTE_H: f32 = 18.0;
-/// The least height of the Paper Strip under its toolbar: its lane, the
-/// dots and the time axis, the amplitude scale's labels apart.
-const STRIP_MIN_H: f32 = 72.0;
+/// The least height of the Paper Strip under its toolbar: its lane, at
+/// least 100 pt of dots and the time axis, the amplitude scale's labels
+/// apart. The strip keeps it whatever pane is opened under it; only a
+/// divider dragged by hand takes it lower.
+const STRIP_MIN_H: f32 = STRIP_MIN_PLOT_H + 39.0;
+/// The least height of the Paper Strip's dots.
+const STRIP_MIN_PLOT_H: f32 = 100.0;
 
 /// A chart's value labels, small, beside its grid lines in the gutter.
 fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
@@ -15898,6 +16035,11 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 ui.add_space(4.0);
             } else if self.app.pane_tools(ui, *pane) {
                 ui.add_space(4.0);
+            }
+            // A plot with no room to be read: one line in its place, never
+            // a sliver.
+            if self.app.too_short(ui, *pane) {
+                return;
             }
             match pane {
                 Pane::Watch => self.app.watch_pane(ui),
@@ -17780,7 +17922,9 @@ mod tests {
         let (names, rings, bars, _) = run(&mut app, 1440.0, 1000.0);
         assert!(!names.is_empty(), "the edges named");
         assert!(!rings.is_empty() && !bars.is_empty(), "{rings:?} {bars:?}");
-        let (names, rings, bars, _) = run(&mut app, 800.0, 600.0);
+        // A short window that still draws the plot: at 800 x 600 it
+        // says there is no room instead.
+        let (names, rings, bars, _) = run(&mut app, 800.0, 640.0);
         assert!(!names.is_empty(), "the edges named in the short plot");
         for m in rings.iter().chain(&bars) {
             assert!(

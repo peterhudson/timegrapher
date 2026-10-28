@@ -803,11 +803,17 @@ out shorter than 140 pt (240 pt wide side by side), and Charts and
 Distributions are kept tall enough for their toolbar and one plot at a
 readable height (about 60 pt of plot for a distribution): the room comes
 from the panes with some to spare, and a window too small for them all
-shares its room in proportion. A
+keeps the Paper Strip's least first (its lane, 100 pt of dots and its
+time axis) and shares the rest in proportion. A plot pane left too short
+to read keeps its tab and toolbar and says so in one line in its place
+("Periods not shown: no room. Drag the divider up or make the window
+taller."). A
 layout saved by an earlier version of the app is set aside once for this
 starting one. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
-them; drag the gaps between panes to resize them. The selected tab takes
+them; drag the gaps between panes to resize them; sizes set by a drag stand,
+and are kept with the layout, until a pane in that row or column is
+shown or hidden. The selected tab takes
 the card's colour, joined to the card below it. The × on a tab hides
 that pane (the status line says it comes back from its icon at the top or
 the View menu), and the icons and the View menu hide or show each pane
@@ -1196,9 +1202,10 @@ series' colour what a dot is and how many are drawn: "10 s readings
 error, measured every 2 s),
 **Periods** (the period search's score at each period on a logarithmic
 axis, with the 1% false-alarm line dashed, the calibre's wheels' periods
-marked, and the strongest component labelled; **Log
-Scale** in its toolbar draws the scores on a log scale, so a small peak
-beside a tall one still shows), **Cycle**
+marked, and the strongest component labelled; **dB
+Scale** in its toolbar draws the scores in decibels below the tallest,
+0 dB at the top down to −30 dB, so a small peak beside a tall one still
+shows), **Cycle**
 (the readings folded at the cycle the tests found: every cycle as dots,
 coloured by when it came from purple for the first to yellow-green for the
 last, so slow wander shows as a run of colour; a box round the middle half
@@ -1234,8 +1241,10 @@ empty and shown as "not read" in the key under the map, which is titled
 with what the colour measures and its unit (**Timing Swing (ms)** for the
 rate's map, the timing's swing at each period, not a rate in s/d;
 **Amplitude Swing (°)**; **Beat Error Swing (ms)**); the wheels' turns are
-dotted across it and named at the right; **Log Scale** in the toolbar
-colours the sizes on a log scale over a range of 300 to 1; the pointer
+dotted across it and named at the right; **dB Scale** in the toolbar
+colours the sizes in decibels below the brightest, over the map's own
+range up to 300 to 1, so the key reads from 0 dB down to at most about
+−50 dB (a swing is a size, so twenty times its log); the pointer
 over a cell shows its size with its unit, its period and its time, as
 "Timing Swing 1.8 ms · period 12 s · at 3:20"; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
 period is a bold dotted line and half of it, twice a turn as an off-centre wheel
