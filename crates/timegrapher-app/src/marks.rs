@@ -650,6 +650,96 @@ mod tests {
     const S: Rank = Rank::Strong;
     const F: Rank = Rank::Faint;
 
+    /// The cases in marks_cases.json, which the MCP view's tests run on
+    /// its copy of these rules too: each gives the places these rules
+    /// give.
+    #[test]
+    fn the_shared_cases_place_as_given() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("marks_cases.json")).expect("marks_cases.json");
+        let f = |v: &serde_json::Value| v.as_f64().expect("a number") as f32;
+        let names = |c: &serde_json::Value| -> Vec<(f32, f32, Rank)> {
+            c["names"]
+                .as_array()
+                .expect("names")
+                .iter()
+                .map(|n| {
+                    let rank = if n[2] == "faint" { F } else { S };
+                    (f(&n[0]), f(&n[1]), rank)
+                })
+                .collect()
+        };
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-3;
+        let list = |k: &str| cases[k].as_array().expect(k).clone();
+        for c in list("place") {
+            let was: Vec<u8> = c["was"]
+                .as_array()
+                .expect("was")
+                .iter()
+                .map(|r| r.as_u64().expect("a row") as u8)
+                .collect();
+            let got = place(&names(&c), f(&c["left"]), f(&c["right"]), &was);
+            let want = c["at"].as_array().expect("at");
+            assert_eq!(got.len(), want.len(), "{}", c["case"]);
+            for (g, w) in got.iter().zip(want) {
+                assert!(
+                    close(g.0, f(&w[0])) && u64::from(g.1) == w[1],
+                    "{}: {got:?}",
+                    c["case"]
+                );
+            }
+        }
+        for c in list("place_row") {
+            let got = place_row(&names(&c), f(&c["left"]), f(&c["right"]));
+            let want: Vec<f32> = c["at"].as_array().expect("at").iter().map(f).collect();
+            assert!(
+                got.len() == want.len() && got.iter().zip(&want).all(|(g, w)| close(*g, *w)),
+                "{}: {got:?}",
+                c["case"]
+            );
+        }
+        for c in list("inside") {
+            let facts = match c["facts"].as_array() {
+                Some(b) => (f(&b[0]), f(&b[1])),
+                None => (f32::NEG_INFINITY, f32::NEG_INFINITY),
+            };
+            let trace: Vec<(f32, f32)> = c["trace"]
+                .as_array()
+                .expect("trace")
+                .iter()
+                .map(|s| (f(&s[0]), f(&s[1])))
+                .collect();
+            let clear = |a: f32, b: f32| trace.iter().all(|&(lo, hi)| b < lo || a > hi);
+            let got = inside(&names(&c), f(&c["left"]), f(&c["right"]), facts, &clear);
+            let want: Vec<Option<f32>> = c["at"]
+                .as_array()
+                .expect("at")
+                .iter()
+                .map(|v| v.as_f64().map(|v| v as f32))
+                .collect();
+            assert!(
+                got.len() == want.len()
+                    && got.iter().zip(&want).all(|(g, w)| match (g, w) {
+                        (Some(g), Some(w)) => close(*g, *w),
+                        (None, None) => true,
+                        _ => false,
+                    }),
+                "{}: {got:?}",
+                c["case"]
+            );
+        }
+        for c in list("stack") {
+            let ys: Vec<f32> = c["ys"].as_array().expect("ys").iter().map(f).collect();
+            let got = stack(&ys, f(&c["top"]), f(&c["bottom"]));
+            let want: Vec<f32> = c["at"].as_array().expect("at").iter().map(f).collect();
+            assert!(
+                got.len() == want.len() && got.iter().zip(&want).all(|(g, w)| close(*g, *w)),
+                "{}: {got:?}",
+                c["case"]
+            );
+        }
+    }
+
     /// Names in a lane: centred on their marks, out a row where they would
     /// touch, slid along where the second row is taken, inside the plot,
     /// and kept in their row while an overlap is within the hysteresis.
