@@ -91,17 +91,36 @@ impl FullWind {
     }
 }
 
-/// The newest full-wind test kept in the takes folder `takes` (each
-/// take's [`RESULTS_FILE`]) that began [`FULL_WIND_HOURS`] before
-/// `now_unix`: the half a watch's 24 hours after test is set against.
-pub fn full_wind_in(takes: &std::path::Path, now_unix: f64) -> Option<FullWind> {
-    std::fs::read_dir(takes)
-        .ok()?
+/// The full-wind tests kept in the takes folder `takes` (each take's
+/// [`RESULTS_FILE`]) that began [`FULL_WIND_HOURS`] before `now_unix`,
+/// newest first: those a watch's 24 hours after test can be set against,
+/// for the one testing to pick from.
+pub fn full_winds_in(takes: &std::path::Path, now_unix: f64) -> Vec<FullWind> {
+    let Ok(dir) = std::fs::read_dir(takes) else {
+        return Vec::new();
+    };
+    let mut out: Vec<FullWind> = dir
         .flatten()
         .filter_map(|e| std::fs::read_to_string(e.path().join(RESULTS_FILE)).ok())
         .filter_map(|t| FullWind::from_json(&t).ok())
         .filter(|f| FULL_WIND_HOURS.contains(&f.hours_ago(now_unix)))
-        .max_by(|a, b| a.began_unix.total_cmp(&b.began_unix))
+        .collect();
+    out.sort_by(|a, b| b.began_unix.total_cmp(&a.began_unix));
+    out
+}
+
+/// A full-wind test as the list to pick from names it: when it began and
+/// what it measured, "2026-10-27 18:58 UTC · 6 positions", or
+/// "… · Dial Up only" for a test stopped after one.
+pub fn choice_text(full: &FullWind) -> String {
+    let measured = match full.positions.as_slice() {
+        [one] => format!(
+            "{} only",
+            Position::from_name(&one.position).map_or(one.position.as_str(), |p| p.name())
+        ),
+        all => format!("{} positions", all.len()),
+    };
+    format!("{} · {measured}", began_text(&full.began_utc))
 }
 
 /// How long before a 24 hours after test its full-wind test began, hours.
@@ -1927,10 +1946,11 @@ mod tests {
     use timegrapher_core::measure::Caveat;
     use timegrapher_core::synth::{generate, SynthConfig};
 
-    /// The 24 Hours After half finds the newest full-wind test kept in the
-    /// watch's takes that began 12 to 36 hours ago, and no other.
+    /// The 24 Hours After half offers the full-wind tests kept in the
+    /// watch's takes that began 12 to 36 hours ago, newest first, and no
+    /// other.
     #[test]
-    fn the_full_wind_test_is_the_newest_from_12_to_36_hours_ago() {
+    fn the_full_wind_tests_offered_are_those_from_12_to_36_hours_ago() {
         // The words the hovers give, from the same window.
         assert_eq!(full_wind_ago(), "12 to 36 hours ago");
         let dir = std::env::temp_dir().join(format!("tg-full-wind-{}", std::process::id()));
@@ -1958,15 +1978,45 @@ mod tests {
             };
             std::fs::write(take.join(RESULTS_FILE), f.to_json()).unwrap();
         };
-        assert_eq!(full_wind_in(&dir, now), None, "no takes folder");
+        assert_eq!(full_winds_in(&dir, now), [], "no takes folder");
         keep("a", 40.0);
         keep("b", 6.0);
-        assert_eq!(full_wind_in(&dir, now), None, "too old and too new");
+        assert_eq!(full_winds_in(&dir, now), [], "too old and too new");
         keep("c", 30.0);
         keep("d", 20.0);
-        let found = full_wind_in(&dir, now).expect("found");
-        assert_eq!(found.hours_ago(now), 20.0);
+        let found: Vec<f64> = full_winds_in(&dir, now)
+            .iter()
+            .map(|f| f.hours_ago(now))
+            .collect();
+        assert_eq!(found, [20.0, 30.0], "newest first");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Each full-wind test offered says when it began and what it
+    /// measured, so one stopped early can be told from a whole one.
+    #[test]
+    fn a_full_wind_choice_says_when_and_what_it_measured() {
+        let row = |p: &str| KeptRow {
+            position: p.into(),
+            rate_s_per_day: Some(1.0),
+            amplitude_deg: None,
+            beat_error_ms: None,
+        };
+        let mut f = FullWind {
+            format: RESULTS_FORMAT.into(),
+            began_utc: "2026-10-27T18:58:04.120Z".into(),
+            began_unix: 0.0,
+            watch: "W".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![row("DU")],
+        };
+        assert_eq!(choice_text(&f), "2026-10-27 18:58 UTC · Dial Up only");
+        f.positions = ORDER.iter().map(|p| row(p.code())).collect();
+        assert_eq!(choice_text(&f), "2026-10-27 18:58 UTC · 6 positions");
     }
 
     /// A figure that rounds to zero reads 0.0, with no sign.

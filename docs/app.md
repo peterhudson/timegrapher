@@ -541,10 +541,13 @@ Up, where the test begins, and the status bar says "Positions Test ·
 Ready, not started". **Start Test** on the Listen card then starts it;
 **Cancel Test**, in New Test's place, leaves the Bench as it was. For a
 watch, **Wind** picks **Full Wind** (just after winding) or **24 Hours
-After**, set against the watch's own full-wind test from 12 to 36 hours
-ago, found in its takes; Start Test is greyed out, its hover saying why,
-when there is none. With no watch, **Load Full-Wind Results…** loads the
-full-wind half from a file instead. Then **Settle** and **Each Position** (the seconds the watch
+After**, set against a full-wind test picked each time in **Compare
+With**: it lists the watch's own full-wind tests from 12 to 36 hours ago,
+newest first, each with when it began and what it measured ("6
+positions", or "Dial Up only" for a test stopped early), and **From a
+File…** below them loads saved results instead. Start Test is greyed
+out, its hover saying why, until one is picked. With no watch, **Load
+Full-Wind Results…** loads the full-wind half from a file. Then **Settle** and **Each Position** (the seconds the watch
 settles after each turn and is then measured: 20 s and 60 s unless set
 otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
 field to type in with a menu of common times beside it, 10, 20, 30 and
@@ -632,8 +635,9 @@ figures are for the watchmaker to judge.
 **Full wind against 24 hours.** After a test run just after winding,
 **Save Results for 24 Hours…** saves its results, and saving the session
 keeps the same results as `positions-test.json` in its folder. 24 hours
-after winding, with the watch neither wound nor worn since, **Load
-Full-Wind Results…** picks either file: the pane shows those results as
+after winding, with the watch neither wound nor worn since, pick that
+test in Compare With (or, from a file, **From a File…** there, or **Load
+Full-Wind Results…** with no watch): the pane shows those results as
 a Full Wind table with when that test began, the watch and the calibre,
 and **Remove** sets them aside. Start Test then runs the six again
 against them, and the banner names the hours since the full-wind test
