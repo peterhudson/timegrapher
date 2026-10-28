@@ -2,7 +2,7 @@
 //! details and takes, and the form for a watch's details. The app owns
 //! the library and acts on what these return.
 
-use crate::app::{fmt_bytes, DEFAULT_LIFT_DEG};
+use crate::app::DEFAULT_LIFT_DEG;
 use crate::calibre_ui::Calibres;
 use crate::fields;
 use crate::photos::{Thumb, Thumbs};
@@ -10,6 +10,7 @@ use crate::theme::{self, DialogButton, Role};
 use eframe::egui::{self, RichText, Sense, Vec2};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use timegrapher_core::library::{length_text, size_text};
 use timegrapher_core::library::{Field, FieldKind, Library, Take, Watch, WatchEntry};
 use timegrapher_core::session::Position;
 
@@ -325,7 +326,7 @@ fn fitted(ui: &egui::Ui, parts: &[String], font: &egui::FontId, width: f32) -> S
 /// folder's "0 bytes" says nothing.
 fn list_size(bytes: u64) -> String {
     if bytes >= 1_000_000 {
-        fmt_bytes(bytes)
+        size_text(bytes)
     } else {
         String::new()
     }
@@ -584,7 +585,7 @@ pub fn take_line(t: &Take, positions_test: bool) -> String {
         parts.push(names.join(", "));
     }
     if let Some(d) = t.duration_s.filter(|_| t.power_reserve.is_none()) {
-        parts.push(crate::strip::fmt_time(d));
+        parts.push(length_text(d));
     }
     // A test's last window doesn't stand for the test: its figures are in
     // its table, or hour by hour.
@@ -875,8 +876,8 @@ pub fn take_cells(t: &Take, means: Option<[Option<f64>; 3]>) -> [String; 7] {
     let length = match (&t.power_reserve, t.duration_s) {
         // One format down the column, a Power Reserve Test's run included.
         // Whole seconds, as the run's own words count them.
-        (Some(r), _) => crate::strip::fmt_time(timegrapher_core::power_reserve::whole_s(r.run_s)),
-        (None, Some(d)) => crate::strip::fmt_time(d),
+        (Some(r), _) => length_text(timegrapher_core::power_reserve::whole_s(r.run_s)),
+        (None, Some(d)) => length_text(d),
         _ => String::new(),
     };
     let a = t.at_end.as_ref();
@@ -1397,7 +1398,7 @@ pub fn ask_dialog(
                 ui.label(format!(
                     "The take's folder and everything in it ({}) will be deleted. You can't \
                      undo this.",
-                    fmt_bytes(*bytes)
+                    size_text(*bytes)
                 ));
                 ("Delete", true, true)
             }
@@ -1421,8 +1422,8 @@ pub fn ask_dialog(
                     "This take uses {}, and {} of that is sound. The app reads the sound one \
                      last time to save the analysis, checks what it saved, and then deletes \
                      the sound.",
-                    fmt_bytes(*bytes),
-                    fmt_bytes(*sound)
+                    size_text(*bytes),
+                    size_text(*sound)
                 ));
                 ui.label(
                     RichText::new(
@@ -1990,7 +1991,7 @@ mod tests {
         };
         let cells = take_cells(&pr, None);
         assert_eq!(cells[1], "Power Reserve");
-        assert_eq!(cells[2], crate::strip::fmt_time(166_320.0));
+        assert_eq!(cells[2], length_text(166_320.0));
         // Its figures are hour by hour in the take, not its last window.
         assert_eq!(cells[3..6], ["—", "—", "—"].map(String::from));
         // A Positions Test's are its Mean row.

@@ -7,13 +7,13 @@
 //! they run over the whole session in the background, again every minute
 //! while it grows, and the pane shows the latest answer.
 
-use crate::strip;
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{
     GridInput, GridMark, HLine, Line, LineStyle, Plot, PlotPoint, Points, Polygon, Text, VLine,
 };
 use serde::{Deserialize, Serialize};
+use timegrapher_core::library::length_text;
 use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::{Fold, Grid, LongConfig, Search};
@@ -518,7 +518,7 @@ fn lag_text(s: f64) -> String {
     if s.abs() < 59.5 {
         format!("{s:.0} s")
     } else {
-        strip::fmt_time(s)
+        length_text(s)
     }
 }
 
@@ -996,7 +996,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
             let range = spread(&pts);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(clear_of_edge(plot_w, strip::fmt_time))
+                .x_axis_formatter(clear_of_edge(plot_w, length_text))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(move |m, _| value_text(k, m.value, m.step_size));
             if let Some((lo, hi)) = range {
@@ -1360,7 +1360,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .collect();
             let m = pts.iter().map(|p| p[1].abs()).fold(1.6, f64::max) * 1.1;
             base.x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-                .x_axis_formatter(clear_of_edge(plot_w, strip::fmt_time))
+                .x_axis_formatter(clear_of_edge(plot_w, length_text))
                 .y_grid_spacer(|g| theme::even_grid(g, 24.0, &[]))
                 .y_axis_formatter(|m, _| plain(m.value, m.step_size))
                 .default_y_bounds(-m, m)
@@ -1390,7 +1390,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                         mark_label(
                             p,
                             [cu.at_s, y],
-                            format!("level changes near {}", strip::fmt_time(cu.at_s)),
+                            format!("level changes near {}", length_text(cu.at_s)),
                             pal.text,
                             y >= 0.0,
                         );
@@ -1426,7 +1426,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 s.upto_s,
                 opts.maps_db,
                 marked(s, opts),
-                strip::fmt_time,
+                length_text,
                 secs,
             );
         }
@@ -1486,18 +1486,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 "deg" => "°",
                 _ => " ms",
             };
-            let size = move |v: f64| {
-                let d = if v >= 10.0 {
-                    0
-                } else if v >= 1.0 {
-                    1
-                } else if v >= 0.1 {
-                    2
-                } else {
-                    3
-                };
-                format!("{v:.d$}{unit}")
-            };
+            let size =
+                move |v: f64| format!("{}{unit}", timegrapher_core::timefreq::size_number(v));
             let peak = tallest_peak(&pts);
             base.x_grid_spacer(period_grid(ui.available_width()))
                 .x_axis_formatter(clear_of_edge(plot_w, period_label))
