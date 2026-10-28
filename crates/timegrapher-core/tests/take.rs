@@ -172,3 +172,53 @@ fn a_take_read_with_its_jumps_alone_keeps_windows_across_its_pause() {
         );
     }
 }
+
+/// An entry read through [`take::measure_entry`] reads as its steps taken
+/// one by one: the clock from its log, its breaks, and the stretch after
+/// it settles.
+#[test]
+fn an_entry_measured_here_reads_as_its_steps_by_hand() {
+    let (dir, path, text) = take_with_a_pause("entry", 90.155);
+    std::fs::write(dir.join("clock.csv"), &text).unwrap();
+    let m: session::Manifest = toml::from_str(
+        r#"
+        settle_s = 15
+        [[recording]]
+        file = "audio-001.wav"
+        clock = "clock.csv"
+        position = "CH"
+        "#,
+    )
+    .unwrap();
+    let s = take::EntrySettings {
+        stream: StreamConfig::default(),
+        card_clock: false,
+        settle_s: None,
+    };
+    let read = take::measure_entry(
+        &dir,
+        &m,
+        &m.recordings[0],
+        &s,
+        |_| Ok(None),
+        |_| panic!("an entry with a clock log asks for no correction"),
+    )
+    .unwrap();
+
+    let mut log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+    let mut clock = take::clock(Some(&text), log.sample_rate, 2, None, None, log.duration_s)
+        .unwrap()
+        .unwrap();
+    let breaks = take::breaks(&mut log, Listed::Files(&[path.as_path()]), Some(&mut clock));
+    let (from, to) = take::measured(0.0, log.duration_s, Some(15.0), None);
+    let by_hand = session::measure_masked(&log, Some(&clock), &breaks, &[], from, to);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(read.breaks, breaks);
+    assert_eq!((read.settle_s, read.end_s), (from, to));
+    let m = &read.measurement;
+    assert_eq!(m.rate_s_per_day, by_hand.rate_s_per_day);
+    assert_eq!(m.beat_error_unlock_ms, by_hand.beat_error_unlock_ms);
+    assert_eq!(m.amplitude_deg, by_hand.amplitude_deg);
+    assert!(m.rate_s_per_day.is_some());
+}

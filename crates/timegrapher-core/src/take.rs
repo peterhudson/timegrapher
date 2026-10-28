@@ -5,11 +5,16 @@
 //! [`crate::clock`], [`crate::breaks`] and [`crate::session`], so a take
 //! reads the same wherever it is opened.
 
+use crate::analysis_take;
 use crate::breaks::{self, Break};
 use crate::clock::{self, ClockFit};
-use crate::session::{Manifest, RecordingEntry};
-use crate::stream::BeatLog;
-use std::path::Path;
+use crate::session::{self, Manifest, Measurement, RecordingEntry};
+use crate::stream::{self, BeatLog, StreamConfig};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// The file a take folder describes itself in.
+pub const MANIFEST: &str = "session.toml";
 
 /// Where a take's clock comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,6 +208,256 @@ pub fn measured(
     let from = start_s + settle_s.unwrap_or(SETTLE_S).min((stop_s - start_s) / 2.0);
     let to = measure_s.map_or(stop_s, |m| from + m).min(stop_s);
     (from, to)
+}
+
+/// Whether `p` is a sound file a take keeps: WAV or FLAC.
+pub fn is_sound(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("flac"))
+}
+
+/// Whether the folder `dir` holds a sound file.
+pub fn has_sound(dir: &Path) -> bool {
+    fs::read_dir(dir).is_ok_and(|d| d.filter_map(|e| e.ok()).any(|e| is_sound(&e.path())))
+}
+
+/// The sound files `paths` name, in order: a file as it is, a folder as
+/// its recordings in the order its `session.toml` lists them, else in
+/// the order they were recorded ([`crate::recording_order::recordings_in`]).
+pub fn sound_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for path in paths {
+        let listed = if path.is_dir() {
+            fs::read_to_string(path.join(MANIFEST))
+                .ok()
+                .and_then(|text| toml::from_str::<Manifest>(&text).ok())
+                .map(|manifest| {
+                    manifest
+                        .recordings
+                        .into_iter()
+                        .map(|entry| entry.file)
+                        .collect()
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        out.extend(crate::recording_order::recordings_in(path, &listed)?);
+    }
+    Ok(out)
+}
+
+/// A kept take's beat log with its amplitudes at `lift_deg`, the lift this
+/// reading uses, where the analysis was kept at another: amplitude scales
+/// with the lift, as the app's lift change scales it.
+pub fn kept_at_lift(log: &BeatLog, lift_deg: f64) -> BeatLog {
+    let mut log = log.clone();
+    if lift_deg > 0.0 && log.lift_deg > 0.0 && lift_deg != log.lift_deg {
+        let k = lift_deg / log.lift_deg;
+        for w in &mut log.amplitude_windows {
+            w.even_deg = w.even_deg.map(|a| a * k);
+            w.odd_deg = w.odd_deg.map(|a| a * k);
+        }
+        log.lift_deg = lift_deg;
+    }
+    log
+}
+
+/// The stretch of a recording an entry reads, seconds from its start:
+/// `start_s` to `end_s`, or the whole recording when they are left out.
+pub fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String> {
+    let start = e.start_s.unwrap_or(0.0);
+    let stop = e.end_s.unwrap_or(duration_s).min(duration_s);
+    if start < 0.0 || start >= stop {
+        return Err(format!(
+            "{}: start_s {} and end_s {} leave nothing of a {:.0} s recording",
+            e.file,
+            start,
+            e.end_s.map_or("(end)".to_string(), |t| t.to_string()),
+            duration_s
+        ));
+    }
+    Ok((start, stop))
+}
+
+/// How an entry of a take is read, as the caller has resolved it.
+pub struct EntrySettings {
+    /// The analysis settings: beat rate, lift angle, whether the lift is
+    /// known, escape teeth.
+    pub stream: StreamConfig,
+    /// Rates on the sound card's own clock, uncorrected: for setting
+    /// beside references read from the same recordings on that clock
+    /// ([`session::Reference::same_clock_as`]).
+    pub card_clock: bool,
+    /// A settling time given to the reader: after the entry's own, before
+    /// the one the session file gives every entry.
+    pub settle_s: Option<f64>,
+}
+
+/// One entry of a take, read: what was read, and its measurement.
+pub struct EntryRead {
+    /// The sound files read, in order; empty for a take kept as its
+    /// analysis alone.
+    pub files: Vec<PathBuf>,
+    /// The kept analysis, for a take kept as its analysis alone.
+    pub kept: Option<analysis_take::Stored>,
+    /// The beats, numbered across the breaks, with the masked stretches
+    /// left out.
+    pub log: BeatLog,
+    pub clock: Option<ClockFit>,
+    /// The clock log's text, when the entry has one.
+    pub clock_text: Option<String>,
+    pub breaks: Vec<Break>,
+    /// The stretches masked by hand, start and end.
+    pub masked: Vec<(f64, f64)>,
+    /// The stretch the entry names ([`span_of`]).
+    pub start_s: f64,
+    pub stop_s: f64,
+    /// The stretch measured, once the watch has settled ([`measured`]).
+    pub settle_s: f64,
+    pub end_s: f64,
+    pub measurement: Measurement,
+}
+
+/// Read entry `e` of the take described by `m` in the folder `base`, as
+/// every surface reads a take: its beats (found in its sound, or kept as
+/// its analysis alone), its clock and breaks ([`clock`], [`breaks`]),
+/// its masks, and the stretch measured once the watch has settled
+/// ([`measured`]). `usb` gives the sound card's error from the USB lines
+/// in the files, and `correction` the correction known for the input of
+/// the first file, each ppm slow; `correction` is asked only when the
+/// entry has no clock log.
+pub fn measure_entry(
+    base: &Path,
+    m: &Manifest,
+    e: &RecordingEntry,
+    s: &EntrySettings,
+    usb: impl FnOnce(&[PathBuf]) -> Result<Option<f64>, String>,
+    correction: impl FnOnce(&Path) -> Result<Option<f64>, String>,
+) -> Result<EntryRead, String> {
+    let path = base.join(&e.file);
+    // A take kept as its analysis alone: its beats are read, not found.
+    let kept = if analysis_take::is_analysis_only(&path) {
+        if m.audio != Some(false) {
+            return Err(format!(
+                "{}: it has an {}/ folder, but {MANIFEST} doesn't say audio = false",
+                e.file,
+                analysis_take::DIR
+            ));
+        }
+        if has_sound(&path) {
+            return Err(format!(
+                "{}: it holds both sound and an {}/ folder: a take is kept either with its \
+                 sound or as its analysis alone",
+                e.file,
+                analysis_take::DIR
+            ));
+        }
+        Some(analysis_take::read(&path).map_err(|err| format!("{}: {err}", e.file))?)
+    } else if m.audio == Some(false) {
+        return Err(format!(
+            "{}: {MANIFEST} says audio = false, but there is no {}/ folder to read",
+            e.file,
+            analysis_take::DIR
+        ));
+    } else {
+        None
+    };
+    let files = match &kept {
+        Some(_) => Vec::new(),
+        None => sound_files(std::slice::from_ref(&path))?,
+    };
+    let cfg = &s.stream;
+    let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+    let mut log = match &kept {
+        Some(k) => kept_at_lift(&k.log, cfg.analysis.amplitude.lift_deg),
+        None => stream::analyze_files(&paths, cfg, |_| {})
+            .map_err(|err| format!("{}: {err}", e.file))?,
+    };
+    let clock_text = match &e.clock {
+        Some(p) => {
+            let f = base.join(p);
+            Some(fs::read_to_string(&f).map_err(|err| format!("{}: {err}", f.display()))?)
+        }
+        None => None,
+    };
+    let named = |err: String| match &e.clock {
+        Some(p) => format!("{}: {err}", base.join(p).display()),
+        None => err,
+    };
+    let mut fit = match &kept {
+        _ if s.card_clock => None,
+        // Read as it was recorded: its sound is not here.
+        Some(k) => clock(
+            clock_text.as_deref(),
+            k.header.sample_rate,
+            k.header.bytes_per_frame,
+            k.header.usb_clock.map(|u| u.ppm),
+            m.card_ppm,
+            log.duration_s,
+        )
+        .map_err(named)?,
+        None => {
+            let info = crate::audio::info(&files[0])
+                .map_err(|err| format!("{}: {err}", files[0].display()))?;
+            let correction = match &clock_text {
+                Some(_) => None,
+                None => correction(&files[0])?,
+            };
+            clock(
+                clock_text.as_deref(),
+                info.sample_rate,
+                info.bytes_per_frame,
+                usb(&files)?,
+                correction,
+                log.duration_s,
+            )
+            .map_err(named)?
+        }
+    };
+    // A take kept as its analysis alone: every part of the take was in
+    // it, so its session.json lists its breaks for the whole take's sound.
+    let json = kept.as_ref().and_then(|_| {
+        fs::read_to_string(path.join("session.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+    });
+    let listed = match &kept {
+        Some(_) => Listed::Session(json.as_ref()),
+        None => Listed::Files(&paths),
+    };
+    let breaks = breaks(&mut log, listed, fit.as_mut());
+    // Stretches masked by hand are left out of everything read below.
+    let masked = session::masked_spans(&e.masked);
+    session::mask_log(&mut log, &masked);
+    let (start_s, stop_s) = span_of(e, log.duration_s)?;
+    let (settle, measure) = entry_times(e, m);
+    let (settle_s, end_s) = measured(
+        start_s,
+        stop_s,
+        e.settle_s.or(s.settle_s).or(settle),
+        measure,
+    );
+    let mut measurement =
+        session::measure_masked(&log, fit.as_ref(), &breaks, &masked, settle_s, end_s);
+    if !cfg.analysis.lift_known {
+        measurement.lift_unknown();
+    }
+    Ok(EntryRead {
+        files,
+        kept,
+        log,
+        clock: fit,
+        clock_text,
+        breaks,
+        masked,
+        start_s,
+        stop_s,
+        settle_s,
+        end_s,
+        measurement,
+    })
 }
 
 #[cfg(test)]

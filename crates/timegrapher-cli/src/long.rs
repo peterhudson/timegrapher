@@ -12,7 +12,7 @@ use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{common_escape_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::timefreq::size_number;
-use timegrapher_core::{audio, session, take, timing};
+use timegrapher_core::{audio, take, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
 /// number of teeth, or both common escape wheels when neither is given.
@@ -279,28 +279,7 @@ pub(crate) fn parse_wheel(s: &str) -> Result<Wheel, String> {
 /// Expand each directory in place, in the desktop's manifest-first/natural
 /// order. Explicit paths and repetitions keep their argument positions.
 pub(crate) fn expand_dirs(files: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
-    let mut out = Vec::new();
-    for path in files {
-        let listed = if path.is_dir() {
-            fs::read_to_string(path.join("session.toml"))
-                .ok()
-                .and_then(|text| toml::from_str::<session::Manifest>(&text).ok())
-                .map(|manifest| {
-                    manifest
-                        .recordings
-                        .into_iter()
-                        .map(|entry| entry.file)
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        out.extend(timegrapher_core::recording_order::recordings_in(
-            path, &listed,
-        )?);
-    }
-    Ok(out)
+    timegrapher_core::take::sound_files(files)
 }
 
 /// Where the sound card's clock error comes from: a clock log recorded
