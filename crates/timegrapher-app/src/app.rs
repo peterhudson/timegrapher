@@ -8993,7 +8993,7 @@ impl TimegrapherApp {
         self.take_setup();
         match kind {
             NewTake::Listen => {
-                self.test_ready = None;
+                self.leave_ready_test();
                 self.start_microphone();
             }
             NewTake::Positions | NewTake::PowerReserve => self.get_ready(kind),
@@ -9015,6 +9015,17 @@ impl TimegrapherApp {
         } else {
             self.reveal_pane(Pane::PowerReserve);
         }
+    }
+
+    /// Leave the test set up, with nothing started: the full-wind test
+    /// picked or loaded for it goes too, so it isn't shown on the Bench
+    /// after.
+    fn leave_ready_test(&mut self) {
+        self.test_ready = None;
+        self.guided_earlier = None;
+        self.guided_earlier_file = false;
+        self.guided_choices.clear();
+        self.guided_earlier_for = None;
     }
 
     /// The test set up and waiting for Start Test, while the Bench stays
@@ -13399,7 +13410,7 @@ impl TimegrapherApp {
                     false,
                     None,
                 ) {
-                    self.test_ready = None;
+                    self.leave_ready_test();
                 }
             } else if theme::tool_word_button(
                 ui,
@@ -13746,7 +13757,7 @@ impl TimegrapherApp {
                     false,
                     None,
                 ) {
-                    self.test_ready = None;
+                    self.leave_ready_test();
                 }
             } else if theme::tool_word_button(
                 ui,
@@ -22777,6 +22788,37 @@ mod tests {
             app.find_full_wind_at(now + later);
             assert_eq!(app.guided_earlier.as_ref(), Some(&full), "{later} s on");
         }
+    }
+
+    /// Cancel Test leaves nothing of the test set up: the full-wind
+    /// results loaded for it, with no watch, are gone from the Bench.
+    #[test]
+    fn a_cancelled_test_leaves_no_full_wind_results() {
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: "2026-10-25T09:00:00.000Z".into(),
+            began_unix: 1_792_918_800.0,
+            watch: "Daytona".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: Vec::new(),
+        };
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.new_take(NewTake::Positions, false);
+        app.find_full_wind_at(guided::unix_now());
+        app.guided_earlier = Some(full.clone());
+        app.guided_earlier_file = true;
+        app.leave_ready_test();
+        assert_eq!(app.test_ready, None);
+        assert_eq!(app.guided_earlier, None);
+        assert!(!app.guided_earlier_file);
+        // Set up again, it starts with nothing loaded.
+        app.new_take(NewTake::Positions, false);
+        app.find_full_wind_at(guided::unix_now());
+        assert_eq!(app.guided_earlier, None);
     }
 
     /// Load Full-Wind Results… reads the results the test just after
