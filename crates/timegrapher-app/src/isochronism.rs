@@ -91,13 +91,34 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
     let pad = ((hi - lo) * 0.15).max(0.05);
     let a_pad = ((a_hi - a_lo) * 0.05).max(c.bin_deg);
     // The turn is named in a lane of one row above the plot, as every
-    // named line is (see `marks`).
-    let lane = if c.turn_deg.is_some() {
-        marks::ROW_H + marks::LANE_GAP
+    // named line is (see `marks`); on a short plot, inside along its top.
+    let names_id = ui.id().with("turn");
+    let lane_h = marks::ROW_H + marks::LANE_GAP;
+    let inside = c.turn_deg.is_some()
+        && marks::short(
+            ui,
+            names_id.with("short"),
+            h.min(ui.available_height()) - lane_h,
+        );
+    let lane = if c.turn_deg.is_some() && !inside {
+        lane_h
     } else {
         0.0
     };
     ui.add_space(lane);
+    // What a name inside keeps clear of: the curve, the dots and the bars'
+    // tops.
+    let tops: Vec<[f64; 2]> = curve
+        .iter()
+        .copied()
+        .chain(c.bins.iter().map(|b| [b.amplitude_deg, b.rate_q75]))
+        .collect();
+    let names: Vec<(f64, String, marks::Rank)> = c
+        .turn_deg
+        .map(|t| (t, "Turn".to_string(), marks::Rank::Strong))
+        .into_iter()
+        .collect();
+    let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
     let h = (h - lane).max(40.0);
     let resp = Plot::new("isochronism")
         .allow_scroll(false)
@@ -148,16 +169,29 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
                         .width(1.0_f32),
                 );
             }
+            if inside {
+                p.add(marks::InsideNames {
+                    base: egui_plot::PlotItemBase::new("turn name".into()),
+                    names: names.clone(),
+                    tops: tops.clone(),
+                    fill,
+                });
+            }
         });
-    if let Some(t) = c.turn_deg {
+    let hover = |t: f64| format!("Turn: {t:.0}°");
+    if inside {
+        let placed = marks::inside_placed(ui, &resp.transform, &names, &tops);
+        let hover_of = |_: &str| c.turn_deg.map_or_else(String::new, hover);
+        marks::inside_hovers(ui, *resp.transform.frame(), &placed, &hover_of, names_id);
+    } else if let Some(t) = c.turn_deg {
         let turn = marks::Named {
             x: resp.transform.position_from_point_x(t),
             name: "Turn".into(),
             rank: marks::Rank::Strong,
             ink: pal.text_secondary,
-            hover: format!("Turn: {t:.0}°"),
+            hover: hover(t),
         };
-        marks::lane_above_one(ui, *resp.transform.frame(), &[turn], ui.id().with("turn"));
+        marks::lane_above_one(ui, *resp.transform.frame(), &[turn], names_id);
     }
 }
 
@@ -274,5 +308,50 @@ mod tests {
         // Over its line: 256.7° sits right of the middle of 236° to 264°.
         let x = turn.1.center().x;
         assert!(x > 350.0 && x < 700.0, "{turn:?}");
+    }
+
+    /// On a short plot the lane gives way: "Turn" goes inside, along the
+    /// plot's top (not above the highest rate label), or where the curve
+    /// leaves it no room, to its line's hover.
+    #[test]
+    fn on_a_short_plot_the_turn_leaves_the_lane() {
+        let curve = run_down();
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let mut texts: Vec<(String, egui::Rect)> = Vec::new();
+        // Twice: the short switch keeps what it was last frame.
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 160.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |u| super::ui(u, Some(&curve)));
+            });
+            texts = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some((
+                        t.galley.text().to_string(),
+                        t.galley.rect.translate(t.pos.to_vec2()),
+                    )),
+                    _ => None,
+                })
+                .collect();
+        }
+        let turn = texts.iter().find(|t| t.0 == "Turn");
+        let top_rate = texts
+            .iter()
+            .filter(|t| t.0.ends_with(" s/d"))
+            .map(|t| t.1.top())
+            .fold(f32::INFINITY, f32::min);
+        assert!(top_rate.is_finite(), "{texts:?}");
+        if let Some(turn) = turn {
+            assert!(turn.1.top() > top_rate - 8.0, "{texts:?}");
+        }
     }
 }
