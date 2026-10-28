@@ -92,16 +92,28 @@ impl FullWind {
 }
 
 /// The newest full-wind test kept in the takes folder `takes` (each
-/// take's [`RESULTS_FILE`]) that began 12 to 36 hours before `now_unix`:
-/// the half a watch's 24 hours after test is set against.
+/// take's [`RESULTS_FILE`]) that began [`FULL_WIND_HOURS`] before
+/// `now_unix`: the half a watch's 24 hours after test is set against.
 pub fn full_wind_in(takes: &std::path::Path, now_unix: f64) -> Option<FullWind> {
     std::fs::read_dir(takes)
         .ok()?
         .flatten()
         .filter_map(|e| std::fs::read_to_string(e.path().join(RESULTS_FILE)).ok())
         .filter_map(|t| FullWind::from_json(&t).ok())
-        .filter(|f| (12.0..=36.0).contains(&f.hours_ago(now_unix)))
+        .filter(|f| FULL_WIND_HOURS.contains(&f.hours_ago(now_unix)))
         .max_by(|a, b| a.began_unix.total_cmp(&b.began_unix))
+}
+
+/// How long before a 24 hours after test its full-wind test began, hours.
+pub const FULL_WIND_HOURS: std::ops::RangeInclusive<f64> = 12.0..=36.0;
+
+/// [`FULL_WIND_HOURS`] in words: "12 to 36 hours ago".
+pub fn full_wind_ago() -> String {
+    format!(
+        "{:.0} to {:.0} hours ago",
+        FULL_WIND_HOURS.start(),
+        FULL_WIND_HOURS.end()
+    )
 }
 
 /// Seconds the watch is left to settle after it is turned, and then
@@ -1918,6 +1930,8 @@ mod tests {
     /// watch's takes that began 12 to 36 hours ago, and no other.
     #[test]
     fn the_full_wind_test_is_the_newest_from_12_to_36_hours_ago() {
+        // The words the hovers give, from the same window.
+        assert_eq!(full_wind_ago(), "12 to 36 hours ago");
         let dir = std::env::temp_dir().join(format!("tg-full-wind-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let now = 1_800_000_000.0;

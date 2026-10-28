@@ -8878,8 +8878,9 @@ impl TimegrapherApp {
             && self.guided_earlier.is_none())
         .then(|| {
             format!(
-                "{} has no Full Wind Positions Test from 12 to 36 hours ago.",
-                w.watch.name
+                "{} has no Full Wind Positions Test from {}.",
+                w.watch.name,
+                guided::full_wind_ago()
             )
         })
     }
@@ -13205,8 +13206,11 @@ impl TimegrapherApp {
                 theme::tool_choice(
                     ui,
                     "Wind",
-                    "When the test is run: just after a full wind, or 24 hours after it, set \
-                     against the watch's full-wind test from 12 to 36 hours ago",
+                    &format!(
+                        "When the test is run: just after a full wind, or 24 hours after it, \
+                         set against the watch's full-wind test from {}",
+                        guided::full_wind_ago()
+                    ),
                     &mut self.guided_after,
                     &[
                         (
