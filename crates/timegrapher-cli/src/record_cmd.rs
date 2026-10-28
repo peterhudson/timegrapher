@@ -129,7 +129,6 @@ struct Settings {
     lift_known: bool,
     /// Seconds `session` skips at the start of each take.
     settle_s: f64,
-    existing: bool,
 }
 
 impl Options {
@@ -361,7 +360,6 @@ fn settings_with(
             lift: lift.unwrap_or(take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
             settle_s: SETTLE_S,
-            existing: false,
         });
     };
     // A session's takes must agree on how they are measured.
@@ -415,7 +413,6 @@ fn settings_with(
         lift: m.lift.or(lift).unwrap_or(take::DEFAULT_LIFT_DEG),
         lift_known,
         settle_s: m.settle_s.unwrap_or(SETTLE_S),
-        existing: true,
     })
 }
 
@@ -869,9 +866,28 @@ fn write_take_manifest(dir: &Path, pos: Position, set: &Settings) -> Result<(), 
     fs::write(&p, text).map_err(|e| format!("{}: {e}", p.display()))
 }
 
+/// The lock a `record` holds while it adds its take to the session file in
+/// `dir`, so two at once each add theirs. It is a file in the system's
+/// temporary folder named for the session folder, so the session folder
+/// holds only takes and its session file; it is left in place, and the
+/// system lets go of the lock when the command ends.
+fn session_lock(dir: &Path) -> Result<fs::File, String> {
+    use std::hash::{Hash, Hasher};
+    let dir = fs::canonicalize(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    dir.hash(&mut h);
+    let p = std::env::temp_dir().join(format!("timegrapher-session-{:016x}.lock", h.finish()));
+    fs::File::create(&p)
+        .and_then(|f| f.lock().map(|()| f))
+        .map_err(|e| format!("{}: {e}", p.display()))
+}
+
 /// List the take in the session folder's session file, writing the file
 /// first when there is none. The entry is appended, so the rest of the
-/// file, comments included, is left as it was.
+/// file, comments included, is left as it was. The file is read under
+/// [`session_lock`] and replaced whole, so another `record` adding a take
+/// at the same time loses neither entry, and a reader never sees half of
+/// it.
 fn add_to_session(
     o: &Options,
     pos: Position,
@@ -881,20 +897,21 @@ fn add_to_session(
     c: &Check,
 ) -> Result<PathBuf, String> {
     let file = o.dir().join(MANIFEST);
-    let before = if set.existing {
-        fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?
-    } else {
-        format!(
+    let lock = session_lock(o.dir())?;
+    let before = match fs::read_to_string(&file) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => format!(
             "# Written by `timegrapher record`; edit freely.\n{}settle_s = {}\n",
             header(set),
             toml::Value::Float(SETTLE_S)
-        )
+        ),
+        Err(e) => return Err(format!("{}: {e}", file.display())),
     };
     let name = take
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let mut text = before.clone();
+    let mut text = before;
     if !text.is_empty() && !text.ends_with('\n') {
         text.push('\n');
     }
@@ -914,7 +931,8 @@ fn add_to_session(
     );
     toml::from_str::<Manifest>(&text)
         .map_err(|e| format!("adding the take would break {}: {e}", file.display()))?;
-    fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
+    library::write_atomic(&file, text.as_bytes())?;
+    drop(lock);
     Ok(file)
 }
 
@@ -1043,6 +1061,70 @@ mod tests {
             r.hours[0].span_s
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Two `record`s adding to one new session folder at the same moment
+    /// each keep their entry: the audit of 2026-10-26 (finding ARCH-03)
+    /// found the second wrote over the first. Each of six here starts as
+    /// if the folder had no session file yet.
+    #[test]
+    fn records_at_once_each_keep_their_entry() {
+        let base = std::env::temp_dir().join(format!("tg-record-at-once-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let folder = base.join("session");
+        fs::create_dir_all(&folder).unwrap();
+        let set = Settings {
+            watch: None,
+            calibre: None,
+            bph: Some(28800),
+            lift: 52.0,
+            lift_known: true,
+            settle_s: SETTLE_S,
+        };
+        let check = || Check {
+            from_s: 0.0,
+            to_s: 1.0,
+            watch_heard: true,
+            timing_scatter_ms: None,
+            timing_scatter_fraction: None,
+            bph: 28800,
+            beats_found: 8,
+            beats_expected: 8,
+            rate_s_per_day: None,
+            amplitude_deg: None,
+            beat_error_ms: None,
+            clipping: Clipping {
+                samples: 0,
+                beats: 0,
+                beat_fraction: 0.0,
+                peak_dbfs: -20.0,
+            },
+        };
+        let positions = ["DU", "DD", "CU", "CD", "CL", "CR"];
+        let start = std::sync::Barrier::new(positions.len());
+        std::thread::scope(|s| {
+            for p in positions {
+                let (folder, set, start) = (&folder, &set, &start);
+                s.spawn(move || {
+                    let mut o = options(folder.clone());
+                    o.position = p.into();
+                    let pos = Position::parse(p).unwrap();
+                    let take = folder.join(format!("take_{p}"));
+                    start.wait();
+                    add_to_session(&o, pos, set, &take, "2026-10-28T00:00:00Z", &check()).unwrap();
+                });
+            }
+        });
+        let m: Manifest =
+            toml::from_str(&fs::read_to_string(folder.join(MANIFEST)).unwrap()).unwrap();
+        let mut files: Vec<String> = m.recordings.iter().map(|r| r.file.clone()).collect();
+        files.sort();
+        let mut want: Vec<String> = positions.iter().map(|p| format!("take_{p}")).collect();
+        want.sort();
+        assert_eq!(files, want);
+        // And nothing else is left in the folder.
+        assert_eq!(fs::read_dir(&folder).unwrap().count(), 1);
+        let _ = fs::remove_dir_all(&base);
     }
 
     fn options(folder: PathBuf) -> Options {
