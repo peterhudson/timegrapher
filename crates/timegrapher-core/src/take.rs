@@ -90,6 +90,30 @@ pub fn clock(
     )
 }
 
+/// Where a take's clock came from, in words, as `from` ([`clock_from`])
+/// picks it: the USB lines' text (`usb`, as
+/// [`crate::usbclock::UsbClock::correction`] words it), the correction's
+/// (`correction`, such as [`crate::clockstore::DeviceClock::source_text`])
+/// and the clock log's path (`log`).
+pub fn clock_source_text(
+    from: ClockFrom,
+    usb: Option<&str>,
+    correction: Option<&str>,
+    log: Option<&Path>,
+) -> String {
+    let log = || log.map(|p| p.display().to_string()).unwrap_or_default();
+    match from {
+        ClockFrom::LogRatedByUsb => format!(
+            "{}; clock log {} for its breaks",
+            usb.unwrap_or_default(),
+            log()
+        ),
+        ClockFrom::Log => format!("from clock log {}", log()),
+        ClockFrom::Correction => correction.unwrap_or_default().to_string(),
+        ClockFrom::Usb => usb.unwrap_or_default().to_string(),
+    }
+}
+
 /// The clock of a take in the folder `dir` whose sound files are `files`,
 /// in order, for a reader with no beats to hand (a library listing a
 /// take's figures): [`clock`] from the take's clock log (`log`, a file in
@@ -279,6 +303,103 @@ pub fn span_of(e: &RecordingEntry, duration_s: f64) -> Result<(f64, f64), String
         ));
     }
     Ok((start, stop))
+}
+
+/// The lift angle amplitudes are worked out at when neither the reader,
+/// the session file nor the calibre gives one, degrees.
+pub const DEFAULT_LIFT_DEG: f64 = 52.0;
+
+/// Escape wheel teeth when neither the session file nor the calibre
+/// gives them.
+pub const ESCAPE_TEETH: u32 = 15;
+
+/// A calibre found in the table or the user's own calibres, with what it
+/// gives a reading: its beat rate, lift angle, escape wheel teeth and
+/// wheels.
+#[derive(Debug, Clone)]
+pub struct Calibre {
+    pub name: String,
+    pub bph: Option<u32>,
+    pub lift_angle_deg: Option<f64>,
+    pub escape_teeth: Option<u32>,
+    pub wheels: Vec<crate::periodicity::Wheel>,
+}
+
+/// The calibre `name` names in the table or `user`'s calibres, or `None`
+/// when neither has it.
+pub fn calibre_named(name: &str, user: &crate::calibre_store::UserCalibres) -> Option<Calibre> {
+    use crate::calibre_store::{Catalog, Entry};
+    let cat = Catalog::new(user);
+    let entry = cat.find(name)?;
+    let mut wheels = cat.wheels(entry);
+    if let Entry::Table(c) = entry {
+        // Preserve shipped first-match naming order; Catalogue supplies
+        // the effective values, overrides and additional wheel names.
+        let mut ordered = Vec::new();
+        for wheel in &c.wheels {
+            if let Some(i) = wheels.iter().position(|w| w.name == wheel.name) {
+                ordered.push(wheels.remove(i));
+            }
+        }
+        ordered.extend(wheels);
+        wheels = ordered;
+    }
+    Some(Calibre {
+        name: entry.name().to_string(),
+        bph: entry.bph(),
+        lift_angle_deg: entry.lift_angle_deg(),
+        escape_teeth: entry.escape_teeth(),
+        wheels,
+    })
+}
+
+/// What a reader gives that comes before the session file: a beat rate
+/// and a lift angle.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Given {
+    pub bph: Option<u32>,
+    pub lift_deg: Option<f64>,
+}
+
+/// A take's analysis settings, from what the reader gives, else the
+/// session file `m`, else its calibre `cal`:
+///
+/// - beat rate: given, else the session file's, else the calibre's;
+///   none means it is measured;
+/// - lift angle: given, else the session file's, else the calibre's,
+///   else [`DEFAULT_LIFT_DEG`]; known when given, when the session file
+///   gives it (unless it says `lift_known = false`), or when the calibre
+///   does;
+/// - escape wheel teeth: the session file's, else the calibre's, else
+///   [`ESCAPE_TEETH`].
+pub fn stream_settings(m: &Manifest, cal: Option<&Calibre>, given: Given) -> StreamConfig {
+    let mut cfg = StreamConfig::default();
+    cfg.analysis.bph = given.bph.or(m.bph).or(cal.and_then(|c| c.bph));
+    cfg.analysis.amplitude.lift_deg = given
+        .lift_deg
+        .or(m.lift)
+        .or(cal.and_then(|c| c.lift_angle_deg))
+        .unwrap_or(DEFAULT_LIFT_DEG);
+    cfg.analysis.lift_known = if given.lift_deg.is_some() {
+        true
+    } else if m.lift.is_some() {
+        m.lift_known.unwrap_or(true)
+    } else {
+        cal.is_some_and(|c| c.lift_angle_deg.is_some())
+    };
+    cfg.analysis.escape_teeth = m
+        .escape_teeth
+        .or(cal.and_then(|c| c.escape_teeth))
+        .unwrap_or(ESCAPE_TEETH);
+    cfg
+}
+
+/// The correction stored for the input `file` was recorded on
+/// ([`crate::clockstore::recorded_device`]), from the user's store; `None`
+/// when the recording names no input or none is stored for it.
+pub fn stored_correction(file: &Path) -> Result<Option<crate::clockstore::DeviceClock>, String> {
+    let store = crate::clockstore::ClockStore::load()?;
+    Ok(crate::clockstore::recorded_device(file).and_then(|d| store.get(&d).cloned()))
 }
 
 /// How an entry of a take is read, as the caller has resolved it.
@@ -563,5 +684,46 @@ mod tests {
         assert_eq!(entry_times(&e, &m), (Some(30.0), Some(90.0)));
         e.settle_s = Some(0.0);
         assert_eq!(entry_times(&e, &m), (Some(0.0), Some(90.0)));
+    }
+
+    #[test]
+    fn settings_come_from_the_reader_then_the_session_file_then_the_calibre() {
+        let cal = Calibre {
+            name: "Test".into(),
+            bph: Some(21_600),
+            lift_angle_deg: Some(44.0),
+            escape_teeth: Some(20),
+            wheels: Vec::new(),
+        };
+        let bare: Manifest = toml::from_str("").unwrap();
+        let none = stream_settings(&bare, None, Given::default());
+        assert_eq!(none.analysis.bph, None);
+        assert_eq!(none.analysis.amplitude.lift_deg, DEFAULT_LIFT_DEG);
+        assert!(!none.analysis.lift_known);
+        assert_eq!(none.analysis.escape_teeth, ESCAPE_TEETH);
+
+        let from_cal = stream_settings(&bare, Some(&cal), Given::default());
+        assert_eq!(from_cal.analysis.bph, Some(21_600));
+        assert_eq!(from_cal.analysis.amplitude.lift_deg, 44.0);
+        assert!(from_cal.analysis.lift_known);
+        assert_eq!(from_cal.analysis.escape_teeth, 20);
+
+        let file: Manifest =
+            toml::from_str("bph = 18000\nlift = 50\nlift_known = false\nescape_teeth = 15")
+                .unwrap();
+        let from_file = stream_settings(&file, Some(&cal), Given::default());
+        assert_eq!(from_file.analysis.bph, Some(18_000));
+        assert_eq!(from_file.analysis.amplitude.lift_deg, 50.0);
+        assert!(!from_file.analysis.lift_known);
+        assert_eq!(from_file.analysis.escape_teeth, 15);
+
+        let given = Given {
+            bph: Some(28_800),
+            lift_deg: Some(53.0),
+        };
+        let from_reader = stream_settings(&file, Some(&cal), given);
+        assert_eq!(from_reader.analysis.bph, Some(28_800));
+        assert_eq!(from_reader.analysis.amplitude.lift_deg, 53.0);
+        assert!(from_reader.analysis.lift_known);
     }
 }

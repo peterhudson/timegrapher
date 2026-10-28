@@ -86,9 +86,10 @@ impl Options {
             inherited
         };
         // With no calibre and no `escape_teeth`, no wheel is named.
-        let teeth = m
-            .escape_teeth
-            .or(train.calibre.as_ref().map(|c| c.escape_teeth.unwrap_or(15)));
+        let teeth = m.escape_teeth.or(train
+            .calibre
+            .as_ref()
+            .map(|c| c.escape_teeth.unwrap_or(take::ESCAPE_TEETH)));
         Ok(SessionCalibre {
             train: train.with_escape_teeth(teeth),
             manifest_name,
@@ -140,19 +141,27 @@ impl Options {
         notes
     }
 
+    /// What the flags give before the session file.
+    fn given(&self) -> take::Given {
+        take::Given {
+            bph: self.bph,
+            lift_deg: self.lift,
+        }
+    }
+
     /// Beat rate: the flag, else the session file, else the calibre's;
-    /// none means it is measured.
+    /// none means it is measured ([`take::stream_settings`]).
     fn bph(&self, m: &Manifest, cal: Option<&ResolvedCalibre>) -> Option<u32> {
-        self.bph.or(m.bph).or(cal.and_then(|c| c.bph))
+        take::stream_settings(m, cal, self.given()).analysis.bph
     }
 
     /// Lift angle: the flag, else the session file, else the calibre's,
-    /// else 52 degrees.
+    /// else the default ([`take::stream_settings`]).
     fn lift(&self, m: &Manifest, cal: Option<&ResolvedCalibre>) -> f64 {
-        self.lift
-            .or(m.lift)
-            .or(cal.and_then(|c| c.lift_angle_deg))
-            .unwrap_or(52.0)
+        take::stream_settings(m, cal, self.given())
+            .analysis
+            .amplitude
+            .lift_deg
     }
 }
 
@@ -342,7 +351,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "lift = {}\n",
         o.lift
             .or(cal.and_then(|c| c.lift_angle_deg))
-            .unwrap_or(52.0)
+            .unwrap_or(take::DEFAULT_LIFT_DEG)
     ));
     t.push_str("# seconds skipped at the start of each recording while the watch settles\n");
     t.push_str(&format!(
@@ -459,28 +468,16 @@ pub(crate) struct Ctx<'a> {
 
 /// The analysis settings for a session's recordings, and its calibre.
 fn stream_config<'a>(c: &Ctx<'a>) -> Result<(StreamConfig, Option<&'a ResolvedCalibre>), String> {
-    let mut cfg = StreamConfig::default();
     let cal = c.calibre.train.calibre.as_ref();
-    cfg.analysis.bph = c.o.bph(c.m, cal);
-    cfg.analysis.amplitude.lift_deg = c.o.lift(c.m, cal);
-    cfg.analysis.lift_known = lift_known(c, cal);
-    cfg.analysis.escape_teeth =
-        c.m.escape_teeth
-            .or(cal.and_then(|k| k.escape_teeth))
-            .unwrap_or(15);
-    Ok((cfg, cal))
+    Ok((take::stream_settings(c.m, cal, c.o.given()), cal))
 }
 
 /// Whether the lift angle came from `--lift`, the session file or
 /// the calibre, rather than the default.
 fn lift_known(c: &Ctx, cal: Option<&ResolvedCalibre>) -> bool {
-    if c.o.lift.is_some() {
-        true
-    } else if c.m.lift.is_some() {
-        c.m.lift_known.unwrap_or(true)
-    } else {
-        cal.is_some_and(|k| k.lift_angle_deg.is_some())
-    }
+    take::stream_settings(c.m, cal, c.o.given())
+        .analysis
+        .lift_known
 }
 
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
