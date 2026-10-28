@@ -3,6 +3,7 @@
 //! Steadiness pane (core `steadiness`, as `timegrapher series` gives it).
 //! Nothing is computed here: the curve comes ready made with the report.
 
+use crate::marks;
 use crate::theme;
 use eframe::egui::{self, RichText};
 use egui_plot::{Line, Plot, Points, VLine};
@@ -39,7 +40,7 @@ fn caption(c: &IsochronismCurve) -> String {
         c.bin_deg
     );
     if let Some(t) = c.turn_deg {
-        s += &format!(" · Upright line: where the curve turns, {t:.0}°");
+        s += &format!(" · Turn: where the curve turns, {t:.0}°");
     }
     s
 }
@@ -89,7 +90,16 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
         });
     let pad = ((hi - lo) * 0.15).max(0.05);
     let a_pad = ((a_hi - a_lo) * 0.05).max(c.bin_deg);
-    Plot::new("isochronism")
+    // The turn is named in a lane of one row above the plot, as every
+    // named line is (see `marks`).
+    let lane = if c.turn_deg.is_some() {
+        marks::ROW_H + marks::LANE_GAP
+    } else {
+        0.0
+    };
+    ui.add_space(lane);
+    let h = (h - lane).max(40.0);
+    let resp = Plot::new("isochronism")
         .allow_scroll(false)
         .allow_zoom(false)
         .allow_drag(false)
@@ -139,6 +149,16 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
                 );
             }
         });
+    if let Some(t) = c.turn_deg {
+        let turn = marks::Named {
+            x: resp.transform.position_from_point_x(t),
+            name: "Turn".into(),
+            rank: marks::Rank::Strong,
+            ink: pal.text_secondary,
+            hover: format!("Turn: {t:.0}°"),
+        };
+        marks::lane_above_one(ui, *resp.transform.frame(), &[turn], ui.id().with("turn"));
+    }
 }
 
 fn note(ui: &mut egui::Ui, text: &str) {
@@ -154,8 +174,7 @@ mod tests {
     use timegrapher_core::steadiness::AmplitudeBin;
 
     /// A run-down drawn by hand: flat above 250°, falling below.
-    #[test]
-    fn draws_a_curve_and_says_why_when_it_is_missing() {
+    fn run_down() -> IsochronismCurve {
         let bins: Vec<AmplitudeBin> = (0..8)
             .map(|i| {
                 let a = 236.0 + 4.0 * i as f64;
@@ -171,7 +190,7 @@ mod tests {
                 }
             })
             .collect();
-        let curve = IsochronismCurve {
+        IsochronismCurve {
             step_s: 10.0,
             bin_deg: 2.0,
             bins,
@@ -184,7 +203,12 @@ mod tests {
             curve_explained: 0.95,
             turn_deg: Some(256.7),
             headline: "The rate falls as the amplitude does.".into(),
-        };
+        }
+    }
+
+    #[test]
+    fn draws_a_curve_and_says_why_when_it_is_missing() {
+        let curve = run_down();
         assert!(caption(&curve).contains("where the curve turns, 257°"));
         // The slope and its amplitudes only in the headline.
         assert!(
@@ -210,5 +234,45 @@ mod tests {
             });
             assert!(!out.shapes.is_empty());
         }
+    }
+
+    /// The turn is named "Turn" above the plot, over its line, and the
+    /// rate labels stay below it.
+    #[test]
+    fn the_turn_is_named_above_the_plot() {
+        let curve = run_down();
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(700.0, 500.0),
+            )),
+            ..Default::default()
+        };
+        let out = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |u| super::ui(u, Some(&curve)));
+        });
+        let texts: Vec<(String, egui::Rect)> = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some((
+                    t.galley.text().to_string(),
+                    t.galley.rect.translate(t.pos.to_vec2()),
+                )),
+                _ => None,
+            })
+            .collect();
+        let turn = texts.iter().find(|t| t.0 == "Turn").expect("Turn is named");
+        let rates: Vec<_> = texts.iter().filter(|t| t.0.ends_with(" s/d")).collect();
+        assert!(!rates.is_empty(), "{texts:?}");
+        assert!(
+            rates.iter().all(|r| r.1.top() >= turn.1.bottom()),
+            "{texts:?}"
+        );
+        // Over its line: 256.7° sits right of the middle of 236° to 264°.
+        let x = turn.1.center().x;
+        assert!(x > 350.0 && x < 700.0, "{turn:?}");
     }
 }
