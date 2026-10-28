@@ -186,7 +186,7 @@ pub enum Caveat {
 impl Caveat {
     /// The caveat in a few words, for a line of conditions or a mark beside
     /// a reading, as the app words it: "2 breaks", "input clock not
-    /// measured". `lift_deg` is the lift angle the amplitude used, and
+    /// corrected". `lift_deg` is the lift angle the amplitude used, and
     /// `beats` the beats found. `None` for no regular beat (said by
     /// [`no_watch_text`]) and for a masked sliver under 0.05 s.
     pub fn short(&self, lift_deg: f64, beats: usize) -> Option<String> {
