@@ -1991,8 +1991,16 @@ impl Drop for Batch {
 struct Cancelled;
 
 /// What a full-wind search was made for: the watch, the Wind setting,
-/// the minute and when the watch's takes folder last changed.
-type FullWindKey = (Option<String>, bool, i64, Option<std::time::SystemTime>);
+/// the minute, and the watch's takes folder: when it last changed and
+/// the takes in it, as a folder's time can stay the same over a take
+/// added and removed at once (on Windows, within its time's resolution).
+type FullWindKey = (
+    Option<String>,
+    bool,
+    i64,
+    Option<std::time::SystemTime>,
+    Vec<std::ffi::OsString>,
+);
 
 pub struct TimegrapherApp {
     input: Input,
@@ -8993,11 +9001,18 @@ impl TimegrapherApp {
             .as_ref()
             .and_then(|d| std::fs::metadata(d).ok())
             .and_then(|m| m.modified().ok());
+        let mut takes: Vec<std::ffi::OsString> = dir
+            .as_ref()
+            .and_then(|d| std::fs::read_dir(d).ok())
+            .map(|r| r.flatten().map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+        takes.sort();
         let key = (
             self.watch_open.clone(),
             self.guided_after,
             (now / 60.0).floor() as i64,
             changed,
+            takes,
         );
         if self.guided_earlier_for.as_ref() == Some(&key) {
             return;
@@ -21880,8 +21895,22 @@ mod tests {
         // An hour on, past the mark, with nothing else changed.
         app.find_full_wind_at(now + 3600.0);
         assert_eq!(app.start_test_why_not(), None);
-        // The take removed, in the same minute: no longer found.
+        // The take removed, in the same minute: no longer found, even with
+        // the takes folder's time as it was, as Windows can leave it.
+        let takes = take.parent().unwrap().to_path_buf();
+        let was = std::fs::metadata(&takes).unwrap().modified().unwrap();
         std::fs::remove_dir_all(&take).unwrap();
+        // Set back by hand where a folder can be opened to set it.
+        #[cfg(unix)]
+        {
+            std::fs::File::open(&takes)
+                .unwrap()
+                .set_modified(was)
+                .unwrap();
+            assert_eq!(std::fs::metadata(&takes).unwrap().modified().unwrap(), was);
+        }
+        #[cfg(not(unix))]
+        let _ = was;
         app.find_full_wind_at(now + 3600.0);
         assert!(app.start_test_why_not().is_some(), "removed");
         // With 24 Hours After off, nothing waits on the minute.
