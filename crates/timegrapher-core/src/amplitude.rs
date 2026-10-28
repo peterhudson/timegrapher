@@ -140,6 +140,22 @@ fn edges_after(
     })
 }
 
+/// [`edges`] on a template of a few beats, with sound 1 looked for from
+/// [`UNLOCK_SEARCH_S`] before `guide_unlock` (samples into `template`):
+/// where the unlock sat on a template of more beats. On a few beats a bump
+/// of noise well before the unlock can pass for sound 1; the guide keeps
+/// the search past it. Without a guide, from the start, as [`edges`].
+pub fn edges_guided(
+    template: &[f32],
+    fs: f64,
+    origin: usize,
+    onset_fraction: f32,
+    guide_unlock: Option<f64>,
+) -> Option<Edges> {
+    let from = guide_unlock.map_or(0, |u| (u - UNLOCK_SEARCH_S * fs).max(0.0) as usize);
+    edges_after(template, fs, origin, onset_fraction, from)
+}
+
 /// How far before the unlock on a template of all the beats given a short
 /// window's sound 1 is looked for first, seconds. Amplitude falling from
 /// 300° to 250° moves the unlock about 1.3 ms earlier.
@@ -328,7 +344,7 @@ pub fn windows_between(
     // about one window in 40 that way), so a window's sound 1 is looked for
     // from UNLOCK_SEARCH_S before this one, unless a sound as loud as
     // EARLIER_SOUND_MIN comes before it.
-    let guide = |even: bool| -> usize {
+    let guide = |even: bool| -> Option<f64> {
         let times = side_times(beats, even);
         let e = (times.len() >= 3)
             .then(|| {
@@ -340,7 +356,7 @@ pub fn windows_between(
                 )
             })
             .flatten();
-        e.map_or(0, |e| (e.unlock - UNLOCK_SEARCH_S * fs).max(0.0) as usize)
+        e.map(|e| e.unlock)
     };
     let from = [guide(true), guide(false)];
     let mut start = from_s;
@@ -362,7 +378,7 @@ pub fn windows_between(
                 return None;
             }
             let tmpl = trimmed_template(env, fs, &times);
-            let guided = edges_after(
+            let guided = edges_guided(
                 &tmpl,
                 fs,
                 origin,

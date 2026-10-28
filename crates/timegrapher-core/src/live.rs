@@ -311,6 +311,22 @@ impl LiveAnalyzer {
         &self.amp
     }
 
+    /// Where Tick's and Tock's unlock sat, ms from the beat time, in the
+    /// latest amplitude window to end by `t` seconds that read it (or the
+    /// first after, before any has): the guide for a profile of the sound
+    /// up to `t` ([`profile::from_snippets`]).
+    pub fn profile_guides_at(&self, t: f64) -> [Option<f64>; 2] {
+        let at = |side: fn(&AmplitudeWindow) -> Option<f64>| {
+            let by = self.amp.partition_point(|w| w.end_s <= t + 1e-9);
+            self.amp[..by]
+                .iter()
+                .rev()
+                .find_map(side)
+                .or_else(|| self.amp[by..].iter().find_map(side))
+        };
+        [at(|w| w.even_unlock_ms), at(|w| w.odd_unlock_ms)]
+    }
+
     /// Forget the beats and the template, keeping the audio clock running
     /// (for a new watch or a new position).
     pub fn restart(&mut self) {
@@ -770,6 +786,7 @@ impl LiveAnalyzer {
         }
         // Until the sides are told apart there is no Tick or Tock to show.
         let sided = self.sides.pending().is_none();
+        let guides = self.profile_guides_at(to);
         self.profiles = [Side::A, Side::B].map(|side| {
             let even = side == Side::A;
             let w: Vec<&[f32]> = self
@@ -778,7 +795,8 @@ impl LiveAnalyzer {
                 .filter(|s| s.1 == even)
                 .map(|s| s.2.as_slice())
                 .collect();
-            profile::from_snippets(&w, fs, side, 2.0 * beat, &a.amplitude).filter(|_| sided)
+            let guide = guides[usize::from(!even)];
+            profile::from_snippets(&w, fs, side, 2.0 * beat, &a.amplitude, guide).filter(|_| sided)
         });
         self.settled_to = to;
     }

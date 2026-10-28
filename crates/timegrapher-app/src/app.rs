@@ -14382,6 +14382,7 @@ impl TimegrapherApp {
             })
             .collect();
         let cfg = live.config().analysis.clone();
+        let guides = live.profile_guides_at(end);
         let period = 7200.0 / bph as f64;
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -14398,7 +14399,7 @@ impl TimegrapherApp {
                         })
                         .collect();
                     timegrapher_core::profile::profiles_from_audio(
-                        &sp.mono, sp.rate, &beats, period, &cfg,
+                        &sp.mono, sp.rate, &beats, period, &cfg, guides,
                     )
                 }
                 Err(_) => [None, None],
