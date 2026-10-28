@@ -543,6 +543,7 @@ fn read_one_inner(
         settle_s: settle,
         end_s: end,
         measurement,
+        ..
     } = read;
     let clock_input_sha256 = log_text
         .as_ref()

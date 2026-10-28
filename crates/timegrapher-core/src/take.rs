@@ -304,8 +304,13 @@ pub struct EntryRead {
     pub kept: Option<analysis_take::Stored>,
     /// The beats, numbered across the breaks, with the masked stretches
     /// left out.
+    /// The beat rate and lift angle read at are `log.bph` and
+    /// `log.lift_deg`.
     pub log: BeatLog,
+    /// The clock the readings are on, and where it came from, as
+    /// [`clock_from`] picks it; both `None` on the sound card's clock.
     pub clock: Option<ClockFit>,
+    pub clock_from: Option<ClockFrom>,
     /// The clock log's text, when the entry has one.
     pub clock_text: Option<String>,
     pub breaks: Vec<Break>,
@@ -326,8 +331,10 @@ pub struct EntryRead {
 /// its masks, and the stretch measured once the watch has settled
 /// ([`measured`]). `usb` gives the sound card's error from the USB lines
 /// in the files, and `correction` the correction known for the input of
-/// the first file, each ppm slow; `correction` is asked only when the
-/// entry has no clock log.
+/// the first file, each ppm slow: they only fetch, and the rule that
+/// picks between them and the clock log is this function's ([`clock`]).
+/// `correction` is asked only when the entry has no clock log. An error
+/// either gives is passed through as its text, which is the caller's.
 pub fn measure_entry(
     base: &Path,
     m: &Manifest,
@@ -386,18 +393,23 @@ pub fn measure_entry(
         Some(p) => format!("{}: {err}", base.join(p).display()),
         None => err,
     };
-    let mut fit = match &kept {
-        _ if s.card_clock => None,
+    let has_log = clock_text.is_some();
+    let (mut fit, clock_from) = match &kept {
+        _ if s.card_clock => (None, None),
         // Read as it was recorded: its sound is not here.
-        Some(k) => clock(
-            clock_text.as_deref(),
-            k.header.sample_rate,
-            k.header.bytes_per_frame,
-            k.header.usb_clock.map(|u| u.ppm),
-            m.card_ppm,
-            log.duration_s,
-        )
-        .map_err(named)?,
+        Some(k) => {
+            let usb_ppm = k.header.usb_clock.map(|u| u.ppm);
+            let fit = clock(
+                clock_text.as_deref(),
+                k.header.sample_rate,
+                k.header.bytes_per_frame,
+                usb_ppm,
+                m.card_ppm,
+                log.duration_s,
+            )
+            .map_err(named)?;
+            (fit, clock_from(has_log, usb_ppm, m.card_ppm))
+        }
         None => {
             let info = crate::audio::info(&files[0])
                 .map_err(|err| format!("{}: {err}", files[0].display()))?;
@@ -405,17 +417,20 @@ pub fn measure_entry(
                 Some(_) => None,
                 None => correction(&files[0])?,
             };
-            clock(
+            let usb_ppm = usb(&files)?;
+            let fit = clock(
                 clock_text.as_deref(),
                 info.sample_rate,
                 info.bytes_per_frame,
-                usb(&files)?,
+                usb_ppm,
                 correction,
                 log.duration_s,
             )
-            .map_err(named)?
+            .map_err(named)?;
+            (fit, clock_from(has_log, usb_ppm, correction))
         }
     };
+    let clock_from = clock_from.filter(|_| fit.is_some());
     // A take kept as its analysis alone: every part of the take was in
     // it, so its session.json lists its breaks for the whole take's sound.
     let json = kept.as_ref().and_then(|_| {
@@ -449,6 +464,7 @@ pub fn measure_entry(
         kept,
         log,
         clock: fit,
+        clock_from,
         clock_text,
         breaks,
         masked,

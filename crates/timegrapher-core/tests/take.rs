@@ -215,6 +215,7 @@ fn an_entry_measured_here_reads_as_its_steps_by_hand() {
     std::fs::remove_dir_all(&dir).ok();
 
     assert_eq!(read.breaks, breaks);
+    assert_eq!(read.clock_from, Some(take::ClockFrom::Log));
     assert_eq!((read.settle_s, read.end_s), (from, to));
     let m = &read.measurement;
     assert_eq!(m.rate_s_per_day, by_hand.rate_s_per_day);
