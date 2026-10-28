@@ -11808,7 +11808,13 @@ impl TimegrapherApp {
             bph: self.bph,
             lift_deg: Some(self.lift_deg),
         };
-        let mut stream = take::stream_settings(m, None, given);
+        // The take's calibre, from the user's calibres as the Watches list
+        // and `session` find it, for what its session file doesn't give.
+        let cal = m
+            .calibre
+            .as_deref()
+            .and_then(|n| take::calibre_named(n, &self.cal.user));
+        let mut stream = take::stream_settings(m, cal.as_ref(), given);
         stream.analysis.lift_known = self.lift_known();
         take::EntrySettings {
             stream,
@@ -21281,7 +21287,9 @@ mod tests {
         );
         let words = app.true_clock_words(rate).expect("said");
         assert!(words.starts_with("On this take's USB lines"), "{words}");
-        assert!(words.contains("ppm slow"), "{words}");
+        // The figure the lines measured, as the hover prints it.
+        let said = format!("clock, {ppm:.1} ppm slow.");
+        assert!(words.contains(&said), "{words} {said}");
         assert!(words.contains("The clock log's 5 entries"), "{words}");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -22875,6 +22883,43 @@ mod tests {
             .contains("masked"));
         app.session.discard_recording();
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A take is read with its calibre's settings where its session file
+    /// gives none, as the Watches list and `session` read it.
+    #[test]
+    fn a_take_is_read_with_its_calibres_settings() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.cal
+            .user
+            .custom
+            .push(timegrapher_core::calibre_store::CustomCalibre {
+                name: "Test 21".into(),
+                maker: None,
+                aliases: Vec::new(),
+                bph: Some(21600),
+                lift_angle_deg: Some(49.0),
+                escape_teeth: Some(21),
+                wheels: Vec::new(),
+                notes: None,
+            });
+        let read = |text: &str| {
+            let m: Manifest = toml::from_str(text).unwrap();
+            app.entry_settings(&m).stream.analysis
+        };
+        let entry = "\n[[recording]]\nfile = '.'\nposition = 'DU'\n";
+        let a = read(&format!("calibre = 'Test 21'\n{entry}"));
+        assert_eq!(a.escape_teeth, 21);
+        assert_eq!(a.bph, Some(21600));
+        // The session file's own figures come first.
+        let a = read(&format!("calibre = 'Test 21'\nescape_teeth = 18\n{entry}"));
+        assert_eq!(a.escape_teeth, 18);
+        // No calibre, or one not known: core's 15 teeth.
+        assert_eq!(read(entry).escape_teeth, 15);
+        assert_eq!(
+            read(&format!("calibre = 'Unknown'\n{entry}")).escape_teeth,
+            15
+        );
     }
 
     /// A take whose entries say how long each position settles, as
