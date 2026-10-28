@@ -585,6 +585,9 @@ pub struct TakeReadings {
     /// take that changes size (kept as its analysis alone) is read again.
     known: HashMap<PathBuf, (u64, TakeReading)>,
     work: Option<(mpsc::Sender<PathBuf>, mpsc::Receiver<ReadDone>)>,
+    /// The take being read now, whose sound is open: it can't be moved,
+    /// renamed or deleted until it is done (Windows refuses to).
+    now: std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
 }
 
 /// A take's folder with its reading, or why it couldn't be worked out.
@@ -602,9 +605,12 @@ impl TakeReadings {
             let (tx, jobs) = mpsc::channel::<PathBuf>();
             let (done, rx) = mpsc::channel();
             let ctx = ctx.clone();
+            let now = self.now.clone();
             std::thread::spawn(move || {
                 for dir in jobs {
+                    *now.lock().unwrap() = Some(dir.clone());
                     let r = timegrapher_core::library::reading(&dir);
+                    *now.lock().unwrap() = None;
                     if done.send((dir, r)).is_err() {
                         break;
                     }
@@ -614,8 +620,14 @@ impl TakeReadings {
             (tx, rx)
         });
         if tx.send(dir.to_path_buf()).is_ok() {
-            self.known
-                .insert(dir.to_path_buf(), (bytes, TakeReading::Reading));
+            // A take read before keeps its figures on show until it is read
+            // again (at once, when what the reading reads hasn't changed).
+            let was = self.known.remove(dir).map(|(_, r)| r);
+            let now = match was {
+                Some(r @ TakeReading::Read(Ok(_))) => r,
+                _ => TakeReading::Reading,
+            };
+            self.known.insert(dir.to_path_buf(), (bytes, now));
         } else {
             // The thread has gone: a new one next time.
             self.work = None;
@@ -645,6 +657,34 @@ impl TakeReadings {
         }
     }
 
+    /// Whether the take in `dir`, or one inside it, is being read now.
+    pub fn being_read(&self, dir: &Path) -> bool {
+        self.now
+            .lock()
+            .unwrap()
+            .as_deref()
+            .is_some_and(|p| p.starts_with(dir))
+    }
+
+    /// Say the take in `dir` is being read now, or none.
+    #[cfg(test)]
+    pub fn set_now(&self, dir: Option<PathBuf>) {
+        *self.now.lock().unwrap() = dir;
+    }
+
+    /// Wait until every reading asked for is in.
+    #[cfg(test)]
+    pub fn wait(&mut self) {
+        for _ in 0..1200 {
+            self.poll();
+            if !self.known.values().any(|(_, r)| *r == TakeReading::Reading) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        panic!("the takes' readings never came in");
+    }
+
     /// Whether the take's figures come from its own reading: not a test's,
     /// whose figures are its Mean row or hour by hour.
     pub fn read_for(t: &Take, dir: &Path) -> bool {
@@ -655,7 +695,7 @@ impl TakeReadings {
     pub fn known(takes: impl IntoIterator<Item = (PathBuf, u64, TakeReading)>) -> TakeReadings {
         TakeReadings {
             known: takes.into_iter().map(|(d, b, r)| (d, (b, r))).collect(),
-            work: None,
+            ..Default::default()
         }
     }
 }
@@ -1332,8 +1372,7 @@ pub fn takes_table(
             let mut figures = figures_hover(means.map(|m| m.0), reserve);
             match cx.readings.of(&dir) {
                 Some(TakeReading::Reading) => figures.push_str(
-                    "\n\nRate, Amplitude and Beat Error: being read from the take, as \
-                     `timegrapher session` reads it.",
+                    "\n\nRate, Amplitude and Beat Error: being read from the take's sound.",
                 ),
                 Some(TakeReading::Read(Err(why))) => figures.push_str(&format!(
                     "\n\nRate, Amplitude and Beat Error: the take couldn't be read: {why}"

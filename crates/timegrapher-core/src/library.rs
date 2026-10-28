@@ -470,7 +470,7 @@ fn reading_key(take_dir: &Path) -> String {
 /// since the take last changed; quick, it reads no sound.
 pub fn kept_reading(take_dir: &Path) -> Option<Reading> {
     let (s, r) = readings_kept().remove(&reading_key(take_dir))?;
-    (s == stamp(take_dir)).then_some(r)
+    (s == reading_stamp(take_dir)).then_some(r)
 }
 
 /// The take in `take_dir`'s own reading ([`Reading`]): the one kept when
@@ -482,7 +482,7 @@ pub fn reading(take_dir: &Path) -> Result<Reading, String> {
     if let Some(r) = kept_reading(take_dir) {
         return Ok(r);
     }
-    let stamp = stamp(take_dir);
+    let stamp = reading_stamp(take_dir);
     let r = measure_take(take_dir)?;
     if let Some(p) = readings_path() {
         let mut kept = readings_kept();
@@ -1437,6 +1437,23 @@ pub fn is_image(p: &Path) -> bool {
 /// Every file under `dir`: their bytes, the newest change, and how many
 /// files and folders there are.
 fn stamp(dir: &Path) -> Stamp {
+    stamp_of(dir, |_| true)
+}
+
+/// The fingerprint of what a take's reading reads: its own files (its
+/// session file, sound and clock log) and its kept analysis, not a folder
+/// another tool writes into it, such as the report `timegrapher session`
+/// leaves in `session_report/`.
+fn reading_stamp(dir: &Path) -> Stamp {
+    stamp_of(dir, |sub| {
+        sub.parent() != Some(dir)
+            || sub.file_name() == Some(std::ffi::OsStr::new(crate::analysis_take::DIR))
+    })
+}
+
+/// The fingerprint of the files in `dir`, looking into each folder in it
+/// that `into` takes.
+fn stamp_of(dir: &Path, into: impl Fn(&Path) -> bool) -> Stamp {
     let mut s = Stamp {
         bytes: 0,
         entries: 0,
@@ -1446,6 +1463,9 @@ fn stamp(dir: &Path) -> Stamp {
     while let Some(d) = stack.pop() {
         for e in fs::read_dir(&d).into_iter().flatten().flatten() {
             let Ok(m) = e.metadata() else { continue };
+            if m.is_dir() && !into(&e.path()) {
+                continue;
+            }
             s.entries += 1;
             if m.is_dir() {
                 stack.push(e.path());
@@ -1574,6 +1594,37 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A take's reading is kept until what it reads changes: a report
+    /// written into the take's folder keeps it; a changed session file or
+    /// kept analysis doesn't.
+    #[test]
+    fn a_takes_reading_stamp_is_what_the_reading_reads() {
+        let dir = std::env::temp_dir().join(format!("tg-reading-stamp-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("session.toml"), "bph = 28800\n").unwrap();
+        fs::write(dir.join("take_part01-001.wav"), [0u8; 64]).unwrap();
+        let first = reading_stamp(&dir);
+        fs::create_dir_all(dir.join("session_report")).unwrap();
+        fs::write(dir.join("session_report").join("summary.json"), "{}").unwrap();
+        assert_eq!(reading_stamp(&dir), first);
+        assert_ne!(stamp(&dir), first, "the take's own stamp counts the report");
+        fs::create_dir_all(dir.join(crate::analysis_take::DIR)).unwrap();
+        let without = reading_stamp(&dir);
+        assert_ne!(without, first);
+        fs::write(
+            dir.join(crate::analysis_take::DIR).join("beats.bin"),
+            [1u8; 8],
+        )
+        .unwrap();
+        assert_ne!(reading_stamp(&dir), without);
+        let before = reading_stamp(&dir);
+        fs::write(dir.join("session.toml"), "bph = 21600\nlift = 52\n").unwrap();
+        assert_ne!(reading_stamp(&dir), before);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     /// A take's facts give the readings it ended on, but not for a test:
