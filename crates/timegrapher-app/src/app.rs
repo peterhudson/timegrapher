@@ -486,7 +486,7 @@ pub enum Position {
 
 impl Position {
     /// A position by any name the session files take: DU, CH, "dial up"…
-    fn from_name(s: &str) -> Option<Position> {
+    pub(crate) fn from_name(s: &str) -> Option<Position> {
         let common = timegrapher_core::session::Position::parse(s)?.common();
         Position::ALL.into_iter().find(|p| p.code() == common)
     }
@@ -2103,13 +2103,19 @@ pub struct TimegrapherApp {
     /// The stretches the Positions Test measured, the one under way
     /// included, kept like `guided_unused`.
     guided_measured: Vec<(f64, f64)>,
-    /// The full-wind test's results, loaded for the next test to run as
-    /// its 24 hour half.
+    /// The full-wind test's results the next test is set against as its
+    /// 24 hour half: picked from `guided_choices`, or loaded from a file.
     guided_earlier: Option<guided::FullWind>,
-    /// What `guided_earlier` was found for: the watch, the Wind setting,
-    /// the minute and when the watch's takes folder last changed. Any of
-    /// them otherwise, it is searched for again, so a test passing the
-    /// 12 hour mark, or a take added or removed, is seen.
+    /// For a watch set up for 24 Hours After, its full-wind tests from 12
+    /// to 36 hours ago, newest first, for Compare With to pick from.
+    guided_choices: Vec<guided::FullWind>,
+    /// Whether `guided_earlier` was loaded from a file, so it stays when
+    /// the watch's takes are searched again.
+    guided_earlier_file: bool,
+    /// What `guided_choices` was found for: the watch, the Wind setting,
+    /// the minute and the watch's takes folder. Any of them otherwise, it
+    /// is searched for again, so a test passing the 12 hour mark, or a
+    /// take added or removed, is seen.
     guided_earlier_for: Option<FullWindKey>,
     /// For a watch, the next Positions Test is its 24 hours after half,
     /// set against the watch's own full-wind test (Wind on its toolbar).
@@ -2680,6 +2686,8 @@ impl TimegrapherApp {
             guided_unused: Vec::new(),
             guided_measured: Vec::new(),
             guided_earlier: None,
+            guided_choices: Vec::new(),
+            guided_earlier_file: false,
             guided_earlier_for: None,
             guided_after: false,
             test_ready: None,
@@ -5712,6 +5720,77 @@ impl TimegrapherApp {
                 .collect()
         } else {
             capture::choices(&self.devices)
+        }
+    }
+
+    /// Compare With: the full-wind test the 24 hours after test is set
+    /// against, picked each time from the watch's own tests from 12 to 36
+    /// hours ago, newest first, or loaded from a file.
+    fn compare_with(&mut self, ui: &mut egui::Ui) {
+        let shown = match &self.guided_earlier {
+            Some(e) if self.guided_earlier_file => {
+                format!("{} (from a file)", guided::choice_text(e))
+            }
+            Some(e) => guided::choice_text(e),
+            None if self.guided_choices.is_empty() => "None from 12 to 36 hours ago".to_string(),
+            None => "Pick a full-wind test".to_string(),
+        };
+        let mut picked: Option<usize> = None;
+        let mut from_file = false;
+        theme::tool_field(
+            ui,
+            "Compare With",
+            &format!(
+                "The full-wind test this one is set against: one of the watch's own from {}, \
+                 or results saved to a file",
+                guided::full_wind_ago()
+            ),
+            |ui| {
+                egui::ComboBox::from_id_salt("compare with")
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        for (i, f) in self.guided_choices.iter().enumerate() {
+                            let on = !self.guided_earlier_file
+                                && self.guided_earlier.as_ref() == Some(f);
+                            if ui.selectable_label(on, guided::choice_text(f)).clicked() {
+                                picked = Some(i);
+                            }
+                        }
+                        if !self.guided_choices.is_empty() {
+                            ui.separator();
+                        }
+                        if ui
+                            .selectable_label(false, RichText::new("From a File…").small())
+                            .clicked()
+                        {
+                            from_file = true;
+                        }
+                    });
+            },
+        );
+        if let Some(i) = picked {
+            self.pick_full_wind(i);
+        }
+        if from_file {
+            self.load_earlier();
+        }
+    }
+
+    /// Set the next test against the `i`th of the watch's full-wind tests
+    /// on offer.
+    fn pick_full_wind(&mut self, i: usize) {
+        if let Some(f) = self.guided_choices.get(i) {
+            self.guided_earlier = Some(f.clone());
+            self.guided_earlier_file = false;
+        }
+    }
+
+    /// Load the full-wind test's saved results from a file the user picks,
+    /// for the next test to be set against.
+    fn load_earlier(&mut self) {
+        if let Some(full) = self.load_full_wind() {
+            self.guided_earlier = Some(full);
+            self.guided_earlier_file = true;
         }
     }
 
@@ -8954,15 +9033,20 @@ impl TimegrapherApp {
     /// Why Start Test can't start the test set up, if it can't.
     fn start_test_why_not(&self) -> Option<String> {
         let w = self.open_watch()?;
-        (self.ready_test() == Some(NewTake::Positions)
-            && self.guided_after
-            && self.guided_earlier.is_none())
-        .then(|| {
+        if self.ready_test() != Some(NewTake::Positions)
+            || !self.guided_after
+            || self.guided_earlier.is_some()
+        {
+            return None;
+        }
+        Some(if self.guided_choices.is_empty() {
             format!(
                 "{} has no Full Wind Positions Test from {}.",
                 w.watch.name,
                 guided::full_wind_ago()
             )
+        } else {
+            "Pick the full-wind test to compare with, in Compare With.".to_string()
         })
     }
 
@@ -8982,10 +9066,11 @@ impl TimegrapherApp {
         }
     }
 
-    /// For a watch, the half the next Positions Test is set against: none
-    /// for a full-wind test, else the watch's newest full-wind test from
-    /// [`guided::FULL_WIND_HOURS`] ago, kept in its takes. Searched again
-    /// only when the watch or Wind has changed since; with no watch, the
+    /// For a watch set up for 24 Hours After, the full-wind tests from
+    /// [`guided::FULL_WIND_HOURS`] ago kept in its takes, for the next
+    /// Positions Test to be set against the one picked. Searched again
+    /// only when the watch, Wind, the minute or its takes have changed
+    /// since; a pick no longer among them is dropped. With no watch, the
     /// half is what Load Full-Wind Results… loads.
     fn find_full_wind(&mut self) {
         self.find_full_wind_at(guided::unix_now());
@@ -9017,11 +9102,22 @@ impl TimegrapherApp {
         if self.guided_earlier_for.as_ref() == Some(&key) {
             return;
         }
+        // Another watch, or Wind changed: nothing picked carries over.
+        let same = self
+            .guided_earlier_for
+            .as_ref()
+            .is_some_and(|k| (&k.0, k.1) == (&key.0, key.1));
         self.guided_earlier_for = Some(key);
-        self.guided_earlier = match dir {
-            Some(dir) if self.guided_after => guided::full_wind_in(&dir, now),
-            _ => None,
+        self.guided_choices = match dir {
+            Some(dir) if self.guided_after => guided::full_winds_in(&dir, now),
+            _ => Vec::new(),
         };
+        let from_file = self.guided_earlier_file;
+        let listed = |e: &guided::FullWind| self.guided_choices.contains(e);
+        if !same || !(from_file || self.guided_earlier.as_ref().is_some_and(listed)) {
+            self.guided_earlier = None;
+            self.guided_earlier_file = false;
+        }
     }
 
     /// How long until the full-wind search should run again, at the next
@@ -13343,7 +13439,7 @@ impl TimegrapherApp {
                             Icon::Barrel24,
                             "24 Hours After",
                             "24 hours after the full-wind test, the watch neither wound nor \
-                             worn since: set against that test, found in the watch",
+                             worn since: set against that test, picked in Compare With",
                         ),
                     ],
                 );
@@ -13352,6 +13448,10 @@ impl TimegrapherApp {
             .on_disabled_hover_text(FIXED_IN_TEST);
             if self.guided_after != was {
                 self.find_full_wind();
+            }
+            if self.guided_after && !running {
+                theme::bar_gap(ui);
+                self.compare_with(ui);
             }
         } else if !running {
             let load_hint = format!(
@@ -13368,9 +13468,7 @@ impl TimegrapherApp {
                 false,
                 None,
             ) {
-                if let Some(full) = self.load_full_wind() {
-                    self.guided_earlier = Some(full);
-                }
+                self.load_earlier();
             }
         }
         theme::bar_gap(ui);
@@ -13517,6 +13615,7 @@ impl TimegrapherApp {
         let Some(action) = action else { return };
         if action == guided::Action::ClearEarlier {
             self.guided_earlier = None;
+            self.guided_earlier_file = false;
             self.guided_after = false;
             return;
         }
@@ -21764,9 +21863,10 @@ mod tests {
         assert_eq!(app.start_test_why_not(), None);
     }
 
-    /// A Positions Test set up for 24 Hours After is set against the
-    /// picked watch's own full-wind test: picking another watch while it
-    /// waits finds that watch's, and Start Test follows.
+    /// A Positions Test set up for 24 Hours After is set against one of
+    /// the picked watch's own full-wind tests, picked in Compare With:
+    /// picking another watch while it waits offers that watch's, and
+    /// Start Test waits for the pick.
     #[test]
     fn a_ready_test_finds_the_picked_watchs_full_wind() {
         let base = std::env::temp_dir().join(format!("tg-app-ready-wind-{}", std::process::id()));
@@ -21829,6 +21929,16 @@ mod tests {
         app.pick_watch(&daytona);
         frame(&mut app);
         assert_eq!(app.ready_test(), Some(NewTake::Positions));
+        // Offered, not picked for you.
+        assert_eq!(app.guided_choices.len(), 1);
+        assert_eq!(app.guided_earlier, None);
+        let why = app.start_test_why_not();
+        assert!(
+            why.as_deref()
+                .is_some_and(|w| w.starts_with("Pick the full-wind test")),
+            "{why:?}"
+        );
+        app.pick_full_wind(0);
         assert_eq!(app.start_test_why_not(), None);
         assert_eq!(
             app.guided_earlier.as_ref().map(|f| f.watch.as_str()),
@@ -21892,8 +22002,12 @@ mod tests {
             .full_wind_recheck(at)
             .expect("waits on its full-wind test");
         assert!((wait.as_secs_f64() - 45.05).abs() < 1e-6, "{wait:?}");
-        // An hour on, past the mark, with nothing else changed.
+        // An hour on, past the mark, with nothing else changed: offered,
+        // and once picked, the test can start.
         app.find_full_wind_at(now + 3600.0);
+        assert_eq!(app.guided_choices.len(), 1);
+        assert!(app.start_test_why_not().is_some(), "not yet picked");
+        app.pick_full_wind(0);
         assert_eq!(app.start_test_why_not(), None);
         // The take removed, in the same minute: no longer found, even with
         // the takes folder's time as it was, as Windows can leave it.
@@ -21913,6 +22027,7 @@ mod tests {
         let _ = was;
         app.find_full_wind_at(now + 3600.0);
         assert!(app.start_test_why_not().is_some(), "removed");
+        assert_eq!(app.guided_earlier, None, "the pick goes with its take");
         // With 24 Hours After off, nothing waits on the minute.
         app.guided_after = false;
         assert_eq!(app.full_wind_recheck(at), None);
@@ -22628,6 +22743,40 @@ mod tests {
             });
         });
         assert_eq!(app.brush, None);
+    }
+
+    /// Full-wind results loaded from a file stay while the test waits, the
+    /// minutes passing, with no watch as with a watch's own tests on offer.
+    #[test]
+    fn results_loaded_from_a_file_stay_while_the_test_waits() {
+        let full = guided::FullWind {
+            format: guided::RESULTS_FORMAT.to_string(),
+            began_utc: "2026-10-25T09:00:00.000Z".into(),
+            began_unix: 1_792_918_800.0,
+            watch: "Pepsi".into(),
+            calibre: String::new(),
+            bph: None,
+            lift_angle_deg: None,
+            settle_s: None,
+            measure_s: None,
+            positions: vec![guided::KeptRow {
+                position: "DU".into(),
+                rate_s_per_day: Some(4.0),
+                amplitude_deg: None,
+                beat_error_ms: None,
+            }],
+        };
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.new_take(NewTake::Positions, false);
+        let now = guided::unix_now();
+        app.find_full_wind_at(now);
+        // As Load Full-Wind Results… leaves it.
+        app.guided_earlier = Some(full.clone());
+        app.guided_earlier_file = true;
+        for later in [60.0, 120.0, 3600.0] {
+            app.find_full_wind_at(now + later);
+            assert_eq!(app.guided_earlier.as_ref(), Some(&full), "{later} s on");
+        }
     }
 
     /// Load Full-Wind Results… reads the results the test just after
