@@ -803,11 +803,17 @@ out shorter than 140 pt (240 pt wide side by side), and Charts and
 Distributions are kept tall enough for their toolbar and one plot at a
 readable height (about 60 pt of plot for a distribution): the room comes
 from the panes with some to spare, and a window too small for them all
-shares its room in proportion. A
+keeps the Paper Strip's least first (its lane, 100 pt of dots and its
+time axis) and shares the rest in proportion. A plot pane left too short
+to read keeps its tab and toolbar and says so in one line in its place
+("Periods not shown: no room. Drag the divider up or make the window
+taller."). A
 layout saved by an earlier version of the app is set aside once for this
 starting one. Drag a pane by its tab
 to put it beside, above or below another, or onto another's tab to stack
-them; drag the gaps between panes to resize them. The selected tab takes
+them; drag the gaps between panes to resize them; sizes set by a drag stand,
+and are kept with the layout, until a pane in that row or column is
+shown or hidden. The selected tab takes
 the card's colour, joined to the card below it. The × on a tab hides
 that pane (the status line says it comes back from its icon at the top or
 the View menu), and the icons and the View menu hide or show each pane
