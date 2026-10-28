@@ -12,6 +12,7 @@
 //! app sends nothing itself.
 
 use crate::fields;
+use crate::marks::title_case;
 use crate::settings;
 use crate::theme;
 use eframe::egui::{self, RichText, Vec2};
@@ -2123,19 +2124,6 @@ fn summary(e: Entry<'_>) -> String {
         parts.push(format!("{t}-tooth escape wheel"));
     }
     parts.join(" · ")
-}
-
-/// "escape wheel" as "Escape Wheel".
-fn title_case(s: &str) -> String {
-    s.split(' ')
-        .map(|w| {
-            let mut c = w.chars();
-            c.next()
-                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
-                .unwrap_or_default()
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// A source as its name, its address when it has one, and what it says.

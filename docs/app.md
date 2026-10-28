@@ -1251,7 +1251,10 @@ empty and shown as "not read" in the key under the map, which is titled
 with what the colour measures and its unit (**Timing Swing (ms)** for the
 rate's map, the timing's swing at each period, not a rate in s/d;
 **Amplitude Swing (°)**; **Beat Error Swing (ms)**); the wheels' turns are
-dotted across it and named at the right; **dB Scale** in the toolbar
+dotted across it and named by short names (**4th Wheel**, **Esc Wheel**)
+in a narrow lane right of the map, each level with its line, sliding
+apart where two would touch, with the full name and period on the
+pointer; **dB Scale** in the toolbar
 colours the sizes in decibels below the brightest, over the map's own
 range up to 300 to 1, so the key reads from 0 dB down to at most about
 −50 dB (a swing is a size, so twenty times its log); the pointer
