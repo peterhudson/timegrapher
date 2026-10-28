@@ -5352,16 +5352,24 @@ impl TimegrapherApp {
     }
 
     /// The take in the position the watch is in now, once it is stopped
-    /// and longer than a few readings: its settled stretches up to the
-    /// last reading with a watch heard, read as `timegrapher session`
-    /// reads a recording (core `session::measure_masked`), the time
-    /// between them masked, and the seconds they cover.
+    /// and longer than a few readings: its settled stretches, read as
+    /// `timegrapher session` reads a recording (core
+    /// `session::measure_masked`), the time between them masked, and the
+    /// seconds they cover. A take opened from disk is read to its end, as
+    /// session reads it; one just listened to, to its last reading with a
+    /// watch heard.
     fn whole_take(&self) -> Option<WholeTake> {
         if self.running() {
             return None;
         }
         let live = self.live.as_ref()?;
-        let end = self.last_heard_s().min(self.latest_s());
+        // To the take's end, as session reads it, not its last beat.
+        let opened = self.take_breaks.is_some();
+        let end = if opened {
+            live.duration_s()
+        } else {
+            self.last_heard_s().min(live.duration_s())
+        };
         let spans: Vec<(f64, f64)> = self
             .current_spans()
             .into_iter()
@@ -5386,8 +5394,12 @@ impl TimegrapherApp {
             if span < 3.0 * self.average_s {
                 return None;
             }
-            let log = steady::log_of(live)?;
+            let mut log = steady::log_of(live)?;
             let clock = self.reading_clock(log.duration_s);
+            // The cuts the app adds (a settling's end, a move) where they
+            // bound the reading rather than fall within it change nothing
+            // it reads, and session has none there.
+            log.jumps.retain(|&j| from < j && j < to);
             let breaks = self.reading_breaks(&log);
             // The time between the stretches, another position or its
             // settling, is left out as a mask is.
@@ -18371,7 +18383,12 @@ mod tests {
         let w = app.whole_take().expect("whole take");
         let log = steady::log_of(app.live.as_ref().unwrap()).unwrap();
         let spans = app.current_spans();
-        let (from, to) = (spans[0].0.max(0.0), app.latest_s());
+        // Just listened to, the take reads to its last reading with a
+        // watch heard, never past its end.
+        let to = app
+            .last_heard_s()
+            .min(app.live.as_ref().unwrap().duration_s());
+        let from = spans[0].0.max(0.0);
         let m = timegrapher_core::session::measure(&log, None, from, to);
         assert_eq!(w.m.rate_s_per_day, m.rate_s_per_day);
         assert_eq!(w.m.amplitude_deg, m.amplitude_deg);
@@ -27778,3 +27795,7 @@ mod tests {
 #[cfg(test)]
 #[path = "app_layout_tests.rs"]
 mod layout_tests;
+
+#[cfg(test)]
+#[path = "app_corpus_tests.rs"]
+mod corpus_tests;

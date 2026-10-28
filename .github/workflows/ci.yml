@@ -107,7 +107,9 @@ jobs:
   # releases, checked by SHA-256 and cached between runs.
   regress:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The app's corpus test adds a release build of the app and a second
+    # reading of every take.
+    timeout-minutes: 45
     env:
       # As in the test job: no debug info in CI's release builds.
       CARGO_PROFILE_RELEASE_DEBUG: "0"
@@ -192,10 +194,25 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --release -p timegrapher-core --test equivalence analyze_and_session_agree_on_real_takes -- --exact --nocapture 2>&1 | tee equivalence.txt
+      # #514: each take opened as the app opens it reads what
+      # `timegrapher session` reads, to the bit.
+      - name: ALSA headers for the app
+        if: steps.changes.outputs.full != 'false'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - name: App against session on every corpus take
+        if: steps.changes.outputs.full != 'false'
+        timeout-minutes: 25
+        env:
+          TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
+          TIMEGRAPHER_REQUIRE_CORPUS: "1"
+          TIMEGRAPHER_CLI: ${{ github.workspace }}/target/release/timegrapher
+        run: |
+          set -o pipefail
+          cargo test --locked --release -p timegrapher-app corpus_tests -- --nocapture 2>&1 | tee app-corpus.txt
       - name: Summary
         if: always()
         run: |
-          for result in regress.txt equivalence.txt; do
+          for result in regress.txt equivalence.txt app-corpus.txt; do
             if [ -f "$result" ]; then
               { echo "### $result"; echo '```'; cat "$result"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             fi
