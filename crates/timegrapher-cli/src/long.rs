@@ -411,28 +411,22 @@ pub fn run(
     Ok(())
 }
 
-/// The `sides_by_count` and `beat_error_as_size` caveats in words, each
-/// with its label, as `analyze` words them.
+/// The `sides_by_count` and `beat_error_as_size` caveats in core's short
+/// words ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
     caveats: &[timegrapher_core::measure::Caveat],
 ) -> Vec<(&'static str, String)> {
     use timegrapher_core::measure::Caveat;
     caveats
         .iter()
-        .filter_map(|c| match c {
-            Caveat::SidesByCount { count } => Some((
-                "Sides",
-                format!(
-                    "Tick and Tock named by the beat count across {count} break{}, \
-                     not told apart by their sound",
-                    if *count == 1 { "" } else { "s" }
-                ),
-            )),
-            Caveat::BeatErrorAsSize => Some((
-                "Conditions",
-                "beat error given as a size: its sign differs either side of a cut".to_string(),
-            )),
-            _ => None,
+        .filter_map(|c| {
+            let label = match c {
+                Caveat::SidesByCount { .. } => "Sides",
+                Caveat::BeatErrorAsSize => "Conditions",
+                _ => return None,
+            };
+            // Neither caveat's words use the lift angle or the beats found.
+            Some((label, c.short(0.0, 0)?))
         })
         .collect()
 }
