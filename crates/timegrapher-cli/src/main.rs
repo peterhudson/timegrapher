@@ -672,7 +672,7 @@ enum ClockAction {
         /// the system's default input).
         #[arg(long)]
         device: Option<String>,
-        #[arg(long, default_value_t = 20.0)]
+        #[arg(long, default_value_t = timegrapher_core::clock::MEASURE_S / 60.0)]
         minutes: f64,
         /// Keep the result for this input.
         #[arg(long)]

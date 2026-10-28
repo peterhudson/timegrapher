@@ -1268,7 +1268,9 @@ fn fold(d: &Grid, period: f64) -> (f64, f64) {
     (share - (bins - 1) as f64 / total as f64, hi - lo)
 }
 
-fn wheel_for(period: f64, wheels: &[Wheel]) -> Option<String> {
+/// The name of the first of `wheels` whose turn is within 6% of `period`
+/// (seconds), or None.
+pub fn wheel_for(period: f64, wheels: &[Wheel]) -> Option<String> {
     wheels
         .iter()
         .find(|w| (period / w.period_s - 1.0).abs() < 0.06)
