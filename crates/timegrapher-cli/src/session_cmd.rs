@@ -1404,23 +1404,6 @@ mod tests {
         assert!(toml::from_str::<Manifest>("no_such_key = 1\n").is_err());
     }
 
-    #[test]
-    fn the_shape_is_measured_clear_of_masked_stretches() {
-        use analysis_take::{shape_stretch, SHAPE_S};
-        assert_eq!(shape_stretch(&[], 30.0, 600.0), Some((30.0, SHAPE_S)));
-        // A bump in the first minute: the next clear minute.
-        assert_eq!(
-            shape_stretch(&[(50.0, 58.0)], 30.0, 600.0),
-            Some((58.0, SHAPE_S))
-        );
-        // No clear minute: the longest clear stretch.
-        assert_eq!(
-            shape_stretch(&[(40.0, 50.0), (70.0, 75.0)], 30.0, 100.0),
-            Some((75.0, 25.0))
-        );
-        assert_eq!(shape_stretch(&[(0.0, 700.0)], 30.0, 600.0), None);
-    }
-
     /// A session file with a masked bump: `session` leaves it out of the
     /// rate, says how much was masked, and counts only the seconds read.
     #[test]

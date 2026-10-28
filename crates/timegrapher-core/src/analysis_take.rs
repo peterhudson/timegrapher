@@ -931,6 +931,32 @@ pub fn save(dest: &Path, companions: &[(String, Vec<u8>)], stored: &Stored) -> i
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shape_is_measured_clear_of_masked_stretches() {
+        assert_eq!(shape_stretch(&[], 30.0, 600.0), Some((30.0, SHAPE_S)));
+        // A bump in the first minute: the next clear minute.
+        assert_eq!(
+            shape_stretch(&[(50.0, 58.0)], 30.0, 600.0),
+            Some((58.0, SHAPE_S))
+        );
+        // No clear minute: the longest clear stretch.
+        assert_eq!(
+            shape_stretch(&[(40.0, 50.0), (70.0, 75.0)], 30.0, 100.0),
+            Some((75.0, 25.0))
+        );
+        // A short clear stretch first: passed over for a whole minute.
+        assert_eq!(
+            shape_stretch(&[(40.0, 50.0)], 30.0, 600.0),
+            Some((50.0, SHAPE_S))
+        );
+        // The longest clear stretch is the first one, not the last.
+        assert_eq!(
+            shape_stretch(&[(70.0, 75.0), (85.0, 95.0)], 30.0, 100.0),
+            Some((30.0, 40.0))
+        );
+        assert_eq!(shape_stretch(&[(0.0, 700.0)], 30.0, 600.0), None);
+    }
     use crate::synth::{generate, SynthConfig};
 
     fn take(dir: &Path, seconds: f64) -> PathBuf {
