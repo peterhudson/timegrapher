@@ -4,9 +4,11 @@
 //! was read for (a gap, a window with a missing reading, the wavelet's
 //! cone at a stretch's ends) is left empty: the card shows through.
 
+use crate::marks::{self, Rank};
+use crate::steady::{wheel_lines, Turn, WheelLine};
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
-use egui_plot::{LineStyle, Plot, PlotImage, PlotPoint, Text};
+use egui_plot::{LineStyle, Plot, PlotImage, PlotPoint};
 use timegrapher_core::library::length_text;
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::timefreq::{size_number, TimeFrequency};
@@ -182,15 +184,25 @@ pub fn draw(
     let width = dt * w as f64;
     let key_h = KEY_H;
     let plot_h = (ui.available_height() - key_h).max(40.0);
-    let plot_w = ui.available_width() as f64;
+    // The wheels' lines, named in a narrow lane right of the map; a
+    // wheel's ×2 isn't marked on a map.
+    let lines: Vec<WheelLine> = wheel_lines(wheels, (bottom, top))
+        .into_iter()
+        .filter(|l| l.turn != Turn::Twice)
+        .collect();
+    let named: Vec<(String, Rank)> = lines.iter().map(|l| (l.short.clone(), l.rank())).collect();
+    let side = marks::side_width(ui, &named);
+    let plot_w = (ui.available_width() - side).max(80.0);
     let x_hi = upto_s.max(left + width);
+    let plot_w64 = plot_w as f64;
     let resp = base
         .height(plot_h)
+        .width(plot_w)
         .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
         .x_axis_formatter(move |g, r| {
             // A mark too near the right edge for its label to show whole
             // goes unlabelled, rather than cut to "10:0".
-            if (r.end() - g.value) / (r.end() - r.start()) * plot_w < 18.0 {
+            if (r.end() - g.value) / (r.end() - r.start()) * plot_w64 < 18.0 {
                 return String::new();
             }
             time_label(g.value)
@@ -209,9 +221,21 @@ pub fn draw(
                 )
                 .highlight(false),
             );
-            wheel_rows(p, wheels, (bottom, top), x_hi, pal);
+            wheel_rows(p, &lines, pal);
             p.pointer_coordinate().and_then(|at| cell(m, at.x, at.y))
         });
+    let t = resp.transform;
+    let across: Vec<marks::Across> = lines
+        .iter()
+        .map(|l| marks::Across {
+            y: t.position_from_point_y(l.x),
+            name: l.short.clone(),
+            rank: l.rank(),
+            ink: ink(l, pal),
+            hover: l.hover.clone(),
+        })
+        .collect();
+    marks::lane_right(ui, *t.frame(), &across, id.with("wheel names"));
     if let Some((t, per, v)) = resp.inner {
         let what = match v {
             Some(v) => size_text(m, v),
@@ -227,45 +251,26 @@ pub fn draw(
     key_row(ui, m, scale, pal);
 }
 
-/// The wheels' turns across the map, dashed in the wheels' colour and
-/// named at the right, where they fall inside its periods; with no wheels,
-/// the reference periods in grey; with `None`, nothing.
-fn wheel_rows(
-    p: &mut egui_plot::PlotUi<'_>,
-    wheels: Option<&[Wheel]>,
-    (lo, hi): (f64, f64),
-    right: f64,
-    pal: &theme::Palette,
-) {
-    let Some(wheels) = wheels else {
-        return;
-    };
-    let rows: Vec<(String, f64, Color32)> = if wheels.is_empty() {
-        timegrapher_core::periodicity::reference_lines()
-            .into_iter()
-            .map(|r| (r.label.to_string(), r.period_s, pal.text_secondary))
-            .collect()
+/// A line's colour on a map: the wheels' grey, a reference period's
+/// secondary grey.
+fn ink(l: &WheelLine, pal: &theme::Palette) -> Color32 {
+    if l.turn == Turn::Reference {
+        pal.text_secondary
     } else {
-        wheels
-            .iter()
-            .map(|w| (title_case(&w.name), w.period_s, pal.wheel))
-            .collect()
-    };
-    for (name, period_s, colour) in rows {
-        let y = period_s.log10();
-        if y <= lo || y >= hi {
-            continue;
-        }
+        pal.wheel
+    }
+}
+
+/// The wheels' turns across the map, dotted; their names are in the lane
+/// beside it ([`marks::lane_right`]), so nothing else is drawn over the
+/// colour.
+fn wheel_rows(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::Palette) {
+    for l in lines {
         p.hline(
-            egui_plot::HLine::new(name.clone(), y)
-                .color(colour)
+            egui_plot::HLine::new(l.name.clone(), l.x)
+                .color(ink(l, pal))
                 .style(LineStyle::dotted_dense())
                 .width(1.25_f32),
-        );
-        p.text(
-            Text::new("wheel", PlotPoint::new(right, y), format!("{name} "))
-                .color(colour)
-                .anchor(egui::Align2::RIGHT_BOTTOM),
         );
     }
 }
@@ -331,18 +336,6 @@ fn key_row(ui: &mut egui::Ui, m: &TimeFrequency, s: Scale, pal: &theme::Palette)
          every size above it. Empty cells weren't read: a gap, a window with a reading \
          missing, or the edges of a stretch, which the wavelet map can't reach.",
     );
-}
-
-/// "escape wheel" as "Escape Wheel".
-fn title_case(name: &str) -> String {
-    name.split(' ')
-        .map(|w| {
-            let mut c = w.chars();
-            c.next()
-                .map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn note(ui: &mut egui::Ui, text: &str) {

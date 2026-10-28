@@ -447,6 +447,136 @@ impl egui_plot::PlotItem for InsideNames {
     }
 }
 
+/// "escape wheel" as "Escape Wheel": a wheel's name as the app shows it.
+pub fn title_case(name: &str) -> String {
+    name.split(' ')
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A wheel's short name, for the narrow lane beside a map: "fourth wheel"
+/// as "4th Wheel". A name with no short form is shown whole.
+pub fn wheel_short(name: &str) -> String {
+    match name {
+        "centre wheel" => "2nd Wheel".into(),
+        "third wheel" => "3rd Wheel".into(),
+        "fourth wheel" => "4th Wheel".into(),
+        "escape wheel" => "Esc Wheel".into(),
+        "seconds wheel" => "Sec Wheel".into(),
+        "intermediate wheel" => "Int Wheel".into(),
+        _ => title_case(name),
+    }
+}
+
+/// The length of the tick that joins a line across a map to its name.
+const TICK: f32 = 4.0;
+/// From the map's edge to its names: the tick, then the room a leader
+/// takes to reach a name that slid.
+const SIDE_GAP: f32 = TICK + 8.0;
+
+/// Where names level with lines across a plot go, in a column beside it:
+/// `ys` are the lines' screen y, and each name is [`ROW_H`] tall. Each is
+/// centred on its line; names that would touch slide apart, each run of
+/// them spread evenly about its lines' middle, and the column is kept
+/// within `top..bottom`. Each name's centre, in the order given.
+pub fn stack(ys: &[f32], top: f32, bottom: f32) -> Vec<f32> {
+    let mut o: Vec<usize> = (0..ys.len()).collect();
+    o.sort_by(|&a, &b| ys[a].total_cmp(&ys[b]));
+    // Runs of names that touch, each as its first name and its size; a
+    // run is centred on its lines' middle, and joins the run above where
+    // they would touch.
+    // The centre of the first name in a run: its lines' middle less half
+    // the run, kept within the column.
+    let first = |(s, n): (usize, usize)| {
+        let mid = o[s..s + n].iter().map(|&i| ys[i]).sum::<f32>() / n as f32;
+        (mid - (n as f32 - 1.0) * ROW_H / 2.0)
+            .min(bottom - ROW_H / 2.0 - (n as f32 - 1.0) * ROW_H)
+            .max(top + ROW_H / 2.0)
+    };
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for k in 0..o.len() {
+        let mut run = (k, 1);
+        while let Some(&above) = runs.last() {
+            let end = first(above) + above.1 as f32 * ROW_H;
+            if first(run) < end {
+                runs.pop();
+                run = (above.0, above.1 + run.1);
+            } else {
+                break;
+            }
+        }
+        runs.push(run);
+    }
+    let mut out = vec![0.0; ys.len()];
+    for &run in &runs {
+        let y0 = first(run);
+        for (j, &i) in o[run.0..run.0 + run.1].iter().enumerate() {
+            out[i] = y0 + j as f32 * ROW_H;
+        }
+    }
+    out
+}
+
+/// A line across a plot, named: where it runs (screen y), its short
+/// name, rank and colour, and what its hover says.
+pub struct Across {
+    pub y: f32,
+    pub name: String,
+    pub rank: Rank,
+    pub ink: Color32,
+    pub hover: String,
+}
+
+/// The room the names of `lines` take beside a plot: the tick and the
+/// widest name. Kept the same whatever stretch the plot shows, so the plot
+/// doesn't change width as its lines come and go.
+pub fn side_width(ui: &egui::Ui, names: &[(String, Rank)]) -> f32 {
+    let widest = names
+        .iter()
+        .map(|(n, r)| galley(ui, n, *r, false).size().x)
+        .fold(0.0, f32::max);
+    if widest > 0.0 {
+        SIDE_GAP + widest + 4.0
+    } else {
+        0.0
+    }
+}
+
+/// Lines across a plot (`frame`), named in a column right of it, as
+/// [`stack`] places them: each name joined to its line by a short tick of
+/// the line's colour, with an angled leader where it had to slide.
+/// Nothing is drawn over the plot itself. `id` keys the hovers, each the
+/// line and its name together.
+pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::Id) {
+    let lines: Vec<&Across> = lines
+        .iter()
+        .filter(|l| l.y >= frame.top() && l.y <= frame.bottom())
+        .collect();
+    let ys: Vec<f32> = lines.iter().map(|l| l.y).collect();
+    let at = stack(&ys, frame.top() - ROW_H / 2.0, frame.bottom() + ROW_H / 2.0);
+    let right = frame.right();
+    let painter = ui.painter_at(egui::Rect::from_min_max(
+        egui::pos2(right, frame.top() - ROW_H),
+        egui::pos2(ui.max_rect().right(), frame.bottom() + ROW_H),
+    ));
+    for (l, &y) in lines.iter().zip(&at) {
+        let mut pts = vec![egui::pos2(right, l.y), egui::pos2(right + TICK, l.y)];
+        pts.push(egui::pos2(right + SIDE_GAP - 2.0, y));
+        painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0_f32, l.ink)));
+        let g = galley(ui, &l.name, l.rank, false);
+        let rect =
+            egui::Rect::from_min_size(egui::pos2(right + SIDE_GAP, y - g.size().y / 2.0), g.size());
+        painter.galley(rect.min, g, Color32::PLACEHOLDER);
+        let line = egui::Rect::from_x_y_ranges(frame.left()..=right, l.y - 3.0..=l.y + 3.0);
+        hover(ui, id.with(("line", &l.name)), rect.union(line), &l.hover);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,5 +753,31 @@ mod tests {
             &|_, _| true,
         );
         assert_eq!(at, vec![Some(70.0), Some(210.0)]);
+    }
+
+    /// Names beside a map: level with their lines where they have room;
+    /// names that would touch spread evenly about their lines' middle;
+    /// the column kept inside the map.
+    #[test]
+    fn names_beside_a_map_slide_apart_where_they_would_touch() {
+        // Apart: each level with its line.
+        assert_eq!(stack(&[100.0, 40.0], 0.0, 300.0), vec![100.0, 40.0]);
+        // Two lines 5 pt apart: a row apart, about their middle.
+        assert_eq!(stack(&[100.0, 105.0], 0.0, 300.0), vec![95.0, 110.0]);
+        // A third touching the pair joins its run, spread about all three.
+        let y = stack(&[98.0, 104.0, 119.0], 0.0, 300.0);
+        assert_eq!(y, vec![92.0, 107.0, 122.0]);
+        // At the bottom edge the run rises to stay inside.
+        assert_eq!(stack(&[298.0, 296.0], 0.0, 300.0), vec![292.5, 277.5]);
+    }
+
+    #[test]
+    fn wheels_have_short_names_for_the_maps() {
+        assert_eq!(wheel_short("centre wheel"), "2nd Wheel");
+        assert_eq!(wheel_short("fourth wheel"), "4th Wheel");
+        assert_eq!(wheel_short("escape wheel"), "Esc Wheel");
+        assert_eq!(wheel_short("barrel"), "Barrel");
+        assert_eq!(wheel_short("great wheel"), "Great Wheel");
+        assert_eq!(title_case("escape wheel"), "Escape Wheel");
     }
 }

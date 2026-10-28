@@ -533,17 +533,6 @@ fn fold_wheel<'a>(found: &[(f64, Option<&'a str>)], period_s: f64) -> Option<&'a
         .find_map(|(_, w)| *w)
 }
 
-fn wheel_title(name: &str) -> String {
-    name.split(' ')
-        .map(|w| {
-            let mut c = w.chars();
-            c.next()
-                .map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 /// A number to about three significant figures, for a logarithmic axis.
 fn sig(v: f64) -> String {
     if v == 0.0 || !v.is_finite() {
@@ -1090,7 +1079,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                     .map_or(0.0, |q| q[1]);
                 let mut t = secs(per.period_s);
                 if let Some(w) = &per.wheel {
-                    t += &format!(", {}", wheel_title(w));
+                    t += &format!(", {}", marks::title_case(w));
                 }
                 ([x, y], t)
             });
@@ -1186,7 +1175,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                     ];
                     let found: Vec<_> = found.into_iter().flatten().collect();
                     if let Some(w) = fold_wheel(&found, f.period_s) {
-                        t += &format!(", {}", wheel_title(w));
+                        t += &format!(", {}", marks::title_case(w));
                     }
                     t + &format!(", {} cycles folded", f.raster.len())
                 }
@@ -1202,7 +1191,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 ),
                 FoldFrom::Wheel(w) => format!(
                     "Folded at the {}'s {} turn, {} cycles",
-                    wheel_title(w).to_lowercase(),
+                    marks::title_case(w).to_lowercase(),
                     secs(f.period_s),
                     f.raster.len()
                 ),
@@ -1587,24 +1576,25 @@ fn marked(s: &Steadiness, opts: Opts) -> Option<&[Wheel]> {
 /// What a line on the period axis marks: a wheel's turn, half of it (a
 /// wheel off centre shows twice a turn), or a reference period.
 #[derive(Clone, Copy, PartialEq)]
-enum Turn {
+pub(crate) enum Turn {
     Wheel,
     Twice,
     Reference,
 }
 
-/// A line on the period axis (log10 seconds), its name and what its
-/// hover says.
-struct WheelLine {
-    x: f64,
-    turn: Turn,
-    name: String,
-    hover: String,
+/// A line on the period axis (log10 seconds), its name, its short name
+/// (for the narrow lane beside a map) and what its hover says.
+pub(crate) struct WheelLine {
+    pub x: f64,
+    pub turn: Turn,
+    pub name: String,
+    pub short: String,
+    pub hover: String,
 }
 
 impl WheelLine {
     /// A wheel's name is strong, a ×2 or a reference faint.
-    fn rank(&self) -> Rank {
+    pub fn rank(&self) -> Rank {
         if self.turn == Turn::Wheel {
             Rank::Strong
         } else {
@@ -1627,7 +1617,7 @@ impl WheelLine {
 /// and half of it ("×2", where a wheel that is off centre shows twice a
 /// turn, unless another wheel turns there); with no wheels, the
 /// reference periods; with `None` (the marks off), nothing.
-fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelLine> {
+pub(crate) fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelLine> {
     let inside = |x: f64| x > x_lo && x < x_hi;
     let Some(wheels) = wheels else {
         return Vec::new();
@@ -1639,6 +1629,7 @@ fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelL
                 x: r.period_s.log10(),
                 turn: Turn::Reference,
                 name: r.label.to_string(),
+                short: r.label.to_string(),
                 hover: r.label.to_string(),
             })
             .filter(|l| inside(l.x))
@@ -1646,11 +1637,13 @@ fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelL
     }
     let mut out = Vec::new();
     for w in wheels {
-        let title = wheel_title(&w.name);
+        let title = marks::title_case(&w.name);
+        let short = marks::wheel_short(&w.name);
         out.push(WheelLine {
             x: w.period_s.log10(),
             turn: Turn::Wheel,
             name: title.clone(),
+            short: short.clone(),
             hover: format!("{title}: {}", secs(w.period_s)),
         });
         let half = w.period_s / 2.0;
@@ -1662,6 +1655,7 @@ fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelL
                 x: half.log10(),
                 turn: Turn::Twice,
                 name: format!("{title} ×2"),
+                short: format!("{short} ×2"),
                 hover: format!("{title} ×2: {}", secs(half)),
             });
         }
