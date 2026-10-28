@@ -169,7 +169,7 @@ mod tests {
         let said = notes(&doc);
         assert_eq!(said.len(), 2, "{said:?}");
         assert_eq!(
-            said[0], "The beats span 6 s, under the 10 s an analysis of a recording asks for.",
+            said[0], "The beats span 6 s, under the 10 s needed to judge whether they are regular.",
             "{said:?}"
         );
         assert!(said[1].contains("the default 52°"), "{said:?}");

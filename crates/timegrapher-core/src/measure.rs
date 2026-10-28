@@ -204,7 +204,7 @@ impl Caveat {
                 }
             }
             Caveat::LiftUnknown => format!("lift angle {lift_deg}°, the default"),
-            Caveat::ClockUnknown => "input clock not measured".to_string(),
+            Caveat::ClockUnknown => "input clock not corrected".to_string(),
             Caveat::Breaks { count } => format!("{count} break{}", plural(*count)),
             Caveat::SidesByCount { .. } => "sides named by count".to_string(),
             Caveat::BeatErrorAsSize => {
@@ -225,8 +225,8 @@ impl Caveat {
                 format!("The beat rate set differs from the {heard} bph heard.")
             }
             Caveat::ShortSpan { span_s } => format!(
-                "The beats span {span_s:.0} s, under the {SHORT_SPAN_S:.0} s an analysis of a \
-                 recording asks for."
+                "The beats span {span_s:.0} s, under the {SHORT_SPAN_S:.0} s needed to judge \
+                 whether they are regular."
             ),
             Caveat::Clipped { fraction } => format!(
                 "{:.0}% of the beats have a clipped sample, which moves the timing of the \
