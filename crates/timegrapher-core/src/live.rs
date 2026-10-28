@@ -711,8 +711,7 @@ impl LiveAnalyzer {
         // A step in the beats' timing within a quarter of a beat of the
         // count (a hole that cost close to a whole number of beats) is a
         // jump too, found as a whole file's reading finds one.
-        let tail = &self.beats[self.beats.len().saturating_sub(2 * JUMP_LOOK)..];
-        let tail = &tail[beats::good_tail_start(tail, JUMP_LOOK)..];
+        let tail = beats::good_tail(&self.beats, JUMP_LOOK);
         let found: Vec<f64> = beats::jumps_among_good(tail, &[])
             .into_iter()
             .map(|p| tail[p].time)
