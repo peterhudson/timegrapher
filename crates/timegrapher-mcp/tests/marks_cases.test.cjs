@@ -20,7 +20,7 @@ function constant(name) {
 }
 const context = vm.createContext({ document: { getElementById: () => ({ clientWidth: 624 }) } });
 vm.runInContext(["CHAR_W", "DASH", "MARKS"].map(constant).join("\n") + "\nlet clipCount = 0;\n" +
-  ["esc", "chartWidth", "plotArea", "xyChart", "markOrder", "markPlace", "markPlaceRow", "markInside", "markStack", "markWidth", "markText", "laneAbove", "namesInside"]
+  ["esc", "chartWidth", "plotArea", "xyChart", "markOrder", "markPlace", "markPlaceRow", "markInside", "markStack", "besideSpots", "crosses", "besidePlace", "roomAbove", "markWidth", "markText", "laneAbove", "namesInside"]
     .map(definition).join("\n") + "\nthis.MARKS = MARKS;", context);
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -54,6 +54,29 @@ test("names inside a short plot go where the app's rules put them, or nowhere", 
 
 test("names beside a map go where the app's rules put them", () => {
   for (const c of cases.stack) close(plain(context.markStack(c.ys, c.top, c.bottom)), c.at, c.case);
+});
+
+test("a note beside a point tries the places the app's rules try, in order", () => {
+  for (const c of cases.beside_spots) {
+    const got = plain(context.besideSpots(c.dot, c.size, c.top));
+    assert.equal(got.length, c.spots.length, c.case);
+    got.forEach((r, i) => close(r, c.spots[i], c.case));
+  }
+});
+
+test("a trace crosses a note's place only where the app's rules say", () => {
+  for (const c of cases.crosses) assert.equal(context.crosses(c.place, c.trace), c.crosses, c.case);
+});
+
+test("a note takes the place the app's rules give it, or none", () => {
+  for (const c of cases.beside_place) {
+    const spots = c.clear.map((_, i) => [i, 0, i + 0.5, 1]);
+    assert.equal(context.besidePlace(spots, (r) => c.clear[r[0]], c.was), c.at, c.case);
+  }
+});
+
+test("a plot keeps a note's room above its highest point as the app's does", () => {
+  for (const c of cases.room_above) close([context.roomAbove(c.lo, c.y, c.top, c.h)], [c.at], c.case);
 });
 
 // A Periods or FFT plot, 1 s to 1000 s, its wheels' lines as wheelMarks
@@ -104,4 +127,38 @@ test("on a short plot the names go inside, along its top, clear of the trace", (
   const high = plot({ names: true, height: 110, lines: [{ pts, color: "--rate" }] });
   assert.ok(!high.includes(">Fourth Wheel<"), high);
   assert.ok(INSIDE_TOP + ROW_H < 110);
+});
+
+test("a marked point's note sits on a plate beside its dot, clear of the trace, with a leader", () => {
+  // A peak at 60 s rising to 0.9 of the plot: the trace falls away on
+  // both sides, so the first place, above right, is clear.
+  const pts = [[0, 0.1], [Math.log10(60), 0.9], [3, 0.1]];
+  const svg = plot({ names: false, vlines: [], lines: [{ pts, color: "--rate" }], noteRoom: true,
+    beside: [{ x: Math.log10(60), y: 0.9, text: "60 s, Fourth Wheel" }] });
+  const inside = svg.split("clip-path")[1];
+  assert.match(inside, /<line [^>]*stroke="var\(--text2\)" stroke-width="1"\/><rect [^>]*fill="var\(--card\)" fill-opacity="0.8"\/><text [^>]*>60 s, Fourth Wheel<\/text>/);
+  // The plot is kept tall enough for the note's room above the peak: the
+  // top of its range is above 1.
+  const plate = inside.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="15.0" rx="3"/);
+  assert.ok(plate && +plate[2] >= 5, inside);
+  // On a short plot the note is the dot's hover.
+  const short = plot({ names: false, vlines: [], height: 110, lines: [{ pts, color: "--rate" }], noteRoom: true,
+    beside: [{ x: Math.log10(60), y: 0.9, text: "60 s, Fourth Wheel" }] });
+  assert.ok(!short.includes(">60 s, Fourth Wheel</text>"));
+  assert.match(short, /<circle [^>]*fill="transparent"><title>60 s, Fourth Wheel<\/title><\/circle>/);
+});
+
+test("a note keeps clear of the Ljung–Box note in the corner", () => {
+  // A dot near the top right: above right is off the plot and above left
+  // would cover the corner's note, so it goes below left.
+  const svg = plot({ names: false, vlines: [], lines: [{ pts: [[0, 0.05], [3, 0.05]], color: "--rate" }],
+    corner: { text: "Ljung–Box p = 0.001", top: true }, beside: [{ x: 2.9, y: 0.8, text: "repeats at 2:00" }] });
+  const plate = svg.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="15.0" rx="3"/);
+  assert.ok(plate, svg);
+  const [, x, y, w] = plate.map(Number);
+  const corner = svg.match(/<text x="([\d.]+)" y="([\d.]+)" text-anchor="end">Ljung/);
+  const right = +corner[1], left = right - "Ljung–Box p = 0.001".length * 6.6;
+  assert.ok(x + w <= left || x >= right || y >= +corner[2] + 4, `${plate[0]} vs corner at ${left}-${right}`);
+  // The dot is 0.2 of the plot's 126 px below its top, at 4 px.
+  assert.ok(y > 4 + 0.2 * 126, "below the dot");
 });

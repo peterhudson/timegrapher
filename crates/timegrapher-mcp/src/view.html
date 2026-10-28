@@ -772,7 +772,9 @@ function linTicks(lo, hi, px, minPx, fmt, ladder) {
 //   named, by marks.rs's rules: in a lane of two rows above the plot, which
 //   `names` keeps room for, or inside along its top on a short plot
 //   lines: [{pts, color, width, dash}]; dots: [{pts, color, r}]
-//   notes: [{x, y, text, above}] beside a point; corner: {text, top}, a line
+//   notes: [{x, y, text, above}] beside a point; beside: [{x, y, text}], a
+//   marked point's note in the nearest clear space (marks::beside), the y
+//   range kept tall enough for it (noteRoom); corner: {text, top}, a line
 //   per "\n"; rects: [{x0, x1, y0, y1, color}] outlined; a dot set's rgb
 //   overrides its color
 function xyChart(o) {
@@ -783,7 +785,12 @@ function xyChart(o) {
   const room = o.names && !short ? MARKS.LANE + MARKS.LANE_GAP : 0;
   const H = (o.height || 150) + room, T = 4 + room;
   const plotH = H - T - B;
-  const [x0, x1] = o.x, [y0, y1] = o.y;
+  const [x0, x1] = o.x, y0 = o.y[0];
+  // steady: the plot keeps a note's room above the trace's highest point,
+  // on a plot of room, where a marked point's note goes beside it.
+  const noted = (o.beside || []).length > 0 && plotH >= MARKS.SHORT_PLOT;
+  const highest = Math.max(y0, ...(o.lines || []).flatMap((l) => l.pts.map((p) => p[1])).filter(Number.isFinite));
+  const y1 = noted && o.noteRoom ? roomAbove(y0, highest, o.y[1], plotH) : o.y[1];
   const yt = o.yTicks(y0, y1, plotH);
   const L = Math.max(54, Math.ceil(10 + CHAR_W * Math.max(3, ...yt.map(([, t]) => t.length))));
   const plotW = W - L - R;
@@ -838,6 +845,38 @@ function xyChart(o) {
   for (const m of o.marks || []) {
     inside += `<circle cx="${sx(m.x)}" cy="${sy(m.y)}" r="3.5" fill="var(${m.color})"/>`;
   }
+  // marks::beside: each marked point's note on a plate in the nearest place
+  // clear of the trace and inside the plot, joined to its dot by a thin
+  // leader; on a short plot, or with nowhere clear, the dot's hover. The
+  // corner's note, when there is one, is kept clear too.
+  const trace = (o.lines || []).flatMap((l) => l.pts).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y)).map(([x, y]) => [sx(x), sy(y)]);
+  const avoid = [];
+  if (o.corner && o.corner.top) {
+    const w = String(o.corner.text).split("\n")[0].length * CHAR_W;
+    avoid.push([L + plotW - 6 - w, T + 2, L + plotW - 6, T + 17]);
+  }
+  for (const n of o.beside || []) {
+    const dot = [sx(n.x), sy(n.y)];
+    if (!(dot[0] >= L && dot[0] <= L + plotW && dot[1] >= T && dot[1] <= T + plotH)) continue;
+    const w = n.text.length * CHAR_W * MARKS.NAME_SIZE / 11 + 6;
+    const spots = besideSpots(dot, [w, MARKS.ROW_H], T);
+    const clear = ([a, b, c, d]) => a >= L + 1 && b >= T + 1 && c <= L + plotW - 1 && d <= T + plotH - 1
+      && !crosses([a - 2, b - 2, c + 2, d + 2], trace) && !avoid.some(([p, q, r, t]) => a < r && c > p && b < t && d > q);
+    const k = noted ? besidePlace(spots, clear, null) : null;
+    if (k === null) {
+      inside += `<circle cx="${dot[0].toFixed(1)}" cy="${dot[1].toFixed(1)}" r="6" fill="transparent"><title>${esc(n.text)}</title></circle>`;
+      continue;
+    }
+    const [a, b, c, d] = spots[k];
+    const near = [Math.min(Math.max(dot[0], a), c), Math.min(Math.max(dot[1], b), d)];
+    const len = Math.hypot(near[0] - dot[0], near[1] - dot[1]);
+    if (len > 4) {
+      const from = [dot[0] + (near[0] - dot[0]) / len * 4, dot[1] + (near[1] - dot[1]) / len * 4];
+      inside += `<line x1="${from[0].toFixed(1)}" y1="${from[1].toFixed(1)}" x2="${near[0].toFixed(1)}" y2="${near[1].toFixed(1)}" stroke="var(--text2)" stroke-width="1"/>`;
+    }
+    inside += `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(c - a).toFixed(1)}" height="${(d - b).toFixed(1)}" rx="3" fill="var(--card)" fill-opacity="0.8"/>`;
+    inside += `<text x="${(a + 3).toFixed(1)}" y="${(b + 11.5).toFixed(1)}" style="fill:var(--text);font-size:${MARKS.NAME_SIZE}px">${esc(n.text)}</text>`;
+  }
   // steady::mark_label: beside the point, on the side that keeps it inside.
   for (const n of o.notes || []) {
     const right = n.x > (x0 + x1) / 2;
@@ -866,7 +905,7 @@ function xyChart(o) {
 // its top. Strong names (a wheel) are placed first, faint ones (a wheel's
 // ×2, a reference period) after. The app's tests and these run the same
 // cases (crates/timegrapher-app/src/marks_cases.json).
-const MARKS = { ROW_H: 15, LANE: 30, LANE_GAP: 6, NAME_GAP: 12, HYSTERESIS: 2, SHORT_PLOT: 100, INSIDE_TOP: 4, NAME_SIZE: 11.5, TICK: 4, SIDE_GAP: 12 };
+const MARKS = { ROW_H: 15, LANE: 30, LANE_GAP: 6, NAME_GAP: 12, HYSTERESIS: 2, SHORT_PLOT: 100, INSIDE_TOP: 4, NAME_SIZE: 11.5, TICK: 4, SIDE_GAP: 12, NOTE_OFF: 8, NOTE_ROOM: 27 };
 
 // marks::order: strong first, then faint, each left to right. `names` are
 // each one's [x, width, rank], rank "strong" or "faint".
@@ -979,6 +1018,54 @@ function markStack(ys, top, bottom) {
     o.slice(run[0], run[0] + run[1]).forEach((i, j) => { out[i] = y0 + j * ROW_H; });
   }
   return out;
+}
+
+// marks::beside_spots: the places a note [w, h] big may take beside a point
+// (`dot`, [x, y] screen), in the order they are tried: above right, above
+// left, below right, below left, then up a row at a time, right and left,
+// to the plot's `top`. Each place as [left, top, right, bottom].
+function besideSpots(dot, size, top) {
+  const { NOTE_OFF, ROW_H } = MARKS;
+  const [w, h] = size;
+  const at = (dx, dy) => [dot[0] + dx, dot[1] + dy, dot[0] + dx + w, dot[1] + dy + h];
+  const right = NOTE_OFF, left = -NOTE_OFF - w, above = -NOTE_OFF - h, below = NOTE_OFF;
+  const spots = [at(right, above), at(left, above), at(right, below), at(left, below)];
+  for (let up = above - ROW_H; dot[1] + up >= top; up -= ROW_H) spots.push(at(right, up), at(left, up));
+  return spots;
+}
+
+// marks::crosses: whether a trace (`pts`, screen) crosses the place `r`:
+// any of its segments passes through it, clipped as Liang and Barsky do.
+function crosses(r, pts) {
+  const [x0, y0, x1, y1] = r;
+  const through = (a, b) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    let t0 = 0, t1 = 1;
+    for (const [p, q] of [[-dx, a[0] - x0], [dx, x1 - a[0]], [-dy, a[1] - y0], [dy, y1 - a[1]]]) {
+      if (p === 0) { if (q < 0) return false; } else if (p < 0) t0 = Math.max(t0, q / p); else t1 = Math.min(t1, q / p);
+    }
+    return t0 <= t1;
+  };
+  if (!pts.length) return false;
+  if (pts.length === 1) return pts[0][0] >= x0 && pts[0][0] <= x1 && pts[0][1] >= y0 && pts[0][1] <= y1;
+  return pts.slice(1).some((b, i) => through(pts[i], b));
+}
+
+// marks::beside_place: which of `spots` a note takes: the one it took
+// before (`was`) while that is still `clear`, else the first that is; null
+// where none is.
+function besidePlace(spots, clear, was) {
+  if (was !== null && was !== undefined && spots[was] && clear(spots[was])) return was;
+  const i = spots.findIndex(clear);
+  return i < 0 ? null : i;
+}
+
+// marks::room_above: the top of a plot's y range (from `lo`, at least
+// `top`) that leaves a note's room clear above the trace's highest point
+// (at `y`) on a plot `h` px tall.
+function roomAbove(lo, y, top, h) {
+  const r = MARKS.NOTE_ROOM / Math.max(h, 2 * MARKS.NOTE_ROOM);
+  return Math.max(top, (y - lo * r) / (1 - r));
 }
 
 // A name's width on screen: the names' type is 11.5 px, a strong one
@@ -1178,7 +1265,7 @@ function steadyPlot(s, view, doc) {
         xTicks: periodTicks,
         yTicks: periodsLog ? (a, b) => logTicks(a, b, sig) : (a, b, h) => linTicks(a, b, h, 24, (y) => y.toFixed(0)),
         vlines: wheelMarks(doc, span), names: showWheels, hlines: [{ y: yOf(p.threshold), color: "--text2", dash: "loose" }],
-        lines: [{ pts, color, width: 1.5 }], marks, notes,
+        lines: [{ pts, color, width: 1.5 }], marks, beside: notes, noteRoom: true,
       });
     }
     case "cycle": {
@@ -1240,7 +1327,7 @@ function steadyPlot(s, view, doc) {
         xTicks: (p, q, w) => linTicks(p, q, w, Math.min(80, w / 4), (t) => lagText(t), TIME_STEPS),
         yTicks: (p, q, h) => linTicks(p, q, h, 24, (y, st) => stepText(y, st)),
         hlines: [{ y: 0, color: "--text3" }, { y: a.band, color: "--text2", dash: "loose" }, { y: -a.band, color: "--text2", dash: "loose" }],
-        lines: [{ pts, color, width: 1.5 }], marks, notes,
+        lines: [{ pts, color, width: 1.5 }], marks, beside: notes,
         corner: Number.isFinite(a.p_value) ? { text: `Ljung–Box p = ${pText(a.p_value)}`, top: true } : null,
       });
     }
@@ -1272,7 +1359,7 @@ function steadyPlot(s, view, doc) {
         yTicks: (p, q) => logTicks(p, q, size),
         vlines: wheelMarks(doc, x), names: showWheels, lines: [{ pts, color, width: 1.5 }],
         marks: [{ x: peak[0], y: peak[1], color }],
-        notes: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}${asRate ? " peak to peak" : ""}` }],
+        noteRoom: true, beside: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}${asRate ? " peak to peak" : ""}` }],
       });
     }
     case "stft":

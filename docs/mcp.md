@@ -315,7 +315,12 @@ two rows, a wheel's name placed first, a name that would touch another a
 row out and slid along with a leader where that row is taken, or inside
 along the plot's top when it is short; beside a map, at its right, by the
 wheel's short name ("4th Wheel"). The app's tests and the view's run the
-same cases for these rules. A Wheel Periods switch beside each of those views' own switch
+same cases for these rules. A marked point (the period found, the lag
+the readings repeat at, the tallest peak) keeps its dot on the trace, and
+its note sits in the nearest clear space the trace doesn't cross, above
+right first, on a plate with a thin leader to the dot, as in the app;
+Periods and FFT keep a row clear above the trace's highest point for it.
+On a short plot, or with nowhere clear, the note is the dot's hover. A Wheel Periods switch beside each of those views' own switch
 turns the marks off and on, as in the app.
 Nothing but the lines' names is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
