@@ -7,8 +7,9 @@
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{LineStyle, Plot, PlotImage, PlotPoint, Text};
+use timegrapher_core::library::length_text;
 use timegrapher_core::periodicity::Wheel;
-use timegrapher_core::timefreq::TimeFrequency;
+use timegrapher_core::timefreq::{size_number, TimeFrequency};
 
 pub use timegrapher_core::timefreq::Scale;
 
@@ -100,25 +101,11 @@ fn row_half(m: &TimeFrequency) -> Option<f64> {
 
 /// A size in the map's unit: "0.12 ms", "3.1°".
 pub fn size_text(m: &TimeFrequency, v: f64) -> String {
-    let n = number_text(v);
+    let n = size_number(v);
     match m.unit {
         "deg" => format!("{n}°"),
         u => format!("{n} {u}"),
     }
-}
-
-/// A size's number alone, its unit given elsewhere: "0.12", "3.1".
-fn number_text(v: f64) -> String {
-    let d = if v >= 10.0 {
-        0
-    } else if v >= 1.0 {
-        1
-    } else if v >= 0.1 {
-        2
-    } else {
-        3
-    };
-    format!("{v:.d$}")
 }
 
 /// What the map's colour measures: the swing of the series at each
@@ -234,7 +221,7 @@ pub fn draw(
             "{} {what} · period {} · at {}",
             measure_name(m),
             period_label(per),
-            crate::strip::fmt_time(t)
+            length_text(t)
         ));
     }
     key_row(ui, m, scale, pal);
@@ -296,13 +283,13 @@ fn key_ends(s: Scale) -> (String, String) {
             format!(
                 "{}, {} and above",
                 crate::steady::db_label(0.0),
-                number_text(s.hi)
+                size_number(s.hi)
             ),
         )
     } else {
         (
-            number_text(s.lo),
-            format!("{} and above", number_text(s.hi)),
+            size_number(s.lo),
+            format!("{} and above", size_number(s.hi)),
         )
     }
 }
@@ -464,7 +451,7 @@ mod tests {
         m.unit = "ms";
         assert_eq!(key_title(&m), "Timing Swing (ms)");
         assert_eq!(size_text(&m, 1.83), "1.8 ms");
-        assert_eq!(number_text(0.123), "0.12");
+        assert_eq!(size_number(0.123), "0.12");
         m.series = "beat_error";
         assert_eq!(key_title(&m), "Beat Error Swing (ms)");
     }
