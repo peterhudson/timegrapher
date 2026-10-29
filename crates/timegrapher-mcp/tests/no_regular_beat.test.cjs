@@ -1,4 +1,5 @@
-// The no-regular-beat words take the share of a beat core gives, not their own.
+// No regular beat is said in the server's words (core's), which it sends as
+// `timegrapher/no_beat`; the view types none of its own.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -10,17 +11,25 @@ function definition(name) {
   if (!match) throw new Error(`Missing ${name}`);
   return match[0];
 }
-const context = vm.createContext({});
-vm.runInContext(["num", "noRegularBeat"].map(definition).join("\n"), context);
+const context = vm.createContext({
+  fileName: () => "take.flac", timeLabel: String, positionName: String,
+  liveStrip: () => "", stripCards: () => "", trendStrip: () => "",
+});
+vm.runInContext(["esc", "num", "recordingView", "recordView"].map(definition).join("\n"), context);
 
-test("the share of a beat is core's timing_scatter_fraction", () => {
-  // 8,600 µs at 28,800 bph would be 6.9% of a beat; the document says 5.2%.
-  assert.equal(
-    context.noRegularBeat(8600, 0.052),
-    "No regular beat found (timing scatter 8.6 ms, 5.2% of a beat). There are no rate, amplitude or beat error readings."
-  );
-  assert.equal(
-    context.noRegularBeat(8600, null),
-    "No regular beat found. There are no rate, amplitude or beat error readings."
-  );
+const said = "No regular beat found (too few beats to time). There are no rate, amplitude or beat error readings.";
+
+test("a recording with no regular beat says the server's sentence", () => {
+  const markup = context.recordingView({ watch_heard: false, bph: 28800, lift_deg: 52, jitter_us: 8600 }, null, null, said);
+  assert.ok(markup.includes(`<b>No Regular Beat Found</b>${said}</div>`), markup);
+});
+
+test("a take's check with no regular beat says the server's sentence", () => {
+  const markup = context.recordView({ position: "DU", seconds: 60, check: { watch_heard: false, bph: 28800, timing_scatter_ms: 8.6 } }, null, said);
+  assert.ok(markup.includes(`<b>No Regular Beat</b>${said}</div>`), markup);
+});
+
+test("the sentence is escaped", () => {
+  const markup = context.recordingView({ watch_heard: false }, null, null, "<img src=x>");
+  assert.ok(markup.includes("&lt;img") && !markup.includes("<img"), markup);
 });

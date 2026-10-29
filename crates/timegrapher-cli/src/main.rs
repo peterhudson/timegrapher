@@ -37,7 +37,7 @@ fn parse_bph(text: &str) -> Result<u32, String> {
 fn parse_lift(text: &str) -> Result<f64, String> {
     timegrapher_core::input_domain::lift_deg(
         text.parse()
-            .map_err(|_| "lift angle must be finite and positive".to_string())?,
+            .map_err(|_| timegrapher_core::input_domain::LIFT_RANGE_TEXT.to_string())?,
     )
 }
 fn parse_escape_teeth(text: &str) -> Result<u32, String> {
@@ -1193,7 +1193,7 @@ fn run_analyze(
                 cfg.amplitude.lift_deg
             );
         }
-        print_summary(&a, clock.as_ref(), calibre.is_some());
+        print_summary(&a, clock.as_ref(), calibre);
     }
     Ok(())
 }
@@ -1331,7 +1331,11 @@ pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
     }
 }
 
-fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool) {
+fn print_summary(
+    a: &Analysis,
+    clock: Option<&(f64, String)>,
+    calibre: Option<&timegrapher_core::take::Calibre>,
+) {
     use timegrapher_core::measure::{self, Caveat};
     let s = &a.summary;
     println!("Duration     {:.1} s at {} Hz", s.duration_s, s.sample_rate);
@@ -1426,14 +1430,10 @@ fn print_summary(a: &Analysis, clock: Option<&(f64, String)>, calibre_set: bool)
             | Caveat::Clipped { .. }
             | Caveat::BeatsMissing { .. } => None,
             Caveat::LiftUnknown => c.short(s.lift_deg, s.beats_found).map(|w| {
-                format!(
-                    "{w}; {}",
-                    if calibre_set {
-                        "the calibre's lift angle is not in the table"
-                    } else {
-                        "calibre not set"
-                    }
-                )
+                match timegrapher_core::take::lift_default_why(calibre) {
+                    Some(why) => format!("{w}; {why}"),
+                    None => w,
+                }
             }),
             _ => c.short(s.lift_deg, s.beats_found),
         })
@@ -1636,7 +1636,7 @@ mod numeric_input_tests {
             "analyze",
             "unused.wav",
             "--bph=4294967295",
-            "--lift=1e300",
+            "--lift=90",
             "--escape-teeth=4294967295"
         ])
         .is_ok());

@@ -201,12 +201,10 @@ impl ResolvedTrain {
     /// What `lift_deg` fell back on, said as `analyze` says it, when
     /// neither `--lift` nor the calibre gave a lift angle.
     pub(crate) fn lift_default_note(&self, flag: Option<f64>) -> Option<String> {
-        let why = match (flag, &self.calibre) {
-            (Some(_), _) => return None,
-            (None, Some(c)) if c.lift_angle_deg.is_some() => return None,
-            (None, Some(_)) => "the calibre's lift angle is not in the table",
-            (None, None) => "calibre not set",
-        };
+        if flag.is_some() {
+            return None;
+        }
+        let why = take::lift_default_why(self.calibre.as_ref())?;
         Some(format!(
             "note: lift {}°, the default; {why}",
             take::DEFAULT_LIFT_DEG
