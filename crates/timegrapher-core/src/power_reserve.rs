@@ -150,7 +150,8 @@ pub struct Hour {
     pub span_s: f64,
     pub rate_s_per_day: Option<f64>,
     pub amplitude_deg: Option<f64>,
-    /// Signed, Tick less Tock, as the take's readings give it.
+    /// Signed, Tick less Tock, as the take's readings give it
+    /// ([`crate::session::beat_error_signed`]).
     pub beat_error_ms: Option<f64>,
     /// Seconds of it read, out of `span_s`.
     pub read_s: f64,
@@ -266,7 +267,7 @@ pub fn hours(
             span_s: tb - ta,
             rate_s_per_day: m.rate_s_per_day,
             amplitude_deg: m.amplitude_deg,
-            beat_error_ms: m.beat_error_unlock_ms,
+            beat_error_ms: m.beat_error_signed(),
             read_s,
         });
         a = b;
@@ -400,6 +401,24 @@ mod tests {
         let h = heard(&b, step);
         assert!((h.last_s.unwrap() - (30.0 - step)).abs() < 1e-9);
         assert!(h.pauses.is_empty(), "15 s is under {PAUSE_S} s");
+    }
+
+    /// An hour of a run whose unlock is never found gives its beat error
+    /// from the drop, as `session` reads the stretch.
+    #[test]
+    fn an_hour_whose_unlock_is_never_found_gives_the_drops_beat_error() {
+        let audio = crate::synth::unlock_unheard(60.0, 0.8);
+        let log = crate::stream::analyze_samples(
+            &audio.samples,
+            audio.sample_rate,
+            &crate::stream::StreamConfig::default(),
+        );
+        let (first, last) = (log.beats[0].time, log.beats[log.beats.len() - 1].time);
+        let h = hours(&log, None, &[], &[], first, last);
+        let m = crate::session::measure_masked(&log, None, &[], &[], first, last);
+        assert_eq!(m.beat_error_unlock_ms, None);
+        assert!(m.beat_error_ms.is_some());
+        assert_eq!(h[0].beat_error_ms, m.beat_error_ms);
     }
 
     #[test]

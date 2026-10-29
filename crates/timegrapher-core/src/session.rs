@@ -323,6 +323,11 @@ impl Measurement {
         beat_error_size(self.beat_error_unlock_ms, self.beat_error_ms)
     }
 
+    /// That beat error with its sign ([`beat_error_signed`]), ms.
+    pub fn beat_error_signed(&self) -> Option<f64> {
+        beat_error_signed(self.beat_error_unlock_ms, self.beat_error_ms)
+    }
+
     /// The seconds measured: the stretch read, less what was masked out.
     pub fn measured_s(&self) -> f64 {
         self.end_s - self.start_s - self.masked_s
@@ -391,11 +396,19 @@ fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
     (!w.is_empty()).then(|| median(&mut w))
 }
 
-/// The beat error a reading shows, from its signed beat errors: from the
+/// The beat error a reading gives, from its signed beat errors: from the
 /// unlock (`unlock_ms`) where it was found, else from the drop
-/// (`drop_ms`). Unsigned, ms. The MCP server's leads take theirs here too.
+/// (`drop_ms`). Signed, ms; both sides are named alike, so the sign means
+/// the same from either. Every beat error a take's reading gives is read
+/// here or through [`beat_error_size`].
+pub fn beat_error_signed(unlock_ms: Option<f64>, drop_ms: Option<f64>) -> Option<f64> {
+    unlock_ms.or(drop_ms)
+}
+
+/// The beat error a reading shows: [`beat_error_signed`]'s size, ms. The
+/// MCP server's leads take theirs here too.
 pub fn beat_error_size(unlock_ms: Option<f64>, drop_ms: Option<f64>) -> Option<f64> {
-    unlock_ms.or(drop_ms).map(f64::abs)
+    beat_error_signed(unlock_ms, drop_ms).map(f64::abs)
 }
 
 /// Measure the stretch of `log` from `from_s` to `to_s` (seconds on the
@@ -1630,5 +1643,43 @@ mod manifest_input_tests {
                 .unwrap();
         orphan.validate_analysis_inputs().unwrap();
         assert_eq!(orphan.lift, None); // Context and interval policy are unchanged.
+    }
+}
+
+#[cfg(test)]
+mod beat_error_tests {
+    use super::*;
+
+    /// A take whose unlock is never found gives its beat error from the
+    /// drop, signed as the drop gives it; one whose unlock is heard gives
+    /// the unlock's, with the same sign.
+    #[test]
+    fn a_take_whose_unlock_is_never_found_gives_the_drops_beat_error() {
+        let read = |audio: crate::audio::Audio| {
+            let log = crate::stream::analyze_samples(
+                &audio.samples,
+                audio.sample_rate,
+                &crate::stream::StreamConfig::default(),
+            );
+            measure(&log, None, 0.0, f64::INFINITY)
+        };
+        let m = read(crate::synth::unlock_unheard(60.0, 0.8));
+        assert_eq!(m.beat_error_unlock_ms, None, "the unlock is never found");
+        let drop = m.beat_error_ms.expect("the drop's beat error");
+        assert_eq!(m.beat_error_signed(), Some(drop));
+        assert_eq!(m.beat_error(), Some(drop.abs()));
+        assert!((drop - 0.8).abs() < 0.05, "{drop}");
+        let heard = read(crate::synth::generate(
+            &crate::synth::SynthConfig {
+                duration_s: 60.0,
+                beat_error_ms: 0.8,
+                ..Default::default()
+            },
+            |_| 250.0,
+            |_| 0.0,
+        ));
+        let unlock = heard.beat_error_unlock_ms.expect("the unlock's beat error");
+        assert_eq!(heard.beat_error_signed(), Some(unlock));
+        assert_eq!(unlock.signum(), drop.signum(), "{unlock} and {drop}");
     }
 }
