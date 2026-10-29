@@ -164,4 +164,53 @@ Still to build in core: the take context and its revision (#294), one writer per
 - [ ] No core number is typed into words.
 - [ ] A surface that switches to a core call bans the building blocks in its `clippy.toml`.
 - [ ] The KNOWN list has not grown.
+- [ ] No function over 100 lines or complexity 25, and no file over 3,000 lines, is added or grown, except a fix's mark that names an issue (section 12).
+- [ ] A split PR only moves code and adds no copy of data.
 - [ ] The figure review is CLEAR.
+
+---
+
+## 12. Code shape
+
+A long function is where a second rule hides: of the 23 longest app functions on 2026-10-29, 6 held a rule core should own. Shape is part of one source of truth.
+
+### Limits
+
+- **A function:** at most 100 lines and a cognitive complexity of at most 25, as Clippy counts them (`too_many_lines`, `cognitive_complexity`).
+- **A file:** at most 3,000 lines. A file over that today may only shrink.
+- **One file, one concern:** a pane, a sheet, a command or a core module.
+- **Today's long functions** each carry `#[expect(clippy::too_many_lines)]` or `#[expect(clippy::cognitive_complexity)]`. Once a split makes the mark untrue, Clippy fails until it is removed, so the list only shrinks.
+- **A fix may add a mark** when it tips a function over a limit, with a reason that names an issue. The fix lands first, and the split follows in the next PR. The hygiene audit counts open marks.
+
+### What is split, and when
+
+- **Now:** the 23 longest functions, and first the ones that hid a rule.
+- **The rest:** when a PR already changes them.
+- **`app.rs` by pane:** all at once, in one short window with no Desktop PR in flight, one pane per PR, each merged before the next. Never piece by piece alongside other work.
+
+### Splitting a function
+
+- **Rules first.** A rule the function hides moves to core in its own PR, and the split follows.
+- **A split only moves code.** Existing tests pass unchanged, screenshots match pixel for pixel, and the CLI's JSON is identical. Each move goes in `.git-blame-ignore-revs`.
+- **No new copies of data.** A piece takes only the fields it needs, never the whole app, so nothing is copied to satisfy the borrow checker. A split adds no copy of beats, readings or sound. The strip, chart and Steadiness splits time a frame on a 26 h take before and after.
+- **The PR body gives the numbers:** lines and complexity per function, before and after.
+- A split may reset the saved pane layout once. This is accepted while the app has no public release.
+
+### Adjacent hygiene
+
+- **Copy-paste:** the count of copied product blocks may only go down.
+- **Dead code:** a public item with no caller outside its tests is removed, judged on all three platforms.
+- **Tests:** no crate's product coverage drops, and a new product file is covered at least 50%. A change to a core reading file runs mutation testing on what changed.
+- **Dependencies:** no unused dependency. Every library's licence is on the list that fits GPL-3.0. A vulnerability our code reaches is fixed at once.
+- **Comments:** a comment that no longer matches the code is a defect.
+
+### Enforced by
+
+| Rule | Check | Where |
+|---|---|---|
+| Function length and complexity | Clippy, with today's long functions marked | CI |
+| File length | The G11 count script lists files over 3,000 lines, which may not grow | CI |
+| Copy-paste | jscpd's product block count against a checked-in number | CI |
+| Unused dependencies, licences | `cargo machete`; `cargo deny` licence and bans checks | CI |
+| Coverage, mutation testing, advisories, dead public items, open marks | Trends against the baseline | Hygiene audit |
+| A split moves code only and adds no copies | Code-path review, screenshots, JSON comparison | Review |
