@@ -40,10 +40,10 @@ for (const c of cases) {
 }
 
 for (const invalid of [null, "7", Infinity, NaN]) {
-  test(`invalid authoritative rate falls back: ${String(invalid)}`, () => {
+  test(`invalid authoritative rate falls back to the card's clock, not a rate the CLI didn't choose: ${String(invalid)}`, () => {
     const doc = { overall: { rate_s_per_day: 6 }, rate_corrected_s_per_day: 4,
       clock: { rate_s_per_day: invalid } };
-    assert.equal(rateValue(render(doc)), 4);
+    assert.equal(rateValue(render(doc)), 6);
     doc.rate_corrected_s_per_day = invalid;
     assert.equal(rateValue(render(doc)), 6);
   });
