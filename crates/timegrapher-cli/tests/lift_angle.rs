@@ -21,6 +21,7 @@ impl Fixture {
                 "custom": [
                     {"name": "Bench 44", "bph": 28800, "lift_angle_deg": 44.0},
                     {"name": "Bench Unknown", "bph": 28800},
+                    {"name": "Bench Wide", "bph": 28800, "lift_angle_deg": 120.0},
                 ],
             })
             .to_string(),
@@ -109,6 +110,15 @@ fn long_and_series_take_the_lift_from_the_flag_then_the_calibre_then_52() {
             "{command}: {err}"
         );
 
+        let (lift, err) = f.lift(command, &["--calibre", "Bench Wide"]);
+        assert_eq!(lift, 52.0, "{command}");
+        assert!(
+            err.contains(
+                "note: lift 52°, the default; the calibre's lift angle of 120° is set aside, outside 10 to 90°"
+            ),
+            "{command}: {err}"
+        );
+
         let (lift, err) = f.lift(command, &["--calibre", "Bench Unknown", "--lift", "48"]);
         assert_eq!(lift, 48.0, "{command}");
         assert!(!has_note(&err), "{command}: {err}");
@@ -120,4 +130,35 @@ fn long_and_series_take_the_lift_from_the_flag_then_the_calibre_then_52() {
             "{command}: {err}"
         );
     }
+}
+
+/// `analyze` says why its lift is the default in the words `long` and
+/// `series` use, a calibre's set-aside lift among them.
+#[test]
+fn analyze_says_why_its_lift_is_the_default() {
+    let f = Fixture::new();
+    let wav = f.wav();
+    for (calibre, why) in [
+        (None, "calibre not set"),
+        (
+            Some("Bench Unknown"),
+            "the calibre's lift angle is not in the table",
+        ),
+        (
+            Some("Bench Wide"),
+            "the calibre's lift angle of 120° is set aside, outside 10 to 90°",
+        ),
+    ] {
+        let mut args = vec!["analyze", wav.to_str().unwrap()];
+        args.extend(calibre.iter().flat_map(|c| ["--calibre", *c]));
+        let out = f.run(&args);
+        assert!(out.status.success(), "{calibre:?}: {}", stderr(&out));
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            text.contains(&format!("lift angle 52°, the default; {why}")),
+            "{calibre:?}: {text}"
+        );
+    }
+    let out = f.run(&["analyze", wav.to_str().unwrap(), "--calibre", "Bench 44"]);
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("the default"));
 }
