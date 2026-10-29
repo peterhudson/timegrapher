@@ -47,6 +47,7 @@ pub fn run(o: Options) -> Result<(), String> {
         clock: applied_clock,
         breaks,
         masked,
+        stretches,
         ..
     } = crate::long::read(
         o.files,
@@ -66,7 +67,12 @@ pub fn run(o: Options) -> Result<(), String> {
     lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
     let clock = applied_clock.as_ref().map(|c| &c.fit);
-    let long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
+    let long = match stretches {
+        Some(_) => longrun::analyse_on_clock(&log, clock, &breaks, &lc),
+        None => longrun::analyse_with_breaks(&log, clock, &breaks, &lc),
+    };
+    // A take read in stretches is on its clock already.
+    let clock = clock.filter(|_| stretches.is_none());
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
 
     if o.json {
@@ -76,6 +82,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "bph": stream_cfg.analysis.bph,
             "lift_deg": stream_cfg.analysis.amplitude.lift_deg,
             "masked": masked,
+            "stretches": stretches,
             "notch_hz": stream_cfg.analysis.envelope.notch_hz,
             "highpass_hz": stream_cfg.analysis.envelope.highpass_hz,
             "calibre": calibre,
