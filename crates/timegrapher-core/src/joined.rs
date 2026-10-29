@@ -71,6 +71,24 @@ pub fn take_spans(m: &Manifest, duration_s: f64) -> Option<Vec<(f64, f64)>> {
     }
 }
 
+/// A log with `log`'s header and no beats, for [`join`] to fill.
+fn empty_like(log: &BeatLog) -> BeatLog {
+    BeatLog {
+        sample_rate: log.sample_rate,
+        duration_s: 0.0,
+        bph: log.bph,
+        lift_deg: log.lift_deg,
+        beats: Vec::new(),
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: log.clipped_samples,
+        jumps: Vec::new(),
+        sided: Vec::new(),
+        by_count: Vec::new(),
+        snippets: Vec::new(),
+    }
+}
+
 /// The part of `log` inside `spans`, in time order, with the time between
 /// them taken out: one position's beats over a session that moved the
 /// watch, joined so the tests see them as one run, with a short gap at each
@@ -94,20 +112,7 @@ pub fn join(
     let steps = clock.map_or(&[][..], |c| &c.breaks[..]);
     let mut cuts = Vec::new();
     let beat = 3600.0 / log.bph as f64;
-    let mut out = BeatLog {
-        sample_rate: log.sample_rate,
-        duration_s: 0.0,
-        bph: log.bph,
-        lift_deg: log.lift_deg,
-        beats: Vec::new(),
-        amplitude_windows: Vec::new(),
-        clipped_beats: Vec::new(),
-        clipped_samples: log.clipped_samples,
-        jumps: Vec::new(),
-        sided: Vec::new(),
-        by_count: Vec::new(),
-        snippets: Vec::new(),
-    };
+    let mut out = empty_like(log);
     // Times in [a, b), on the clock and with this span's shift taken off.
     let within = |at: &[f64], a: f64, b: f64, shift_t: f64| -> Vec<f64> {
         at.iter()

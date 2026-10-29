@@ -1293,7 +1293,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .default_y_bounds(-m, m)
                 .show(ui, |p| {
                     p.hline(HLine::new("zero", 0.0).color(weak).width(1.0_f32));
-                    for b in [1.36, -1.36] {
+                    for b in [cu.band, -cu.band] {
                         p.hline(
                             HLine::new("95%", b)
                                 .color(pal.text_secondary)
@@ -1302,13 +1302,8 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                         );
                     }
                     p.line(Line::new("cusum", pts.clone()).color(colour).width(1.5_f32));
-                    if cu.max > 1.36 {
-                        let y = pts
-                            .iter()
-                            .min_by(|a, b| {
-                                (a[0] - cu.at_s).abs().total_cmp(&(b[0] - cu.at_s).abs())
-                            })
-                            .map_or(0.0, |q| q[1]);
+                    if cu.shift {
+                        let y = cu.at;
                         p.points(
                             Points::new("corner", vec![[cu.at_s, y]])
                                 .color(colour)
