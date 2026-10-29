@@ -28,6 +28,7 @@
 
 use crate::clean::Cuts;
 use crate::clock::ClockFit;
+pub use crate::cusum::{kolmogorov_tail, Cusum, CUSUM_BAND};
 use crate::distribution::{self, Distributions};
 use crate::dsp::median;
 use crate::longrun::LongReport;
@@ -206,19 +207,6 @@ pub struct Allan {
     /// Largest deviation over the white line among points with at least
     /// 8 differences: 1 for independent readings.
     pub max_excess: f64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Cusum {
-    /// Time, seconds, and the CUSUM there in units of σ√n.
-    pub t_s: Vec<f64>,
-    pub s: Vec<f64>,
-    /// Largest |s| and where it is.
-    pub max: f64,
-    pub at_s: f64,
-    /// Chance of a max this large from independent readings
-    /// (Kolmogorov).
-    pub p_value: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -613,22 +601,6 @@ fn gamma_q(a: f64, x: f64) -> f64 {
 /// P(χ²_k > q).
 pub fn chi2_tail(q: f64, k: usize) -> f64 {
     gamma_q(k as f64 / 2.0, q / 2.0)
-}
-
-/// P(sup |Brownian bridge| > x).
-pub fn kolmogorov_tail(x: f64) -> f64 {
-    if x < 0.2 {
-        return 1.0;
-    }
-    let mut s = 0.0;
-    for j in 1..100 {
-        let t = (-2.0 * (j * j) as f64 * x * x).exp();
-        s += if j % 2 == 1 { t } else { -t };
-        if t < 1e-17 {
-            break;
-        }
-    }
-    (2.0 * s).clamp(0.0, 1.0)
 }
 
 /// Autocorrelation at lags 0..=max_lag of a series with gaps (NaN): each
@@ -1027,19 +999,7 @@ pub fn check_series(
                 ss.push(s);
             }
         }
-        let (k, m) = ss
-            .iter()
-            .enumerate()
-            .map(|(i, v)| (i, v.abs()))
-            .fold((0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
-        let stride = thin(ss.len(), cfg.max_points);
-        out.cusum = Some(Cusum {
-            max: m,
-            at_s: ts[k],
-            p_value: kolmogorov_tail(m),
-            t_s: ts.iter().step_by(stride).copied().collect(),
-            s: ss.iter().step_by(stride).copied().collect(),
-        });
+        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points)));
     }
 
     // Straight-line trend.

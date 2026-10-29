@@ -1389,16 +1389,15 @@ function steadyPlot(s, view, doc) {
       const pts = c.t_s.map((t, i) => [t, c.s[i]]).filter(([, y]) => Number.isFinite(y));
       const m = Math.max(1.6, ...pts.map((q) => Math.abs(q[1]))) * 1.1;
       const marks = [], notes = [];
-      if (c.max > 1.36 && pts.length) {
-        const near = pts.reduce((a, q) => Math.abs(q[0] - c.at_s) < Math.abs(a[0] - c.at_s) ? q : a, pts[0]);
-        marks.push({ x: c.at_s, y: near[1], color });
-        notes.push({ x: c.at_s, y: near[1], text: `level changes near ${fmtTime(c.at_s)}`, above: near[1] >= 0 });
+      if (c.shift && pts.length) {
+        marks.push({ x: c.at_s, y: c.at, color });
+        notes.push({ x: c.at_s, y: c.at, text: `level changes near ${fmtTime(c.at_s)}`, above: c.at >= 0 });
       }
       return xyChart({
         title: "CUSUM", x: [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))], y: [-m, m],
         xTicks: (p, q, w) => linTicks(p, q, w, Math.min(80, w / 4), (t) => fmtTime(t), TIME_STEPS),
         yTicks: (p, q, h) => linTicks(p, q, h, 24, (y, st) => stepText(y, st)),
-        hlines: [{ y: 0, color: "--text3" }, { y: 1.36, color: "--text2", dash: "loose" }, { y: -1.36, color: "--text2", dash: "loose" }],
+        hlines: [{ y: 0, color: "--text3" }, { y: c.band, color: "--text2", dash: "loose" }, { y: -c.band, color: "--text2", dash: "loose" }],
         lines: [{ pts, color, width: 1.5 }], marks, notes,
       });
     }
