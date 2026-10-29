@@ -241,6 +241,13 @@ async fn call(
         }
         result["_meta"][caveats::META_KEY] = json!(limits);
     }
+    // No regular beat, in core's words, for the view.
+    if let Some(said) = caveats::no_beat(&doc) {
+        if !result["_meta"].is_object() {
+            result["_meta"] = json!({});
+        }
+        result["_meta"][caveats::NO_BEAT_KEY] = json!(said);
+    }
     if let Some(k) = take {
         takes::remember(k, &result);
     }

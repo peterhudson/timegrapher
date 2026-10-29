@@ -674,36 +674,58 @@ pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
     }
 }
 
+/// The rate (s/d) at a bin of timing offsets (seconds) `dt` apart: minus
+/// the slope from the bin before to the bin after, as a watch that gains
+/// runs early; with one of them missing, from the other and the bin
+/// itself. A gap beside the bin is a gap in its rate.
+fn rate_at(before: Option<f64>, here: f64, after: Option<f64>, dt: f64) -> f64 {
+    let slope = match (before, after) {
+        (Some(a), Some(b)) => (b - a) / (2.0 * dt),
+        (Some(a), None) => (here - a) / dt,
+        (None, Some(b)) => (b - here) / dt,
+        (None, None) => f64::NAN,
+    };
+    -slope * 86400.0
+}
+
 /// The rate (s/d) implied by a folded timing profile (seconds of offset
-/// per phase bin): minus its slope, as a watch that gains runs early.
+/// per phase bin) ([`rate_at`]): the average cycle, so its last bin's
+/// neighbour after it is its first.
 pub fn rate_profile(profile: &[f64], period_s: f64) -> Vec<f64> {
     let n = profile.len();
     let dt = period_s / n as f64;
     (0..n)
         .map(|i| {
-            let a = profile[(i + n - 1) % n];
-            let b = profile[(i + 1) % n];
-            -(b - a) / (2.0 * dt) * 86400.0
+            rate_at(
+                Some(profile[(i + n - 1) % n]),
+                profile[i],
+                Some(profile[(i + 1) % n]),
+                dt,
+            )
         })
         .collect()
 }
 
-/// The rate (s/d) each cycle of a fold ran at through its period: each of
-/// `rows` (one cycle's timing offsets, seconds per phase bin, as
-/// [`Fold::raster`] keeps them, or rows averaged from them) as minus its
-/// slope across each bin's neighbours; the first and last bins, with only
-/// one neighbour in their cycle, from it and themselves.
+/// The rate (s/d) each cycle of a fold ran at through its period
+/// ([`rate_at`]): `rows` are the cycles in time order, each one's timing
+/// offsets, seconds per phase bin, as [`Fold::raster`] keeps them (not
+/// rows averaged from them, whose ends are cycles apart). A cycle's last
+/// bin is followed by the next cycle's first, and its first preceded by
+/// the last cycle's last; the take's first and last bins have one
+/// neighbour.
 pub fn rate_rows(rows: &[Vec<f64>], period_s: f64) -> Vec<Vec<f64>> {
     rows.iter()
-        .map(|r| {
+        .enumerate()
+        .map(|(i, r)| {
             let n = r.len();
             let dt = period_s / n as f64;
+            let before = i.checked_sub(1).and_then(|k| rows[k].last().copied());
+            let after = rows.get(i + 1).and_then(|r| r.first().copied());
             (0..n)
                 .map(|j| {
-                    let a = if j > 0 { r[j - 1] } else { r[j] };
-                    let b = if j + 1 < n { r[j + 1] } else { r[j] };
-                    let span = if j > 0 && j + 1 < n { 2.0 } else { 1.0 };
-                    -(b - a) / (span * dt) * 86400.0
+                    let a = if j > 0 { Some(r[j - 1]) } else { before };
+                    let b = if j + 1 < n { Some(r[j + 1]) } else { after };
+                    rate_at(a, r[j], b, dt)
                 })
                 .collect()
         })
@@ -714,29 +736,52 @@ pub fn rate_rows(rows: &[Vec<f64>], period_s: f64) -> Vec<Vec<f64>> {
 mod tests {
     use super::*;
 
-    /// A cycle that gains at a steady 8.64 s/d (1e-4 of time) reads 8.64
-    /// in every bin, the end bins from their one neighbour; a gap stays a
-    /// gap beside it.
+    /// A take that gains at a steady 8.64 s/d (1e-4 of time) reads 8.64
+    /// in every bin of every cycle, its first and last from their one
+    /// neighbour; a gap stays a gap beside it.
     #[test]
     fn each_cycle_reads_its_own_rate() {
-        let period = 100.0;
-        let gaining: Vec<f64> = (0..10).map(|j| -1e-4 * (j as f64 * 10.0)).collect();
-        let losing: Vec<f64> = gaining.iter().map(|v| -v).collect();
-        let mut gap = gaining.clone();
-        gap[4] = f64::NAN;
-        let rows = rate_rows(&[gaining, losing, gap], period);
+        let (period, n) = (100.0, 10);
+        let dt = period / n as f64;
+        let take = |f: &dyn Fn(f64) -> f64| -> Vec<Vec<f64>> {
+            (0..3)
+                .map(|k| (0..n).map(|j| f((k * n + j) as f64 * dt)).collect())
+                .collect()
+        };
+        let rows = rate_rows(&take(&|t| -1e-4 * t), period);
         assert!(
-            rows[0].iter().all(|v| (v - 8.64).abs() < 1e-9),
-            "{:?}",
-            rows[0]
+            rows.iter().flatten().all(|v| (v - 8.64).abs() < 1e-9),
+            "{rows:?}"
         );
-        assert!(
-            rows[1].iter().all(|v| (v + 8.64).abs() < 1e-9),
-            "{:?}",
-            rows[1]
-        );
-        assert!(rows[2][3].is_nan() && rows[2][5].is_nan());
-        assert!((rows[2][4] - 8.64).abs() < 1e-9);
+        let rows = rate_rows(&take(&|t| 1e-4 * t), period);
+        assert!(rows.iter().flatten().all(|v| (v + 8.64).abs() < 1e-9));
+        let mut gap = take(&|t| -1e-4 * t);
+        gap[1][4] = f64::NAN;
+        let rows = rate_rows(&gap, period);
+        assert!(rows[1][3].is_nan() && rows[1][5].is_nan());
+        assert!((rows[1][4] - 8.64).abs() < 1e-9);
+        // A gap at a cycle's start is beside the last cycle's last bin.
+        gap[1][0] = f64::NAN;
+        assert!(rate_rows(&gap, period)[0][n - 1].is_nan());
+    }
+
+    /// A cycle's ends read across to the cycles beside it, as its middle
+    /// bins read across their neighbours: on a sine of the timing a cycle's
+    /// last bin reads what the same bin of a longer row would.
+    #[test]
+    fn a_cycles_ends_read_across_to_the_next_cycle() {
+        let (period, n) = (100.0, 10);
+        let dt = period / n as f64;
+        let f = |t: f64| 0.01 * (t / 37.0).sin();
+        let rows: Vec<Vec<f64>> = (0..3)
+            .map(|k| (0..n).map(|j| f((k * n + j) as f64 * dt)).collect())
+            .collect();
+        let whole: Vec<f64> = rows.iter().flatten().copied().collect();
+        let as_one = rate_rows(&[whole], 3.0 * period);
+        let rates: Vec<f64> = rate_rows(&rows, period).into_iter().flatten().collect();
+        for (a, b) in rates.iter().zip(&as_one[0]) {
+            assert!((a - b).abs() < 1e-9, "{a} vs {b}");
+        }
     }
 
     #[test]
