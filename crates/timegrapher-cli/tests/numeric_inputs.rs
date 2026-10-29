@@ -28,6 +28,7 @@ fn numeric_inputs_reject_before_audio_and_output_creation() {
         "--bph=0",
         "--lift=0",
         "--lift=NaN",
+        "--lift=95",
         "--escape-teeth=0",
         "--card-ppm=-1000000",
     ] {
@@ -87,7 +88,7 @@ fn numeric_inputs_report_settings_reject_before_bundle_analysis_work() {
     let f = Fixture::new("report");
     let missing = f.0.join("missing-report-recording.wav");
     let dest = f.0.join("report-output");
-    for flag in ["--bph=0", "--lift=0", "--lift=NaN"] {
+    for flag in ["--bph=0", "--lift=0", "--lift=NaN", "--lift=95"] {
         let out = f
             .command()
             .arg("report")

@@ -46,10 +46,11 @@ clock = "ym42_DU_2h/clocklog.txt"   # see long-runs.md
 ```
 
 When a session manifest is consumed, `bph` must be a positive `u32`,
-`lift` (including its `lift_angle` alias) must be finite and positive,
+`lift` (including its `lift_angle` alias) must be from 10 to 90 degrees,
+the one lift range the app, the command line and MCP use too,
 `escape_teeth` must be a positive `u32`, and `card_ppm` must be finite with
-`1 + card_ppm × 10⁻⁶ > 0`. These are representation/mathematical domains,
-not watch operating ranges. Zero clock correction remains valid. Missing
+`1 + card_ppm × 10⁻⁶ > 0`. Apart from the lift's range, these are
+representation/mathematical domains, not watch operating ranges. Zero clock correction remains valid. Missing
 fields, labels, lift context and valid-setting precedence are unchanged.
 
 CLI session/record reject an invalid stored field before audio or take/report
