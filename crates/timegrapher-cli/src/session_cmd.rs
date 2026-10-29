@@ -458,22 +458,48 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     Ok(read_one_inner(e, c, false)?.0)
 }
 
-/// [`read_one`], with an entry that has nothing to read in its recording
-/// ([`take::NoReading`]) noted and left out, so the rest are still read.
-fn read_one_or_note(e: &RecordingEntry, c: &Ctx) -> Result<Option<Reading>, String> {
-    match read_one_inner(e, c, false) {
-        Ok((reading, _)) => Ok(Some(reading)),
-        Err(take::EntryError::NoReading(why)) => {
-            if c.tty {
-                eprintln!();
-            }
-            eprintln!(
-                "note: {} ({}) is left out: {why}",
-                e.file,
-                e.position.as_deref().unwrap_or("-")
-            );
-            Ok(None)
+/// An entry of the session file with nothing to read in its recording,
+/// and core's reason ([`take::NoReading`]). It is left out of the
+/// readings, and the report says so.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LeftOut {
+    pub file: String,
+    pub position: Option<String>,
+    pub start_s: f64,
+    pub why: String,
+}
+
+impl LeftOut {
+    fn new(e: &RecordingEntry, why: &take::NoReading) -> Self {
+        LeftOut {
+            file: e.file.clone(),
+            position: e.position.clone(),
+            start_s: e.start_s.unwrap_or(0.0),
+            why: why.to_string(),
         }
+    }
+
+    /// The line the summary and the note print.
+    pub fn text(&self) -> String {
+        format!(
+            "{} ({}) at {:.0} s is left out: {}",
+            self.file,
+            self.position.as_deref().unwrap_or("-"),
+            self.start_s,
+            self.why
+        )
+    }
+}
+
+/// [`read_one`], or the entry left out when it has nothing to read in its
+/// recording ([`take::NoReading`]), so the rest are still read.
+fn read_one_or_left_out(e: &RecordingEntry, c: &Ctx) -> Result<Result<Reading, LeftOut>, String> {
+    if take::reads_nothing(e) {
+        return Ok(Err(LeftOut::new(e, &take::NoReading::Nothing)));
+    }
+    match read_one_inner(e, c, false) {
+        Ok((reading, _)) => Ok(Ok(reading)),
+        Err(take::EntryError::NoReading(why)) => Ok(Err(LeftOut::new(e, &why))),
         Err(e) => Err(e.into()),
     }
 }
@@ -672,6 +698,8 @@ pub struct Session<'a> {
     pub bph: u32,
     pub lift_deg: f64,
     pub readings: Vec<Reading>,
+    /// Entries with nothing to read, and why: they are not in `readings`.
+    pub left_out: Vec<LeftOut>,
     pub report: SessionReport,
     /// A Power Reserve Test's run, from the folder's `power-reserve.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -702,25 +730,22 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         quiet: false,
         card_clock: false,
     };
-    // An entry with nothing to read (`take::reads_nothing`) is left out,
-    // with a note.
-    for e in m.recordings.iter().filter(|e| take::reads_nothing(e)) {
-        eprintln!(
-            "note: {} ({}) at {:.0} s has nothing to read, so it is left out",
-            e.file,
-            e.position.as_deref().unwrap_or("-"),
-            e.start_s.unwrap_or(0.0)
-        );
+    // An entry with nothing to read is left out, with a note, and the
+    // report lists it.
+    let mut readings = Vec::new();
+    let mut left_out = Vec::new();
+    for e in &m.recordings {
+        match read_one_or_left_out(e, &ctx)? {
+            Ok(r) => readings.push(r),
+            Err(l) => {
+                if ctx.tty {
+                    eprintln!();
+                }
+                eprintln!("note: {}", l.text());
+                left_out.push(l);
+            }
+        }
     }
-    let readings: Vec<Reading> = m
-        .recordings
-        .iter()
-        .filter(|e| !take::reads_nothing(e))
-        .map(|e| read_one_or_note(e, &ctx))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
-        .collect();
     if readings.is_empty() {
         return Err(format!(
             "{}: no recording listed with anything to read",
@@ -761,6 +786,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         bph,
         lift_deg: o.lift(&m, cal),
         readings,
+        left_out,
         report,
         power_reserve: power_reserve_of(&base)?,
     };
@@ -979,6 +1005,9 @@ fn print_summary(s: &Session) {
             rf,
             rd.label,
         );
+    }
+    for l in &s.left_out {
+        println!("Left out     {}", l.text());
     }
     println!(
         "Unlock is the share of 2 s windows that found the unlock on both sides, on which amplitude and BE rest; Clip is the share of beats with a clipped sample."
@@ -1724,6 +1753,7 @@ mod tests {
             bph: 28800,
             lift_deg: 52.0,
             readings: Vec::new(),
+            left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: Some(r),
         };
@@ -1890,6 +1920,7 @@ mod tests {
             bph: 28800,
             lift_deg: 52.0,
             readings: Vec::new(),
+            left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: None,
         };

@@ -601,6 +601,12 @@ pub fn html(sn: &Session) -> String {
 
     body.push_str("<h2>Readings</h2>");
     body.push_str(&readings_table(sn));
+    for l in &sn.left_out {
+        body.push_str(&format!(
+            r#"<p class="note">Left out: {}</p>"#,
+            esc(&l.text())
+        ));
+    }
     body.push_str(&format!(r#"<p class="note">Each reading starts after the settling time and runs to the end of the recording (or the measuring time set in the session file). 10 s rates: the 5th to 95th percentile of rate over 10 s windows, a measure of how steady the rate is. Beat error is a size: which beat is longer is not shown, because it depends on the beat the analysis locked on first. The settling time is left out, as the quick check <code>record</code> prints leaves it out. That check uses the session file's <code>settle_s</code> (20 s when the file has none, as this report does) and none of <code>--settle</code>, <code>--bph</code>, <code>--lift</code>, <code>--calibre</code>, a reading's own <code>settle_s</code>, <code>measure_s</code>, <code>start_s</code>, <code>end_s</code>, a clock log, <code>card_ppm</code> or a restart in listening, so a reading that uses one of these can differ from it.{}</p>"#, if sn.readings.iter().any(|r| r.measurement.calibrated) { " The sound card's clock error is corrected where a clock log or <code>card_ppm</code> is given." } else { "" }));
 
     body.push_str("<h2>Characteristic values</h2>");
@@ -791,6 +797,7 @@ mod tests {
             bph: 28800,
             lift_deg: 52.0,
             readings,
+            left_out: Vec::new(),
             report,
             power_reserve: None,
         })

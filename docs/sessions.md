@@ -208,7 +208,9 @@ reading is labelled with the stretch, e.g. `take (600–1200 s)`. An
 entry whose `start_s` equals its `end_s` is a position that settled
 right to its end (the app saves one so when the watch was moved again,
 or painted over, before it settled): it has nothing to read.
-`timegrapher session` and `regress` leave it out with a note, the Watches list reads
+`timegrapher session` and `regress` leave it out with a note (`session`
+also lists it, and any entry whose given `settle_s` leaves it nothing, under
+"Left out" in its summary and report and in `left_out` in its JSON), the Watches list reads
 the last entry that has something to read, and a session file with
 nothing else to read is refused.
 

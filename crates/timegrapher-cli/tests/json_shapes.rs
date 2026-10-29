@@ -125,7 +125,8 @@ fn session_keeps_its_fields() {
     std::fs::write(
         dir.join("session.toml"),
         "bph = 28800\nlift = 52\n\n[[recording]]\nfile = \"du.wav\"\nposition = \"DU\"\n\n\
-         [[recording]]\nfile = \"cu.wav\"\nposition = \"CU\"\n",
+         [[recording]]\nfile = \"cu.wav\"\nposition = \"CU\"\n\n\
+         [[recording]]\nfile = \"cu.wav\"\nposition = \"CD\"\nsettle_s = 100.0\n",
     )
     .unwrap();
     let out = dir.join("out");
