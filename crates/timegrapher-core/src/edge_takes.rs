@@ -70,8 +70,8 @@ pub fn all() -> Vec<EdgeTake> {
         },
         EdgeTake {
             id: "edge_short_25s_settle_20",
-            summary: "25 s with a 20 s settling time and no end given",
-            caveats: &[&["clock_unknown"]],
+            summary: "25 s with a 20 s settling time and no end given: 5 s is measured",
+            caveats: &[&["short_span", "clock_unknown"]],
             truth: None,
             known: None,
         },
