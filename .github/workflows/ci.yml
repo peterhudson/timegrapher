@@ -57,7 +57,7 @@ jobs:
       - name: Packaging script tests (offline)
         run: python3 -m unittest discover -s packaging -p 'test_*.py' -v
       - name: Light-run rule tests (offline)
-        run: python3 -m unittest discover -s .github/ci -p 'test_changes.py' -v
+        run: python3 -m unittest discover -s .github/ci -p 'test_*.py' -v
       # A pull request that changes README, LICENSE, docs/ or the watchmaker
       # skill runs release.yml's render and link check of the downloads'
       # pages, so what would fail there fails here, not at the next draft.
