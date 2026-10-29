@@ -224,11 +224,21 @@ impl<'a> Entry<'a> {
     /// calibre saved before the range, or edited by hand) is set aside,
     /// so a reading takes the default and says the lift is unknown.
     pub fn lift_angle_deg(&self) -> Option<f64> {
+        self.stored_lift_deg()
+            .filter(|l| crate::input_domain::lift_deg(*l).is_ok())
+    }
+
+    /// The lift angle [`Entry::lift_angle_deg`] set aside, if any.
+    pub fn lift_set_aside_deg(&self) -> Option<f64> {
+        self.stored_lift_deg()
+            .filter(|l| crate::input_domain::lift_deg(*l).is_err())
+    }
+
+    fn stored_lift_deg(&self) -> Option<f64> {
         match self {
             Entry::Table(c) => c.lift_angle_deg,
             Entry::Custom(c) => c.lift_angle_deg,
         }
-        .filter(|l| crate::input_domain::lift_deg(*l).is_ok())
     }
 
     pub fn escape_teeth(&self) -> Option<u32> {
@@ -518,6 +528,12 @@ mod tests {
             let name = u.custom[0].name.clone();
             let cat = Catalog::new(&u);
             assert_eq!(cat.find(&name).unwrap().lift_angle_deg(), kept, "{lift}");
+            let aside = kept.is_none().then_some(lift);
+            assert_eq!(
+                cat.find(&name).unwrap().lift_set_aside_deg(),
+                aside,
+                "{lift}"
+            );
             let c = crate::take::calibre_named(&name, &u).unwrap();
             assert_eq!(c.lift_angle_deg, kept, "{lift}");
         }
