@@ -11,7 +11,6 @@
 //! the Project only opens a pre-filled GitHub issue in the browser: the
 //! app sends nothing itself.
 
-use timegrapher_core::input_domain::LIFT_RANGE_DEG;
 use crate::fields;
 use crate::marks::title_case;
 use crate::settings;
@@ -23,6 +22,7 @@ use timegrapher_core::calibre_store::{
     Catalog, CustomCalibre, CustomWheel, Entry, Origin, UserCalibres,
 };
 use timegrapher_core::calibres::{self, Calibre};
+use timegrapher_core::input_domain::LIFT_RANGE_DEG;
 use timegrapher_core::periodicity::Wheel;
 
 /// How many calibres the app was set to lately the menu offers.
@@ -1888,8 +1888,8 @@ impl Calibres {
                     &LIFT,
                     50.0,
                 ) {
-                    c.lift_angle_deg = (l > 0.0)
-                        .then(|| l.clamp(*LIFT_RANGE_DEG.start(), *LIFT_RANGE_DEG.end()));
+                    c.lift_angle_deg =
+                        (l > 0.0).then(|| l.clamp(*LIFT_RANGE_DEG.start(), *LIFT_RANGE_DEG.end()));
                     change.lift = c.lift_angle_deg;
                 }
                 ui.label("°");

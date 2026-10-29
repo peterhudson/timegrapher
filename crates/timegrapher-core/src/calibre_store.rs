@@ -507,7 +507,12 @@ mod tests {
     /// reading takes the default and says the lift is unknown.
     #[test]
     fn a_custom_lift_outside_the_range_is_set_aside() {
-        for (lift, kept) in [(5.0, None), (95.0, None), (10.0, Some(10.0)), (44.0, Some(44.0))] {
+        for (lift, kept) in [
+            (5.0, None),
+            (95.0, None),
+            (10.0, Some(10.0)),
+            (44.0, Some(44.0)),
+        ] {
             let mut u = store();
             u.custom[0].lift_angle_deg = Some(lift);
             let name = u.custom[0].name.clone();
