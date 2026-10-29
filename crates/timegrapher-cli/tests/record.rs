@@ -139,7 +139,7 @@ fn takes_build_up_a_session() {
     let text = fs::read_to_string(sess.join("session.toml")).unwrap();
     assert!(text.starts_with("# Written by `timegrapher record`"));
     assert!(text.contains("calibre = \"ETA 2824-2\""));
-    assert!(text.contains("settle_s = 30.0"));
+    assert!(text.contains("settle_s = 20.0"));
     assert_eq!(text.matches("[[recording]]").count(), 2);
     assert!(text.contains("position = \"CL\"\nwind_h = 24.0"));
     assert!(text.contains("position = \"DU\"\ndate = "));

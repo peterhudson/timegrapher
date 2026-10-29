@@ -31,7 +31,7 @@ sure you are. Call the two sides of the beat Tick and Tock.
    demagnetise first, then start again), if the beat rate is not the
    calibre's, or if the ticks clip (`clipping`).
 5. **Six positions**, 2 minutes each, recording as soon as the watch is
-   turned (the first 30 s are skipped while it settles): dial up, dial
+   turned (the first 20 s are skipped while it settles): dial up, dial
    down, crown down, crown left, crown up, crown right, each a `record`
    into one session folder. Tell them when it starts and when it ends.
    If a take has no regular beat or clipped ticks, fix the cause and
