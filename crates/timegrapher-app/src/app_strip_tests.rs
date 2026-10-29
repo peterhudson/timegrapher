@@ -64,7 +64,7 @@ fn a_steady_take_runs_on_through_a_pause_on_the_strip() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.follow = follow;
         let (log, breaks) = paused_take();
-        app.take_breaks = Some(breaks.clone());
+        app.put_take_breaks(Some(breaks.clone()));
         app.show_log(log, "paused".into(), vec![], vec![]);
         let half = app.strip.half_width_ms;
         assert!(half <= 1.0, "follow {follow}: ±{half} ms");
