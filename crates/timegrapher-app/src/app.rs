@@ -12139,7 +12139,7 @@ impl TimegrapherApp {
         self.take_clock = clock;
         self.take_clock_from = from;
         if let Some(l) = self.live.as_mut() {
-            l.set_rate_clock(self.take_rate_clock());
+            l.set_rate_clock(self.take_clock.as_ref().filter(|f| f.corrects()));
         }
         self.rev.clock += 1;
     }
