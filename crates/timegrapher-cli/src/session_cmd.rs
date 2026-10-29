@@ -541,11 +541,17 @@ pub struct LeftOut {
 
 impl LeftOut {
     fn new(e: &RecordingEntry, why: &take::NoReading) -> Self {
+        // The file is named beside the reason, so not again inside it.
+        let why = why.to_string();
+        let why = why
+            .strip_prefix(&format!("{}: ", e.file))
+            .unwrap_or(&why)
+            .to_string();
         LeftOut {
             file: e.file.clone(),
             position: e.position.clone(),
             start_s: e.start_s.unwrap_or(0.0),
-            why: why.to_string(),
+            why,
         }
     }
 

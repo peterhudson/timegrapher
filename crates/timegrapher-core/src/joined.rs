@@ -40,7 +40,7 @@ pub fn joined_duration(spans: &[(f64, f64)], end_s: f64, clock: Option<&ClockFit
 
 /// The stretches of a take that are read, audio seconds, in time order:
 /// each entry's from the end of its settling, as `timegrapher session`
-/// reads it ([`take::measured`]), on a take whose entries are all one
+/// reads it ([`take::reading_window`]), on a take whose entries are all one
 /// recording `duration_s` long and name their positions. None when that
 /// leaves the whole recording, when two entries' stretches overlap, or
 /// when the entries are not like that: the take is then read whole.
@@ -55,13 +55,8 @@ pub fn take_spans(m: &Manifest, duration_s: f64) -> Option<Vec<(f64, f64)>> {
     let mut spans: Vec<(f64, f64)> = m
         .recordings
         .iter()
-        .filter(|e| !take::reads_nothing(e))
-        .map(|e| {
-            let start = e.start_s.unwrap_or(0.0).max(0.0);
-            let stop = e.end_s.unwrap_or(duration_s).min(duration_s);
-            let (settle_s, measure_s) = take::entry_times(e, m);
-            take::measured(start, stop, settle_s, measure_s)
-        })
+        .filter_map(|e| take::reading_window(e, m, None, duration_s).ok())
+        .map(|w| (w.from_s, w.to_s))
         .filter(|(a, b)| b > a)
         .collect();
     spans.sort_by(|a, b| a.0.total_cmp(&b.0));

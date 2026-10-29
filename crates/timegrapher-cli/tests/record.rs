@@ -204,7 +204,7 @@ fn takes_build_up_a_session() {
         .unwrap();
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{err}");
-    assert!(err.contains("(DD) at 0 s is left out"), "{err}");
+    assert!(err.contains("(DD) at 0 s is left out: a settle_s"), "{err}");
     let j = doc(&out);
     assert_eq!(j["readings"].as_array().unwrap().len(), 2);
     let left = j["left_out"].as_array().unwrap();
@@ -214,7 +214,7 @@ fn takes_build_up_a_session() {
         left[0]["why"]
             .as_str()
             .unwrap()
-            .contains("settle_s of 1000"),
+            .starts_with("a settle_s of 1000"),
         "{j}"
     );
     // The summary and the report say so too.
