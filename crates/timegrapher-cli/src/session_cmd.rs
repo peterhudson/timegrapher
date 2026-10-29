@@ -454,6 +454,92 @@ fn lift_known(c: &Ctx, cal: Option<&ResolvedCalibre>) -> bool {
         .lift_known
 }
 
+/// What `session` reads of the sound file `file` when the session file
+/// in its folder lists it: each entry naming it, read as `session` reads
+/// it ([`read_one`], with `bph`, `lift` and `calibre` as `session`'s own
+/// flags and no cycles), and the entries naming it with nothing to read.
+/// None when the folder has no session file or it does not list `file`.
+/// A session file that cannot be read, or an entry naming `file` that
+/// `session` would refuse, gives `session_file` and the `error`, so the
+/// file's own reading still stands.
+pub(crate) fn take_of(
+    file: &Path,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+) -> Option<serde_json::Value> {
+    let dir = file.parent()?;
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    let session_file = dir.join(take::MANIFEST);
+    if !session_file.is_file() {
+        return None;
+    }
+    read_take_of(file, &session_file, bph, lift, calibre).unwrap_or_else(|error| {
+        Some(serde_json::json!({
+            "session_file": session_file,
+            "error": error,
+        }))
+    })
+}
+
+fn read_take_of(
+    file: &Path,
+    session_file: &Path,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    let (mut m, base, _) = load_manifest_file(session_file)?;
+    let same =
+        |e: &RecordingEntry| match (fs::canonicalize(base.join(&e.file)), fs::canonicalize(file)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+    m.recordings.retain(same);
+    if m.recordings.is_empty() {
+        return Ok(None);
+    }
+    let o = Options {
+        bph,
+        lift,
+        calibre,
+        settle: None,
+        out: None,
+        json: true,
+        init: false,
+        no_shape: false,
+        no_cycles: true,
+    };
+    let selection = o.calibre(&m)?;
+    let ctx = Ctx {
+        m: &m,
+        calibre: &selection,
+        base: &base,
+        o: &o,
+        tty: false,
+        quiet: true,
+        card_clock: false,
+    };
+    let mut readings = Vec::new();
+    let mut left_out = Vec::new();
+    for e in &m.recordings {
+        position_of(e)?;
+        match read_one_or_left_out(e, &ctx)? {
+            Ok(r) => readings.push(r),
+            Err(l) => left_out.push(l),
+        }
+    }
+    Ok(Some(serde_json::json!({
+        "session_file": session_file,
+        "readings": readings,
+        "left_out": left_out,
+    })))
+}
+
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     Ok(read_one_inner(e, c, false)?.0)
 }
@@ -464,27 +550,36 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LeftOut {
     pub file: String,
-    pub position: Option<String>,
+    /// As a reading names it ([`position_of`]): Witschi's code in the
+    /// JSON.
+    pub position: Option<Position>,
     pub start_s: f64,
     pub why: String,
 }
 
 impl LeftOut {
     fn new(e: &RecordingEntry, why: &take::NoReading) -> Self {
+        // The file is named beside the reason, so not again inside it.
+        let why = why.to_string();
+        let why = why
+            .strip_prefix(&format!("{}: ", e.file))
+            .unwrap_or(&why)
+            .to_string();
         LeftOut {
             file: e.file.clone(),
-            position: e.position.clone(),
+            position: position_of(e).ok(),
             start_s: e.start_s.unwrap_or(0.0),
-            why: why.to_string(),
+            why,
         }
     }
 
     /// The line the summary and the note print.
     pub fn text(&self) -> String {
         format!(
-            "{} ({}) at {:.0} s is left out: {}",
+            "{}, {}, at {:.0} s is left out: {}",
             self.file,
-            self.position.as_deref().unwrap_or("-"),
+            self.position
+                .map_or("-".to_string(), Position::display_label),
             self.start_s,
             self.why
         )
