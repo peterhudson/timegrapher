@@ -301,7 +301,7 @@ pub fn join(
         cuts.extend(
             breaks
                 .iter()
-                .filter(|c| c.audio_s >= a && c.audio_s < b)
+                .filter(|c| c.audio_s > a && c.audio_s < b)
                 .map(|c| Break {
                     audio_s: c.audio_s - shift_t,
                     ..*c
@@ -2723,6 +2723,24 @@ mod tests {
         );
         assert_eq!(cuts[1].gap_s, 0.0, "{cuts:?}");
         assert!(joined.jumps.contains(&cuts[1].audio_s), "{cuts:?}");
+    }
+
+    /// A break exactly where a span starts adds nothing: the join there
+    /// already cuts, with no time, and the first span starts unbroken.
+    #[test]
+    fn a_break_at_a_spans_start_adds_no_cut() {
+        use timegrapher_core::breaks::Break;
+        let log = context_log();
+        let cut = |audio_s, gap_s| Break { audio_s, gap_s };
+        let (_, cuts) = join(
+            &log,
+            &[(10.0, 70.0), (80.0, 110.0)],
+            &[cut(10.0, 30.0), cut(80.0, 30.0)],
+        );
+        assert!(
+            cuts.iter().all(|c| c.gap_s == 0.0 && c.audio_s > 0.0),
+            "{cuts:?}"
+        );
     }
 
     #[test]
