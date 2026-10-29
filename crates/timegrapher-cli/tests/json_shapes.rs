@@ -130,19 +130,33 @@ fn session_keeps_its_fields() {
     )
     .unwrap();
     let out = dir.join("out");
-    check(
-        "session",
-        &json(
-            &dir.join("config"),
-            &[
-                "session",
-                dir.to_str().unwrap(),
-                "--out",
-                out.to_str().unwrap(),
-                "--json",
-            ],
-        ),
+    let session = json(
+        &dir.join("config"),
+        &[
+            "session",
+            dir.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+            "--json",
+        ],
     );
+    check("session", &session);
+    // `analyze` on a file the session file lists says what `session` reads
+    // of it: here its CU entry, the same to the bit, and its CD entry left
+    // out.
+    let cu = dir.join("cu.wav");
+    let analyze = json(
+        &dir.join("config"),
+        &["analyze", cu.to_str().unwrap(), "--json"],
+    );
+    check("analyze_take", &analyze);
+    let take = &analyze["take"];
+    assert_eq!(take["readings"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        take["readings"][0]["measurement"],
+        session["readings"][1]["measurement"]
+    );
+    assert_eq!(take["left_out"], session["left_out"]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

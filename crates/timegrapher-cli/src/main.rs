@@ -729,8 +729,9 @@ fn main() -> ExitCode {
             cfg.amplitude.lift_deg = r.lift_deg;
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
+            let take = session_cmd::take_of(&file, bph, lift, calibre.clone())?;
             clock_cmd::correction(&file, device.as_deref(), card_ppm)
-                .and_then(|c| run_analyze(&file, &cfg, &r.train, beats, windows, c, json))
+                .and_then(|c| run_analyze(&file, &cfg, &r.train, (beats, windows), c, take, json))
         }),
         Command::Shape {
             file,
@@ -1131,9 +1132,9 @@ fn run_analyze(
     file: &Path,
     cfg: &AnalysisConfig,
     train: &long::ResolvedTrain,
-    beats: Option<PathBuf>,
-    windows: Option<PathBuf>,
+    (beats, windows): (Option<PathBuf>, Option<PathBuf>),
     clock: Option<(f64, String)>,
+    take: Option<serde_json::Value>,
     json: bool,
 ) -> Result<(), String> {
     let audio = load(file).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -1179,6 +1180,11 @@ fn run_analyze(
                 a.summary.overall.as_ref().map(|f| f.rate_s_per_day),
             );
         }
+        // The file is a take's: what `session` reads of it, beside the
+        // whole file read alone.
+        if let Some(t) = take {
+            body["take"] = t;
+        }
         output::print(
             "analyze",
             output::input(&[file.to_path_buf()], settings),
@@ -1194,8 +1200,39 @@ fn run_analyze(
             );
         }
         print_summary(&a, clock.as_ref(), calibre);
+        if let Some(t) = &take {
+            print_take(t);
+        }
     }
     Ok(())
+}
+
+/// What `session` reads of a take's file ([`session_cmd::take_of`]), one
+/// line for each entry naming it.
+fn print_take(t: &serde_json::Value) {
+    println!(
+        "Take         {} lists this file; `timegrapher session` reads it:",
+        t["session_file"].as_str().unwrap_or("")
+    );
+    for r in t["readings"].as_array().into_iter().flatten() {
+        let m = &r["measurement"];
+        let f = |k: &str, d: usize| m[k].as_f64().map_or("-".into(), |x| format!("{x:.d$}"));
+        println!(
+            "             {} from {} to {} s: rate {} s/d, amplitude {} deg",
+            r["position"].as_str().unwrap_or("-"),
+            f("start_s", 0),
+            f("end_s", 0),
+            f("rate_s_per_day", 1),
+            f("amplitude_deg", 0)
+        );
+    }
+    for l in t["left_out"].as_array().into_iter().flatten() {
+        println!(
+            "             {} is left out: {}",
+            l["position"].as_str().unwrap_or("-"),
+            l["why"].as_str().unwrap_or("")
+        );
+    }
 }
 
 /// The clock correction applied to a rate read on the sound card.

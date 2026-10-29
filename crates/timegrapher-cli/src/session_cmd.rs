@@ -454,6 +454,76 @@ fn lift_known(c: &Ctx, cal: Option<&ResolvedCalibre>) -> bool {
         .lift_known
 }
 
+/// What `session` reads of the sound file `file` when the session file
+/// in its folder lists it: each entry naming it, read as `session` reads
+/// it ([`read_one`], with `bph`, `lift` and `calibre` as `session`'s own
+/// flags and no cycles), and the entries naming it with nothing to read.
+/// None when the folder has no session file or it does not list `file`.
+pub(crate) fn take_of(
+    file: &Path,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some(dir) = file.parent() else {
+        return Ok(None);
+    };
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    let session_file = dir.join(take::MANIFEST);
+    if !session_file.is_file() {
+        return Ok(None);
+    }
+    let (mut m, base, _) = load_manifest_file(&session_file)?;
+    let same =
+        |e: &RecordingEntry| match (fs::canonicalize(base.join(&e.file)), fs::canonicalize(file)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+    m.recordings.retain(same);
+    if m.recordings.is_empty() {
+        return Ok(None);
+    }
+    let o = Options {
+        bph,
+        lift,
+        calibre,
+        settle: None,
+        out: None,
+        json: true,
+        init: false,
+        no_shape: false,
+        no_cycles: true,
+    };
+    let selection = o.calibre(&m)?;
+    let ctx = Ctx {
+        m: &m,
+        calibre: &selection,
+        base: &base,
+        o: &o,
+        tty: false,
+        quiet: true,
+        card_clock: false,
+    };
+    let mut readings = Vec::new();
+    let mut left_out = Vec::new();
+    for e in &m.recordings {
+        position_of(e)?;
+        match read_one_or_left_out(e, &ctx)? {
+            Ok(r) => readings.push(r),
+            Err(l) => left_out.push(l),
+        }
+    }
+    Ok(Some(serde_json::json!({
+        "session_file": session_file,
+        "readings": readings,
+        "left_out": left_out,
+    })))
+}
+
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
     Ok(read_one_inner(e, c, false)?.0)
 }
