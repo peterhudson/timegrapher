@@ -1,0 +1,169 @@
+//! The status bar, headless: notices never move the readings, the left
+//! side stops short of them, and a long take name ends in "…".
+
+use super::tests::{queued_capture, save_failure_fixture, synthetic, themed};
+use super::*;
+
+/// No banner ever pushes the window down: a crash last time, sound
+/// kept from an earlier session, a newer release and an error are each
+/// a word in the status bar, and the readings stay where they were.
+/// The status bar repeats nothing the cards show and carries no links
+/// the Help menu has.
+#[test]
+fn notices_sit_in_the_status_bar_and_never_move_the_readings() {
+    let ctx = themed();
+    let mut app = synthetic(15.0, 0.0);
+    let draw = |app: &mut TimegrapherApp| {
+        let mut found = Vec::new();
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(1440.0, 800.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| app.panels(ctx));
+            found.clear();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    found.push((t.galley.text().to_string(), t.visual_bounding_rect()));
+                }
+            }
+        }
+        found
+    };
+    let top = |found: &[(String, egui::Rect)], text: &str| {
+        found
+            .iter()
+            .find(|(t, _)| t == text)
+            .map(|(_, r)| r.top())
+            .unwrap_or_else(|| panic!("{text}: {found:?}"))
+    };
+    let before = draw(&mut app);
+    let rate = top(&before, "Rate");
+    for gone in ["Check for Updates…", "Report a Problem…", "DU dial up"] {
+        assert!(!before.iter().any(|(t, _)| t == gone), "{gone}: {before:?}");
+    }
+    assert!(
+        !before
+            .iter()
+            .any(|(t, _)| t.ends_with("beats per hour") || t.starts_with("Showing")),
+        "{before:?}"
+    );
+    let crash = std::env::temp_dir().join(format!("tg-crash-{}.log", std::process::id()));
+    std::fs::write(&crash, "panicked").unwrap();
+    app.crash = Some(crash.clone());
+    app.message = Some(("The microphone couldn't be opened.".into(), true));
+    let after = draw(&mut app);
+    assert_eq!(top(&after, "Rate"), rate, "the readings didn't move");
+    let bar = top(&after, "Closed Unexpectedly…");
+    assert!(bar > 700.0, "in the status bar: {bar}");
+    assert!(top(&after, "The microphone couldn't be opened.…") > 700.0);
+    let _ = std::fs::remove_file(crash);
+}
+
+#[test]
+fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
+    let ctx = themed();
+    let (mut app, base) = save_failure_fixture("status-bar");
+    let crash = base.join("crash.log");
+    std::fs::write(&crash, "panicked").unwrap();
+    app.crash = Some(crash);
+    app.message = Some(("The microphone couldn't be opened.".into(), true));
+    // Listening to an input with a long name, whose words can be cut.
+    app.source_label = "USB PnP Sound Device Analog Stereo Microphone Input".into();
+    let _tx = queued_capture(&mut app, &base);
+    for w in [800.0, 1000.0, 1280.0] {
+        let mut found = Vec::new();
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(w, 700.0),
+                )),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| app.panels(ctx));
+            found.clear();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    let r = t.visual_bounding_rect().intersect(c.clip_rect);
+                    if r.top() > 650.0 && r.is_positive() {
+                        found.push((t.galley.text().to_string(), r));
+                    }
+                }
+            }
+        }
+        // The notices: the leftmost is the error's.
+        let notices = [
+            "Closed Unexpectedly…",
+            "The microphone couldn't be opened.…",
+        ];
+        let edge = found
+            .iter()
+            .filter(|(t, _)| notices.contains(&t.as_str()))
+            .map(|(_, r)| r.left())
+            .fold(f32::INFINITY, f32::min);
+        assert!(edge.is_finite(), "{w}: {found:?}");
+        for (t, r) in found.iter().filter(|(t, _)| !notices.contains(&t.as_str())) {
+            assert!(
+                r.right() <= edge,
+                "{w}: {t:?} {r:?} runs under the notices at {edge}"
+            );
+        }
+        // The take's state and whether it is saved always show whole.
+        for whole in ["Not saved", "Listening"] {
+            assert!(
+                found
+                    .iter()
+                    .any(|(t, _)| t == whole || t.ends_with(&format!("· {whole}"))),
+                "{w}: {whole}: {found:?}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A take whose name is wider than the status bar has room for beside a
+/// notice ends its name in "…" and keeps its watch and state, drawn whole
+/// and not clipped.
+#[test]
+fn a_long_take_name_ends_in_an_ellipsis() {
+    let ctx = themed();
+    let mut app = synthetic(15.0, 0.0);
+    app.input = Input::File;
+    app.opened_path =
+        "a take with a name far wider than the status bar has room for at 800 by 600.wav".into();
+    let crash = std::env::temp_dir().join(format!("tg-crash-name-{}.log", std::process::id()));
+    std::fs::write(&crash, "panicked").unwrap();
+    app.crash = Some(crash.clone());
+    let words = app.status_words();
+    let (_, tail) = words.split_once(" · ").unwrap();
+    let mut found = Vec::new();
+    for _ in 0..3 {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(800.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        let out = ctx.run(input, |ctx| app.panels(ctx));
+        found.clear();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                let r = t.visual_bounding_rect();
+                if r.top() > 550.0 && t.galley.text().starts_with("a take with") {
+                    found.push((t.galley.text().to_string(), r, r.intersect(c.clip_rect)));
+                }
+            }
+        }
+    }
+    let [(text, whole, shown)] = found.as_slice() else {
+        panic!("{found:?}");
+    };
+    assert!(text.ends_with(&format!("… · {tail}")), "{text}");
+    assert_eq!(whole, shown, "{text} is clipped");
+    let _ = std::fs::remove_file(crash);
+}

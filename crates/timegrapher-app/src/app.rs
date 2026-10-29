@@ -12975,13 +12975,58 @@ impl TimegrapherApp {
                 ));
         }
         // Always on screen: where the take is going, and whether the strip
-        // is live or a take opened.
-        ui.label(
-            RichText::new(self.status_words())
-                .font(theme::semibold(13.5))
-                .color(theme::pal(ui).text),
-        )
-        .on_hover_text("The take on show, its watch, and whether it is listening");
+        // is live or a take opened. The take's name is cut short with "…"
+        // where the facts after it need the room, keeping its watch and
+        // state; hovered, it shows whole.
+        let facts = {
+            let mut sizing = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(ui.available_rect_before_wrap())
+                    .layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .invisible()
+                    .sizing_pass(),
+            );
+            self.status_facts(&mut sizing);
+            sizing.min_rect().width()
+        };
+        let room = (ui.available_width() - facts - ui.spacing().item_spacing.x).max(0.0);
+        let words = self.status_words();
+        let (name, rest) = words.split_once(" · ").unwrap_or((&words, ""));
+        let font = theme::semibold(13.5);
+        let shown = elide(ui, name, &format!(" · {rest}"), &font, room);
+        let hover = "The take on show, its watch, and whether it is listening";
+        ui.scope(|ui| {
+            ui.set_max_width(room);
+            ui.add(egui::Label::new(RichText::new(&shown).font(font).color(pal.text)).truncate())
+                .on_hover_text(if shown == words {
+                    hover.to_string()
+                } else {
+                    format!("{words}\n\n{hover}")
+                });
+        });
+        self.status_facts(ui);
+        // What can be cut short with an ellipsis last, so that the facts
+        // before it keep their room.
+        if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
+            // The input listened to; a take opened is named on the left
+            // already.
+            // A label cut short shows its whole text when hovered.
+            let text = format!("Listening to {}", self.source_label);
+            ui.add(
+                egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
+            );
+        }
+        // Errors are a notice at the right instead.
+        if let Some((m, false)) = &self.message {
+            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate());
+        }
+    }
+
+    /// The status bar's facts after the take's name, none cut short: the
+    /// analysis under way, unsaved changes, the recording's state and the
+    /// signal.
+    fn status_facts(&self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
         if let Some(b) = &self.batch {
             let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
             let frac = b.duration_s.map_or(0.0, |d| (done / d).clamp(0.0, 1.0));
@@ -13087,21 +13132,6 @@ impl TimegrapherApp {
                 )
                 .on_hover_text(help::SIGNAL);
             }
-        }
-        // What can be cut short with an ellipsis last, so that the facts
-        // before it keep their room.
-        if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
-            // The input listened to; a take opened is named on the left
-            // already.
-            // A label cut short shows its whole text when hovered.
-            let text = format!("Listening to {}", self.source_label);
-            ui.add(
-                egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
-            );
-        }
-        // Errors are a notice at the right instead.
-        if let Some((m, false)) = &self.message {
-            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate());
         }
     }
 
@@ -18768,7 +18798,7 @@ mod tests {
     }
 
     /// A context with the app's fonts and styles, as the window has.
-    fn themed() -> egui::Context {
+    pub(super) fn themed() -> egui::Context {
         let ctx = egui::Context::default();
         theme::install(&ctx);
         ctx
@@ -19046,7 +19076,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn save_failure_fixture(name: &str) -> (TimegrapherApp, PathBuf) {
+    pub(super) fn save_failure_fixture(name: &str) -> (TimegrapherApp, PathBuf) {
         let base =
             std::env::temp_dir().join(format!("tg-app-save-failure-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -19086,7 +19116,10 @@ mod tests {
 
     // Replay supplies a real Capture without opening hardware. Its tiny file
     // has no samples; replace only its public receiver with a controlled queue.
-    fn queued_capture(app: &mut TimegrapherApp, base: &Path) -> std::sync::mpsc::Sender<Event> {
+    pub(super) fn queued_capture(
+        app: &mut TimegrapherApp,
+        base: &Path,
+    ) -> std::sync::mpsc::Sender<Event> {
         let path = base.join("empty-input.wav");
         hound::WavWriter::create(
             &path,
@@ -27423,127 +27456,6 @@ mod tests {
         assert!(!app.bph_set_by_calibre() && app.lift_settable());
     }
 
-    /// No banner ever pushes the window down: a crash last time, sound
-    /// kept from an earlier session, a newer release and an error are each
-    /// a word in the status bar, and the readings stay where they were.
-    /// The status bar repeats nothing the cards show and carries no links
-    /// the Help menu has.
-    #[test]
-    fn notices_sit_in_the_status_bar_and_never_move_the_readings() {
-        let ctx = themed();
-        let mut app = synthetic(15.0, 0.0);
-        let draw = |app: &mut TimegrapherApp| {
-            let mut found = Vec::new();
-            for _ in 0..3 {
-                let input = egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        Vec2::new(1440.0, 800.0),
-                    )),
-                    ..Default::default()
-                };
-                let out = ctx.run(input, |ctx| app.panels(ctx));
-                found.clear();
-                for c in &out.shapes {
-                    if let egui::Shape::Text(t) = &c.shape {
-                        found.push((t.galley.text().to_string(), t.visual_bounding_rect()));
-                    }
-                }
-            }
-            found
-        };
-        let top = |found: &[(String, egui::Rect)], text: &str| {
-            found
-                .iter()
-                .find(|(t, _)| t == text)
-                .map(|(_, r)| r.top())
-                .unwrap_or_else(|| panic!("{text}: {found:?}"))
-        };
-        let before = draw(&mut app);
-        let rate = top(&before, "Rate");
-        for gone in ["Check for Updates…", "Report a Problem…", "DU dial up"] {
-            assert!(!before.iter().any(|(t, _)| t == gone), "{gone}: {before:?}");
-        }
-        assert!(
-            !before
-                .iter()
-                .any(|(t, _)| t.ends_with("beats per hour") || t.starts_with("Showing")),
-            "{before:?}"
-        );
-        let crash = std::env::temp_dir().join(format!("tg-crash-{}.log", std::process::id()));
-        std::fs::write(&crash, "panicked").unwrap();
-        app.crash = Some(crash.clone());
-        app.message = Some(("The microphone couldn't be opened.".into(), true));
-        let after = draw(&mut app);
-        assert_eq!(top(&after, "Rate"), rate, "the readings didn't move");
-        let bar = top(&after, "Closed Unexpectedly…");
-        assert!(bar > 700.0, "in the status bar: {bar}");
-        assert!(top(&after, "The microphone couldn't be opened.…") > 700.0);
-        let _ = std::fs::remove_file(crash);
-    }
-
-    #[test]
-    fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
-        let ctx = themed();
-        let (mut app, base) = save_failure_fixture("status-bar");
-        let crash = base.join("crash.log");
-        std::fs::write(&crash, "panicked").unwrap();
-        app.crash = Some(crash);
-        app.message = Some(("The microphone couldn't be opened.".into(), true));
-        // Listening to an input with a long name, whose words can be cut.
-        app.source_label = "USB PnP Sound Device Analog Stereo Microphone Input".into();
-        let _tx = queued_capture(&mut app, &base);
-        for w in [800.0, 1000.0, 1280.0] {
-            let mut found = Vec::new();
-            for _ in 0..3 {
-                let input = egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        Vec2::new(w, 700.0),
-                    )),
-                    ..Default::default()
-                };
-                let out = ctx.run(input, |ctx| app.panels(ctx));
-                found.clear();
-                for c in &out.shapes {
-                    if let egui::Shape::Text(t) = &c.shape {
-                        let r = t.visual_bounding_rect().intersect(c.clip_rect);
-                        if r.top() > 650.0 && r.is_positive() {
-                            found.push((t.galley.text().to_string(), r));
-                        }
-                    }
-                }
-            }
-            // The notices: the leftmost is the error's.
-            let notices = [
-                "Closed Unexpectedly…",
-                "The microphone couldn't be opened.…",
-            ];
-            let edge = found
-                .iter()
-                .filter(|(t, _)| notices.contains(&t.as_str()))
-                .map(|(_, r)| r.left())
-                .fold(f32::INFINITY, f32::min);
-            assert!(edge.is_finite(), "{w}: {found:?}");
-            for (t, r) in found.iter().filter(|(t, _)| !notices.contains(&t.as_str())) {
-                assert!(
-                    r.right() <= edge,
-                    "{w}: {t:?} {r:?} runs under the notices at {edge}"
-                );
-            }
-            // The take's state and whether it is saved always show whole.
-            for whole in ["Not saved", "Listening"] {
-                assert!(
-                    found
-                        .iter()
-                        .any(|(t, _)| t == whole || t.ends_with(&format!("· {whole}"))),
-                    "{w}: {whole}: {found:?}"
-                );
-            }
-        }
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
     #[test]
     fn the_input_clock_is_offered_after_twenty_minutes() {
         // A card 20 ppm slow: 48,000 frames arrive every 1.00002 s of
@@ -27935,3 +27847,7 @@ mod corpus_tests;
 #[cfg(test)]
 #[path = "app_steady_tests.rs"]
 mod steady_tests;
+
+#[cfg(test)]
+#[path = "app_status_tests.rs"]
+mod status_tests;
