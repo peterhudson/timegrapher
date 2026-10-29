@@ -1861,6 +1861,11 @@ fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
 /// moved only where that part is set: every figure kept for later keys on
 /// the parts it reads, so a change in one place reaches every pane. Moves
 /// to core with #294's one measurement context per take.
+///
+/// Bumped in the put_* setters and in these places only: positions_moved
+/// and set_position (breaks), calibre_changed when the wheels change
+/// (settings), and new_take from reset_session and show_log (every
+/// part). Any other write to `rev` is a defect.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct Revision {
     /// The lift angle, the calibre and the beat rate.
@@ -4997,6 +5002,8 @@ impl TimegrapherApp {
         }
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
+        // The new engine's first sight of the take's clock; after this only
+        // put_take_clock gives it one.
         live.set_rate_clock(self.take_rate_clock());
         // The strip draws beats on audio seconds: the beats core numbers on
         // across the take's breaks have that taken off again for it.
@@ -12133,7 +12140,7 @@ impl TimegrapherApp {
         self.take_clock = clock;
         self.take_clock_from = from;
         if let Some(l) = self.live.as_mut() {
-            l.set_rate_clock(self.take_clock.as_ref().filter(|f| f.corrects()));
+            l.set_rate_clock(self.take_rate_clock());
         }
         self.rev.clock += 1;
     }
@@ -17539,7 +17546,6 @@ impl eframe::App for TimegrapherApp {
         let clock_known = self.clock.is_some();
         if let Some(l) = &mut self.live {
             l.set_known(lift_known, clock_known);
-            l.set_rate_clock(self.take_clock.as_ref().filter(|f| f.corrects()));
         }
         // A file dropped on the window is opened, where the desktop passes
         // drops on (not yet on Wayland).
@@ -26820,14 +26826,14 @@ mod tests {
         };
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         assert_eq!(app.clock_disagreement(), None, "no take open");
-        app.take_clock = Some(rated(120.0));
+        app.put_take_clock(Some(rated(120.0)), None);
         let (short, long) = app.clock_disagreement().expect("100 ppm apart");
         assert_eq!(short, "USB lines and clock log 100 ppm apart");
         assert!(
             long.contains("+120.0 ppm") && long.contains("+20 ± 0 ppm"),
             "{long}"
         );
-        app.take_clock = Some(rated(24.0));
+        app.put_take_clock(Some(rated(24.0)), None);
         assert_eq!(app.clock_disagreement(), None, "4 ppm apart");
     }
 
@@ -26841,7 +26847,7 @@ mod tests {
     fn the_rate_hover_names_where_a_takes_clock_came_from() {
         use timegrapher_core::take::ClockFrom;
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        app.take_clock = Some(timegrapher_core::clock::ClockFit::fixed(18.9, 600.0));
+        let clock = timegrapher_core::clock::ClockFit::fixed(18.9, 600.0);
         for (from, named) in [
             (ClockFrom::Log, "On this take's clock log: "),
             (ClockFrom::Usb, "On this take's USB lines: "),
@@ -26850,7 +26856,7 @@ mod tests {
                 "On the correction kept for the input it was recorded on: ",
             ),
         ] {
-            app.take_clock_from = Some(from);
+            app.put_take_clock(Some(clock.clone()), Some(from));
             let words = app.true_clock_words(0.0).unwrap();
             assert!(
                 words.starts_with(named) && words.contains("18.9 ppm slow"),
