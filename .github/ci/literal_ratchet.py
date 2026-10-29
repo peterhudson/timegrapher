@@ -12,8 +12,14 @@ the surfaces call it. This counts, in each surface crate's product code
                0, 1 and 2 are left out: they test for empty, one or a pair.
   constants    a `const` or `static` that isn't f32 (f32 is drawing) set
                from a number literal.
+               A `let` set from a literal that is then compared counts
+               here too (`let limit = 0.4; ... x > limit`).
   defaults     a literal handed in as a default: `unwrap_or(18_000)`,
-               `default_value_t = 20.0`. 0 and 1 are left out.
+               `unwrap_or_else(|| 28_800)`, `default_value_t = 20.0`. 0
+               and 1 are left out.
+  bounds       a literal limit: a range with a literal end
+               (`10.0..=90.0`, `5..600`), `clamp(10.0, 90.0)`, `.max(80.0)`
+               or `.min(36.0)`. 0, 1 and 2 are left out.
 
 A crate's count may not rise above BASELINE. A PR that must add one (a
 layout constant that is the app's alone, say) raises the baseline in the
@@ -34,18 +40,21 @@ import tomllib
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BASELINE = pathlib.Path(__file__).with_name("literal_baseline.json")
 CRATES = ("timegrapher-app", "timegrapher-cli", "timegrapher-mcp")
-KINDS = ("comparisons", "constants", "defaults")
+KINDS = ("comparisons", "constants", "defaults", "bounds")
 
 NUMBER = re.compile(
-    r"(?<![\w.])(?:0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)"
-    r"(?:_?(?:f32|f64|u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize))?(?![\w.])"
+    r"(?<!\w)(?<!(?<!\.)\.)(?:0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)"
+    r"(?:_?(?:f32|f64|u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize))?(?!\w)(?!\.(?!\.))"
 )
 # A comparison operator right before or after a number. `=>`, `->`, `<<`
 # and `>>` are not comparisons.
 CMP_BEFORE = re.compile(r"(?:(?<![<>=!\-])(?:<=|>=|==|!=)|(?<![<>=\-])[<>](?!=))\s*-?\s*$")
 CMP_AFTER = re.compile(r"^\s*(?:(?:<=|>=|==|!=)(?![=>])|[<>](?![<>=]))")
 CONST = re.compile(r"\b(?:const|static)\s+(?:mut\s+)?[A-Z_][A-Z0-9_]*\s*:\s*([^=]+?)\s*=\s*([^;]*);")
-DEFAULT = re.compile(r"(?:\bunwrap_or\s*\(\s*|\bdefault_value_t\s*=\s*)(-?\s*" + NUMBER.pattern + r")")
+DEFAULT = re.compile(r"(?:\bunwrap_or\s*\(\s*|\bunwrap_or_else\s*\(\s*\|\s*\|\s*|\bdefault_value_t\s*=\s*)(-?\s*"
+                     + NUMBER.pattern + r")")
+LET = re.compile(r"\blet\s+(?:mut\s+)?([a-z_][a-z0-9_]*)\s*(?::\s*[\w\[\]; ]+)?=\s*(-?\s*" + NUMBER.pattern + r")\s*;")
+LIMIT = re.compile(r"\.(?:max|min)\s*\(\s*(-?\s*" + NUMBER.pattern + r")\s*\)|\bclamp\s*\(([^()]*)\)")
 
 
 def strip(src):
@@ -157,6 +166,26 @@ def count(src):
         if mask[m.start()] or value(m.group(1)) in (0.0, 1.0):
             continue
         found["defaults"].append(line_of(m.start()))
+    for m in LET.finditer(code):
+        name = m.group(1)
+        if mask[m.start()] or value(m.group(2)) in (0.0, 1.0, 2.0):
+            continue
+        cmp = r"(?:<=|>=|==|!=|(?<![<>=\-])[<>](?![<>=]))"
+        rest = code[m.end():]
+        if re.search(r"\b" + name + r"\b\s*" + cmp + r"|" + cmp + r"\s*\b" + name + r"\b", rest):
+            found["comparisons"].append(line_of(m.start()))
+    for m in NUMBER.finditer(code):
+        if mask[m.start()] or value(m.group()) in (0.0, 1.0, 2.0):
+            continue
+        if re.search(r"\.\.=?\s*-?\s*$", code[max(0, m.start() - 6):m.start()]) or \
+                re.match(r"\s*\.\.", code[m.end():m.end() + 4]):
+            found["bounds"].append(line_of(m.start()))
+    for m in LIMIT.finditer(code):
+        if mask[m.start()]:
+            continue
+        lits = [m.group(1)] if m.group(1) else NUMBER.findall(m.group(2) or "")
+        if any(value(x) not in (0.0, 1.0, 2.0, None) for x in lits):
+            found["bounds"].append(line_of(m.start()))
     return found
 
 
