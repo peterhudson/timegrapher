@@ -74,37 +74,6 @@ impl Anchor {
     ) -> f64 {
         self.lead_ms(&on_true_time(b, breaks, clock), period_s)
     }
-
-    /// [`Anchor::centre_on`] on true time: the beats as core numbers them
-    /// across the take's `breaks` ([`crate::breaks::renumber`]), each at
-    /// its true second ([`crate::breaks::wall`]). For [`Anchor::lead_on_wall`].
-    pub fn centre_on_wall(
-        beats: &[Beat],
-        period_s: f64,
-        n: usize,
-        breaks: &[crate::breaks::Break],
-    ) -> Option<Anchor> {
-        let recent = &beats[beats.len().saturating_sub(n)..];
-        let on_wall: Vec<Beat> = recent.iter().map(|b| on_wall(b, breaks)).collect();
-        Anchor::centre_on(&on_wall, period_s, n)
-    }
-
-    /// [`Anchor::lead_ms`] on true time, against an anchor from
-    /// [`Anchor::centre_on_wall`]: beat `b` as core numbers it across
-    /// `breaks`, at its true second. A steady watch's lead runs on through
-    /// a break as it would with none, where on audio seconds it would
-    /// shift by up to half a beat.
-    pub fn lead_on_wall(&self, b: &Beat, period_s: f64, breaks: &[crate::breaks::Break]) -> f64 {
-        self.lead_ms(&on_wall(b, breaks), period_s)
-    }
-}
-
-/// Beat `b` at its true second, across `breaks`.
-fn on_wall(b: &Beat, breaks: &[crate::breaks::Break]) -> Beat {
-    Beat {
-        time: crate::breaks::wall(breaks, b.time),
-        ..*b
-    }
 }
 
 /// Beat `b` at its true second as the readings measure it, across
@@ -438,17 +407,14 @@ mod tests {
         let beats = heard_on_slow_card(f64::INFINITY, 0.0);
         let clock = ClockFit::fixed(20.0, 3_600.0);
         assert!(spread(&beats, &[], &clock) < 1e-3);
-        let w = Anchor::centre_on_wall(&beats, PERIOD, 8, &[]).unwrap();
-        let leads = beats.iter().map(|b| w.lead_on_wall(b, PERIOD, &[]));
+        let w = Anchor::centre_on(&beats, PERIOD, 8).unwrap();
+        let leads = beats.iter().map(|b| w.lead_ms(b, PERIOD));
         let (lo, hi) = leads.fold((f64::MAX, f64::MIN), |(lo, hi), l| (lo.min(l), hi.max(l)));
         assert!((hi - lo - 72.0).abs() < 0.5, "{}", hi - lo);
-        // Without a clock, true time is the wall's.
+        // Without a clock or breaks, true time is the card's.
         let a = Anchor::centre_on_true(&beats, PERIOD, 8, &[], None).unwrap();
         let b = &beats[1_000];
-        assert_eq!(
-            a.lead_on_true(b, PERIOD, &[], None),
-            a.lead_on_wall(b, PERIOD, &[])
-        );
+        assert_eq!(a.lead_on_true(b, PERIOD, &[], None), a.lead_ms(b, PERIOD));
     }
 
     #[test]
@@ -578,12 +544,12 @@ mod tests {
         }
         let breaks = [Break { audio_s: at, gap_s }];
         renumber(&mut beats, &mut Vec::new(), &breaks, &[], 28800);
-        let anchor = Anchor::centre_on_wall(&beats[..16], p, 16, &breaks).unwrap();
+        let anchor = Anchor::centre_on_true(&beats[..16], p, 16, &breaks, None).unwrap();
         let mean = |keep: &dyn Fn(&Beat) -> bool, lead: &dyn Fn(&Beat) -> f64| {
             let v: Vec<f64> = beats.iter().filter(|b| keep(b)).map(lead).collect();
             v.iter().sum::<f64>() / v.len() as f64
         };
-        let wall = |b: &Beat| anchor.lead_on_wall(b, p, &breaks);
+        let wall = |b: &Beat| anchor.lead_on_true(b, p, &breaks, None);
         let before = mean(&|b| b.time < at, &wall);
         let after = mean(&|b| b.time >= at, &wall);
         // On audio seconds, as the strip read it before.
