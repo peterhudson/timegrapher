@@ -79,7 +79,9 @@ fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
     // Listening to an input with a long name, whose words can be cut.
     app.source_label = "USB PnP Sound Device Analog Stereo Microphone Input".into();
     let _tx = queued_capture(&mut app, &base);
-    for w in [800.0, 1000.0, 1280.0] {
+    // Every few pixels from 800 to 1000, where the passing message comes
+    // and goes, and wide.
+    for w in (800..=1000).step_by(4).map(|w| w as f32).chain([1280.0]) {
         let mut found = Vec::new();
         for _ in 0..3 {
             let input = egui::RawInput {
@@ -100,6 +102,9 @@ fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
                 }
             }
         }
+        // A bare "…" in the bar's small text, once the fonts are loaded.
+        let small = egui::TextStyle::Small.resolve(&ctx.style());
+        let bare = ctx.fonts_mut(|f| f.layout_no_wrap("…".into(), small, Color32::WHITE).size().x);
         let notices = ["Closed Unexpectedly…"];
         let edge = found
             .iter()
@@ -115,8 +120,10 @@ fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
         }
         // Words with no room for any of them aren't drawn as a bare "…".
         assert!(
-            !found.iter().any(|(t, _)| t.starts_with('…')),
-            "{w}: {found:?}"
+            !found
+                .iter()
+                .any(|(t, r)| t.starts_with('…') || r.width() <= bare + 1.0),
+            "{w}: a bare \"…\" ({bare} px): {found:?}"
         );
         // The take's state and whether it is saved always show whole.
         for whole in ["Not saved", "Listening"] {
