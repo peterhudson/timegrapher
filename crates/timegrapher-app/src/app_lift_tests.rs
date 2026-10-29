@@ -68,7 +68,7 @@ fn persisted_lift_context_roundtrips_without_guessing_legacy_history() {
     ] {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let m: Manifest = toml::from_str(text).unwrap();
-        app.apply_manifest(&m, &[]);
+        app.apply_manifest(&m, &[], None);
         assert_eq!(app.lift_known(), expected, "{text}");
         assert_eq!(app.live_config().analysis.lift_known, expected);
         let value = app.lift_deg;
@@ -78,7 +78,7 @@ fn persisted_lift_context_roundtrips_without_guessing_legacy_history() {
         assert_eq!(again.lift, Some(value));
         assert_eq!(again.lift_known, Some(expected));
         let mut reopened = TimegrapherApp::with_devices(Vec::new(), None);
-        reopened.apply_manifest(&again, &[]);
+        reopened.apply_manifest(&again, &[], None);
         assert_eq!(
             (reopened.lift_deg, reopened.lift_known()),
             (value, expected)

@@ -5,7 +5,7 @@
    "files": {
     "crates/timegrapher-app/src/app.rs": {
      "bounds": 33,
-     "comparisons": 35,
+     "comparisons": 34,
      "constants": 20,
      "defaults": 2
     },
@@ -273,7 +273,7 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 27451,
+  "crates/timegrapher-app/src/app.rs": 27279,
   "crates/timegrapher-app/src/calibre_ui.rs": 3186,
   "crates/timegrapher-core/src/steadiness.rs": 4006
  }

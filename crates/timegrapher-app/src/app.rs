@@ -1914,6 +1914,11 @@ struct TrendPoint {
 }
 
 impl TrendPoint {
+    /// The reading's beat error as core reads one (`beat_error_signed`).
+    fn beat_error(&self) -> Option<f64> {
+        core_session::beat_error_signed(self.beat_error_unlock, self.beat_error_drop)
+    }
+
     /// The reading at `t`; a reading whose averaging time
     /// is not a whole bin (just after the start, a break or a masked
     /// stretch, or over a dropout; see `LiveReading::whole`) has no
@@ -4134,6 +4139,7 @@ impl TimegrapherApp {
         &mut self,
         m: &Manifest,
         entries: &[RecordingEntry],
+        duration_s: Option<f64>,
     ) -> (Stretches, Vec<(f64, f64)>) {
         if let Some(w) = &m.watch {
             self.watch = w.clone();
@@ -4158,19 +4164,25 @@ impl TimegrapherApp {
         let masked: Vec<[f64; 2]> = entries.iter().flat_map(|e| e.masked.clone()).collect();
         self.put_masked(timegrapher_core::session::masked_spans(&masked));
         self.opened_masks = Some(self.masked.clone());
-        // Each entry read once the watch has settled, as `session` reads
-        // it: the app's own takes say `settle_s = 0`, a recorded one its
-        // settling.
+        // Each entry read once the watch has settled, from core's window
+        // for it, as `session` reads it: the app's own takes say
+        // `settle_s = 0`, a recorded one its settling, and a take shorter
+        // than twice its settling settles to halfway. Its length is known
+        // here for a take of one sound file; for one of several, each
+        // entry runs to its end.
+        let one_file = entries.windows(2).all(|w| w[0].file == w[1].file);
+        let length = duration_s.filter(|_| one_file).unwrap_or(f64::INFINITY);
         let (out, settles) = positions_of(entries.iter().filter_map(|e| {
             let p = Position::from_name(e.position.as_deref()?)?;
             let start = e.start_s.unwrap_or(0.0);
-            let (settle_s, measure_s) = timegrapher_core::take::entry_times(e, m);
-            let (from, to) = timegrapher_core::take::measured(
-                start,
-                e.end_s.unwrap_or(f64::INFINITY),
-                settle_s,
-                measure_s,
-            );
+            let (from, to) = match timegrapher_core::take::reading_window(e, m, None, length) {
+                Ok(w) => (w.from_s, w.to_s),
+                // An entry session reads nothing of settles to its end.
+                Err(_) => {
+                    let end = e.end_s.unwrap_or(start);
+                    (end, end)
+                }
+            };
             Some((start, from, to.is_finite().then_some(to), p))
         }));
         // What was recorded under any painting, loaded with the positions.
@@ -4283,7 +4295,7 @@ impl TimegrapherApp {
                         self.keep_mic_setup();
                         self.set_watch_setup(WatchSetup::default());
                         self.open_note = None;
-                        self.apply_manifest(&m, &entries)
+                        self.apply_manifest(&m, &entries, None)
                     }
                     None => {
                         self.fresh_setup(path, &files);
@@ -4475,7 +4487,8 @@ impl TimegrapherApp {
         let opening = take_entry(path, manifest.as_ref());
         let (stretches, settles) = match manifest {
             Some((m, entries)) => {
-                let out = self.apply_manifest(&m, &entries);
+                let length = info.frames.map(|f| f as f64 / f64::from(info.sample_rate));
+                let out = self.apply_manifest(&m, &entries, length.filter(|_| files.len() == 1));
                 self.watch_fills_in(path, &m);
                 out
             }
@@ -4580,7 +4593,7 @@ impl TimegrapherApp {
         self.keep_mic_setup();
         self.set_watch_setup(WatchSetup::default());
         self.open_note = None;
-        let (stretches, settles) = self.apply_manifest(&m, &entries);
+        let (stretches, settles) = self.apply_manifest(&m, &entries, Some(header.duration_s));
         self.watch_fills_in(path, &m);
         let label = format!("{name} (analysis only)");
         // Its beats, its own clock log with its USB lines' figure as
@@ -5388,8 +5401,8 @@ impl TimegrapherApp {
             .map_or(f64::INFINITY, |p| p.t)
     }
 
-    /// The take in the position the watch is in now, once it is stopped
-    /// and longer than a few readings: its settled stretches, read as
+    /// The take in the position the watch is in now, once it is stopped:
+    /// its settled stretches, at whatever length session reads, read as
     /// `timegrapher session` reads a recording (core
     /// `session::measure_masked`), the time between them masked, and the
     /// seconds they cover. A take opened from disk is read to its end, as
@@ -5418,7 +5431,6 @@ impl TimegrapherApp {
             spans.clone(),
             self.masked.clone(),
             self.rev,
-            self.average_s,
         );
         if let Some((k, w)) = self.whole_take.borrow().as_ref() {
             if *k == key {
@@ -5428,9 +5440,6 @@ impl TimegrapherApp {
         let read = || {
             let span: f64 = spans.iter().map(|(a, b)| b - a).sum();
             let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
-            if span < 3.0 * self.average_s {
-                return None;
-            }
             let mut log = steady::log_of(live)?;
             let clock = self.reading_clock(log.duration_s);
             // The cuts the app adds (a settling's end, a move) where they
@@ -12569,9 +12578,8 @@ impl TimegrapherApp {
             figure_row(
                 ui,
                 cards[4].figure,
-                unlock
-                    .or(drop)
-                    .map(|v| format!("{:.2}", v.abs()))
+                core_session::beat_error_size(unlock, drop)
+                    .map(|v| format!("{v:.2}"))
                     .as_deref(),
                 &unit,
                 unheard.as_ref(),
@@ -14791,7 +14799,7 @@ impl TimegrapherApp {
                 decimals: 2,
                 color: pal.trace_beat_error,
                 min_span: 0.2,
-                points: series(|p| p.beat_error_unlock),
+                points: series(TrendPoint::beat_error),
             });
         }
         let bands = self.position_bands();
@@ -15399,14 +15407,16 @@ impl TimegrapherApp {
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
-                    .filter_map(|w| w.beat_error_unlock_ms)
+                    .filter_map(|w| {
+                        core_session::beat_error_signed(w.beat_error_unlock_ms, w.beat_error_ms)
+                    })
                     .collect(),
                 BEAT_ERROR,
                 pal.trace_beat_error,
                 "2 s",
             ),
             SeriesKind::BeatError => (
-                readings(|p| p.beat_error_unlock),
+                readings(TrendPoint::beat_error),
                 BEAT_ERROR,
                 pal.trace_beat_error,
                 "readings",
@@ -17760,9 +17770,8 @@ fn no_regular_beat(r: &LiveReading) -> String {
 
 /// The Beat Error card's line under the whole take, when it is of sizes.
 /// What [`TimegrapherApp::whole_take`] was read from: the beats heard,
-/// the stretches, the masks, what the readings rest on and Average Over
-/// (a take shorter than three of it has none).
-type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Revision, f64);
+/// the stretches, the masks and what the readings rest on.
+type WholeKey = (usize, Vec<(f64, f64)>, Vec<(f64, f64)>, Revision);
 
 /// What [`TimegrapherApp::free_table`] was read from: the beats heard,
 /// each position's settled stretches, the masks and the True Clock.
@@ -18351,37 +18360,6 @@ mod tests {
         assert!(drawn.contains("Circle"), "the possible beats are drawn");
     }
 
-    /// The rate distribution's 2 s values are the rate over each 2 seconds
-    /// of beats, none across a break or into a masked stretch.
-    #[test]
-    fn rate_distribution_counts_two_second_stretches() {
-        let mut app = synthetic(30.0, 12.0);
-        let live = app.live.as_mut().unwrap();
-        live.set_breaks(vec![15.0]);
-        let mut r = RateTwoS::default();
-        r.refresh(live, &[(5.0, 7.5)]);
-        assert!(r.values.len() >= 10, "{}", r.values.len());
-        for &(a, v) in &r.values {
-            let b = a + RateTwoS::STEP_S;
-            assert!(!(a < 15.0 && 15.0 < b), "across the break at {a}");
-            assert!(!(a < 7.5 && b > 5.0), "into the mask at {a}");
-            assert!((v - 12.0).abs() < 20.0, "{v} s/day at {a}");
-        }
-        // Refreshing again adds nothing; a change of mask starts again.
-        let n = r.values.len();
-        r.refresh(live, &[(5.0, 7.5)]);
-        assert_eq!(r.values.len(), n);
-        r.refresh(live, &[]);
-        assert!(r.values.len() > n);
-        // The pane follows Values for rate too.
-        app.hist_readings = false;
-        let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| app.histogram(ui, SeriesKind::Rate));
-        });
-        assert!(!app.rate_2s.values.is_empty());
-    }
-
     /// A paused session carries on only with the input it was listening to:
     /// another input's clock correction and clock measurement aren't its.
     #[test]
@@ -18405,104 +18383,6 @@ mod tests {
             "{why}"
         );
         assert!(app.resume_refusal("Mic A", "Mic A", 44_100).is_some());
-    }
-
-    /// The whole take's beat error, where its sign turns over at a jump
-    /// in the beats, combines the sizes either side and says so, as
-    /// `session` does, not a figure that cancels to nothing; where the
-    /// beats agree in sign either side it stays signed.
-    #[test]
-    fn whole_take_beat_error_keeps_its_size_across_a_turn() {
-        // 120 s at 28,800 bph with a jump at 80 s: the tock 0.6 ms late
-        // for the 640 beats before it and `after` ms for the 320 after.
-        let app_with = |after: f64| {
-            let beats = (0..960)
-                .map(|index| {
-                    let be = if index < 640 { 0.6 } else { after };
-                    let half = be / 2000.0 * if index % 2 == 1 { 1.0 } else { -1.0 };
-                    timegrapher_core::beats::Beat {
-                        time: index as f64 * 0.125 + half,
-                        index,
-                        quality: 1.0,
-                    }
-                })
-                .collect();
-            let log = BeatLog {
-                sample_rate: 48_000,
-                duration_s: 120.0,
-                bph: 28_800,
-                lift_deg: 52.0,
-                beats,
-                amplitude_windows: Vec::new(),
-                clipped_beats: Vec::new(),
-                clipped_samples: 0,
-                jumps: vec![80.0],
-                sided: Vec::new(),
-                by_count: Vec::new(),
-                snippets: Vec::new(),
-            };
-            let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-            app.live = Some(LiveAnalyzer::from_log(log, LiveConfig::default()));
-            app
-        };
-        let sizes = |w: &WholeTake| w.m.caveats.contains(&Caveat::BeatErrorAsSize);
-        // Sizes across the turn, beat-weighted: (0.6 × 640 + 0.4 × 320) / 960.
-        let size = (0.6 * 640.0 + 0.4 * 320.0) / 960.0;
-        // What a signed combination would cancel to: (0.6 × 640 − 0.4 × 320) / 960.
-        let cancelled = (0.6 * 640.0 - 0.4 * 320.0) / 960.0;
-        let w = app_with(-0.4).whole_take().expect("whole take");
-        let be = w.m.beat_error_ms.unwrap();
-        assert!(sizes(&w));
-        // The jump is a break the whole take's hover names, as a card's
-        // own reading never reaches across it.
-        assert!(w.m.caveats.contains(&Caveat::Breaks { count: 1 }));
-        assert!(
-            whole_breaks_text(&w).starts_with(" 1 break in this stretch: a hole in the sound"),
-            "{}",
-            whole_breaks_text(&w)
-        );
-        assert!((be - size).abs() < 1e-3, "{be} vs {size}");
-        assert_eq!(w.m.beat_error(), Some(be));
-        assert!((be - cancelled).abs() > 0.2, "{be} all but cancelled");
-        // Where the beats keep one sign either side, the figure keeps it:
-        // the same size, signed.
-        let w = app_with(0.4).whole_take().expect("whole take");
-        let be = w.m.beat_error_ms.unwrap();
-        assert!(!sizes(&w));
-        assert!((be.abs() - size).abs() < 1e-3, "{be} vs {size}");
-        assert!(be < 0.0, "signed: {be}");
-    }
-
-    /// A stopped take too short for its whole-take reading at one Average
-    /// Over gets it back at a shorter one: the reading is kept per Average
-    /// Over, not the first answer for every one.
-    #[test]
-    fn a_shorter_average_brings_the_whole_take_back() {
-        let mut app = synthetic(60.0, 12.0);
-        app.average_s = 60.0;
-        assert!(app.whole_take().is_none(), "under three of 60 s");
-        app.average_s = 10.0;
-        assert!(app.whole_take().is_some(), "three of 10 s and more");
-    }
-
-    /// The whole take line is `session`'s reading of the same stretch:
-    /// the rate fitted over every beat, not a mean of the readings shown.
-    #[test]
-    fn whole_take_is_the_session_reading() {
-        let app = synthetic(60.0, 12.0);
-        let w = app.whole_take().expect("whole take");
-        let log = steady::log_of(app.live.as_ref().unwrap()).unwrap();
-        let spans = app.current_spans();
-        // Just listened to, the take reads to its last reading with a
-        // watch heard, never past its end.
-        let to = app
-            .last_heard_s()
-            .min(app.live.as_ref().unwrap().duration_s());
-        let from = spans[0].0.max(0.0);
-        let m = timegrapher_core::session::measure(&log, None, from, to);
-        assert_eq!(w.m.rate_s_per_day, m.rate_s_per_day);
-        assert_eq!(w.m.amplitude_deg, m.amplitude_deg);
-        assert!((w.span - (to - from)).abs() < 1e-9, "{}", w.span);
     }
 
     /// Stopped after the watch is taken off the stand, the readings stay on
@@ -18685,7 +18565,7 @@ mod tests {
     }
 
     /// Every piece of text a frame painted.
-    fn painted_text(out: &egui::FullOutput) -> String {
+    pub(super) fn painted_text(out: &egui::FullOutput) -> String {
         out.shapes
             .iter()
             .filter_map(|c| match &c.shape {
@@ -18776,74 +18656,6 @@ mod tests {
             };
             let _ = ctx.run(input, |ctx| app.panels(ctx));
         }
-    }
-
-    /// The Charts and Distributions panes draw a plot for each reading
-    /// turned on, and its switches keep at least one on.
-    #[test]
-    fn the_charts_and_distributions_draw_the_readings_turned_on() {
-        let mut app = synthetic(30.0, 20.0);
-        for p in [Pane::Charts, Pane::Distributions] {
-            set_pane_visible(&mut app.panes.tiles, p, true);
-        }
-        // Room for every plot: the strip, the profile and the Scope out of
-        // the way.
-        for p in [Pane::Strip, Pane::Sound, Pane::Scope] {
-            set_pane_visible(&mut app.panes.tiles, p, false);
-        }
-        let ctx = themed();
-        // Each pane in turn: they are tabs side by side, one on show.
-        let draw = |app: &mut TimegrapherApp| {
-            let mut all = String::new();
-            for p in [Pane::Charts, Pane::Distributions] {
-                for q in [Pane::Charts, Pane::Distributions] {
-                    set_pane_visible(&mut app.panes.tiles, q, q == p);
-                }
-                let mut text = String::new();
-                for _ in 0..3 {
-                    let input = egui::RawInput {
-                        screen_rect: Some(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            Vec2::new(1440.0, 1000.0),
-                        )),
-                        ..Default::default()
-                    };
-                    text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
-                }
-                all.push_str(&text);
-            }
-            all
-        };
-        // At first only the rate: no amplitude or beat error plot in
-        // either pane.
-        assert_eq!((app.chart_series, app.dist_series), (RATE_ONLY, RATE_ONLY));
-        let text = draw(&mut app);
-        assert!(text.contains("Rate"), "{text}");
-        for t in ["Beat Error:", "Amplitude:", "From the Unlock", "From Tick"] {
-            assert!(!text.contains(t), "{t}: {text}");
-        }
-        // All three turned on.
-        app.chart_series = [true; 3];
-        app.dist_series = [true; 3];
-        let text = draw(&mut app);
-        for t in [
-            "Charts",
-            "Distributions",
-            "s/day",
-            "Beat Error:",
-            "Amplitude:",
-        ] {
-            assert!(text.contains(t), "{t}: {text}");
-        }
-        assert!(!text.contains("Match Strip"), "{text}");
-        app.chart_series = RATE_ONLY;
-        // The last one on stays on; another comes on beside it.
-        steady::flip_series(&mut app.chart_series, 0);
-        assert_eq!(app.chart_series, [true, false, false]);
-        steady::flip_series(&mut app.chart_series, 2);
-        assert_eq!(app.chart_series, [true, false, true]);
-        steady::flip_series(&mut app.chart_series, 0);
-        assert_eq!(app.chart_series, [false, false, true]);
     }
 
     /// The window before anything is open, with a problem showing, in both
@@ -19300,7 +19112,7 @@ mod tests {
         let dest = app.session.saved_to().unwrap().to_path_buf();
         let old = std::fs::read(dest.join(MANIFEST)).unwrap();
         let explicit: Manifest = toml::from_str("lift = 52\nlift_known = true").unwrap();
-        app.apply_manifest(&explicit, &[]);
+        app.apply_manifest(&explicit, &[], None);
         assert!(app.lift_known());
         assert!(
             app.metadata_unsaved(),
@@ -20921,7 +20733,7 @@ mod tests {
             lift: Some(DEFAULT_LIFT_DEG),
             ..Default::default()
         };
-        app.apply_manifest(&bare, &[]);
+        app.apply_manifest(&bare, &[], None);
         app.watch_fills_in(&take, &bare);
         assert_eq!(app.calibre, c.calibre);
         assert_eq!(app.lift_deg, lift);
@@ -20929,7 +20741,7 @@ mod tests {
         // A take outside the library keeps what its file says.
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.use_library(Some(root.clone()));
-        app.apply_manifest(&bare, &[]);
+        app.apply_manifest(&bare, &[], None);
         app.watch_fills_in(&base.join("elsewhere"), &bare);
         assert!(app.calibre.is_empty() && app.bph.is_none());
         drop(app);
@@ -23063,7 +22875,7 @@ mod tests {
         let text = toml::to_string_pretty(&m).unwrap();
         let again: Manifest = toml::from_str(&text).unwrap();
         let mut opened = TimegrapherApp::with_devices(Vec::new(), None);
-        opened.apply_manifest(&again, &again.recordings);
+        opened.apply_manifest(&again, &again.recordings, None);
         assert_eq!(opened.masked, [(10.0, 20.0), (65.0, 68.0)]);
         // Nothing masked: no masked line in the file.
         app.set_masked(Vec::new());
@@ -23123,7 +22935,7 @@ mod tests {
                     measure_s = 40.0\n";
         let m: Manifest = toml::from_str(text).unwrap();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        let (stretches, settles) = app.apply_manifest(&m, &m.recordings);
+        let (stretches, settles) = app.apply_manifest(&m, &m.recordings, None);
         assert_eq!(
             stretches,
             [(0.0, Position::DialUp), (90.0, Position::DialDown)]
@@ -23132,8 +22944,16 @@ mod tests {
         // Settled at once, as the app writes its own takes.
         let text = text.replace("settle_s = 30.0", "settle_s = 0.0");
         let m: Manifest = toml::from_str(&text).unwrap();
-        let (_, settles) = app.apply_manifest(&m, &m.recordings);
+        let (_, settles) = app.apply_manifest(&m, &m.recordings, None);
         assert!(settles.is_empty(), "{settles:?}");
+        // A take shorter than twice its settling settles to halfway, as
+        // session reads it, once its length is known.
+        let text = "audio = true\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n";
+        let short: Manifest = toml::from_str(text).unwrap();
+        let (_, settles) = app.apply_manifest(&short, &short.recordings, Some(25.0));
+        assert_eq!(settles, [(0.0, 12.5)]);
+        let (_, settles) = app.apply_manifest(&short, &short.recordings, None);
+        assert_eq!(settles, [(0.0, timegrapher_core::take::SETTLE_S)]);
     }
 
     /// A take of one position whose session file gives no settling (one
@@ -23472,7 +23292,7 @@ mod tests {
             assert_eq!(r.masked, [[32.0, 38.0]]);
         }
         let mut opened = TimegrapherApp::with_devices(Vec::new(), None);
-        opened.apply_manifest(&m2, &m2.recordings);
+        opened.apply_manifest(&m2, &m2.recordings, None);
         assert_eq!(opened.masked, [(32.0, 38.0)]);
         app.set_masked(Vec::new());
         // Nothing painted: nothing kept as recorded.
@@ -23983,7 +23803,7 @@ mod tests {
         let (dir, path) = replay_context_fixture("file", true);
         let mut batch = TimegrapherApp::with_devices(Vec::new(), None);
         let (manifest, entries) = read_manifest(&path).unwrap().unwrap();
-        let (positions, settles) = batch.apply_manifest(&manifest, &entries);
+        let (positions, settles) = batch.apply_manifest(&manifest, &entries, None);
         let mut replay = TimegrapherApp::with_devices(Vec::new(), None);
         replay.start_replay_at(&path, 100.0);
         assert_eq!(drain_replay_source(&replay), 9000);
@@ -27449,3 +27269,11 @@ mod status_tests;
 #[cfg(test)]
 #[path = "app_revision_tests.rs"]
 mod revision_tests;
+
+#[cfg(test)]
+#[path = "app_whole_tests.rs"]
+mod whole_tests;
+
+#[cfg(test)]
+#[path = "app_charts_tests.rs"]
+mod charts_tests;
