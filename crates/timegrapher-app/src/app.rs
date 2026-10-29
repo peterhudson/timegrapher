@@ -7757,7 +7757,7 @@ impl TimegrapherApp {
         }
         // Only the beats in the position the watch is in now, joined.
         let spans = self.current_spans();
-        let clock = self.take_clock.clone().filter(|f| f.corrects());
+        let clock = Self::rate_clock(&self.take_clock).cloned();
         let joined = !self.session.stretches().is_empty();
         let dur = self.live.as_ref().map_or(0.0, |l| {
             steady::joined_duration(&spans, l.duration_s(), clock.as_ref().filter(|_| joined))
@@ -12139,7 +12139,7 @@ impl TimegrapherApp {
         self.take_clock = clock;
         self.take_clock_from = from;
         if let Some(l) = self.live.as_mut() {
-            l.set_rate_clock(self.take_clock.as_ref().filter(|f| f.corrects()));
+            l.set_rate_clock(Self::rate_clock(&self.take_clock));
         }
         self.rev.clock += 1;
     }
@@ -12655,7 +12655,16 @@ impl TimegrapherApp {
     /// The take's own clock the readings are corrected on, where it
     /// corrects: its mapping, which may drift over the take.
     fn take_rate_clock(&self) -> Option<&timegrapher_core::clock::ClockFit> {
-        self.take_clock.as_ref().filter(|f| f.corrects())
+        Self::rate_clock(&self.take_clock)
+    }
+
+    /// A clock where it corrects (core's `ClockFit::corrects`), the one
+    /// place that rule is applied; it takes the field, not `self`, so a
+    /// setter can call it while it holds the live engine.
+    fn rate_clock(
+        clock: &Option<timegrapher_core::clock::ClockFit>,
+    ) -> Option<&timegrapher_core::clock::ClockFit> {
+        clock.as_ref().filter(|f| f.corrects())
     }
 
     /// The rate `rate` on the clock kept for the input, for the Rate
@@ -12666,7 +12675,7 @@ impl TimegrapherApp {
         // it measured, and why not, in the same place.
         // The recording's USB lines set the rate: the log only places
         // breaks, and what it measured is in the same place.
-        if let Some(f) = self.take_clock.as_ref().filter(|f| f.corrects()) {
+        if let Some(f) = self.take_rate_clock() {
             if let Some(w) = f.withheld {
                 let ppm = format!("{:.1}", f.ppm.abs());
                 let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
