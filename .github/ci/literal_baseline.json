@@ -169,7 +169,7 @@
    },
    "crates/timegrapher-cli/src/long.rs": {
     "bounds": 0,
-    "comparisons": 3,
+    "comparisons": 2,
     "constants": 0,
     "defaults": 0
    },
@@ -209,12 +209,6 @@
     "constants": 6,
     "defaults": 1
    },
-   "crates/timegrapher-cli/src/series_cmd.rs": {
-    "bounds": 0,
-    "comparisons": 1,
-    "constants": 0,
-    "defaults": 0
-   },
    "crates/timegrapher-cli/src/session_cmd.rs": {
     "bounds": 0,
     "comparisons": 1,
@@ -236,7 +230,7 @@
   },
   "total": {
    "bounds": 13,
-   "comparisons": 21,
+   "comparisons": 19,
    "constants": 20,
    "defaults": 29
   }
