@@ -115,6 +115,9 @@ struct State {
     fs: f64,
     cfg: StreamConfig,
     template: Option<Vec<f32>>,
+    /// The typical beat's match with `template` at the end of the sound
+    /// read so far ([`beats::detect_after`]).
+    level: Option<f32>,
     /// Tick and Tock told apart across each jump by their sound, as live
     /// listening tells them.
     sides: beats::SideCheck,
@@ -137,11 +140,16 @@ impl State {
         let a = &self.cfg.analysis;
         let env = envelope(x, fs, &a.envelope);
         let local = match &self.template {
-            Some(t) => beats::detect_with_template(&env, fs, self.bph, t),
+            Some(t) => {
+                let (b, level) = beats::detect_after(&env, fs, self.bph, t, self.level);
+                self.level = level;
+                b
+            }
             None => {
                 self.bph = a.bph.unwrap_or_else(|| beats::guess_bph(&env, fs));
-                let (b, t) = beats::detect(&env, fs, self.bph);
+                let (b, t, level) = beats::detect_levelled(&env, fs, self.bph);
                 self.template = Some(t);
+                self.level = level;
                 b
             }
         };
@@ -345,6 +353,7 @@ impl Chunker {
                 fs,
                 cfg: cfg.clone(),
                 template: None,
+                level: None,
                 sides: beats::SideCheck::default(),
                 jumps: Vec::new(),
                 bph: cfg.analysis.bph.unwrap_or(0),
