@@ -132,6 +132,14 @@ impl Default for SynthConfig {
     }
 }
 
+/// What [`generate`] scales its sound by on writing it.
+pub const SCALE: f64 = 0.5;
+
+/// The RMS of the noise [`generate`] adds for `snr_db`, before [`SCALE`].
+pub fn noise_rms(snr_db: f64) -> f64 {
+    10f64.powf(-snr_db / 20.0)
+}
+
 /// A watch at 250° whose unlock makes no sound, `duration_s` long: its
 /// beat error is found at the drop alone, as on a take where the unlock is
 /// never found.
@@ -171,11 +179,10 @@ pub fn generate(
         t += nominal * (1.0 - rate / 86400.0);
         k += 1;
     }
-    let noise_rms = 10f64.powf(-cfg.snr_db / 20.0);
-    let scale = 0.5;
+    let noise_rms = noise_rms(cfg.snr_db);
     let samples = x
         .iter()
-        .map(|&v| ((v + noise_rms * rng.normal()) * scale) as f32)
+        .map(|&v| ((v + noise_rms * rng.normal()) * SCALE) as f32)
         .collect();
     Audio {
         samples,

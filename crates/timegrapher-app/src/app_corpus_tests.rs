@@ -219,7 +219,16 @@ fn compare(root: &Path, cli: &Path, known: &[(&str, &str)]) -> Vec<String> {
 
 /// Edge takes the app still reads differently from session, and why. Each
 /// must still differ, so the list only shrinks as the app is fixed.
-const EDGE_KNOWN: &[(&str, &str)] = &[];
+const EDGE_KNOWN: &[(&str, &str)] = &[
+    (
+        "edge_sleep_two_entries/. (0–90 s)",
+        "one of two readings of one file: the app opens a file whole, not a stretch of it",
+    ),
+    (
+        "edge_sleep_two_entries/. (90–180 s)",
+        "one of two readings of one file: the app opens a file whole, not a stretch of it",
+    ),
+];
 
 /// Every recording each corpus take lists reads the same on the app's
 /// cards as from `timegrapher session`.

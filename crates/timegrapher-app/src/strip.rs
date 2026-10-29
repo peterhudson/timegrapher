@@ -14,6 +14,7 @@
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use timegrapher_core::beats::Beat;
 use timegrapher_core::breaks::Break;
+use timegrapher_core::clock::ClockFit;
 use timegrapher_core::library::length_text;
 pub use timegrapher_core::timing::Anchor;
 
@@ -186,6 +187,7 @@ impl RateLine {
         anchor: Anchor,
         period_s: f64,
         breaks: &[Break],
+        clock: Option<&ClockFit>,
     ) -> Option<[(f64, f64); 2]> {
         let lo = beats.partition_point(|b| b.time < self.from_s);
         let hi = beats.partition_point(|b| b.time <= self.to_s);
@@ -197,7 +199,7 @@ impl RateLine {
         let t0 = used.iter().map(|b| b.time).sum::<f64>() / n;
         let l0 = used
             .iter()
-            .map(|b| anchor.lead_on_wall(b, period_s, breaks))
+            .map(|b| anchor.lead_on_true(b, period_s, breaks, clock))
             .sum::<f64>()
             / n;
         // A gaining watch beats a little early each time: ms of lead per second.
@@ -326,6 +328,9 @@ pub struct Extras<'a> {
     /// The take's breaks, so each beat's lead is read on true time: a
     /// steady watch's trace runs on through a gap. Empty while listening.
     pub breaks: &'a [Break],
+    /// The clock the rate line's reading is on, so the beats are read on
+    /// it too and run along the line on a corrected take (#643).
+    pub clock: Option<&'a ClockFit>,
 }
 
 /// Mark each stretch of the session in one position across the plotting
@@ -1584,7 +1589,10 @@ pub fn draw_strip(
             continue;
         }
         let p = g.pos(
-            wrap(anchor.lead_on_wall(b, period_s, extras.breaks), half),
+            wrap(
+                anchor.lead_on_true(b, period_s, extras.breaks, extras.clock),
+                half,
+            ),
             b.time,
         );
         let mut c = colors[b.index.rem_euclid(2) as usize];
@@ -1611,7 +1619,9 @@ pub fn draw_strip(
     // do; and faint parallels to it across the whole strip, one per grid
     // step, so the eye can tell whether the dots run parallel to it.
     if let Some(line) = extras.rate_line {
-        if let Some([(ta, la), (tb, lb)]) = line.ends(beats, anchor, period_s, extras.breaks) {
+        if let Some([(ta, la), (tb, lb)]) =
+            line.ends(beats, anchor, period_s, extras.breaks, extras.clock)
+        {
             let slope = if tb > ta { (lb - la) / (tb - ta) } else { 0.0 };
             let at = |t: f64| la + slope * (t - ta);
             let polyline = |t0: f64, t1: f64, offset: f64, stroke: Stroke| {
@@ -2275,6 +2285,46 @@ mod tests {
         assert!(later > first, "{first} -> {later}");
         // 71 beats later the lead has grown by 71 * 0.125 ms.
         assert!((later - first - 71.0 * 0.125).abs() < 1e-9);
+    }
+
+    /// On a take whose sound card runs 100 ppm slow, the beats lie along
+    /// the rate line drawn from the corrected rate, where on the card's
+    /// seconds they tilted from it by 8.64 s/d, 0.0864 s/d per ppm (#643).
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
+    fn on_a_corrected_take_the_beats_run_along_the_rate_line() {
+        let p = 0.125;
+        let rate = 5.0;
+        let clock = ClockFit::fixed(100.0, 120.0);
+        let slow = 1.0 + 100.0 * 1e-6;
+        // Beat k at its true second k periods in, gaining `rate`; the card
+        // hears it at that over `slow`.
+        let true_s = |k: i64| k as f64 * p * (1.0 - rate / 86400.0);
+        let beats: Vec<Beat> = (0..800).map(|k| beat(k, true_s(k) / slow)).collect();
+        let line = RateLine {
+            from_s: 0.0,
+            to_s: beats[799].time,
+            rate_s_per_day: rate,
+        };
+        let off_line = |clock: Option<&ClockFit>| -> f64 {
+            let a = Anchor::centre_on_true(&beats[..8], p, 8, &[], clock).unwrap();
+            let [(ta, la), (tb, lb)] = line.ends(&beats, a, p, &[], clock).unwrap();
+            let at = |t: f64| la + (lb - la) / (tb - ta) * (t - ta);
+            beats
+                .iter()
+                .map(|b| (a.lead_on_true(b, p, &[], clock) - at(b.time)).abs())
+                .fold(0.0, f64::max)
+        };
+        // Within a hundredth of a millisecond: the strip's time axis stays
+        // on the card's seconds, 100 ppm short of the true ones.
+        let on_clock = off_line(Some(&clock));
+        assert!(on_clock < 0.01, "{on_clock} ms off the line");
+        // On the card's seconds the last beats stand ~5 ms off it.
+        let on_card = off_line(None);
+        assert!(on_card > 3.0, "{on_card} ms off the line");
     }
 
     #[test]

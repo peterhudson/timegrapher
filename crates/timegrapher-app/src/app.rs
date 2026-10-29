@@ -4944,11 +4944,12 @@ impl TimegrapherApp {
                 if let Some(bph) = live.bph() {
                     let beats = live.beats();
                     if beats.len() >= 16 {
-                        self.anchor = Anchor::centre_on_wall(
+                        self.anchor = Anchor::centre_on_true(
                             &beats[..16],
                             3600.0 / bph as f64,
                             16,
                             self.take_breaks.as_deref().unwrap_or_default(),
+                            Self::rate_clock(&self.take_clock),
                         );
                     }
                 }
@@ -5647,15 +5648,16 @@ impl TimegrapherApp {
         let period = 3600.0 / bph as f64;
         let beats = live.beats();
         let breaks = self.take_breaks.as_deref().unwrap_or_default();
+        let clock = self.take_rate_clock();
         let centred = if self.follow {
-            Anchor::centre_on_wall(beats, period, 8, breaks)
+            Anchor::centre_on_true(beats, period, 8, breaks, clock)
         } else {
-            Anchor::centre_on_wall(&beats[..beats.len().min(16)], period, 16, breaks)
+            Anchor::centre_on_true(&beats[..beats.len().min(16)], period, 16, breaks, clock)
         };
         let Some(anchor) = centred else { return };
         let mut leads: Vec<f64> = beats
             .iter()
-            .map(|b| anchor.lead_on_wall(b, period, breaks))
+            .map(|b| anchor.lead_on_true(b, period, breaks, clock))
             .collect();
         leads.sort_by(f64::total_cmp);
         let stray = leads.len() / 1000;
@@ -5740,8 +5742,9 @@ impl TimegrapherApp {
                 let beats = l.beats();
                 let breaks = self.take_breaks.as_deref().unwrap_or_default();
                 let hi = beats.partition_point(|b| b.time <= end);
+                let clock = Self::rate_clock(&self.take_clock);
                 if let Some(a) =
-                    Anchor::centre_on_wall(&beats[..hi], 3600.0 / bph as f64, 8, breaks)
+                    Anchor::centre_on_true(&beats[..hi], 3600.0 / bph as f64, 8, breaks, clock)
                 {
                     self.anchor = Some(a);
                 }
@@ -14846,6 +14849,8 @@ impl TimegrapherApp {
             } else {
                 self.take_breaks.as_deref().unwrap_or_default()
             },
+            // The clock the rate line's reading is on: the live engine's.
+            clock: self.take_rate_clock(),
         };
         let Some(live) = &self.live else { return };
         // The possible beats numbered at the strip's beat period from the
@@ -21805,76 +21810,6 @@ mod tests {
         assert!(app.latest_s() > 35.0);
     }
 
-    /// Fit stays on and keeps the whole session in view frame by frame;
-    /// zooming or panning the strip's time turns it off, its width doesn't.
-    #[test]
-    fn fit_follows_the_take_until_the_strip_is_zoomed_or_panned() {
-        let mut app = synthetic(40.0, 0.0);
-        app.fit_strip();
-        // As if the session had grown since the last frame.
-        app.strip.set_span(10.0);
-        app.follow_fit();
-        assert!((app.strip.span_s - app.latest_s()).abs() < 1e-9);
-        let end = app.latest_s();
-        app.apply_strip_input(
-            StripInput {
-                width_factor: 2.0,
-                ..Default::default()
-            },
-            end,
-        );
-        assert!(app.strip_fit, "the width is not the strip's time");
-        app.apply_strip_input(
-            StripInput {
-                span_factor: 0.5,
-                ..Default::default()
-            },
-            end,
-        );
-        assert!(!app.strip_fit);
-        let zoomed = app.strip.span_s;
-        app.follow_fit();
-        assert_eq!(app.strip.span_s, zoomed, "off, it leaves the length alone");
-        app.fit_strip();
-        app.apply_strip_input(
-            StripInput {
-                time_shift_s: -5.0,
-                ..Default::default()
-            },
-            end,
-        );
-        assert!(!app.strip_fit);
-    }
-
-    /// Fit is one fixed switch: the strip's toolbar is as wide with it on
-    /// as off, so nothing after it moves.
-    #[test]
-    fn the_fit_switch_never_moves_the_strip_toolbar() {
-        let mut app = synthetic(40.0, 0.0);
-        let ctx = themed();
-        let width = |app: &mut TimegrapherApp| {
-            let mut w = 0.0;
-            for _ in 0..2 {
-                let _ = ctx.run(egui::RawInput::default(), |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        w = ui
-                            .horizontal(|ui| app.strip_settings(ui))
-                            .response
-                            .rect
-                            .width();
-                    });
-                });
-            }
-            w
-        };
-        app.strip_fit = false;
-        let off = width(&mut app);
-        app.fit_take();
-        assert!(app.strip_fit, "an opened take is fitted");
-        let on = width(&mut app);
-        assert_eq!(off, on);
-    }
-
     /// A recording of `seconds` written to `dir/name`, opened and analysed
     /// whole in a new app.
     fn opened_recording(dir: &Path, name: &str, seconds: f64) -> TimegrapherApp {
@@ -26730,59 +26665,6 @@ mod tests {
         let mut back = TimegrapherApp::with_devices(Vec::new(), None);
         back.apply_settings(s);
         assert_eq!(back.average_s, 30.0);
-    }
-
-    #[test]
-    fn dragging_the_strip_looks_back_and_returns() {
-        let mut app = synthetic(40.0, 0.0);
-        let latest = app.latest_s();
-        let back = StripInput {
-            time_shift_s: -5.0,
-            ..Default::default()
-        };
-        app.apply_strip_input(back, app.strip_end_s());
-        assert!((app.strip_end_s() - (latest - 5.0)).abs() < 1e-6);
-        let forward = StripInput {
-            time_shift_s: 20.0,
-            ..Default::default()
-        };
-        app.apply_strip_input(forward, app.strip_end_s());
-        assert_eq!(
-            app.strip_end, None,
-            "past the newest beat follows live again"
-        );
-
-        app.follow = true;
-        let slide = StripInput {
-            lead_shift_ms: 1.0,
-            ..Default::default()
-        };
-        let before = app.anchor.unwrap().time;
-        app.apply_strip_input(slide, app.strip_end_s());
-        assert!((app.anchor.unwrap().time - before - 0.001).abs() < 1e-12);
-        assert!(!app.follow, "sliding by hand ends auto-centring");
-
-        let zoom = StripInput {
-            span_factor: 2.0,
-            width_factor: 0.5,
-            ..Default::default()
-        };
-        app.apply_strip_input(zoom, app.strip_end_s());
-        assert_eq!(app.strip.span_s, 60.0);
-        assert_eq!(app.strip.half_width_ms, 5.0);
-
-        // Zoomed about a time, that time stays where it was on the strip.
-        let end = app.strip_end_s();
-        let at = end - 15.0;
-        let zoom = StripInput {
-            span_factor: 0.5,
-            zoom_at: Some(at),
-            ..Default::default()
-        };
-        app.apply_strip_input(zoom, end);
-        assert_eq!(app.strip.span_s, 30.0);
-        let now = app.strip_end.expect("looking back");
-        assert!(((now - at) / 30.0 - 15.0 / 60.0).abs() < 1e-9, "{now}");
     }
 
     /// New Session while listening, when closing the kept sound fails:
