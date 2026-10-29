@@ -339,7 +339,13 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
 /// rate share, with both usual escape wheels (15 and 20 teeth).
 #[cfg(test)]
 pub fn compute(log: &BeatLog, wheels: Option<Vec<Wheel>>) -> Steadiness {
-    compute_with(log, wheels, None, &std::sync::atomic::AtomicU8::new(0))
+    compute_with(
+        log,
+        &reading_breaks(Vec::new(), log),
+        wheels,
+        None,
+        &std::sync::atomic::AtomicU8::new(0),
+    )
 }
 
 /// What a run of [`compute_with`] is doing, from the step it last stored.
@@ -355,9 +361,12 @@ pub fn stage_text(stage: u8) -> &'static str {
 /// [`stage_text`]) so the panes can say what the tests are doing. A take
 /// whose own clock corrects its rate (`clock`: its clock log, or its USB
 /// lines) is read on it throughout, its readings drawn as the cards and
-/// `timegrapher series` give them.
+/// `timegrapher series` give them. `breaks` are the cuts the readings
+/// stop at, with the time each gap held ([`reading_breaks`]), as
+/// `series` passes core's.
 pub fn compute_with(
     log: &BeatLog,
+    breaks: &[timegrapher_core::breaks::Break],
     wheels: Option<Vec<Wheel>>,
     clock: Option<&timegrapher_core::clock::ClockFit>,
     stage: &std::sync::atomic::AtomicU8,
@@ -369,17 +378,7 @@ pub fn compute_with(
         ..Default::default()
     };
     let cfg = Config::default();
-    // These beats are already indexed on their derived timeline. Zero-gap
-    // cuts split fits without adding time or applying side-alignment heuristics.
-    let breaks: Vec<_> = log
-        .jumps
-        .iter()
-        .map(|&audio_s| timegrapher_core::breaks::Break {
-            audio_s,
-            gap_s: 0.0,
-        })
-        .collect();
-    let long = longrun::analyse_with_breaks(log, clock, &breaks, &lc);
+    let long = longrun::analyse_with_breaks(log, clock, breaks, &lc);
     stage.store(2, Relaxed);
     let report = steadiness::check(log, clock, &long, &lc, &cfg);
     stage.store(3, Relaxed);
@@ -389,7 +388,7 @@ pub fn compute_with(
     let grids = match clock {
         // On the take's own clock, as the tests read it.
         Some(_) => steady_views::check_grids(log, &long, cfg.rate_reading_s),
-        None => steady_views::grids_with_breaks(log, cfg.rate_reading_s, &breaks),
+        None => steady_views::grids_with_breaks(log, cfg.rate_reading_s, breaks),
     };
     let searches = steady_views::searches(&grids, &long, &lc);
     let mut fold_from = [FoldFrom::Own, FoldFrom::Own, FoldFrom::Own];
@@ -2587,7 +2586,13 @@ mod tests {
         };
         let heard = compute(&log, None);
         let fit = timegrapher_core::clock::ClockFit::fixed(20.0, log.duration_s);
-        let clocked = compute_with(&log, None, Some(&fit), &std::sync::atomic::AtomicU8::new(0));
+        let clocked = compute_with(
+            &log,
+            &reading_breaks(Vec::new(), &log),
+            None,
+            Some(&fit),
+            &std::sync::atomic::AtomicU8::new(0),
+        );
         let shift = timegrapher_core::clock::rate_error_s_per_day(20.0);
         let moved = median(&clocked) - median(&heard);
         assert!((moved.abs() - shift.abs()).abs() < 0.05, "{moved} {shift}");
