@@ -24,9 +24,8 @@ use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind
 use timegrapher_core::steady_views::{self, FoldFrom};
 use timegrapher_core::stream::BeatLog;
 
-/// Seconds of beats the tests need before they can say anything: 30 rate
-/// readings of 10 s.
-pub const MIN_S: f64 = 300.0;
+pub use timegrapher_core::joined::{join, joined_duration, MIN_S};
+
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
 /// Most readings drawn on the Readings view per series.
@@ -226,132 +225,6 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
     log.jumps.sort_by(f64::total_cmp);
     log.jumps.dedup();
     Some(log)
-}
-
-/// Room left between two stretches in one position when they are joined
-/// for the tests, seconds: longer than a gap the readings fit across.
-pub const JOIN_S: f64 = 5.0;
-
-/// The length of the stretches `spans` (start, end; the last may run on)
-/// once joined end to end, up to `end_s`, seconds.
-pub fn joined_duration(spans: &[(f64, f64)], end_s: f64) -> f64 {
-    let lens: Vec<f64> = spans
-        .iter()
-        .map(|&(a, b)| b.min(end_s) - a.max(0.0))
-        .filter(|&l| l > 0.0)
-        .collect();
-    lens.iter().sum::<f64>() + JOIN_S * lens.len().saturating_sub(1) as f64
-}
-
-/// The part of `log` inside `spans`, in time order, with the time between
-/// them taken out: one position's beats over a session that moved the
-/// watch, joined so the tests see them as one run, with a short gap at each
-/// join that no reading fits across. With it, the cuts the joined readings
-/// stop at: each of `breaks` inside a span, on the joined times and with
-/// the time its gap held, and each join, with none.
-pub fn join(
-    log: &BeatLog,
-    spans: &[(f64, f64)],
-    breaks: &[timegrapher_core::breaks::Break],
-) -> (BeatLog, Vec<timegrapher_core::breaks::Break>) {
-    use timegrapher_core::breaks::Break;
-    let mut cuts = Vec::new();
-    let beat = 3600.0 / log.bph as f64;
-    let mut out = BeatLog {
-        sample_rate: log.sample_rate,
-        duration_s: 0.0,
-        bph: log.bph,
-        lift_deg: log.lift_deg,
-        beats: Vec::new(),
-        amplitude_windows: Vec::new(),
-        clipped_beats: Vec::new(),
-        clipped_samples: log.clipped_samples,
-        jumps: Vec::new(),
-        sided: Vec::new(),
-        by_count: Vec::new(),
-        snippets: Vec::new(),
-    };
-    // The last kept span's end and last beat (time, number), joined.
-    let mut prev: Option<(f64, f64, i64)> = None;
-    for &(a, b) in spans {
-        let b = b.min(log.duration_s);
-        let lo = log.beats.partition_point(|x| x.time < a);
-        let hi = log.beats.partition_point(|x| x.time < b);
-        let Some(first) = log.beats.get(lo).filter(|_| lo < hi) else {
-            continue;
-        };
-        // Taken off this span's times and beat numbers: it starts JOIN_S
-        // after the last one ended, its beats numbered on by the beats that
-        // would fit between.
-        let (shift_t, shift_i) = match prev {
-            None => (a.max(0.0), first.index),
-            Some((end, last_t, last_i)) => {
-                let shift_t = a - (end + JOIN_S);
-                let n = ((first.time - shift_t - last_t) / beat).round().max(1.0) as i64;
-                (shift_t, first.index - (last_i + n))
-            }
-        };
-        if prev.is_some() {
-            out.jumps.push(a - shift_t);
-            cuts.push(Break {
-                audio_s: a - shift_t,
-                gap_s: 0.0,
-            });
-        }
-        cuts.extend(
-            breaks
-                .iter()
-                .filter(|c| c.audio_s > a && c.audio_s < b)
-                .map(|c| Break {
-                    audio_s: c.audio_s - shift_t,
-                    ..*c
-                }),
-        );
-        out.jumps.extend(
-            log.jumps
-                .iter()
-                .filter(|&&t| t >= a && t < b)
-                .map(|t| t - shift_t),
-        );
-        out.beats.extend(
-            log.beats[lo..hi]
-                .iter()
-                .map(|x| timegrapher_core::beats::Beat {
-                    time: x.time - shift_t,
-                    index: x.index - shift_i,
-                    ..*x
-                }),
-        );
-        out.amplitude_windows.extend(
-            log.amplitude_windows
-                .iter()
-                .filter(|w| w.start_s >= a && w.end_s <= b)
-                .map(|w| {
-                    let mut w = w.clone();
-                    w.start_s -= shift_t;
-                    w.end_s -= shift_t;
-                    // Beat indices changed sides; keep the existing side
-                    // measurements and signed errors on those same beats.
-                    if shift_i % 2 != 0 {
-                        w.swap_sides();
-                    }
-                    w
-                }),
-        );
-        out.clipped_beats.extend(
-            log.clipped_beats
-                .iter()
-                .filter(|&&t| t >= a && t < b)
-                .map(|t| t - shift_t),
-        );
-        let last = out.beats.last().unwrap();
-        out.duration_s = b - shift_t;
-        prev = Some((out.duration_s, last.time, last.index));
-    }
-    out.jumps.sort_by(f64::total_cmp);
-    out.jumps.dedup();
-    let cuts = reading_breaks(cuts, &out);
-    (out, cuts)
 }
 
 /// Run the tests over a session. Slow for long sessions (a 2 h take takes

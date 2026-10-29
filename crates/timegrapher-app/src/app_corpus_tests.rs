@@ -120,16 +120,18 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
 }
 
 /// Entries the app still reads differently from session, and why. Each
-/// must still differ, so the list only shrinks as the app is fixed.
+/// must still differ, so the list only shrinks as the app is fixed. A
+/// file the session file lists more than once is named with its entry's
+/// place among them: `file entry 1`.
 const KNOWN: &[(&str, &str)] = &[
     (
         "reverso21600_DU_level_overnight/take_part01-096.flac",
         "26 s file: session reads its 13 s after settling; the app wants three average windows",
     ),
     (
-        "ym42_CR_long/take_part01-003.flac",
-        "two entries for one file with their own measure_s and settle_s: the app keeps neither \
-         the first's end nor session's halfway cap on the second's settling",
+        "ym42_CR_long/take_part01-003.flac entry 1",
+        "the first of two entries for one file, with its own measure_s: the app does not keep \
+         its end",
     ),
 ];
 
@@ -178,9 +180,28 @@ fn the_app_reads_each_corpus_take_as_the_command_line_does() {
         .zip(readings)
         .flat_map(|(id, rs)| rs.into_iter().map(move |r| (id.clone(), r)))
         .collect();
-    let found = on_every_core(&entries, |(id, reading)| {
-        let label = reading["label"].as_str().expect("a reading's label");
-        let name = format!("{id}/{label}");
+    let label = |r: &serde_json::Value| r["label"].as_str().expect("a reading's label").to_string();
+    // Each reading's name, with its place among the entries for its file
+    // when there are several.
+    let names: Vec<String> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, (id, r))| {
+            let file =
+                |(other, o): &(String, serde_json::Value)| other == id && label(o) == label(r);
+            let name = format!("{id}/{}", label(r));
+            if entries.iter().filter(|e| file(e)).count() > 1 {
+                let place = entries[..i].iter().filter(|e| file(e)).count() + 1;
+                format!("{name} entry {place}")
+            } else {
+                name
+            }
+        })
+        .collect();
+    let named: Vec<_> = entries.iter().zip(names).collect();
+    let found = on_every_core(&named, |((id, reading), name)| {
+        let label = label(reading);
+        let name = name.clone();
         let app = opened(&root.join("takes").join(id).join(label));
         let found = differences(&name, &app.whole_take(), reading);
         match KNOWN.iter().find(|(k, _)| *k == name) {

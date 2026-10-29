@@ -7715,13 +7715,13 @@ impl TimegrapherApp {
                 Err(TryRecvError::Empty) => {}
             }
         }
-        // Only the beats in the position the watch is in now, every stretch
-        // of it joined.
+        // Only the beats in the position the watch is in now, joined.
         let spans = self.current_spans();
-        let dur = self
-            .live
-            .as_ref()
-            .map_or(0.0, |l| steady::joined_duration(&spans, l.duration_s()));
+        let clock = self.take_clock.clone().filter(|f| f.corrects());
+        let joined = !self.session.stretches().is_empty();
+        let dur = self.live.as_ref().map_or(0.0, |l| {
+            steady::joined_duration(&spans, l.duration_s(), clock.as_ref().filter(|_| joined))
+        });
         let upto = self.steady.as_ref().map(|s| s.upto_s);
         let due = match upto {
             None => true,
@@ -7730,9 +7730,9 @@ impl TimegrapherApp {
         };
         if self.steady_job.is_none() && due && dur >= steady::MIN_S {
             let log = self.live.as_ref().and_then(steady::log_of);
-            if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans)) {
+            if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans, clock.as_ref())) {
                 let wheels = self.calibre_wheels();
-                let clock = self.take_clock.clone().filter(|f| f.corrects());
+                let clock = clock.filter(|_| !joined); // A joined log is on it.
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
@@ -7755,21 +7755,21 @@ impl TimegrapherApp {
 
     /// What the steadiness tests read of `log`, and the cuts they stop at:
     /// a take with no position marked whole, at its own breaks with the time
-    /// each gap held and every other jump, as the whole take and `timegrapher
-    /// series` read it; else the position's stretches `spans` joined end to
-    /// end, the take's breaks inside them keeping their time and each join
-    /// with none.
+    /// each gap held and every other jump, as `timegrapher series` reads it;
+    /// else the position's stretches `spans` joined end to end on the take's
+    /// `clock` ([`steady::join`]).
     fn steady_log(
         &self,
         log: BeatLog,
         spans: &[(f64, f64)],
+        clock: Option<&timegrapher_core::clock::ClockFit>,
     ) -> (BeatLog, Vec<timegrapher_core::breaks::Break>) {
         let opened = self.take_breaks.clone().unwrap_or_default();
         if self.session.stretches().is_empty() {
             let breaks = steady::reading_breaks(opened, &log);
             (log, breaks)
         } else {
-            steady::join(&log, spans, &opened)
+            steady::join(&log, spans, &opened, clock)
         }
     }
 
@@ -22368,7 +22368,7 @@ mod tests {
         let spans = app.current_spans();
         assert_eq!(spans.len(), 2);
         let log = steady::log_of(live).unwrap();
-        let joined = steady::join(&log, &spans, &[]).0;
+        let joined = steady::join(&log, &spans, &[], None).0;
         let dd = log
             .beats
             .iter()
@@ -22381,9 +22381,9 @@ mod tests {
             .beats
             .windows(2)
             .all(|w| w[1].time > w[0].time && w[1].index > w[0].index));
-        let want = steady::joined_duration(&spans, live.duration_s());
+        let want = steady::joined_duration(&spans, live.duration_s(), None);
         assert!((joined.duration_s - want).abs() < 1e-9);
-        assert!((want - (live.duration_s() - 20.0 + steady::JOIN_S)).abs() < 1.0);
+        assert!((want - (live.duration_s() - 20.0 + timegrapher_core::joined::JOIN_S)).abs() < 1.0);
         let fit = timegrapher_core::timing::fit(&joined.beats, joined.bph).unwrap();
         assert!(fit.rate_s_per_day.abs() < 5.0, "{}", fit.rate_s_per_day);
         // And it all draws, bands and all.

@@ -123,8 +123,9 @@ struct Settings {
     bph: Option<u32>,
     lift: f64,
     lift_known: bool,
-    /// Seconds `session` skips at the start of each take.
-    settle_s: f64,
+    /// Seconds `session` skips at the start of each take: the session
+    /// file's, none when it gives none ([`take::measured`]'s default).
+    settle_s: Option<f64>,
 }
 
 impl Options {
@@ -355,7 +356,7 @@ fn settings_with(
             bph,
             lift: lift.unwrap_or(take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
-            settle_s: take::SETTLE_S,
+            settle_s: None,
         });
     };
     // A session's takes must agree on how they are measured.
@@ -408,7 +409,7 @@ fn settings_with(
         bph: m.bph.or(bph),
         lift: m.lift.or(lift).unwrap_or(take::DEFAULT_LIFT_DEG),
         lift_known,
-        settle_s: m.settle_s.unwrap_or(take::SETTLE_S),
+        settle_s: m.settle_s,
     })
 }
 
@@ -837,10 +838,10 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
     scfg.analysis.lift_known = set.lift_known;
     let log = stream::analyze_files(&[wav.as_path()], &scfg, |_| {})
         .map_err(|e| format!("{}: {e}", wav.display()))?;
-    let from = set.settle_s.min(log.duration_s / 2.0);
-    let m = session::measure(&log, None, from, log.duration_s);
+    let (from, to) = take::measured(0.0, log.duration_s, set.settle_s, None);
+    let m = session::measure(&log, None, from, to);
     // Readings only when that stretch alone hears the watch too; a take
-    // shorter than about twice the settling time may leave too little.
+    // not much longer than its settling may leave too little.
     let heard = whole.watch_heard && m.watch_heard;
     Ok(Check {
         from_s: m.start_s,
@@ -930,9 +931,8 @@ fn add_to_session(
     let before = match fs::read_to_string(&file) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => format!(
-            "# Written by `timegrapher record`; edit freely.\n{}settle_s = {}\n",
-            header(set),
-            toml::Value::Float(take::SETTLE_S)
+            "# Written by `timegrapher record`; edit freely.\n{}",
+            header(set)
         ),
         Err(e) => return Err(format!("{}: {e}", file.display())),
     };
@@ -1143,7 +1143,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
-            settle_s: take::SETTLE_S,
+            settle_s: None,
         };
         let check = || Check {
             from_s: 0.0,
