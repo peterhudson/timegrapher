@@ -38,10 +38,6 @@ use crate::timing;
 use crate::twostate::{self, TwoState};
 use serde::Serialize;
 
-/// Seconds of beats the tests need before they can say anything: 30 rate
-/// readings of 10 s.
-pub const MIN_S: f64 = 300.0;
-
 #[derive(Debug, Clone, Serialize)]
 pub struct Config {
     /// Length of each rate reading, seconds.

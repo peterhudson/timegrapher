@@ -7715,12 +7715,9 @@ impl TimegrapherApp {
                 Err(TryRecvError::Empty) => {}
             }
         }
-        // Only the beats in the position the watch is in now, every stretch
-        // of it joined.
+        // Only the beats in the position the watch is in now, joined.
         let spans = self.current_spans();
         let clock = self.take_clock.clone().filter(|f| f.corrects());
-        // A joined log is put on the take's clock as it is joined, and read
-        // with none after.
         let joined = !self.session.stretches().is_empty();
         let dur = self.live.as_ref().map_or(0.0, |l| {
             steady::joined_duration(&spans, l.duration_s(), clock.as_ref().filter(|_| joined))
@@ -7735,7 +7732,7 @@ impl TimegrapherApp {
             let log = self.live.as_ref().and_then(steady::log_of);
             if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans, clock.as_ref())) {
                 let wheels = self.calibre_wheels();
-                let clock = clock.filter(|_| !joined);
+                let clock = clock.filter(|_| !joined); // A joined log is on it.
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
@@ -7758,10 +7755,9 @@ impl TimegrapherApp {
 
     /// What the steadiness tests read of `log`, and the cuts they stop at:
     /// a take with no position marked whole, at its own breaks with the time
-    /// each gap held and every other jump, as the whole take and `timegrapher
-    /// series` read it; else the position's stretches `spans` joined end to
-    /// end on the take's `clock`, the take's breaks inside them keeping
-    /// their time and each join with none.
+    /// each gap held and every other jump, as `timegrapher series` reads it;
+    /// else the position's stretches `spans` joined end to end on the take's
+    /// `clock` ([`steady::join`]).
     fn steady_log(
         &self,
         log: BeatLog,

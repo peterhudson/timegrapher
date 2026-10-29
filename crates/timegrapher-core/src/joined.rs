@@ -11,6 +11,10 @@ use crate::session::Manifest;
 use crate::stream::BeatLog;
 use crate::take;
 
+/// Seconds of beats the steadiness tests need before they can say
+/// anything: 30 rate readings of 10 s.
+pub const MIN_S: f64 = 300.0;
+
 /// Room left between two stretches when they are joined, seconds: longer
 /// than a gap the readings fit across.
 pub const JOIN_S: f64 = 5.0;

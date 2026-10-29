@@ -24,8 +24,7 @@ use timegrapher_core::steadiness::{self, Config, Report, SeriesCheck, SeriesKind
 use timegrapher_core::steady_views::{self, FoldFrom};
 use timegrapher_core::stream::BeatLog;
 
-pub use timegrapher_core::joined::{join, joined_duration};
-pub use timegrapher_core::steadiness::MIN_S;
+pub use timegrapher_core::joined::{join, joined_duration, MIN_S};
 
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
