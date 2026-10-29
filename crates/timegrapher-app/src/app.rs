@@ -7503,7 +7503,7 @@ impl TimegrapherApp {
             Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |ui| {
                 self.export_button(ui, pane)
             }),
-            Pane::PositionsTest => theme::pane_toolbar(ui, title, help::POSITIONS_TEST, |ui| {
+            Pane::PositionsTest => theme::pane_toolbar(ui, title, &help::POSITIONS_TEST, |ui| {
                 self.positions_settings(ui);
                 self.export_button(ui, pane);
             }),
@@ -8138,7 +8138,7 @@ impl TimegrapherApp {
                     .max_rect(rect)
                     .layout(egui::Layout::right_to_left(egui::Align::Center)),
             );
-            theme::help(&mut child, caption, help::POSITION);
+            theme::help(&mut child, caption, &help::POSITION);
             child.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.add(
                     egui::Label::new(
@@ -8668,7 +8668,7 @@ impl TimegrapherApp {
             && !self.bph_set_by_calibre();
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            theme::help(ui, "Calibre", help::CALIBRE);
+            theme::help(ui, "Calibre", &help::CALIBRE);
             if let Some(first) = limits.first() {
                 let sentences: Vec<String> = limits.iter().map(|l| l.1.clone()).collect();
                 // The watch's name keeps the room; the chip says how many.
