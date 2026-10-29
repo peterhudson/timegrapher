@@ -426,11 +426,18 @@ pub fn stretch_windows<'w>(
     holes
         .amplitude_windows(windows)
         .into_iter()
-        .filter(|w| {
-            let mid = (w.start_s + w.end_s) / 2.0;
-            mid >= from_s && mid < to_s
-        })
+        .filter(|w| window_in(w, from_s, to_s))
         .collect()
+}
+
+/// Whether the 2 s window `w` belongs to the stretch from `from_s` to
+/// `to_s` (seconds on the windows' own clock): its midpoint lies in the
+/// stretch, from `from_s` up to but not at `to_s`, so each window belongs
+/// to exactly one of two stretches that meet (#632). The one rule for
+/// which windows a stretch takes.
+pub fn window_in(w: &AmplitudeWindow, from_s: f64, to_s: f64) -> bool {
+    let mid = (w.start_s + w.end_s) / 2.0;
+    mid >= from_s && mid < to_s
 }
 
 /// What a stretch's amplitude windows ([`stretch_windows`]) read.
@@ -1579,6 +1586,34 @@ pub struct KnownFault {
 #[cfg(test)]
 mod manifest_input_tests {
     use super::*;
+
+    /// A window belongs to the stretch holding its midpoint, the start in
+    /// and the end out, so two stretches that meet share none (#632).
+    #[test]
+    fn a_window_belongs_to_the_one_stretch_holding_its_midpoint() {
+        let w = |a: f64| AmplitudeWindow {
+            start_s: a,
+            end_s: a + 2.0,
+            even_deg: None,
+            odd_deg: None,
+            beat_error_ms: None,
+            beat_error_unlock_ms: None,
+            even_unlock_ms: None,
+            odd_unlock_ms: None,
+            even_drop_ms: None,
+            odd_drop_ms: None,
+        };
+        // Midpoint 11 s: in 10..20 and 11..12, not 0..11 or 12..20.
+        assert!(window_in(&w(10.0), 10.0, 20.0));
+        assert!(window_in(&w(10.0), 11.0, 12.0));
+        assert!(!window_in(&w(10.0), 0.0, 11.0));
+        assert!(!window_in(&w(10.0), 12.0, 20.0));
+        // Half in, half out: in the stretch holding its middle only.
+        assert!(window_in(&w(9.5), 10.0, 20.0));
+        assert!(!window_in(&w(8.5), 10.0, 20.0));
+        assert!(!window_in(&w(19.0), 10.0, 20.0));
+        assert!(window_in(&w(19.0), 20.0, 30.0));
+    }
 
     /// With no timing scatter the sentence is beats.rs's own, as with one.
     #[test]
