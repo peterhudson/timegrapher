@@ -413,8 +413,10 @@ pub fn stretch_beats(beats: &[Beat], from_s: f64, to_s: f64) -> std::ops::Range<
 
 /// The amplitude windows a reading of the stretch from `from_s` to `to_s`
 /// (audio seconds) takes: those `holes` keeps, clear of every hole on
-/// true time, that lie wholly inside the stretch. Live and saved readings
-/// both take them so, so one stretch reads one way.
+/// true time, whose midpoint lies in the stretch, from `from_s` up to but
+/// not at `to_s`, so each window belongs to exactly one of two stretches
+/// that meet (#632). Live and saved readings both take them so, so one
+/// stretch reads one way.
 pub fn stretch_windows<'w>(
     holes: &Cuts,
     windows: &'w [AmplitudeWindow],
@@ -424,7 +426,10 @@ pub fn stretch_windows<'w>(
     holes
         .amplitude_windows(windows)
         .into_iter()
-        .filter(|w| w.start_s >= from_s - 1e-9 && w.end_s <= to_s + 1e-9)
+        .filter(|w| {
+            let mid = (w.start_s + w.end_s) / 2.0;
+            mid >= from_s && mid < to_s
+        })
         .collect()
 }
 
