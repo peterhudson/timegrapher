@@ -529,11 +529,11 @@ function analyzeRate(doc) {
   return { value: (doc.overall || {}).rate_s_per_day, basis: "on the sound card's clock" };
 }
 
-function recordingView(doc, extra, limits) {
+function recordingView(doc, extra, limits, noBeat) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   if (doc.watch_heard === false) {
-    return head + `<div class="card notice"><b>No Regular Beat Found</b>${noRegularBeat(doc.jitter_us, doc.timing_scatter_fraction)}</div>`;
+    return head + `<div class="card notice"><b>No Regular Beat Found</b>${esc(noBeat || "")}</div>`;
   }
   const o = doc.overall || {};
   // The headline beat error is the unlock's, with the drop's beside it, as
@@ -565,16 +565,6 @@ function recordingView(doc, extra, limits) {
   html += stripCards(extra && extra.strip);
   html += profileCard(extra && extra.profile, "Tick and Tock", o.beat_error_ms);
   return html;
-}
-
-// The canonical sentence for no regular beat, with the timing scatter of
-// the beats when the document gives it (as the server's caveats.rs says it).
-// The timing scatter in µs and as the share of a beat core gives with it
-// (timing_scatter_fraction).
-function noRegularBeat(jitterUs, fraction) {
-  const scatter = Number.isFinite(jitterUs) && Number.isFinite(fraction)
-    ? ` (timing scatter ${num(jitterUs / 1000, 1)} ms, ${num(fraction * 100, 1)}% of a beat)` : "";
-  return `No regular beat found${scatter}. There are no rate, amplitude or beat error readings.`;
 }
 
 function sessionView(doc, limits) {
@@ -1899,7 +1889,7 @@ function liveView(l) {
 
 // record_position's result: the take's quick check, with the readings over
 // time as they were heard when there was a live view.
-function recordView(doc, heard) {
+function recordView(doc, heard, noBeat) {
   const c = doc.check || {};
   const name = positionName(doc.position);
   let html = `<h1>${esc(name)}</h1><p class="sub">${timeLabel(doc.seconds)} recorded · ${esc(c.bph)} beats per hour${Number.isFinite(doc.wind_h) ? ` · ${num(doc.wind_h, 0)} h after full wind` : ""}</p>`;
@@ -1909,7 +1899,7 @@ function recordView(doc, heard) {
   }
   const clipped = c.clipping && c.clipping.beats > 0 ? `${num(c.clipping.beat_fraction * 100, 1)}% of beats were clipped.` : "";
   if (c.watch_heard === false) {
-    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noRegularBeat(Number.isFinite(c.timing_scatter_ms) ? c.timing_scatter_ms * 1000 : null, c.timing_scatter_fraction))}${clipped ? ` ${clipped}` : ""}</div>`;
+    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noBeat || "")}${clipped ? ` ${clipped}` : ""}</div>`;
     return html;
   }
   if (clipped) html += `<div class="card notice"><b>Clipping</b>${clipped}</div>`;
@@ -1947,12 +1937,14 @@ function redraw() {
   const doc = last.structuredContent;
   const extra = last._meta && last._meta["timegrapher/charts"];
   const limits = last._meta && last._meta["timegrapher/limits"];
+  // No regular beat, in the server's (core's) words.
+  const noBeat = last._meta && last._meta["timegrapher/no_beat"];
   let html;
   if (last.isError || !doc || !doc.schema) {
     const text = (last.content || []).map((c) => c.text || "").join("\n");
     html = `<div class="card notice"><b>No Reading</b>${esc(text || "The tool returned nothing to draw.")}</div>`;
   } else if (doc.schema.startsWith("timegrapher.analyze/")) {
-    html = recordingView(doc, extra, limits);
+    html = recordingView(doc, extra, limits, noBeat);
   } else if (doc.schema.startsWith("timegrapher.session/")) {
     html = sessionView(doc, limits);
   } else if (doc.schema.startsWith("timegrapher.profile/")) {
@@ -1960,7 +1952,7 @@ function redraw() {
   } else if (doc.schema.startsWith("timegrapher.series/")) {
     html = seriesView(doc, extra, limits);
   } else if (doc.schema.startsWith("timegrapher.record/")) {
-    html = recordView(doc, live && live.doc);
+    html = recordView(doc, live && live.doc, noBeat);
   } else {
     html = `<p class="empty">Nothing to draw for ${esc(doc.schema)}.</p>`;
   }
