@@ -281,6 +281,8 @@ pub(crate) struct Read {
     pub log: BeatLog,
     pub clock: Option<crate::clock_cmd::AppliedClock>,
     pub breaks: Vec<timegrapher_core::breaks::Break>,
+    /// Why the breaks are not all the take's own list's, when they are not.
+    pub unlisted: Option<timegrapher_core::breaks::Unlisted>,
     /// The stretches masked by hand and left out, start and end.
     pub masked: Vec<(f64, f64)>,
     /// The take's stretches read, audio seconds, when it is read in
@@ -340,7 +342,7 @@ pub(crate) fn read(
     })
     .map_err(|e| e.to_string())?;
     progress.end();
-    let breaks = take::breaks(
+    let timegrapher_core::breaks::Found { breaks, unlisted } = take::breaks(
         &mut log,
         take::Listed::Files(&paths),
         clock.as_mut().map(|c| &mut c.fit),
@@ -358,6 +360,7 @@ pub(crate) fn read(
         log,
         clock,
         breaks,
+        unlisted,
         masked: Vec::new(),
         stretches: None,
     })
@@ -485,6 +488,7 @@ fn read_take(
         log,
         clock,
         breaks,
+        unlisted: opened.unlisted,
         masked: opened.masked,
         stretches,
     })
@@ -561,6 +565,7 @@ pub fn run(
         log,
         clock: applied,
         breaks,
+        unlisted,
         masked,
         stretches,
     } = read(files, clock_args, cfg, lift, train)?;
@@ -583,10 +588,16 @@ pub fn run(
     };
     lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
-    let rep = match stretches {
+    let mut rep = match stretches {
         Some(_) => longrun::analyse_on_clock(&log, clock.as_ref(), &breaks, &lc),
         None => longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc),
     };
+    if let Some(why) = unlisted {
+        timegrapher_core::measure::add(
+            &mut rep.caveats,
+            timegrapher_core::measure::Caveat::BreaksUnlisted { why },
+        );
+    }
     // A take read in stretches is on its clock already.
     let clock = clock.filter(|_| stretches.is_none());
 
@@ -659,8 +670,8 @@ pub fn run(
     Ok(())
 }
 
-/// The `clock_sources_disagree`, `sides_by_count` and `beat_error_as_size`
-/// caveats in core's short words
+/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count` and
+/// `beat_error_as_size` caveats in core's short words
 /// ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
     caveats: &[timegrapher_core::measure::Caveat],
@@ -671,6 +682,7 @@ pub(crate) fn caveat_lines(
         .filter_map(|c| {
             let label = match c {
                 Caveat::ClockSourcesDisagree { .. } => "Clock",
+                Caveat::BreaksUnlisted { .. } => "Breaks",
                 Caveat::SidesByCount { .. } => "Sides",
                 Caveat::BeatErrorAsSize => "Conditions",
                 _ => return None,
@@ -1352,12 +1364,16 @@ mod caveat_tests {
                 log_ppm_sd: 2.0,
             },
             Caveat::LiftUnknown,
+            Caveat::BreaksUnlisted {
+                why: timegrapher_core::breaks::Unlisted::Unreadable,
+            },
             Caveat::BeatErrorAsSize,
         ]);
         assert_eq!(
             lines,
             [
                 ("Clock", "USB lines and clock log 100 ppm apart".to_string()),
+                ("Breaks", "breaks from the clock log".to_string()),
                 (
                     "Conditions",
                     "beat error given as a size: its sign differs either side of a cut".to_string()

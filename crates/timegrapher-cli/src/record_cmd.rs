@@ -555,7 +555,7 @@ fn reserve_results(
     .ok()
     .flatten()
     .map(|a| a.fit);
-    let breaks = take::breaks(&mut log, take::Listed::Files(&paths), clock.as_mut());
+    let breaks = take::breaks(&mut log, take::Listed::Files(&paths), clock.as_mut()).breaks;
     let beat_s = 3600.0 / f64::from(log.bph.max(1));
     let heard = power_reserve::heard(&log.beats, beat_s);
     let mut r = Results::of(&heard, ending, started, pos.common(), true, |s| {
@@ -760,7 +760,7 @@ fn live(
                     // The computer slept or the input stalled and sound was
                     // lost: a break, as after a pause, with the time
                     // between left out.
-                    rec.sound_lost();
+                    rec.sound_lost(gap);
                     if let Some(f) = feed.as_mut() {
                         f.live.skip(gap);
                     }
