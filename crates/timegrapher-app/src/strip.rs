@@ -13,6 +13,7 @@
 
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use timegrapher_core::beats::Beat;
+use timegrapher_core::breaks::Break;
 use timegrapher_core::library::length_text;
 pub use timegrapher_core::timing::Anchor;
 
@@ -179,7 +180,13 @@ pub struct RateLine {
 impl RateLine {
     /// The line's lead (ms) at each end, through the middle of the beats it
     /// covers: a line of slope `rate` through their mean time and lead.
-    fn ends(&self, beats: &[Beat], anchor: Anchor, period_s: f64) -> Option<[(f64, f64); 2]> {
+    fn ends(
+        &self,
+        beats: &[Beat],
+        anchor: Anchor,
+        period_s: f64,
+        breaks: &[Break],
+    ) -> Option<[(f64, f64); 2]> {
         let lo = beats.partition_point(|b| b.time < self.from_s);
         let hi = beats.partition_point(|b| b.time <= self.to_s);
         let used: Vec<&Beat> = beats[lo..hi].iter().filter(|b| b.is_good()).collect();
@@ -190,7 +197,7 @@ impl RateLine {
         let t0 = used.iter().map(|b| b.time).sum::<f64>() / n;
         let l0 = used
             .iter()
-            .map(|b| anchor.lead_ms(b, period_s))
+            .map(|b| anchor.lead_on_wall(b, period_s, breaks))
             .sum::<f64>()
             / n;
         // A gaining watch beats a little early each time: ms of lead per second.
@@ -316,6 +323,9 @@ pub struct Extras<'a> {
     /// recorded: start and end. A right click on one in the track's lane
     /// takes the painting off.
     pub painted: &'a [(f64, f64)],
+    /// The take's breaks, so each beat's lead is read on true time: a
+    /// steady watch's trace runs on through a gap. Empty while listening.
+    pub breaks: &'a [Break],
 }
 
 /// Mark each stretch of the session in one position across the plotting
@@ -1573,7 +1583,10 @@ pub fn draw_strip(
         if !b.is_good() || b.index.div_euclid(2).rem_euclid(every) != 0 {
             continue;
         }
-        let p = g.pos(wrap(anchor.lead_ms(b, period_s), half), b.time);
+        let p = g.pos(
+            wrap(anchor.lead_on_wall(b, period_s, extras.breaks), half),
+            b.time,
+        );
         let mut c = colors[b.index.rem_euclid(2) as usize];
         // Faint while the watch settles after a move, or masked out.
         if extras.settles.iter().any(|s| b.time > s.0 && b.time <= s.1)
@@ -1598,7 +1611,7 @@ pub fn draw_strip(
     // do; and faint parallels to it across the whole strip, one per grid
     // step, so the eye can tell whether the dots run parallel to it.
     if let Some(line) = extras.rate_line {
-        if let Some([(ta, la), (tb, lb)]) = line.ends(beats, anchor, period_s) {
+        if let Some([(ta, la), (tb, lb)]) = line.ends(beats, anchor, period_s, extras.breaks) {
             let slope = if tb > ta { (lb - la) / (tb - ta) } else { 0.0 };
             let at = |t: f64| la + slope * (t - ta);
             let polyline = |t0: f64, t1: f64, offset: f64, stroke: Stroke| {

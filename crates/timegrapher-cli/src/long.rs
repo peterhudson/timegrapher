@@ -436,7 +436,10 @@ fn read_take(
             };
             Ok(correction.as_ref().map(|(ppm, _)| *ppm))
         },
-        |done| progress.at(done * 100.0, Some(100.0), |d| format!("{d:.0}"), "%"),
+        |done, total| {
+            let pct = 100.0 * done / total.max(f64::MIN_POSITIVE);
+            progress.at(pct, Some(100.0), |d| format!("{d:.0}"), "%")
+        },
     )?;
     progress.end();
     let log_path = e.clock.as_ref().map(|c| base.join(c));
