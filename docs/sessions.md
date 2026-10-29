@@ -369,14 +369,13 @@ of the recording or for `measure_s`:
   between (see [Two states](#two-states)).
 
 The quick check `record` prints while recording skips the `settle_s` of
-the session folder's `session.toml` (30 s when the file has none) and
-reads the rest on the sound card's clock, so it agrees with this report
-on a session file `record` creates (which sets `settle_s = 30.0` and
-names no clock log). It can differ where a reading uses what the check
-does not: `--settle`, `--bph`, `--lift` or `--calibre`, a reading's own
-`settle_s`, `measure_s`, `start_s` or `end_s`, a clock log or
-`card_ppm`, the 20 s default on a file with no `settle_s`, or a
-restart in listening within the take, where this report fits the reading
+the session folder's `session.toml` (20 s when the file has none, as
+here) and reads the rest on the sound card's clock, so it agrees with
+this report on a session file `record` creates (which sets
+`settle_s = 20.0` and names no clock log). It can differ where a reading
+uses what the check does not: `--settle`, `--bph`, `--lift` or
+`--calibre`, a reading's own `settle_s`, `measure_s`, `start_s` or
+`end_s`, a clock log or `card_ppm`, or a restart in listening within the take, where this report fits the reading
 in pieces between the restarts (still one row) and the check fits it
 whole.
 

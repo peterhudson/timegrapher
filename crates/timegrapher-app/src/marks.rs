@@ -904,6 +904,66 @@ mod tests {
                 c["case"]
             );
         }
+        // A note beside a point: places as [left, top, right, bottom].
+        let pos = |v: &serde_json::Value| egui::pos2(f(&v[0]), f(&v[1]));
+        let rect = |v: &serde_json::Value| {
+            egui::Rect::from_min_max(
+                egui::pos2(f(&v[0]), f(&v[1])),
+                egui::pos2(f(&v[2]), f(&v[3])),
+            )
+        };
+        for c in list("beside_spots") {
+            let got = beside_spots(pos(&c["dot"]), pos(&c["size"]).to_vec2(), f(&c["top"]));
+            let want: Vec<egui::Rect> = c["spots"]
+                .as_array()
+                .expect("spots")
+                .iter()
+                .map(rect)
+                .collect();
+            assert!(
+                got.len() == want.len()
+                    && got.iter().zip(&want).all(|(g, w)| {
+                        close(g.left(), w.left())
+                            && close(g.top(), w.top())
+                            && close(g.right(), w.right())
+                            && close(g.bottom(), w.bottom())
+                    }),
+                "{}: {got:?}",
+                c["case"]
+            );
+        }
+        for c in list("crosses") {
+            let trace: Vec<egui::Pos2> = c["trace"]
+                .as_array()
+                .expect("trace")
+                .iter()
+                .map(pos)
+                .collect();
+            let want = c["crosses"].as_bool().expect("crosses");
+            assert_eq!(crosses(rect(&c["place"]), &trace), want, "{}", c["case"]);
+        }
+        for c in list("beside_place") {
+            let clear: Vec<bool> = c["clear"]
+                .as_array()
+                .expect("clear")
+                .iter()
+                .map(|b| b.as_bool().expect("a flag"))
+                .collect();
+            // Each place stands for its index along x, so `clear` can tell
+            // them apart.
+            let spots: Vec<egui::Rect> = (0..clear.len())
+                .map(|i| egui::Rect::from_min_size(egui::pos2(i as f32, 0.0), egui::vec2(0.5, 1.0)))
+                .collect();
+            let is_clear = |r: egui::Rect| clear[r.left() as usize];
+            let was = c["was"].as_u64().map(|w| w as u8);
+            let want = c["at"].as_u64().map(|w| w as u8);
+            assert_eq!(beside_place(&spots, &is_clear, was), want, "{}", c["case"]);
+        }
+        for c in list("room_above") {
+            let n = |k: &str| c[k].as_f64().expect(k);
+            let got = room_above(n("lo"), n("y"), n("top"), f(&c["h"]));
+            assert!((got - n("at")).abs() < 1e-5, "{}: {got}", c["case"]);
+        }
     }
 
     /// Names in a lane: centred on their marks, out a row where they would

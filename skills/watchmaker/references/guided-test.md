@@ -123,7 +123,7 @@ never quote it as the watch's rate.
 ## 4. Six positions (15 minutes)
 
 Each position: they turn the watch, you wait about 10 s, then record 2
-minutes. The analysis skips the first 30 s of each recording while the
+minutes. The analysis skips the first 20 s of each recording while the
 balance settles to the new position, so they don't need to wait longer.
 Ask them not to touch the stand or the table while it records.
 
@@ -164,7 +164,7 @@ position is cheaper to redo now than tomorrow.
 ## 5. Read the session
 
 `record` has written the session file (watch, calibre, bph, lift,
-`settle_s = 30` and one entry per take).
+`settle_s = 20` and one entry per take).
 
 Run `timegrapher session FOLDER --json` and read it as
 [findings.md](findings.md#session-the-positions-test) says: first

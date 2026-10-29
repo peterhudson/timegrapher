@@ -1702,7 +1702,9 @@ const WIDTHS: [f64; 16] = [
 ];
 /// Strip lengths offered, seconds: from a few seconds of beats to a two-hour
 /// run. Fit, the whole session, is a switch of its own beside them.
-const SPANS: [f64; 7] = [10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 7200.0];
+const SPANS: [f64; 11] = [
+    10.0, 30.0, 60.0, 300.0, 1800.0, 3600.0, 7200.0, 21_600.0, 86_400.0, 172_800.0, 259_200.0,
+];
 
 fn span_label(v: f64) -> String {
     fields::duration(v)
@@ -2869,6 +2871,10 @@ impl TimegrapherApp {
         c.analysis.amplitude.lift_deg = self.lift_deg;
         c.analysis.lift_known = self.lift_known();
         c.profile_s = self.sound_span();
+        // Every beat of as long as the strip can show, a power reserve
+        // run's limit, rather than the engine's day: a take listened to
+        // for longer keeps its first hours on the strip and the charts.
+        c.max_beats = c.max_beats.max(reserve::RUN_BEATS_KEPT);
         c
     }
 
@@ -9560,7 +9566,7 @@ impl TimegrapherApp {
             pal.accent,
             "Fit",
             &mut fit,
-            "Show the whole session along the strip, up to its latest beat (its last 24 hours \
+            "Show the whole session along the strip, up to its latest beat (its last 80 hours \
              when it is longer), and keep it in view as beats arrive. Zooming or dragging the \
              strip's time turns it off.",
         ) {
@@ -14556,7 +14562,7 @@ impl TimegrapherApp {
                 .then(|| format!("at {}, double-click for the newest beats", length_text(end)))
         };
         let from = end - self.strip.span_s - 5.0;
-        let (trend, step) = self.strip_trend(from, end, self.average_s);
+        let (trend, _) = self.strip_trend(from, end, self.average_s);
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
         // The guides follow the rate line's slope, so it is worked out for
@@ -14572,8 +14578,6 @@ impl TimegrapherApp {
                 })
             });
         let pal = theme::pal(ui);
-        // A gap in the readings, not just their spacing, is a gap in a line.
-        let gap_s = (2.5 * step).max(5.0);
         let series = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
             trend
                 .iter()
@@ -14591,7 +14595,6 @@ impl TimegrapherApp {
                 color: pal.trace_rate,
                 min_span: 4.0,
                 points: series(|p| p.rate),
-                gap_s,
             });
         }
         if self.overlays[0] {
@@ -14602,7 +14605,6 @@ impl TimegrapherApp {
                 color: pal.trace_amplitude,
                 min_span: 10.0,
                 points: series(|p| p.amplitude),
-                gap_s,
             });
         }
         if self.overlays[2] {
@@ -14613,7 +14615,6 @@ impl TimegrapherApp {
                 color: pal.trace_beat_error,
                 min_span: 0.2,
                 points: series(|p| p.beat_error_unlock),
-                gap_s,
             });
         }
         let bands = self.position_bands();
@@ -15705,19 +15706,12 @@ impl TimegrapherApp {
 }
 
 /// The usual spacing of points sorted by x: the median gap.
-fn spacing(points: &[[f64; 2]]) -> f64 {
-    let mut gaps: Vec<f64> = points.windows(2).map(|w| w[1][0] - w[0][0]).collect();
-    gaps.sort_by(f64::total_cmp);
-    gaps.get(gaps.len() / 2).copied().unwrap_or(f64::INFINITY)
-}
-
-/// Points sorted by x in runs, split wherever one is missing: a gap of
-/// more than half again their usual spacing.
+/// Points sorted by x in runs, split wherever one is missing: a gap in
+/// them ([`strip::gap_before`]), not a change in their spacing.
 fn segments(points: &[[f64; 2]]) -> Vec<Vec<[f64; 2]>> {
-    let gap = 1.5 * spacing(points);
     let mut out: Vec<Vec<[f64; 2]>> = Vec::new();
     for (i, &p) in points.iter().enumerate() {
-        if i == 0 || p[0] - points[i - 1][0] > gap {
+        if i == 0 || strip::gap_before(points, i) {
             out.push(Vec::new());
         }
         if let Some(seg) = out.last_mut() {
@@ -15727,19 +15721,23 @@ fn segments(points: &[[f64; 2]]) -> Vec<Vec<[f64; 2]>> {
     out
 }
 
-/// The value of the point nearest `x` in points sorted by x, unless the
-/// nearest is far off (a gap in the line).
+/// The value of the point nearest `x` in points sorted by x: none in a gap
+/// in the line ([`strip::gap_before`]), or further past either end than
+/// the step beside it.
 fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
+    let n = points.len();
     let i = points.partition_point(|p| p[0] < x);
-    let near = [i.checked_sub(1), (i < points.len()).then_some(i)]
-        .into_iter()
-        .flatten()
-        .min_by(|&a, &b| {
-            (points[a][0] - x)
-                .abs()
-                .total_cmp(&(points[b][0] - x).abs())
-        })?;
-    ((points[near][0] - x).abs() <= 3.0 * spacing(points)).then_some(points[near][1])
+    let step = |j: usize| points[j][0] - points[j - 1][0];
+    let near = match i {
+        _ if n == 0 => return None,
+        0 => (n < 2 || points[0][0] - x <= step(1)).then_some(0)?,
+        _ if i == n => (n < 2 || x - points[n - 1][0] <= step(n - 1)).then_some(n - 1)?,
+        _ if points[i][0] == x => i,
+        _ if strip::gap_before(points, i) => return None,
+        _ if x - points[i - 1][0] < points[i][0] - x => i - 1,
+        _ => i,
+    };
+    Some(points[near][1])
 }
 
 /// The Watch settings a take is read with.
@@ -23244,6 +23242,44 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[1], [[10.0, 1.0], [11.0, 1.0]]);
         assert_eq!(segments(&[]).len(), 0);
+    }
+
+    /// A take listened to for more than a day keeps its first hours: the
+    /// app keeps as many beats as a power reserve run does (a 26 h take at
+    /// 28,800 bph lost its first 1 h 40 min to the engine's day), and the
+    /// strip can be that long.
+    #[test]
+    fn a_long_take_keeps_its_first_hours() {
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        let kept = app.live_config().max_beats;
+        assert!(kept >= reserve::RUN_BEATS_KEPT);
+        assert!(kept as f64 >= 80.0 * 3600.0 * 8.0, "{kept}");
+        app.strip.set_span(26.0 * 3600.0);
+        assert_eq!(app.strip.span_s, 26.0 * 3600.0);
+        app.strip.set_span(1e9);
+        assert_eq!(app.strip.span_s, power_reserve::LIMIT_S);
+    }
+
+    /// A long take's charts worked out again keep a reading every 20 s or
+    /// so, and those read live since come every half second: the line runs
+    /// on through both, and the value under the pointer is found in both,
+    /// where the line used to break at every one of the sparse readings.
+    #[test]
+    fn a_line_runs_on_where_its_spacing_changes() {
+        let mut pts: Vec<[f64; 2]> = (0..4000).map(|i| [i as f64 * 20.0, 1.0]).collect();
+        let t0 = pts.last().unwrap()[0];
+        pts.extend((1..20_000).map(|i| [t0 + i as f64 * 0.5, 2.0]));
+        assert_eq!(segments(&pts).len(), 1);
+        assert_eq!(value_at(&pts, 1009.0), Some(1.0));
+        assert_eq!(value_at(&pts, t0 + 100.2), Some(2.0));
+        // A stretch with nothing read is still a gap, in either.
+        let holed: Vec<[f64; 2]> = pts
+            .iter()
+            .copied()
+            .filter(|p| !(1000.0..1100.0).contains(&p[0]))
+            .collect();
+        assert_eq!(segments(&holed).len(), 2);
+        assert_eq!(value_at(&holed, 1050.0), None);
     }
 
     /// Masked stretches are saved in the take's own seconds, which leave

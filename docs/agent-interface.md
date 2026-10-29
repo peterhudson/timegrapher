@@ -238,15 +238,15 @@ is analysed at once. Whether a regular beat is found
 (`watch_heard`, with the timing scatter behind it) and clipping are
 measured over the whole take, so a short take still gets them.
 The readings come from the stretch `session` will read: the check skips
-the take's `settle_s` from the session file (30 s in a file `record`
-writes; at most half the take) and reads the rest on the sound card's
-clock, as `session` does, so the check and the report agree on a take
+the take's `settle_s` from the session file (20 s in a file `record`
+writes, as in one with none; at most half the take) and reads the rest
+on the sound card's clock, as `session` does, so the check and the report agree on a take
 `record` creates (they can differ where `session` reads it otherwise, as
 [sessions.md](sessions.md) lists); they are
 null when no regular beat is found or that stretch is too short to hear
 the watch on its own. Every take is added to `FOLDER/session.toml`
 (written on the first take with the watch, calibre, bph, lift and
-`settle_s = 30.0`, then appended to, comments and all) with its position,
+`settle_s = 20.0`, then appended to, comments and all) with its position,
 `wind_h` when given, and start time, and a comment line above the entry
 for each fact worth seeing there ("No regular beat found (timing scatter
 X ms, Y% of a beat)", "N% of beats clipped"); the exit code is 0. Whether

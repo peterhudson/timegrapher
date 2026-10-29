@@ -1,5 +1,5 @@
 {
-  "about": "Cases for where marks.rs puts the names on a plot's lines. The app's tests (marks::tests) and the MCP view's (crates/timegrapher-mcp/tests/marks_cases.test.cjs) both run every case here, so the two keep one set of rules. Each name is [line x, width, rank]; places are in points. For inside, facts is the facts box's span of x (null for none) and trace the spans of x where the trace crosses the row of names.",
+  "about": "Cases for where marks.rs puts the names on a plot's lines. The app's tests (marks::tests) and the MCP view's (crates/timegrapher-mcp/tests/marks_cases.test.cjs) both run every case here, so the two keep one set of rules. Each name is [line x, width, rank]; places are in points. For a note beside a point, a place is [left, top, right, bottom]. For inside, facts is the facts box's span of x (null for none) and trace the spans of x where the trace crosses the row of names.",
   "place": [
     { "case": "apart: all in the first row, centred", "names": [[100, 40, "strong"], [300, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [280, 0]] },
     { "case": "a name that would touch goes out a row, still centred", "names": [[100, 40, "strong"], [130, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [110, 1]] },
@@ -38,5 +38,30 @@
     { "case": "two lines 5 pt apart: a row apart, about their middle", "ys": [100, 105], "top": 0, "bottom": 300, "at": [95, 110] },
     { "case": "a third touching the pair joins its run", "ys": [98, 104, 119], "top": 0, "bottom": 300, "at": [92, 107, 122] },
     { "case": "at the bottom edge the run rises to stay inside", "ys": [298, 296], "top": 0, "bottom": 300, "at": [292.5, 277.5] }
+  ],
+  "beside_spots": [
+    { "case": "above right first, then round the point, then a row up at a time to the plot's top", "dot": [100, 100], "size": [40, 15], "top": 0, "spots": [[108, 77, 148, 92], [52, 77, 92, 92], [108, 108, 148, 123], [52, 108, 92, 123], [108, 62, 148, 77], [52, 62, 92, 77], [108, 47, 148, 62], [52, 47, 92, 62], [108, 32, 148, 47], [52, 32, 92, 47], [108, 17, 148, 32], [52, 17, 92, 32], [108, 2, 148, 17], [52, 2, 92, 17]] },
+    { "case": "near the plot's top, no rows up", "dot": [100, 30], "size": [60, 15], "top": 0, "spots": [[108, 7, 168, 22], [32, 7, 92, 22], [108, 38, 168, 53], [32, 38, 92, 53]] }
+  ],
+  "crosses": [
+    { "case": "passing by", "place": [10, 10, 20, 20], "trace": [[0, 25], [30, 25]], "crosses": false },
+    { "case": "through it", "place": [10, 10, 20, 20], "trace": [[0, 15], [30, 15]], "crosses": true },
+    { "case": "corner to corner", "place": [10, 10, 20, 20], "trace": [[0, 0], [30, 30]], "crosses": true },
+    { "case": "inside it", "place": [10, 10, 20, 20], "trace": [[12, 12], [18, 12]], "crosses": true },
+    { "case": "no trace", "place": [10, 10, 20, 20], "trace": [], "crosses": false },
+    { "case": "a rising trace crosses above right", "place": [108, 77, 148, 92], "trace": [[0, 200], [100, 100], [200, 0]], "crosses": true },
+    { "case": "a rising trace misses above left", "place": [52, 77, 92, 92], "trace": [[0, 200], [100, 100], [200, 0]], "crosses": false },
+    { "case": "a rising trace crosses below left", "place": [52, 108, 92, 123], "trace": [[0, 200], [100, 100], [200, 0]], "crosses": true }
+  ],
+  "beside_place": [
+    { "case": "the first clear place", "clear": [false, true, true, false], "was": null, "at": 1 },
+    { "case": "kept where it was while that stays clear", "clear": [false, true, true, false], "was": 2, "at": 2 },
+    { "case": "moved where the trace now crosses its place", "clear": [false, true, true, false], "was": 0, "at": 1 },
+    { "case": "nowhere clear: none, the dot's hover", "clear": [false, false, false, false], "was": 1, "at": null }
+  ],
+  "room_above": [
+    { "case": "the room above the highest point", "lo": 0, "y": 10, "top": 10.3, "h": 200, "at": 11.560693641618498 },
+    { "case": "a higher top stays", "lo": 0, "y": 10, "top": 20, "h": 200, "at": 20 },
+    { "case": "from a low bottom, on a plot 126 tall", "lo": -30, "y": 0, "top": 0.5, "h": 126, "at": 8.181818181818182 }
   ]
 }

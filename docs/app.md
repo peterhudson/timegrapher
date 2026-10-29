@@ -969,11 +969,15 @@ run from ±1 ms, for a good watch's beat error, through ±62.5 ms, half a
 beat at 28,800 bph and the widest view in which tick and tock can't wrap
 onto each other, up to ±60 s, so a long run-down take that drifts by many
 seconds can be shown without wrapping; the lengths run from 10 s of beats
-to a two-hour run.
+to three days, and up to 80 hours, a power reserve run's limit, can be
+typed; the app keeps every beat of that long a take, where it used to
+keep only the last day's. Where the beats are more
+than 48 to a point along the strip, every nth tick and its tock are
+drawn, as the rest would only lie under them.
 
 **Fit**, the switch beside Length (arrows out to two edges, lit while
 on), shows the whole session so far along the strip, up to its latest
-beat (its last 24 hours when it is longer):
+beat (its last 80 hours when it is longer):
 
 - While it is on, the length keeps growing with the take as beats arrive.
 - Zooming the strip's time (the wheel, or a length typed or picked) or
