@@ -12688,47 +12688,35 @@ impl TimegrapherApp {
     /// figure's hover, while one is kept. A take with its own clock log
     /// is read on it, the big figure included, so the hover says so.
     fn true_clock_words(&self, rate: f64) -> Option<String> {
-        // A log that measures the clock too loosely corrects nothing: what
-        // it measured, and why not, in the same place.
-        // The recording's USB lines set the rate: the log only places
-        // breaks, and what it measured is in the same place.
-        if let Some(f) = self.take_rate_clock() {
-            if let Some(w) = f.withheld {
-                let ppm = format!("{:.1}", f.ppm.abs());
-                let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
+        if let Some(f) = &self.take_clock {
+            // What a log measured but doesn't apply, and why, in core's words.
+            let note = f.withheld.map(|w| {
                 let note = w.note();
                 let mut c = note.chars();
-                let note = c
-                    .next()
+                c.next()
                     .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+            });
+            // A log that measures the clock too loosely corrects nothing.
+            if !f.corrects() {
                 return Some(format!(
-                    "On this take's USB lines: the rate corrected for the sound card's own \
-                     clock, {ppm} ppm {way}. {note}; the log places only its breaks."
+                    "{}. The rate stays on the sound card's clock, as tg reads the recording.",
+                    note.unwrap_or_default()
                 ));
             }
-        }
-        if let Some(w) = self.take_clock.as_ref().and_then(|f| f.withheld) {
-            let note = w.note();
-            let mut c = note.chars();
-            let note = c
-                .next()
-                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
-                .unwrap_or_default();
-            return Some(format!(
-                "{note}. The rate stays on the sound card's clock, as tg reads the recording."
-            ));
-        }
-        if let Some(f) = &self.take_clock {
             let ppm = format!("{:.1}", f.ppm.abs());
             let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
             let from = self
                 .take_clock_source
                 .as_deref()
                 .map_or(String::new(), |s| format!(", {s}"));
+            // The recording's USB lines set the rate over a log kept for its
+            // breaks: what the log measured follows.
+            let note = note.map_or(String::new(), |n| format!(" {n}."));
             return Some(format!(
                 "The rate corrected for the sound card's own clock, {ppm} ppm {way}{from}, \
-                 as the Positions table reads it. tg reads the recording on the card's clock."
+                 as the Positions table reads it.{note} tg reads the recording on the card's \
+                 clock."
             ));
         }
         let c = self.clock.as_ref()?;
@@ -26402,6 +26390,18 @@ mod tests {
                 "{words}"
             );
         }
+        // The USB lines set the rate over a log kept for its breaks: core's
+        // words for both, and what the log measured.
+        let mut rated = clock.clone();
+        rated.rate_from_usb(18.9);
+        let source = clock_source_text(ClockFrom::LogRatedByUsb, Some(usb), None, Some(log));
+        app.put_take_clock(Some(rated.clone()), Some(source.clone()));
+        let words = app.true_clock_words(0.0).unwrap();
+        let note = rated.withheld.unwrap().note();
+        assert!(
+            words.contains(&format!("18.9 ppm slow, {source},")) && words.contains(&note[1..]),
+            "{words}"
+        );
     }
 
     /// Settings lists each kept clock; Forget removes that one from the
