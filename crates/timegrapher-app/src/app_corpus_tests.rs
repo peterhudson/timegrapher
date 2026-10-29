@@ -125,17 +125,11 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
 /// Each must still differ, so the list only shrinks as the app is fixed. A
 /// file the session file lists more than once is named with its entry's
 /// place among them: `file entry 1`.
-const KNOWN: &[(&str, &str)] = &[
-    (
-        "reverso21600_DU_level_overnight/take_part01-096.flac",
-        "26 s file: session reads its 13 s after settling; the app wants three average windows",
-    ),
-    (
-        "ym42_CR_long/take_part01-003.flac entry 1",
-        "the first of two entries for one file, with its own measure_s: the app does not keep \
+const KNOWN: &[(&str, &str)] = &[(
+    "ym42_CR_long/take_part01-003.flac entry 1",
+    "the first of two entries for one file, with its own measure_s: the app does not keep \
          its end",
-    ),
-];
+)];
 
 /// Runs `work` on each item, on as many threads as the machine has, and
 /// returns what it gives in the items' order.
@@ -225,20 +219,7 @@ fn compare(root: &Path, cli: &Path, known: &[(&str, &str)]) -> Vec<String> {
 
 /// Edge takes the app still reads differently from session, and why. Each
 /// must still differ, so the list only shrinks as the app is fixed.
-const EDGE_KNOWN: &[(&str, &str)] = &[
-    (
-        "edge_short_8s/.",
-        "4 s measured: session reads it, with short_span; the app wants three average windows",
-    ),
-    (
-        "edge_short_25s_settle_20/.",
-        "5 s measured after settling: session reads it, with short_span; the app wants three average windows",
-    ),
-    (
-        "edge_all_silence/.",
-        "15 s measured: session says no watch; the app wants three average windows",
-    ),
-];
+const EDGE_KNOWN: &[(&str, &str)] = &[];
 
 /// Every recording each corpus take lists reads the same on the app's
 /// cards as from `timegrapher session`.
