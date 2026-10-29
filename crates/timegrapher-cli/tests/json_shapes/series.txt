@@ -132,6 +132,7 @@ spectra[].reading_swing.swing_s_per_day
 spectra[].series
 spectra[].step_s
 spectra[].support
+spectra[].support.description
 spectra[].support.finite_bins
 spectra[].support.total_bins
 spectra[].unit

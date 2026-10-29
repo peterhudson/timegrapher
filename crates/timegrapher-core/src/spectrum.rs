@@ -192,10 +192,23 @@ pub fn welch(g: &Grid, scale: f64, max_points: usize) -> Option<Welch> {
 }
 
 /// Input-grid availability, not acoustic coverage or share of watch beats heard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// In JSON it also carries its [`SpectrumSupport::description`], the one
+/// wording every surface shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpectrumSupport {
     pub finite_bins: usize,
     pub total_bins: usize,
+}
+
+impl Serialize for SpectrumSupport {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut st = s.serialize_struct("SpectrumSupport", 3)?;
+        st.serialize_field("finite_bins", &self.finite_bins)?;
+        st.serialize_field("total_bins", &self.total_bins)?;
+        st.serialize_field("description", &self.description())?;
+        st.end()
+    }
 }
 
 impl SpectrumSupport {
@@ -448,6 +461,10 @@ mod tests {
             assert_eq!(
                 serde_json::to_value(&s).unwrap()["support"]["finite_bins"],
                 expected
+            );
+            assert_eq!(
+                serde_json::to_value(&s).unwrap()["support"]["description"],
+                s.support.description()
             );
         }
         // Counts exclude next-power-of-two FFT padding.

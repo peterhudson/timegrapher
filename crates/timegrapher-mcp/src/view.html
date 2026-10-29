@@ -685,10 +685,10 @@ const STEADY_VIEWS = [
 function spectrumOf(doc, s) {
   return (doc.spectra || []).find((x) => x.series === s.series && x.period_s && x.period_s.length > 1) || null;
 }
+// What the FFT read, as core words it (support.description).
 function spectrumSupportText(sp) {
-  const c = sp && sp.support;
-  if (!c || !Number.isSafeInteger(c.finite_bins) || !Number.isSafeInteger(c.total_bins) || c.finite_bins < 0 || c.total_bins <= 0 || c.finite_bins > c.total_bins) return "FFT input support was not recorded.";
-  return `FFT input: ${c.finite_bins} of ${c.total_bins} grid samples available.${c.finite_bins < c.total_bins ? " Missing samples affect peak heights and shapes; values are not corrected for gaps." : ""}`;
+  const d = sp && sp.support && sp.support.description;
+  return typeof d === "string" && d ? d : "FFT input support was not recorded.";
 }
 
 const SERIES = {
