@@ -110,6 +110,30 @@ pub(crate) struct ResolvedTrain {
 pub(crate) type ResolvedCalibre = take::Calibre;
 
 impl Train<'_> {
+    /// The train of the take `m`: a calibre given is looked up; the
+    /// session file's may be a label of the owner's own, as `session`
+    /// reads it.
+    fn resolve_for_take(
+        &self,
+        m: &timegrapher_core::session::Manifest,
+    ) -> Result<ResolvedTrain, String> {
+        let resolved = match (self.calibre, m.calibre.as_deref()) {
+            (Some(_), _) | (None, None) => self.resolve()?,
+            (None, Some(name)) => {
+                let user = match calibre_store::default_path() {
+                    Some(p) => UserCalibres::load(&p)?,
+                    None => UserCalibres::default(),
+                };
+                Train {
+                    calibre: Some(name),
+                    escape_teeth: self.escape_teeth,
+                }
+                .resolve_label_with(&user)?
+            }
+        };
+        Ok(resolved.with_escape_teeth(self.escape_teeth.or(m.escape_teeth)))
+    }
+
     pub(crate) fn resolve(&self) -> Result<ResolvedTrain, String> {
         // Defaults must not depend on a catalogue that was not requested.
         if self.calibre.is_none() {
@@ -375,23 +399,7 @@ fn read_take(
     train: Train,
 ) -> Result<Read, String> {
     let (m, base, _) = crate::session_cmd::load_manifest_file(manifest)?;
-    // A calibre given is looked up; the session file's may be a label of
-    // the owner's own, as `session` reads it.
-    let resolved_train = match (train.calibre, m.calibre.as_deref()) {
-        (Some(_), _) | (None, None) => train.resolve()?,
-        (None, Some(name)) => {
-            let user = match calibre_store::default_path() {
-                Some(p) => UserCalibres::load(&p)?,
-                None => UserCalibres::default(),
-            };
-            Train {
-                calibre: Some(name),
-                escape_teeth: train.escape_teeth,
-            }
-            .resolve_label_with(&user)?
-        }
-    }
-    .with_escape_teeth(train.escape_teeth.or(m.escape_teeth));
+    let resolved_train = train.resolve_for_take(&m)?;
     let given = take::Given {
         bph: cfg.analysis.bph,
         lift_deg: lift,
