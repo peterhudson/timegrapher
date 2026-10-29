@@ -29,12 +29,12 @@ class Count(unittest.TestCase):
     def test_comments_and_strings_are_not_code(self):
         src = ('// if q > 0.4\n/* x < 7.0 /* nested 9 > 3 */ */\n'
                'fn f() -> String { format!("{} > 0.4", r#"y >= 5.0"#) }\n')
-        self.assertEqual(kinds(src), {"comparisons": 0, "constants": 0, "defaults": 0})
+        self.assertEqual(kinds(src), {"comparisons": 0, "constants": 0, "defaults": 0, "bounds": 0})
 
     def test_test_code_is_left_out(self):
         src = ("#[cfg(test)]\nmod tests {\n    const N: f64 = 3.0;\n    fn f(x: f64) -> bool { x > 9.0 }\n}\n"
                "#[test]\nfn t() { assert!(5.0 > 4.0); }\n")
-        self.assertEqual(kinds(src), {"comparisons": 0, "constants": 0, "defaults": 0})
+        self.assertEqual(kinds(src), {"comparisons": 0, "constants": 0, "defaults": 0, "bounds": 0})
 
     def test_constants_from_a_literal_but_not_f32_or_from_core(self):
         src = ("const SETTLE_S: f64 = 30.0;\npub const WIDTH: f32 = 146.0;\n"
@@ -46,6 +46,19 @@ class Count(unittest.TestCase):
         src = ("fn f(b: Option<u32>) -> u32 { b.unwrap_or(18_000) + b.unwrap_or(0) }\n"
                "struct O { #[arg(long, default_value_t = 52.0)] lift: f64 }\n")
         self.assertEqual(kinds(src)["defaults"], 2)
+
+    def test_a_literal_bound_to_a_name_then_compared_is_counted(self):
+        self.assertEqual(kinds("fn f(q: f64) -> bool { let limit = 0.4; q > limit }")["comparisons"], 1)
+        self.assertEqual(kinds("fn f() -> usize { let n = 7; n * 3 }")["comparisons"], 0)
+
+    def test_a_default_from_a_closure_is_counted(self):
+        self.assertEqual(kinds("fn f(b: Option<u32>) -> u32 { b.unwrap_or_else(|| 28_800) }")["defaults"], 1)
+
+    def test_literal_limits_are_bounds(self):
+        src = ("fn f(l: f64, w: f32) -> bool { (10.0..=90.0).contains(&l) && w.max(80.0) > w.min(36.0) }\n"
+               "fn g(x: f64) -> f64 { x.clamp(5.0, 600.0) + x.clamp(0.0, 1.0) }\n"
+               "fn h() { for _ in 0..6 {} for _ in 0..2 {} }\n")
+        self.assertEqual(kinds(src)["bounds"], 6)
 
     def test_a_tuple_field_or_range_is_not_a_number(self):
         self.assertEqual(kinds("fn f(p: (f64, f64)) -> bool { p.0 < p.1 && (0..5).len() > 3 }")
