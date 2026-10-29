@@ -375,6 +375,13 @@ impl LiveAnalyzer {
         &self.breaks
     }
 
+    /// The jumps of an imported beat log whose sides were named by the
+    /// beat count alone, seconds, oldest first ([`BeatLog::by_count`]);
+    /// none for a session heard live.
+    pub fn by_count(&self) -> &[f64] {
+        &self.by_count
+    }
+
     /// The jumps in the beats alone, seconds, oldest first: those found
     /// listening, or in the beat log a recording was read into.
     pub fn jumps(&self) -> &[f64] {
