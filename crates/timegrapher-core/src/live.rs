@@ -723,7 +723,7 @@ impl LiveAnalyzer {
             if any_clipped && Clipping::measure(x, fs, std::slice::from_ref(b)).beats > 0 {
                 self.clipped.push(t);
             }
-            if b.quality > 0.4 {
+            if b.is_good() {
                 if let Some(w) = profile::snippet(&env, fs, b.time) {
                     let even = b.index.rem_euclid(2) == 0;
                     self.snippets.push_back((t, even, w.to_vec()));
