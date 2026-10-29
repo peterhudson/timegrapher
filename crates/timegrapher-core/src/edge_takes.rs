@@ -8,7 +8,10 @@
 //! `cargo run -p timegrapher-core --example edge_takes -- DIR` writes them.
 
 use crate::audio::{write_wav, Audio};
+use crate::session::Manifest;
+use crate::stream::StreamConfig;
 use crate::synth::{generate, Rng, SynthConfig};
+use crate::take;
 use std::path::Path;
 
 const FS: u32 = 48_000;
@@ -274,4 +277,36 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
         &serde_json::to_string_pretty(&corpus).expect("JSON"),
     )?;
     Ok(takes)
+}
+
+/// The take written under `root`, read as `timegrapher session` reads its
+/// one entry with no settings given ([`take::measure_entry`]).
+pub fn read(root: &Path, take: &EdgeTake) -> Result<take::EntryRead, String> {
+    let dir = root.join("takes").join(take.id);
+    let text = std::fs::read_to_string(dir.join("session.toml"))
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", take.id))?;
+    let mut stream = StreamConfig::default();
+    stream.analysis.bph = m.bph;
+    stream.analysis.amplitude.lift_deg = LIFT;
+    stream.analysis.lift_known = true;
+    let s = take::EntrySettings {
+        stream,
+        card_clock: false,
+        settle_s: None,
+    };
+    take::measure_entry(&dir, &m, &m.recordings[0], &s, |_| Ok(None), |_| Ok(None))
+        .map_err(|e| format!("{}: {e}", take.id))
+}
+
+/// The codes of the caveats a reading carries, as its JSON gives them.
+pub fn caveat_codes(m: &crate::session::Measurement) -> Vec<String> {
+    m.caveats
+        .iter()
+        .filter_map(|c| {
+            serde_json::to_value(c).ok()?["code"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect()
 }
