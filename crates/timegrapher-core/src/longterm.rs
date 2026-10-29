@@ -708,10 +708,11 @@ pub fn rate_profile(profile: &[f64], period_s: f64) -> Vec<f64> {
 
 /// The rate (s/d) each cycle of a fold ran at through its period
 /// ([`rate_at`]): `rows` are the cycles in time order, each one's timing
-/// offsets, seconds per phase bin, as [`Fold::raster`] keeps them (or
-/// rows averaged from them in order). A cycle's last bin is followed by
-/// the next cycle's first, and its first preceded by the last cycle's
-/// last; the take's first and last bins have one neighbour.
+/// offsets, seconds per phase bin, as [`Fold::raster`] keeps them (not
+/// rows averaged from them, whose ends are cycles apart). A cycle's last
+/// bin is followed by the next cycle's first, and its first preceded by
+/// the last cycle's last; the take's first and last bins have one
+/// neighbour.
 pub fn rate_rows(rows: &[Vec<f64>], period_s: f64) -> Vec<Vec<f64>> {
     rows.iter()
         .enumerate()
