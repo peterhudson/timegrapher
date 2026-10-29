@@ -47,14 +47,25 @@ pub fn held_step(before: f64, later: &[f64]) -> f64 {
     v[v.len() / 2] - before
 }
 
+/// The gap a step of at least [`MIN_GAP_S`] in the offset between the
+/// clocks leaves, when the entries after it keep at least half of it
+/// (`held`, from [`held_step`]): what they keep, never more than the step.
+/// `None` for a smaller step, or a spike the entries fall back from. The
+/// one rule for a break, live ([`GapWatch`]) and in a clock log
+/// ([`from_clock_at`]).
+pub fn kept_gap(step: f64, held: f64) -> Option<f64> {
+    (step >= MIN_GAP_S && held >= 0.5 * step).then(|| held.min(step))
+}
+
 /// What a live input's blocks become once [`GapWatch`] has seen them: the
 /// blocks, in order, with a break before the first block after a gap.
 #[derive(Debug)]
 pub enum Live {
     Block(Block),
     /// The true seconds that passed with no audio before the next block:
-    /// the rise in the offset since the clock log's last line, as
-    /// [`crate::recorder::Recorder::sound_lost`] lists the break.
+    /// the rise in the offset since the clock log's last line that the
+    /// blocks after it keep ([`kept_gap`]), which
+    /// [`crate::recorder::Recorder::sound_lost`] lists for the break.
     Break(f64),
 }
 
@@ -74,8 +85,8 @@ pub const HOLD_S: f64 = 5.0;
 /// as they do in the log, and a late block whose sound is all there is no
 /// break: the backlog after it brings the offset back. Blocks after a
 /// rise are held back until then, so a break is known before the block
-/// after it is written; [`crate::recorder::Recorder::sound_lost`] lists it
-/// with the same gap.
+/// after it is written, and [`crate::recorder::Recorder::sound_lost`]
+/// lists it with the same gap.
 #[derive(Debug)]
 pub struct GapWatch {
     rate: f64,
@@ -154,10 +165,8 @@ impl GapWatch {
         let step = held[0].1 - line;
         let offs: Vec<f64> = held.iter().map(|h| h.1).collect();
         let kept = held_step(line, &offs[offs.len().saturating_sub(HELD_ENTRIES)..]);
-        if step >= MIN_GAP_S && kept >= 0.5 * step {
-            // The step itself, which is what the recorder lists for the
-            // break, so the live view and the reopened take skip the same.
-            out.push(Live::Break(step));
+        if let Some(gap) = kept_gap(step, kept) {
+            out.push(Live::Break(gap));
             // The recorder logs the first block after a break.
             self.line = None;
         }
@@ -191,75 +200,120 @@ pub fn from_clock_at(pairs: &[(f64, f64)], at: &[f64]) -> Vec<Break> {
             });
             continue;
         }
+        // Kept: the offset a few entries on stays at least halfway up the
+        // step, or there are no entries after this one to say otherwise.
         if step < MIN_GAP_S {
             continue;
         }
-        // Kept: the offset a few entries on stays at least halfway up the
-        // step, or there are no entries after this one to say otherwise.
-        let held = held_step(off[i - 1], &off[i..]);
-        if held >= 0.5 * step {
+        if let Some(gap_s) = kept_gap(step, held_step(off[i - 1], &off[i..])) {
             out.push(Break {
                 audio_s: pairs[i].0,
-                gap_s: held.min(step),
+                gap_s,
             });
         }
     }
     out
 }
 
+/// Why a take's breaks are not all from the list its `session.json`
+/// keeps, but from its clock log ([`crate::clock::ClockFit`]) instead: the
+/// caveat [`crate::measure::Caveat::BreaksUnlisted`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Unlisted {
+    /// The take's `session.json` could not be read, or is not JSON.
+    Unreadable,
+    /// Some of its listed breaks give no place or no gap, so the clock
+    /// log stands in for them.
+    EntriesSkipped,
+    /// The files are not the take's segments in order (one opened alone
+    /// out of several), so its list, for the whole take, is not used.
+    NotTheTake,
+}
+
+/// A take's breaks, and why they are not all its own list's.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Found {
+    pub breaks: Vec<Break>,
+    pub unlisted: Option<Unlisted>,
+}
+
 /// Breaks from a take's `session.json`, sorted: each entry's `frame`
 /// (frames before the break) over the sample rate, else its `audio_s`, and
-/// its `gap_s`. An absent or empty list gives none.
-pub fn from_session(json: &serde_json::Value, sample_rate: u32) -> Vec<Break> {
-    let mut out: Vec<Break> = json
+/// its `gap_s`; and how many entries give neither place nor a finite gap,
+/// left out. An absent or empty list gives none.
+pub fn from_session(json: &serde_json::Value, sample_rate: u32) -> (Vec<Break>, usize) {
+    let list = json
         .get("breaks")
         .and_then(|b| b.as_array())
-        .map(|list| {
-            list.iter()
-                .filter_map(|e| {
-                    let audio_s = match e.get("frame").and_then(|f| f.as_u64()) {
-                        Some(f) if sample_rate > 0 => f as f64 / sample_rate as f64,
-                        _ => e.get("audio_s")?.as_f64()?,
-                    };
-                    let gap_s = e.get("gap_s").and_then(|g| g.as_f64()).unwrap_or(0.0);
-                    (audio_s.is_finite() && gap_s.is_finite()).then_some(Break { audio_s, gap_s })
-                })
-                .collect()
+        .map_or(&[][..], |l| l.as_slice());
+    let mut out: Vec<Break> = list
+        .iter()
+        .filter_map(|e| {
+            let audio_s = match e.get("frame").and_then(|f| f.as_u64()) {
+                Some(f) if sample_rate > 0 => f as f64 / sample_rate as f64,
+                _ => e.get("audio_s")?.as_f64()?,
+            };
+            let gap_s = match e.get("gap_s") {
+                None | Some(serde_json::Value::Null) => 0.0,
+                Some(g) => g.as_f64()?,
+            };
+            (audio_s.is_finite() && gap_s.is_finite()).then_some(Break { audio_s, gap_s })
         })
-        .unwrap_or_default();
+        .collect();
+    let skipped = list.len() - out.len();
     out.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
-    out
+    (out, skipped)
 }
 
 /// A take's breaks: those its `session.json` lists, when it lists any,
-/// else those its clock log shows.
+/// else those its clock log shows. An entry the list cannot place is left
+/// to the clock log, and said ([`Unlisted::EntriesSkipped`]).
 pub fn for_take(
     session_json: Option<&serde_json::Value>,
     clock: Option<&crate::clock::ClockFit>,
     sample_rate: u32,
-) -> Vec<Break> {
-    let listed = session_json.map_or_else(Vec::new, |v| from_session(v, sample_rate));
-    if listed.is_empty() {
+) -> Found {
+    let (listed, skipped) = session_json.map_or((Vec::new(), 0), |v| from_session(v, sample_rate));
+    let unlisted = (skipped > 0).then_some(Unlisted::EntriesSkipped);
+    let breaks = if listed.is_empty() {
         clock.map_or_else(Vec::new, |c| c.breaks.clone())
     } else {
         listed
-    }
+    };
+    Found { breaks, unlisted }
 }
 
 /// The breaks of the take that `files` (in order) make up: from the
 /// `session.json` beside the first file when the files are that take's
 /// segments, else from the clock fit. A file given on its own out of a
-/// take of several segments takes its breaks from the clock alone.
+/// take of several segments takes its breaks from the clock alone, and a
+/// `session.json` that cannot be read leaves them to the clock too; each
+/// is said ([`Unlisted`]). A take with no `session.json` (a plain sound
+/// file) lists none, so its clock's breaks are all it has.
 pub fn of_files(
     files: &[&std::path::Path],
     clock: Option<&crate::clock::ClockFit>,
     sample_rate: u32,
-) -> Vec<Break> {
-    let json: Option<serde_json::Value> = files
+) -> Found {
+    let path = files
         .first()
         .and_then(|f| f.parent())
-        .and_then(|d| std::fs::read_to_string(d.join(crate::take::RECORD)).ok())
-        .and_then(|t| serde_json::from_str(&t).ok());
+        .map(|d| d.join(crate::take::RECORD));
+    let json: Result<Option<serde_json::Value>, ()> = match path {
+        Some(p) if p.exists() => std::fs::read_to_string(&p)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .map(Some)
+            .ok_or(()),
+        _ => Ok(None),
+    };
+    let Ok(json) = json else {
+        return Found {
+            breaks: clock.map_or_else(Vec::new, |c| c.breaks.clone()),
+            unlisted: Some(Unlisted::Unreadable),
+        };
+    };
     let names: Vec<String> = files
         .iter()
         .filter_map(|f| f.file_name().map(|n| n.to_string_lossy().into_owned()))
@@ -273,7 +327,11 @@ pub fn of_files(
                 .eq(names.iter().map(|n| n.as_str())),
             None => names.len() == 1,
         });
-    for_take(json.as_ref().filter(|_| whole), clock, sample_rate)
+    let mut found = for_take(json.as_ref().filter(|_| whole), clock, sample_rate);
+    if json.is_some() && !whole {
+        found.unlisted = Some(Unlisted::NotTheTake);
+    }
+    found
 }
 
 /// [`of_files`], placed on the clock with [`on_clock`].
@@ -281,9 +339,12 @@ pub fn of_files_on_clock(
     files: &[&std::path::Path],
     clock: Option<&mut crate::clock::ClockFit>,
     sample_rate: u32,
-) -> Vec<Break> {
-    let listed = of_files(files, clock.as_deref(), sample_rate);
-    on_clock(listed, clock)
+) -> Found {
+    let found = of_files(files, clock.as_deref(), sample_rate);
+    Found {
+        breaks: on_clock(found.breaks, clock),
+        ..found
+    }
 }
 
 /// The listed breaks with the clock fit's breaks moved to them
@@ -441,6 +502,15 @@ pub fn by_count(at: impl IntoIterator<Item = f64>, sided: &[f64]) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_kept_step_is_a_break_of_what_is_kept() {
+        assert_eq!(kept_gap(MIN_GAP_S - 0.01, 10.0), None);
+        assert_eq!(kept_gap(3.0, 3.0), Some(3.0));
+        assert_eq!(kept_gap(3.0, 2.0), Some(2.0));
+        assert_eq!(kept_gap(3.0, 4.0), Some(3.0));
+        assert_eq!(kept_gap(3.0, 1.4), None);
+    }
 
     #[test]
     fn a_live_gap_breaks_only_where_the_sound_was_lost() {

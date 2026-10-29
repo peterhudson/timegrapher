@@ -197,18 +197,27 @@ pub enum Listed<'a> {
 /// beats show that none of those explains, as a break of unknown length
 /// ([`breaks::with_jumps`]). The beats after each break are numbered on
 /// by the beats its gap held, and `log.by_count` names the breaks whose
-/// sides are kept by the count alone ([`breaks::renumber`]). In time order.
-pub fn breaks(log: &mut BeatLog, listed: Listed, mut clock: Option<&mut ClockFit>) -> Vec<Break> {
-    let listed = match listed {
+/// sides are kept by the count alone ([`breaks::renumber`]). In time order,
+/// with why they are not all the take's own list's, when they are not
+/// ([`breaks::Unlisted`]).
+pub fn breaks(
+    log: &mut BeatLog,
+    listed: Listed,
+    mut clock: Option<&mut ClockFit>,
+) -> breaks::Found {
+    let found = match listed {
         Listed::Files(files) => {
             breaks::of_files_on_clock(files, clock.as_deref_mut(), log.sample_rate)
         }
         Listed::Session(json) => {
-            let listed = breaks::for_take(json, clock.as_deref(), log.sample_rate);
-            breaks::on_clock(listed, clock)
+            let found = breaks::for_take(json, clock.as_deref(), log.sample_rate);
+            breaks::Found {
+                breaks: breaks::on_clock(found.breaks, clock),
+                ..found
+            }
         }
     };
-    let all = breaks::with_jumps(listed, &log.jumps);
+    let all = breaks::with_jumps(found.breaks, &log.jumps);
     log.by_count = breaks::renumber(
         &mut log.beats,
         &mut log.amplitude_windows,
@@ -216,7 +225,10 @@ pub fn breaks(log: &mut BeatLog, listed: Listed, mut clock: Option<&mut ClockFit
         &log.sided,
         log.bph,
     );
-    all
+    breaks::Found {
+        breaks: all,
+        unlisted: found.unlisted,
+    }
 }
 
 /// Seconds a position settles before it is read, when neither its entry
@@ -633,6 +645,8 @@ pub struct OpenedEntry {
     /// The clock log's text, when the entry has one.
     pub clock_text: Option<String>,
     pub breaks: Vec<Break>,
+    /// Why the breaks are not all the take's own list's, when they are not.
+    pub unlisted: Option<breaks::Unlisted>,
     /// The stretches masked by hand, start and end.
     pub masked: Vec<(f64, f64)>,
 }
@@ -656,6 +670,8 @@ pub struct EntryRead {
     /// The clock log's text, when the entry has one.
     pub clock_text: Option<String>,
     pub breaks: Vec<Break>,
+    /// Why the breaks are not all the take's own list's, when they are not.
+    pub unlisted: Option<breaks::Unlisted>,
     /// The stretches masked by hand, start and end.
     pub masked: Vec<(f64, f64)>,
     /// The stretch the entry names ([`span_of`]).
@@ -782,7 +798,7 @@ pub fn open_entry(
         Some(_) => Listed::Session(json.as_ref()),
         None => Listed::Files(&paths),
     };
-    let breaks = breaks(&mut log, listed, fit.as_mut());
+    let breaks::Found { breaks, unlisted } = breaks(&mut log, listed, fit.as_mut());
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
     session::mask_log(&mut log, &masked);
@@ -794,6 +810,7 @@ pub fn open_entry(
         clock_from,
         clock_text,
         breaks,
+        unlisted,
         masked,
     })
 }
@@ -825,6 +842,7 @@ pub fn measure_entry(
         clock_from,
         clock_text,
         breaks,
+        unlisted,
         masked,
     } = open_entry(base, m, e, s, usb, correction, |_| {})?;
     let cfg = &s.stream;
@@ -839,6 +857,9 @@ pub fn measure_entry(
     if !cfg.analysis.lift_known {
         measurement.lift_unknown();
     }
+    if let Some(why) = unlisted {
+        measurement.breaks_unlisted(why);
+    }
     Ok(EntryRead {
         files,
         kept,
@@ -847,6 +868,7 @@ pub fn measure_entry(
         clock_from,
         clock_text,
         breaks,
+        unlisted,
         masked,
         start_s,
         stop_s,
