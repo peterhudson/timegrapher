@@ -12304,14 +12304,7 @@ impl TimegrapherApp {
         // Rate.
         {
             let rate = r.and_then(|r| r.rate_s_per_day);
-            // The input's clock is named on the controls row rather than
-            // in a chip.
-            let others: Vec<Caveat> = caveats
-                .iter()
-                .filter(|c| !matches!(c, Caveat::ClockUnknown))
-                .cloned()
-                .collect();
-            let rate_facts = reading_limits("Rate", &others, lift_now, beats);
+            let rate_facts = reading_limits("Rate", caveats, lift_now, beats);
             title(ui, cards[2].title, "Rate", help::RATE, &rate_facts, None);
             let unit = match pm {
                 Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
@@ -12408,10 +12401,7 @@ impl TimegrapherApp {
         // when it is the default, so that isn't said again in a chip.
         {
             let amp = r.and_then(|r| r.amplitude_deg);
-            let facts: Vec<_> = reading_limits("Amplitude", caveats, lift_now, beats)
-                .into_iter()
-                .filter(|f| !f.0.starts_with("lift angle "))
-                .collect();
+            let facts = reading_limits("Amplitude", caveats, lift_now, beats);
             title(
                 ui,
                 cards[3].title,
@@ -17791,15 +17781,16 @@ fn reading_limits(
 
 /// Whether a card titled `title` names caveat `c` beside its figure. No
 /// regular beat, the clock sources apart and a beat error given as a size
-/// are said elsewhere.
+/// are said elsewhere; so are the lift angle, on the Calibre card, and
+/// the input's clock, on the Rate's controls row.
 fn shown_on(c: &Caveat, title: &str) -> bool {
     match c {
-        Caveat::NoWatch { .. } | Caveat::ClockSourcesDisagree { .. } | Caveat::BeatErrorAsSize => {
-            false
-        }
+        Caveat::NoWatch { .. }
+        | Caveat::ClockSourcesDisagree { .. }
+        | Caveat::BeatErrorAsSize
+        | Caveat::LiftUnknown
+        | Caveat::ClockUnknown => false,
         Caveat::Clipped { .. } => matches!(title, "Amplitude" | "Beat Error"),
-        Caveat::LiftUnknown => title == "Amplitude",
-        Caveat::ClockUnknown => title == "Rate",
         Caveat::SidesByCount { .. } => title == "Beat Error",
         _ => true,
     }
@@ -17923,10 +17914,11 @@ mod tests {
         ];
         let amp = reading_limits("Amplitude", &caveats, 52.0, 30);
         let short: Vec<&str> = amp.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(short, ["4 s of beats", "lift angle 52°, the default"]);
+        // The lift angle and the input's clock are said elsewhere.
+        assert_eq!(short, ["4 s of beats"]);
         let rate = reading_limits("Rate", &caveats, 52.0, 30);
         let short: Vec<&str> = rate.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(short, ["4 s of beats", "input clock not corrected"]);
+        assert_eq!(short, ["4 s of beats"]);
         let missing = reading_limits("Rate", &[Caveat::BeatsMissing { fraction: 0.9 }], 52.0, 90);
         assert_eq!(missing[0].0, "90 of 100 beats");
         for (_, long) in amp.iter().chain(&rate) {
