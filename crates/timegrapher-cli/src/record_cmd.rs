@@ -759,9 +759,7 @@ fn live(
                     // The computer slept or the input stalled and sound was
                     // lost: a break, as after a pause, with the time
                     // between left out.
-                    rec.pause()
-                        .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
-                    rec.resume(&cap.label);
+                    rec.sound_lost();
                     if let Some(f) = feed.as_mut() {
                         f.live.skip(gap);
                     }
