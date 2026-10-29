@@ -1961,6 +1961,7 @@ struct Opened {
     clock: Option<timegrapher_core::clock::ClockFit>,
     clock_from: Option<timegrapher_core::take::ClockFrom>,
     breaks: Vec<timegrapher_core::breaks::Break>,
+    unlisted: Option<timegrapher_core::breaks::Unlisted>,
     profiles: Option<Vec<analysis_take::StretchProfiles>>,
 }
 
@@ -2276,6 +2277,9 @@ pub struct TimegrapherApp {
     /// `None` for a session heard here, whose readings go by the clock
     /// kept for the input.
     take_breaks: Option<Vec<timegrapher_core::breaks::Break>>,
+    /// Why those breaks are not all the take's own list's, where they
+    /// aren't (core's `breaks::Unlisted`), for the caveat that says so.
+    take_unlisted: Option<timegrapher_core::breaks::Unlisted>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2810,6 +2814,7 @@ impl TimegrapherApp {
             take_clock: None,
             take_clock_from: None,
             take_breaks: None,
+            take_unlisted: None,
             brush: None,
             confirm: None,
             remove_masks_asked: false,
@@ -3086,7 +3091,7 @@ impl TimegrapherApp {
                 self.opened_masks = None;
                 self.opened_positions = None;
                 self.put_take_clock(None, None);
-                self.put_take_breaks(None);
+                self.put_take_breaks(None, None);
                 self.masking = false;
                 self.brush = None;
                 self.reset_session(
@@ -3282,7 +3287,7 @@ impl TimegrapherApp {
         self.opened_masks = None;
         self.opened_positions = None;
         self.put_take_clock(None, None);
-        self.put_take_breaks(None);
+        self.put_take_breaks(None, None);
         self.masking = false;
         self.brush = None;
         self.clear_trends();
@@ -4261,7 +4266,7 @@ impl TimegrapherApp {
         self.stop();
         self.pending_recorded = None;
         self.put_take_clock(None, None);
-        self.put_take_breaks(None);
+        self.put_take_breaks(None, None);
         self.put_masked(Vec::new());
         self.masking = false;
         self.brush = None;
@@ -4538,7 +4543,7 @@ impl TimegrapherApp {
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.put_take_clock(None, None);
-        self.put_take_breaks(None);
+        self.put_take_breaks(None, None);
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4622,7 +4627,7 @@ impl TimegrapherApp {
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.put_take_clock(None, None);
-        self.put_take_breaks(None);
+        self.put_take_breaks(None, None);
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4899,10 +4904,11 @@ impl TimegrapherApp {
                         clock,
                         clock_from,
                         breaks,
+                        unlisted,
                         profiles,
                     } = o;
                     self.put_take_clock(clock, clock_from);
-                    self.put_take_breaks(Some(breaks));
+                    self.put_take_breaks(Some(breaks), unlisted);
                     // Read again at a new beat rate: the positions as they were.
                     let carried = self.carried_positions.take();
                     let (stretches, settles) = match &carried {
@@ -5451,7 +5457,7 @@ impl TimegrapherApp {
             // settling, is left out as a mask is.
             let mut masked = self.masked.clone();
             masked.extend(spans.windows(2).map(|w| (w[0].1, w[1].0)));
-            let m = timegrapher_core::session::measure_masked(
+            let mut m = timegrapher_core::session::measure_masked(
                 &log,
                 clock.as_ref(),
                 &breaks,
@@ -5459,6 +5465,9 @@ impl TimegrapherApp {
                 from,
                 to,
             );
+            if let Some(why) = self.take_unlisted {
+                m.breaks_unlisted(why);
+            }
             Some(WholeTake { m, span })
         };
         let w = read();
@@ -12148,8 +12157,13 @@ impl TimegrapherApp {
         self.rev.clock += 1;
     }
 
-    fn put_take_breaks(&mut self, breaks: Option<Vec<timegrapher_core::breaks::Break>>) {
+    fn put_take_breaks(
+        &mut self,
+        breaks: Option<Vec<timegrapher_core::breaks::Break>>,
+        unlisted: Option<timegrapher_core::breaks::Unlisted>,
+    ) {
         self.take_breaks = breaks;
+        self.take_unlisted = unlisted;
         self.rev.breaks += 1;
     }
 
@@ -12342,7 +12356,12 @@ impl TimegrapherApp {
         );
         let unheard = (!heard).then(|| (unheard_line.clone(), unheard_hover.clone()));
         let r = r.as_ref().filter(|_| heard);
-        let caveats = r.map_or(&[][..], |r| &r.caveats[..]);
+        // The take's breaks not all its own list's, as session says too.
+        let mut caveats = r.map_or_else(Vec::new, |r| r.caveats.clone());
+        if let (Some(why), Some(_)) = (self.take_unlisted, r) {
+            timegrapher_core::measure::add(&mut caveats, Caveat::BreaksUnlisted { why });
+        }
+        let caveats = &caveats[..];
         // Each reading's ±, as an analysis of the recording gives them
         // (core `measure`).
         let pm = r.and_then(|r| r.rate_error_s_per_day);
@@ -16884,6 +16903,7 @@ fn open_in_background(
                         clock: o.clock,
                         clock_from: o.clock_from,
                         breaks: o.breaks,
+                        unlisted: o.unlisted,
                         profiles: o.kept.map(|k| k.profiles),
                     })
                 }));
@@ -17873,7 +17893,7 @@ fn cut_caveats_text(caveats: &[Caveat]) -> String {
     let picked = |keep: fn(&Caveat) -> bool| -> Vec<Caveat> {
         caveats.iter().filter(|c| keep(c)).cloned().collect()
     };
-    let breaks = picked(|c| matches!(c, Caveat::Breaks { .. }));
+    let breaks = picked(|c| matches!(c, Caveat::Breaks { .. } | Caveat::BreaksUnlisted { .. }));
     let sides = picked(|c| matches!(c, Caveat::SidesByCount { .. }));
     reading_limits("", &breaks, 0.0, 0)
         .into_iter()
