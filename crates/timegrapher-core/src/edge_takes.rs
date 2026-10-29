@@ -199,6 +199,22 @@ pub fn all() -> Vec<EdgeTake> {
             known: None,
         },
         EdgeTake {
+            id: "edge_reads_nothing",
+            summary: "two readings of one file, the second starting where it ends (moved \
+                      again before it settled): it is left out, and the first is read",
+            caveats: &[&[]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_watch_stops",
+            summary: "120 s of the watch, then 120 s of the stand's noise: the watch ran \
+                      down, as at the end of a power reserve run",
+            caveats: &[&["beats_missing"]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
             id: "edge_no_unlock",
             summary: "120 s of a watch whose unlock makes no sound: rate and the drop are \
                       heard, amplitude and the unlock's beat error are not",
@@ -452,6 +468,18 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 s.extend_from_slice(&two_sides(61.0, seed + 50)[beat + beat * 2 / 5..]);
                 Recipe::of(s)
             }
+            "edge_reads_nothing" => Recipe {
+                entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n\
+                          clock = \"clock.csv\"\nend_s = 90\n\n\
+                          [[recording]]\nfile = \".\"\nposition = \"DD\"\n\
+                          clock = \"clock.csv\"\nstart_s = 90\nend_s = 90\n",
+                ..Recipe::of(watch(120.0, seed))
+            },
+            "edge_watch_stops" => {
+                let mut s = watch(120.0, seed);
+                s.extend(silence(120.0, seed + 50));
+                Recipe::of(s)
+            }
             "edge_no_unlock" => {
                 let mut cfg = made(120.0, seed);
                 cfg.sounds[0].gain = 0.0;
@@ -510,7 +538,8 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
 }
 
 /// The take written under `root`, each of its entries read as `timegrapher
-/// session` reads it with no settings given ([`take::measure_entry`]).
+/// session` reads it with no settings given ([`take::measure_entry`]),
+/// leaving out, as session does, one with nothing to read.
 pub fn read(root: &Path, take: &EdgeTake) -> Result<Vec<take::EntryRead>, String> {
     let dir = root.join("takes").join(take.id);
     let text = std::fs::read_to_string(dir.join("session.toml"))
@@ -524,6 +553,7 @@ pub fn read(root: &Path, take: &EdgeTake) -> Result<Vec<take::EntryRead>, String
     };
     m.recordings
         .iter()
+        .filter(|e| !take::reads_nothing(e))
         .map(|e| {
             take::measure_entry(&dir, &m, e, &s, |_| Ok(None), |_| Ok(None))
                 .map_err(|err| format!("{}: {err}", take.id))

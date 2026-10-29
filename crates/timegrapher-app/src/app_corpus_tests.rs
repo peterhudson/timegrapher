@@ -225,6 +225,10 @@ const EDGE_KNOWN: &[(&str, &str)] = &[
         "edge_sleep_two_entries/. (90–180 s)",
         "one of two readings of one file: the app opens a file whole, not a stretch of it",
     ),
+    (
+        "edge_reads_nothing/. (0–90 s)",
+        "a stretch of a file: the app opens a file whole, not a stretch of it",
+    ),
 ];
 
 /// Every recording each corpus take lists reads the same on the app's
