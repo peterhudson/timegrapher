@@ -349,6 +349,8 @@ fn a_chat_app_reads_a_watch() {
     // What limits the readings, in words for the model and for the view:
     // with no calibre given, the lift angle is assumed.
     let limits = r["_meta"]["timegrapher/limits"].as_array().unwrap();
+    // A beat was found, so the view gets no no-regular-beat sentence.
+    assert!(r["_meta"].get("timegrapher/no_beat").is_none());
     assert!(limits
         .iter()
         .any(|l| l["text"].as_str().unwrap().contains("the default 52°")));

@@ -46,6 +46,29 @@ pub fn no_regular_beat(m: &Value, bph: Option<f64>) -> String {
     format!("{said}. There are no rate, amplitude or beat error readings.")
 }
 
+/// The `_meta` key the views read the no-regular-beat sentence from.
+pub const NO_BEAT_KEY: &str = "timegrapher/no_beat";
+
+/// The sentence ([`no_regular_beat`]) for a result whose recording has no
+/// regular beat, so the views say core's words rather than their own:
+/// `analyze`'s, or `record`'s quick check. `None` when the beat was found.
+pub fn no_beat(doc: &Value) -> Option<String> {
+    let schema = doc["schema"].as_str().unwrap_or("");
+    if schema.starts_with("timegrapher.analyze/") && doc["watch_heard"] == false {
+        return Some(no_regular_beat(doc, doc["bph"].as_f64()));
+    }
+    let c = &doc["check"];
+    if schema.starts_with("timegrapher.record/") && c["watch_heard"] == false {
+        // The check gives its timing scatter in ms.
+        let m = json!({
+            "jitter_us": c["timing_scatter_ms"].as_f64().map(|ms| ms * 1000.0),
+            "caveats": c["caveats"],
+        });
+        return Some(no_regular_beat(&m, c["bph"].as_f64()));
+    }
+    None
+}
+
 /// A session reading's name: its position, and its state of wind when the
 /// session has more than one.
 fn reading_name(r: &Value) -> String {
@@ -305,6 +328,26 @@ mod tests {
             no_regular_beat(&Value::Null, Some(28800.0)),
             "No regular beat found (too few beats to time). There are no rate, amplitude or \
              beat error readings."
+        );
+    }
+
+    #[test]
+    fn the_views_get_the_no_regular_beat_sentence() {
+        let said = "No regular beat found (timing scatter 8.6 ms, 6.9% of a beat). There are \
+                    no rate, amplitude or beat error readings.";
+        let analyze = json!({ "schema": "timegrapher.analyze/2", "bph": 28800,
+            "jitter_us": 8600.0, "watch_heard": false });
+        assert_eq!(no_beat(&analyze).as_deref(), Some(said));
+        let record = json!({ "schema": "timegrapher.record/2",
+            "check": { "bph": 28800, "timing_scatter_ms": 8.6, "watch_heard": false } });
+        assert_eq!(no_beat(&record).as_deref(), Some(said));
+        assert_eq!(
+            no_beat(&json!({ "schema": "timegrapher.analyze/2", "watch_heard": true })),
+            None
+        );
+        assert_eq!(
+            no_beat(&json!({ "schema": "timegrapher.record/2", "check": { "watch_heard": true } })),
+            None
         );
     }
 
