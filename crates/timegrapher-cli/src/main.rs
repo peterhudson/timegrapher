@@ -37,7 +37,7 @@ fn parse_bph(text: &str) -> Result<u32, String> {
 fn parse_lift(text: &str) -> Result<f64, String> {
     timegrapher_core::input_domain::lift_deg(
         text.parse()
-            .map_err(|_| "lift angle must be finite and positive".to_string())?,
+            .map_err(|_| timegrapher_core::input_domain::LIFT_RANGE_TEXT.to_string())?,
     )
 }
 fn parse_escape_teeth(text: &str) -> Result<u32, String> {
@@ -1634,7 +1634,7 @@ mod numeric_input_tests {
             "analyze",
             "unused.wav",
             "--bph=4294967295",
-            "--lift=1e300",
+            "--lift=90",
             "--escape-teeth=4294967295"
         ])
         .is_ok());

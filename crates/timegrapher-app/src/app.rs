@@ -8919,7 +8919,7 @@ impl TimegrapherApp {
                 ui,
                 "lift",
                 &mut lift,
-                timegrapher_core::input_domain::LIFT_ENTRY_DEG,
+                timegrapher_core::input_domain::LIFT_RANGE_DEG,
                 &DEGREES,
                 &LIFTS,
                 show_degrees,
@@ -10699,7 +10699,7 @@ impl TimegrapherApp {
                                 ui,
                                 "open lift",
                                 &mut a.lift,
-                                timegrapher_core::input_domain::LIFT_ENTRY_DEG,
+                                timegrapher_core::input_domain::LIFT_RANGE_DEG,
                                 &MS,
                                 44.0,
                             );

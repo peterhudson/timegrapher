@@ -1,6 +1,8 @@
 //! Shared scalar domains used by explicit CLI/MCP input parsers and selected
 //! Manifest consumption points, before their analysis or recording work.
-//! These are mathematical/type constraints, not empirical watch operating ranges.
+//! These are mathematical/type constraints, not empirical watch operating
+//! ranges, except the lift angle's [`LIFT_RANGE_DEG`], one rule for every
+//! surface.
 //! Other persisted/programmatic configurations are not automatically validated.
 
 pub fn bph(value: u64) -> Result<u32, String> {
@@ -18,14 +20,15 @@ pub fn escape_teeth(value: u32) -> Result<u32, String> {
     }
 }
 
-/// The lift angles the app lets a person type in, degrees. An editing
-/// range only: [`lift_deg`], which the command line, MCP and session files
-/// use, still accepts any finite positive angle.
-pub const LIFT_ENTRY_DEG: std::ops::RangeInclusive<f64> = 10.0..=90.0;
+/// The lift angles accepted, degrees: what the app lets a person type in,
+/// and what [`lift_deg`] lets through from the command line, MCP and
+/// session files.
+pub const LIFT_RANGE_DEG: std::ops::RangeInclusive<f64> = 10.0..=90.0;
 
+/// `value` if it lies in [`LIFT_RANGE_DEG`].
 pub fn lift_deg(value: f64) -> Result<f64, String> {
-    if !value.is_finite() || value <= 0.0 {
-        Err("lift angle must be finite and positive".into())
+    if !LIFT_RANGE_DEG.contains(&value) {
+        Err(LIFT_RANGE_TEXT.into())
     } else {
         Ok(value)
     }
@@ -41,25 +44,46 @@ pub fn card_ppm(value: f64) -> Result<f64, String> {
     }
 }
 
+/// Why a lift angle outside [`LIFT_RANGE_DEG`] is refused.
+pub const LIFT_RANGE_TEXT: &str = "lift angle must be from 10 to 90 degrees";
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn explicit_scalar_domains_have_no_empirical_operating_limits() {
+    fn explicit_scalar_domains_have_no_empirical_operating_limits_but_lift() {
         assert!(bph(0).is_err());
         assert!(bph(u32::MAX as u64 + 1).is_err());
         assert_eq!(bph(1).unwrap(), 1);
         assert_eq!(bph(u32::MAX as u64).unwrap(), u32::MAX);
         assert!(escape_teeth(0).is_err());
         assert_eq!(escape_teeth(u32::MAX).unwrap(), u32::MAX);
-        for value in [0.0, -0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert!(lift_deg(value).is_err());
+        for value in [
+            0.0,
+            -0.0,
+            -1.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MIN_POSITIVE,
+            9.99,
+            90.01,
+            f64::MAX,
+        ] {
+            assert_eq!(lift_deg(value), Err(LIFT_RANGE_TEXT.to_string()), "{value}");
         }
-        for value in [f64::MIN_POSITIVE, f64::from_bits(1), 52.0, f64::MAX] {
+        for value in [10.0, 52.0, 90.0] {
             assert_eq!(lift_deg(value).unwrap().to_bits(), value.to_bits());
         }
-        assert!(LIFT_ENTRY_DEG.contains(&crate::take::DEFAULT_LIFT_DEG));
-        assert!(lift_deg(*LIFT_ENTRY_DEG.start()).is_ok());
+        assert!(LIFT_RANGE_DEG.contains(&crate::take::DEFAULT_LIFT_DEG));
+        assert_eq!(
+            LIFT_RANGE_TEXT,
+            format!(
+                "lift angle must be from {} to {} degrees",
+                LIFT_RANGE_DEG.start(),
+                LIFT_RANGE_DEG.end()
+            )
+        );
         for value in [
             f64::NAN,
             f64::INFINITY,
