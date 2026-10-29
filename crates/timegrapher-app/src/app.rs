@@ -4105,6 +4105,7 @@ impl TimegrapherApp {
         &mut self,
         m: &Manifest,
         entries: &[RecordingEntry],
+        duration_s: Option<f64>,
     ) -> (Stretches, Vec<(f64, f64)>) {
         if let Some(w) = &m.watch {
             self.watch = w.clone();
@@ -4129,19 +4130,25 @@ impl TimegrapherApp {
         let masked: Vec<[f64; 2]> = entries.iter().flat_map(|e| e.masked.clone()).collect();
         self.masked = timegrapher_core::session::masked_spans(&masked);
         self.opened_masks = Some(self.masked.clone());
-        // Each entry read once the watch has settled, as `session` reads
-        // it: the app's own takes say `settle_s = 0`, a recorded one its
-        // settling.
+        // Each entry read once the watch has settled, from core's window
+        // for it, as `session` reads it: the app's own takes say
+        // `settle_s = 0`, a recorded one its settling, and a take shorter
+        // than twice its settling settles to halfway. Its length is known
+        // here for a take of one sound file; for one of several, each
+        // entry runs to its end.
+        let one_file = entries.windows(2).all(|w| w[0].file == w[1].file);
+        let length = duration_s.filter(|_| one_file).unwrap_or(f64::INFINITY);
         let (out, settles) = positions_of(entries.iter().filter_map(|e| {
             let p = Position::from_name(e.position.as_deref()?)?;
             let start = e.start_s.unwrap_or(0.0);
-            let (settle_s, measure_s) = timegrapher_core::take::entry_times(e, m);
-            let (from, to) = timegrapher_core::take::measured(
-                start,
-                e.end_s.unwrap_or(f64::INFINITY),
-                settle_s,
-                measure_s,
-            );
+            let (from, to) = match timegrapher_core::take::reading_window(e, m, None, length) {
+                Ok(w) => (w.from_s, w.to_s),
+                // An entry session reads nothing of settles to its end.
+                Err(_) => {
+                    let end = e.end_s.unwrap_or(start);
+                    (end, end)
+                }
+            };
             Some((start, from, to.is_finite().then_some(to), p))
         }));
         // What was recorded under any painting, loaded with the positions.
@@ -4256,7 +4263,7 @@ impl TimegrapherApp {
                         self.keep_mic_setup();
                         self.set_watch_setup(WatchSetup::default());
                         self.open_note = None;
-                        self.apply_manifest(&m, &entries)
+                        self.apply_manifest(&m, &entries, None)
                     }
                     None => {
                         self.fresh_setup(path, &files);
@@ -4448,7 +4455,8 @@ impl TimegrapherApp {
         let opening = take_entry(path, manifest.as_ref());
         let (stretches, settles) = match manifest {
             Some((m, entries)) => {
-                let out = self.apply_manifest(&m, &entries);
+                let length = info.frames.map(|f| f as f64 / f64::from(info.sample_rate));
+                let out = self.apply_manifest(&m, &entries, length.filter(|_| files.len() == 1));
                 self.watch_fills_in(path, &m);
                 out
             }
@@ -4555,7 +4563,7 @@ impl TimegrapherApp {
         self.keep_mic_setup();
         self.set_watch_setup(WatchSetup::default());
         self.open_note = None;
-        let (stretches, settles) = self.apply_manifest(&m, &entries);
+        let (stretches, settles) = self.apply_manifest(&m, &entries, Some(header.duration_s));
         self.watch_fills_in(path, &m);
         let label = format!("{name} (analysis only)");
         // Its beats, its own clock log with its USB lines' figure as
@@ -19183,7 +19191,7 @@ mod tests {
         let dest = app.session.saved_to().unwrap().to_path_buf();
         let old = std::fs::read(dest.join(MANIFEST)).unwrap();
         let explicit: Manifest = toml::from_str("lift = 52\nlift_known = true").unwrap();
-        app.apply_manifest(&explicit, &[]);
+        app.apply_manifest(&explicit, &[], None);
         assert!(app.lift_known());
         assert!(
             app.metadata_unsaved(),
@@ -20804,7 +20812,7 @@ mod tests {
             lift: Some(DEFAULT_LIFT_DEG),
             ..Default::default()
         };
-        app.apply_manifest(&bare, &[]);
+        app.apply_manifest(&bare, &[], None);
         app.watch_fills_in(&take, &bare);
         assert_eq!(app.calibre, c.calibre);
         assert_eq!(app.lift_deg, lift);
@@ -20812,7 +20820,7 @@ mod tests {
         // A take outside the library keeps what its file says.
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.use_library(Some(root.clone()));
-        app.apply_manifest(&bare, &[]);
+        app.apply_manifest(&bare, &[], None);
         app.watch_fills_in(&base.join("elsewhere"), &bare);
         assert!(app.calibre.is_empty() && app.bph.is_none());
         drop(app);
@@ -23239,7 +23247,7 @@ mod tests {
         let text = toml::to_string_pretty(&m).unwrap();
         let again: Manifest = toml::from_str(&text).unwrap();
         let mut opened = TimegrapherApp::with_devices(Vec::new(), None);
-        opened.apply_manifest(&again, &again.recordings);
+        opened.apply_manifest(&again, &again.recordings, None);
         assert_eq!(opened.masked, [(10.0, 20.0), (65.0, 68.0)]);
         // Nothing masked: no masked line in the file.
         app.set_masked(Vec::new());
@@ -23299,7 +23307,7 @@ mod tests {
                     measure_s = 40.0\n";
         let m: Manifest = toml::from_str(text).unwrap();
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        let (stretches, settles) = app.apply_manifest(&m, &m.recordings);
+        let (stretches, settles) = app.apply_manifest(&m, &m.recordings, None);
         assert_eq!(
             stretches,
             [(0.0, Position::DialUp), (90.0, Position::DialDown)]
@@ -23308,8 +23316,16 @@ mod tests {
         // Settled at once, as the app writes its own takes.
         let text = text.replace("settle_s = 30.0", "settle_s = 0.0");
         let m: Manifest = toml::from_str(&text).unwrap();
-        let (_, settles) = app.apply_manifest(&m, &m.recordings);
+        let (_, settles) = app.apply_manifest(&m, &m.recordings, None);
         assert!(settles.is_empty(), "{settles:?}");
+        // A take shorter than twice its settling settles to halfway, as
+        // session reads it, once its length is known.
+        let text = "audio = true\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n";
+        let short: Manifest = toml::from_str(text).unwrap();
+        let (_, settles) = app.apply_manifest(&short, &short.recordings, Some(25.0));
+        assert_eq!(settles, [(0.0, 12.5)]);
+        let (_, settles) = app.apply_manifest(&short, &short.recordings, None);
+        assert_eq!(settles, [(0.0, timegrapher_core::take::SETTLE_S)]);
     }
 
     /// A take of one position whose session file gives no settling (one
@@ -23648,7 +23664,7 @@ mod tests {
             assert_eq!(r.masked, [[32.0, 38.0]]);
         }
         let mut opened = TimegrapherApp::with_devices(Vec::new(), None);
-        opened.apply_manifest(&m2, &m2.recordings);
+        opened.apply_manifest(&m2, &m2.recordings, None);
         assert_eq!(opened.masked, [(32.0, 38.0)]);
         app.set_masked(Vec::new());
         // Nothing painted: nothing kept as recorded.
@@ -24159,7 +24175,7 @@ mod tests {
         let (dir, path) = replay_context_fixture("file", true);
         let mut batch = TimegrapherApp::with_devices(Vec::new(), None);
         let (manifest, entries) = read_manifest(&path).unwrap().unwrap();
-        let (positions, settles) = batch.apply_manifest(&manifest, &entries);
+        let (positions, settles) = batch.apply_manifest(&manifest, &entries, None);
         let mut replay = TimegrapherApp::with_devices(Vec::new(), None);
         replay.start_replay_at(&path, 100.0);
         assert_eq!(drain_replay_source(&replay), 9000);
