@@ -326,7 +326,8 @@ mod tests {
         );
         assert_eq!(
             no_regular_beat(&Value::Null, Some(28800.0)),
-            "No regular beat found. There are no rate, amplitude or beat error readings."
+            "No regular beat found (too few beats to time). There are no rate, amplitude or \
+             beat error readings."
         );
     }
 

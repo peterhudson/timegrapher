@@ -88,7 +88,7 @@ fn a_take_with_a_pause_reads_as_one_watch() {
         "naive {}",
         naive.rate_s_per_day
     );
-    let found = breaks::of_files(&[path.as_path()], Some(&clock), log.sample_rate);
+    let found = breaks::of_files(&[path.as_path()], Some(&clock), log.sample_rate).breaks;
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(found.len(), 1);
     assert!((found[0].audio_s - join_s).abs() < 1e-6);
@@ -171,7 +171,7 @@ fn a_hole_nobody_listed_keeps_the_sides_and_the_rate() {
         )
         .unwrap();
         let mut log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
-        let listed = breaks::of_files(&[path.as_path()], None, log.sample_rate);
+        let listed = breaks::of_files(&[path.as_path()], None, log.sample_rate).breaks;
         std::fs::remove_dir_all(&dir).ok();
         assert!(listed.is_empty());
         assert_eq!(log.jumps.len(), 1, "{first_s}: {:?}", log.jumps);
@@ -235,7 +235,7 @@ fn the_clock_takes_the_listed_break() {
     let mut clock = ClockFit::new(&pairs).unwrap();
     assert!((clock.breaks[0].audio_s - (join_s + 1.0)).abs() < 1e-6);
     let before = clock.map(join_s + 0.5);
-    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000);
+    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000).breaks;
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(found.len(), 1);
     assert!(
@@ -560,7 +560,7 @@ fn a_clock_step_no_listed_pause_explains_is_a_break_too() {
     }
     let mut clock = ClockFit::new(&pairs).unwrap();
     assert_eq!(clock.breaks.len(), 2, "{:?}", clock.breaks);
-    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000);
+    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000).breaks;
     std::fs::remove_dir_all(&dir).ok();
     let at: Vec<f64> = found.iter().map(|b| b.audio_s).collect();
     assert_eq!(found.len(), 2, "{found:?}");
@@ -608,7 +608,7 @@ fn live_and_saved_breaks(name: &str, arrive: &dyn Fn(usize) -> f64) -> Vec<(f64,
         match l {
             breaks::Live::Break(gap) => {
                 live.push((written as f64 / 8000.0, gap));
-                rec.sound_lost();
+                rec.sound_lost(gap);
             }
             breaks::Live::Block(b) => {
                 written += b.samples.len();
@@ -623,7 +623,7 @@ fn live_and_saved_breaks(name: &str, arrive: &dyn Fn(usize) -> f64) -> Vec<(f64,
         .unwrap()
         .expect("a clock");
     let paths: Vec<&std::path::Path> = files.iter().map(|f| f.as_path()).collect();
-    let saved = breaks::of_files_on_clock(&paths, Some(&mut clock), 8000);
+    let saved = breaks::of_files_on_clock(&paths, Some(&mut clock), 8000).breaks;
     std::fs::remove_dir_all(&base).ok();
     assert_eq!(saved.len(), live.len(), "live {live:?} saved {saved:?}");
     for (l, s) in live.iter().zip(&saved) {
@@ -664,4 +664,54 @@ fn a_lost_gap_and_a_late_backlog_read_the_same_live_and_saved() {
         (found[0].0 - 30.0).abs() < 1e-6 && (found[0].1 - 3.0).abs() < 1e-6,
         "{found:?}"
     );
+}
+
+/// Each way a take's own list of breaks goes unused is said, never silent
+/// (guard G8), and the breaks then come from the clock log.
+#[test]
+fn a_list_of_breaks_left_unused_says_why() {
+    use breaks::Unlisted;
+    let dir = std::env::temp_dir().join(format!("tg-unlisted-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (path, pairs, join_s) = take(&dir);
+    let clock = ClockFit::new(&pairs).unwrap();
+    let json = dir.join("session.json");
+    let listed = std::fs::read_to_string(&json).unwrap();
+    let read = |text: Option<&str>| {
+        match text {
+            Some(t) => std::fs::write(&json, t).unwrap(),
+            None => std::fs::remove_file(&json).unwrap(),
+        }
+        breaks::of_files(&[path.as_path()], Some(&clock), 48000)
+    };
+    let own = read(Some(&listed));
+    let unreadable = read(Some("{ not json"));
+    let skipped = read(Some(&listed.replace(
+        r#""breaks": ["#,
+        r#""breaks": [{"utc": "2026-10-11T05:00:00.000Z"}, {"frame": 9, "gap_s": "long"}, "#,
+    )));
+    let not_the_take = read(Some(&listed.replace(
+        r#"["audio-001.wav"]"#,
+        r#"["audio-001.wav", "audio-002.wav"]"#,
+    )));
+    let none = read(None);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(own.unlisted, None);
+    assert_eq!(own.breaks.len(), 1);
+    assert!((own.breaks[0].gap_s - GAP_S).abs() < 1e-9);
+    for (found, why) in [
+        (&unreadable, Unlisted::Unreadable),
+        (&not_the_take, Unlisted::NotTheTake),
+    ] {
+        assert_eq!(found.unlisted, Some(why));
+        assert_eq!(found.breaks, clock.breaks, "{why:?}");
+    }
+    // The entries it can place are still used.
+    assert_eq!(skipped.unlisted, Some(Unlisted::EntriesSkipped));
+    assert_eq!(skipped.breaks, own.breaks);
+    // A take with no session.json lists none: nothing is left unused.
+    assert_eq!(none.unlisted, None);
+    assert_eq!(none.breaks, clock.breaks);
+    assert!((clock.breaks[0].audio_s - join_s).abs() < 5.1);
 }

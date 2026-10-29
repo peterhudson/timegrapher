@@ -47,6 +47,7 @@ pub fn run(o: Options) -> Result<(), String> {
         log,
         clock: applied_clock,
         breaks,
+        unlisted,
         masked,
         stretches,
         ..
@@ -68,10 +69,16 @@ pub fn run(o: Options) -> Result<(), String> {
     lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
     let clock = applied_clock.as_ref().map(|c| &c.fit);
-    let long = match stretches {
+    let mut long = match stretches {
         Some(_) => longrun::analyse_on_clock(&log, clock, &breaks, &lc),
         None => longrun::analyse_with_breaks(&log, clock, &breaks, &lc),
     };
+    if let Some(why) = unlisted {
+        timegrapher_core::measure::add(
+            &mut long.caveats,
+            timegrapher_core::measure::Caveat::BreaksUnlisted { why },
+        );
+    }
     // A take read in stretches is on its clock already.
     let clock = clock.filter(|_| stretches.is_none());
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
