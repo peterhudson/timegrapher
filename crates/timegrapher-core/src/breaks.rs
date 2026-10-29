@@ -627,4 +627,105 @@ mod tests {
             assert_eq!(b.index - index_shift_at(&shifts, b.time), w.index);
         }
     }
+
+    #[test]
+    fn the_middle_of_the_entries_after_a_step_is_what_it_keeps() {
+        // The first HELD_ENTRIES of them, sorted: the upper middle one.
+        assert_eq!(held_step(0.5, &[4.0, 1.0, 3.0, 2.0, 9.0]), 2.5);
+        assert_eq!(held_step(0.5, &[3.0, 1.0, 2.0]), 1.5);
+        assert_eq!(held_step(1.0, &[7.0]), 6.0);
+    }
+
+    #[test]
+    fn a_clock_log_breaks_where_its_offset_steps_up_and_stays() {
+        // Audio seconds against true seconds a long way on, as a clock
+        // log's are: 3 s lost after 20 s of audio, and a pause listed at
+        // 40 s whose step is too small to find on its own.
+        let pairs: Vec<(f64, f64)> = (0..=60)
+            .map(|k| {
+                let a = k as f64;
+                let lost = if a >= 21.0 { 3.0 } else { 0.0 } + if a >= 41.0 { 0.2 } else { 0.0 };
+                (a, 1.0e9 + a + lost)
+            })
+            .collect();
+        let found = from_clock_at(&pairs, &[40.0]);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].audio_s, 21.0);
+        assert!((found[0].gap_s - 3.0).abs() < 1e-6, "{found:?}");
+        assert_eq!(found[1].audio_s, 41.0);
+        assert!((found[1].gap_s - 0.2).abs() < 1e-6, "{found:?}");
+        // Without the listed pause, only the step that stays.
+        assert_eq!(from_clock_at(&pairs, &[]).len(), 1);
+        // A step of just MIN_GAP_S is a break.
+        let edge: Vec<(f64, f64)> = (0..10)
+            .map(|k| (k as f64, k as f64 + if k >= 5 { MIN_GAP_S } else { 0.0 }))
+            .collect();
+        assert_eq!(
+            from_clock_at(&edge, &[]),
+            [Break {
+                audio_s: 5.0,
+                gap_s: MIN_GAP_S
+            }]
+        );
+    }
+
+    /// Blocks after a rise come out once the blocks held cover the rise
+    /// (or HOLD_S of audio) and HELD_ENTRIES more have come: each block's
+    /// push is the one it came out on.
+    #[test]
+    fn a_rise_is_held_until_its_blocks_cover_it_and_then_four_more() {
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        let run = |arrive: &dyn Fn(usize) -> f64| {
+            let mut w = GapWatch::new(1_000);
+            let mut out_at = Vec::new();
+            let mut found = Vec::new();
+            for k in 0..200 {
+                for l in w.push(Block {
+                    samples: vec![k as f32; 100],
+                    at: t0 + std::time::Duration::from_secs_f64(arrive(k)),
+                }) {
+                    match l {
+                        Live::Block(b) => out_at.push((b.samples[0] as usize, k)),
+                        Live::Break(g) => found.push((out_at.len(), g)),
+                    }
+                }
+            }
+            for l in w.finish() {
+                if let Live::Block(b) = l {
+                    out_at.push((b.samples[0] as usize, 200));
+                }
+            }
+            (out_at, found)
+        };
+        let pushed_out = |out_at: &[(usize, usize)], block: usize| {
+            assert_eq!(out_at[block].0, block);
+            out_at[block].1
+        };
+        // 0.1 s blocks. A 3 s gap before block 50 (audio 5.0 s): held
+        // until audio 8.0 s (block 79), then 4 more.
+        let (o, f) = run(&|k| 0.1 * (k + 1) as f64 + if k >= 50 { 3.0 } else { 0.0 });
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].0, 50);
+        assert_eq!(pushed_out(&o, 49), 49);
+        assert_eq!(pushed_out(&o, 50), 83);
+        assert_eq!(pushed_out(&o, 84), 84);
+        // An 8 s gap: held for HOLD_S, to audio 10.0 s (block 99), then 4.
+        let (o, _) = run(&|k| 0.1 * (k + 1) as f64 + if k >= 50 { 8.0 } else { 0.0 });
+        assert_eq!(pushed_out(&o, 50), 103);
+        // Stalled 2 s, then every block at once: held to audio 7.0 s
+        // (block 69), then 4; no break.
+        let (o, f) = run(&|k| (0.1 * (k + 1) as f64).max(if k >= 50 { 7.1 } else { 0.0 }));
+        assert!(f.is_empty(), "{f:?}");
+        assert_eq!(pushed_out(&o, 50), 73);
+        // Two losses of 0.3 s, at blocks 40 and 45, between the clock log's
+        // lines: the rise is 0.6 s since the last line, held to audio 5.1 s.
+        let (o, f) = run(&|k| {
+            0.1 * (k + 1) as f64 + if k >= 40 { 0.3 } else { 0.0 } + if k >= 45 { 0.3 } else { 0.0 }
+        });
+        assert_eq!(pushed_out(&o, 40), 40);
+        assert_eq!(pushed_out(&o, 45), 54);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].0, 45);
+        assert!((f[0].1 - 0.6).abs() < 1e-6, "{f:?}");
+    }
 }
