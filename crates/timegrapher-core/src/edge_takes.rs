@@ -199,6 +199,83 @@ pub fn all() -> Vec<EdgeTake> {
             known: None,
         },
         EdgeTake {
+            id: "edge_reads_nothing",
+            summary: "two readings of one file, the second starting where it ends (moved \
+                      again before it settled): it is left out, and the first is read",
+            caveats: &[&[]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_watch_stops",
+            summary: "120 s of the watch, then 120 s of the stand's noise: the watch ran \
+                      down, as at the end of a power reserve run",
+            caveats: &[&["beats_missing"]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_usb_lines_and_log",
+            summary: "120 s on a sound card 20 ppm slow whose recording carries the USB \
+                      bus's lines, with a clock log: the lines set the rate",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                rate: RATE - 20e-6 * 86_400.0,
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_usb_lines_and_correction",
+            summary: "120 s on a sound card 20 ppm slow whose recording carries the USB \
+                      bus's lines, with a correction of 20 ppm in the session file and no \
+                      clock log: the correction sets the rate",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                rate: RATE - 20e-6 * 86_400.0,
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_usb_lines_and_other_correction",
+            summary: "the same sound with a correction of 15 ppm in the session file, which \
+                      the lines (20 ppm) contradict, and no clock log: the correction sets \
+                      the rate, as the clock's order of sources has it",
+            caveats: &[&[]],
+            // Read on the correction's 15 ppm, not the card's true 20, and
+            // with no clock_sources_disagree: the order of sources is
+            // Peter's to decide; this pins what it does today.
+            truth: Some(Truth {
+                rate: RATE - 15e-6 * 86_400.0,
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_lift_48",
+            summary: "120 s of the watch made at a 52 degree lift, read at the 48 the \
+                      session file gives: amplitude scales with the lift",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                amplitude: Some(AMPLITUDE * 48.0 / LIFT),
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_kept_lift_48",
+            summary: "the same sound kept as its analysis alone, measured at a 52 degree \
+                      lift, opened with the 48 the session file gives: it reads as the \
+                      sound does at 48",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                amplitude: Some(AMPLITUDE * 48.0 / LIFT),
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
             id: "edge_no_unlock",
             summary: "120 s of a watch whose unlock makes no sound: rate and the drop are \
                       heard, amplitude and the unlock's beat error are not",
@@ -255,6 +332,32 @@ fn watch_stepping_down(duration_s: f64, from_s: f64, drop_db: f64, seed: u64) ->
         .collect()
 }
 
+/// Keep the take in `dir` as its analysis alone, measured as `manifest`
+/// (its session file) says, and remove its sound.
+fn keep_analysis(dir: &Path, manifest: &str, frames: usize) -> Result<(), String> {
+    let m: Manifest = toml::from_str(manifest).map_err(|e| e.to_string())?;
+    let cfg = take::stream_settings(&m, None, take::Given::default());
+    let wav = dir.join("audio-001.wav");
+    let shapes = crate::analysis_take::shape_stretches(&m, frames as f64 / FS as f64);
+    let software = serde_json::json!({"name": "timegrapher", "version": "edge take"});
+    let kept = crate::analysis_take::measure(&[wav.as_path()], &cfg, &shapes, software, |_| {})
+        .map_err(|e| e.to_string())?;
+    crate::analysis_take::write(dir, &kept).map_err(|e| e.to_string())?;
+    std::fs::remove_file(&wav).map_err(|e| e.to_string())
+}
+
+/// `samples` with the USB bus's lines added, 3 to 10 kHz on true time,
+/// as a card `ppm` slow hears them ([`crate::usbclock`]).
+fn with_usb_lines(mut samples: Vec<f32>, ppm: f64) -> Vec<f32> {
+    for k in 3..=10 {
+        let f = 1000.0 * k as f64 * (1.0 + ppm * 1e-6);
+        for (i, v) in samples.iter_mut().enumerate() {
+            *v += (0.001 * (2.0 * std::f64::consts::PI * f * i as f64 / FS as f64).sin()) as f32;
+        }
+    }
+    samples
+}
+
 /// The stand's noise and no watch, at the level `generate` adds it.
 fn silence(duration_s: f64, seed: u64) -> Vec<f32> {
     let rms = synth::noise_rms(SynthConfig::default().snr_db) * synth::SCALE;
@@ -305,6 +408,10 @@ struct Recipe {
     ppm: f64,
     extra: &'static str,
     entries: &'static str,
+    /// The lift angle the session file gives.
+    lift: f64,
+    /// Kept as its analysis alone, made at this lift, with no sound.
+    kept_at: Option<f64>,
 }
 
 /// One reading of the whole take, Dial Up, on its clock log.
@@ -320,13 +427,15 @@ impl Recipe {
             ppm: 0.0,
             extra: "",
             entries: WHOLE_TAKE,
+            lift: LIFT,
+            kept_at: None,
         }
     }
 }
 
-fn manifest(take: &EdgeTake, extra: &str, entries: &str) -> String {
+fn manifest(take: &EdgeTake, lift: f64, extra: &str, entries: &str) -> String {
     format!(
-        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {LIFT}\nnotes = \"{}\"\n{extra}\n{entries}",
+        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {lift}\nnotes = \"{}\"\n{extra}\n{entries}",
         take.id, take.summary
     )
 }
@@ -452,6 +561,43 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 s.extend_from_slice(&two_sides(61.0, seed + 50)[beat + beat * 2 / 5..]);
                 Recipe::of(s)
             }
+            "edge_reads_nothing" => Recipe {
+                entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n\
+                          clock = \"clock.csv\"\nend_s = 90\n\n\
+                          [[recording]]\nfile = \".\"\nposition = \"DD\"\n\
+                          clock = \"clock.csv\"\nstart_s = 90\nend_s = 90\n",
+                ..Recipe::of(watch(120.0, seed))
+            },
+            "edge_watch_stops" => {
+                let mut s = watch(120.0, seed);
+                s.extend(silence(120.0, seed + 50));
+                Recipe::of(s)
+            }
+            "edge_usb_lines_and_log" => Recipe {
+                ppm: 20.0,
+                ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
+            },
+            "edge_usb_lines_and_correction" => Recipe {
+                ppm: 20.0,
+                extra: "card_ppm = 20\n",
+                entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+                ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
+            },
+            "edge_usb_lines_and_other_correction" => Recipe {
+                ppm: 20.0,
+                extra: "card_ppm = 15\n",
+                entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+                ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
+            },
+            "edge_lift_48" => Recipe {
+                lift: 48.0,
+                ..Recipe::of(watch(120.0, seed))
+            },
+            "edge_kept_lift_48" => Recipe {
+                lift: 48.0,
+                kept_at: Some(LIFT),
+                ..Recipe::of(watch(120.0, seed - 1))
+            },
             "edge_no_unlock" => {
                 let mut cfg = made(120.0, seed);
                 cfg.sounds[0].gain = 0.0;
@@ -466,17 +612,27 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
             ppm,
             extra,
             entries,
+            lift,
+            kept_at,
         } = r;
         let frames = samples.len();
+        let wav = dir.join("audio-001.wav");
         write_wav(
-            &dir.join("audio-001.wav"),
+            &wav,
             &Audio {
                 samples,
                 sample_rate: FS,
             },
         )
         .map_err(|e| format!("{}: {e}", dir.display()))?;
-        write(&dir, "session.toml", &manifest(take, extra, entries))?;
+        match kept_at {
+            Some(at) => {
+                keep_analysis(&dir, &manifest(take, at, extra, entries), frames)?;
+                let kept = format!("audio = false\n{extra}");
+                write(&dir, "session.toml", &manifest(take, lift, &kept, entries))?;
+            }
+            None => write(&dir, "session.toml", &manifest(take, lift, extra, entries))?,
+        }
         write(&dir, "clock.csv", &clock_log(frames, ppm, &steps))?;
         let json = record(&breaks);
         if take.id == "edge_unreadable_session_json" {
@@ -510,7 +666,8 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
 }
 
 /// The take written under `root`, each of its entries read as `timegrapher
-/// session` reads it with no settings given ([`take::measure_entry`]).
+/// session` reads it with no settings given ([`take::measure_entry`]),
+/// leaving out, as session does, one with nothing to read.
 pub fn read(root: &Path, take: &EdgeTake) -> Result<Vec<take::EntryRead>, String> {
     let dir = root.join("takes").join(take.id);
     let text = std::fs::read_to_string(dir.join("session.toml"))
@@ -524,9 +681,12 @@ pub fn read(root: &Path, take: &EdgeTake) -> Result<Vec<take::EntryRead>, String
     };
     m.recordings
         .iter()
+        .filter(|e| !take::reads_nothing(e))
         .map(|e| {
-            take::measure_entry(&dir, &m, e, &s, |_| Ok(None), |_| Ok(None))
-                .map_err(|err| format!("{}: {err}", take.id))
+            take::measure_entry(&dir, &m, e, &s, take::usb, |first| {
+                take::correction_for(&m, first, None, None)
+            })
+            .map_err(|err| format!("{}: {err}", take.id))
         })
         .collect()
 }
