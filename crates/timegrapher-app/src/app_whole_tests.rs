@@ -1,7 +1,7 @@
 //! The whole take's reading, headless: it is session's reading of the
 //! same stretch, at any length session reads.
 
-use super::tests::synthetic;
+use super::tests::{painted_text, synthetic, themed};
 use super::*;
 
 /// The whole take's beat error, where its sign turns over at a jump
@@ -105,4 +105,37 @@ fn whole_take_is_the_session_reading() {
     assert_eq!(w.m.rate_s_per_day, m.rate_s_per_day);
     assert_eq!(w.m.amplitude_deg, m.amplitude_deg);
     assert!((w.span - (to - from)).abs() < 1e-9, "{}", w.span);
+}
+
+/// A take whose breaks are not all its own list's says so, in core's
+/// words, on the cards and beside the whole take's breaks, as session
+/// says it.
+#[test]
+fn a_take_whose_breaks_are_not_its_own_lists_says_so() {
+    use timegrapher_core::breaks::Unlisted;
+    let mut app = synthetic(60.0, 12.0);
+    app.put_take_breaks(Some(Vec::new()), Some(Unlisted::Unreadable));
+    let w = app.whole_take().expect("whole take");
+    assert!(
+        w.m.caveats
+            .iter()
+            .any(|c| matches!(c, Caveat::BreaksUnlisted { .. })),
+        "{:?}",
+        w.m.caveats
+    );
+    assert!(
+        whole_breaks_text(&w).contains("session.json could not be read"),
+        "{}",
+        whole_breaks_text(&w)
+    );
+    let ctx = themed();
+    let text = painted_text(&ctx.run(Default::default(), |ctx| app.panels(ctx)));
+    assert!(
+        text.to_lowercase().contains("breaks from the clock log"),
+        "{text}"
+    );
+    // A take with its own list says nothing of it.
+    app.put_take_breaks(Some(Vec::new()), None);
+    let w = app.whole_take().expect("whole take");
+    assert!(!whole_breaks_text(&w).contains("session.json"));
 }

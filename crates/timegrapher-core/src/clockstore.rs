@@ -146,6 +146,16 @@ pub fn recorded_device(file: &Path) -> Option<String> {
 }
 
 impl DeviceClock {
+    /// How the correction was measured, in words, for every surface that
+    /// lists a kept clock.
+    pub fn how_text(&self) -> &'static str {
+        match self.source.as_str() {
+            "log" => "from a recording's clock log",
+            "measure" => "while listening, against the computer's clock",
+            _ => "typed in",
+        }
+    }
+
     /// Where a correction taken from the store came from, in words.
     pub fn source_text(&self) -> String {
         format!("stored for '{}', {}", self.device, self.measured_utc)
