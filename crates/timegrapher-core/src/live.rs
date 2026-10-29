@@ -375,6 +375,13 @@ impl LiveAnalyzer {
         &self.breaks
     }
 
+    /// The jumps of an imported beat log whose sides were named by the
+    /// beat count alone, seconds, oldest first ([`BeatLog::by_count`]);
+    /// none for a session heard live.
+    pub fn by_count(&self) -> &[f64] {
+        &self.by_count
+    }
+
     /// The jumps in the beats alone, seconds, oldest first: those found
     /// listening, or in the beat log a recording was read into.
     pub fn jumps(&self) -> &[f64] {
@@ -723,7 +730,7 @@ impl LiveAnalyzer {
             if any_clipped && Clipping::measure(x, fs, std::slice::from_ref(b)).beats > 0 {
                 self.clipped.push(t);
             }
-            if b.quality > 0.4 {
+            if b.is_good() {
                 if let Some(w) = profile::snippet(&env, fs, b.time) {
                     let even = b.index.rem_euclid(2) == 0;
                     self.snippets.push_back((t, even, w.to_vec()));

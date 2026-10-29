@@ -127,7 +127,7 @@ fn side_snippets<'a>(
         .filter(|b| {
             b.time >= from_s
                 && b.time < to_s
-                && b.quality > 0.4
+                && b.is_good()
                 && (b.index.rem_euclid(2) == 0) == side.even()
         })
         .map(|b| b.time)

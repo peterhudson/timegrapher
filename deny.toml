@@ -1,0 +1,36 @@
+# cargo deny's licence and bans checks, run in CI (architecture guide,
+# section 12). Advisories are tracked by the hygiene audit instead, since
+# they change from day to day.
+
+[licenses]
+# Licences that fit with the project's GPL-3.0-or-later. A library under
+# another licence fails CI and comes to Peter as a decision.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-or-later",
+    "ISC",
+    "LGPL-2.1-or-later",
+    "MIT",
+    "MPL-2.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "Zlib",
+    "bzip2-1.0.6",
+]
+confidence-threshold = 0.8
+unused-allowed-license = "allow"
+
+[bans]
+# Two versions of one library come in through the GUI libraries today;
+# they are listed, not failed.
+multiple-versions = "warn"
