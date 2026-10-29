@@ -295,6 +295,36 @@ impl std::fmt::Display for NoReading {
     }
 }
 
+/// Why [`measure_entry`] gives no reading: the entry has nothing to read
+/// in its recording ([`NoReading`]), which a session notes and reads on
+/// past, or the take could not be read at all.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EntryError {
+    NoReading(NoReading),
+    Failed(String),
+}
+
+impl std::fmt::Display for EntryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EntryError::NoReading(w) => write!(f, "{w}"),
+            EntryError::Failed(why) => write!(f, "{why}"),
+        }
+    }
+}
+
+impl From<String> for EntryError {
+    fn from(why: String) -> Self {
+        EntryError::Failed(why)
+    }
+}
+
+impl From<EntryError> for String {
+    fn from(e: EntryError) -> Self {
+        e.to_string()
+    }
+}
+
 /// The stretch entry `e` of the take `m` reads in a recording of
 /// `duration_s`, with `given_settle_s` the settling time the reader gives
 /// (after the entry's own, before the session file's), or why it reads
@@ -755,7 +785,8 @@ pub fn open_entry(
 /// the first file, each ppm slow: they only fetch, and the rule that
 /// picks between them and the clock log is this function's ([`clock`]).
 /// `correction` is asked only when the entry has no clock log. An error
-/// either gives is passed through as its text, which is the caller's.
+/// either gives is passed through as its text, which is the caller's. An
+/// entry with nothing to read in its recording is [`EntryError::NoReading`].
 pub fn measure_entry(
     base: &Path,
     m: &Manifest,
@@ -763,7 +794,7 @@ pub fn measure_entry(
     s: &EntrySettings,
     usb: impl FnOnce(&[PathBuf]) -> Result<Option<f64>, String>,
     correction: impl FnOnce(&Path) -> Result<Option<f64>, String>,
-) -> Result<EntryRead, String> {
+) -> Result<EntryRead, EntryError> {
     let OpenedEntry {
         files,
         kept,
@@ -780,7 +811,7 @@ pub fn measure_entry(
         stop_s,
         from_s: settle_s,
         to_s: end_s,
-    } = reading_window(e, m, s.settle_s, log.duration_s).map_err(|w| w.to_string())?;
+    } = reading_window(e, m, s.settle_s, log.duration_s).map_err(EntryError::NoReading)?;
     let mut measurement =
         session::measure_masked(&log, fit.as_ref(), &breaks, &masked, settle_s, end_s);
     if !cfg.analysis.lift_known {

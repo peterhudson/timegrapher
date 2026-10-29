@@ -356,7 +356,7 @@ fn settings_with(
             bph,
             lift: lift.unwrap_or(take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
-            settle_s: Some(take::SETTLE_S),
+            settle_s: None,
         });
     };
     // A session's takes must agree on how they are measured.
@@ -931,9 +931,8 @@ fn add_to_session(
     let before = match fs::read_to_string(&file) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => format!(
-            "# Written by `timegrapher record`; edit freely.\n{}settle_s = {}\n",
-            header(set),
-            toml::Value::Float(take::SETTLE_S)
+            "# Written by `timegrapher record`; edit freely.\n{}",
+            header(set)
         ),
         Err(e) => return Err(format!("{}: {e}", file.display())),
     };
@@ -1109,7 +1108,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
-            settle_s: Some(take::SETTLE_S),
+            settle_s: None,
         };
         let check = || Check {
             from_s: 0.0,

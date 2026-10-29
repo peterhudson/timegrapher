@@ -332,9 +332,10 @@ anything lower, read back as 0). Stretches with no beats are left out.
 After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
 *Testing Methods for Mechanical Watches*, D40e, 2025, measurement tips, about p. 34), to the end
 of the recording or for `measure_s`. A `settle_s` given (on the entry, the
-session file or `--settle`) is kept as it is: one that reaches the end of
-its stretch stops the run with an error naming the entry. The 20 s default
-takes at most half a stretch, so a short one still has something to read.
+session file or `--settle`) is kept as it is: an entry it leaves nothing
+of is left out with a note naming it, and the rest are read. The 20 s
+default takes at most half a stretch, so a short one still has something
+to read.
 Each reading is:
 
 - rate from one fit over every beat (Tick and Tock fitted together),
@@ -375,8 +376,8 @@ Each reading is:
 The quick check `record` prints while recording skips the `settle_s` of
 the session folder's `session.toml` (20 s when the file has none, as
 here) and reads the rest on the sound card's clock, so it agrees with
-this report on a session file `record` creates (which sets
-`settle_s = 20.0` and names no clock log). It can differ where a reading
+this report on a session file `record` creates (which gives no
+`settle_s` and names no clock log). It can differ where a reading
 uses what the check does not: `--settle`, `--bph`, `--lift` or
 `--calibre`, a reading's own `settle_s`, `measure_s`, `start_s` or
 `end_s`, a clock log or `card_ppm`, or a restart in listening within the take, where this report fits the reading

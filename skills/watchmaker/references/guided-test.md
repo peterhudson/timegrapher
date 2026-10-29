@@ -163,8 +163,8 @@ position is cheaper to redo now than tomorrow.
 
 ## 5. Read the session
 
-`record` has written the session file (watch, calibre, bph, lift,
-`settle_s = 20` and one entry per take).
+`record` has written the session file (watch, calibre, bph, lift and
+one entry per take).
 
 Run `timegrapher session FOLDER --json` and read it as
 [findings.md](findings.md#session-the-positions-test) says: first

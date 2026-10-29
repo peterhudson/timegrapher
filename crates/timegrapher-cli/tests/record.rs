@@ -111,8 +111,9 @@ fn takes_build_up_a_session() {
     // No time since winding was given, so none is claimed.
     assert!(j["wind_h"].is_null());
     // The check reads the stretch `session` reads: after the settling
-    // time the session file gives (20 s, kept as given on this 35 s take).
-    assert_eq!(j["check"]["from_s"], 20.0);
+    // time (the 20 s default, held to half of this 35 s take: the session
+    // file gives none).
+    assert_eq!(j["check"]["from_s"], 17.5);
     let du = j["check"].clone();
 
     // The take is a folder as the app saves it, with the app's session file.
@@ -139,7 +140,8 @@ fn takes_build_up_a_session() {
     let text = fs::read_to_string(sess.join("session.toml")).unwrap();
     assert!(text.starts_with("# Written by `timegrapher record`"));
     assert!(text.contains("calibre = \"ETA 2824-2\""));
-    assert!(text.contains("settle_s = 20.0"));
+    // No settling time is written, so `session`'s default applies.
+    assert!(!text.contains("settle_s"));
     assert_eq!(text.matches("[[recording]]").count(), 2);
     assert!(text.contains("position = \"CL\"\nwind_h = 24.0"));
     assert!(text.contains("position = \"DU\"\ndate = "));
@@ -178,6 +180,32 @@ fn takes_build_up_a_session() {
             .unwrap_or_else(|| panic!("{report} in {r0}"));
         assert!((a - b).abs() < 1e-9, "{check}: record {a}, session {b}");
     }
+
+    // An entry given more settling than its take holds reads nothing: it
+    // is noted and left out, and the rest are still read.
+    let file = text
+        .lines()
+        .find(|l| l.starts_with("file = "))
+        .expect("an entry's file");
+    fs::write(
+        sess.join("session.toml"),
+        format!("{text}\n[[recording]]\n{file}\nposition = \"DD\"\nsettle_s = 1000.0\n"),
+    )
+    .unwrap();
+    let out = bin()
+        .args([
+            "session",
+            sess.to_str().unwrap(),
+            "--json",
+            "--no-shape",
+            "--no-cycles",
+        ])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{err}");
+    assert!(err.contains("(DD) is left out"), "{err}");
+    assert_eq!(doc(&out)["readings"].as_array().unwrap().len(), 2);
     let _ = fs::remove_dir_all(&d);
 }
 

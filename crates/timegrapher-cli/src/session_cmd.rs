@@ -455,7 +455,27 @@ fn lift_known(c: &Ctx, cal: Option<&ResolvedCalibre>) -> bool {
 }
 
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
-    read_one_inner(e, c, false).map(|(reading, _)| reading)
+    Ok(read_one_inner(e, c, false)?.0)
+}
+
+/// [`read_one`], with an entry that has nothing to read in its recording
+/// ([`take::NoReading`]) noted and left out, so the rest are still read.
+fn read_one_or_note(e: &RecordingEntry, c: &Ctx) -> Result<Option<Reading>, String> {
+    match read_one_inner(e, c, false) {
+        Ok((reading, _)) => Ok(Some(reading)),
+        Err(take::EntryError::NoReading(why)) => {
+            if c.tty {
+                eprintln!();
+            }
+            eprintln!(
+                "note: {} ({}) is left out: {why}",
+                e.file,
+                e.position.as_deref().unwrap_or("-")
+            );
+            Ok(None)
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Baseline writers request context from this same resolution/analysis pass.
@@ -472,7 +492,7 @@ fn read_one_inner(
     e: &RecordingEntry,
     c: &Ctx,
     capture: bool,
-) -> Result<(Reading, Option<crate::regress_provenance::ReadContext>), String> {
+) -> Result<(Reading, Option<crate::regress_provenance::ReadContext>), take::EntryError> {
     let position = position_of(e)?;
     let (cfg, cal) = stream_config(c)?;
     if c.quiet {
@@ -494,7 +514,8 @@ fn read_one_inner(
         return Err(format!(
             "{}: kept as its analysis alone, with no sound to record provenance for",
             e.file
-        ));
+        )
+        .into());
     }
     let take::EntryRead {
         files,
@@ -695,8 +716,11 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         .recordings
         .iter()
         .filter(|e| !take::reads_nothing(e))
-        .map(|e| read_one(e, &ctx))
-        .collect::<Result<_, _>>()?;
+        .map(|e| read_one_or_note(e, &ctx))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
     if readings.is_empty() {
         return Err(format!(
             "{}: no recording listed with anything to read",
