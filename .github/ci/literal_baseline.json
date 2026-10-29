@@ -1,0 +1,219 @@
+{
+ "timegrapher-app": {
+  "files": {
+   "crates/timegrapher-app/src/app.rs": {
+    "comparisons": 37,
+    "constants": 20,
+    "defaults": 2
+   },
+   "crates/timegrapher-app/src/applog.rs": {
+    "comparisons": 0,
+    "constants": 3,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/awake.rs": {
+    "comparisons": 0,
+    "constants": 1,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/calibre_ui.rs": {
+    "comparisons": 1,
+    "constants": 4,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/export.rs": {
+    "comparisons": 2,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/fields.rs": {
+    "comparisons": 2,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/guided.rs": {
+    "comparisons": 2,
+    "constants": 4,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/icons.rs": {
+    "comparisons": 6,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/isochronism.rs": {
+    "comparisons": 1,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/marks.rs": {
+    "comparisons": 8,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/photos.rs": {
+    "comparisons": 0,
+    "constants": 1,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/profiles.rs": {
+    "comparisons": 11,
+    "constants": 1,
+    "defaults": 1
+   },
+   "crates/timegrapher-app/src/pump.rs": {
+    "comparisons": 0,
+    "constants": 2,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/report.rs": {
+    "comparisons": 3,
+    "constants": 3,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/reserve.rs": {
+    "comparisons": 0,
+    "constants": 2,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/scope.rs": {
+    "comparisons": 6,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/session.rs": {
+    "comparisons": 5,
+    "constants": 1,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/span.rs": {
+    "comparisons": 4,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/steady.rs": {
+    "comparisons": 15,
+    "constants": 5,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/strip.rs": {
+    "comparisons": 13,
+    "constants": 4,
+    "defaults": 1
+   },
+   "crates/timegrapher-app/src/tfmap.rs": {
+    "comparisons": 1,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-app/src/theme.rs": {
+    "comparisons": 3,
+    "constants": 8,
+    "defaults": 1
+   },
+   "crates/timegrapher-app/src/watches.rs": {
+    "comparisons": 4,
+    "constants": 0,
+    "defaults": 0
+   }
+  },
+  "total": {
+   "comparisons": 124,
+   "constants": 59,
+   "defaults": 5
+  }
+ },
+ "timegrapher-cli": {
+  "files": {
+   "crates/timegrapher-cli/src/bundle_cmd.rs": {
+    "comparisons": 5,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-cli/src/long.rs": {
+    "comparisons": 3,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-cli/src/main.rs": {
+    "comparisons": 0,
+    "constants": 0,
+    "defaults": 25
+   },
+   "crates/timegrapher-cli/src/output.rs": {
+    "comparisons": 0,
+    "constants": 1,
+    "defaults": 0
+   },
+   "crates/timegrapher-cli/src/record_cmd.rs": {
+    "comparisons": 2,
+    "constants": 3,
+    "defaults": 1
+   },
+   "crates/timegrapher-cli/src/regress_cmd.rs": {
+    "comparisons": 0,
+    "constants": 3,
+    "defaults": 0
+   },
+   "crates/timegrapher-cli/src/report.rs": {
+    "comparisons": 5,
+    "constants": 6,
+    "defaults": 1
+   },
+   "crates/timegrapher-cli/src/series_cmd.rs": {
+    "comparisons": 1,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-cli/src/session_cmd.rs": {
+    "comparisons": 1,
+    "constants": 0,
+    "defaults": 1
+   },
+   "crates/timegrapher-cli/src/session_report.rs": {
+    "comparisons": 2,
+    "constants": 6,
+    "defaults": 1
+   },
+   "crates/timegrapher-cli/src/synth_cmd.rs": {
+    "comparisons": 0,
+    "constants": 1,
+    "defaults": 0
+   }
+  },
+  "total": {
+   "comparisons": 19,
+   "constants": 20,
+   "defaults": 29
+  }
+ },
+ "timegrapher-mcp": {
+  "files": {
+   "crates/timegrapher-mcp/src/live.rs": {
+    "comparisons": 0,
+    "constants": 1,
+    "defaults": 0
+   },
+   "crates/timegrapher-mcp/src/progress.rs": {
+    "comparisons": 0,
+    "constants": 1,
+    "defaults": 1
+   },
+   "crates/timegrapher-mcp/src/summary.rs": {
+    "comparisons": 1,
+    "constants": 0,
+    "defaults": 0
+   },
+   "crates/timegrapher-mcp/src/views.rs": {
+    "comparisons": 0,
+    "constants": 3,
+    "defaults": 0
+   }
+  },
+  "total": {
+   "comparisons": 1,
+   "constants": 5,
+   "defaults": 1
+  }
+ }
+}
