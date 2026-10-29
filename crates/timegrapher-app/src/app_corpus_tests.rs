@@ -126,11 +126,6 @@ const KNOWN: &[(&str, &str)] = &[
         "reverso21600_DU_level_overnight/take_part01-096.flac",
         "26 s file: session reads its 13 s after settling; the app wants three average windows",
     ),
-    (
-        "ym42_CR_long/take_part01-003.flac",
-        "two entries for one file with their own measure_s and settle_s: the app keeps neither \
-         the first's end nor session's halfway cap on the second's settling",
-    ),
 ];
 
 /// Runs `work` on each item, on as many threads as the machine has, and
