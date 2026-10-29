@@ -104,6 +104,26 @@ const CLOCK_EVERY_S: f64 = 10.0;
 const CLOCK_EARLY_S: f64 = 3.0;
 const CLOCK_EARLY_EVERY_S: f64 = 1.0;
 
+/// Whether the clock log takes a line for a block that arrived at `at`,
+/// with `audio_s` of the take written by its end, when the last line on
+/// the regular cadence was for a block that arrived at `last` (`None`: no
+/// line yet, or a break since): every [`CLOCK_EVERY_S`], or
+/// [`CLOCK_EARLY_EVERY_S`] over the first [`CLOCK_EARLY_S`].
+pub fn clock_line_due(audio_s: f64, last: Option<SystemTime>, at: SystemTime) -> bool {
+    let every = if audio_s <= CLOCK_EARLY_S + 1e-9 {
+        CLOCK_EARLY_EVERY_S
+    } else {
+        CLOCK_EVERY_S
+    };
+    match last {
+        None => true,
+        Some(t) => at
+            .duration_since(t)
+            .map(|d| d.as_secs_f64() >= every - 1e-9)
+            .unwrap_or(false),
+    }
+}
+
 pub struct Recorder {
     dir: PathBuf,
     info: SessionInfo,
@@ -117,6 +137,8 @@ pub struct Recorder {
     frames: u64,
     clock: BufWriter<File>,
     last_clock: Option<SystemTime>,
+    /// The frames written by the block `last_clock` is for.
+    clock_frames: u64,
     /// The arrival of the block the clock log's last line is for.
     logged: Option<SystemTime>,
     /// The latest block's arrival and the frames written by then.
@@ -203,6 +225,7 @@ impl Recorder {
             frames: 0,
             clock,
             last_clock: None,
+            clock_frames: 0,
             logged: None,
             last_block: None,
             paused_at: None,
@@ -315,19 +338,7 @@ impl Recorder {
             self.seg_frames += 1;
         }
         self.frames += b.samples.len() as u64;
-        let every = if self.duration_s() <= CLOCK_EARLY_S + 1e-9 {
-            CLOCK_EARLY_EVERY_S
-        } else {
-            CLOCK_EVERY_S
-        };
-        let due = match self.last_clock {
-            None => true,
-            Some(t) => {
-                b.at.duration_since(t)
-                    .map(|d| d.as_secs_f64() >= every - 1e-9)
-                    .unwrap_or(false)
-            }
-        };
+        let due = clock_line_due(self.duration_s(), self.last_clock, b.at);
         self.last_block = Some((b.at, self.frames));
         if due {
             self.log_last_block()?;
@@ -336,6 +347,7 @@ impl Recorder {
                 w.flush().map_err(io_err)?;
             }
             self.last_clock = Some(b.at);
+            self.clock_frames = self.frames;
         }
         Ok(())
     }
@@ -438,6 +450,20 @@ impl Recorder {
             w.flush().map_err(io_err)?;
         }
         self.note("paused")
+    }
+
+    /// Note sound lost from a live input, as [`crate::breaks::GapWatch`]
+    /// finds it: the next block written starts a break whose gap is
+    /// measured as the watch measures it, from the clock log's last line,
+    /// so the take lists all the sound lost since that line (on the
+    /// regular cadence: [`clock_line_due`]) and the log adds no line
+    /// before the break.
+    pub fn sound_lost(&mut self) {
+        if let Some(at) = self.last_clock {
+            let since = (self.frames - self.clock_frames) as f64 / self.info.sample_rate as f64;
+            self.paused_at = Some(at + std::time::Duration::from_secs_f64(since));
+        }
+        self.last_clock = None;
     }
 
     /// Carry on after [`Recorder::pause`], listening to `device` at the

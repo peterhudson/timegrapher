@@ -12,7 +12,9 @@
 
 use crate::amplitude::AmplitudeWindow;
 use crate::beats::Beat;
+use crate::capture::Block;
 use serde::Serialize;
+use std::time::SystemTime;
 
 /// One break: where it falls in the take's audio, and how long listening
 /// stopped there.
@@ -31,6 +33,143 @@ pub struct Break {
 /// apart by the entries after it falling back.
 pub const MIN_GAP_S: f64 = 0.5;
 
+/// How many entries, from the one after a step on, say whether the step
+/// was kept: their median offset (see [`held_step`]).
+pub const HELD_ENTRIES: usize = 4;
+
+/// How much of a step in the offset between the clocks the entries from
+/// the one after it on keep: the median of their offsets (at most
+/// [`HELD_ENTRIES`] of them) less the offset before the step. A break keeps
+/// at least half its step; a late entry (a spike) keeps little of it.
+pub fn held_step(before: f64, later: &[f64]) -> f64 {
+    let mut v = later[..later.len().min(HELD_ENTRIES)].to_vec();
+    v.sort_by(|a, b| a.total_cmp(b));
+    v[v.len() / 2] - before
+}
+
+/// What a live input's blocks become once [`GapWatch`] has seen them: the
+/// blocks, in order, with a break before the first block after a gap.
+#[derive(Debug)]
+pub enum Live {
+    Block(Block),
+    /// The true seconds that passed with no audio before the next block:
+    /// the rise in the offset since the clock log's last line, as
+    /// [`crate::recorder::Recorder::sound_lost`] lists the break.
+    Break(f64),
+}
+
+/// Audio seconds after a rise in a live input's offset that are held back
+/// before judging it, or the rise itself when it is shorter: longer than
+/// an input's own buffer, so when the input was only late, its backlog has
+/// come and the offset is back down by then.
+pub const HOLD_S: f64 = 5.0;
+
+/// The breaks of a live input, found as a saved take's clock log finds
+/// them ([`from_clock_at`]). Each block's offset is its arrival less the
+/// audio up to its end. A break is a rise of at least [`MIN_GAP_S`] in that
+/// offset since the clock log's last line (the blocks the recorder logs:
+/// [`crate::recorder::clock_line_due`]) which the blocks after it keep
+/// ([`held_step`] over the [`HELD_ENTRIES`] blocks after those that
+/// cover the rise, or [`HOLD_S`], in audio). So small losses add up between lines
+/// as they do in the log, and a late block whose sound is all there is no
+/// break: the backlog after it brings the offset back. Blocks after a
+/// rise are held back until then, so a break is known before the block
+/// after it is written; [`crate::recorder::Recorder::sound_lost`] lists it
+/// with the same gap.
+#[derive(Debug)]
+pub struct GapWatch {
+    rate: f64,
+    frames: u64,
+    /// The offset at the clock log's last line, and that block's arrival.
+    line: Option<(f64, SystemTime)>,
+    /// Blocks held back after a rise, with their offsets and the audio
+    /// seconds by their end.
+    held: Vec<(Block, f64, f64)>,
+}
+
+impl GapWatch {
+    pub fn new(sample_rate: u32) -> Self {
+        GapWatch {
+            rate: sample_rate.max(1) as f64,
+            frames: 0,
+            line: None,
+            held: Vec::new(),
+        }
+    }
+
+    /// Take the next block; give back what can be let through now.
+    pub fn push(&mut self, b: Block) -> Vec<Live> {
+        self.frames += b.samples.len() as u64;
+        let end_s = self.frames as f64 / self.rate;
+        let at =
+            b.at.duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0.0, |d| d.as_secs_f64());
+        let mut out = Vec::new();
+        self.take(b, at - end_s, end_s, &mut out);
+        out
+    }
+
+    /// The blocks still held back, at the end of the input, judged on the
+    /// blocks there are, as the clock log's last entries are.
+    pub fn finish(&mut self) -> Vec<Live> {
+        let mut out = Vec::new();
+        while !self.held.is_empty() {
+            self.settle(&mut out);
+        }
+        out
+    }
+
+    fn let_through(&mut self, b: Block, off: f64, end_s: f64, out: &mut Vec<Live>) {
+        if crate::recorder::clock_line_due(end_s, self.line.map(|l| l.1), b.at) {
+            self.line = Some((off, b.at));
+        }
+        out.push(Live::Block(b));
+    }
+
+    fn take(&mut self, b: Block, off: f64, end_s: f64, out: &mut Vec<Live>) {
+        let line = self.line.map(|l| l.0);
+        if self.held.is_empty() && line.is_none_or(|o| off - o < MIN_GAP_S) {
+            self.let_through(b, off, end_s, out);
+            return;
+        }
+        self.held.push((b, off, end_s));
+        // Held until the blocks cover the rise (or HOLD_S), so a backlog
+        // has come, and then HELD_ENTRIES more to judge it on.
+        let rise = self.held[0].1 - line.unwrap_or(off);
+        let start_s = self.held[0].2 - self.held[0].0.samples.len() as f64 / self.rate;
+        let covered = self
+            .held
+            .iter()
+            .position(|h| h.2 - start_s >= rise.min(HOLD_S) - 1e-9);
+        if covered.is_some_and(|j| self.held.len() > j + HELD_ENTRIES) {
+            self.settle(out);
+        }
+    }
+
+    /// Judge the first held block's rise on the last blocks held, let it
+    /// through, and take the rest again in order.
+    fn settle(&mut self, out: &mut Vec<Live>) {
+        let held = std::mem::take(&mut self.held);
+        let line = self.line.map_or(held[0].1, |l| l.0);
+        let step = held[0].1 - line;
+        let offs: Vec<f64> = held.iter().map(|h| h.1).collect();
+        let kept = held_step(line, &offs[offs.len().saturating_sub(HELD_ENTRIES)..]);
+        if step >= MIN_GAP_S && kept >= 0.5 * step {
+            // The step itself, which is what the recorder lists for the
+            // break, so the live view and the reopened take skip the same.
+            out.push(Live::Break(step));
+            // The recorder logs the first block after a break.
+            self.line = None;
+        }
+        let mut rest = held.into_iter();
+        let (first, off, end_s) = rest.next().expect("a held block");
+        self.let_through(first, off, end_s, out);
+        for (b, off, end_s) in rest {
+            self.take(b, off, end_s, out);
+        }
+    }
+}
+
 /// Breaks seen in a clock log's `(audio_s, true_s)` entries, sorted by
 /// audio time: a step in the offset between the two clocks that the next
 /// entries keep, with a break also at each of `at` (audio seconds)
@@ -46,12 +185,9 @@ pub fn from_clock_at(pairs: &[(f64, f64)], at: &[f64]) -> Vec<Break> {
             .iter()
             .any(|&a| pairs[i - 1].0 <= a + 1e-6 && a + 1e-6 < pairs[i].0)
         {
-            let later = &off[i..(i + 4).min(off.len())];
-            let mut v = later.to_vec();
-            v.sort_by(|a, b| a.total_cmp(b));
             out.push(Break {
                 audio_s: pairs[i].0,
-                gap_s: v[v.len() / 2] - off[i - 1],
+                gap_s: held_step(off[i - 1], &off[i..]),
             });
             continue;
         }
@@ -60,10 +196,7 @@ pub fn from_clock_at(pairs: &[(f64, f64)], at: &[f64]) -> Vec<Break> {
         }
         // Kept: the offset a few entries on stays at least halfway up the
         // step, or there are no entries after this one to say otherwise.
-        let later = &off[i..(i + 4).min(off.len())];
-        let mut v = later.to_vec();
-        v.sort_by(|a, b| a.total_cmp(b));
-        let held = v[v.len() / 2] - off[i - 1];
+        let held = held_step(off[i - 1], &off[i..]);
         if held >= 0.5 * step {
             out.push(Break {
                 audio_s: pairs[i].0,
@@ -308,6 +441,77 @@ pub fn by_count(at: impl IntoIterator<Item = f64>, sided: &[f64]) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_live_gap_breaks_only_where_the_sound_was_lost() {
+        // Blocks of 0.1 s at 48 kHz, each arriving at `arrive(k)` seconds.
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
+        let run = |arrive: &dyn Fn(usize) -> f64| {
+            let mut w = GapWatch::new(48_000);
+            let mut out = Vec::new();
+            for k in 0..200 {
+                out.extend(w.push(Block {
+                    samples: vec![k as f32; 4_800],
+                    at: t0 + std::time::Duration::from_secs_f64(arrive(k)),
+                }));
+            }
+            out.extend(w.finish());
+            // Every block comes out, in order; the breaks as (blocks
+            // before, gap).
+            let mut blocks = 0;
+            let mut found = Vec::new();
+            for l in out {
+                match l {
+                    Live::Block(b) => {
+                        assert_eq!(b.samples[0], blocks as f32);
+                        blocks += 1;
+                    }
+                    Live::Break(g) => found.push((blocks, g)),
+                }
+            }
+            assert_eq!(blocks, 200);
+            found
+        };
+        let near = |f: Vec<(usize, f64)>, want: &[(usize, f64)]| {
+            assert_eq!(f.len(), want.len(), "{f:?}");
+            for (a, b) in f.iter().zip(want) {
+                assert_eq!(a.0, b.0, "{f:?}");
+                assert!((a.1 - b.1).abs() < 1e-6, "{f:?}");
+            }
+        };
+        // Steady, with a little jitter: no break.
+        near(run(&|k| 0.1 * (k + 1) as f64 + 0.03 * (k % 3) as f64), &[]);
+        // 3 s with no sound before block 50 (the computer slept): a break.
+        near(
+            run(&|k| 0.1 * (k + 1) as f64 + if k >= 50 { 3.0 } else { 0.0 }),
+            &[(50, 3.0)],
+        );
+        // One gap just at MIN_GAP_S and one just under it.
+        near(
+            run(&|k| {
+                0.1 * (k + 1) as f64
+                    + if k >= 40 { MIN_GAP_S } else { 0.0 }
+                    + if k >= 120 { MIN_GAP_S - 0.01 } else { 0.0 }
+            }),
+            &[(40, MIN_GAP_S)],
+        );
+        // The input stalled 2 s and then brought every block it held at
+        // once: nothing was lost, so no break.
+        near(
+            run(&|k| (0.1 * (k + 1) as f64).max(if k >= 50 { 7.1 } else { 0.0 })),
+            &[],
+        );
+        // A single block late, the next ones on time: no break.
+        near(
+            run(&|k| 0.1 * (k + 1) as f64 + if k == 80 { 1.5 } else { 0.0 }),
+            &[],
+        );
+        // A gap in the last blocks is judged on the blocks there are.
+        near(
+            run(&|k| 0.1 * (k + 1) as f64 + if k >= 198 { 2.0 } else { 0.0 }),
+            &[(198, 2.0)],
+        );
+    }
 
     /// The shifts run on over the gaps, each rounded to whole tick-tock
     /// pairs, none for a negative gap; renumber moves each beat by the
