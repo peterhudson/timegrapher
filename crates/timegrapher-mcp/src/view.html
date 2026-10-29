@@ -516,16 +516,15 @@ function fileName(doc) {
   return f && f.path ? String(f.path).split(/[\\/]/).pop() : "";
 }
 
-// The CLI's authoritative correction precedes its USB estimate. Keep the
-// original document intact so the raw and alternative rates remain available.
+// The rate the CLI chose, as summary.rs's analyze_rate reads it: corrected
+// where the document says which correction it applied (`clock`: one stored
+// or given, else the recording's USB lines), else on the card's clock. The
+// choice is the CLI's; the document is left intact.
 function analyzeRate(doc) {
   const clock = doc.clock || {};
   if (Number.isFinite(clock.rate_s_per_day)) {
     const from = typeof clock.from === "string" ? clock.from : "correction supplied by the CLI";
     return { value: clock.rate_s_per_day, basis: `corrected for the sound card's clock (${from})` };
-  }
-  if (Number.isFinite(doc.rate_corrected_s_per_day)) {
-    return { value: doc.rate_corrected_s_per_day, basis: "corrected using the recording's USB clock lines" };
   }
   return { value: (doc.overall || {}).rate_s_per_day, basis: "on the sound card's clock" };
 }

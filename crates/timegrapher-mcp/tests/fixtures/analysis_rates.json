@@ -1,10 +1,10 @@
 [
   {
-    "name": "null-authoritative-falls-back-to-USB",
+    "name": "a-correction-with-no-corrected-rate-reads-the-card-clock",
     "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "rate_s_per_day": null } },
-    "expected_rate": 4,
-    "expected_lead": "Readings: rate +4.0 s/day.",
-    "expected_basis": "corrected using the recording's USB clock lines"
+    "expected_rate": 6,
+    "expected_lead": "Readings: rate +6.0 s/day.",
+    "expected_basis": "on the sound card's clock"
   },
   {
     "name": "invalid-corrections-fall-back-to-raw",
@@ -22,10 +22,17 @@
   },
   {
     "name": "USB-only",
-    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4 },
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": { "ppm": 23.15, "rate_s_per_day": 4, "from": "from 120 USB lines in the recording, 0.3 ppm apart" } },
     "expected_rate": 4,
     "expected_lead": "Readings: rate +4.0 s/day.",
-    "expected_basis": "corrected using the recording's USB clock lines"
+    "expected_basis": "corrected for the sound card's clock (from 120 USB lines in the recording, 0.3 ppm apart)"
+  },
+  {
+    "name": "a-USB-rate-the-CLI-did-not-choose-is-not-taken",
+    "doc": { "schema": "timegrapher.analyze/2", "watch_heard": true, "overall": { "rate_s_per_day": 6 }, "rate_corrected_s_per_day": 4, "clock": null },
+    "expected_rate": 6,
+    "expected_lead": "Readings: rate +6.0 s/day.",
+    "expected_basis": "on the sound card's clock"
   },
   {
     "name": "stored-before-USB",
