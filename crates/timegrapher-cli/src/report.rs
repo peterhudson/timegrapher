@@ -379,11 +379,20 @@ enum RasterKind {
     Rate,
 }
 
-fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
-    let rows = &c.fold.raster;
-    if rows.is_empty() {
-        return String::new();
-    }
+/// The rows of `c`'s raster as drawn: at most 240 rows of at most 60
+/// columns, each the mean of the cycles and bins it merges; with the
+/// cycles each row merges and the columns.
+fn raster_rows(c: &Component, kind: RasterKind) -> (Vec<Vec<f64>>, usize, usize) {
+    // A rate is read on the cycles themselves, before rows are merged: an
+    // averaged row's last bin is not one bin before the next one's first.
+    let rates;
+    let rows = match kind {
+        RasterKind::Value(_) => &c.fold.raster,
+        RasterKind::Rate => {
+            rates = timegrapher_core::longterm::rate_rows(&c.fold.raster, c.period_s);
+            &rates
+        }
+    };
     // Merge consecutive rows so at most 240 are drawn, and columns so at
     // most 60 are.
     let group = rows.len().div_ceil(240);
@@ -409,13 +418,21 @@ fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
                 .collect()
         })
         .collect();
-    let merged: Vec<Vec<f64>> = match kind {
+    let merged = match kind {
         RasterKind::Value(scale) => merged
             .into_iter()
             .map(|r| r.into_iter().map(|v| v * scale).collect())
             .collect(),
-        RasterKind::Rate => timegrapher_core::longterm::rate_rows(&merged, c.period_s),
+        RasterKind::Rate => merged,
     };
+    (merged, group, cols)
+}
+
+fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
+    if c.fold.raster.is_empty() {
+        return String::new();
+    }
+    let (merged, group, cols) = raster_rows(c, kind);
     let mut all: Vec<f64> = merged
         .iter()
         .flatten()
@@ -465,7 +482,7 @@ fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
         MT + 9.0,
         ML - 6.0,
         MT + h,
-        rows.len()
+        c.fold.raster.len()
     );
     let _ = write!(
         s,
@@ -723,4 +740,52 @@ fn ramp(mid: &str, neg: &str, pos: &str) -> String {
         }
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use timegrapher_core::longterm::Fold;
+
+    /// A take that gains a steady 8.64 s/d draws 8.64 in every bin of the
+    /// rate raster, its ends too, when each drawn row merges several
+    /// cycles: the rate is read on the cycles before they are merged.
+    #[test]
+    fn a_merged_rate_raster_reads_each_cycles_rate() {
+        let (period, bins, cycles) = (100.0, 20, 600);
+        let dt = period / bins as f64;
+        let raster: Vec<Vec<f64>> = (0..cycles)
+            .map(|k| {
+                (0..bins)
+                    .map(|j| -1e-4 * (k * bins + j) as f64 * dt)
+                    .collect()
+            })
+            .collect();
+        let c = Component {
+            period_s: period,
+            resolution_s: 0.0,
+            significance: 0.0,
+            harmonics: 1,
+            explained: 0.0,
+            peak_to_peak: 0.0,
+            wheel: None,
+            nearest_wheel: None,
+            shape: vec![0.0; bins],
+            fold: Fold {
+                period_s: period,
+                profile: vec![0.0; bins],
+                counts: vec![cycles; bins],
+                raster,
+                t0: 0.0,
+            },
+            harmonic_of: None,
+        };
+        let (rows, group, cols) = raster_rows(&c, RasterKind::Rate);
+        assert!(group > 1 && cols == bins);
+        assert!(
+            rows.iter().flatten().all(|v| (v - 8.64).abs() < 1e-6),
+            "{:?}",
+            rows[0]
+        );
+    }
 }

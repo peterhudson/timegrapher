@@ -5,6 +5,8 @@
 
 mod caveats;
 mod cli;
+#[cfg(test)]
+mod corpus_tests;
 mod guidance;
 mod lifecycle;
 mod live;

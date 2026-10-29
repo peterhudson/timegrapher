@@ -263,8 +263,8 @@ tools show their results as charts right in the conversation, drawn the way
 the timegrapher app draws them:
 
 - `analyze_recording`: the rate, amplitude and beat error, those three over
-  time, and the Tick and Tock profiles from ten seconds in the middle of the
-  recording.
+  time, and the Tick and Tock profiles over the stretch `session` measures the
+  beat shape on: the first minute after the watch has settled.
 - `run_session`: each position's readings, the characteristic values, and
   rate and amplitude by position. It sets no limits: the server does not
   judge the readings against a tolerance, so `run_session` takes no

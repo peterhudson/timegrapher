@@ -345,9 +345,23 @@ fn map_outline(m: &Value) -> Value {
     })
 }
 
+/// Where the Recording view's Tick and Tock profiles are read, as start and
+/// length in seconds: core's beat-shape stretch
+/// ([`analysis_take::shape_stretch`]), the first [`analysis_take::SHAPE_S`]
+/// once the watch has settled ([`take::measured`]). `analyze` reads one
+/// sound file, which has no masked stretches. None for an empty recording.
+///
+/// [`analysis_take::shape_stretch`]: timegrapher_core::analysis_take::shape_stretch
+/// [`analysis_take::SHAPE_S`]: timegrapher_core::analysis_take::SHAPE_S
+/// [`take::measured`]: timegrapher_core::take::measured
+pub fn profile_stretch(duration_s: f64) -> Option<(f64, f64)> {
+    let (from, to) = timegrapher_core::take::measured(0.0, duration_s, None, None);
+    timegrapher_core::analysis_take::shape_stretch(&[], from, to)
+}
+
 /// What the Recording view needs beyond `analyze`'s document: the strip
-/// from the windows file, and the Tick and Tock profiles over ten seconds
-/// in the middle of the recording.
+/// from the windows file, and the Tick and Tock profiles over the stretch
+/// core measures the beat shape on ([`profile_stretch`]).
 pub async fn analyze_charts(
     doc: &Value,
     extras: &[String],
@@ -363,9 +377,8 @@ pub async fn analyze_charts(
             out.insert("strip".into(), strip(&csv, duration));
         }
     }
-    if doc["watch_heard"] != json!(false) && duration > 0.0 {
-        let span = duration.min(10.0);
-        let at = (duration / 2.0 - span / 2.0).max(0.0);
+    let stretch = profile_stretch(duration).filter(|_| doc["watch_heard"] != json!(false));
+    if let Some((at, span)) = stretch {
         let mut line = vec![
             "profile".to_string(),
             format!("--at={at}"),
@@ -401,6 +414,15 @@ pub async fn analyze_charts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_profiles_are_read_where_core_reads_the_beat_shape() {
+        // Settled for 20 s, then a minute; a short recording settles for
+        // half its length and reads the rest.
+        assert_eq!(profile_stretch(300.0), Some((20.0, 60.0)));
+        assert_eq!(profile_stretch(30.0), Some((15.0, 15.0)));
+        assert_eq!(profile_stretch(0.0), None);
+    }
 
     #[test]
     fn the_chart_data_stays_out_of_what_the_model_reads() {

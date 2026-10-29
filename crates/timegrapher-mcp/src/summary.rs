@@ -44,11 +44,33 @@ fn analyze_rate(doc: &Value) -> Option<(f64, String)> {
     }
 }
 
-/// One reading: rate, amplitude and beat error, each with its standard
-/// error where the document gives one. The beat error is core's choice of
-/// the reading's signed unlock and drop figures (`drop_ms`), as a size.
+/// The whole recording's beat error from the drop: its overall fit's.
+fn analyze_drop(doc: &Value) -> Option<f64> {
+    doc["overall"]["beat_error_ms"].as_f64()
+}
+
+/// The figures the lead gives for an `analyze` document ([`figures`]).
+#[cfg(test)]
+pub fn analyze_figures(doc: &Value) -> [Option<f64>; 3] {
+    figures(doc, analyze_rate(doc).map(|r| r.0), analyze_drop(doc))
+}
+
+/// One reading's rate (s/day, as given), amplitude (°) and beat error (ms):
+/// the beat error is core's choice of the reading's signed unlock and drop
+/// figures (`drop_ms`), as a size.
+fn figures(m: &Value, rate: Option<f64>, drop_ms: Option<f64>) -> [Option<f64>; 3] {
+    [
+        rate,
+        m["amplitude_deg"].as_f64(),
+        timegrapher_core::session::beat_error_size(m["beat_error_unlock_ms"].as_f64(), drop_ms),
+    ]
+}
+
+/// One reading ([`figures`]): rate, amplitude and beat error, each with its
+/// standard error where the document gives one.
 fn readings(m: &Value, rate: Option<f64>, drop_ms: Option<f64>) -> Option<String> {
     let conf = &m["confidence"];
+    let [rate, amplitude, beat_error] = figures(m, rate, drop_ms);
     let mut parts = Vec::new();
     if let Some(r) = rate {
         parts.push(format!(
@@ -57,12 +79,10 @@ fn readings(m: &Value, rate: Option<f64>, drop_ms: Option<f64>) -> Option<String
             pm(&conf["rate"], 1)
         ));
     }
-    if let Some(a) = m["amplitude_deg"].as_f64() {
+    if let Some(a) = amplitude {
         parts.push(format!("amplitude {a:.0}{}°", pm(&conf["amplitude"], 0)));
     }
-    let be =
-        timegrapher_core::session::beat_error_size(m["beat_error_unlock_ms"].as_f64(), drop_ms);
-    if let Some(b) = be {
+    if let Some(b) = beat_error {
         parts.push(format!(
             "beat error {:.2}{} ms",
             b,
@@ -175,9 +195,7 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
             lines.push(crate::caveats::no_regular_beat(doc, doc["bph"].as_f64()));
         } else {
             let selected = analyze_rate(doc);
-            // The whole recording's drop figure is its overall fit's.
-            let drop = doc["overall"]["beat_error_ms"].as_f64();
-            if let Some(r) = readings(doc, selected.as_ref().map(|r| r.0), drop) {
+            if let Some(r) = readings(doc, selected.as_ref().map(|r| r.0), analyze_drop(doc)) {
                 lines.push(format!("Readings: {r}."));
             }
             if let Some((_, basis)) = selected {
