@@ -534,7 +534,9 @@ pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LeftOut {
     pub file: String,
-    pub position: Option<String>,
+    /// As a reading names it ([`position_of`]): Witschi's code in the
+    /// JSON.
+    pub position: Option<Position>,
     pub start_s: f64,
     pub why: String,
 }
@@ -549,7 +551,7 @@ impl LeftOut {
             .to_string();
         LeftOut {
             file: e.file.clone(),
-            position: e.position.clone(),
+            position: position_of(e).ok(),
             start_s: e.start_s.unwrap_or(0.0),
             why,
         }
@@ -558,9 +560,10 @@ impl LeftOut {
     /// The line the summary and the note print.
     pub fn text(&self) -> String {
         format!(
-            "{} ({}) at {:.0} s is left out: {}",
+            "{}, {}, at {:.0} s is left out: {}",
             self.file,
-            self.position.as_deref().unwrap_or("-"),
+            self.position
+                .map_or("-".to_string(), Position::display_label),
             self.start_s,
             self.why
         )
