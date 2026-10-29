@@ -1914,6 +1914,11 @@ struct TrendPoint {
 }
 
 impl TrendPoint {
+    /// The reading's beat error as core reads one (`beat_error_signed`).
+    fn beat_error(&self) -> Option<f64> {
+        core_session::beat_error_signed(self.beat_error_unlock, self.beat_error_drop)
+    }
+
     /// The reading at `t`; a reading whose averaging time
     /// is not a whole bin (just after the start, a break or a masked
     /// stretch, or over a dropout; see `LiveReading::whole`) has no
@@ -12573,9 +12578,8 @@ impl TimegrapherApp {
             figure_row(
                 ui,
                 cards[4].figure,
-                unlock
-                    .or(drop)
-                    .map(|v| format!("{:.2}", v.abs()))
+                core_session::beat_error_size(unlock, drop)
+                    .map(|v| format!("{v:.2}"))
                     .as_deref(),
                 &unit,
                 unheard.as_ref(),
@@ -14795,7 +14799,7 @@ impl TimegrapherApp {
                 decimals: 2,
                 color: pal.trace_beat_error,
                 min_span: 0.2,
-                points: series(|p| p.beat_error_unlock),
+                points: series(TrendPoint::beat_error),
             });
         }
         let bands = self.position_bands();
@@ -15403,14 +15407,16 @@ impl TimegrapherApp {
                 windows
                     .iter()
                     .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
-                    .filter_map(|w| w.beat_error_unlock_ms)
+                    .filter_map(|w| {
+                        core_session::beat_error_signed(w.beat_error_unlock_ms, w.beat_error_ms)
+                    })
                     .collect(),
                 BEAT_ERROR,
                 pal.trace_beat_error,
                 "2 s",
             ),
             SeriesKind::BeatError => (
-                readings(|p| p.beat_error_unlock),
+                readings(TrendPoint::beat_error),
                 BEAT_ERROR,
                 pal.trace_beat_error,
                 "readings",
@@ -18354,37 +18360,6 @@ mod tests {
         assert!(drawn.contains("Circle"), "the possible beats are drawn");
     }
 
-    /// The rate distribution's 2 s values are the rate over each 2 seconds
-    /// of beats, none across a break or into a masked stretch.
-    #[test]
-    fn rate_distribution_counts_two_second_stretches() {
-        let mut app = synthetic(30.0, 12.0);
-        let live = app.live.as_mut().unwrap();
-        live.set_breaks(vec![15.0]);
-        let mut r = RateTwoS::default();
-        r.refresh(live, &[(5.0, 7.5)]);
-        assert!(r.values.len() >= 10, "{}", r.values.len());
-        for &(a, v) in &r.values {
-            let b = a + RateTwoS::STEP_S;
-            assert!(!(a < 15.0 && 15.0 < b), "across the break at {a}");
-            assert!(!(a < 7.5 && b > 5.0), "into the mask at {a}");
-            assert!((v - 12.0).abs() < 20.0, "{v} s/day at {a}");
-        }
-        // Refreshing again adds nothing; a change of mask starts again.
-        let n = r.values.len();
-        r.refresh(live, &[(5.0, 7.5)]);
-        assert_eq!(r.values.len(), n);
-        r.refresh(live, &[]);
-        assert!(r.values.len() > n);
-        // The pane follows Values for rate too.
-        app.hist_readings = false;
-        let ctx = egui::Context::default();
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| app.histogram(ui, SeriesKind::Rate));
-        });
-        assert!(!app.rate_2s.values.is_empty());
-    }
-
     /// A paused session carries on only with the input it was listening to:
     /// another input's clock correction and clock measurement aren't its.
     #[test]
@@ -18590,7 +18565,7 @@ mod tests {
     }
 
     /// Every piece of text a frame painted.
-    fn painted_text(out: &egui::FullOutput) -> String {
+    pub(super) fn painted_text(out: &egui::FullOutput) -> String {
         out.shapes
             .iter()
             .filter_map(|c| match &c.shape {
@@ -18681,74 +18656,6 @@ mod tests {
             };
             let _ = ctx.run(input, |ctx| app.panels(ctx));
         }
-    }
-
-    /// The Charts and Distributions panes draw a plot for each reading
-    /// turned on, and its switches keep at least one on.
-    #[test]
-    fn the_charts_and_distributions_draw_the_readings_turned_on() {
-        let mut app = synthetic(30.0, 20.0);
-        for p in [Pane::Charts, Pane::Distributions] {
-            set_pane_visible(&mut app.panes.tiles, p, true);
-        }
-        // Room for every plot: the strip, the profile and the Scope out of
-        // the way.
-        for p in [Pane::Strip, Pane::Sound, Pane::Scope] {
-            set_pane_visible(&mut app.panes.tiles, p, false);
-        }
-        let ctx = themed();
-        // Each pane in turn: they are tabs side by side, one on show.
-        let draw = |app: &mut TimegrapherApp| {
-            let mut all = String::new();
-            for p in [Pane::Charts, Pane::Distributions] {
-                for q in [Pane::Charts, Pane::Distributions] {
-                    set_pane_visible(&mut app.panes.tiles, q, q == p);
-                }
-                let mut text = String::new();
-                for _ in 0..3 {
-                    let input = egui::RawInput {
-                        screen_rect: Some(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            Vec2::new(1440.0, 1000.0),
-                        )),
-                        ..Default::default()
-                    };
-                    text = painted_text(&ctx.run(input, |ctx| app.panels(ctx)));
-                }
-                all.push_str(&text);
-            }
-            all
-        };
-        // At first only the rate: no amplitude or beat error plot in
-        // either pane.
-        assert_eq!((app.chart_series, app.dist_series), (RATE_ONLY, RATE_ONLY));
-        let text = draw(&mut app);
-        assert!(text.contains("Rate"), "{text}");
-        for t in ["Beat Error:", "Amplitude:", "From the Unlock", "From Tick"] {
-            assert!(!text.contains(t), "{t}: {text}");
-        }
-        // All three turned on.
-        app.chart_series = [true; 3];
-        app.dist_series = [true; 3];
-        let text = draw(&mut app);
-        for t in [
-            "Charts",
-            "Distributions",
-            "s/day",
-            "Beat Error:",
-            "Amplitude:",
-        ] {
-            assert!(text.contains(t), "{t}: {text}");
-        }
-        assert!(!text.contains("Match Strip"), "{text}");
-        app.chart_series = RATE_ONLY;
-        // The last one on stays on; another comes on beside it.
-        steady::flip_series(&mut app.chart_series, 0);
-        assert_eq!(app.chart_series, [true, false, false]);
-        steady::flip_series(&mut app.chart_series, 2);
-        assert_eq!(app.chart_series, [true, false, true]);
-        steady::flip_series(&mut app.chart_series, 0);
-        assert_eq!(app.chart_series, [false, false, true]);
     }
 
     /// The window before anything is open, with a problem showing, in both
@@ -27366,3 +27273,7 @@ mod revision_tests;
 #[cfg(test)]
 #[path = "app_whole_tests.rs"]
 mod whole_tests;
+
+#[cfg(test)]
+#[path = "app_charts_tests.rs"]
+mod charts_tests;
