@@ -305,7 +305,8 @@ pub fn take_name(started: &str, positions: &[Position]) -> String {
 pub struct AtEnd {
     pub rate_s_per_day: Option<f64>,
     pub amplitude_deg: Option<f64>,
-    /// Signed, from the unlock.
+    /// Signed: from the unlock, else the drop
+    /// ([`crate::session::beat_error_signed`]).
     pub beat_error_ms: Option<f64>,
     /// `rate_s_per_day` corrected for the take's sound card from its clock
     /// log, as `timegrapher session` and the app read the take; left out
@@ -435,7 +436,8 @@ pub struct Reading {
     /// a stored correction) rather than the sound card's.
     pub calibrated: bool,
     pub amplitude_deg: Option<f64>,
-    /// Signed, from the unlock.
+    /// Signed: from the unlock, else the drop
+    /// ([`crate::session::beat_error_signed`]).
     pub beat_error_ms: Option<f64>,
     /// False where no regular beat was found; the figures are then none.
     pub watch_heard: bool,
@@ -537,7 +539,7 @@ fn measure_take(dir: &Path) -> Result<Reading, String> {
         rate_s_per_day: x.rate_s_per_day,
         calibrated: x.calibrated,
         amplitude_deg: x.amplitude_deg,
-        beat_error_ms: x.beat_error_unlock_ms,
+        beat_error_ms: x.beat_error_signed(),
         watch_heard: x.watch_heard,
     })
 }
@@ -1566,7 +1568,10 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
             AtEnd {
                 rate_s_per_day: rate,
                 amplitude_deg: at(r, "amplitude_deg"),
-                beat_error_ms: at(r, "beat_error_unlock_ms"),
+                beat_error_ms: crate::session::beat_error_signed(
+                    at(r, "beat_error_unlock_ms"),
+                    at(r, "beat_error_ms"),
+                ),
                 rate_corrected_s_per_day: rate
                     .and_then(|v| Some(crate::clockstore::correct_rate(v, ppm()?))),
             }
@@ -1624,6 +1629,37 @@ mod tests {
         assert_ne!(analysis, sound);
         fs::write(dir.join("session.toml"), "bph = 21600\nlift = 52\n").unwrap();
         assert_ne!(reading_stamp(&dir), analysis);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A take whose unlock is never found reads its beat error from the
+    /// drop, as `session` reads it, and so does the reading the app kept
+    /// for it at its end.
+    #[test]
+    fn a_take_whose_unlock_is_never_found_reads_the_drops_beat_error() {
+        let dir = std::env::temp_dir().join(format!("tg-unlock-unheard-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        crate::audio::write_wav(
+            &dir.join("audio-001.wav"),
+            &crate::synth::unlock_unheard(60.0, 0.8),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("session.toml"),
+            "bph = 28800\n\n[[recording]]\nfile = '.'\nposition = 'DU'\n",
+        )
+        .unwrap();
+        let r = measure_take(&dir).unwrap();
+        let be = r.beat_error_ms.expect("the drop's beat error");
+        assert!((be - 0.8).abs() < 0.05, "{be}");
+        fs::write(
+            dir.join("session.json"),
+            r#"{"result":{"rate_s_per_day":3.5,"amplitude_deg":null,"beat_error_ms":-0.4,"beat_error_unlock_ms":null}}"#,
+        )
+        .unwrap();
+        let a = read_take(&dir, 0).unwrap().at_end.unwrap();
+        assert_eq!(a.beat_error_ms, Some(-0.4));
         let _ = fs::remove_dir_all(&dir);
     }
 

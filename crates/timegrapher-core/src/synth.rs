@@ -132,6 +132,20 @@ impl Default for SynthConfig {
     }
 }
 
+/// A watch at 250° whose unlock makes no sound, `duration_s` long: its
+/// beat error is found at the drop alone, as on a take where the unlock is
+/// never found.
+#[cfg(test)]
+pub(crate) fn unlock_unheard(duration_s: f64, beat_error_ms: f64) -> Audio {
+    let mut cfg = SynthConfig {
+        duration_s,
+        beat_error_ms,
+        ..Default::default()
+    };
+    cfg.sounds[0].gain = 0.0;
+    generate(&cfg, |_| 250.0, |_| 0.0)
+}
+
 /// Generate a recording. `amp_fn(t)` gives the amplitude in degrees and
 /// `rate_fn(t)` an extra rate in s/d at time `t` (seconds).
 pub fn generate(
