@@ -81,6 +81,15 @@ pub struct Beat {
     pub quality: f32,
 }
 
+impl Beat {
+    /// Whether this beat is good enough to time from: quality better than
+    /// [`JUMP_QUALITY`]. The one rule for the timing fit, the jump search,
+    /// the scatter and the beat-sound snippets alike.
+    pub fn is_good(&self) -> bool {
+        self.quality > JUMP_QUALITY
+    }
+}
+
 /// Track one peak per beat in `x`, starting near the strongest peak of the
 /// first beat-and-a-half. A simple phase-locked loop follows rate changes.
 ///
@@ -353,7 +362,7 @@ pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
     // template rebuilt from its beats is sharper for the final pass.
     let good: Vec<f64> = beats
         .iter()
-        .filter(|b| b.quality > 0.4)
+        .filter(|b| b.is_good())
         .map(|b| b.time)
         .collect();
     let step = (good.len() / 2000).max(1);
@@ -996,11 +1005,11 @@ pub fn jumps(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
     out
 }
 
-/// A beat whose timing [`jumps_among_good`] reads is better than this
-/// ([`Beat::quality`]).
+/// A good beat ([`Beat::is_good`]) has a [`Beat::quality`] better than
+/// this.
 pub const JUMP_QUALITY: f32 = 0.4;
 
-/// [`jumps`] on the good beats alone (better than [`JUMP_QUALITY`]), the
+/// [`jumps`] on the good beats alone ([`Beat::is_good`]), the
 /// one jump search for a whole file and for live listening alike. Where
 /// the sound was lost for a moment (a dropout in the audio), the tracker
 /// follows noise for a few seconds until it finds the beats again; those
@@ -1009,10 +1018,9 @@ pub const JUMP_QUALITY: f32 = 0.4;
 /// half the time. Positions are in `beats`; `before` may hold noise beats
 /// too (see [`good_tail`]).
 pub fn jumps_among_good(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
-    let good = |b: &Beat| b.quality > JUMP_QUALITY;
-    let at: Vec<usize> = (0..beats.len()).filter(|&k| good(&beats[k])).collect();
+    let at: Vec<usize> = (0..beats.len()).filter(|&k| beats[k].is_good()).collect();
     let found: Vec<Beat> = at.iter().map(|&k| beats[k]).collect();
-    let before: Vec<Beat> = before.iter().copied().filter(good).collect();
+    let before: Vec<Beat> = before.iter().copied().filter(Beat::is_good).collect();
     jumps(&found, &before).into_iter().map(|p| at[p]).collect()
 }
 
@@ -1023,7 +1031,7 @@ pub fn jumps_among_good(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
 /// after a long stretch of noise.
 pub const JUMP_LOOK_BACK: usize = 2000;
 
-/// The last `n` good beats of `beats` (better than [`JUMP_QUALITY`]) with
+/// The last `n` good beats of `beats` ([`Beat::is_good`]) with
 /// the noise beats among them, looking back at most [`JUMP_LOOK_BACK`]
 /// beats: the stretch [`jumps_among_good`] reads.
 pub fn good_tail(beats: &[Beat], n: usize) -> &[Beat] {
@@ -1031,14 +1039,14 @@ pub fn good_tail(beats: &[Beat], n: usize) -> &[Beat] {
     &back[good_tail_start(back, n)..]
 }
 
-/// Where in `beats` the last `n` good beats (better than [`JUMP_QUALITY`])
+/// Where in `beats` the last `n` good beats ([`Beat::is_good`])
 /// begin, or 0 when there are fewer: the stretch [`jumps_among_good`] reads.
 pub fn good_tail_start(beats: &[Beat], n: usize) -> usize {
     beats
         .iter()
         .enumerate()
         .rev()
-        .filter(|(_, b)| b.quality > JUMP_QUALITY)
+        .filter(|(_, b)| b.is_good())
         .nth(n.saturating_sub(1))
         .filter(|_| n > 0)
         .map_or(0, |(k, _)| k)
@@ -1233,6 +1241,18 @@ mod tests {
     }
 
     #[test]
+    fn a_good_beat_is_better_than_jump_quality() {
+        let at = |quality| Beat {
+            index: 0,
+            time: 0.0,
+            quality,
+        };
+        assert!(!at(JUMP_QUALITY).is_good());
+        assert!(at(JUMP_QUALITY + 0.01).is_good());
+        assert!(!at(0.0).is_good());
+    }
+
+    #[test]
     fn a_jump_after_long_noise_is_seen_by_file_and_live_alike() {
         // From beat 1700 on both sides land 30 ms later, and the 300 beats
         // before it (about 40 s) are noise: longer than one pass of live
@@ -1249,9 +1269,7 @@ mod tests {
         // (Live, on a pass 40 beats after the jump; the 152 beats it used
         // to reach back hold no good beats from before it.)
         let tail = good_tail(&b[..1740], 4 * MIN_SIDE_BEATS + JUMP_CONTEXT);
-        assert!(b[1740 - 152..1700]
-            .iter()
-            .all(|x| x.quality <= JUMP_QUALITY));
+        assert!(b[1740 - 152..1700].iter().all(|x| !x.is_good()));
         let at: Vec<f64> = jumps_among_good(tail, &[])
             .into_iter()
             .map(|p| tail[p].time)
@@ -1265,7 +1283,7 @@ mod tests {
         }
         let before = good_tail(&far[..2500], JUMP_CONTEXT);
         assert_eq!(before.len(), JUMP_LOOK_BACK);
-        assert!(before.iter().all(|x| x.quality <= JUMP_QUALITY));
+        assert!(before.iter().all(|x| !x.is_good()));
     }
 
     #[test]
@@ -1572,7 +1590,7 @@ mod tests {
                     let run: Vec<Beat> = file
                         .beats
                         .iter()
-                        .filter(|b| b.time >= from && b.time < to && b.quality > 0.4)
+                        .filter(|b| b.time >= from && b.time < to && b.is_good())
                         .copied()
                         .collect();
                     crate::timing::beat_error_ms(&run).expect("beat error")

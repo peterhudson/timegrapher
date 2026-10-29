@@ -104,7 +104,7 @@ impl BeatLog {
         };
         let snips = beats
             .iter()
-            .filter(|b| b.quality > 0.4)
+            .filter(|b| b.is_good())
             .filter_map(|b| Some((b.index.rem_euclid(2) == 0, find(b.time)?)));
         let beat = 3600.0 / self.bph.max(1) as f64;
         crate::measure::beat_sound_found(snips, self.sample_rate as f64, 2.0 * beat, cfg)
@@ -197,7 +197,7 @@ impl State {
             }
             self.beats.push(Beat { time: t, ..b });
             if let Some(w) = profile::snippet(&env, fs, b.time) {
-                if t < SNIPPETS_KEPT_S && b.quality > 0.4 {
+                if t < SNIPPETS_KEPT_S && b.is_good() {
                     self.snippets.push((t, w.to_vec()));
                 }
                 self.sides.beat(t, b.index, b.quality, w);
