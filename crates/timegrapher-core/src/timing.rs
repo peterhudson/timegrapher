@@ -40,6 +40,37 @@ impl Anchor {
         let expected = self.time + (b.index - self.index) as f64 * period_s;
         (expected - b.time) * 1000.0
     }
+
+    /// [`Anchor::centre_on`] on true time: the beats as core numbers them
+    /// across the take's `breaks` ([`crate::breaks::renumber`]), each at
+    /// its true second ([`crate::breaks::wall`]). For [`Anchor::lead_on_wall`].
+    pub fn centre_on_wall(
+        beats: &[Beat],
+        period_s: f64,
+        n: usize,
+        breaks: &[crate::breaks::Break],
+    ) -> Option<Anchor> {
+        let recent = &beats[beats.len().saturating_sub(n)..];
+        let on_wall: Vec<Beat> = recent.iter().map(|b| on_wall(b, breaks)).collect();
+        Anchor::centre_on(&on_wall, period_s, n)
+    }
+
+    /// [`Anchor::lead_ms`] on true time, against an anchor from
+    /// [`Anchor::centre_on_wall`]: beat `b` as core numbers it across
+    /// `breaks`, at its true second. A steady watch's lead runs on through
+    /// a break as it would with none, where on audio seconds it would
+    /// shift by up to half a beat.
+    pub fn lead_on_wall(&self, b: &Beat, period_s: f64, breaks: &[crate::breaks::Break]) -> f64 {
+        self.lead_ms(&on_wall(b, breaks), period_s)
+    }
+}
+
+/// Beat `b` at its true second, across `breaks`.
+fn on_wall(b: &Beat, breaks: &[crate::breaks::Break]) -> Beat {
+    Beat {
+        time: crate::breaks::wall(breaks, b.time),
+        ..*b
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -353,6 +384,72 @@ mod tests {
         ));
         let scrap = flip(take(5.5, &[(0.0, 40.0), (50.0, 52.0)]), 45.0);
         assert!(!sign_turns(&scrap, 28800, &[45.0]));
+    }
+
+    /// A steady watch heard either side of a break whose gap is `gap_s`
+    /// true seconds, numbered as the live engine numbers them on audio
+    /// seconds and then by core across the break: its lead on true time
+    /// is the same either side.
+    fn lead_across(gap_s: f64) -> (f64, f64, f64) {
+        use crate::breaks::{renumber, Break};
+        let p = 0.125;
+        let at = 200.0;
+        // True beat times, the gap's left out of the sound.
+        let mut beats: Vec<Beat> = Vec::new();
+        for k in 0..(800.0 / p) as i64 {
+            let t = k as f64 * p + side(k) * 3e-4;
+            let audio = if t < at {
+                t
+            } else if t >= at + gap_s {
+                t - gap_s
+            } else {
+                continue;
+            };
+            let index = beats.last().map_or(0, |l| {
+                l.index + ((audio - l.time) / p).round().max(1.0) as i64
+            });
+            beats.push(Beat {
+                index,
+                time: audio,
+                quality: 1.0,
+            });
+        }
+        let breaks = [Break { audio_s: at, gap_s }];
+        renumber(&mut beats, &mut Vec::new(), &breaks, &[], 28800);
+        let anchor = Anchor::centre_on_wall(&beats[..16], p, 16, &breaks).unwrap();
+        let mean = |keep: &dyn Fn(&Beat) -> bool, lead: &dyn Fn(&Beat) -> f64| {
+            let v: Vec<f64> = beats.iter().filter(|b| keep(b)).map(lead).collect();
+            v.iter().sum::<f64>() / v.len() as f64
+        };
+        let wall = |b: &Beat| anchor.lead_on_wall(b, p, &breaks);
+        let before = mean(&|b| b.time < at, &wall);
+        let after = mean(&|b| b.time >= at, &wall);
+        // On audio seconds, as the strip read it before.
+        let audio = Anchor::centre_on(&beats[..16], p, 16).unwrap();
+        let shifts = crate::breaks::index_shifts(&breaks, 28800);
+        let old = |b: &Beat| {
+            let b = Beat {
+                index: b.index - crate::breaks::index_shift_at(&shifts, b.time),
+                ..*b
+            };
+            audio.lead_ms(&b, p)
+        };
+        let jump = mean(&|b| b.time >= at, &old) - mean(&|b| b.time < at, &old);
+        (before, after, jump)
+    }
+
+    #[test]
+    fn a_steady_watchs_lead_on_true_time_runs_on_through_a_gap() {
+        let (before, after, jump) = lead_across(1800.0371);
+        assert!((after - before).abs() < 0.01, "{before} then {after}");
+        // On audio seconds it moved by the gap's part of a beat.
+        assert!(jump.abs() > 30.0, "{jump}");
+    }
+
+    #[test]
+    fn a_steady_watchs_lead_on_true_time_runs_on_through_a_jump() {
+        let (before, after, _) = lead_across(0.0);
+        assert!((after - before).abs() < 0.01, "{before} then {after}");
     }
 
     /// Beats at `rate` s/d with 0.3 ms beat error and a little jitter, on

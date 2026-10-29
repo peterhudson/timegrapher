@@ -2239,9 +2239,6 @@ pub struct TimegrapherApp {
     /// `None` for a session heard here, whose readings go by the clock
     /// kept for the input.
     take_breaks: Option<Vec<timegrapher_core::breaks::Break>>,
-    /// The beats of the take on show numbered on its audio seconds, for
-    /// the strip, where core numbers them on across the take's breaks.
-    audio_beats: Option<Vec<timegrapher_core::beats::Beat>>,
     /// The strip's Position Brush is on, with this position: dragging
     /// along the strip sets that stretch to it.
     brush: Option<Position>,
@@ -2769,7 +2766,6 @@ impl TimegrapherApp {
             take_clock: None,
             take_clock_from: None,
             take_breaks: None,
-            audio_beats: None,
             brush: None,
             confirm: None,
             remove_masks_asked: false,
@@ -3051,7 +3047,6 @@ impl TimegrapherApp {
                 self.take_clock = None;
                 self.take_clock_from = None;
                 self.take_breaks = None;
-                self.audio_beats = None;
                 self.masking = false;
                 self.brush = None;
                 self.reset_session(
@@ -3249,7 +3244,6 @@ impl TimegrapherApp {
         self.take_clock = None;
         self.take_clock_from = None;
         self.take_breaks = None;
-        self.audio_beats = None;
         self.masking = false;
         self.brush = None;
         self.clear_trends();
@@ -4223,7 +4217,6 @@ impl TimegrapherApp {
         self.take_clock = None;
         self.take_clock_from = None;
         self.take_breaks = None;
-        self.audio_beats = None;
         self.masked.clear();
         self.masking = false;
         self.brush = None;
@@ -4501,7 +4494,6 @@ impl TimegrapherApp {
         self.take_clock = None;
         self.take_clock_from = None;
         self.take_breaks = None;
-        self.audio_beats = None;
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4587,7 +4579,6 @@ impl TimegrapherApp {
         self.take_clock = None;
         self.take_clock_from = None;
         self.take_breaks = None;
-        self.audio_beats = None;
         self.batch = Some(Batch {
             rx,
             progress,
@@ -4902,7 +4893,12 @@ impl TimegrapherApp {
                 if let Some(bph) = live.bph() {
                     let beats = live.beats();
                     if beats.len() >= 16 {
-                        self.anchor = Anchor::centre_on(&beats[..16], 3600.0 / bph as f64, 16);
+                        self.anchor = Anchor::centre_on_wall(
+                            &beats[..16],
+                            3600.0 / bph as f64,
+                            16,
+                            self.take_breaks.as_deref().unwrap_or_default(),
+                        );
                     }
                 }
             }
@@ -4972,21 +4968,6 @@ impl TimegrapherApp {
         self.opened_positions = Some(self.positions_now());
         live.set_masked(&self.masked);
         live.set_rate_clock(self.take_rate_clock());
-        // The strip draws beats on audio seconds: the beats core numbers on
-        // across the take's breaks have that taken off again for it.
-        self.audio_beats = live.bph().and_then(|bph| {
-            use timegrapher_core::breaks::{index_shift_at, index_shifts};
-            let shifts = index_shifts(self.take_breaks.as_deref()?, bph);
-            shifts.iter().any(|s| s.1 != 0).then(|| {
-                live.beats()
-                    .iter()
-                    .map(|b| timegrapher_core::beats::Beat {
-                        index: b.index - index_shift_at(&shifts, b.time),
-                        ..*b
-                    })
-                    .collect()
-            })
-        });
         self.live = Some(live);
         self.steady = None;
         self.steady_job = None;
@@ -5603,14 +5584,18 @@ impl TimegrapherApp {
         let Some(live) = &self.live else { return };
         let Some(bph) = live.bph() else { return };
         let period = 3600.0 / bph as f64;
-        let beats = strip_beats(live, &self.audio_beats);
+        let beats = live.beats();
+        let breaks = self.take_breaks.as_deref().unwrap_or_default();
         let centred = if self.follow {
-            Anchor::centre_on(beats, period, 8)
+            Anchor::centre_on_wall(beats, period, 8, breaks)
         } else {
-            Anchor::centre_on(&beats[..beats.len().min(16)], period, 16)
+            Anchor::centre_on_wall(&beats[..beats.len().min(16)], period, 16, breaks)
         };
         let Some(anchor) = centred else { return };
-        let mut leads: Vec<f64> = beats.iter().map(|b| anchor.lead_ms(b, period)).collect();
+        let mut leads: Vec<f64> = beats
+            .iter()
+            .map(|b| anchor.lead_on_wall(b, period, breaks))
+            .collect();
         leads.sort_by(f64::total_cmp);
         let stray = leads.len() / 1000;
         let (lo, hi) = (leads[stray], leads[leads.len() - 1 - stray]);
@@ -5691,9 +5676,12 @@ impl TimegrapherApp {
         let end = self.strip_end_s();
         if let Some(l) = &self.live {
             if let Some(bph) = l.bph() {
-                let beats = strip_beats(l, &self.audio_beats);
+                let beats = l.beats();
+                let breaks = self.take_breaks.as_deref().unwrap_or_default();
                 let hi = beats.partition_point(|b| b.time <= end);
-                if let Some(a) = Anchor::centre_on(&beats[..hi], 3600.0 / bph as f64, 8) {
+                if let Some(a) =
+                    Anchor::centre_on_wall(&beats[..hi], 3600.0 / bph as f64, 8, breaks)
+                {
                     self.anchor = Some(a);
                 }
             }
@@ -14720,6 +14708,11 @@ impl TimegrapherApp {
             track: &track,
             brush: self.brush.map(Position::code),
             painted: &painted,
+            breaks: if guessing {
+                &[]
+            } else {
+                self.take_breaks.as_deref().unwrap_or_default()
+            },
         };
         let Some(live) = &self.live else { return };
         // The possible beats numbered at the strip's beat period from the
@@ -14747,11 +14740,7 @@ impl TimegrapherApp {
         };
         let input = strip::draw_strip(
             ui,
-            if guessing {
-                &candidates
-            } else {
-                strip_beats(live, &self.audio_beats)
-            },
+            if guessing { &candidates } else { live.beats() },
             period,
             anchor,
             end,
@@ -16659,16 +16648,6 @@ fn settle_hint(s: f64) -> String {
 
 /// The beats the strip draws: `live`'s, or the take's numbered on its
 /// audio seconds (`audio`) while they are the same beats.
-fn strip_beats<'a>(
-    live: &'a LiveAnalyzer,
-    audio: &'a Option<Vec<timegrapher_core::beats::Beat>>,
-) -> &'a [timegrapher_core::beats::Beat] {
-    match audio {
-        Some(b) if b.len() == live.beats().len() => b,
-        _ => live.beats(),
-    }
-}
-
 /// The clock readings are put on, for a log `duration_s` long: for a
 /// take opened (`opened`), its own clock as core read it, or none; for a
 /// session heard here, the clock kept for the input (`ppm` slow).
@@ -27935,3 +27914,7 @@ mod corpus_tests;
 #[cfg(test)]
 #[path = "app_steady_tests.rs"]
 mod steady_tests;
+
+#[cfg(test)]
+#[path = "app_strip_tests.rs"]
+mod strip_tests;
