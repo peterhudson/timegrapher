@@ -6,6 +6,7 @@
 //! together while cancelling beat error, as Witschi recommends.
 
 use crate::beats::Beat;
+use crate::clock::ClockFit;
 use crate::dsp::robust_sd;
 use serde::Serialize;
 
@@ -41,6 +42,40 @@ impl Anchor {
         (expected - b.time) * 1000.0
     }
 
+    /// [`Anchor::centre_on`] on true time, as the readings are measured:
+    /// each beat at its true second across `breaks`, and on the take's
+    /// `clock` where it has one ([`on_true_time`]). For
+    /// [`Anchor::lead_on_true`].
+    pub fn centre_on_true(
+        beats: &[Beat],
+        period_s: f64,
+        n: usize,
+        breaks: &[crate::breaks::Break],
+        clock: Option<&ClockFit>,
+    ) -> Option<Anchor> {
+        let recent = &beats[beats.len().saturating_sub(n)..];
+        let on_true: Vec<Beat> = recent
+            .iter()
+            .map(|b| on_true_time(b, breaks, clock))
+            .collect();
+        Anchor::centre_on(&on_true, period_s, n)
+    }
+
+    /// [`Anchor::lead_ms`] on true time, against an anchor from
+    /// [`Anchor::centre_on_true`]: beat `b` at its true second across
+    /// `breaks` and on `clock`. On a corrected take its leads then lie
+    /// along the rate the readings give, where on the sound card's
+    /// seconds they tilt from it by 0.0864 s/d for each ppm (#643).
+    pub fn lead_on_true(
+        &self,
+        b: &Beat,
+        period_s: f64,
+        breaks: &[crate::breaks::Break],
+        clock: Option<&ClockFit>,
+    ) -> f64 {
+        self.lead_ms(&on_true_time(b, breaks, clock), period_s)
+    }
+
     /// [`Anchor::centre_on`] on true time: the beats as core numbers them
     /// across the take's `breaks` ([`crate::breaks::renumber`]), each at
     /// its true second ([`crate::breaks::wall`]). For [`Anchor::lead_on_wall`].
@@ -69,6 +104,19 @@ impl Anchor {
 fn on_wall(b: &Beat, breaks: &[crate::breaks::Break]) -> Beat {
     Beat {
         time: crate::breaks::wall(breaks, b.time),
+        ..*b
+    }
+}
+
+/// Beat `b` at its true second as the readings measure it: on the take's
+/// `clock` ([`ClockFit::map`], as `session::measure` puts beats on it),
+/// with the gaps of those of `breaks` the clock does not already put back
+/// (a listed break the log did not see, or none at all without a clock).
+pub fn on_true_time(b: &Beat, breaks: &[crate::breaks::Break], clock: Option<&ClockFit>) -> Beat {
+    let wall = |breaks: &[crate::breaks::Break]| crate::breaks::wall(breaks, b.time);
+    let drift = clock.map_or(0.0, |c| c.map(b.time) - wall(&c.breaks));
+    Beat {
+        time: wall(breaks) + drift,
         ..*b
     }
 }
@@ -350,6 +398,89 @@ pub fn windows(beats: &[Beat], bph: u32, window_s: f64, step_s: f64) -> Vec<Wind
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The beat period of a watch 5 s/d fast, true seconds.
+    const PERIOD: f64 = 0.125 * (1.0 - 5.0 / 86_400.0);
+
+    /// An hour of a watch 5 s/d fast on true time, heard on a card 20 ppm
+    /// slow, as audio seconds: with `gap_s` of true time unheard from
+    /// audio second `at`.
+    fn heard_on_slow_card(at: f64, gap_s: f64) -> Vec<Beat> {
+        let k = 1.0 + 20e-6;
+        (0..28_800)
+            .filter_map(|i| {
+                let true_s = i as f64 * PERIOD;
+                let audio = if true_s < at * k {
+                    true_s / k
+                } else if true_s >= at * k + gap_s {
+                    (true_s - gap_s) / k
+                } else {
+                    return None;
+                };
+                Some(Beat {
+                    index: i,
+                    time: audio,
+                    quality: 1.0,
+                })
+            })
+            .collect()
+    }
+
+    /// The spread of the beats' leads on true time, ms.
+    fn spread(beats: &[Beat], breaks: &[crate::breaks::Break], clock: &ClockFit) -> f64 {
+        let a = Anchor::centre_on_true(beats, PERIOD, 8, breaks, Some(clock)).unwrap();
+        let leads = beats
+            .iter()
+            .map(|b| a.lead_on_true(b, PERIOD, breaks, Some(clock)));
+        let (lo, hi) = leads.fold((f64::MAX, f64::MIN), |(lo, hi), l| (lo.min(l), hi.max(l)));
+        hi - lo
+    }
+
+    #[test]
+    fn leads_on_a_corrected_take_lie_along_its_rate() {
+        // On the card's seconds the leads tilt by 72 ms over the hour from
+        // the rate the readings give; on true time they lie flat.
+        let beats = heard_on_slow_card(f64::INFINITY, 0.0);
+        let clock = ClockFit::fixed(20.0, 3_600.0);
+        assert!(spread(&beats, &[], &clock) < 1e-3);
+        let w = Anchor::centre_on_wall(&beats, PERIOD, 8, &[]).unwrap();
+        let leads = beats.iter().map(|b| w.lead_on_wall(b, PERIOD, &[]));
+        let (lo, hi) = leads.fold((f64::MAX, f64::MIN), |(lo, hi), l| (lo.min(l), hi.max(l)));
+        assert!((hi - lo - 72.0).abs() < 0.5, "{}", hi - lo);
+        // Without a clock, true time is the wall's.
+        let a = Anchor::centre_on_true(&beats, PERIOD, 8, &[], None).unwrap();
+        let b = &beats[1_000];
+        assert_eq!(
+            a.lead_on_true(b, PERIOD, &[], None),
+            a.lead_on_wall(b, PERIOD, &[])
+        );
+    }
+
+    #[test]
+    fn each_break_is_counted_once() {
+        // A 60 s pause at 1,800 s: listed but not in a fixed clock, its gap
+        // comes from the breaks; seen in the clock log too, the clock puts
+        // it back and the breaks (as core gives them on that clock) do not
+        // add it again.
+        let at = 1_800.0;
+        let beats = heard_on_slow_card(at, 60.0);
+        let listed = vec![crate::breaks::Break {
+            audio_s: at,
+            gap_s: 60.0,
+        }];
+        assert!(spread(&beats, &listed, &ClockFit::fixed(20.0, 3_600.0)) < 1e-3);
+        let k = 1.0 + 20e-6;
+        let pairs: Vec<(f64, f64)> = (0..=720)
+            .map(|i| {
+                let a = i as f64 * 5.0;
+                (a, 1.79e9 + a * k + if a >= at { 60.0 } else { 0.0 })
+            })
+            .collect();
+        let mut logged = ClockFit::new(&pairs).unwrap();
+        let breaks = crate::breaks::on_clock(listed, Some(&mut logged));
+        assert_eq!(logged.breaks.len(), 1);
+        assert!(spread(&beats, &breaks, &logged) < 1e-3);
+    }
 
     #[test]
     fn signs_that_turn_over_combine_as_sizes() {
