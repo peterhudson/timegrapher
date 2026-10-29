@@ -525,7 +525,7 @@ impl Test {
         let position = session::Position::parse(p.code())?;
         // Cut at every jump in the beats, as the whole take is, so no fit
         // runs across one.
-        let jumps = timegrapher_core::breaks::with_jumps(Vec::new(), &log.jumps);
+        let jumps = crate::steady::reading_breaks(Vec::new(), log);
         let measurement: Measurement =
             session::measure_masked(log, clock, &jumps, masked, from, to);
         Some(Reading {

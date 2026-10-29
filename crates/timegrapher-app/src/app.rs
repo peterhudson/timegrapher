@@ -162,8 +162,12 @@ fn day_of(utc: &str) -> &str {
 
 /// The Rate caveat for an input whose clock hasn't been measured.
 const CLOCK_UNKNOWN: &str = "input clock not measured";
-/// Plain marks on the level meter, for reference only.
-const REFERENCE_DBFS: [f64; 2] = [-10.0, -6.0];
+/// Plain marks on the level meter, for reference only: the level core
+/// aims a recording at and the one it calls hot.
+const REFERENCE_DBFS: [f64; 2] = [
+    timegrapher_core::diagnose::TARGET_PEAK_DBFS,
+    timegrapher_core::diagnose::HOT_PEAK_DBFS,
+];
 /// The width of the Settings window's sidebar.
 const SETTINGS_SIDEBAR_W: f32 = 146.0;
 use crate::session::{self, Action, Session};
@@ -5068,15 +5072,11 @@ impl TimegrapherApp {
             live.set_masked(&self.masked);
         }
         // A Positions Test's positions are read again without them.
-        if let (Some(test), Some(log)) = (
-            self.guided.as_mut(),
-            self.live.as_ref().and_then(steady::log_of),
-        ) {
-            let clock = self
-                .clock
-                .as_ref()
-                .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s));
-            test.reread(&log, clock.as_ref(), &self.masked);
+        if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
+            let clock = self.reading_clock(log.duration_s);
+            if let Some(test) = self.guided.as_mut() {
+                test.reread(&log, clock.as_ref(), &self.masked);
+            }
         }
         self.steady = None;
         self.steady_job = None;
@@ -5513,8 +5513,7 @@ impl TimegrapherApp {
         );
         let read = move |log: BeatLog| {
             let clock = reading_clock(take_clock.as_ref(), opened.is_some(), ppm, log.duration_s);
-            let breaks =
-                timegrapher_core::breaks::with_jumps(opened.unwrap_or_default(), &log.jumps);
+            let breaks = steady::reading_breaks(opened.unwrap_or_default(), &log);
             let t = core_session::positions_table(
                 &log,
                 clock.as_ref(),
@@ -12525,10 +12524,7 @@ impl TimegrapherApp {
     /// mask's ends) as a break of no length, as core's `take::breaks`
     /// adds the jumps.
     fn reading_breaks(&self, log: &BeatLog) -> Vec<timegrapher_core::breaks::Break> {
-        timegrapher_core::breaks::with_jumps(
-            self.take_breaks.clone().unwrap_or_default(),
-            &log.jumps,
-        )
+        steady::reading_breaks(self.take_breaks.clone().unwrap_or_default(), log)
     }
 
     /// The take's own clock error the readings are corrected by, ppm slow:
@@ -13347,22 +13343,24 @@ impl TimegrapherApp {
     /// or not: read each position as it is measured, and keep what the
     /// strip marks.
     fn guided_tick(&mut self, ctx: &egui::Context) {
-        let Some(test) = self.guided.as_mut() else {
+        let Some(now) = self.live.as_ref().map(|l| l.duration_s()) else {
             return;
         };
-        let Some(now) = self.live.as_ref().map(|l| l.duration_s()) else {
+        let Some(test) = self.guided.as_mut() else {
             return;
         };
         let phase = test.tick(now);
         if test.needs_reading() {
             if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
-                let clock = self
-                    .clock
-                    .as_ref()
-                    .and_then(|c| timegrapher_core::session::fixed_clock(c.ppm, log.duration_s));
-                test.read_new(&log, clock.as_ref(), &self.masked);
+                let clock = self.reading_clock(log.duration_s);
+                if let Some(test) = self.guided.as_mut() {
+                    test.read_new(&log, clock.as_ref(), &self.masked);
+                }
             }
         }
+        let Some(test) = self.guided.as_mut() else {
+            return;
+        };
         self.guided_unused = test.unused(now);
         self.guided_measured = test.measured(now);
         if matches!(
@@ -16614,7 +16612,10 @@ fn reading_clock(
     if opened {
         take_clock.cloned()
     } else {
-        ppm.and_then(|ppm| timegrapher_core::session::fixed_clock(ppm, duration_s))
+        // The kept correction, as core puts a take with no clock log on it.
+        timegrapher_core::take::clock(None, 0, 0, None, ppm, duration_s)
+            .ok()
+            .flatten()
     }
 }
 
@@ -16672,13 +16673,8 @@ fn open_in_background(
                 &m,
                 &e,
                 &settings,
-                |files| Ok(timegrapher_core::clock::usb_lines(files)?.map(|u| u.ppm)),
-                |first| {
-                    Ok(match m.card_ppm {
-                        Some(p) => Some(p),
-                        None => take::stored_correction(first)?.map(|c| c.ppm),
-                    })
-                },
+                take::usb_ppm,
+                |first| take::correction_ppm(&m, first),
                 |s| {
                     progress.store(s.to_bits(), Relaxed);
                     if cancel.load(Relaxed) {
@@ -16713,7 +16709,7 @@ const BUG_REPORT_URL: &str =
 
 /// The session file a recording's folder may carry (see `timegrapher
 /// session`), which the app writes when it saves a take.
-const MANIFEST: &str = "session.toml";
+use timegrapher_core::take::MANIFEST;
 
 /// The session file beside a recording or in its folder, and its entries
 /// for that recording: none when there is no session file or it doesn't
@@ -17555,7 +17551,7 @@ const SCOPE_KEPT: usize = 40;
 type ScopeCut = (f64, f64, Result<crate::span::Span, String>);
 
 /// The lift angle used until a calibre is picked or one is typed in.
-pub const DEFAULT_LIFT_DEG: f64 = 52.0;
+pub use timegrapher_core::take::DEFAULT_LIFT_DEG;
 
 /// An error as a person reads it: the system's own words for the common
 /// file errors, and no "(os error 2)" codes. The log keeps the original.
@@ -27040,6 +27036,10 @@ mod tests {
     /// file the command line reads, and the input listening loses its
     /// True Clock with it. Manage Calibres… opens Settings at Calibres.
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
     fn settings_forgets_a_kept_clock() {
         const MARKER: &str = "TIMEGRAPHER_FORGET_TEST_CHILD";
         if std::env::var_os(MARKER).is_none() {
@@ -27192,6 +27192,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
     fn invalid_clock_store_blocks_fresh_listening_and_keep_without_hardware() {
         const MARKER: &str = "TIMEGRAPHER_CLOCK_STORE_TEST_CHILD";
         if std::env::var_os(MARKER).is_none() {
