@@ -246,8 +246,16 @@ pub fn joined_duration(spans: &[(f64, f64)], end_s: f64) -> f64 {
 /// The part of `log` inside `spans`, in time order, with the time between
 /// them taken out: one position's beats over a session that moved the
 /// watch, joined so the tests see them as one run, with a short gap at each
-/// join that no reading fits across.
-pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
+/// join that no reading fits across. With it, the cuts the joined readings
+/// stop at: each of `breaks` inside a span, on the joined times and with
+/// the time its gap held, and each join, with none.
+pub fn join(
+    log: &BeatLog,
+    spans: &[(f64, f64)],
+    breaks: &[timegrapher_core::breaks::Break],
+) -> (BeatLog, Vec<timegrapher_core::breaks::Break>) {
+    use timegrapher_core::breaks::Break;
+    let mut cuts = Vec::new();
     let beat = 3600.0 / log.bph as f64;
     let mut out = BeatLog {
         sample_rate: log.sample_rate,
@@ -285,7 +293,20 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
         };
         if prev.is_some() {
             out.jumps.push(a - shift_t);
+            cuts.push(Break {
+                audio_s: a - shift_t,
+                gap_s: 0.0,
+            });
         }
+        cuts.extend(
+            breaks
+                .iter()
+                .filter(|c| c.audio_s >= a && c.audio_s < b)
+                .map(|c| Break {
+                    audio_s: c.audio_s - shift_t,
+                    ..*c
+                }),
+        );
         out.jumps.extend(
             log.jumps
                 .iter()
@@ -329,7 +350,8 @@ pub fn join(log: &BeatLog, spans: &[(f64, f64)]) -> BeatLog {
     }
     out.jumps.sort_by(f64::total_cmp);
     out.jumps.dedup();
-    out
+    let cuts = reading_breaks(cuts, &out);
+    (out, cuts)
 }
 
 /// Run the tests over a session. Slow for long sessions (a 2 h take takes
@@ -2684,12 +2706,31 @@ mod tests {
             .all(|b| !(20.0..33.5).contains(&b.time)));
     }
 
+    /// A take's break inside a joined span keeps the time its gap held,
+    /// on the joined times; the joins themselves hold none.
+    #[test]
+    fn a_join_keeps_the_gaps_of_the_breaks_inside_its_spans() {
+        use timegrapher_core::breaks::Break;
+        let mut log = context_log();
+        log.jumps = vec![60.03];
+        let cut = |audio_s, gap_s| Break { audio_s, gap_s };
+        // One stretch after a 10 s settle, and a second after a move.
+        let (joined, cuts) = join(&log, &[(10.0, 70.0), (80.0, 110.0)], &[cut(60.03, 30.0)]);
+        assert_eq!(cuts.len(), 2, "{cuts:?}");
+        assert!(
+            (cuts[0].audio_s - 50.03).abs() < 1e-9 && cuts[0].gap_s == 30.0,
+            "{cuts:?}"
+        );
+        assert_eq!(cuts[1].gap_s, 0.0, "{cuts:?}");
+        assert!(joined.jumps.contains(&cuts[1].audio_s), "{cuts:?}");
+    }
+
     #[test]
     fn derived_join_transports_cuts_and_existing_sample_context() {
         let mut log = context_log();
         log.jumps = vec![5.0, 10.0, 15.0, 20.0, 30.0, 40.0, 60.03, 80.0, 110.0];
         let spans = [(10.0, 20.0), (30.01, 30.02), (40.0, 80.0)];
-        let joined = join(&log, &spans);
+        let joined = join(&log, &spans, &[]).0;
         // The empty middle span adds neither a join nor a cut. The second
         // retained span starts at15 (ten seconds plus the existing5s gap).
         assert_eq!(joined.jumps, [0.0, 5.0, 15.0, 35.03]);
@@ -2738,7 +2779,12 @@ mod tests {
                 window(end - 1.0, end + 1.0),
                 window(42.0, 44.0),
             ];
-            let joined = join(&log, &[(start, end), (second_start, second_start + 10.0)]);
+            let joined = join(
+                &log,
+                &[(start, end), (second_start, second_start + 10.0)],
+                &[],
+            )
+            .0;
             assert_eq!(
                 joined.amplitude_windows.len(),
                 2,

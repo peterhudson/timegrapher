@@ -7718,9 +7718,7 @@ impl TimegrapherApp {
         };
         if self.steady_job.is_none() && due && dur >= steady::MIN_S {
             let log = self.live.as_ref().and_then(steady::log_of);
-            let joined = !self.session.stretches().is_empty();
-            if let Some(log) = log.map(|l| if joined { steady::join(&l, &spans) } else { l }) {
-                let breaks = self.steady_breaks(&log, joined);
+            if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans)) {
                 let wheels = self.calibre_wheels();
                 let clock = self.take_clock.clone().filter(|f| f.corrects());
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -7743,16 +7741,23 @@ impl TimegrapherApp {
         dur
     }
 
-    /// The cuts the steadiness tests stop at in `log`: for a take opened
-    /// whole, its own breaks with the time each gap held, and every other
-    /// jump, as the whole take and `timegrapher series` read it; for one
-    /// position's stretches joined end to end, each join and jump, with
-    /// no time.
-    fn steady_breaks(&self, log: &BeatLog, joined: bool) -> Vec<timegrapher_core::breaks::Break> {
-        if joined {
-            steady::reading_breaks(Vec::new(), log)
+    /// What the steadiness tests read of `log`, and the cuts they stop at:
+    /// a take with no position marked whole, at its own breaks with the time
+    /// each gap held and every other jump, as the whole take and `timegrapher
+    /// series` read it; else the position's stretches `spans` joined end to
+    /// end, the take's breaks inside them keeping their time and each join
+    /// with none.
+    fn steady_log(
+        &self,
+        log: BeatLog,
+        spans: &[(f64, f64)],
+    ) -> (BeatLog, Vec<timegrapher_core::breaks::Break>) {
+        let opened = self.take_breaks.clone().unwrap_or_default();
+        if self.session.stretches().is_empty() {
+            let breaks = steady::reading_breaks(opened, &log);
+            (log, breaks)
         } else {
-            self.reading_breaks(log)
+            steady::join(&log, spans, &opened)
         }
     }
 
@@ -22395,7 +22400,7 @@ mod tests {
         let spans = app.current_spans();
         assert_eq!(spans.len(), 2);
         let log = steady::log_of(live).unwrap();
-        let joined = steady::join(&log, &spans);
+        let joined = steady::join(&log, &spans, &[]).0;
         let dd = log
             .beats
             .iter()
@@ -27087,23 +27092,13 @@ mod tests {
         };
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let cut = |audio_s, gap_s| Break { audio_s, gap_s };
+        let breaks = |app: &TimegrapherApp| app.steady_log(log.clone(), &[]).1;
         // Heard here: each jump, with no time.
-        assert_eq!(
-            app.steady_breaks(&log, false),
-            [cut(200.0, 0.0), cut(400.0, 0.0)]
-        );
+        assert_eq!(breaks(&app), [cut(200.0, 0.0), cut(400.0, 0.0)]);
         // Opened: the take's own break keeps the 30 s its gap held, as
         // `series` reads it; the other jump has none.
         app.take_breaks = Some(vec![cut(200.0, 30.0)]);
-        assert_eq!(
-            app.steady_breaks(&log, false),
-            [cut(200.0, 30.0), cut(400.0, 0.0)]
-        );
-        // One position's stretches joined: the joins carry no time.
-        assert_eq!(
-            app.steady_breaks(&log, true),
-            [cut(200.0, 0.0), cut(400.0, 0.0)]
-        );
+        assert_eq!(breaks(&app), [cut(200.0, 30.0), cut(400.0, 0.0)]);
     }
 
     /// Settings lists each kept clock; Forget removes that one from the
