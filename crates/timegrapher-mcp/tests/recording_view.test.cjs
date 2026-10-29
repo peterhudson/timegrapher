@@ -19,7 +19,6 @@ function definition(name, optional = false) {
 const context = vm.createContext({
   fileName: () => "test.wav", timeLabel: String,
   stripCards: () => "", profileCard: () => "", limitsCard: () => "",
-  noRegularBeat: () => "No regular beat found.",
 });
 vm.runInContext(["esc", "num", "signed", "abs", "tile", "recordingView"]
   .map(n => definition(n)).concat(definition("analyzeRate", true)).join("\n"), context);
