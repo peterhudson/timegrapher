@@ -222,7 +222,22 @@ fn the_mcp_server_reads_each_corpus_recording_as_session_does() {
         let label = reading["label"].as_str().expect("a reading's label");
         let file = root.join("takes").join(id).join(label);
         let doc = analyze(&cli, &file, bph, lift);
-        figures(&doc, reading)
+        let found = figures(&doc, reading);
+        // Said as each file is read, so a run cut short still shows them.
+        let differ: Vec<&str> = found
+            .iter()
+            .filter(|(_, mcp, session)| mcp != session)
+            .map(|(what, _, _)| *what)
+            .collect();
+        eprintln!(
+            "{id}/{label}: {}",
+            if differ.is_empty() {
+                "same".to_string()
+            } else {
+                format!("differs in {}", differ.join(", "))
+            }
+        );
+        found
             .into_iter()
             .map(|(what, mcp, session)| (format!("{id}/{label}: {what}"), what, mcp, session))
             .collect::<Vec<_>>()
@@ -238,13 +253,10 @@ fn the_mcp_server_reads_each_corpus_recording_as_session_does() {
         let known = KNOWN.iter().find(|(k, _)| *k == name);
         let known_figure = KNOWN_FIGURES.iter().find(|(k, _)| *k == what);
         match (known, known_figure) {
-            (Some((_, why)), _) | (None, Some((_, why))) if differs => {
-                eprintln!("{name}: {mcp} from the server, {session} from session, as known ({why})")
-            }
+            (Some(_), _) | (None, Some(_)) if differs => {}
             (Some(_), _) => wrong.push(format!("{name}: now the same; take it off KNOWN")),
             (None, Some(_)) => {}
             (None, None) if differs => {
-                eprintln!("{name}: DIFFERS");
                 wrong.push(format!(
                     "{name}: {mcp} from the server, {session} from session"
                 ));
@@ -258,6 +270,9 @@ fn the_mcp_server_reads_each_corpus_recording_as_session_does() {
                 "{what}: now the same everywhere; take it off KNOWN_FIGURES"
             ));
         }
+    }
+    for (what, why) in KNOWN_FIGURES {
+        eprintln!("{what}: differs, as known ({why})");
     }
     eprintln!("{compared} recordings compared");
     assert!(compared > 0, "no recording to compare in {root:?}");

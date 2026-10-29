@@ -108,8 +108,8 @@ jobs:
   regress:
     runs-on: ubuntu-24.04
     # The app's corpus test adds a release build of the app and a second
-    # reading of every take.
-    timeout-minutes: 45
+    # reading of every take; the MCP server's corpus test a third.
+    timeout-minutes: 75
     env:
       # As in the test job: no debug info in CI's release builds.
       CARGO_PROFILE_RELEASE_DEBUG: "0"
@@ -213,7 +213,7 @@ jobs:
       # analyze_recording, reads what `timegrapher session` reads.
       - name: MCP server against session on every corpus recording
         if: steps.changes.outputs.full != 'false'
-        timeout-minutes: 15
+        timeout-minutes: 30
         env:
           TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
           TIMEGRAPHER_REQUIRE_CORPUS: "1"
