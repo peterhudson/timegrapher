@@ -93,7 +93,7 @@ jobs:
         if: steps.changes.outputs.full != 'false'
       # Unused dependencies and libraries' licences (architecture guide,
       # section 12; deny.toml). Each takes seconds.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         if: runner.os == 'Linux' && steps.changes.outputs.full != 'false'
         with:
           tool: cargo-machete,cargo-deny
