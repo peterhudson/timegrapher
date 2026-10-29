@@ -232,7 +232,7 @@ const EDGE_KNOWN: &[(&str, &str)] = &[
     ),
     (
         "edge_short_25s_settle_20/.",
-        "12.5 s measured after settling: session reads it; the app wants three average windows",
+        "5 s measured after settling: session reads it, with short_span; the app wants three average windows",
     ),
     (
         "edge_all_silence/.",
