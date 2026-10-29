@@ -197,18 +197,27 @@ pub enum Listed<'a> {
 /// beats show that none of those explains, as a break of unknown length
 /// ([`breaks::with_jumps`]). The beats after each break are numbered on
 /// by the beats its gap held, and `log.by_count` names the breaks whose
-/// sides are kept by the count alone ([`breaks::renumber`]). In time order.
-pub fn breaks(log: &mut BeatLog, listed: Listed, mut clock: Option<&mut ClockFit>) -> Vec<Break> {
-    let listed = match listed {
+/// sides are kept by the count alone ([`breaks::renumber`]). In time order,
+/// with why they are not all the take's own list's, when they are not
+/// ([`breaks::Unlisted`]).
+pub fn breaks(
+    log: &mut BeatLog,
+    listed: Listed,
+    mut clock: Option<&mut ClockFit>,
+) -> breaks::Found {
+    let found = match listed {
         Listed::Files(files) => {
             breaks::of_files_on_clock(files, clock.as_deref_mut(), log.sample_rate)
         }
         Listed::Session(json) => {
-            let listed = breaks::for_take(json, clock.as_deref(), log.sample_rate);
-            breaks::on_clock(listed, clock)
+            let found = breaks::for_take(json, clock.as_deref(), log.sample_rate);
+            breaks::Found {
+                breaks: breaks::on_clock(found.breaks, clock),
+                ..found
+            }
         }
     };
-    let all = breaks::with_jumps(listed, &log.jumps);
+    let all = breaks::with_jumps(found.breaks, &log.jumps);
     log.by_count = breaks::renumber(
         &mut log.beats,
         &mut log.amplitude_windows,
@@ -216,7 +225,10 @@ pub fn breaks(log: &mut BeatLog, listed: Listed, mut clock: Option<&mut ClockFit
         &log.sided,
         log.bph,
     );
-    all
+    breaks::Found {
+        breaks: all,
+        unlisted: found.unlisted,
+    }
 }
 
 /// Seconds a position settles before it is read, when neither its entry
@@ -633,6 +645,8 @@ pub struct OpenedEntry {
     /// The clock log's text, when the entry has one.
     pub clock_text: Option<String>,
     pub breaks: Vec<Break>,
+    /// Why the breaks are not all the take's own list's, when they are not.
+    pub unlisted: Option<breaks::Unlisted>,
     /// The stretches masked by hand, start and end.
     pub masked: Vec<(f64, f64)>,
 }
@@ -656,6 +670,8 @@ pub struct EntryRead {
     /// The clock log's text, when the entry has one.
     pub clock_text: Option<String>,
     pub breaks: Vec<Break>,
+    /// Why the breaks are not all the take's own list's, when they are not.
+    pub unlisted: Option<breaks::Unlisted>,
     /// The stretches masked by hand, start and end.
     pub masked: Vec<(f64, f64)>,
     /// The stretch the entry names ([`span_of`]).
@@ -672,8 +688,9 @@ pub struct EntryRead {
 /// its analysis alone), its clock and breaks ([`clock`], [`breaks`]) and
 /// its masks. `usb` and `correction` are as [`measure_entry`] takes them.
 /// `progress` is told how far through the sound the beats have been
-/// found, from 0 to 1; a take kept as its analysis alone has no sound to
-/// go through.
+/// found: the seconds of sound read, and the seconds of sound there are
+/// in all (`done_s` reaches `total_s` at the end); a take kept as its
+/// analysis alone has no sound to go through.
 pub fn open_entry(
     base: &Path,
     m: &Manifest,
@@ -681,7 +698,7 @@ pub fn open_entry(
     s: &EntrySettings,
     usb: impl FnOnce(&[PathBuf]) -> Result<Option<f64>, String>,
     correction: impl FnOnce(&Path) -> Result<Option<f64>, String>,
-    progress: impl FnMut(f64),
+    mut progress: impl FnMut(f64, f64),
 ) -> Result<OpenedEntry, String> {
     let path = base.join(&e.file);
     // A take kept as its analysis alone: its beats are read, not found.
@@ -719,8 +736,15 @@ pub fn open_entry(
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
     let mut log = match &kept {
         Some(k) => kept_at_lift(&k.log, cfg.analysis.amplitude.lift_deg),
-        None => stream::analyze_files(&paths, cfg, progress)
-            .map_err(|err| format!("{}: {err}", e.file))?,
+        None => {
+            let mut total_s = 0.0;
+            for p in &paths {
+                let i = crate::audio::info(p).map_err(|err| format!("{}: {err}", p.display()))?;
+                total_s += i.frames.unwrap_or(0) as f64 / i.sample_rate as f64;
+            }
+            stream::analyze_files(&paths, cfg, |done_s| progress(done_s, total_s.max(done_s)))
+                .map_err(|err| format!("{}: {err}", e.file))?
+        }
     };
     let clock_text = match &e.clock {
         Some(p) => {
@@ -782,7 +806,7 @@ pub fn open_entry(
         Some(_) => Listed::Session(json.as_ref()),
         None => Listed::Files(&paths),
     };
-    let breaks = breaks(&mut log, listed, fit.as_mut());
+    let breaks::Found { breaks, unlisted } = breaks(&mut log, listed, fit.as_mut());
     // Stretches masked by hand are left out of everything read below.
     let masked = session::masked_spans(&e.masked);
     session::mask_log(&mut log, &masked);
@@ -794,6 +818,7 @@ pub fn open_entry(
         clock_from,
         clock_text,
         breaks,
+        unlisted,
         masked,
     })
 }
@@ -825,8 +850,9 @@ pub fn measure_entry(
         clock_from,
         clock_text,
         breaks,
+        unlisted,
         masked,
-    } = open_entry(base, m, e, s, usb, correction, |_| {})?;
+    } = open_entry(base, m, e, s, usb, correction, |_, _| {})?;
     let cfg = &s.stream;
     let Window {
         start_s,
@@ -839,6 +865,9 @@ pub fn measure_entry(
     if !cfg.analysis.lift_known {
         measurement.lift_unknown();
     }
+    if let Some(why) = unlisted {
+        measurement.breaks_unlisted(why);
+    }
     Ok(EntryRead {
         files,
         kept,
@@ -847,6 +876,7 @@ pub fn measure_entry(
         clock_from,
         clock_text,
         breaks,
+        unlisted,
         masked,
         start_s,
         stop_s,
@@ -1265,7 +1295,7 @@ mod tests {
             &s,
             |_| Ok(None),
             |_| Ok(Some(20.0)),
-            |f| told.push(f),
+            |done, total| told.push((done, total)),
         )
         .unwrap();
         let read = measure_entry(&dir, &m, e, &s, |_| Ok(None), |_| Ok(Some(20.0))).unwrap();
@@ -1287,8 +1317,12 @@ mod tests {
         assert_eq!(opened.masked, read.masked);
         assert_eq!(opened.masked, vec![(30.0, 32.0)]);
         assert!(opened.kept.is_none() && opened.clock.is_some());
-        assert!(!told.is_empty() && told.windows(2).all(|w| w[0] <= w[1]));
-        assert!(*told.last().unwrap() > 0.9, "{told:?}");
+        // Seconds read, rising to all the sound there is.
+        assert!(!told.is_empty() && told.windows(2).all(|w| w[0].0 <= w[1].0));
+        assert!(told.iter().all(|(done, total)| done <= total), "{told:?}");
+        let (done, total) = *told.last().unwrap();
+        assert_eq!(done, total);
+        assert!((total - read.log.duration_s).abs() < 1e-6, "{told:?}");
         let _ = fs::remove_dir_all(&dir);
     }
 }

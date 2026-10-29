@@ -294,9 +294,10 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     let few_beats = good.len() < expected / 2 || fit.is_none();
     let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.0}×"));
     if !silent && (few_beats || !signal_x.is_some_and(|x| x >= NO_TICKS_SIGNAL_X)) {
+        let j = fit.as_ref().map(|f| f.jitter_us).filter(|j| j.is_finite());
         add(
             IssueCode::NoTicks,
-            "No regular beat found".to_string(),
+            beats::no_regular_beat_text(j, beats::timing_scatter_fraction(j, bph)),
             format!("{} of about {expected} beats found, {signal}", good.len()),
         );
     }

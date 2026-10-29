@@ -4,6 +4,7 @@
 use timegrapher_core::audio::{write_wav, Audio};
 use timegrapher_core::breaks;
 use timegrapher_core::clock::ClockFit;
+use timegrapher_core::measure::Caveat;
 use timegrapher_core::session;
 use timegrapher_core::stream::{analyze_file, BeatLog, StreamConfig};
 use timegrapher_core::synth::{generate, SynthConfig};
@@ -72,7 +73,7 @@ fn as_session_reads(
     path: &std::path::Path,
     clock: &mut ClockFit,
 ) -> Vec<breaks::Break> {
-    let listed = breaks::of_files_on_clock(&[path], Some(clock), log.sample_rate);
+    let listed = breaks::of_files_on_clock(&[path], Some(clock), log.sample_rate).breaks;
     let all = breaks::with_jumps(listed, &log.jumps);
     log.by_count = breaks::renumber(
         &mut log.beats,
@@ -96,7 +97,8 @@ fn a_take_opened_here_reads_as_session_reads_it() {
         };
 
         let (mut a, mut clock_a) = (log.clone(), mk());
-        let here = take::breaks(&mut a, Listed::Files(&[path.as_path()]), Some(&mut clock_a));
+        let here =
+            take::breaks(&mut a, Listed::Files(&[path.as_path()]), Some(&mut clock_a)).breaks;
         let (mut b, mut clock_b) = (log.clone(), mk());
         let there = as_session_reads(&mut b, &path, &mut clock_b);
         std::fs::remove_dir_all(&dir).ok();
@@ -147,7 +149,7 @@ fn a_take_read_with_its_jumps_alone_keeps_windows_across_its_pause() {
             .unwrap()
             .unwrap();
         let mut l = log.clone();
-        let found = take::breaks(&mut l, Listed::Files(&[path.as_path()]), Some(&mut c));
+        let found = take::breaks(&mut l, Listed::Files(&[path.as_path()]), Some(&mut c)).breaks;
         let cli = session::measure_masked(&l, Some(&c), &found, &[], 0.0, l.duration_s);
         std::fs::remove_dir_all(&dir).ok();
 
@@ -209,7 +211,7 @@ fn an_entry_measured_here_reads_as_its_steps_by_hand() {
     let mut clock = take::clock(Some(&text), log.sample_rate, 2, None, None, log.duration_s)
         .unwrap()
         .unwrap();
-    let breaks = take::breaks(&mut log, Listed::Files(&[path.as_path()]), Some(&mut clock));
+    let breaks = take::breaks(&mut log, Listed::Files(&[path.as_path()]), Some(&mut clock)).breaks;
     let (from, to) = take::measured(0.0, log.duration_s, Some(15.0), None);
     let by_hand = session::measure_masked(&log, Some(&clock), &breaks, &[], from, to);
     std::fs::remove_dir_all(&dir).ok();
@@ -222,4 +224,55 @@ fn an_entry_measured_here_reads_as_its_steps_by_hand() {
     assert_eq!(m.beat_error_unlock_ms, by_hand.beat_error_unlock_ms);
     assert_eq!(m.amplitude_deg, by_hand.amplitude_deg);
     assert!(m.rate_s_per_day.is_some());
+}
+
+/// A take whose session.json cannot be read is still read, its breaks from
+/// the clock log, and its reading says so (guard G8): the caveat
+/// `breaks_unlisted`, `unreadable`.
+#[test]
+fn an_unreadable_session_json_is_said() {
+    let (dir, _path, text) = take_with_a_pause("unreadable", 90.155);
+    std::fs::write(dir.join("clock.csv"), &text).unwrap();
+    let m: session::Manifest = toml::from_str(
+        r#"
+        [[recording]]
+        file = "audio-001.wav"
+        clock = "clock.csv"
+        position = "CH"
+        "#,
+    )
+    .unwrap();
+    let s = take::EntrySettings {
+        stream: StreamConfig::default(),
+        card_clock: false,
+        settle_s: None,
+    };
+    let read = |dir: &std::path::Path| {
+        take::measure_entry(dir, &m, &m.recordings[0], &s, |_| Ok(None), |_| Ok(None)).unwrap()
+    };
+    let listed = read(&dir);
+    std::fs::write(
+        dir.join("session.json"),
+        "{ \"segments\": [\"audio-001.wav\"",
+    )
+    .unwrap();
+    let unread = read(&dir);
+    std::fs::remove_dir_all(&dir).ok();
+
+    let said = |r: &take::EntryRead| {
+        r.measurement.caveats.iter().any(|c| {
+            matches!(
+                c,
+                Caveat::BreaksUnlisted {
+                    why: breaks::Unlisted::Unreadable
+                }
+            )
+        })
+    };
+    assert_eq!(listed.unlisted, None);
+    assert!(!said(&listed), "{:?}", listed.measurement.caveats);
+    assert_eq!(unread.unlisted, Some(breaks::Unlisted::Unreadable));
+    assert!(said(&unread), "{:?}", unread.measurement.caveats);
+    // The clock log shows the same pause, so here the readings agree.
+    assert_eq!(unread.breaks.len(), listed.breaks.len());
 }

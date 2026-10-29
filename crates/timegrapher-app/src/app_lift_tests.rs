@@ -19,11 +19,13 @@ fn a_calibre_picked_sets_the_lift_angle() {
 }
 
 /// Lift changed on a stopped take reads every amplitude again at the
-/// new lift: the whole take and the Tick Tock profiles scale with it,
-/// and the Positions Test table is read afresh.
+/// new lift: the whole take, the Tick Tock profiles and the Positions
+/// Test table scale with it.
 #[test]
 fn a_new_lift_rescales_every_amplitude() {
     let mut app = synthetic(60.0, 12.0);
+    let ctx = egui::Context::default();
+    let table = |app: &TimegrapherApp| app.free_table(&ctx).expect("a table").mean[1].unwrap();
     let whole = |app: &TimegrapherApp| app.whole_take().unwrap().m.amplitude_deg.unwrap();
     let profiles = |app: &TimegrapherApp| -> Vec<f64> {
         app.live
@@ -35,9 +37,8 @@ fn a_new_lift_rescales_every_amplitude() {
             .filter_map(|p| p.amplitude_deg)
             .collect()
     };
-    let (w0, p0) = (whole(&app), profiles(&app));
+    let (w0, p0, t0) = (whole(&app), profiles(&app), table(&app));
     assert!(!p0.is_empty());
-    *app.free_table.borrow_mut() = Some(((0, Vec::new(), Vec::new(), None), None));
     let k = 55.0 / app.lift_deg;
     app.set_lift(55.0);
     let w1 = whole(&app);
@@ -45,7 +46,8 @@ fn a_new_lift_rescales_every_amplitude() {
     for (a, b) in p0.iter().zip(profiles(&app)) {
         assert!((b - a * k).abs() < 1e-9, "{a} then {b}");
     }
-    assert!(app.free_table.borrow().is_none());
+    let t1 = table(&app);
+    assert!((t1 - t0 * k).abs() < 0.05, "{t0} then {t1}");
 }
 
 #[test]
