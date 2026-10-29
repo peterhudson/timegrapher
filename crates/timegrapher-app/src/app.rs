@@ -16756,8 +16756,8 @@ fn open_in_background(
                 &m,
                 &e,
                 &settings,
-                take::usb_ppm,
-                |first| take::correction_ppm(&m, first),
+                take::usb,
+                |first| take::correction_for(&m, first, None, None),
                 |s, _| {
                     progress.store(s.to_bits(), Relaxed);
                     if cancel.load(Relaxed) {
