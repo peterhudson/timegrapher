@@ -678,10 +678,9 @@ pub struct EntryRead {
     /// [`clock_from`] picks it; both `None` on the sound card's clock.
     pub clock: Option<ClockFit>,
     pub clock_from: Option<ClockFrom>,
-    /// The steady error, ppm slow, the clock puts on the take: a USB or
-    /// known correction's; `None` for a clock log's fit or the card's.
+    /// The clock's steady error and its source in words, as
+    /// [`OpenedEntry::clock_ppm`] and [`OpenedEntry::clock_source`] give them.
     pub clock_ppm: Option<f64>,
-    /// Where the clock came from, in words ([`clock_source_text`]).
     pub clock_source: Option<String>,
     /// The clock log's text, when the entry has one.
     pub clock_text: Option<String>,
