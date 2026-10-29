@@ -129,6 +129,23 @@ pub fn all() -> Vec<EdgeTake> {
             truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
             known: None,
         },
+        EdgeTake {
+            id: "edge_digital_silence",
+            summary: "300 s of digital silence (every sample zero), with no break listed, \
+                      between two stretches of 60 s of the watch, which runs on unheard",
+            caveats: &["beats_missing"],
+            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_quiet_step_20db",
+            summary: "240 s of the watch, heard 20 dB more quietly from 100 s on over the \
+                      same stand noise: beats lost in the noise are left out, and the rate \
+                      is the watch's",
+            caveats: &["beats_missing"],
+            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            known: None,
+        },
     ]
 }
 
@@ -307,6 +324,18 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 "",
             ),
             "edge_card_20ppm" => (watch(120.0, seed), vec![], vec![], 20.0, ""),
+            "edge_digital_silence" => {
+                let mut s = watch(420.0, seed);
+                s[60 * FS as usize..360 * FS as usize].fill(0.0);
+                (s, vec![], vec![], 0.0, "")
+            }
+            "edge_quiet_step_20db" => (
+                watch_stepping_down(240.0, 100.0, 20.0, seed),
+                vec![],
+                vec![],
+                0.0,
+                "",
+            ),
             other => return Err(format!("no recipe for {other}")),
         };
         let frames = samples.len();

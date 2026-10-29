@@ -139,6 +139,9 @@ fn track_peaks(
     let mut steady: Option<(f64, usize)> = None;
     // A slow average of each side's match, for the beat window's floor.
     let mut typical = [level.unwrap_or(0.0); 2];
+    // A slow average of the match halfway between beats, where a watch
+    // is silent: the noise, measured only while the track holds.
+    let mut noise: Option<f32> = None;
     let half = 0.3 * beat * fs;
     while pred + half < n as f64 {
         // With a level to judge by, a track lost (a long run missed) looks
@@ -194,8 +197,15 @@ fn track_peaks(
         // control) is told from noise by its timing: a run of weak peaks
         // each where its beat is due, or, once the track is lost, each a
         // beat after the last, is the watch, and steers the track again.
-        let faint = level.is_some() && v < TRACK_FLOOR * typical[side(k)];
-        let due_by = |at: f64| (t - at).abs() < BEAT_WINDOW_S * fs;
+        // A peak lost in the noise is faint whatever the typical
+        // beat, so a track that has followed the watch down to the noise
+        // does not then steer by the noise. And only a peak counts towards
+        // a run: in digital silence the best "match" is the span's first
+        // sample, a beat after the last one.
+        let clear = noise.is_none_or(|m| v >= CLEAR * m);
+        let faint = level.is_some() && (v < TRACK_FLOOR * typical[side(k)] || !clear);
+        let peaked = i > 0 && i + 1 < n && x[i - 1] < v && x[i + 1] < v;
+        let due_by = |at: f64| clear && peaked && (t - at).abs() < BEAT_WINDOW_S * fs;
         quiet_run = if faint && !lost && due_by(pred) {
             quiet_run + 1
         } else {
@@ -223,6 +233,11 @@ fn track_peaks(
             }
             out.push((t, v, k, !rescued, false));
             misses = 0;
+            let (w, mid) = (0.01 * fs, t + 0.5 * per);
+            if mid + w < n as f64 {
+                let m = rms(&x[(mid - w) as usize..(mid + w) as usize]);
+                noise = Some(noise.map_or(m, |o| 0.95 * o + 0.05 * m));
+            }
             let ty = &mut typical[side(k)];
             *ty = if *ty > 0.0 { 0.95 * *ty + 0.05 * v } else { v };
         } else {
@@ -264,6 +279,10 @@ fn track_peaks(
     (peaks, level)
 }
 
+fn rms(x: &[f32]) -> f32 {
+    (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
+}
+
 /// How far from where it is due a beat may be found once the track is
 /// running, as a fraction of the beat period. Beat-to-beat changes in
 /// timing are far smaller; a knock lands anywhere.
@@ -292,6 +311,14 @@ const MAX_MISSES: usize = 16;
 /// beat now and then does, so a weak peak is still kept unless it lies in
 /// a run missed; and a run of them on time is the watch ([`QUIET_RUN`]).
 const TRACK_FLOOR: f32 = 0.25;
+
+/// How far above the noise (the RMS of the match halfway between beats)
+/// a peak must stand to be told from it. A watch heard 18 dB down over a
+/// quiet stand clears it, and is read; at 20 dB its beats are lost in the
+/// noise as often as not, and are left out rather than tracked by the
+/// noise's strongest points, which give a rate tens of s/d out. Every
+/// beat of the stored takes clears it; at 6 a few on the Dandong do not.
+const CLEAR: f32 = 4.0;
 
 /// Faint peaks in a row, each where its beat is due (or, for a lost
 /// track, each a beat after the last), that are the watch heard more
