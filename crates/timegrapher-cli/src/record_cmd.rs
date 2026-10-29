@@ -34,6 +34,7 @@ use std::time::{Duration, SystemTime};
 use timegrapher_core::analysis::Clipping;
 use timegrapher_core::audio;
 use timegrapher_core::beats;
+use timegrapher_core::breaks;
 use timegrapher_core::calibre_store::{self, UserCalibres};
 #[cfg(test)]
 use timegrapher_core::calibres;
@@ -732,6 +733,7 @@ fn live(
     let mut stop = o.power_reserve.then(|| StopWatch::new(fs_hz, set));
     let mut got = 0usize;
     let mut next_note = 10.0;
+    let mut block_at = None;
     while got < want {
         let b = match cap.rx.recv_timeout(Duration::from_secs(5)) {
             Ok(Event::Audio(b)) => b,
@@ -739,6 +741,20 @@ fn live(
             Ok(Event::End) => break,
             Err(_) => return Err("the input stopped delivering audio".into()),
         };
+        if let Some(gap) = breaks::gap_before(block_at, &b, fs_hz) {
+            // The computer slept or the input stalled: a break, as after a
+            // pause, with the time between left out.
+            rec.pause()
+                .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
+            rec.resume(&cap.label);
+            if let Some(f) = feed.as_mut() {
+                f.live.skip(gap);
+            }
+            eprintln!(
+                "  the sound stopped for {gap:.1} s (the computer slept?); left out as a break"
+            );
+        }
+        block_at = Some(b.at);
         let take = (want - got).min(b.samples.len());
         let b = Block {
             samples: b.samples[..take].to_vec(),

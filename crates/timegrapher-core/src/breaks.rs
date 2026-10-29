@@ -12,7 +12,9 @@
 
 use crate::amplitude::AmplitudeWindow;
 use crate::beats::Beat;
+use crate::capture::Block;
 use serde::Serialize;
+use std::time::SystemTime;
 
 /// One break: where it falls in the take's audio, and how long listening
 /// stopped there.
@@ -30,6 +32,18 @@ pub struct Break {
 /// timestamp (the logger descheduled) is a spike instead, and is told
 /// apart by the entries after it falling back.
 pub const MIN_GAP_S: f64 = 0.5;
+
+/// The true seconds missing before block `b` of a live input, which came
+/// after a block that arrived at `before`: the time between their
+/// arrivals beyond `b`'s own length, when it is at least [`MIN_GAP_S`]
+/// (the computer slept, or the input stalled), else `None`. The same
+/// step a saved take's clock log breaks at, so listening, `record` and a
+/// take reopened all break at the same gaps.
+pub fn gap_before(before: Option<SystemTime>, b: &Block, sample_rate: u32) -> Option<f64> {
+    let block_s = b.samples.len() as f64 / sample_rate.max(1) as f64;
+    let gap = b.at.duration_since(before?).ok()?.as_secs_f64() - block_s;
+    (gap >= MIN_GAP_S).then_some(gap)
+}
 
 /// Breaks seen in a clock log's `(audio_s, true_s)` entries, sorted by
 /// audio time: a step in the offset between the two clocks that the next
@@ -308,6 +322,31 @@ pub fn by_count(at: impl IntoIterator<Item = f64>, sided: &[f64]) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_live_gap_breaks_at_the_clock_logs_step() {
+        // Blocks of 0.1 s at 48 kHz: the time between two arrivals beyond
+        // the block's length is the gap, a break from MIN_GAP_S up.
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
+        let block = |after_s: f64| Block {
+            samples: vec![0.0; 4_800],
+            at: t0 + std::time::Duration::from_secs_f64(after_s),
+        };
+        assert_eq!(gap_before(None, &block(5.0), 48_000), None);
+        assert_eq!(gap_before(Some(t0), &block(0.1), 48_000), None);
+        assert_eq!(gap_before(Some(t0), &block(0.55), 48_000), None);
+        let at = |after_s: f64| gap_before(Some(t0), &block(after_s), 48_000);
+        assert!((at(0.1 + MIN_GAP_S).unwrap() - MIN_GAP_S).abs() < 1e-6);
+        assert!((at(3.1).unwrap() - 3.0).abs() < 1e-6);
+        assert_eq!(
+            gap_before(
+                Some(t0 + std::time::Duration::from_secs(9)),
+                &block(0.1),
+                48_000
+            ),
+            None
+        );
+    }
 
     /// The shifts run on over the gaps, each rounded to whole tick-tock
     /// pairs, none for a negative gap; renumber moves each beat by the
