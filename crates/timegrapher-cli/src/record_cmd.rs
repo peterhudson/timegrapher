@@ -733,51 +733,71 @@ fn live(
     let mut stop = o.power_reserve.then(|| StopWatch::new(fs_hz, set));
     let mut got = 0usize;
     let mut next_note = 10.0;
-    let mut block_at = None;
-    while got < want {
-        let b = match cap.rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Event::Audio(b)) => b,
-            Ok(Event::Error(e)) => return Err(format!("recording failed: {e}")),
-            Ok(Event::End) => break,
-            Err(_) => return Err("the input stopped delivering audio".into()),
-        };
-        if let Some(gap) = breaks::gap_before(block_at, &b, fs_hz) {
-            // The computer slept or the input stalled: a break, as after a
-            // pause, with the time between left out.
-            rec.pause()
-                .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
-            rec.resume(&cap.label);
-            if let Some(f) = feed.as_mut() {
-                f.live.skip(gap);
+    let mut gaps = breaks::GapWatch::new(fs_hz);
+    let mut ended = false;
+    'listen: while got < want {
+        let came = if ended {
+            gaps.finish()
+        } else {
+            match cap.rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(Event::Audio(b)) => gaps.push(b),
+                Ok(Event::Error(e)) => return Err(format!("recording failed: {e}")),
+                Ok(Event::End) => {
+                    ended = true;
+                    continue;
+                }
+                Err(_) => return Err("the input stopped delivering audio".into()),
             }
-            eprintln!(
-                "  the sound stopped for {gap:.1} s (the computer slept?); left out as a break"
-            );
-        }
-        block_at = Some(b.at);
-        let take = (want - got).min(b.samples.len());
-        let b = Block {
-            samples: b.samples[..take].to_vec(),
-            at: b.at,
         };
-        rec.write(&b)
-            .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
-        if let Some(f) = feed.as_mut() {
-            f.push(&b.samples);
-        }
-        got += take;
-        if stop.as_mut().and_then(|s| s.push(&b.samples)).is_some() {
-            eprintln!("the watch has stopped");
+        if ended && came.is_empty() {
             break;
         }
-        let s = got as f64 / fs_hz as f64;
-        if s >= next_note && got < want {
-            if o.power_reserve {
-                eprintln!("  {}", power_reserve::run_text(s));
-                next_note += 600.0;
-            } else {
-                eprintln!("  {s:.0} of {:.0} s", o.seconds);
-                next_note += 10.0;
+        for live in came {
+            let b = match live {
+                breaks::Live::Block(b) => b,
+                breaks::Live::Break(gap) => {
+                    // The computer slept or the input stalled and sound was
+                    // lost: a break, as after a pause, with the time
+                    // between left out.
+                    rec.pause()
+                        .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
+                    rec.resume(&cap.label);
+                    if let Some(f) = feed.as_mut() {
+                        f.live.skip(gap);
+                    }
+                    eprintln!(
+                        "  the sound stopped for {gap:.1} s (the computer slept?); left out as a break"
+                    );
+                    continue;
+                }
+            };
+            let take = (want - got).min(b.samples.len());
+            let b = Block {
+                samples: b.samples[..take].to_vec(),
+                at: b.at,
+            };
+            rec.write(&b)
+                .map_err(|e| format!("{}: {e}", rec.dir().display()))?;
+            if let Some(f) = feed.as_mut() {
+                f.push(&b.samples);
+            }
+            got += take;
+            if stop.as_mut().and_then(|s| s.push(&b.samples)).is_some() {
+                eprintln!("the watch has stopped");
+                break 'listen;
+            }
+            let s = got as f64 / fs_hz as f64;
+            if s >= next_note && got < want {
+                if o.power_reserve {
+                    eprintln!("  {}", power_reserve::run_text(s));
+                    next_note += 600.0;
+                } else {
+                    eprintln!("  {s:.0} of {:.0} s", o.seconds);
+                    next_note += 10.0;
+                }
+            }
+            if got >= want {
+                break 'listen;
             }
         }
     }
