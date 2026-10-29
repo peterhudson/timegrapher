@@ -72,16 +72,16 @@ class Ratchet(unittest.TestCase):
         self.lists = {c: [("a::b", "why")] for c in r.CRATES}
 
     def test_at_or_under_the_baseline_passes(self):
-        self.assertEqual(r.problems(self.now, self.now, self.lists), [])
+        self.assertEqual(r.problems(self.now, {"crates": self.now}, self.lists), [])
         lower = copy.deepcopy(self.now)
         lower["timegrapher-app"]["total"]["comparisons"] = 0
-        self.assertEqual(r.problems(lower, self.now, self.lists), [])
+        self.assertEqual(r.problems(lower, {"crates": self.now}, self.lists), [])
 
     def test_a_rise_fails_and_names_the_file(self):
         more = copy.deepcopy(self.now)
         more["timegrapher-cli"]["total"]["defaults"] = 2
         more["timegrapher-cli"]["files"]["timegrapher-cli/a.rs"]["defaults"] = 2
-        bad = r.problems(more, self.now, self.lists)
+        bad = r.problems(more, {"crates": self.now}, self.lists)
         self.assertEqual(len(bad), 1)
         self.assertIn("timegrapher-cli: 2 defaults, baseline 1", bad[0])
         self.assertIn("timegrapher-cli/a.rs (2, was 1)", bad[0])
@@ -89,9 +89,34 @@ class Ratchet(unittest.TestCase):
     def test_clippy_lists_must_match(self):
         lists = copy.deepcopy(self.lists)
         lists["timegrapher-mcp"].append(("c::d", "why"))
-        bad = r.problems(self.now, self.now, lists)
+        bad = r.problems(self.now, {"crates": self.now}, lists)
         self.assertEqual(len(bad), 1)
         self.assertIn("only in timegrapher-mcp: ['c::d']", bad[0])
+
+
+class FileLength(unittest.TestCase):
+    def test_a_long_file_may_shrink_but_not_grow(self):
+        base = {"long_files": {"crates/a/src/app.rs": 27946}}
+        self.assertEqual(r.problems({}, base, {c: [] for c in r.CRATES}, {"crates/a/src/app.rs": 27900}), [])
+        bad = r.problems({}, base, {c: [] for c in r.CRATES}, {"crates/a/src/app.rs": 27950})
+        self.assertEqual(len(bad), 1)
+        self.assertIn("27950 lines, over its baseline 27946", bad[0])
+
+    def test_no_other_file_may_pass_the_limit(self):
+        bad = r.problems({}, {"long_files": {}}, {c: [] for c in r.CRATES}, {"crates/a/src/new.rs": 3001})
+        self.assertEqual(len(bad), 1)
+        self.assertIn("3001 lines, over 3000", bad[0])
+
+
+class Copies(unittest.TestCase):
+    def test_a_block_counts_unless_both_sides_are_tests(self):
+        side = lambda name, start: {"name": name, "start": start}
+        report = {"duplicates": [
+            {"lines": 9, "firstFile": side("crates/x/tests/a.rs", 1), "secondFile": side("crates/x/tests/b.rs", 1)},
+            {"lines": 9, "firstFile": side("crates/x/tests/a.rs", 1), "secondFile": side("crates/x/src/c_tests.rs", 1)},
+            {"lines": 9, "firstFile": side("crates/x/tests/a.rs", 1), "secondFile": side(".github/ci/literal_ratchet.py", 1)},
+        ]}
+        self.assertEqual(len(r.copies(report)), 1)
 
 
 class Tree(unittest.TestCase):
@@ -100,7 +125,7 @@ class Tree(unittest.TestCase):
     def test_no_surface_crate_types_more_numbers_than_its_baseline(self):
         import json
         baseline = json.loads(r.BASELINE.read_text(encoding="utf-8"))
-        self.assertEqual(r.problems(r.scan(), baseline, r.clippy_lists()), [])
+        self.assertEqual(r.problems(r.scan(), baseline, r.clippy_lists(), r.long_files()), [])
 
     def test_every_surface_crate_has_a_clippy_list(self):
         for crate, entries in r.clippy_lists().items():

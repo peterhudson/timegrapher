@@ -207,8 +207,10 @@ pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
         // ends of each masked stretch are all known cuts, not extra
         // elapsed time or newly detected jumps.
         jumps: live.breaks().to_vec(),
+        // The sides an opened take named by the beat count alone, so its
+        // readings carry core's caveat; `sided` only feeds that list.
         sided: Vec::new(),
-        by_count: Vec::new(),
+        by_count: live.by_count().to_vec(),
         snippets: Vec::new(),
     };
     // Stretches masked by hand are left out, cut at both ends: no reading
@@ -2615,6 +2617,27 @@ mod tests {
             by_count: Vec::new(),
             snippets: Vec::new(),
         }
+    }
+
+    #[test]
+    fn an_opened_take_keeps_the_sides_it_named_by_count() {
+        // Sides named by the beat count alone at the jump: the log the
+        // readings come from says so, as session's does, and its whole
+        // take carries core's caveat.
+        let mut log = context_log();
+        log.by_count = vec![60.03];
+        let live = LiveAnalyzer::from_log(log, LiveConfig::default());
+        let derived = log_of(&live).expect("log");
+        assert_eq!(derived.by_count, vec![60.03]);
+        let m = timegrapher_core::session::measure(&derived, None, 0.0, 120.0);
+        assert!(
+            m.caveats.iter().any(|c| matches!(
+                c,
+                timegrapher_core::measure::Caveat::SidesByCount { count: 1 }
+            )),
+            "{:?}",
+            m.caveats
+        );
     }
 
     #[test]

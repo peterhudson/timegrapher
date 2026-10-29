@@ -1,8 +1,12 @@
 """Stop new typed-in numbers in the app, CLI and MCP server (guard G11).
 
   literal_ratchet.py check     fail if a surface crate has more than the
-                               baseline allows, or the clippy lists differ
+                               baseline allows, a file is too long, or the
+                               clippy lists differ (offline, seconds)
+  literal_ratchet.py copies    fail if jscpd finds more copied product
+                               blocks than the baseline (needs npx)
   literal_ratchet.py update    write the current counts as the baseline
+                               (with npx, the copies count too)
 
 Every threshold, default and constant has one home, in timegrapher-core;
 the surfaces call it. This counts, in each surface crate's product code
@@ -28,19 +32,30 @@ lowers it. Counts are per crate, so moving code between files is free;
 the per-file counts are kept only to say where a rise came from.
 
 The check also fails when the three crates' clippy.toml disallowed-methods
-lists (guard G1) are not identical.
+lists (guard G1) are not identical, and when a Rust file in crates/ is
+longer than MAX_FILE_LINES: a file over it today is listed in the baseline
+with its length, which may only fall (the architecture guide's code shape).
+
+`copies` runs jscpd over crates/ and counts the copied blocks that are not
+test code on both sides. The count may not rise above the baseline's.
 """
 
 import json
 import pathlib
 import re
+import subprocess
 import sys
+import tempfile
 import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BASELINE = pathlib.Path(__file__).with_name("literal_baseline.json")
 CRATES = ("timegrapher-app", "timegrapher-cli", "timegrapher-mcp")
 KINDS = ("comparisons", "constants", "defaults", "bounds")
+MAX_FILE_LINES = 3000
+JSCPD = ["npx", "--yes", "jscpd@4.3.0", "--format", "rust", "--min-lines", "8", "--min-tokens", "70",
+         # Without these jscpd silently skips files over 1,000 lines, app.rs among them.
+         "--max-lines", "100000", "--max-size", "10mb", "--reporters", "json", "--silent"]
 
 NUMBER = re.compile(
     r"(?<!\w)(?<!(?<!\.)\.)(?:0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)"
@@ -211,6 +226,49 @@ def scan(root=ROOT):
     return out
 
 
+def long_files(root=ROOT):
+    """{path: lines} for every Rust file in crates/ over MAX_FILE_LINES."""
+    out = {}
+    for path in sorted((root / "crates").rglob("*.rs")):
+        n = path.read_text(encoding="utf-8").count("\n")
+        if n > MAX_FILE_LINES:
+            out[path.relative_to(root).as_posix()] = n
+    return out
+
+
+def is_test_line(path, line, root=ROOT, cache={}):
+    """Whether `line` of `path` (relative to root) is test code."""
+    if is_test_file(pathlib.PurePosixPath(path)):
+        return True
+    if path not in cache:
+        code = strip((root / path).read_text(encoding="utf-8"))
+        mask, starts, k = test_mask(code), [0], 0
+        for ch in code:
+            k += 1
+            if ch == "\n":
+                starts.append(k)
+        cache[path] = (mask, starts)
+    mask, starts = cache[path]
+    return line - 1 < len(starts) and starts[line - 1] < len(mask) and mask[starts[line - 1]]
+
+
+def copies(report, root=ROOT):
+    """The product blocks in a jscpd JSON report: those not test code on both sides."""
+    out = []
+    for d in report["duplicates"]:
+        a, b = d["firstFile"], d["secondFile"]
+        if not (is_test_line(a["name"], a["start"], root) and is_test_line(b["name"], b["start"], root)):
+            out.append(f'{a["name"]}:{a["start"]} = {b["name"]}:{b["start"]} ({d["lines"]} lines)')
+    return out
+
+
+def run_jscpd(root=ROOT):
+    with tempfile.TemporaryDirectory() as out:
+        subprocess.run(JSCPD + ["--output", out, "crates"], cwd=root, check=True,
+                       stdout=subprocess.DEVNULL, shell=sys.platform == "win32")
+        return json.loads((pathlib.Path(out) / "jscpd-report.json").read_text(encoding="utf-8"))
+
+
 def clippy_lists(root=ROOT):
     """Each surface crate's disallowed-methods list, as (path, reason) pairs."""
     lists = {}
@@ -221,11 +279,17 @@ def clippy_lists(root=ROOT):
     return lists
 
 
-def problems(now, baseline, lists):
+def problems(now, baseline, lists, long=None):
     """What fails the check, one line each."""
     out = []
-    for crate in CRATES:
-        base = baseline.get(crate, {"total": {}, "files": {}})
+    allowed = baseline.get("long_files", {})
+    for f, n in (long or {}).items():
+        if n > allowed.get(f, MAX_FILE_LINES):
+            limit = f"its baseline {allowed[f]}" if f in allowed else f"{MAX_FILE_LINES}"
+            out.append(f"{f}: {n} lines, over {limit}. Split it by concern; a file over "
+                       f"{MAX_FILE_LINES} lines may only shrink.")
+    for crate in (c for c in CRATES if c in now):
+        base = baseline.get("crates", {}).get(crate, {"total": {}, "files": {}})
         for k in KINDS:
             have, allowed = now[crate]["total"][k], base["total"].get(k, 0)
             if have > allowed:
@@ -246,21 +310,41 @@ def problems(now, baseline, lists):
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else "check"
-    now = scan()
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
     if cmd == "update":
-        BASELINE.write_text(json.dumps(now, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        baseline["crates"] = scan()
+        baseline["long_files"] = long_files()
+        try:
+            baseline["copies"] = len(copies(run_jscpd()))
+        except (OSError, subprocess.CalledProcessError) as e:
+            print(f"jscpd didn't run ({e}); the copies count is unchanged")
+        BASELINE.write_text(json.dumps(baseline, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         print(f"wrote {BASELINE.relative_to(ROOT)}")
+        return 0
+    if cmd == "copies":
+        found = copies(run_jscpd())
+        allowed = baseline.get("copies", 0)
+        print(f"copied product blocks: {len(found)} (baseline {allowed})")
+        if len(found) > allowed:
+            print("\n".join(found))
+            print(f"FAIL more copied product blocks than the baseline {allowed}: take the copy out, "
+                  "or raise the baseline in this PR with a reason")
+            return 1
+        if len(found) < allowed:
+            print("  below the baseline: lower it with `update` in this PR")
         return 0
     if cmd != "check":
         print(__doc__)
         return 2
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    bad = problems(now, baseline, clippy_lists())
+    now, long = scan(), long_files()
+    bad = problems(now, baseline, clippy_lists(), long)
     for crate in CRATES:
-        t, b = now[crate]["total"], baseline.get(crate, {}).get("total", {})
+        t, b = now[crate]["total"], baseline.get("crates", {}).get(crate, {}).get("total", {})
         print(crate + ": " + ", ".join(f"{k} {t[k]} (baseline {b.get(k, 0)})" for k in KINDS))
         if any(t[k] < b.get(k, 0) for k in KINDS):
             print(f"  {crate} is below its baseline: lower it with `update` in this PR")
+    for f, n in long.items():
+        print(f"{f}: {n} lines (baseline {baseline.get('long_files', {}).get(f, MAX_FILE_LINES)})")
     for line in bad:
         print("FAIL " + line)
     return 1 if bad else 0

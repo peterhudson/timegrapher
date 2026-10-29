@@ -17737,14 +17737,20 @@ struct WholeTake {
 /// card's own reading never reaches across one, so the whole take's hover
 /// says them.
 fn whole_breaks_text(w: &WholeTake) -> String {
-    let breaks: Vec<_> =
-        w.m.caveats
-            .iter()
-            .filter(|c| matches!(c, Caveat::Breaks { .. }))
-            .cloned()
-            .collect();
+    cut_caveats_text(&w.m.caveats)
+}
+
+/// Of `caveats`, the breaks and the sides named by the beat count across
+/// them, as the cards word them, each after a space.
+fn cut_caveats_text(caveats: &[Caveat]) -> String {
+    let picked = |keep: fn(&Caveat) -> bool| -> Vec<Caveat> {
+        caveats.iter().filter(|c| keep(c)).cloned().collect()
+    };
+    let breaks = picked(|c| matches!(c, Caveat::Breaks { .. }));
+    let sides = picked(|c| matches!(c, Caveat::SidesByCount { .. }));
     reading_limits("", &breaks, 0.0, 0)
         .into_iter()
+        .chain(reading_limits("Beat Error", &sides, 0.0, 0))
         .map(|(_, hover)| format!(" {hover}"))
         .collect()
 }
@@ -18006,6 +18012,26 @@ mod tests {
         // It doesn't touch the rate or the amplitude.
         assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
         assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
+    }
+
+    /// The whole take's hover says the breaks it is read across and, where
+    /// Tick and Tock were named by the count across them, that too.
+    #[test]
+    fn the_whole_takes_hover_says_its_sides_were_named_by_count() {
+        let text = cut_caveats_text(&[
+            Caveat::Breaks { count: 1 },
+            Caveat::SidesByCount { count: 1 },
+            Caveat::ClockUnknown,
+        ]);
+        assert!(text.starts_with(" 1 break in this stretch: "), "{text}");
+        assert!(
+            text.ends_with(
+                " Tick and Tock are named by the beat count across 1 break in this \
+                 stretch, not told apart by their sound."
+            ),
+            "{text}"
+        );
+        assert_eq!(cut_caveats_text(&[Caveat::ClockUnknown]), "");
     }
 
     use timegrapher_core::synth::{generate, SynthConfig};
