@@ -46,6 +46,7 @@ pub fn run(o: Options) -> Result<(), String> {
         log,
         clock: applied_clock,
         breaks,
+        unlisted,
         masked,
         ..
     } = crate::long::read(
@@ -66,7 +67,13 @@ pub fn run(o: Options) -> Result<(), String> {
     lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
     let clock = applied_clock.as_ref().map(|c| &c.fit);
-    let long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
+    let mut long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
+    if let Some(why) = unlisted {
+        timegrapher_core::measure::add(
+            &mut long.caveats,
+            timegrapher_core::measure::Caveat::BreaksUnlisted { why },
+        );
+    }
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
 
     if o.json {

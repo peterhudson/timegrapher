@@ -137,8 +137,6 @@ pub struct Recorder {
     frames: u64,
     clock: BufWriter<File>,
     last_clock: Option<SystemTime>,
-    /// The frames written by the block `last_clock` is for.
-    clock_frames: u64,
     /// The arrival of the block the clock log's last line is for.
     logged: Option<SystemTime>,
     /// The latest block's arrival and the frames written by then.
@@ -146,6 +144,8 @@ pub struct Recorder {
     /// Paused: the host time of the last frame before the pause, until
     /// listening carries on.
     paused_at: Option<SystemTime>,
+    /// Sound lost before the next block ([`Recorder::sound_lost`]).
+    lost_s: Option<f64>,
     /// The input listened to after the pause, when it was named.
     resumed_on: Option<String>,
     breaks: Vec<Break>,
@@ -225,10 +225,10 @@ impl Recorder {
             frames: 0,
             clock,
             last_clock: None,
-            clock_frames: 0,
             logged: None,
             last_block: None,
             paused_at: None,
+            lost_s: None,
             resumed_on: None,
             breaks: Vec::new(),
             notes: Vec::new(),
@@ -317,6 +317,12 @@ impl Recorder {
     /// Append a block of audio.
     pub fn write(&mut self, b: &Block) -> io::Result<()> {
         let fs = self.info.sample_rate as u64;
+        if let Some(gap) = self.lost_s.take() {
+            // As if paused where the gap began: the break lists the gap.
+            let first_s = b.samples.len() as f64 / fs as f64 + gap;
+            self.paused_at =
+                b.at.checked_sub(std::time::Duration::from_secs_f64(first_s.max(0.0)));
+        }
         if let Some(before) = self.paused_at.take() {
             let device = self
                 .resumed_on
@@ -347,7 +353,6 @@ impl Recorder {
                 w.flush().map_err(io_err)?;
             }
             self.last_clock = Some(b.at);
-            self.clock_frames = self.frames;
         }
         Ok(())
     }
@@ -452,17 +457,12 @@ impl Recorder {
         self.note("paused")
     }
 
-    /// Note sound lost from a live input, as [`crate::breaks::GapWatch`]
-    /// finds it: the next block written starts a break whose gap is
-    /// measured as the watch measures it, from the clock log's last line,
-    /// so the take lists all the sound lost since that line (on the
-    /// regular cadence: [`clock_line_due`]) and the log adds no line
-    /// before the break.
-    pub fn sound_lost(&mut self) {
-        if let Some(at) = self.last_clock {
-            let since = (self.frames - self.clock_frames) as f64 / self.info.sample_rate as f64;
-            self.paused_at = Some(at + std::time::Duration::from_secs_f64(since));
-        }
+    /// Note sound lost from a live input, `gap_s` true seconds of it, as
+    /// [`crate::breaks::GapWatch`] finds it: the next block written starts
+    /// a break listed with that gap, and the clock log adds no line before
+    /// it.
+    pub fn sound_lost(&mut self, gap_s: f64) {
+        self.lost_s = Some(gap_s);
         self.last_clock = None;
     }
 

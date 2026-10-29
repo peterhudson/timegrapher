@@ -318,6 +318,15 @@ impl Measurement {
         crate::measure::add(&mut self.caveats, crate::measure::Caveat::LiftUnknown);
     }
 
+    /// The take's breaks are not all its own list's ([`crate::breaks::Unlisted`]):
+    /// the caveat is named.
+    pub fn breaks_unlisted(&mut self, why: crate::breaks::Unlisted) {
+        crate::measure::add(
+            &mut self.caveats,
+            crate::measure::Caveat::BreaksUnlisted { why },
+        );
+    }
+
     /// The beat error the report shows ([`beat_error_size`]). Unsigned, ms.
     pub fn beat_error(&self) -> Option<f64> {
         beat_error_size(self.beat_error_unlock_ms, self.beat_error_ms)
@@ -1182,12 +1191,7 @@ const SHORT_MEASURE_S: f64 = 40.0;
 /// states it.
 pub fn no_regular_beat(jitter_us: Option<f64>, bph: u32) -> String {
     let j = jitter_us.filter(|j| j.is_finite());
-    match j {
-        Some(_) => {
-            crate::beats::no_regular_beat_text(j, crate::beats::timing_scatter_fraction(j, bph))
-        }
-        None => "No regular beat found".into(),
-    }
+    crate::beats::no_regular_beat_text(j, crate::beats::timing_scatter_fraction(j, bph))
 }
 
 /// [`no_regular_beat`] for a measurement, or, when its beats' sound shows
@@ -1515,6 +1519,18 @@ pub struct KnownFault {
 #[cfg(test)]
 mod manifest_input_tests {
     use super::*;
+
+    /// With no timing scatter the sentence is beats.rs's own, as with one.
+    #[test]
+    fn no_regular_beat_is_the_one_sentence_without_a_scatter() {
+        let none = crate::beats::no_regular_beat_text(None, None);
+        assert_eq!(no_regular_beat(None, 28800), none);
+        assert_eq!(no_regular_beat(Some(f64::NAN), 28800), none);
+        assert_eq!(
+            no_regular_beat(Some(8600.0), 28800),
+            "No regular beat found (timing scatter 8.6 ms, 6.9% of a beat)"
+        );
+    }
 
     #[test]
     fn a_stored_shape_missing_an_optional_field_reads_it_as_not_measured() {

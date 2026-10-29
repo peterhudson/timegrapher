@@ -169,6 +169,11 @@ pub enum Caveat {
     ShortSpan { span_s: f64 },
     /// The take was paused or resumed inside the stretch.
     Breaks { count: usize },
+    /// The take's breaks are not all from the list its `session.json`
+    /// keeps, but from its clock log: `why` says what stood in the way
+    /// ([`crate::breaks::Unlisted`]). A pause the clock log does not show
+    /// is then not a break, and the rate may be fitted across it.
+    BreaksUnlisted { why: crate::breaks::Unlisted },
     /// At `count` of those breaks Tick and Tock were not told apart by
     /// their sound or by the beat error's sign (too alike, too few good
     /// beats, or no jump in the beats for the side check to run at), so the
@@ -212,6 +217,7 @@ impl Caveat {
                 (usb_ppm - log_ppm).abs()
             ),
             Caveat::Breaks { count } => format!("{count} break{}", plural(*count)),
+            Caveat::BreaksUnlisted { .. } => "breaks from the clock log".to_string(),
             Caveat::SidesByCount { .. } => "sides named by count".to_string(),
             Caveat::BeatErrorAsSize => {
                 "beat error given as a size: its sign differs either side of a cut".to_string()
@@ -275,6 +281,24 @@ impl Caveat {
                 plural(*count),
                 crate::beats::JUMP_S * 1000.0
             ),
+            Caveat::BreaksUnlisted { why } => {
+                let what = match why {
+                    crate::breaks::Unlisted::Unreadable => {
+                        "This take's session.json could not be read"
+                    }
+                    crate::breaks::Unlisted::EntriesSkipped => {
+                        "Some of the breaks this take's session.json lists give no place or gap"
+                    }
+                    crate::breaks::Unlisted::NotTheTake => {
+                        "These files are not the whole of the take its session.json describes"
+                    }
+                };
+                format!(
+                    "{what}, so its breaks were read from the clock log instead, which shows \
+                     a pause only where the time it lost is {:.1} s or more.",
+                    crate::breaks::MIN_GAP_S
+                )
+            }
             Caveat::SidesByCount { count } => format!(
                 "Tick and Tock are named by the beat count across {count} break{} in this \
                  stretch, not told apart by their sound.",
@@ -302,9 +326,10 @@ impl Caveat {
             Caveat::ClockUnknown => 6,
             Caveat::ClockSourcesDisagree { .. } => 7,
             Caveat::Breaks { .. } => 8,
-            Caveat::SidesByCount { .. } => 9,
-            Caveat::Masked { .. } => 10,
-            Caveat::BeatErrorAsSize => 11,
+            Caveat::BreaksUnlisted { .. } => 9,
+            Caveat::SidesByCount { .. } => 10,
+            Caveat::Masked { .. } => 11,
+            Caveat::BeatErrorAsSize => 12,
         }
     }
 }
@@ -729,6 +754,20 @@ mod tests {
 
     #[test]
     fn caveats_are_worded_once_for_every_surface() {
+        let unread = Caveat::BreaksUnlisted {
+            why: crate::breaks::Unlisted::Unreadable,
+        };
+        assert_eq!(unread.short(52.0, 0).unwrap(), "breaks from the clock log");
+        assert_eq!(
+            unread.long(None).unwrap(),
+            "This take's session.json could not be read, so its breaks were read from the \
+             clock log instead, which shows a pause only where the time it lost is 0.5 s or \
+             more."
+        );
+        assert_eq!(
+            serde_json::to_value(unread).unwrap(),
+            serde_json::json!({ "code": "breaks_unlisted", "why": "unreadable" })
+        );
         assert_eq!(
             Caveat::Breaks { count: 1 }.short(52.0, 0).unwrap(),
             "1 break"

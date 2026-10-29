@@ -283,6 +283,8 @@ pub(crate) struct Read {
     pub log: BeatLog,
     pub clock: Option<crate::clock_cmd::AppliedClock>,
     pub breaks: Vec<timegrapher_core::breaks::Break>,
+    /// Why the breaks are not all the take's own list's, when they are not.
+    pub unlisted: Option<timegrapher_core::breaks::Unlisted>,
     /// The stretches masked by hand and left out, start and end.
     pub masked: Vec<(f64, f64)>,
 }
@@ -338,7 +340,7 @@ pub(crate) fn read(
     })
     .map_err(|e| e.to_string())?;
     progress.end();
-    let breaks = take::breaks(
+    let timegrapher_core::breaks::Found { breaks, unlisted } = take::breaks(
         &mut log,
         take::Listed::Files(&paths),
         clock.as_mut().map(|c| &mut c.fit),
@@ -356,6 +358,7 @@ pub(crate) fn read(
         log,
         clock,
         breaks,
+        unlisted,
         masked: Vec::new(),
     })
 }
@@ -467,6 +470,7 @@ fn read_take(
         log: opened.log,
         clock,
         breaks: opened.breaks,
+        unlisted: opened.unlisted,
         masked: opened.masked,
     })
 }
@@ -542,6 +546,7 @@ pub fn run(
         log,
         clock: applied,
         breaks,
+        unlisted,
         masked,
     } = read(files, clock_args, cfg, lift, train)?;
     let cfg = &cfg;
@@ -563,7 +568,13 @@ pub fn run(
     };
     lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
-    let rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
+    let mut rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
+    if let Some(why) = unlisted {
+        timegrapher_core::measure::add(
+            &mut rep.caveats,
+            timegrapher_core::measure::Caveat::BreaksUnlisted { why },
+        );
+    }
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));
