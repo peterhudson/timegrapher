@@ -238,6 +238,21 @@ pub fn all() -> Vec<EdgeTake> {
             known: None,
         },
         EdgeTake {
+            id: "edge_usb_lines_and_other_correction",
+            summary: "the same sound with a correction of 15 ppm in the session file, which \
+                      the lines (20 ppm) contradict, and no clock log: the correction sets \
+                      the rate, as the clock's order of sources has it",
+            caveats: &[&[]],
+            // Read on the correction's 15 ppm, not the card's true 20, and
+            // with no clock_sources_disagree: the order of sources is
+            // Peter's to decide; this pins what it does today.
+            truth: Some(Truth {
+                rate: RATE - 15e-6 * 86_400.0,
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
             id: "edge_lift_48",
             summary: "120 s of the watch made at a 52 degree lift, read at the 48 the \
                       session file gives: amplitude scales with the lift",
@@ -565,6 +580,12 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
             "edge_usb_lines_and_correction" => Recipe {
                 ppm: 20.0,
                 extra: "card_ppm = 20\n",
+                entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+                ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
+            },
+            "edge_usb_lines_and_other_correction" => Recipe {
+                ppm: 20.0,
+                extra: "card_ppm = 15\n",
                 entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
                 ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
             },
