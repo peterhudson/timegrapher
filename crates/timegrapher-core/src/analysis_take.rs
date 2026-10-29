@@ -160,10 +160,8 @@ pub fn shape_stretches(m: &Manifest, duration_s: f64) -> Vec<Option<(f64, f64)>>
             if m.shape == Some(false) {
                 return None;
             }
-            let (start, stop) = crate::take::span_of(e, duration_s).ok()?;
-            let (settle_s, measure_s) = crate::take::entry_times(e, m);
-            let (settle, end) = crate::take::measured(start, stop, settle_s, measure_s);
-            shape_stretch(&session::masked_spans(&e.masked), settle, end)
+            let w = crate::take::reading_window(e, m, None, duration_s).ok()?;
+            shape_stretch(&session::masked_spans(&e.masked), w.from_s, w.to_s)
                 .map(|(from, len)| (from, from + len))
         })
         .collect()
