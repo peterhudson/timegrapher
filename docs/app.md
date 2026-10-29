@@ -478,7 +478,9 @@ percentile of the 10 s rates and of the 2 s amplitudes. Where the beat
 error's sign differs either side of a cut (a break, a jump, a move or
 its settling) in that stretch, it combines the sizes either side, as
 `session` does, and says the "whole take is given as a size: its sign
-differs either side of a cut".
+differs either side of a cut". The whole take's hover also names the
+breaks it is read across and, on an opened take whose Tick and Tock
+were named by the beat count across them, says so, as `session` does.
 No reading is graded. That the input's clock hasn't been measured is
 said in the Rate card's **?** rather than on the card, with how to
 measure it. When the beats found don't come at regular intervals (their
