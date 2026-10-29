@@ -7730,8 +7730,7 @@ impl TimegrapherApp {
         };
         if self.steady_job.is_none() && due && dur >= steady::MIN_S {
             let log = self.live.as_ref().and_then(steady::log_of);
-            let joined = !self.session.stretches().is_empty();
-            if let Some(log) = log.map(|l| if joined { steady::join(&l, &spans) } else { l }) {
+            if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans)) {
                 let wheels = self.calibre_wheels();
                 let clock = self.take_clock.clone().filter(|f| f.corrects());
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -7739,13 +7738,39 @@ impl TimegrapherApp {
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
                 self.steady_work = (stage.clone(), std::time::Instant::now());
                 std::thread::spawn(move || {
-                    let _ = tx.send(steady::compute_with(&log, wheels, clock.as_ref(), &stage));
+                    let _ = tx.send(steady::compute_with(
+                        &log,
+                        &breaks,
+                        wheels,
+                        clock.as_ref(),
+                        &stage,
+                    ));
                     ctx.request_repaint();
                 });
                 self.steady_job = Some(rx);
             }
         }
         dur
+    }
+
+    /// What the steadiness tests read of `log`, and the cuts they stop at:
+    /// a take with no position marked whole, at its own breaks with the time
+    /// each gap held and every other jump, as the whole take and `timegrapher
+    /// series` read it; else the position's stretches `spans` joined end to
+    /// end, the take's breaks inside them keeping their time and each join
+    /// with none.
+    fn steady_log(
+        &self,
+        log: BeatLog,
+        spans: &[(f64, f64)],
+    ) -> (BeatLog, Vec<timegrapher_core::breaks::Break>) {
+        let opened = self.take_breaks.clone().unwrap_or_default();
+        if self.session.stretches().is_empty() {
+            let breaks = steady::reading_breaks(opened, &log);
+            (log, breaks)
+        } else {
+            steady::join(&log, spans, &opened)
+        }
     }
 
     /// While the steadiness tests run: a spinner, the step they're on and
@@ -18036,7 +18061,7 @@ mod tests {
 
     use timegrapher_core::synth::{generate, SynthConfig};
 
-    fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
+    pub(super) fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.reset_session(48000, "syn".into());
         let cfg = SynthConfig {
@@ -22436,7 +22461,7 @@ mod tests {
         let spans = app.current_spans();
         assert_eq!(spans.len(), 2);
         let log = steady::log_of(live).unwrap();
-        let joined = steady::join(&log, &spans);
+        let joined = steady::join(&log, &spans, &[]).0;
         let dd = log
             .beats
             .iter()
@@ -26950,35 +26975,6 @@ mod tests {
         assert!(row(Pane::Sound), "{tools:?}");
     }
 
-    #[test]
-    fn moving_steadiness_out_leaves_the_profile_showing() {
-        let app = synthetic(40.0, 0.0);
-        let mut tree = app.panes.clone();
-        let steady = tree.tiles.find_pane(&Pane::SteadyReadings).unwrap();
-        let sound = tree.tiles.find_pane(&Pane::Sound).unwrap();
-        let tabs = tree.tiles.parent_of(steady).unwrap();
-        // What a drag leaves behind: Steadiness active in the profile's
-        // tab group but moved into a tab group of its own.
-        if let Some(egui_tiles::Tile::Container(c)) = tree.tiles.get_mut(tabs) {
-            c.remove_child(steady);
-            if let egui_tiles::Container::Tabs(t) = c {
-                t.active = Some(steady);
-            }
-        }
-        let own = tree.tiles.insert_tab_tile(vec![steady]);
-        let root = tree.root().unwrap();
-        if let Some(egui_tiles::Tile::Container(c)) = tree.tiles.get_mut(root) {
-            c.add_child(own);
-        }
-        repair_tabs(&mut tree);
-        let Some(egui_tiles::Tile::Container(egui_tiles::Container::Tabs(t))) =
-            tree.tiles.get(tabs)
-        else {
-            panic!("the profile's tab group is gone");
-        };
-        assert_eq!(t.active, Some(sound));
-    }
-
     /// A chart's scale holds every point, a glitch too.
     #[test]
     fn the_scale_holds_every_point() {
@@ -27618,41 +27614,6 @@ mod tests {
         assert_eq!(back.average_s, 30.0);
     }
 
-    /// Each Steadiness pane's series come back next time, Rate alone for a
-    /// pane not set and for every series off, and the one choice an older
-    /// app kept for its single Steadiness pane given to every view, unless
-    /// that was all three, which older apps wrote whatever was chosen.
-    #[test]
-    fn each_steady_panes_series_are_kept() {
-        use steady::View;
-        let mut app = synthetic(5.0, 0.0);
-        app.steady_series.insert(View::Fft, [false, true, false]);
-        let s = app.settings();
-        let mut back = TimegrapherApp::with_devices(Vec::new(), None);
-        back.apply_settings(s.clone());
-        assert_eq!(back.steady_series[&View::Fft], [false, true, false]);
-        assert_eq!(back.series_shown(View::Cycle), RATE_ONLY);
-        let mut none = s;
-        none.steady_shown = vec![(View::Fft, [false; 3])];
-        back.apply_settings(none);
-        assert_eq!(back.series_shown(View::Fft), RATE_ONLY);
-        let mut all = app.settings();
-        all.steady_shown.clear();
-        all.steady_series = [true; 3];
-        back.apply_settings(all);
-        assert_eq!(back.series_shown(View::Cycle), RATE_ONLY);
-        let mut older = app.settings();
-        older.steady_shown.clear();
-        older.steady_series = [true, false, false];
-        back.apply_settings(older);
-        for p in Pane::STEADY {
-            assert_eq!(
-                back.steady_series[&p.steady_view().unwrap()],
-                [true, false, false]
-            );
-        }
-    }
-
     #[test]
     fn dragging_the_strip_looks_back_and_returns() {
         let mut app = synthetic(40.0, 0.0);
@@ -27976,3 +27937,7 @@ mod layout_tests;
 #[cfg(test)]
 #[path = "app_corpus_tests.rs"]
 mod corpus_tests;
+
+#[cfg(test)]
+#[path = "app_steady_tests.rs"]
+mod steady_tests;
