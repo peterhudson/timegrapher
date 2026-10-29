@@ -290,7 +290,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let good: Vec<(f64, f64)> = beats
         .iter()
         .zip(&residuals)
-        .filter(|(b, r)| b.quality > 0.4 && r.is_finite())
+        .filter(|(b, r)| b.is_good() && r.is_finite())
         .map(|(b, &r)| (b.time, r))
         .collect();
     let search = |s: Series| -> Vec<Component> {

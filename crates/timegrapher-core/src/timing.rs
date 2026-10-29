@@ -112,7 +112,7 @@ fn solve3(mut a: [[f64; 3]; 3], mut b: [f64; 3]) -> Option<[f64; 3]> {
 /// Robust fit: beats with low template correlation are left out, then
 /// beats more than 5 robust SDs from the fit, and the fit is repeated.
 fn fit_coef(beats: &[Beat]) -> Option<([f64; 3], Vec<&Beat>)> {
-    let mut sel: Vec<&Beat> = beats.iter().filter(|b| b.quality > 0.4).collect();
+    let mut sel: Vec<&Beat> = beats.iter().filter(|b| b.is_good()).collect();
     let mut coef = solve(&sel)?;
     for _ in 0..2 {
         let res: Vec<f64> = sel.iter().map(|b| residual(b, &coef)).collect();
