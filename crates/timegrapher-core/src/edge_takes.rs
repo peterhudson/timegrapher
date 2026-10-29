@@ -238,6 +238,29 @@ pub fn all() -> Vec<EdgeTake> {
             known: None,
         },
         EdgeTake {
+            id: "edge_lift_48",
+            summary: "120 s of the watch made at a 52 degree lift, read at the 48 the \
+                      session file gives: amplitude scales with the lift",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                amplitude: Some(AMPLITUDE * 48.0 / LIFT),
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_kept_lift_48",
+            summary: "the same sound kept as its analysis alone, measured at a 52 degree \
+                      lift, opened with the 48 the session file gives: it reads as the \
+                      sound does at 48",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                amplitude: Some(AMPLITUDE * 48.0 / LIFT),
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
             id: "edge_no_unlock",
             summary: "120 s of a watch whose unlock makes no sound: rate and the drop are \
                       heard, amplitude and the unlock's beat error are not",
@@ -292,6 +315,20 @@ fn watch_stepping_down(duration_s: f64, from_s: f64, drop_db: f64, seed: u64) ->
         .enumerate()
         .map(|(i, (&w, n))| if i < from { w } else { w * quieter } + n)
         .collect()
+}
+
+/// Keep the take in `dir` as its analysis alone, measured as `manifest`
+/// (its session file) says, and remove its sound.
+fn keep_analysis(dir: &Path, manifest: &str, frames: usize) -> Result<(), String> {
+    let m: Manifest = toml::from_str(manifest).map_err(|e| e.to_string())?;
+    let cfg = take::stream_settings(&m, None, take::Given::default());
+    let wav = dir.join("audio-001.wav");
+    let shapes = crate::analysis_take::shape_stretches(&m, frames as f64 / FS as f64);
+    let software = serde_json::json!({"name": "timegrapher", "version": "edge take"});
+    let kept = crate::analysis_take::measure(&[wav.as_path()], &cfg, &shapes, software, |_| {})
+        .map_err(|e| e.to_string())?;
+    crate::analysis_take::write(dir, &kept).map_err(|e| e.to_string())?;
+    std::fs::remove_file(&wav).map_err(|e| e.to_string())
 }
 
 /// `samples` with the USB bus's lines added, 3 to 10 kHz on true time,
@@ -356,6 +393,10 @@ struct Recipe {
     ppm: f64,
     extra: &'static str,
     entries: &'static str,
+    /// The lift angle the session file gives.
+    lift: f64,
+    /// Kept as its analysis alone, made at this lift, with no sound.
+    kept_at: Option<f64>,
 }
 
 /// One reading of the whole take, Dial Up, on its clock log.
@@ -371,13 +412,15 @@ impl Recipe {
             ppm: 0.0,
             extra: "",
             entries: WHOLE_TAKE,
+            lift: LIFT,
+            kept_at: None,
         }
     }
 }
 
-fn manifest(take: &EdgeTake, extra: &str, entries: &str) -> String {
+fn manifest(take: &EdgeTake, lift: f64, extra: &str, entries: &str) -> String {
     format!(
-        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {LIFT}\nnotes = \"{}\"\n{extra}\n{entries}",
+        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {lift}\nnotes = \"{}\"\n{extra}\n{entries}",
         take.id, take.summary
     )
 }
@@ -525,6 +568,15 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
                 ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
             },
+            "edge_lift_48" => Recipe {
+                lift: 48.0,
+                ..Recipe::of(watch(120.0, seed))
+            },
+            "edge_kept_lift_48" => Recipe {
+                lift: 48.0,
+                kept_at: Some(LIFT),
+                ..Recipe::of(watch(120.0, seed - 1))
+            },
             "edge_no_unlock" => {
                 let mut cfg = made(120.0, seed);
                 cfg.sounds[0].gain = 0.0;
@@ -539,17 +591,27 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
             ppm,
             extra,
             entries,
+            lift,
+            kept_at,
         } = r;
         let frames = samples.len();
+        let wav = dir.join("audio-001.wav");
         write_wav(
-            &dir.join("audio-001.wav"),
+            &wav,
             &Audio {
                 samples,
                 sample_rate: FS,
             },
         )
         .map_err(|e| format!("{}: {e}", dir.display()))?;
-        write(&dir, "session.toml", &manifest(take, extra, entries))?;
+        match kept_at {
+            Some(at) => {
+                keep_analysis(&dir, &manifest(take, at, extra, entries), frames)?;
+                let kept = format!("audio = false\n{extra}");
+                write(&dir, "session.toml", &manifest(take, lift, &kept, entries))?;
+            }
+            None => write(&dir, "session.toml", &manifest(take, lift, extra, entries))?,
+        }
         write(&dir, "clock.csv", &clock_log(frames, ppm, &steps))?;
         let json = record(&breaks);
         if take.id == "edge_unreadable_session_json" {
