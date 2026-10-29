@@ -346,8 +346,29 @@ pub struct Calibre {
     pub name: String,
     pub bph: Option<u32>,
     pub lift_angle_deg: Option<f64>,
+    /// A lift angle it holds outside the range, set aside.
+    pub lift_set_aside_deg: Option<f64>,
     pub escape_teeth: Option<u32>,
     pub wheels: Vec<crate::periodicity::Wheel>,
+}
+
+/// Why a reading's lift angle is the default when no lift was given and
+/// `calibre` (if any) gave none either, or `None` when it gave one.
+pub fn lift_default_why(calibre: Option<&Calibre>) -> Option<String> {
+    let range = &crate::input_domain::LIFT_RANGE_DEG;
+    match calibre {
+        None => Some("calibre not set".to_string()),
+        Some(c) if c.lift_angle_deg.is_some() => None,
+        Some(Calibre {
+            lift_set_aside_deg: Some(l),
+            ..
+        }) => Some(format!(
+            "the calibre's lift angle of {l}° is set aside, outside {} to {}°",
+            range.start(),
+            range.end()
+        )),
+        Some(_) => Some("the calibre's lift angle is not in the table".to_string()),
+    }
 }
 
 /// The calibre `name` names in the table or `user`'s calibres, or `None`
@@ -373,6 +394,7 @@ pub fn calibre_named(name: &str, user: &crate::calibre_store::UserCalibres) -> O
         name: entry.name().to_string(),
         bph: entry.bph(),
         lift_angle_deg: entry.lift_angle_deg(),
+        lift_set_aside_deg: entry.lift_set_aside_deg(),
         escape_teeth: entry.escape_teeth(),
         wheels,
     })
@@ -991,12 +1013,37 @@ mod tests {
         assert_eq!(entry_times(&e, &m), (Some(0.0), Some(90.0)));
     }
 
+    /// Why the lift is the default: no calibre, a calibre without one, or
+    /// a calibre whose lift is outside the range; nothing when it has one.
+    #[test]
+    fn the_lift_defaults_with_its_reason() {
+        let cal = |lift, aside| Calibre {
+            name: "Test".into(),
+            bph: None,
+            lift_angle_deg: lift,
+            lift_set_aside_deg: aside,
+            escape_teeth: None,
+            wheels: Vec::new(),
+        };
+        assert_eq!(lift_default_why(None).unwrap(), "calibre not set");
+        assert_eq!(
+            lift_default_why(Some(&cal(None, None))).unwrap(),
+            "the calibre's lift angle is not in the table"
+        );
+        assert_eq!(
+            lift_default_why(Some(&cal(None, Some(120.0)))).unwrap(),
+            "the calibre's lift angle of 120° is set aside, outside 10 to 90°"
+        );
+        assert_eq!(lift_default_why(Some(&cal(Some(44.0), None))), None);
+    }
+
     #[test]
     fn settings_come_from_the_reader_then_the_session_file_then_the_calibre() {
         let cal = Calibre {
             name: "Test".into(),
             bph: Some(21_600),
             lift_angle_deg: Some(44.0),
+            lift_set_aside_deg: None,
             escape_teeth: Some(20),
             wheels: Vec::new(),
         };
