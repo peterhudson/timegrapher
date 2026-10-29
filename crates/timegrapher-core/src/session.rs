@@ -1575,7 +1575,18 @@ mod manifest_input_tests {
             .validate_analysis_inputs()
             .unwrap_err()
             .starts_with("escape_teeth:"));
-        for value in [0.0, -0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        for value in [
+            0.0,
+            -0.0,
+            -1.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MIN_POSITIVE,
+            9.99,
+            90.01,
+            f64::MAX,
+        ] {
             let invalid = Manifest {
                 lift: Some(value),
                 ..Default::default()
@@ -1606,7 +1617,7 @@ mod manifest_input_tests {
     #[test]
     fn consumed_manifest_domains_preserve_defaults_valid_extremes_and_context() {
         Manifest::default().validate_analysis_inputs().unwrap();
-        for value in [f64::from_bits(1), f64::MIN_POSITIVE, 52.0, f64::MAX] {
+        for value in [10.0, 52.0, 90.0] {
             for ppm in [-999_999.999_999_999_9, -12.5, -0.0, 0.0, 12.5, f64::MAX] {
                 let m = Manifest {
                     bph: Some(u32::MAX),

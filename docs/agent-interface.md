@@ -461,12 +461,14 @@ the ALSA development package, `libasound2-dev`). `cargo build
 ## Explicit scalar input domains
 
 Before command execution, explicit analysis/acquisition arguments are checked for
-mathematical and representation constraints, without adding empirical watch ranges:
+mathematical and representation constraints, and the lift angle for its one
+range (core `input_domain::LIFT_RANGE_DEG`, which the app's lift fields use too):
 
 - `--bph`: a positive `u32` (1 through 4294967295), for `analyze`, `shape`,
   `profile`, `long`, `series`, `doctor`, `record`, `session`, `synth` and `report`.
-- `--lift`: finite and positive, for `analyze`, `shape`, `profile`, `long`,
-  `series`, `record`, `session` and `report`. There is no added upper operating limit.
+- `--lift`: from 10 to 90 degrees, for `analyze`, `shape`, `profile`, `long`,
+  `series`, `record`, `session` and `report`, as are a session file's `lift`
+  and MCP's `lift_deg`.
 - `--escape-teeth`: a positive `u32`, for `analyze`, `long` and `series`.
 - `--card-ppm` (`analyze`, `long`) and the positional ppm in `clock set`:
   finite, with `1 + ppm × 10⁻⁶ > 0`, so the clock scale advances time and
