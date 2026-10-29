@@ -9,8 +9,7 @@
 
 use crate::audio::{write_wav, Audio};
 use crate::session::Manifest;
-use crate::stream::StreamConfig;
-use crate::synth::{generate, Rng, SynthConfig};
+use crate::synth::{self, generate, Rng, SynthConfig};
 use crate::take;
 use std::path::Path;
 
@@ -29,17 +28,35 @@ pub struct EdgeTake {
     pub id: &'static str,
     /// One line: what is awkward about the take.
     pub summary: &'static str,
-    /// The caveat codes a reading of the take carries: these and no others.
-    pub caveats: &'static [&'static str],
-    /// The rate, amplitude and beat error a reading must find (s/d on the
-    /// true clock, degrees, ms), when the take holds enough of the watch
+    /// The caveat codes each reading of the take carries, in the session
+    /// file's order: these and no others.
+    pub caveats: &'static [&'static [&'static str]],
+    /// What a reading must find, when the take holds enough of the watch
     /// to judge it by.
-    pub truth: Option<(f64, f64, f64)>,
+    pub truth: Option<Truth>,
     /// Why the take does not yet read as it was made, when it does not:
     /// the test then requires it still not to, so the list only shrinks
     /// as the reading is fixed (guard G3).
     pub known: Option<&'static str>,
 }
+
+/// The figures a reading of an edge take must find.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Truth {
+    /// s/d on the true clock.
+    pub rate: f64,
+    /// Degrees, or none where the take gives nothing to measure it by.
+    pub amplitude: Option<f64>,
+    /// ms, by size, or none where the take gives nothing to measure it by.
+    pub beat_error: Option<f64>,
+}
+
+/// The watch as every edge take makes it.
+const MADE: Truth = Truth {
+    rate: RATE,
+    amplitude: Some(AMPLITUDE),
+    beat_error: Some(BEAT_ERROR),
+};
 
 /// The takes, in the order they are written.
 pub fn all() -> Vec<EdgeTake> {
@@ -47,44 +64,44 @@ pub fn all() -> Vec<EdgeTake> {
         EdgeTake {
             id: "edge_short_8s",
             summary: "8 s of the watch: too short for its regularity to be assessed",
-            caveats: &["short_span", "clock_unknown"],
+            caveats: &[&["short_span", "clock_unknown"]],
             truth: None,
             known: None,
         },
         EdgeTake {
             id: "edge_short_25s_settle_20",
             summary: "25 s with a 20 s settling time and no end given",
-            caveats: &["clock_unknown"],
+            caveats: &[&["clock_unknown"]],
             truth: None,
             known: None,
         },
         EdgeTake {
             id: "edge_listed_pause",
             summary: "two stretches of 90 s with a 90 s pause between, listed in session.json",
-            caveats: &["breaks"],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&["breaks"]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
             id: "edge_sleep_jump",
             summary: "the computer slept 1,283 s at 60 s, shown by the clock log alone, \
                       and a 0.4 s step at 30 s under the break rule",
-            caveats: &["clock_unknown", "breaks", "sides_by_count"],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&["clock_unknown", "breaks", "sides_by_count"]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
             id: "edge_silence_mid",
             summary: "60 s of silence between two stretches of 45 s of the watch, which runs \
                       on unheard",
-            caveats: &["beats_missing"],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&["beats_missing"]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
             id: "edge_all_silence",
             summary: "30 s of the stand's noise and no watch",
-            caveats: &["no_watch", "beats_missing", "clock_unknown"],
+            caveats: &[&["no_watch", "beats_missing", "clock_unknown"]],
             truth: None,
             known: None,
         },
@@ -92,49 +109,52 @@ pub fn all() -> Vec<EdgeTake> {
             id: "edge_unreadable_session_json",
             summary: "the listed pause take with its session.json cut short: the clock log \
                       stands in, and says so",
-            caveats: &["breaks", "breaks_unlisted"],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&["breaks", "breaks_unlisted"]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
             id: "edge_card_20ppm",
             summary: "120 s on a sound card 20 ppm slow, measured by its clock log",
-            caveats: &[],
+            caveats: &[&[]],
             // Made at 5 s/d on the card's seconds; a true second is 20 ppm
             // longer, so on true time the watch runs 1.728 s/d slower.
-            truth: Some((RATE - 20e-6 * 86_400.0, AMPLITUDE, BEAT_ERROR)),
+            truth: Some(Truth {
+                rate: RATE - 20e-6 * 86_400.0,
+                ..MADE
+            }),
             known: None,
         },
         EdgeTake {
             id: "edge_silence_long",
             summary: "300 s of silence, over several of the stream's chunks, between two \
                       stretches of 60 s of the watch, which runs on unheard",
-            caveats: &["beats_missing"],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&["beats_missing"]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
             id: "edge_quiet_step_12db",
             summary: "240 s of the watch, heard 12 dB more quietly from 100 s on over the \
                       same stand noise",
-            caveats: &[],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&[]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
             id: "edge_quiet_step",
             summary: "240 s of the watch, heard 16 dB more quietly from 100 s on over the \
                       same stand noise, as when it is turned or the mic is touched",
-            caveats: &[],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&[]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
             id: "edge_digital_silence",
             summary: "300 s of digital silence (every sample zero), with no break listed, \
                       between two stretches of 60 s of the watch, which runs on unheard",
-            caveats: &["beats_missing"],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&["beats_missing"]],
+            truth: Some(MADE),
             known: None,
         },
         EdgeTake {
@@ -142,29 +162,73 @@ pub fn all() -> Vec<EdgeTake> {
             summary: "240 s of the watch, heard 20 dB more quietly from 100 s on over the \
                       same stand noise: beats lost in the noise are left out, and the rate \
                       is the watch's",
-            caveats: &["beats_missing"],
-            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            caveats: &[&["beats_missing"]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_sleep_two_entries",
+            summary: "the computer slept 1,283 s at 60 s, shown by the clock log alone, in \
+                      the first of two readings of one file (0 to 90 s and 90 to 180 s)",
+            caveats: &[&["breaks", "sides_by_count"], &[]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_clock_back",
+            summary: "120 s with the computer's clock set back 0.6 s at 60 s, as a time \
+                      server does: true time does not step, so nothing is lost",
+            caveats: &[&["clock_unknown"]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_mask_across_settle",
+            summary: "120 s with 15 to 30 s masked by hand, across the end of the 20 s \
+                      settling time",
+            caveats: &[&["masked"]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_sides_turn_at_jump",
+            summary: "the watch knocked at 60 s, its beats then 1.4 beats on: Tick and \
+                      Tock swap on the count, and are told apart by their sound",
+            caveats: &[&["breaks"]],
+            truth: Some(MADE),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_no_unlock",
+            summary: "120 s of a watch whose unlock makes no sound: rate and the drop are \
+                      heard, amplitude and the unlock's beat error are not",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                amplitude: None,
+                beat_error: None,
+                ..MADE
+            }),
             known: None,
         },
     ]
 }
 
+/// The watch as every edge take makes it, `duration_s` long, from `seed`.
+fn made(duration_s: f64, seed: u64) -> SynthConfig {
+    SynthConfig {
+        sample_rate: FS,
+        duration_s,
+        lift_deg: LIFT,
+        rate_s_per_day: RATE,
+        beat_error_ms: BEAT_ERROR,
+        seed,
+        ..Default::default()
+    }
+}
+
 /// The watch's sound, `duration_s` long, from a fresh `seed`.
 fn watch(duration_s: f64, seed: u64) -> Vec<f32> {
-    generate(
-        &SynthConfig {
-            sample_rate: FS,
-            duration_s,
-            lift_deg: LIFT,
-            rate_s_per_day: RATE,
-            beat_error_ms: BEAT_ERROR,
-            seed,
-            ..Default::default()
-        },
-        |_| AMPLITUDE,
-        |_| 0.0,
-    )
-    .samples
+    generate(&made(duration_s, seed), |_| AMPLITUDE, |_| 0.0).samples
 }
 
 /// The watch, `duration_s` long, heard `drop_db` more quietly from
@@ -173,14 +237,8 @@ fn watch(duration_s: f64, seed: u64) -> Vec<f32> {
 fn watch_stepping_down(duration_s: f64, from_s: f64, drop_db: f64, seed: u64) -> Vec<f32> {
     let clean = generate(
         &SynthConfig {
-            sample_rate: FS,
-            duration_s,
-            lift_deg: LIFT,
-            rate_s_per_day: RATE,
-            beat_error_ms: BEAT_ERROR,
             snr_db: 300.0,
-            seed,
-            ..Default::default()
+            ..made(duration_s, seed)
         },
         |_| AMPLITUDE,
         |_| 0.0,
@@ -199,7 +257,7 @@ fn watch_stepping_down(duration_s: f64, from_s: f64, drop_db: f64, seed: u64) ->
 
 /// The stand's noise and no watch, at the level `generate` adds it.
 fn silence(duration_s: f64, seed: u64) -> Vec<f32> {
-    let rms = 10f64.powf(-SynthConfig::default().snr_db / 20.0) * 0.5;
+    let rms = synth::noise_rms(SynthConfig::default().snr_db) * synth::SCALE;
     let mut rng = Rng::new(seed);
     (0..(duration_s * FS as f64) as usize)
         .map(|_| (rms * rng.normal()) as f32)
@@ -237,10 +295,38 @@ fn clock_log(frames: usize, ppm: f64, steps: &[(usize, f64)]) -> String {
     lines
 }
 
-fn manifest(take: &EdgeTake, extra: &str) -> String {
+/// How one take is made: its sound, the breaks its `session.json` lists
+/// and the steps its clock log shows, both as `(frame, gap_s)`, how slow
+/// its card runs, and the session file's settings and readings.
+struct Recipe {
+    samples: Vec<f32>,
+    breaks: Vec<(usize, f64)>,
+    steps: Vec<(usize, f64)>,
+    ppm: f64,
+    extra: &'static str,
+    entries: &'static str,
+}
+
+/// One reading of the whole take, Dial Up, on its clock log.
+const WHOLE_TAKE: &str = "[[recording]]\nfile = \".\"\nposition = \"DU\"\nclock = \"clock.csv\"\n";
+
+impl Recipe {
+    /// `samples` read as one whole take, with nothing listed or stepped.
+    fn of(samples: Vec<f32>) -> Self {
+        Recipe {
+            samples,
+            breaks: Vec::new(),
+            steps: Vec::new(),
+            ppm: 0.0,
+            extra: "",
+            entries: WHOLE_TAKE,
+        }
+    }
+}
+
+fn manifest(take: &EdgeTake, extra: &str, entries: &str) -> String {
     format!(
-        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {LIFT}\nnotes = \"{}\"\n{extra}\n\
-         [[recording]]\nfile = \".\"\nposition = \"DU\"\nclock = \"clock.csv\"\n",
+        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {LIFT}\nnotes = \"{}\"\n{extra}\n{entries}",
         take.id, take.summary
     )
 }
@@ -275,23 +361,31 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
         let dir = root.join("takes").join(take.id);
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let seed = 100 + n as u64;
-        let (samples, breaks, steps, ppm, extra) = match take.id {
-            "edge_short_8s" => (watch(8.0, seed), vec![], vec![], 0.0, ""),
-            "edge_short_25s_settle_20" => {
-                (watch(25.0, seed), vec![], vec![], 0.0, "settle_s = 20\n")
-            }
+        let r = match take.id {
+            "edge_short_8s" => Recipe::of(watch(8.0, seed)),
+            "edge_short_25s_settle_20" => Recipe {
+                extra: "settle_s = 20\n",
+                ..Recipe::of(watch(25.0, seed))
+            },
             "edge_listed_pause" | "edge_unreadable_session_json" => {
                 let mut s = watch(90.0, seed);
                 let join = s.len();
                 s.extend(watch(90.0, seed + 50));
-                (s, vec![(join, 90.0)], vec![(join, 90.0)], 0.0, "")
+                Recipe {
+                    breaks: vec![(join, 90.0)],
+                    steps: vec![(join, 90.0)],
+                    ..Recipe::of(s)
+                }
             }
             "edge_sleep_jump" => {
                 let mut s = watch(60.0, seed);
                 let join = s.len();
                 s.extend(watch(60.0, seed + 50));
                 let small = 30 * FS as usize;
-                (s, vec![], vec![(small, 0.4), (join, 1283.0)], 0.0, "")
+                Recipe {
+                    steps: vec![(small, 0.4), (join, 1283.0)],
+                    ..Recipe::of(s)
+                }
             }
             "edge_silence_mid" => {
                 // The watch runs on unheard: its beats come back in step.
@@ -299,45 +393,80 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 let quiet = silence(60.0, seed + 50);
                 let from = 45 * FS as usize;
                 s[from..from + quiet.len()].copy_from_slice(&quiet);
-                (s, vec![], vec![], 0.0, "")
+                Recipe::of(s)
             }
             "edge_silence_long" => {
                 let mut s = watch(420.0, seed);
                 let quiet = silence(300.0, seed + 50);
                 let from = 60 * FS as usize;
                 s[from..from + quiet.len()].copy_from_slice(&quiet);
-                (s, vec![], vec![], 0.0, "")
+                Recipe::of(s)
             }
-            "edge_all_silence" => (silence(30.0, seed), vec![], vec![], 0.0, ""),
-            "edge_quiet_step_12db" => (
-                watch_stepping_down(240.0, 100.0, 12.0, seed),
-                vec![],
-                vec![],
-                0.0,
-                "",
-            ),
-            "edge_quiet_step" => (
-                watch_stepping_down(240.0, 100.0, 16.0, seed),
-                vec![],
-                vec![],
-                0.0,
-                "",
-            ),
-            "edge_card_20ppm" => (watch(120.0, seed), vec![], vec![], 20.0, ""),
             "edge_digital_silence" => {
                 let mut s = watch(420.0, seed);
                 s[60 * FS as usize..360 * FS as usize].fill(0.0);
-                (s, vec![], vec![], 0.0, "")
+                Recipe::of(s)
             }
-            "edge_quiet_step_20db" => (
-                watch_stepping_down(240.0, 100.0, 20.0, seed),
-                vec![],
-                vec![],
-                0.0,
-                "",
-            ),
+            "edge_all_silence" => Recipe::of(silence(30.0, seed)),
+            "edge_quiet_step_12db" => Recipe::of(watch_stepping_down(240.0, 100.0, 12.0, seed)),
+            "edge_quiet_step" => Recipe::of(watch_stepping_down(240.0, 100.0, 16.0, seed)),
+            "edge_quiet_step_20db" => Recipe::of(watch_stepping_down(240.0, 100.0, 20.0, seed)),
+            "edge_card_20ppm" => Recipe {
+                ppm: 20.0,
+                ..Recipe::of(watch(120.0, seed))
+            },
+            "edge_sleep_two_entries" => {
+                let mut s = watch(60.0, seed);
+                let join = s.len();
+                s.extend(watch(120.0, seed + 50));
+                Recipe {
+                    steps: vec![(join, 1283.0)],
+                    entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n\
+                              clock = \"clock.csv\"\nstart_s = 0\nend_s = 90\n\n\
+                              [[recording]]\nfile = \".\"\nposition = \"DD\"\n\
+                              clock = \"clock.csv\"\nstart_s = 90\nend_s = 180\n",
+                    ..Recipe::of(s)
+                }
+            }
+            "edge_clock_back" => Recipe {
+                steps: vec![(60 * FS as usize, -0.6)],
+                ..Recipe::of(watch(120.0, seed))
+            },
+            "edge_mask_across_settle" => Recipe {
+                entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n\
+                          clock = \"clock.csv\"\nmasked = [[15.0, 30.0]]\n",
+                ..Recipe::of(watch(120.0, seed))
+            },
+            "edge_sides_turn_at_jump" => {
+                // Tock sounds unlike Tick, so the sides can be told by
+                // ear; the second stretch opens a beat in, on the other side.
+                let two_sides = |d: f64, seed: u64| {
+                    let cfg = SynthConfig {
+                        odd_gains: Some([0.2, 0.25, 0.7]),
+                        ..made(d, seed)
+                    };
+                    generate(&cfg, |_| AMPLITUDE, |_| 0.0).samples
+                };
+                let mut s = two_sides(60.0, seed);
+                let beat = (FS as f64 * 3600.0 / 28_800.0) as usize;
+                s.extend_from_slice(&two_sides(61.0, seed + 50)[beat + beat * 2 / 5..]);
+                Recipe::of(s)
+            }
+            "edge_no_unlock" => {
+                let mut cfg = made(120.0, seed);
+                cfg.sounds[0].gain = 0.0;
+                Recipe::of(generate(&cfg, |_| AMPLITUDE, |_| 0.0).samples)
+            }
             other => return Err(format!("no recipe for {other}")),
         };
+        let Recipe {
+            samples,
+            breaks,
+            steps,
+            ppm,
+            extra,
+            entries,
+        } = r;
         let frames = samples.len();
         write_wav(
             &dir.join("audio-001.wav"),
@@ -347,7 +476,7 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
             },
         )
         .map_err(|e| format!("{}: {e}", dir.display()))?;
-        write(&dir, "session.toml", &manifest(take, extra))?;
+        write(&dir, "session.toml", &manifest(take, extra, entries))?;
         write(&dir, "clock.csv", &clock_log(frames, ppm, &steps))?;
         let json = record(&breaks);
         if take.id == "edge_unreadable_session_json" {
@@ -364,8 +493,8 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 "tier": "synthetic",
                 "summary": t.summary,
                 "caveats": t.caveats,
-                "truth": t.truth.map(|(r, a, b)| serde_json::json!({
-                    "rate": r, "amplitude": a, "beat_error": b
+                "truth": t.truth.map(|t| serde_json::json!({
+                    "rate": t.rate, "amplitude": t.amplitude, "beat_error": t.beat_error
                 })),
                 "known": t.known,
             })
@@ -380,24 +509,26 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
     Ok(takes)
 }
 
-/// The take written under `root`, read as `timegrapher session` reads its
-/// one entry with no settings given ([`take::measure_entry`]).
-pub fn read(root: &Path, take: &EdgeTake) -> Result<take::EntryRead, String> {
+/// The take written under `root`, each of its entries read as `timegrapher
+/// session` reads it with no settings given ([`take::measure_entry`]).
+pub fn read(root: &Path, take: &EdgeTake) -> Result<Vec<take::EntryRead>, String> {
     let dir = root.join("takes").join(take.id);
     let text = std::fs::read_to_string(dir.join("session.toml"))
         .map_err(|e| format!("{}: {e}", dir.display()))?;
     let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", take.id))?;
-    let mut stream = StreamConfig::default();
-    stream.analysis.bph = m.bph;
-    stream.analysis.amplitude.lift_deg = LIFT;
-    stream.analysis.lift_known = true;
+    let stream = take::stream_settings(&m, None, take::Given::default());
     let s = take::EntrySettings {
         stream,
         card_clock: false,
         settle_s: None,
     };
-    take::measure_entry(&dir, &m, &m.recordings[0], &s, |_| Ok(None), |_| Ok(None))
-        .map_err(|e| format!("{}: {e}", take.id))
+    m.recordings
+        .iter()
+        .map(|e| {
+            take::measure_entry(&dir, &m, e, &s, |_| Ok(None), |_| Ok(None))
+                .map_err(|err| format!("{}: {err}", take.id))
+        })
+        .collect()
 }
 
 /// The codes of the caveats a reading carries, as its JSON gives them.

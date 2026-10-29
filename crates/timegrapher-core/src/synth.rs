@@ -132,6 +132,14 @@ impl Default for SynthConfig {
     }
 }
 
+/// What [`generate`] scales its sound by on writing it.
+pub const SCALE: f64 = 0.5;
+
+/// The RMS of the noise [`generate`] adds for `snr_db`, before [`SCALE`].
+pub fn noise_rms(snr_db: f64) -> f64 {
+    10f64.powf(-snr_db / 20.0)
+}
+
 /// Generate a recording. `amp_fn(t)` gives the amplitude in degrees and
 /// `rate_fn(t)` an extra rate in s/d at time `t` (seconds).
 pub fn generate(
@@ -157,11 +165,10 @@ pub fn generate(
         t += nominal * (1.0 - rate / 86400.0);
         k += 1;
     }
-    let noise_rms = 10f64.powf(-cfg.snr_db / 20.0);
-    let scale = 0.5;
+    let noise_rms = noise_rms(cfg.snr_db);
     let samples = x
         .iter()
-        .map(|&v| ((v + noise_rms * rng.normal()) * scale) as f32)
+        .map(|&v| ((v + noise_rms * rng.normal()) * SCALE) as f32)
         .collect();
     Audio {
         samples,
