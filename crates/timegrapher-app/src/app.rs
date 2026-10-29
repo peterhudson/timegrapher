@@ -161,7 +161,6 @@ fn day_of(utc: &str) -> &str {
 }
 
 /// The Rate caveat for an input whose clock hasn't been measured.
-const CLOCK_UNKNOWN: &str = "input clock not measured";
 /// Plain marks on the level meter, for reference only: the level core
 /// aims a recording at and the one it calls hot.
 const REFERENCE_DBFS: [f64; 2] = [
@@ -12307,10 +12306,12 @@ impl TimegrapherApp {
             let rate = r.and_then(|r| r.rate_s_per_day);
             // The input's clock is named on the controls row rather than
             // in a chip.
-            let rate_facts: Vec<_> = reading_limits("Rate", caveats, lift_now, beats)
-                .into_iter()
-                .filter(|f| f.0 != CLOCK_UNKNOWN)
+            let others: Vec<Caveat> = caveats
+                .iter()
+                .filter(|c| !matches!(c, Caveat::ClockUnknown))
+                .cloned()
                 .collect();
+            let rate_facts = reading_limits("Rate", &others, lift_now, beats);
             title(ui, cards[2].title, "Rate", help::RATE, &rate_facts, None);
             let unit = match pm {
                 Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
@@ -12630,7 +12631,7 @@ impl TimegrapherApp {
                 Some(ClockFrom::Correction) => {
                     "the correction kept for the input it was recorded on"
                 }
-                _ => "this take's clock log",
+                Some(ClockFrom::Log | ClockFrom::LogRatedByUsb) | None => "this take's clock log",
             };
             return Some(format!(
                 "On {on}: the rate corrected for the sound card's own clock, {ppm} ppm \
@@ -13170,7 +13171,7 @@ impl TimegrapherApp {
     fn no_watch(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let line = self.reading().map_or_else(
-            || "No regular beat found".to_string(),
+            || timegrapher_core::beats::no_regular_beat_text(None, None),
             |r| no_regular_beat(&r),
         );
         ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0));
@@ -17639,24 +17640,12 @@ fn plain_error(m: &str) -> String {
     t
 }
 
-/// What limits a reading, as facts: a short form for the card's caption
-/// and a sentence for its hover. Nothing graded: the ± beside the figure
-/// says how far it could be off; these say what the ± can't show.
-/// "No regular beat found", with the timing scatter that decided it when
-/// there is one: the beats' median jitter in ms and as a share of a beat.
+/// "No regular beat found", in core's words: with the timing scatter
+/// that decided it, or that the beats' sound shows no unlock or drop.
 fn no_regular_beat(r: &LiveReading) -> String {
-    use timegrapher_core::measure::{self, NoWatchReason};
-    if let Some(why @ NoWatchReason::NoBeatSound) = measure::no_watch_reason_in(&r.caveats) {
-        return measure::no_watch_text(why, None, None);
-    }
-    match (r.jitter_us, r.bph) {
-        (Some(j), Some(bph)) => format!(
-            "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
-            j / 1000.0,
-            j / (3.6e9 / bph.max(1) as f64) * 100.0
-        ),
-        _ => "No regular beat found".to_string(),
-    }
+    use timegrapher_core::measure;
+    let why = measure::no_watch_reason_in(&r.caveats).unwrap_or_default();
+    measure::no_watch_text(why, r.jitter_us, r.timing_scatter_fraction)
 }
 
 /// The Beat Error card's line under the whole take, when it is of sizes.
@@ -17776,105 +17765,44 @@ fn cut_caveats_text(caveats: &[Caveat]) -> String {
 
 const WHOLE_AS_SIZES: &str = "whole take is given as a size: its sign differs either side of a cut";
 
+/// What limits a reading, as facts: a short form for the card's caption
+/// and a sentence for its hover, in core's words. Nothing graded: the ±
+/// beside the figure says how far it could be off; these say what the ±
+/// can't show.
 fn reading_limits(
     title: &str,
     caveats: &[Caveat],
     lift_deg: f64,
     beats: usize,
 ) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    for c in caveats {
-        let fact = match (c, title) {
-            (Caveat::ShortSpan { span_s }, _) => Some((
-                format!("{span_s:.0} s of beats"),
-                format!(
-                    "The beats span {span_s:.0} s, under the {:.0} s an analysis of a \
-                     recording asks for.",
-                    timegrapher_core::measure::SHORT_SPAN_S
-                ),
-            )),
-            (Caveat::BeatsMissing { fraction }, _) => {
-                let expected = (beats as f64 / fraction.max(1e-9)).round() as usize;
-                let short = if beats > 0 {
-                    format!("{beats} of {expected} beats")
-                } else {
-                    format!("{:.0}% of beats found", fraction * 100.0)
-                };
-                Some((
-                    short,
-                    format!(
-                        "{:.0}% of the beats the beat rate expects in this stretch were found.",
-                        fraction * 100.0
-                    ),
-                ))
-            }
-            (Caveat::Clipped { fraction }, "Amplitude" | "Beat Error") => Some((
-                format!("{:.0}% clipped", fraction * 100.0),
-                format!(
-                    "{:.0}% of the beats have a clipped sample, which moves the timing of \
-                     the sounds inside a beat. {}",
-                    fraction * 100.0,
-                    help::CLIPPING
-                ),
-            )),
-            (Caveat::LiftUnknown, "Amplitude") => Some((
-                format!("lift angle {lift_deg:.0}°, the default (calibre not set)"),
-                format!(
-                    "The lift angle is the default {lift_deg:.0}°, not one set for the \
-                     calibre. Every amplitude is worked out from it."
-                ),
-            )),
-            (Caveat::ClockUnknown, "Rate") => Some((
-                CLOCK_UNKNOWN.to_string(),
-                "This input's clock hasn't been measured, so the rate includes the sound \
-                 card's own clock error."
-                    .to_string(),
-            )),
-            (Caveat::SetRateDisagrees { heard }, _) => Some((
-                format!("{heard} bph heard"),
-                format!("The beat rate set differs from the {heard} bph heard."),
-            )),
-            (Caveat::SidesByCount { count }, "Beat Error") => Some((
-                "sides named by count".to_string(),
-                format!(
-                    "Tick and Tock are named by the beat count across {count} break{} in \
-                     this stretch, not told apart by their sound.",
-                    if *count == 1 { "" } else { "s" }
-                ),
-            )),
-            (Caveat::Breaks { count }, _) => Some((
-                format!("{count} break{}", if *count == 1 { "" } else { "s" }),
-                format!(
-                    "{count} {} in this stretch: a hole in the sound, such as when the \
-                     computer slept, or a stumble where the beats stepped off together by \
-                     more than {:.0} ms.",
-                    if *count == 1 { "break" } else { "breaks" },
-                    timegrapher_core::beats::JUMP_S * 1000.0
-                ),
-            )),
-            // A sliver that would show as 0.0 s is left unsaid.
-            (Caveat::Masked { seconds }, _) if *seconds < 0.05 => None,
-            (Caveat::Masked { seconds }, _) => {
-                // A mask reaching just into the averaging time is under a
-                // second, which whole seconds would show as 0.
-                let s = if *seconds < 9.95 {
-                    format!("{seconds:.1}")
-                } else {
-                    format!("{seconds:.0}")
-                };
-                Some((
-                    format!("{s} s masked"),
-                    format!(
-                        "{s} s of this stretch were masked out on the Paper Strip and left out \
-                         of the readings."
-                    ),
-                ))
-            }
-            _ => None,
-        };
-        out.extend(fact);
+    caveats
+        .iter()
+        .filter(|c| shown_on(c, title))
+        .filter_map(|c| {
+            let long = c.long(Some(lift_deg))?;
+            let long = match c {
+                Caveat::Clipped { .. } => format!("{long} {}", help::CLIPPING),
+                _ => long,
+            };
+            Some((c.short(lift_deg, beats)?, long))
+        })
+        .collect()
+}
+
+/// Whether a card titled `title` names caveat `c` beside its figure. No
+/// regular beat, the clock sources apart and a beat error given as a size
+/// are said elsewhere.
+fn shown_on(c: &Caveat, title: &str) -> bool {
+    match c {
+        Caveat::NoWatch { .. } | Caveat::ClockSourcesDisagree { .. } | Caveat::BeatErrorAsSize => {
+            false
+        }
+        Caveat::Clipped { .. } => matches!(title, "Amplitude" | "Beat Error"),
+        Caveat::LiftUnknown => title == "Amplitude",
+        Caveat::ClockUnknown => title == "Rate",
+        Caveat::SidesByCount { .. } => title == "Beat Error",
+        _ => true,
     }
-    out
 }
 
 /// How long closing an input may take before the app carries on.
@@ -17995,16 +17923,10 @@ mod tests {
         ];
         let amp = reading_limits("Amplitude", &caveats, 52.0, 30);
         let short: Vec<&str> = amp.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(
-            short,
-            [
-                "4 s of beats",
-                "lift angle 52°, the default (calibre not set)"
-            ]
-        );
+        assert_eq!(short, ["4 s of beats", "lift angle 52°, the default"]);
         let rate = reading_limits("Rate", &caveats, 52.0, 30);
         let short: Vec<&str> = rate.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(short, ["4 s of beats", "input clock not measured"]);
+        assert_eq!(short, ["4 s of beats", "input clock not corrected"]);
         let missing = reading_limits("Rate", &[Caveat::BeatsMissing { fraction: 0.9 }], 52.0, 90);
         assert_eq!(missing[0].0, "90 of 100 beats");
         for (_, long) in amp.iter().chain(&rate) {
