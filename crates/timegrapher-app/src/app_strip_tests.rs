@@ -8,6 +8,10 @@ use timegrapher_core::breaks::{renumber, Break};
 /// Four minutes of a steady watch at 28,800 bph with 0.3 ms beat error,
 /// paused for half an hour and a fraction of a beat after two minutes:
 /// its beats as core numbers them across the pause, and the pause.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test's take fixture, numbered as core numbers a take opened"
+)]
 fn paused_take() -> (BeatLog, Vec<Break>) {
     let (p, at, gap_s) = (0.125, 120.0, 1800.0371);
     let mut beats: Vec<Beat> = Vec::new();

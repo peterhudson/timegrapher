@@ -396,7 +396,7 @@ mod tests {
         let at = 200.0;
         // True beat times, the gap's left out of the sound.
         let mut beats: Vec<Beat> = Vec::new();
-        for k in 0..(800.0 / p) as i64 {
+        for k in 0..((at + gap_s + 200.0) / p) as i64 {
             let t = k as f64 * p + side(k) * 3e-4;
             let audio = if t < at {
                 t
