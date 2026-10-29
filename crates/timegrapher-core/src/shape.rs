@@ -64,7 +64,7 @@ impl Default for ShapeConfig {
             extra_span_s: 0.010,
             extra_gap_s: 0.0015,
             extra_prominence: 0.08,
-            min_quality: 0.4,
+            min_quality: crate::beats::JUMP_QUALITY,
         }
     }
 }
