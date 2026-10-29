@@ -21,6 +21,7 @@ pub mod confidence;
 pub mod diagnose;
 pub mod distribution;
 pub mod dsp;
+pub mod edge_takes;
 pub mod excerpt;
 pub mod filter;
 pub mod gappy;
