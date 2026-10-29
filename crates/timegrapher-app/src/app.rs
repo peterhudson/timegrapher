@@ -16758,7 +16758,7 @@ fn open_in_background(
                 &settings,
                 take::usb_ppm,
                 |first| take::correction_ppm(&m, first),
-                |s| {
+                |s, _| {
                     progress.store(s.to_bits(), Relaxed);
                     if cancel.load(Relaxed) {
                         std::panic::resume_unwind(Box::new(Cancelled));
