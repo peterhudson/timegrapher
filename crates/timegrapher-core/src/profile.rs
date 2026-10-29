@@ -247,6 +247,36 @@ mod tests {
     use crate::analysis::{analyze, AnalysisConfig};
     use crate::synth::{generate, SynthConfig};
 
+    /// One side's good beats from `from_s` up to but not at `to_s`, each
+    /// cut out where [`snippet`] cuts it.
+    #[test]
+    fn a_sides_snippets_are_its_good_beats_in_the_stretch() {
+        let fs = 1000.0;
+        let env: Vec<f32> = (0..2000).map(|i| i as f32).collect();
+        let beats: Vec<Beat> = (0..11)
+            .map(|i| Beat {
+                index: i,
+                time: 0.5 + 0.1 * i as f64,
+                quality: if i == 4 { 0.0 } else { 1.0 },
+            })
+            .collect();
+        let (from, to) = (beats[2].time, beats[7].time);
+        let at = |side, idx: &[usize]| {
+            let got: Vec<*const f32> = side_snippets(&env, fs, &beats, side, from, to)
+                .iter()
+                .map(|s| s.as_ptr())
+                .collect();
+            let want: Vec<*const f32> = idx
+                .iter()
+                .map(|&i| snippet(&env, fs, beats[i].time).unwrap().as_ptr())
+                .collect();
+            assert_eq!(got, want, "{side:?}");
+        };
+        // Even beats 2 and 6 (4 is not good); odd 3 and 5 (7 is at the end).
+        at(Side::A, &[2, 6]);
+        at(Side::B, &[3, 5]);
+    }
+
     #[test]
     fn a_bump_before_sound_1_is_not_the_unlock_when_guided() {
         // Twelve beats whose envelope has a bump of noise 15 ms before the

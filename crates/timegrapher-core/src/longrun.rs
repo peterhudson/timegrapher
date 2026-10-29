@@ -480,6 +480,51 @@ mod tests {
         assert_eq!(p.start_s, p.end_s);
     }
 
+    /// Only good beats count as clean, and only they go in the timing
+    /// series: a bad beat 3 ms off moves neither.
+    #[test]
+    fn bad_beats_are_neither_clean_nor_timed() {
+        let duration = 600.0;
+        let beats: Vec<Beat> = (0..(duration * 8.0) as i64)
+            .map(|index| {
+                let bad = index % 3 != 0;
+                Beat {
+                    time: index as f64 / 8.0 + if bad { 0.003 } else { 0.0 },
+                    index,
+                    quality: if bad { 0.0 } else { 1.0 },
+                }
+            })
+            .collect();
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: duration,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats,
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: vec![],
+            by_count: vec![],
+            snippets: Vec::new(),
+        };
+        let r = analyse(&log, None, &LongConfig::default());
+        assert!(
+            (r.clean_fraction - 1.0 / 3.0).abs() < 0.01,
+            "{}",
+            r.clean_fraction
+        );
+        let worst = r
+            .timing
+            .grid
+            .y
+            .iter()
+            .filter(|v| v.is_finite())
+            .fold(0.0f64, |m, v| m.max(v.abs()));
+        assert!(worst < 1e-4, "{worst}");
+    }
+
     #[test]
     fn a_run_over_12_hours_reaches_a_5_s_escape_wheel() {
         // 13 h at 21,600 bph with a 0.5 ms timing ripple every 5 s, the

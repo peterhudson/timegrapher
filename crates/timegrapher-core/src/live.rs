@@ -1655,7 +1655,11 @@ mod tests {
     fn an_opened_log_says_where_its_sides_were_named_by_count() {
         let mut log = viewer_phase_log(0.0, 0.0);
         log.by_count = log.jumps.clone();
+        let jumps = log.jumps.clone();
         let a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        // The app's hover lists them as the log gave them.
+        assert!(!jumps.is_empty());
+        assert_eq!(a.by_count(), jumps.as_slice());
         let by_count = |end_s: f64| {
             a.reading_at(end_s, 20.0)
                 .caveats
@@ -1670,6 +1674,7 @@ mod tests {
         assert_eq!(by_count(90.0), Some(1));
         // Without the log's by-count jumps, nothing is said.
         let plain = LiveAnalyzer::from_log(viewer_phase_log(0.0, 0.0), LiveConfig::default());
+        assert!(plain.by_count().is_empty());
         assert!(!plain
             .reading_at(90.0, 20.0)
             .caveats
