@@ -119,30 +119,64 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
     out
 }
 
+/// Runs `work` on each item, on as many threads as the machine has, and
+/// returns what it gives in the items' order.
+fn on_every_core<T: Sync, R: Send>(items: &[T], work: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let mut done: Vec<(usize, R)> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..threads.min(items.len()))
+            .map(|_| {
+                s.spawn(|| {
+                    let mut mine = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(item) = items.get(i) else { break };
+                        mine.push((i, work(item)));
+                    }
+                    mine
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a worker finishes"))
+            .collect()
+    });
+    done.sort_by_key(|(i, _)| *i);
+    done.into_iter().map(|(_, r)| r).collect()
+}
+
 /// Every recording each corpus take lists reads the same on the app's
-/// cards as from `timegrapher session`.
+/// cards as from `timegrapher session`. Takes, and then recordings, are
+/// read side by side, one to a core, so the whole corpus fits CI's time.
 #[test]
 fn the_app_reads_each_corpus_take_as_the_command_line_does() {
     let Some((root, cli)) = corpus_and_cli() else {
         return;
     };
-    let mut compared = 0;
-    let mut wrong = Vec::new();
-    for id in takes(&root) {
-        let dir = root.join("takes").join(&id);
-        for reading in session_readings(&cli, &dir) {
-            let label = reading["label"].as_str().expect("a reading's label");
-            let name = format!("{id}/{label}");
-            let app = opened(&dir.join(label));
-            let found = differences(&name, &app.whole_take(), &reading);
-            eprintln!(
-                "{name}: {}",
-                if found.is_empty() { "same" } else { "DIFFERS" }
-            );
-            wrong.extend(found);
-            compared += 1;
-        }
-    }
+    let ids = takes(&root);
+    let readings = on_every_core(&ids, |id| {
+        session_readings(&cli, &root.join("takes").join(id))
+    });
+    let entries: Vec<(String, serde_json::Value)> = ids
+        .iter()
+        .zip(readings)
+        .flat_map(|(id, rs)| rs.into_iter().map(move |r| (id.clone(), r)))
+        .collect();
+    let found = on_every_core(&entries, |(id, reading)| {
+        let label = reading["label"].as_str().expect("a reading's label");
+        let name = format!("{id}/{label}");
+        let app = opened(&root.join("takes").join(id).join(label));
+        let found = differences(&name, &app.whole_take(), reading);
+        eprintln!(
+            "{name}: {}",
+            if found.is_empty() { "same" } else { "DIFFERS" }
+        );
+        found
+    });
+    let compared = entries.len();
+    let wrong: Vec<String> = found.into_iter().flatten().collect();
     eprintln!("{compared} recordings compared");
     assert!(compared > 0, "no recording to compare in {root:?}");
     assert!(
