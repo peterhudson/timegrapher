@@ -38,13 +38,18 @@ pub struct StripView {
     pub horizontal: bool,
 }
 
+/// The most beats drawn to a point along the strip.
+const MAX_BEATS_PER_PX: f32 = 48.0;
+
 impl StripView {
     pub const MIN_HALF_WIDTH_MS: f64 = 0.1;
     /// Wide enough for a long run-down take to drift by tens of seconds
     /// without its beats wrapping.
     pub const MAX_HALF_WIDTH_MS: f64 = 60_000.0;
     pub const MIN_SPAN_S: f64 = 2.0;
-    pub const MAX_SPAN_S: f64 = 24.0 * 3600.0;
+    /// As long as a power reserve run may go, 80 hours: a run-down take
+    /// shows whole.
+    pub const MAX_SPAN_S: f64 = timegrapher_core::power_reserve::LIMIT_S;
 
     pub fn set_half_width(&mut self, ms: f64) {
         self.half_width_ms = ms.clamp(Self::MIN_HALF_WIDTH_MS, Self::MAX_HALF_WIDTH_MS);
@@ -207,18 +212,39 @@ pub struct Overlay {
     pub min_span: f64,
     /// (time in s, value), oldest first.
     pub points: Vec<[f64; 2]>,
-    /// Neighbouring points further apart than this have a gap between
-    /// them, and no line.
-    pub gap_s: f64,
 }
 
-/// The pairs of neighbouring `points` joined by a line: those no further
-/// apart than `gap_s`.
-fn joined(points: &[&[f64; 2]], gap_s: f64) -> Vec<([f64; 2], [f64; 2])> {
-    points
-        .windows(2)
-        .filter(|w| w[1][0] - w[0][0] <= gap_s)
-        .map(|w| (*w[0], *w[1]))
+/// Whether the step to `points[i]` from the one before (points sorted by
+/// time) is a gap in the readings rather than their spacing: more than
+/// half again the steps either side of it. Readings worked out again over
+/// a long take and those read live since are spaced differently and join
+/// up; a stretch with none read (a mask, a pause, beats not found) is a
+/// gap. With no step beside it to go by, it isn't one.
+pub fn gap_before(points: &[[f64; 2]], i: usize) -> bool {
+    if i == 0 || i >= points.len() {
+        return false;
+    }
+    let step = |j: usize| points[j][0] - points[j - 1][0];
+    let beside = [
+        (i >= 2).then(|| step(i - 1)),
+        (i + 1 < points.len()).then(|| step(i + 1)),
+    ];
+    beside
+        .into_iter()
+        .flatten()
+        .reduce(f64::max)
+        .is_some_and(|usual| step(i) > 1.5 * usual)
+}
+
+/// The pairs of neighbouring `points` from `from_s` to `to_s` joined by a
+/// line: those with no gap ([`gap_before`]) between them.
+fn joined(points: &[[f64; 2]], from_s: f64, to_s: f64) -> Vec<([f64; 2], [f64; 2])> {
+    let lo = points.partition_point(|p| p[0] < from_s);
+    let hi = points.partition_point(|p| p[0] <= to_s);
+    (lo.max(1)..hi)
+        .filter(|&i| !gap_before(points, i))
+        .map(|i| (points[i - 1], points[i]))
+        .filter(|(a, _)| a[0] >= from_s)
         .collect()
 }
 
@@ -1538,9 +1564,13 @@ pub fn draw_strip(
     };
     let per_px = shown.len() as f32 / along.max(1.0);
     let radius = (2.2 / per_px.max(1.0).sqrt()).clamp(0.8, 2.2);
+    // Past a few dozen beats to a point, the dots only lie on one another:
+    // every nth Tick and its Tock are drawn, so a strip days long draws
+    // no more dots than a short one crowded to that.
+    let every = (per_px / MAX_BEATS_PER_PX).ceil().max(1.0) as i64;
     let painter = painter.with_clip_rect(r.expand(3.0));
     for b in shown {
-        if b.quality < 0.4 {
+        if b.quality < 0.4 || b.index.div_euclid(2).rem_euclid(every) != 0 {
             continue;
         }
         let p = g.pos(wrap(anchor.lead_ms(b, period_s), half), b.time);
@@ -1557,12 +1587,7 @@ pub fn draw_strip(
     // The overlays, each scaled across the strip's width.
     for (o, (lo, hi)) in &overlays {
         let across = |v: f64| -half + (v - lo) / (hi - lo) * 2.0 * half;
-        let pts: Vec<&[f64; 2]> = o
-            .points
-            .iter()
-            .filter(|p| p[0] >= oldest - 2.0 && p[0] <= end_s)
-            .collect();
-        for (a, b) in joined(&pts, o.gap_s) {
+        for (a, b) in joined(&o.points, oldest - 2.0, end_s) {
             painter.line_segment(
                 [g.pos(across(a[1]), a[0]), g.pos(across(b[1]), b[0])],
                 Stroke::new(1.6_f32, o.color),
@@ -1664,16 +1689,37 @@ mod tests {
     #[test]
     fn readings_further_apart_than_the_gap_are_not_joined() {
         // A 7 h 28 min take opened whole keeps a reading every take/4000 s,
-        // 6.7 s apart: joined, with the gap set from that spacing.
+        // 6.7 s apart: joined.
         let step = 26_880.0 / 4000.0;
         let pts: Vec<[f64; 2]> = (0..10).map(|i| [i as f64 * step, 10.0]).collect();
-        let refs: Vec<&[f64; 2]> = pts.iter().collect();
-        assert_eq!(joined(&refs, (2.5 * step).max(5.0)).len(), 9);
-        // The old fixed 5 s gap joined none of them.
-        assert!(joined(&refs, 5.0).is_empty());
+        assert_eq!(joined(&pts, 0.0, 1e9).len(), 9);
         // A real hole in the readings stays a hole.
-        let holed: Vec<&[f64; 2]> = pts.iter().filter(|p| p[0] < 20.0 || p[0] > 50.0).collect();
-        assert_eq!(joined(&holed, (2.5 * step).max(5.0)).len(), holed.len() - 2);
+        let holed: Vec<[f64; 2]> = pts
+            .iter()
+            .copied()
+            .filter(|p| p[0] < 20.0 || p[0] > 50.0)
+            .collect();
+        assert_eq!(joined(&holed, 0.0, 1e9).len(), holed.len() - 2);
+        // Only the pairs in view, and the one reaching into it.
+        assert_eq!(joined(&pts, 3.0 * step, 6.0 * step).len(), 3);
+    }
+
+    /// A long take worked out again keeps a reading every 20 s; those
+    /// read live since come every half second. Both join up, and the line
+    /// runs on from one to the other; a stretch with none read is still a
+    /// gap, in either.
+    #[test]
+    fn readings_spaced_two_ways_join_up() {
+        let mut pts: Vec<[f64; 2]> = (0..100).map(|i| [i as f64 * 20.0, 1.0]).collect();
+        let t0 = pts.last().unwrap()[0];
+        pts.extend((1..400).map(|i| [t0 + i as f64 * 0.5, 1.0]));
+        assert_eq!(joined(&pts, 0.0, 1e9).len(), pts.len() - 1);
+        let holed: Vec<[f64; 2]> = pts
+            .iter()
+            .copied()
+            .filter(|p| !(500.0..600.0).contains(&p[0]) && !(t0 + 50.0..t0 + 60.0).contains(&p[0]))
+            .collect();
+        assert_eq!(joined(&holed, 0.0, 1e9).len(), holed.len() - 3);
     }
 
     /// Frames of the strip lying across, 100 s long with 40 to 60 s
