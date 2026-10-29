@@ -595,7 +595,7 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
 <tr><th>Rate</th><td>{rate} over the run; {} slices from {} to {} s/d (5th to 95th percentile)</td></tr>
 <tr><th>Beat error</th><td>{}</td></tr>
 <tr><th>Amplitude</th><td>{} deg median; slices from {} to {} deg (lift angle {} deg)</td></tr>
-</table>"#,
+{}</table>"#,
         duration(r.duration_s),
         r.sample_rate,
         r.bph,
@@ -613,7 +613,12 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
         o(r.amplitude_deg, 0),
         o(r.amplitude_p05, 0),
         o(r.amplitude_p95, 0),
-        r.lift_deg
+        r.lift_deg,
+        // What the figures above carry, as the text summary says it.
+        crate::long::caveat_lines(&r.caveats)
+            .iter()
+            .map(|(label, line)| format!("<tr><th>{label}</th><td>{}</td></tr>\n", esc(line)))
+            .collect::<String>()
     );
     body.push_str("<h2>Over the run</h2>");
     body.push_str(&over_time(r));
@@ -746,6 +751,42 @@ fn ramp(mid: &str, neg: &str, pos: &str) -> String {
 mod tests {
     use super::*;
     use timegrapher_core::longterm::Fold;
+
+    /// The report's facts carry the caveats the text summary prints with
+    /// them: here, sides named by the beat count across a jump.
+    #[test]
+    fn the_report_gives_its_figures_caveats() {
+        use timegrapher_core::beats::Beat;
+        use timegrapher_core::stream::BeatLog;
+        let log = BeatLog {
+            sample_rate: 48_000,
+            duration_s: 600.0,
+            bph: 18_000,
+            lift_deg: 52.0,
+            beats: (0..3000)
+                .map(|i| Beat {
+                    index: i,
+                    time: i as f64 * 0.2,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: vec![300.0],
+            sided: Vec::new(),
+            by_count: vec![300.0],
+            snippets: Vec::new(),
+        };
+        let lc = timegrapher_core::longterm::LongConfig::default();
+        let r = timegrapher_core::longrun::analyse(&log, None, &lc);
+        let (label, line) = crate::long::caveat_lines(&r.caveats)[0].clone();
+        let page = html("take", &r, &[], None);
+        assert!(
+            page.contains(&format!("<tr><th>{label}</th><td>{}</td></tr>", esc(&line))),
+            "{label}: {line}"
+        );
+    }
 
     /// A take that gains a steady 8.64 s/d draws 8.64 in every bin of the
     /// rate raster, its ends too, when each drawn row merges several

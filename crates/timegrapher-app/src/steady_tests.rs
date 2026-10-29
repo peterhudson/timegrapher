@@ -757,7 +757,12 @@ fn a_join_keeps_the_gaps_of_the_breaks_inside_its_spans() {
     log.jumps = vec![60.03];
     let cut = |audio_s, gap_s| Break { audio_s, gap_s };
     // One stretch after a 10 s settle, and a second after a move.
-    let (joined, cuts) = join(&log, &[(10.0, 70.0), (80.0, 110.0)], &[cut(60.03, 30.0)]);
+    let (joined, cuts) = join(
+        &log,
+        &[(10.0, 70.0), (80.0, 110.0)],
+        &[cut(60.03, 30.0)],
+        None,
+    );
     assert_eq!(cuts.len(), 2, "{cuts:?}");
     assert!(
         (cuts[0].audio_s - 50.03).abs() < 1e-9 && cuts[0].gap_s == 30.0,
@@ -778,6 +783,7 @@ fn a_break_at_a_spans_start_adds_no_cut() {
         &log,
         &[(10.0, 70.0), (80.0, 110.0)],
         &[cut(10.0, 30.0), cut(80.0, 30.0)],
+        None,
     );
     assert!(
         cuts.iter().all(|c| c.gap_s == 0.0 && c.audio_s > 0.0),
@@ -790,7 +796,7 @@ fn derived_join_transports_cuts_and_existing_sample_context() {
     let mut log = context_log();
     log.jumps = vec![5.0, 10.0, 15.0, 20.0, 30.0, 40.0, 60.03, 80.0, 110.0];
     let spans = [(10.0, 20.0), (30.01, 30.02), (40.0, 80.0)];
-    let joined = join(&log, &spans, &[]).0;
+    let joined = join(&log, &spans, &[], None).0;
     // The empty middle span adds neither a join nor a cut. The second
     // retained span starts at15 (ten seconds plus the existing5s gap).
     assert_eq!(joined.jumps, [0.0, 5.0, 15.0, 35.03]);
@@ -843,6 +849,7 @@ fn derived_join_keeps_amplitude_sides_on_the_renumbered_beats() {
             &log,
             &[(start, end), (second_start, second_start + 10.0)],
             &[],
+            None,
         )
         .0;
         assert_eq!(

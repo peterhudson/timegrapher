@@ -454,8 +454,149 @@ fn lift_known(c: &Ctx, cal: Option<&ResolvedCalibre>) -> bool {
         .lift_known
 }
 
+/// What `session` reads of the sound file `file` when the session file
+/// in its folder lists it: each entry naming it, read as `session` reads
+/// it ([`read_one`], with `bph`, `lift` and `calibre` as `session`'s own
+/// flags and no cycles), and the entries naming it with nothing to read.
+/// None when the folder has no session file or it does not list `file`.
+/// A session file that cannot be read, or an entry naming `file` that
+/// `session` would refuse, gives `session_file` and the `error`, so the
+/// file's own reading still stands.
+pub(crate) fn take_of(
+    file: &Path,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+) -> Option<serde_json::Value> {
+    let dir = file.parent()?;
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    let session_file = dir.join(take::MANIFEST);
+    if !session_file.is_file() {
+        return None;
+    }
+    read_take_of(file, &session_file, bph, lift, calibre).unwrap_or_else(|error| {
+        Some(serde_json::json!({
+            "session_file": session_file,
+            "error": error,
+        }))
+    })
+}
+
+fn read_take_of(
+    file: &Path,
+    session_file: &Path,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    let (mut m, base, _) = load_manifest_file(session_file)?;
+    let same =
+        |e: &RecordingEntry| match (fs::canonicalize(base.join(&e.file)), fs::canonicalize(file)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+    m.recordings.retain(same);
+    if m.recordings.is_empty() {
+        return Ok(None);
+    }
+    let o = Options {
+        bph,
+        lift,
+        calibre,
+        settle: None,
+        out: None,
+        json: true,
+        init: false,
+        no_shape: false,
+        no_cycles: true,
+    };
+    let selection = o.calibre(&m)?;
+    let ctx = Ctx {
+        m: &m,
+        calibre: &selection,
+        base: &base,
+        o: &o,
+        tty: false,
+        quiet: true,
+        card_clock: false,
+    };
+    let mut readings = Vec::new();
+    let mut left_out = Vec::new();
+    for e in &m.recordings {
+        position_of(e)?;
+        match read_one_or_left_out(e, &ctx)? {
+            Ok(r) => readings.push(r),
+            Err(l) => left_out.push(l),
+        }
+    }
+    Ok(Some(serde_json::json!({
+        "session_file": session_file,
+        "readings": readings,
+        "left_out": left_out,
+    })))
+}
+
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
-    read_one_inner(e, c, false).map(|(reading, _)| reading)
+    Ok(read_one_inner(e, c, false)?.0)
+}
+
+/// An entry of the session file with nothing to read in its recording,
+/// and core's reason ([`take::NoReading`]). It is left out of the
+/// readings, and the report says so.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LeftOut {
+    pub file: String,
+    /// As a reading names it ([`position_of`]): Witschi's code in the
+    /// JSON.
+    pub position: Option<Position>,
+    pub start_s: f64,
+    pub why: String,
+}
+
+impl LeftOut {
+    fn new(e: &RecordingEntry, why: &take::NoReading) -> Self {
+        // The file is named beside the reason, so not again inside it.
+        let why = why.to_string();
+        let why = why
+            .strip_prefix(&format!("{}: ", e.file))
+            .unwrap_or(&why)
+            .to_string();
+        LeftOut {
+            file: e.file.clone(),
+            position: position_of(e).ok(),
+            start_s: e.start_s.unwrap_or(0.0),
+            why,
+        }
+    }
+
+    /// The line the summary and the note print.
+    pub fn text(&self) -> String {
+        format!(
+            "{}, {}, at {:.0} s is left out: {}",
+            self.file,
+            self.position
+                .map_or("-".to_string(), Position::display_label),
+            self.start_s,
+            self.why
+        )
+    }
+}
+
+/// [`read_one`], or the entry left out when it has nothing to read in its
+/// recording ([`take::NoReading`]), so the rest are still read.
+fn read_one_or_left_out(e: &RecordingEntry, c: &Ctx) -> Result<Result<Reading, LeftOut>, String> {
+    if take::reads_nothing(e) {
+        return Ok(Err(LeftOut::new(e, &take::NoReading::Nothing)));
+    }
+    match read_one_inner(e, c, false) {
+        Ok((reading, _)) => Ok(Ok(reading)),
+        Err(take::EntryError::NoReading(why)) => Ok(Err(LeftOut::new(e, &why))),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Baseline writers request context from this same resolution/analysis pass.
@@ -472,7 +613,7 @@ fn read_one_inner(
     e: &RecordingEntry,
     c: &Ctx,
     capture: bool,
-) -> Result<(Reading, Option<crate::regress_provenance::ReadContext>), String> {
+) -> Result<(Reading, Option<crate::regress_provenance::ReadContext>), take::EntryError> {
     let position = position_of(e)?;
     let (cfg, cal) = stream_config(c)?;
     if c.quiet {
@@ -494,7 +635,8 @@ fn read_one_inner(
         return Err(format!(
             "{}: kept as its analysis alone, with no sound to record provenance for",
             e.file
-        ));
+        )
+        .into());
     }
     let take::EntryRead {
         files,
@@ -651,6 +793,8 @@ pub struct Session<'a> {
     pub bph: u32,
     pub lift_deg: f64,
     pub readings: Vec<Reading>,
+    /// Entries with nothing to read, and why: they are not in `readings`.
+    pub left_out: Vec<LeftOut>,
     pub report: SessionReport,
     /// A Power Reserve Test's run, from the folder's `power-reserve.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -681,22 +825,22 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         quiet: false,
         card_clock: false,
     };
-    // An entry with nothing to read (`take::reads_nothing`) is left out,
-    // with a note.
-    for e in m.recordings.iter().filter(|e| take::reads_nothing(e)) {
-        eprintln!(
-            "note: {} ({}) at {:.0} s has nothing to read, so it is left out",
-            e.file,
-            e.position.as_deref().unwrap_or("-"),
-            e.start_s.unwrap_or(0.0)
-        );
+    // An entry with nothing to read is left out, with a note, and the
+    // report lists it.
+    let mut readings = Vec::new();
+    let mut left_out = Vec::new();
+    for e in &m.recordings {
+        match read_one_or_left_out(e, &ctx)? {
+            Ok(r) => readings.push(r),
+            Err(l) => {
+                if ctx.tty {
+                    eprintln!();
+                }
+                eprintln!("note: {}", l.text());
+                left_out.push(l);
+            }
+        }
     }
-    let readings: Vec<Reading> = m
-        .recordings
-        .iter()
-        .filter(|e| !take::reads_nothing(e))
-        .map(|e| read_one(e, &ctx))
-        .collect::<Result<_, _>>()?;
     if readings.is_empty() {
         return Err(format!(
             "{}: no recording listed with anything to read",
@@ -737,6 +881,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         bph,
         lift_deg: o.lift(&m, cal),
         readings,
+        left_out,
         report,
         power_reserve: power_reserve_of(&base)?,
     };
@@ -956,6 +1101,9 @@ fn print_summary(s: &Session) {
             rd.label,
         );
     }
+    for l in &s.left_out {
+        println!("Left out     {}", l.text());
+    }
     println!(
         "Unlock is the share of 2 s windows that found the unlock on both sides, on which amplitude and BE rest; Clip is the share of beats with a clipped sample."
     );
@@ -963,7 +1111,7 @@ fn print_summary(s: &Session) {
         "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
     );
     println!(
-        "Readings leave out the settling time at the start of each position, as record's quick check does. That check uses the session file's settle_s (30 s when the file has none, where this summary uses 20 s) and none of --settle, --bph, --lift, --calibre, a reading's own settle_s, measure_s, start_s, end_s, a clock log, card_ppm or a restart in listening, so a reading that uses one of these can differ from it."
+        "Readings leave out the settling time at the start of each position, as record's quick check does. That check uses the session file's settle_s (20 s when the file has none, as this summary does) and none of --settle, --bph, --lift, --calibre, a reading's own settle_s, measure_s, start_s, end_s, a clock log, card_ppm or a restart in listening, so a reading that uses one of these can differ from it."
     );
     if s.readings.iter().any(|r| r.measurement.calibrated) {
         println!("The sound card's clock is corrected where a clock log or card_ppm is given.");
@@ -1700,6 +1848,7 @@ mod tests {
             bph: 28800,
             lift_deg: 52.0,
             readings: Vec::new(),
+            left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: Some(r),
         };
@@ -1866,6 +2015,7 @@ mod tests {
             bph: 28800,
             lift_deg: 52.0,
             readings: Vec::new(),
+            left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: None,
         };
