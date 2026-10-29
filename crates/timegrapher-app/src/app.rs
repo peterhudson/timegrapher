@@ -1922,6 +1922,7 @@ type Stretches = Vec<(f64, Position)>;
 struct Opened {
     log: BeatLog,
     clock: Option<timegrapher_core::clock::ClockFit>,
+    clock_from: Option<timegrapher_core::take::ClockFrom>,
     breaks: Vec<timegrapher_core::breaks::Break>,
     profiles: Option<Vec<analysis_take::StretchProfiles>>,
 }
@@ -2230,6 +2231,9 @@ pub struct TimegrapherApp {
     /// on. The readings, tables and True Clock use it in place of the
     /// clock kept for the input.
     take_clock: Option<timegrapher_core::clock::ClockFit>,
+    /// Where [`Self::take_clock`] came from, as `take::open_entry` picked
+    /// it, so the Rate's hover names it.
+    take_clock_from: Option<timegrapher_core::take::ClockFrom>,
     /// The take on show's breaks, as core reads them with its beats: the
     /// pauses it lists, its clock's steps and the jumps in its beats.
     /// `None` for a session heard here, whose readings go by the clock
@@ -2763,6 +2767,7 @@ impl TimegrapherApp {
             carried_positions: None,
             pending_recorded: None,
             take_clock: None,
+            take_clock_from: None,
             take_breaks: None,
             audio_beats: None,
             brush: None,
@@ -3044,6 +3049,7 @@ impl TimegrapherApp {
                 self.opened_masks = None;
                 self.opened_positions = None;
                 self.take_clock = None;
+                self.take_clock_from = None;
                 self.take_breaks = None;
                 self.audio_beats = None;
                 self.masking = false;
@@ -3241,6 +3247,7 @@ impl TimegrapherApp {
         self.opened_masks = None;
         self.opened_positions = None;
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.masking = false;
@@ -4214,6 +4221,7 @@ impl TimegrapherApp {
         self.stop();
         self.pending_recorded = None;
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.masked.clear();
@@ -4491,6 +4499,7 @@ impl TimegrapherApp {
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.batch = Some(Batch {
@@ -4576,6 +4585,7 @@ impl TimegrapherApp {
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.batch = Some(Batch {
@@ -4851,10 +4861,12 @@ impl TimegrapherApp {
                     let Opened {
                         log,
                         clock,
+                        clock_from,
                         breaks,
                         profiles,
                     } = o;
                     self.take_clock = clock;
+                    self.take_clock_from = clock_from;
                     self.take_breaks = Some(breaks);
                     // Read again at a new beat rate: the positions as they were.
                     let carried = self.carried_positions.take();
@@ -12585,12 +12597,20 @@ impl TimegrapherApp {
             ));
         }
         if let Some(f) = &self.take_clock {
+            use timegrapher_core::take::ClockFrom;
             let ppm = format!("{:.1}", f.ppm.abs());
             let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
+            let on = match self.take_clock_from {
+                Some(ClockFrom::Usb) => "this take's USB lines",
+                Some(ClockFrom::Correction) => {
+                    "the correction kept for the input it was recorded on"
+                }
+                _ => "this take's clock log",
+            };
             return Some(format!(
-                "On this take's clock log: the rate corrected for the sound card's own \
-                 clock, {ppm} ppm {way}, as the Positions table reads it. tg reads the \
-                 recording on the card's clock."
+                "On {on}: the rate corrected for the sound card's own clock, {ppm} ppm \
+                 {way}, as the Positions table reads it. tg reads the recording on the \
+                 card's clock."
             ));
         }
         let c = self.clock.as_ref()?;
@@ -12765,11 +12785,23 @@ impl TimegrapherApp {
         });
     }
 
+    /// Where the take opened has USB lines and a clock log good enough to
+    /// correct on its own that measure its sound card apart, core's
+    /// caveat for it, short and long, in core's words. The rates stay
+    /// corrected by the USB lines.
+    fn clock_disagreement(&self) -> Option<(String, String)> {
+        let caveat = Caveat::from(self.take_clock.as_ref()?.sources_disagree()?);
+        Some((
+            caveat.short(self.lift_deg, 0)?,
+            caveat.long(Some(self.lift_deg))?,
+        ))
+    }
+
     /// The status bar's notices, right to left: a word each for what used
     /// to push the window down from the top (an error, the app having
     /// closed unexpectedly, sound kept from an earlier session, a newer
-    /// release), each opening its whole message and buttons over the
-    /// window. The bar keeps its height whatever it shows.
+    /// release) and the take's USB lines and clock log disagreeing, each
+    /// opening its whole message and buttons over the window. The bar keeps its height whatever it shows.
     fn status_notices(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         // A warning or a failure starts with its icon; the words are in the
@@ -12865,6 +12897,18 @@ impl TimegrapherApp {
                 "Click for the whole message",
             );
             popover(&resp, &mut |ui| self.error_notice(ui));
+        }
+        // On the right, so a long take name never hides it.
+        if let Some((short, long)) = self.clock_disagreement() {
+            let resp = item(
+                ui,
+                &format!("{short}…"),
+                Some(theme::Alert::Warning),
+                "The take's USB lines and clock log measure its sound card apart: click for both figures",
+            );
+            popover(&resp, &mut |ui| {
+                ui.label(long.as_str());
+            });
         }
     }
 
@@ -16692,6 +16736,7 @@ fn open_in_background(
                     Some(Opened {
                         log: o.log,
                         clock: o.clock,
+                        clock_from: o.clock_from,
                         breaks: o.breaks,
                         profiles: o.kept.map(|k| k.profiles),
                     })
@@ -27030,6 +27075,66 @@ mod tests {
         assert!(matches!(app.library, Ok(None)));
         assert!(!base.join("empty").exists());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
+    fn usb_lines_and_a_good_log_apart_say_so_in_the_status_bar() {
+        // An exact log, an entry a minute for half an hour, the card
+        // 20 ppm slow; USB lines 100 ppm off that, then within 5 ppm.
+        let log: Vec<(f64, f64)> = (0..31)
+            .map(|i| {
+                let audio = f64::from(i) * 60.0;
+                (audio, 1.7e9 + audio * (1.0 + 20e-6))
+            })
+            .collect();
+        let rated = |usb: f64| {
+            let mut fit = timegrapher_core::clock::ClockFit::for_rates(&log).unwrap();
+            fit.rate_from_usb(usb);
+            fit
+        };
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        assert_eq!(app.clock_disagreement(), None, "no take open");
+        app.take_clock = Some(rated(120.0));
+        let (short, long) = app.clock_disagreement().expect("100 ppm apart");
+        assert_eq!(short, "USB lines and clock log 100 ppm apart");
+        assert!(
+            long.contains("+120.0 ppm") && long.contains("+20 ± 0 ppm"),
+            "{long}"
+        );
+        app.take_clock = Some(rated(24.0));
+        assert_eq!(app.clock_disagreement(), None, "4 ppm apart");
+    }
+
+    /// The Rate's hover names where an opened take's clock came from: its
+    /// clock log, its USB lines or the correction kept for its input.
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
+    fn the_rate_hover_names_where_a_takes_clock_came_from() {
+        use timegrapher_core::take::ClockFrom;
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.take_clock = Some(timegrapher_core::clock::ClockFit::fixed(18.9, 600.0));
+        for (from, named) in [
+            (ClockFrom::Log, "On this take's clock log: "),
+            (ClockFrom::Usb, "On this take's USB lines: "),
+            (
+                ClockFrom::Correction,
+                "On the correction kept for the input it was recorded on: ",
+            ),
+        ] {
+            app.take_clock_from = Some(from);
+            let words = app.true_clock_words(0.0).unwrap();
+            assert!(
+                words.starts_with(named) && words.contains("18.9 ppm slow"),
+                "{words}"
+            );
+        }
     }
 
     /// Settings lists each kept clock; Forget removes that one from the
