@@ -107,14 +107,20 @@ pub fn clock(
 /// picks it: the USB lines' text (`usb`, as
 /// [`crate::usbclock::UsbClock::correction`] words it), the correction's
 /// (`correction`, such as [`crate::clockstore::DeviceClock::source_text`])
-/// and the clock log's path (`log`).
+/// and the clock log's path (`log`), named by its file name alone, as a
+/// session file names it: the folder above it, often a home folder, is
+/// left out.
 pub fn clock_source_text(
     from: ClockFrom,
     usb: Option<&str>,
     correction: Option<&str>,
     log: Option<&Path>,
 ) -> String {
-    let log = || log.map(|p| p.display().to_string()).unwrap_or_default();
+    let log = || {
+        log.and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
     match from {
         ClockFrom::LogRatedByUsb => format!(
             "{}; clock log {} for its breaks",
@@ -1181,6 +1187,26 @@ mod tests {
         assert_eq!(clock_from(false, Some(1.0), Some(2.0)), Some(Correction));
         assert_eq!(clock_from(false, Some(1.0), None), Some(Usb));
         assert_eq!(clock_from(false, None, None), None);
+    }
+
+    /// A clock log is named by its file name, as a session file names it:
+    /// never the folders above it, which hold the user's home path.
+    #[test]
+    fn a_clock_log_is_named_by_its_file_name_alone() {
+        let log = Path::new("/Users/someone/Timegrapher Data/take/clock.csv");
+        assert_eq!(
+            clock_source_text(ClockFrom::Log, None, None, Some(log)),
+            "from clock log clock.csv"
+        );
+        assert_eq!(
+            clock_source_text(
+                ClockFrom::LogRatedByUsb,
+                Some("from 3 USB lines"),
+                None,
+                Some(log)
+            ),
+            "from 3 USB lines; clock log clock.csv for its breaks"
+        );
     }
 
     #[test]
