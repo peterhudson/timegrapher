@@ -133,6 +133,10 @@ fn track_peaks(
     let mut pred = first as f64;
     let mut k = 0i64;
     let mut misses = 0;
+    // Faint peaks in a row each where its beat was due, and, once lost,
+    // the last faint peak and how many in a row came a beat apart.
+    let mut quiet_run = 0;
+    let mut steady: Option<(f64, usize)> = None;
     // A slow average of each side's match, for the beat window's floor.
     let mut typical = [level.unwrap_or(0.0); 2];
     let half = 0.3 * beat * fs;
@@ -185,10 +189,25 @@ fn track_peaks(
         // template, so it takes every peak.
         // With a level to judge by, a peak far weaker than the side's
         // typical beat may be a faint beat or, in a silence, the noise: it
-        // is kept, but neither steers the track nor ends a run missed, and
-        // a lost track takes only a beat as strong as the watch's (#609).
-        let weak =
-            level.is_some() && v < TRACK_FLOOR * typical[side(k)] * lost_decay(misses, per / fs);
+        // is kept, but neither steers the track nor ends a run missed (#609).
+        // The watch heard more quietly (turned, the mic touched, a gain
+        // control) is told from noise by its timing: a run of weak peaks
+        // each where its beat is due, or, once the track is lost, each a
+        // beat after the last, is the watch, and steers the track again.
+        let faint = level.is_some() && v < TRACK_FLOOR * typical[side(k)];
+        let due_by = |at: f64| (t - at).abs() < BEAT_WINDOW_S * fs;
+        quiet_run = if faint && !lost && due_by(pred) {
+            quiet_run + 1
+        } else {
+            0
+        };
+        steady = match steady {
+            Some((at, run)) if faint && lost && due_by(at + per) => Some((t, run + 1)),
+            _ if faint && lost => Some((t, 1)),
+            _ => None,
+        };
+        let regular = quiet_run >= QUIET_RUN || steady.is_some_and(|(_, run)| run >= QUIET_RUN);
+        let weak = faint && !regular;
         let take = gate.is_some()
             || out.len() < 4
             || (t - pred).abs() < MAX_OFFSET * per
@@ -271,24 +290,13 @@ const MAX_MISSES: usize = 16;
 /// silent stand matches the template at a few percent of a beat, and a
 /// watch's beats seldom fall below half their typical match, but a faint
 /// beat now and then does, so a weak peak is still kept unless it lies in
-/// a run missed.
+/// a run missed; and a run of them on time is the watch ([`QUIET_RUN`]).
 const TRACK_FLOOR: f32 = 0.25;
 
-/// Seconds of beats missed in a row over which [`TRACK_FLOOR`] halves, so
-/// a watch heard again more quietly is still found.
-const FLOOR_HALVES_S: f64 = 60.0;
-
-/// The least [`TRACK_FLOOR`] is scaled to, however long the run missed,
-/// so a long silence's noise never becomes a beat.
-const FLOOR_LEAST: f64 = 0.5;
-
-/// What [`TRACK_FLOOR`] is scaled by after `misses` beats of `beat_s`
-/// missed in a row: 1 until the track is lost, then halving every
-/// [`FLOOR_HALVES_S`], down to [`FLOOR_LEAST`].
-fn lost_decay(misses: usize, beat_s: f64) -> f32 {
-    let lost_s = misses.saturating_sub(MAX_MISSES) as f64 * beat_s;
-    0.5f64.powf(lost_s / FLOOR_HALVES_S).max(FLOOR_LEAST) as f32
-}
+/// Faint peaks in a row, each where its beat is due (or, for a lost
+/// track, each a beat after the last), that are the watch heard more
+/// quietly rather than noise, which lands anywhere in the span.
+const QUIET_RUN: usize = 4;
 
 /// Window around each beat used for templates: from `PRE_S` before the
 /// drop to `POST_S` after it. 20 ms before covers the unlock down to

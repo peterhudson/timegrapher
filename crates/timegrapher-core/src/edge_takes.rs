@@ -29,7 +29,7 @@ pub struct EdgeTake {
     pub id: &'static str,
     /// One line: what is awkward about the take.
     pub summary: &'static str,
-    /// Caveat codes every reading of the take carries.
+    /// The caveat codes a reading of the take carries: these and no others.
     pub caveats: &'static [&'static str],
     /// The rate, amplitude and beat error a reading must find (s/d on the
     /// true clock, degrees, ms), when the take holds enough of the watch
@@ -47,14 +47,14 @@ pub fn all() -> Vec<EdgeTake> {
         EdgeTake {
             id: "edge_short_8s",
             summary: "8 s of the watch: too short for its regularity to be assessed",
-            caveats: &["short_span"],
+            caveats: &["short_span", "clock_unknown"],
             truth: None,
             known: None,
         },
         EdgeTake {
             id: "edge_short_25s_settle_20",
             summary: "25 s with a 20 s settling time and no end given",
-            caveats: &[],
+            caveats: &["clock_unknown"],
             truth: None,
             known: None,
         },
@@ -69,7 +69,7 @@ pub fn all() -> Vec<EdgeTake> {
             id: "edge_sleep_jump",
             summary: "the computer slept 1,283 s at 60 s, shown by the clock log alone, \
                       and a 0.4 s step at 30 s under the break rule",
-            caveats: &["breaks"],
+            caveats: &["clock_unknown", "breaks", "sides_by_count"],
             truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
             known: None,
         },
@@ -84,7 +84,7 @@ pub fn all() -> Vec<EdgeTake> {
         EdgeTake {
             id: "edge_all_silence",
             summary: "30 s of the stand's noise and no watch",
-            caveats: &["no_watch"],
+            caveats: &["no_watch", "beats_missing", "clock_unknown"],
             truth: None,
             known: None,
         },
@@ -113,6 +113,22 @@ pub fn all() -> Vec<EdgeTake> {
             truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
             known: None,
         },
+        EdgeTake {
+            id: "edge_quiet_step_12db",
+            summary: "240 s of the watch, heard 12 dB more quietly from 100 s on over the \
+                      same stand noise",
+            caveats: &[],
+            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_quiet_step",
+            summary: "240 s of the watch, heard 16 dB more quietly from 100 s on over the \
+                      same stand noise, as when it is turned or the mic is touched",
+            caveats: &[],
+            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
+            known: None,
+        },
     ]
 }
 
@@ -132,6 +148,36 @@ fn watch(duration_s: f64, seed: u64) -> Vec<f32> {
         |_| 0.0,
     )
     .samples
+}
+
+/// The watch, `duration_s` long, heard `drop_db` more quietly from
+/// `from_s` on, over the stand's noise at the level `generate` adds it
+/// throughout.
+fn watch_stepping_down(duration_s: f64, from_s: f64, drop_db: f64, seed: u64) -> Vec<f32> {
+    let clean = generate(
+        &SynthConfig {
+            sample_rate: FS,
+            duration_s,
+            lift_deg: LIFT,
+            rate_s_per_day: RATE,
+            beat_error_ms: BEAT_ERROR,
+            snr_db: 300.0,
+            seed,
+            ..Default::default()
+        },
+        |_| AMPLITUDE,
+        |_| 0.0,
+    )
+    .samples;
+    let quieter = 10f32.powf(-drop_db as f32 / 20.0);
+    let from = (from_s * FS as f64) as usize;
+    let noise = silence(duration_s, seed + 50);
+    clean
+        .iter()
+        .zip(noise)
+        .enumerate()
+        .map(|(i, (&w, n))| if i < from { w } else { w * quieter } + n)
+        .collect()
 }
 
 /// The stand's noise and no watch, at the level `generate` adds it.
@@ -246,6 +292,20 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 (s, vec![], vec![], 0.0, "")
             }
             "edge_all_silence" => (silence(30.0, seed), vec![], vec![], 0.0, ""),
+            "edge_quiet_step_12db" => (
+                watch_stepping_down(240.0, 100.0, 12.0, seed),
+                vec![],
+                vec![],
+                0.0,
+                "",
+            ),
+            "edge_quiet_step" => (
+                watch_stepping_down(240.0, 100.0, 16.0, seed),
+                vec![],
+                vec![],
+                0.0,
+                "",
+            ),
             "edge_card_20ppm" => (watch(120.0, seed), vec![], vec![], 20.0, ""),
             other => return Err(format!("no recipe for {other}")),
         };
