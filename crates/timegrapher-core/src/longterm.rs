@@ -688,9 +688,56 @@ pub fn rate_profile(profile: &[f64], period_s: f64) -> Vec<f64> {
         .collect()
 }
 
+/// The rate (s/d) each cycle of a fold ran at through its period: each of
+/// `rows` (one cycle's timing offsets, seconds per phase bin, as
+/// [`Fold::raster`] keeps them, or rows averaged from them) as minus its
+/// slope across each bin's neighbours; the first and last bins, with only
+/// one neighbour in their cycle, from it and themselves.
+pub fn rate_rows(rows: &[Vec<f64>], period_s: f64) -> Vec<Vec<f64>> {
+    rows.iter()
+        .map(|r| {
+            let n = r.len();
+            let dt = period_s / n as f64;
+            (0..n)
+                .map(|j| {
+                    let a = if j > 0 { r[j - 1] } else { r[j] };
+                    let b = if j + 1 < n { r[j + 1] } else { r[j] };
+                    let span = if j > 0 && j + 1 < n { 2.0 } else { 1.0 };
+                    -(b - a) / (span * dt) * 86400.0
+                })
+                .collect()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A cycle that gains at a steady 8.64 s/d (1e-4 of time) reads 8.64
+    /// in every bin, the end bins from their one neighbour; a gap stays a
+    /// gap beside it.
+    #[test]
+    fn each_cycle_reads_its_own_rate() {
+        let period = 100.0;
+        let gaining: Vec<f64> = (0..10).map(|j| -1e-4 * (j as f64 * 10.0)).collect();
+        let losing: Vec<f64> = gaining.iter().map(|v| -v).collect();
+        let mut gap = gaining.clone();
+        gap[4] = f64::NAN;
+        let rows = rate_rows(&[gaining, losing, gap], period);
+        assert!(
+            rows[0].iter().all(|v| (v - 8.64).abs() < 1e-9),
+            "{:?}",
+            rows[0]
+        );
+        assert!(
+            rows[1].iter().all(|v| (v + 8.64).abs() < 1e-9),
+            "{:?}",
+            rows[1]
+        );
+        assert!(rows[2][3].is_nan() && rows[2][5].is_nan());
+        assert!((rows[2][4] - 8.64).abs() < 1e-9);
+    }
 
     #[test]
     fn a_phase_on_a_bin_edge_stays_in_one_bin() {
