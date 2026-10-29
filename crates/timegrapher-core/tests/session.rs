@@ -1081,3 +1081,12 @@ fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
     assert_eq!(other.len(), 1, "{other:?}");
     assert!(other[0].contains("every 7.30 s"), "{}", other[0]);
 }
+
+/// A reading's beat error is from the unlock where it was found, else from
+/// the drop, as a size.
+#[test]
+fn a_readings_beat_error_is_the_unlocks_else_the_drops() {
+    assert_eq!(session::beat_error_size(Some(-0.4), Some(0.3)), Some(0.4));
+    assert_eq!(session::beat_error_size(None, Some(-0.3)), Some(0.3));
+    assert_eq!(session::beat_error_size(None, None), None);
+}

@@ -24,8 +24,10 @@ fn signed(v: f64, digits: usize) -> String {
     timegrapher_core::library::signed_text(v, digits)
 }
 
-/// The CLI's preferred correction wins over its USB estimate; both stay
-/// beside the original card-clock reading in the document.
+/// The rate the CLI chose: corrected for the sound card's clock where the
+/// document says which correction it applied (`clock`: one stored or
+/// given, else the recording's USB lines), else as read on the card's
+/// clock. The choice is the CLI's; this only reads it.
 fn analyze_rate(doc: &Value) -> Option<(f64, String)> {
     if let Some(rate) = doc["clock"]["rate_s_per_day"].as_f64() {
         let source = doc["clock"]["from"]
@@ -35,11 +37,6 @@ fn analyze_rate(doc: &Value) -> Option<(f64, String)> {
             rate,
             format!("corrected for the sound card's clock ({source})"),
         ))
-    } else if let Some(rate) = doc["rate_corrected_s_per_day"].as_f64() {
-        Some((
-            rate,
-            "corrected using the recording's USB clock lines".into(),
-        ))
     } else {
         doc["overall"]["rate_s_per_day"]
             .as_f64()
@@ -47,9 +44,10 @@ fn analyze_rate(doc: &Value) -> Option<(f64, String)> {
     }
 }
 
-/// One reading: rate, amplitude and beat error (as a size), each with its
-/// standard error where the document gives one.
-fn readings(m: &Value, rate: Option<f64>) -> Option<String> {
+/// One reading: rate, amplitude and beat error, each with its standard
+/// error where the document gives one. The beat error is core's choice of
+/// the reading's signed unlock and drop figures (`drop_ms`), as a size.
+fn readings(m: &Value, rate: Option<f64>, drop_ms: Option<f64>) -> Option<String> {
     let conf = &m["confidence"];
     let mut parts = Vec::new();
     if let Some(r) = rate {
@@ -62,14 +60,12 @@ fn readings(m: &Value, rate: Option<f64>) -> Option<String> {
     if let Some(a) = m["amplitude_deg"].as_f64() {
         parts.push(format!("amplitude {a:.0}{}°", pm(&conf["amplitude"], 0)));
     }
-    let be = m["beat_error_unlock_ms"]
-        .as_f64()
-        .or(m["beat_error_ms"].as_f64())
-        .or(m["overall"]["beat_error_ms"].as_f64());
+    let be =
+        timegrapher_core::session::beat_error_size(m["beat_error_unlock_ms"].as_f64(), drop_ms);
     if let Some(b) = be {
         parts.push(format!(
             "beat error {:.2}{} ms",
-            b.abs(),
+            b,
             pm(&conf["beat_error"], 2)
         ));
     }
@@ -179,7 +175,9 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
             lines.push(crate::caveats::no_regular_beat(doc, doc["bph"].as_f64()));
         } else {
             let selected = analyze_rate(doc);
-            if let Some(r) = readings(doc, selected.as_ref().map(|r| r.0)) {
+            // The whole recording's drop figure is its overall fit's.
+            let drop = doc["overall"]["beat_error_ms"].as_f64();
+            if let Some(r) = readings(doc, selected.as_ref().map(|r| r.0), drop) {
                 lines.push(format!("Readings: {r}."));
             }
             if let Some((_, basis)) = selected {
@@ -200,7 +198,8 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
             let said = if m["watch_heard"] == false {
                 "no regular beat found".to_string()
             } else {
-                readings(m, m["rate_s_per_day"].as_f64()).unwrap_or_default()
+                readings(m, m["rate_s_per_day"].as_f64(), m["beat_error_ms"].as_f64())
+                    .unwrap_or_default()
             };
             lines.push(format!("- {name}: {said}"));
         }
