@@ -1,6 +1,7 @@
-//! The strip across a take's breaks, headless: a steady watch's trace
-//! runs on through a gap, as core reads its beats on true time.
+//! The strip, headless: a steady watch's trace runs on through a gap,
+//! as core reads its beats on true time; Fit, and dragging to look back.
 
+use super::tests::{synthetic, themed};
 use super::*;
 use timegrapher_core::beats::Beat;
 use timegrapher_core::breaks::{renumber, Break};
@@ -75,4 +76,127 @@ fn a_steady_take_runs_on_through_a_pause_on_the_strip() {
             assert!(lead.abs() < half, "{} at {}: {lead}", b.index, b.time);
         }
     }
+}
+
+/// Fit stays on and keeps the whole session in view frame by frame;
+/// zooming or panning the strip's time turns it off, its width doesn't.
+#[test]
+fn fit_follows_the_take_until_the_strip_is_zoomed_or_panned() {
+    let mut app = synthetic(40.0, 0.0);
+    app.fit_strip();
+    // As if the session had grown since the last frame.
+    app.strip.set_span(10.0);
+    app.follow_fit();
+    assert!((app.strip.span_s - app.latest_s()).abs() < 1e-9);
+    let end = app.latest_s();
+    app.apply_strip_input(
+        StripInput {
+            width_factor: 2.0,
+            ..Default::default()
+        },
+        end,
+    );
+    assert!(app.strip_fit, "the width is not the strip's time");
+    app.apply_strip_input(
+        StripInput {
+            span_factor: 0.5,
+            ..Default::default()
+        },
+        end,
+    );
+    assert!(!app.strip_fit);
+    let zoomed = app.strip.span_s;
+    app.follow_fit();
+    assert_eq!(app.strip.span_s, zoomed, "off, it leaves the length alone");
+    app.fit_strip();
+    app.apply_strip_input(
+        StripInput {
+            time_shift_s: -5.0,
+            ..Default::default()
+        },
+        end,
+    );
+    assert!(!app.strip_fit);
+}
+
+/// Fit is one fixed switch: the strip's toolbar is as wide with it on
+/// as off, so nothing after it moves.
+#[test]
+fn the_fit_switch_never_moves_the_strip_toolbar() {
+    let mut app = synthetic(40.0, 0.0);
+    let ctx = themed();
+    let width = |app: &mut TimegrapherApp| {
+        let mut w = 0.0;
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    w = ui
+                        .horizontal(|ui| app.strip_settings(ui))
+                        .response
+                        .rect
+                        .width();
+                });
+            });
+        }
+        w
+    };
+    app.strip_fit = false;
+    let off = width(&mut app);
+    app.fit_take();
+    assert!(app.strip_fit, "an opened take is fitted");
+    let on = width(&mut app);
+    assert_eq!(off, on);
+}
+
+#[test]
+fn dragging_the_strip_looks_back_and_returns() {
+    let mut app = synthetic(40.0, 0.0);
+    let latest = app.latest_s();
+    let back = StripInput {
+        time_shift_s: -5.0,
+        ..Default::default()
+    };
+    app.apply_strip_input(back, app.strip_end_s());
+    assert!((app.strip_end_s() - (latest - 5.0)).abs() < 1e-6);
+    let forward = StripInput {
+        time_shift_s: 20.0,
+        ..Default::default()
+    };
+    app.apply_strip_input(forward, app.strip_end_s());
+    assert_eq!(
+        app.strip_end, None,
+        "past the newest beat follows live again"
+    );
+
+    app.follow = true;
+    let slide = StripInput {
+        lead_shift_ms: 1.0,
+        ..Default::default()
+    };
+    let before = app.anchor.unwrap().time;
+    app.apply_strip_input(slide, app.strip_end_s());
+    assert!((app.anchor.unwrap().time - before - 0.001).abs() < 1e-12);
+    assert!(!app.follow, "sliding by hand ends auto-centring");
+
+    let zoom = StripInput {
+        span_factor: 2.0,
+        width_factor: 0.5,
+        ..Default::default()
+    };
+    app.apply_strip_input(zoom, app.strip_end_s());
+    assert_eq!(app.strip.span_s, 60.0);
+    assert_eq!(app.strip.half_width_ms, 5.0);
+
+    // Zoomed about a time, that time stays where it was on the strip.
+    let end = app.strip_end_s();
+    let at = end - 15.0;
+    let zoom = StripInput {
+        span_factor: 0.5,
+        zoom_at: Some(at),
+        ..Default::default()
+    };
+    app.apply_strip_input(zoom, end);
+    assert_eq!(app.strip.span_s, 30.0);
+    let now = app.strip_end.expect("looking back");
+    assert!(((now - at) / 30.0 - 15.0 / 60.0).abs() < 1e-9, "{now}");
 }
