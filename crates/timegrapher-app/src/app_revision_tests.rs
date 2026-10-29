@@ -360,7 +360,7 @@ fn every_pane_follows_the_lift_the_clock_and_the_masks() {
             Box::new(move |app| {
                 app.put_take_clock(
                     Some(timegrapher_core::clock::ClockFit::fixed(50.0, duration)),
-                    Some(timegrapher_core::take::ClockFrom::Log),
+                    None,
                 )
             }),
         ),
