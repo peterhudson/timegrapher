@@ -425,25 +425,14 @@ fn read_take(
         card_clock: false,
         settle_s: None,
     };
-    let mut usb = None;
-    let mut correction = None;
     let mut progress = Progress::new();
     let opened = take::open_entry(
         &base,
         &m,
         &e,
         &settings,
-        |files| {
-            usb = take::usb(files)?;
-            Ok(usb.as_ref().map(|(ppm, _)| *ppm))
-        },
-        |first| {
-            correction = match (clock_args.card_ppm, clock_args.device, m.card_ppm) {
-                (None, None, Some(p)) => Some((p, format!("card_ppm {p} in {}", take::MANIFEST))),
-                (card_ppm, device, _) => take::correction(first, device, card_ppm)?,
-            };
-            Ok(correction.as_ref().map(|(ppm, _)| *ppm))
-        },
+        take::usb,
+        |first| take::correction_for(&m, first, clock_args.card_ppm, clock_args.device),
         |done, total| {
             let pct = 100.0 * done / total.max(f64::MIN_POSITIVE);
             progress.at(pct, Some(100.0), |d| format!("{d:.0}"), "%")
@@ -451,13 +440,11 @@ fn read_take(
     )?;
     progress.end();
     let log_path = e.clock.as_ref().map(|c| base.join(c));
-    let clock = crate::clock_cmd::applied(
-        opened.clock,
-        opened.clock_from,
-        usb,
-        correction,
-        log_path.as_deref(),
-    );
+    let clock = opened.clock.map(|fit| crate::clock_cmd::AppliedClock {
+        fit,
+        ppm: opened.clock_ppm,
+        from: opened.clock_source.clone().unwrap_or_default(),
+    });
     // Each entry from the end of its settling, as `session` and the app
     // read it.
     let stretches = joined::take_spans(&m, opened.log.duration_s);
