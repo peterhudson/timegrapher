@@ -970,13 +970,10 @@ fn add_to_session(
 fn facts(c: &Check) -> Vec<String> {
     let mut f = Vec::new();
     if !c.watch_heard {
-        f.push(match (c.timing_scatter_ms, c.timing_scatter_fraction) {
-            (Some(ms), Some(x)) => format!(
-                "No regular beat found (timing scatter {ms:.1} ms, {:.1}% of a beat)",
-                100.0 * x
-            ),
-            _ => "No regular beat found".to_string(),
-        });
+        f.push(timegrapher_core::beats::no_regular_beat_text(
+            c.timing_scatter_ms.map(|ms| ms * 1000.0),
+            c.timing_scatter_fraction,
+        ));
     }
     if c.clipping.beats > 0 {
         f.push(format!(

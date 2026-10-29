@@ -204,17 +204,21 @@ fn takes_build_up_a_session() {
         .unwrap();
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{err}");
-    assert!(err.contains("(DD) at 0 s is left out"), "{err}");
+    assert!(
+        err.contains("Dial Down (DD), at 0 s is left out: a settle_s"),
+        "{err}"
+    );
     let j = doc(&out);
     assert_eq!(j["readings"].as_array().unwrap().len(), 2);
     let left = j["left_out"].as_array().unwrap();
     assert_eq!(left.len(), 1);
-    assert_eq!(left[0]["position"], "DD");
+    // Named as the readings name it: Witschi's code.
+    assert_eq!(left[0]["position"], "CB");
     assert!(
         left[0]["why"]
             .as_str()
             .unwrap()
-            .contains("settle_s of 1000"),
+            .starts_with("a settle_s of 1000"),
         "{j}"
     );
     // The summary and the report say so too.
@@ -229,7 +233,7 @@ fn takes_build_up_a_session() {
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(
-        text.contains("Left out     ") && text.contains("(DD) at 0 s"),
+        text.contains("Left out     ") && text.contains("Dial Down (DD), at 0 s"),
         "{text}"
     );
     let html = fs::read_to_string(sess.join("session_report").join("report.html")).unwrap();
