@@ -219,11 +219,16 @@ impl<'a> Entry<'a> {
         }
     }
 
+    /// The lift angle it gives, when inside
+    /// [`crate::input_domain::LIFT_RANGE_DEG`]: one outside it (a custom
+    /// calibre saved before the range, or edited by hand) is set aside,
+    /// so a reading takes the default and says the lift is unknown.
     pub fn lift_angle_deg(&self) -> Option<f64> {
         match self {
             Entry::Table(c) => c.lift_angle_deg,
             Entry::Custom(c) => c.lift_angle_deg,
         }
+        .filter(|l| crate::input_domain::lift_deg(*l).is_ok())
     }
 
     pub fn escape_teeth(&self) -> Option<u32> {
@@ -496,6 +501,21 @@ mod tests {
             .wheels(rolex)
             .iter()
             .any(|w| w.name == "third wheel" && w.period_s == 240.0));
+    }
+
+    /// A custom calibre's lift outside the one range is set aside, so a
+    /// reading takes the default and says the lift is unknown.
+    #[test]
+    fn a_custom_lift_outside_the_range_is_set_aside() {
+        for (lift, kept) in [(5.0, None), (95.0, None), (10.0, Some(10.0)), (44.0, Some(44.0))] {
+            let mut u = store();
+            u.custom[0].lift_angle_deg = Some(lift);
+            let name = u.custom[0].name.clone();
+            let cat = Catalog::new(&u);
+            assert_eq!(cat.find(&name).unwrap().lift_angle_deg(), kept, "{lift}");
+            let c = crate::take::calibre_named(&name, &u).unwrap();
+            assert_eq!(c.lift_angle_deg, kept, "{lift}");
+        }
     }
 
     #[test]

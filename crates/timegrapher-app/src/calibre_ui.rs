@@ -11,6 +11,7 @@
 //! the Project only opens a pre-filled GitHub issue in the browser: the
 //! app sends nothing itself.
 
+use timegrapher_core::input_domain::LIFT_RANGE_DEG;
 use crate::fields;
 use crate::marks::title_case;
 use crate::settings;
@@ -343,7 +344,7 @@ impl Calibres {
     /// table gives one, else the watch's own.
     pub fn watch_lift(&self, w: &timegrapher_core::library::Watch) -> Option<f64> {
         self.lift(w.calibre.as_deref().unwrap_or_default())
-            .or(w.lift)
+            .or(w.lift.filter(|l| LIFT_RANGE_DEG.contains(l)))
     }
 
     /// The beat rate a take of `w` starts with, as [`Self::watch_lift`].
@@ -1882,11 +1883,13 @@ impl Calibres {
                     ui,
                     &format!("custom-lift-{place}-{i}"),
                     &mut l,
-                    0.0..=90.0,
+                    // 0 leaves it unset; any other lift is held to the range.
+                    0.0..=*LIFT_RANGE_DEG.end(),
                     &LIFT,
                     50.0,
                 ) {
-                    c.lift_angle_deg = (l > 0.0).then_some(l);
+                    c.lift_angle_deg = (l > 0.0)
+                        .then(|| l.clamp(*LIFT_RANGE_DEG.start(), *LIFT_RANGE_DEG.end()));
                     change.lift = c.lift_angle_deg;
                 }
                 ui.label("°");
@@ -2357,6 +2360,18 @@ fn maker_words(maker: &str) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A watch's own stored lift outside the one range is set aside, as a
+    /// calibre's is: the take starts on the default.
+    #[test]
+    fn a_watchs_lift_outside_the_range_is_set_aside() {
+        let cal = Calibres::in_memory();
+        for (lift, kept) in [(120.0, None), (5.0, None), (48.0, Some(48.0))] {
+            let mut w = timegrapher_core::library::Watch::new("Test");
+            w.lift = Some(lift);
+            assert_eq!(cal.watch_lift(&w), kept, "{lift}");
+        }
+    }
 
     /// A source reads as its name, its link and what it says, without
     /// the calibre's own name the panel is headed by.
