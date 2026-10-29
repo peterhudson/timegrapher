@@ -71,7 +71,11 @@ fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
     let crash = base.join("crash.log");
     std::fs::write(&crash, "panicked").unwrap();
     app.crash = Some(crash);
-    app.message = Some(("The microphone couldn't be opened.".into(), true));
+    // A passing message, which is cut short on the left, not a notice.
+    app.message = Some((
+        "Saved the take and its analysis into the watch's folder in the library".into(),
+        false,
+    ));
     // Listening to an input with a long name, whose words can be cut.
     app.source_label = "USB PnP Sound Device Analog Stereo Microphone Input".into();
     let _tx = queued_capture(&mut app, &base);
@@ -96,11 +100,7 @@ fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
                 }
             }
         }
-        // The notices: the leftmost is the error's.
-        let notices = [
-            "Closed Unexpectedly…",
-            "The microphone couldn't be opened.…",
-        ];
+        let notices = ["Closed Unexpectedly…"];
         let edge = found
             .iter()
             .filter(|(t, _)| notices.contains(&t.as_str()))
