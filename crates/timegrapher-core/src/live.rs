@@ -652,7 +652,8 @@ impl LiveAnalyzer {
             _ => {
                 let bph = a.bph.unwrap_or_else(|| beats::guess_bph(&env, fs));
                 let (b, t) = beats::detect(&env, fs, bph);
-                let heard = snr(&env, fs, &b) >= self.cfg.min_snr || clipped_out(x, fs, &b);
+                let heard =
+                    heard_over(snr(&env, fs, &b), self.cfg.min_snr) || clipped_out(x, fs, &b);
                 if heard && b.len() >= 8 {
                     self.template = Some(t);
                     self.bph = Some(bph);
@@ -673,8 +674,8 @@ impl LiveAnalyzer {
             return;
         }
         let s = snr(&env, fs, &local);
-        self.snr = Some(s);
-        let heard = s >= self.cfg.min_snr || clipped_out(x, fs, &local);
+        self.snr = s;
+        let heard = heard_over(s, self.cfg.min_snr) || clipped_out(x, fs, &local);
         if !heard || self.template.is_none() {
             self.keep_candidates(&local, off, from, to, beat);
             self.quiet_passes += 1;
@@ -729,7 +730,7 @@ impl LiveAnalyzer {
             if any_clipped && Clipping::measure(x, fs, std::slice::from_ref(b)).beats > 0 {
                 self.clipped.push(t);
             }
-            if b.quality > 0.4 {
+            if b.is_good() {
                 if let Some(w) = profile::snippet(&env, fs, b.time) {
                     let even = b.index.rem_euclid(2) == 0;
                     self.snippets.push_back((t, even, w.to_vec()));
@@ -990,13 +991,16 @@ fn clipped_out(x: &[f32], fs: f64, beats: &[Beat]) -> bool {
 }
 
 /// The signal figure of `beats` in `env`: the median beat peak over the
-/// median of the envelope, as the readings give it.
-pub fn signal_figure(env: &[f32], fs: f64, beats: &[Beat]) -> f32 {
+/// median of the envelope, as the readings give it. `None` where the
+/// envelope's median is zero (digital silence, a muted input), which has
+/// no figure.
+pub fn signal_figure(env: &[f32], fs: f64, beats: &[Beat]) -> Option<f32> {
     snr(env, fs, beats)
 }
 
-/// Median beat peak over the median of the envelope.
-fn snr(env: &[f32], fs: f64, beats: &[Beat]) -> f32 {
+/// Median beat peak over the median of the envelope, or `None` when that
+/// median is zero. With no beats it is 0.
+fn snr(env: &[f32], fs: f64, beats: &[Beat]) -> Option<f32> {
     let w = (0.001 * fs) as usize;
     let mut peaks: Vec<f32> = beats
         .iter()
@@ -1008,11 +1012,17 @@ fn snr(env: &[f32], fs: f64, beats: &[Beat]) -> f32 {
         })
         .collect();
     if peaks.is_empty() {
-        return 0.0;
+        return Some(0.0);
     }
     let mut all: Vec<f32> = env.iter().step_by(7).copied().collect();
-    let floor = median_f32(&mut all).max(f32::MIN_POSITIVE);
-    median_f32(&mut peaks) / floor
+    let floor = median_f32(&mut all);
+    (floor > 0.0).then(|| median_f32(&mut peaks) / floor)
+}
+
+/// Whether `snr` says a watch is heard: at least `min`. Digital silence,
+/// with no figure, is not.
+fn heard_over(snr: Option<f32>, min: f32) -> bool {
+    snr.is_some_and(|s| s >= min)
 }
 
 #[cfg(test)]
@@ -1232,6 +1242,35 @@ mod tests {
         // Too small for a sign, both read the size with one sign.
         let (live, _, file) = read(-0.03);
         assert!(live.abs() < 0.1 && file.abs() < 0.1, "{live} {file}");
+    }
+
+    #[test]
+    fn a_muted_input_has_no_signal_figure() {
+        // A muted input: digital silence with a lone non-zero sample now
+        // and then. The envelope's median is zero, so a beat peak over it
+        // has no figure; it once read as an enormous one.
+        let fs = 48_000;
+        let mut x = vec![0.0f32; 10 * fs as usize];
+        for k in (0..x.len()).step_by(6_000) {
+            x[k] = 0.5;
+        }
+        let mut live = LiveAnalyzer::new(fs, LiveConfig::default());
+        for chunk in x.chunks(4_800) {
+            live.push(chunk);
+        }
+        let r = live.reading(10.0);
+        assert_eq!(r.snr, None);
+        assert_eq!(r.rate_s_per_day, None);
+        let beats = [Beat {
+            index: 0,
+            time: 1.0,
+            quality: 1.0,
+        }];
+        let mut env = vec![0.0f32; 2 * fs as usize];
+        env[fs as usize] = 0.5;
+        assert_eq!(signal_figure(&env, fs as f64, &beats), None);
+        env.iter_mut().for_each(|v| *v += 0.01);
+        assert_eq!(signal_figure(&env, fs as f64, &beats), Some(0.51 / 0.01));
     }
 
     #[test]

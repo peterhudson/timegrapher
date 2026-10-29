@@ -318,12 +318,9 @@ impl Measurement {
         crate::measure::add(&mut self.caveats, crate::measure::Caveat::LiftUnknown);
     }
 
-    /// The beat error the report shows: from the unlock where it was
-    /// found, else from the drop. Unsigned, ms.
+    /// The beat error the report shows ([`beat_error_size`]). Unsigned, ms.
     pub fn beat_error(&self) -> Option<f64> {
-        self.beat_error_unlock_ms
-            .or(self.beat_error_ms)
-            .map(f64::abs)
+        beat_error_size(self.beat_error_unlock_ms, self.beat_error_ms)
     }
 
     /// The seconds measured: the stretch read, less what was masked out.
@@ -392,6 +389,13 @@ fn percentile(v: &[f64], q: f64) -> Option<f64> {
 fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
     let mut w: Vec<f64> = v.filter(|x| x.is_finite()).collect();
     (!w.is_empty()).then(|| median(&mut w))
+}
+
+/// The beat error a reading shows, from its signed beat errors: from the
+/// unlock (`unlock_ms`) where it was found, else from the drop
+/// (`drop_ms`). Unsigned, ms. The MCP server's leads take theirs here too.
+pub fn beat_error_size(unlock_ms: Option<f64>, drop_ms: Option<f64>) -> Option<f64> {
+    unlock_ms.or(drop_ms).map(f64::abs)
 }
 
 /// Measure the stretch of `log` from `from_s` to `to_s` (seconds on the
@@ -514,7 +518,7 @@ pub fn measure_masked(
     };
     let span = map(to_s) - map(from_s) - gaps - masked_s;
     let expected = crate::beats::expected_beats(span, log.bph);
-    let clean = beats.iter().filter(|b| b.quality > 0.4).count();
+    let clean = beats.iter().filter(|b| b.is_good()).count();
     let clipped = log
         .clipped_beats
         .iter()

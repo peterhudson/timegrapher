@@ -478,7 +478,9 @@ percentile of the 10 s rates and of the 2 s amplitudes. Where the beat
 error's sign differs either side of a cut (a break, a jump, a move or
 its settling) in that stretch, it combines the sizes either side, as
 `session` does, and says the "whole take is given as a size: its sign
-differs either side of a cut".
+differs either side of a cut". The whole take's hover also names the
+breaks it is read across and, on an opened take whose Tick and Tock
+were named by the beat count across them, says so, as `session` does.
 No reading is graded. That the input's clock hasn't been measured is
 said in the Rate card's **?** rather than on the card, with how to
 measure it. When the beats found don't come at regular intervals (their
@@ -772,14 +774,17 @@ recording carries USB lines, they set the rate instead, log or not, as
 breaks, and the Rate's hover says first that the figure is on the take's USB lines,
 by how many ppm, and what the log measured. Where that log is good enough
 to correct on its own and the two measure the card more than 5 ppm apart
-(and more than twice the log's standard error), the status bar says so,
-for instance "USB lines and clock log 100 ppm apart", with both figures
-in its hover; the rate stays on the USB lines. The lines are read from the
+(and more than twice the log's standard error), the status bar's right
+side warns of it, for instance "USB lines and clock log 100 ppm apart…",
+and a click gives both figures; the rate stays on the USB lines. The lines are read from the
 first ten minutes of the take's sound after it opens, and the figures
 and charts follow once they are. In the Watches view, a take's Rate is
 corrected the same way. A log
 that can't be read is named in the line shown on opening, and the take
-is read as heard. A recording opened without a log shows no True Clock. **Settings**,
+is read as heard. A take whose session file names no clock log is read
+on its USB lines, else on the correction kept for the input it was
+recorded on, as `timegrapher session` reads it, and the Rate's hover
+names which; with neither, it shows no True Clock. **Settings**,
 under Microphone's **Quartz Correction**, lists each input's kept clock, its own (its error in ppm
 and in s/d, the day it was measured, how, and over how long), with
 **Forget** beside it; the input listening is marked "(listening)", or

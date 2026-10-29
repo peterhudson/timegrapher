@@ -259,7 +259,7 @@ pub fn measure(
         );
         Some(StretchProfiles {
             end_s: to.min(log.duration_s),
-            signal: Some(crate::live::signal_figure(&env, fs, &local)),
+            signal: crate::live::signal_figure(&env, fs, &local),
             sides,
         })
     };

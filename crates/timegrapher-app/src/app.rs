@@ -1922,6 +1922,7 @@ type Stretches = Vec<(f64, Position)>;
 struct Opened {
     log: BeatLog,
     clock: Option<timegrapher_core::clock::ClockFit>,
+    clock_from: Option<timegrapher_core::take::ClockFrom>,
     breaks: Vec<timegrapher_core::breaks::Break>,
     profiles: Option<Vec<analysis_take::StretchProfiles>>,
 }
@@ -2230,6 +2231,9 @@ pub struct TimegrapherApp {
     /// on. The readings, tables and True Clock use it in place of the
     /// clock kept for the input.
     take_clock: Option<timegrapher_core::clock::ClockFit>,
+    /// Where [`Self::take_clock`] came from, as `take::open_entry` picked
+    /// it, so the Rate's hover names it.
+    take_clock_from: Option<timegrapher_core::take::ClockFrom>,
     /// The take on show's breaks, as core reads them with its beats: the
     /// pauses it lists, its clock's steps and the jumps in its beats.
     /// `None` for a session heard here, whose readings go by the clock
@@ -2763,6 +2767,7 @@ impl TimegrapherApp {
             carried_positions: None,
             pending_recorded: None,
             take_clock: None,
+            take_clock_from: None,
             take_breaks: None,
             audio_beats: None,
             brush: None,
@@ -3044,6 +3049,7 @@ impl TimegrapherApp {
                 self.opened_masks = None;
                 self.opened_positions = None;
                 self.take_clock = None;
+                self.take_clock_from = None;
                 self.take_breaks = None;
                 self.audio_beats = None;
                 self.masking = false;
@@ -3241,6 +3247,7 @@ impl TimegrapherApp {
         self.opened_masks = None;
         self.opened_positions = None;
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.masking = false;
@@ -4214,6 +4221,7 @@ impl TimegrapherApp {
         self.stop();
         self.pending_recorded = None;
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.masked.clear();
@@ -4491,6 +4499,7 @@ impl TimegrapherApp {
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.batch = Some(Batch {
@@ -4576,6 +4585,7 @@ impl TimegrapherApp {
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.take_clock = None;
+        self.take_clock_from = None;
         self.take_breaks = None;
         self.audio_beats = None;
         self.batch = Some(Batch {
@@ -4851,10 +4861,12 @@ impl TimegrapherApp {
                     let Opened {
                         log,
                         clock,
+                        clock_from,
                         breaks,
                         profiles,
                     } = o;
                     self.take_clock = clock;
+                    self.take_clock_from = clock_from;
                     self.take_breaks = Some(breaks);
                     // Read again at a new beat rate: the positions as they were.
                     let carried = self.carried_positions.take();
@@ -12610,12 +12622,20 @@ impl TimegrapherApp {
             ));
         }
         if let Some(f) = &self.take_clock {
+            use timegrapher_core::take::ClockFrom;
             let ppm = format!("{:.1}", f.ppm.abs());
             let way = if f.ppm >= 0.0 { "slow" } else { "fast" };
+            let on = match self.take_clock_from {
+                Some(ClockFrom::Usb) => "this take's USB lines",
+                Some(ClockFrom::Correction) => {
+                    "the correction kept for the input it was recorded on"
+                }
+                _ => "this take's clock log",
+            };
             return Some(format!(
-                "On this take's clock log: the rate corrected for the sound card's own \
-                 clock, {ppm} ppm {way}, as the Positions table reads it. tg reads the \
-                 recording on the card's clock."
+                "On {on}: the rate corrected for the sound card's own clock, {ppm} ppm \
+                 {way}, as the Positions table reads it. tg reads the recording on the \
+                 card's clock."
             ));
         }
         let c = self.clock.as_ref()?;
@@ -12805,8 +12825,8 @@ impl TimegrapherApp {
     /// The status bar's notices, right to left: a word each for what used
     /// to push the window down from the top (an error, the app having
     /// closed unexpectedly, sound kept from an earlier session, a newer
-    /// release), each opening its whole message and buttons over the
-    /// window. The bar keeps its height whatever it shows.
+    /// release) and the take's USB lines and clock log disagreeing, each
+    /// opening its whole message and buttons over the window. The bar keeps its height whatever it shows.
     fn status_notices(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         // A warning or a failure starts with its icon; the words are in the
@@ -12903,6 +12923,18 @@ impl TimegrapherApp {
             );
             popover(&resp, &mut |ui| self.error_notice(ui));
         }
+        // On the right, so a long take name never hides it.
+        if let Some((short, long)) = self.clock_disagreement() {
+            let resp = item(
+                ui,
+                &format!("{short}…"),
+                Some(theme::Alert::Warning),
+                "The take's USB lines and clock log measure its sound card apart: click for both figures",
+            );
+            popover(&resp, &mut |ui| {
+                ui.label(long.as_str());
+            });
+        }
     }
 
     /// The status bar's left side: what is showing, the signal, the kept
@@ -12965,10 +12997,6 @@ impl TimegrapherApp {
         if self.session.recorder.is_none() && self.marks_unsaved() {
             ui.label(RichText::new("Changes not saved").color(pal.text_secondary))
                 .on_hover_text(SAVE_MARKS_HINT);
-        }
-        if let Some((short, long)) = self.clock_disagreement() {
-            ui.label(RichText::new(short).small().color(pal.text_secondary))
-                .on_hover_text(long);
         }
         if let Some(r) = &self.session.recorder {
             let since = self.unsaved_s();
@@ -16733,6 +16761,7 @@ fn open_in_background(
                     Some(Opened {
                         log: o.log,
                         clock: o.clock,
+                        clock_from: o.clock_from,
                         breaks: o.breaks,
                         profiles: o.kept.map(|k| k.profiles),
                     })
@@ -17727,14 +17756,20 @@ struct WholeTake {
 /// card's own reading never reaches across one, so the whole take's hover
 /// says them.
 fn whole_breaks_text(w: &WholeTake) -> String {
-    let breaks: Vec<_> =
-        w.m.caveats
-            .iter()
-            .filter(|c| matches!(c, Caveat::Breaks { .. }))
-            .cloned()
-            .collect();
+    cut_caveats_text(&w.m.caveats)
+}
+
+/// Of `caveats`, the breaks and the sides named by the beat count across
+/// them, as the cards word them, each after a space.
+fn cut_caveats_text(caveats: &[Caveat]) -> String {
+    let picked = |keep: fn(&Caveat) -> bool| -> Vec<Caveat> {
+        caveats.iter().filter(|c| keep(c)).cloned().collect()
+    };
+    let breaks = picked(|c| matches!(c, Caveat::Breaks { .. }));
+    let sides = picked(|c| matches!(c, Caveat::SidesByCount { .. }));
     reading_limits("", &breaks, 0.0, 0)
         .into_iter()
+        .chain(reading_limits("Beat Error", &sides, 0.0, 0))
         .map(|(_, hover)| format!(" {hover}"))
         .collect()
 }
@@ -17996,6 +18031,26 @@ mod tests {
         // It doesn't touch the rate or the amplitude.
         assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
         assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
+    }
+
+    /// The whole take's hover says the breaks it is read across and, where
+    /// Tick and Tock were named by the count across them, that too.
+    #[test]
+    fn the_whole_takes_hover_says_its_sides_were_named_by_count() {
+        let text = cut_caveats_text(&[
+            Caveat::Breaks { count: 1 },
+            Caveat::SidesByCount { count: 1 },
+            Caveat::ClockUnknown,
+        ]);
+        assert!(text.starts_with(" 1 break in this stretch: "), "{text}");
+        assert!(
+            text.ends_with(
+                " Tick and Tock are named by the beat count across 1 break in this \
+                 stretch, not told apart by their sound."
+            ),
+            "{text}"
+        );
+        assert_eq!(cut_caveats_text(&[Caveat::ClockUnknown]), "");
     }
 
     use timegrapher_core::synth::{generate, SynthConfig};
@@ -27101,9 +27156,6 @@ mod tests {
         assert_eq!(breaks(&app), [cut(200.0, 30.0), cut(400.0, 0.0)]);
     }
 
-    /// Settings lists each kept clock; Forget removes that one from the
-    /// file the command line reads, and the input listening loses its
-    /// True Clock with it. Manage Calibres… opens Settings at Calibres.
     #[test]
     #[expect(
         clippy::disallowed_methods,
@@ -27136,6 +27188,37 @@ mod tests {
         assert_eq!(app.clock_disagreement(), None, "4 ppm apart");
     }
 
+    /// The Rate's hover names where an opened take's clock came from: its
+    /// clock log, its USB lines or the correction kept for its input.
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
+    fn the_rate_hover_names_where_a_takes_clock_came_from() {
+        use timegrapher_core::take::ClockFrom;
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        app.take_clock = Some(timegrapher_core::clock::ClockFit::fixed(18.9, 600.0));
+        for (from, named) in [
+            (ClockFrom::Log, "On this take's clock log: "),
+            (ClockFrom::Usb, "On this take's USB lines: "),
+            (
+                ClockFrom::Correction,
+                "On the correction kept for the input it was recorded on: ",
+            ),
+        ] {
+            app.take_clock_from = Some(from);
+            let words = app.true_clock_words(0.0).unwrap();
+            assert!(
+                words.starts_with(named) && words.contains("18.9 ppm slow"),
+                "{words}"
+            );
+        }
+    }
+
+    /// Settings lists each kept clock; Forget removes that one from the
+    /// file the command line reads, and the input listening loses its
+    /// True Clock with it. Manage Calibres… opens Settings at Calibres.
     #[test]
     #[expect(
         clippy::disallowed_methods,

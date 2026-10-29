@@ -61,8 +61,19 @@ uses natural order; session-loading validation still applies when running a
 session itself. Only regular files with WAV/FLAC extensions, ignoring case,
 are selected. Explicit command-line paths retain their order and repetitions;
 each folder expands at its argument position. The same expansion is used by
-`series`, session folder readings and report excerpts. This chooses file order
-only, without importing manifest measurement settings into `long` or `series`.
+`series`, session folder readings and report excerpts.
+
+A take's folder (one holding a `session.toml`), given alone, is read as a
+take, as `session` and the app read it: its beat rate, lift angle, escape
+wheel teeth, calibre and wheels, its `card_ppm`, the clock log its entries
+name and every entry's `masked` stretches, with `--bph`, `--lift`,
+`--calibre`, `--escape-teeth`, `--clock` and `long`'s `--card-ppm` and `--device` given
+first. Positions, `start_s`, `end_s` and settling are left out: the whole
+take is read. A take whose entries name several recordings is read as its
+folder, in the order above; masks in such a take, or entries naming two
+clock logs, are refused rather than placed wrong. The JSON's `input.settings`
+gives the session file read as `take` and the stretches left out as
+`masked`.
 
 Options as for `analyze` (`--bph`, `--lift`, `--notch`, `--highpass`),
 plus three that name the periodic components after wheels:

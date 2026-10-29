@@ -570,3 +570,98 @@ fn a_clock_step_no_listed_pause_explains_is_a_break_too() {
     );
     assert!((found[1].gap_s - 2.0).abs() < 0.01, "{found:?}");
 }
+
+/// Live and reopened agree on a live input's breaks: blocks of 0.1 s at
+/// 8 kHz arriving at `arrive(k)` go through `GapWatch` into a `Recorder`
+/// (`sound_lost` at each break), and the take it leaves, read back from
+/// its session.json and clock log, has the breaks the live view skipped,
+/// with the same gaps.
+fn live_and_saved_breaks(name: &str, arrive: &dyn Fn(usize) -> f64) -> Vec<(f64, f64)> {
+    use std::time::{Duration, SystemTime};
+    use timegrapher_core::capture::Block;
+    use timegrapher_core::recorder::{Recorder, SessionInfo};
+    let base = std::env::temp_dir().join(format!("tg-live-saved-{name}-{}", std::process::id()));
+    let info = SessionInfo {
+        watch: String::new(),
+        position: "DU".into(),
+        lift_deg: 52.0,
+        bph: Some(28800),
+        device: "test".into(),
+        sample_rate: 8000,
+        bits: 16,
+        software: "test".into(),
+    };
+    let mut rec = Recorder::start(&base, info).unwrap();
+    let mut watch = breaks::GapWatch::new(8000);
+    let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+    let mut live = Vec::new();
+    let mut written = 0usize;
+    let mut out = Vec::new();
+    for k in 0..900 {
+        out.extend(watch.push(Block {
+            samples: vec![0.0; 800],
+            at: t0 + Duration::from_secs_f64(arrive(k)),
+        }));
+    }
+    out.extend(watch.finish());
+    for l in out {
+        match l {
+            breaks::Live::Break(gap) => {
+                live.push((written as f64 / 8000.0, gap));
+                rec.sound_lost();
+            }
+            breaks::Live::Block(b) => {
+                written += b.samples.len();
+                rec.write(&b).unwrap();
+            }
+        }
+    }
+    let files = rec.segment_paths();
+    let dir = rec.finish(None).unwrap();
+    let text = std::fs::read_to_string(dir.join("clock.csv")).unwrap();
+    let mut clock = timegrapher_core::take::clock(Some(&text), 8000, 2, None, None, 90.0)
+        .unwrap()
+        .expect("a clock");
+    let paths: Vec<&std::path::Path> = files.iter().map(|f| f.as_path()).collect();
+    let saved = breaks::of_files_on_clock(&paths, Some(&mut clock), 8000);
+    std::fs::remove_dir_all(&base).ok();
+    assert_eq!(saved.len(), live.len(), "live {live:?} saved {saved:?}");
+    for (l, s) in live.iter().zip(&saved) {
+        assert!(
+            (l.0 - s.audio_s).abs() < 1e-6,
+            "live {live:?} saved {saved:?}"
+        );
+        assert!(
+            (l.1 - s.gap_s).abs() < 1e-3,
+            "live {live:?} saved {saved:?}"
+        );
+    }
+    live
+}
+
+#[test]
+fn small_losses_add_up_to_the_same_breaks_live_and_saved() {
+    // 0.2 s of sound lost every 2 s: each step is under MIN_GAP_S, but
+    // they add up between clock-log lines, live as in the log.
+    let found = live_and_saved_breaks("small", &|k| 0.1 * (k + 1) as f64 + 0.2 * (k / 20) as f64);
+    assert!(!found.is_empty());
+    assert!(found.iter().all(|b| b.1 >= breaks::MIN_GAP_S), "{found:?}");
+    let lost: f64 = found.iter().map(|b| b.1).sum();
+    assert!(lost > 0.2 * 44.0 - 0.6 - 1e-6, "{found:?}");
+}
+
+#[test]
+fn a_lost_gap_and_a_late_backlog_read_the_same_live_and_saved() {
+    // 3 s lost before block 300; a 2 s stall at block 500 whose backlog
+    // then comes at once loses nothing; a single block 1.5 s late at 700.
+    let found = live_and_saved_breaks("gap", &|k| {
+        let t = 0.1 * (k + 1) as f64 + if k >= 300 { 3.0 } else { 0.0 };
+        let t = t.max(if k >= 500 { 55.1 } else { 0.0 });
+        t + if k == 700 { 1.5 } else { 0.0 }
+    });
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        (found[0].0 - 30.0).abs() < 1e-6 && (found[0].1 - 3.0).abs() < 1e-6,
+        "{found:?}"
+    );
+}
