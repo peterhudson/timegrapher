@@ -13006,19 +13006,27 @@ impl TimegrapherApp {
         });
         self.status_facts(ui);
         // What can be cut short with an ellipsis last, so that the facts
-        // before it keep their room.
+        // before it keep their room. Hovered, a word cut short shows
+        // whole; one with no room for a word of it isn't drawn at all.
+        let passing = |ui: &mut egui::Ui, text: &str| {
+            let font = egui::TextStyle::Small.resolve(ui.style());
+            let shown = elide(ui, text, "", &font, ui.available_width());
+            if shown.starts_with('…') {
+                return;
+            }
+            let label = ui.label(RichText::new(&shown).small().color(pal.text_secondary));
+            if shown != text {
+                label.on_hover_text(text);
+            }
+        };
         if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
             // The input listened to; a take opened is named on the left
             // already.
-            // A label cut short shows its whole text when hovered.
-            let text = format!("Listening to {}", self.source_label);
-            ui.add(
-                egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
-            );
+            passing(ui, &format!("Listening to {}", self.source_label));
         }
         // Errors are a notice at the right instead.
         if let Some((m, false)) = &self.message {
-            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate());
+            passing(ui, m);
         }
     }
 
@@ -27130,38 +27138,6 @@ mod tests {
         assert!(matches!(app.library, Ok(None)));
         assert!(!base.join("empty").exists());
         let _ = std::fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test's clock fixture, not a take being opened"
-    )]
-    fn usb_lines_and_a_good_log_apart_say_so_in_the_status_bar() {
-        // An exact log, an entry a minute for half an hour, the card
-        // 20 ppm slow; USB lines 100 ppm off that, then within 5 ppm.
-        let log: Vec<(f64, f64)> = (0..31)
-            .map(|i| {
-                let audio = f64::from(i) * 60.0;
-                (audio, 1.7e9 + audio * (1.0 + 20e-6))
-            })
-            .collect();
-        let rated = |usb: f64| {
-            let mut fit = timegrapher_core::clock::ClockFit::for_rates(&log).unwrap();
-            fit.rate_from_usb(usb);
-            fit
-        };
-        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        assert_eq!(app.clock_disagreement(), None, "no take open");
-        app.take_clock = Some(rated(120.0));
-        let (short, long) = app.clock_disagreement().expect("100 ppm apart");
-        assert_eq!(short, "USB lines and clock log 100 ppm apart");
-        assert!(
-            long.contains("+120.0 ppm") && long.contains("+20 ± 0 ppm"),
-            "{long}"
-        );
-        app.take_clock = Some(rated(24.0));
-        assert_eq!(app.clock_disagreement(), None, "4 ppm apart");
     }
 
     /// The Rate's hover names where an opened take's clock came from: its

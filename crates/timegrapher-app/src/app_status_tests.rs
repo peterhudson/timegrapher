@@ -1,5 +1,6 @@
 //! The status bar, headless: notices never move the readings, the left
-//! side stops short of them, and a long take name ends in "…".
+//! side stops short of them, a long take name ends in "…", and the take's
+//! USB lines and clock log apart say so.
 
 use super::tests::{queued_capture, save_failure_fixture, synthetic, themed};
 use super::*;
@@ -112,6 +113,11 @@ fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
                 "{w}: {t:?} {r:?} runs under the notices at {edge}"
             );
         }
+        // Words with no room for any of them aren't drawn as a bare "…".
+        assert!(
+            !found.iter().any(|(t, _)| t.starts_with('…')),
+            "{w}: {found:?}"
+        );
         // The take's state and whether it is saved always show whole.
         for whole in ["Not saved", "Listening"] {
             assert!(
@@ -166,4 +172,36 @@ fn a_long_take_name_ends_in_an_ellipsis() {
     assert!(text.ends_with(&format!("… · {tail}")), "{text}");
     assert_eq!(whole, shown, "{text} is clipped");
     let _ = std::fs::remove_file(crash);
+}
+
+#[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test's clock fixture, not a take being opened"
+)]
+fn usb_lines_and_a_good_log_apart_say_so_in_the_status_bar() {
+    // An exact log, an entry a minute for half an hour, the card
+    // 20 ppm slow; USB lines 100 ppm off that, then within 5 ppm.
+    let log: Vec<(f64, f64)> = (0..31)
+        .map(|i| {
+            let audio = f64::from(i) * 60.0;
+            (audio, 1.7e9 + audio * (1.0 + 20e-6))
+        })
+        .collect();
+    let rated = |usb: f64| {
+        let mut fit = timegrapher_core::clock::ClockFit::for_rates(&log).unwrap();
+        fit.rate_from_usb(usb);
+        fit
+    };
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    assert_eq!(app.clock_disagreement(), None, "no take open");
+    app.take_clock = Some(rated(120.0));
+    let (short, long) = app.clock_disagreement().expect("100 ppm apart");
+    assert_eq!(short, "USB lines and clock log 100 ppm apart");
+    assert!(
+        long.contains("+120.0 ppm") && long.contains("+20 ± 0 ppm"),
+        "{long}"
+    );
+    app.take_clock = Some(rated(24.0));
+    assert_eq!(app.clock_disagreement(), None, "4 ppm apart");
 }
