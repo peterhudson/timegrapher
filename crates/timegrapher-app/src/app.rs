@@ -161,7 +161,6 @@ fn day_of(utc: &str) -> &str {
 }
 
 /// The Rate caveat for an input whose clock hasn't been measured.
-const CLOCK_UNKNOWN: &str = "input clock not measured";
 /// Plain marks on the level meter, for reference only: the level core
 /// aims a recording at and the one it calls hot.
 const REFERENCE_DBFS: [f64; 2] = [
@@ -7715,13 +7714,13 @@ impl TimegrapherApp {
                 Err(TryRecvError::Empty) => {}
             }
         }
-        // Only the beats in the position the watch is in now, every stretch
-        // of it joined.
+        // Only the beats in the position the watch is in now, joined.
         let spans = self.current_spans();
-        let dur = self
-            .live
-            .as_ref()
-            .map_or(0.0, |l| steady::joined_duration(&spans, l.duration_s()));
+        let clock = self.take_clock.clone().filter(|f| f.corrects());
+        let joined = !self.session.stretches().is_empty();
+        let dur = self.live.as_ref().map_or(0.0, |l| {
+            steady::joined_duration(&spans, l.duration_s(), clock.as_ref().filter(|_| joined))
+        });
         let upto = self.steady.as_ref().map(|s| s.upto_s);
         let due = match upto {
             None => true,
@@ -7730,9 +7729,9 @@ impl TimegrapherApp {
         };
         if self.steady_job.is_none() && due && dur >= steady::MIN_S {
             let log = self.live.as_ref().and_then(steady::log_of);
-            if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans)) {
+            if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans, clock.as_ref())) {
                 let wheels = self.calibre_wheels();
-                let clock = self.take_clock.clone().filter(|f| f.corrects());
+                let clock = clock.filter(|_| !joined); // A joined log is on it.
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
@@ -7755,21 +7754,21 @@ impl TimegrapherApp {
 
     /// What the steadiness tests read of `log`, and the cuts they stop at:
     /// a take with no position marked whole, at its own breaks with the time
-    /// each gap held and every other jump, as the whole take and `timegrapher
-    /// series` read it; else the position's stretches `spans` joined end to
-    /// end, the take's breaks inside them keeping their time and each join
-    /// with none.
+    /// each gap held and every other jump, as `timegrapher series` reads it;
+    /// else the position's stretches `spans` joined end to end on the take's
+    /// `clock` ([`steady::join`]).
     fn steady_log(
         &self,
         log: BeatLog,
         spans: &[(f64, f64)],
+        clock: Option<&timegrapher_core::clock::ClockFit>,
     ) -> (BeatLog, Vec<timegrapher_core::breaks::Break>) {
         let opened = self.take_breaks.clone().unwrap_or_default();
         if self.session.stretches().is_empty() {
             let breaks = steady::reading_breaks(opened, &log);
             (log, breaks)
         } else {
-            steady::join(&log, spans, &opened)
+            steady::join(&log, spans, &opened, clock)
         }
     }
 
@@ -12311,12 +12310,7 @@ impl TimegrapherApp {
         // Rate.
         {
             let rate = r.and_then(|r| r.rate_s_per_day);
-            // The input's clock is named on the controls row rather than
-            // in a chip.
-            let rate_facts: Vec<_> = reading_limits("Rate", caveats, lift_now, beats)
-                .into_iter()
-                .filter(|f| f.0 != CLOCK_UNKNOWN)
-                .collect();
+            let rate_facts = reading_limits("Rate", caveats, lift_now, beats);
             title(ui, cards[2].title, "Rate", help::RATE, &rate_facts, None);
             let unit = match pm {
                 Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
@@ -12413,10 +12407,7 @@ impl TimegrapherApp {
         // when it is the default, so that isn't said again in a chip.
         {
             let amp = r.and_then(|r| r.amplitude_deg);
-            let facts: Vec<_> = reading_limits("Amplitude", caveats, lift_now, beats)
-                .into_iter()
-                .filter(|f| !f.0.starts_with("lift angle "))
-                .collect();
+            let facts = reading_limits("Amplitude", caveats, lift_now, beats);
             title(
                 ui,
                 cards[3].title,
@@ -12636,7 +12627,7 @@ impl TimegrapherApp {
                 Some(ClockFrom::Correction) => {
                     "the correction kept for the input it was recorded on"
                 }
-                _ => "this take's clock log",
+                Some(ClockFrom::Log | ClockFrom::LogRatedByUsb) | None => "this take's clock log",
             };
             return Some(format!(
                 "On {on}: the rate corrected for the sound card's own clock, {ppm} ppm \
@@ -12981,13 +12972,66 @@ impl TimegrapherApp {
                 ));
         }
         // Always on screen: where the take is going, and whether the strip
-        // is live or a take opened.
-        ui.label(
-            RichText::new(self.status_words())
-                .font(theme::semibold(13.5))
-                .color(theme::pal(ui).text),
-        )
-        .on_hover_text("The take on show, its watch, and whether it is listening");
+        // is live or a take opened. The take's name is cut short with "…"
+        // where the facts after it need the room, keeping its watch and
+        // state; hovered, it shows whole.
+        let facts = {
+            let mut sizing = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(ui.available_rect_before_wrap())
+                    .layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .invisible()
+                    .sizing_pass(),
+            );
+            self.status_facts(&mut sizing);
+            sizing.min_rect().width()
+        };
+        let room = (ui.available_width() - facts - ui.spacing().item_spacing.x).max(0.0);
+        let words = self.status_words();
+        let (name, rest) = words.split_once(" · ").unwrap_or((&words, ""));
+        let font = theme::semibold(13.5);
+        let shown = elide(ui, name, &format!(" · {rest}"), &font, room);
+        let hover = "The take on show, its watch, and whether it is listening";
+        ui.scope(|ui| {
+            ui.set_max_width(room);
+            ui.add(egui::Label::new(RichText::new(&shown).font(font).color(pal.text)).truncate())
+                .on_hover_text(if shown == words {
+                    hover.to_string()
+                } else {
+                    format!("{words}\n\n{hover}")
+                });
+        });
+        self.status_facts(ui);
+        // What can be cut short with an ellipsis last, so that the facts
+        // before it keep their room. Hovered, a word cut short shows
+        // whole; one with no room for a word of it isn't drawn at all.
+        let passing = |ui: &mut egui::Ui, text: &str| {
+            let font = egui::TextStyle::Small.resolve(ui.style());
+            let shown = elide(ui, text, "", &font, ui.available_width());
+            if shown.starts_with('…') {
+                return;
+            }
+            let label = ui.label(RichText::new(&shown).small().color(pal.text_secondary));
+            if shown != text {
+                label.on_hover_text(text);
+            }
+        };
+        if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
+            // The input listened to; a take opened is named on the left
+            // already.
+            passing(ui, &format!("Listening to {}", self.source_label));
+        }
+        // Errors are a notice at the right instead.
+        if let Some((m, false)) = &self.message {
+            passing(ui, m);
+        }
+    }
+
+    /// The status bar's facts after the take's name, none cut short: the
+    /// analysis under way, unsaved changes, the recording's state and the
+    /// signal.
+    fn status_facts(&self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
         if let Some(b) = &self.batch {
             let done = f64::from_bits(b.progress.load(std::sync::atomic::Ordering::Relaxed));
             let frac = b.duration_s.map_or(0.0, |d| (done / d).clamp(0.0, 1.0));
@@ -13094,21 +13138,6 @@ impl TimegrapherApp {
                 .on_hover_text(help::SIGNAL);
             }
         }
-        // What can be cut short with an ellipsis last, so that the facts
-        // before it keep their room.
-        if self.batch.is_none() && self.running() && !self.source_label.is_empty() {
-            // The input listened to; a take opened is named on the left
-            // already.
-            // A label cut short shows its whole text when hovered.
-            let text = format!("Listening to {}", self.source_label);
-            ui.add(
-                egui::Label::new(RichText::new(&text).small().color(pal.text_secondary)).truncate(),
-            );
-        }
-        // Errors are a notice at the right instead.
-        if let Some((m, false)) = &self.message {
-            ui.add(egui::Label::new(RichText::new(m).small().color(pal.text_secondary)).truncate());
-        }
     }
 
     /// The starting arrangement for a strip direction, keeping which panes
@@ -13176,7 +13205,7 @@ impl TimegrapherApp {
     fn no_watch(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let line = self.reading().map_or_else(
-            || "No regular beat found".to_string(),
+            || timegrapher_core::beats::no_regular_beat_text(None, None),
             |r| no_regular_beat(&r),
         );
         ui.add_space((ui.available_height() * 0.16).clamp(16.0, 110.0));
@@ -17645,24 +17674,12 @@ fn plain_error(m: &str) -> String {
     t
 }
 
-/// What limits a reading, as facts: a short form for the card's caption
-/// and a sentence for its hover. Nothing graded: the ± beside the figure
-/// says how far it could be off; these say what the ± can't show.
-/// "No regular beat found", with the timing scatter that decided it when
-/// there is one: the beats' median jitter in ms and as a share of a beat.
+/// "No regular beat found", in core's words: with the timing scatter
+/// that decided it, or that the beats' sound shows no unlock or drop.
 fn no_regular_beat(r: &LiveReading) -> String {
-    use timegrapher_core::measure::{self, NoWatchReason};
-    if let Some(why @ NoWatchReason::NoBeatSound) = measure::no_watch_reason_in(&r.caveats) {
-        return measure::no_watch_text(why, None, None);
-    }
-    match (r.jitter_us, r.bph) {
-        (Some(j), Some(bph)) => format!(
-            "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
-            j / 1000.0,
-            j / (3.6e9 / bph.max(1) as f64) * 100.0
-        ),
-        _ => "No regular beat found".to_string(),
-    }
+    use timegrapher_core::measure;
+    let why = measure::no_watch_reason_in(&r.caveats).unwrap_or_default();
+    measure::no_watch_text(why, r.jitter_us, r.timing_scatter_fraction)
 }
 
 /// The Beat Error card's line under the whole take, when it is of sizes.
@@ -17782,105 +17799,45 @@ fn cut_caveats_text(caveats: &[Caveat]) -> String {
 
 const WHOLE_AS_SIZES: &str = "whole take is given as a size: its sign differs either side of a cut";
 
+/// What limits a reading, as facts: a short form for the card's caption
+/// and a sentence for its hover, in core's words. Nothing graded: the ±
+/// beside the figure says how far it could be off; these say what the ±
+/// can't show.
 fn reading_limits(
     title: &str,
     caveats: &[Caveat],
     lift_deg: f64,
     beats: usize,
 ) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    for c in caveats {
-        let fact = match (c, title) {
-            (Caveat::ShortSpan { span_s }, _) => Some((
-                format!("{span_s:.0} s of beats"),
-                format!(
-                    "The beats span {span_s:.0} s, under the {:.0} s an analysis of a \
-                     recording asks for.",
-                    timegrapher_core::measure::SHORT_SPAN_S
-                ),
-            )),
-            (Caveat::BeatsMissing { fraction }, _) => {
-                let expected = (beats as f64 / fraction.max(1e-9)).round() as usize;
-                let short = if beats > 0 {
-                    format!("{beats} of {expected} beats")
-                } else {
-                    format!("{:.0}% of beats found", fraction * 100.0)
-                };
-                Some((
-                    short,
-                    format!(
-                        "{:.0}% of the beats the beat rate expects in this stretch were found.",
-                        fraction * 100.0
-                    ),
-                ))
-            }
-            (Caveat::Clipped { fraction }, "Amplitude" | "Beat Error") => Some((
-                format!("{:.0}% clipped", fraction * 100.0),
-                format!(
-                    "{:.0}% of the beats have a clipped sample, which moves the timing of \
-                     the sounds inside a beat. {}",
-                    fraction * 100.0,
-                    help::CLIPPING
-                ),
-            )),
-            (Caveat::LiftUnknown, "Amplitude") => Some((
-                format!("lift angle {lift_deg:.0}°, the default (calibre not set)"),
-                format!(
-                    "The lift angle is the default {lift_deg:.0}°, not one set for the \
-                     calibre. Every amplitude is worked out from it."
-                ),
-            )),
-            (Caveat::ClockUnknown, "Rate") => Some((
-                CLOCK_UNKNOWN.to_string(),
-                "This input's clock hasn't been measured, so the rate includes the sound \
-                 card's own clock error."
-                    .to_string(),
-            )),
-            (Caveat::SetRateDisagrees { heard }, _) => Some((
-                format!("{heard} bph heard"),
-                format!("The beat rate set differs from the {heard} bph heard."),
-            )),
-            (Caveat::SidesByCount { count }, "Beat Error") => Some((
-                "sides named by count".to_string(),
-                format!(
-                    "Tick and Tock are named by the beat count across {count} break{} in \
-                     this stretch, not told apart by their sound.",
-                    if *count == 1 { "" } else { "s" }
-                ),
-            )),
-            (Caveat::Breaks { count }, _) => Some((
-                format!("{count} break{}", if *count == 1 { "" } else { "s" }),
-                format!(
-                    "{count} {} in this stretch: a hole in the sound, such as when the \
-                     computer slept, or a stumble where the beats stepped off together by \
-                     more than {:.0} ms.",
-                    if *count == 1 { "break" } else { "breaks" },
-                    timegrapher_core::beats::JUMP_S * 1000.0
-                ),
-            )),
-            // A sliver that would show as 0.0 s is left unsaid.
-            (Caveat::Masked { seconds }, _) if *seconds < 0.05 => None,
-            (Caveat::Masked { seconds }, _) => {
-                // A mask reaching just into the averaging time is under a
-                // second, which whole seconds would show as 0.
-                let s = if *seconds < 9.95 {
-                    format!("{seconds:.1}")
-                } else {
-                    format!("{seconds:.0}")
-                };
-                Some((
-                    format!("{s} s masked"),
-                    format!(
-                        "{s} s of this stretch were masked out on the Paper Strip and left out \
-                         of the readings."
-                    ),
-                ))
-            }
-            _ => None,
-        };
-        out.extend(fact);
+    caveats
+        .iter()
+        .filter(|c| shown_on(c, title))
+        .filter_map(|c| {
+            let long = c.long(Some(lift_deg))?;
+            let long = match c {
+                Caveat::Clipped { .. } => format!("{long} {}", help::CLIPPING),
+                _ => long,
+            };
+            Some((c.short(lift_deg, beats)?, long))
+        })
+        .collect()
+}
+
+/// Whether a card titled `title` names caveat `c` beside its figure. No
+/// regular beat, the clock sources apart and a beat error given as a size
+/// are said elsewhere; so are the lift angle, on the Calibre card, and
+/// the input's clock, on the Rate's controls row.
+fn shown_on(c: &Caveat, title: &str) -> bool {
+    match c {
+        Caveat::NoWatch { .. }
+        | Caveat::ClockSourcesDisagree { .. }
+        | Caveat::BeatErrorAsSize
+        | Caveat::LiftUnknown
+        | Caveat::ClockUnknown => false,
+        Caveat::Clipped { .. } => matches!(title, "Amplitude" | "Beat Error"),
+        Caveat::SidesByCount { .. } => title == "Beat Error",
+        _ => true,
     }
-    out
 }
 
 /// How long closing an input may take before the app carries on.
@@ -18001,16 +17958,11 @@ mod tests {
         ];
         let amp = reading_limits("Amplitude", &caveats, 52.0, 30);
         let short: Vec<&str> = amp.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(
-            short,
-            [
-                "4 s of beats",
-                "lift angle 52°, the default (calibre not set)"
-            ]
-        );
+        // The lift angle and the input's clock are said elsewhere.
+        assert_eq!(short, ["4 s of beats"]);
         let rate = reading_limits("Rate", &caveats, 52.0, 30);
         let short: Vec<&str> = rate.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(short, ["4 s of beats", "input clock not measured"]);
+        assert_eq!(short, ["4 s of beats"]);
         let missing = reading_limits("Rate", &[Caveat::BeatsMissing { fraction: 0.9 }], 52.0, 90);
         assert_eq!(missing[0].0, "90 of 100 beats");
         for (_, long) in amp.iter().chain(&rate) {
@@ -18730,7 +18682,7 @@ mod tests {
     }
 
     /// A context with the app's fonts and styles, as the window has.
-    fn themed() -> egui::Context {
+    pub(super) fn themed() -> egui::Context {
         let ctx = egui::Context::default();
         theme::install(&ctx);
         ctx
@@ -19008,7 +18960,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn save_failure_fixture(name: &str) -> (TimegrapherApp, PathBuf) {
+    pub(super) fn save_failure_fixture(name: &str) -> (TimegrapherApp, PathBuf) {
         let base =
             std::env::temp_dir().join(format!("tg-app-save-failure-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -19048,7 +19000,10 @@ mod tests {
 
     // Replay supplies a real Capture without opening hardware. Its tiny file
     // has no samples; replace only its public receiver with a controlled queue.
-    fn queued_capture(app: &mut TimegrapherApp, base: &Path) -> std::sync::mpsc::Sender<Event> {
+    pub(super) fn queued_capture(
+        app: &mut TimegrapherApp,
+        base: &Path,
+    ) -> std::sync::mpsc::Sender<Event> {
         let path = base.join("empty-input.wav");
         hound::WavWriter::create(
             &path,
@@ -22368,7 +22323,7 @@ mod tests {
         let spans = app.current_spans();
         assert_eq!(spans.len(), 2);
         let log = steady::log_of(live).unwrap();
-        let joined = steady::join(&log, &spans, &[]).0;
+        let joined = steady::join(&log, &spans, &[], None).0;
         let dd = log
             .beats
             .iter()
@@ -22381,9 +22336,9 @@ mod tests {
             .beats
             .windows(2)
             .all(|w| w[1].time > w[0].time && w[1].index > w[0].index));
-        let want = steady::joined_duration(&spans, live.duration_s());
+        let want = steady::joined_duration(&spans, live.duration_s(), None);
         assert!((joined.duration_s - want).abs() < 1e-9);
-        assert!((want - (live.duration_s() - 20.0 + steady::JOIN_S)).abs() < 1.0);
+        assert!((want - (live.duration_s() - 20.0 + timegrapher_core::joined::JOIN_S)).abs() < 1.0);
         let fit = timegrapher_core::timing::fit(&joined.beats, joined.bph).unwrap();
         assert!(fit.rate_s_per_day.abs() < 5.0, "{}", fit.rate_s_per_day);
         // And it all draws, bands and all.
@@ -27012,38 +26967,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test's clock fixture, not a take being opened"
-    )]
-    fn usb_lines_and_a_good_log_apart_say_so_in_the_status_bar() {
-        // An exact log, an entry a minute for half an hour, the card
-        // 20 ppm slow; USB lines 100 ppm off that, then within 5 ppm.
-        let log: Vec<(f64, f64)> = (0..31)
-            .map(|i| {
-                let audio = f64::from(i) * 60.0;
-                (audio, 1.7e9 + audio * (1.0 + 20e-6))
-            })
-            .collect();
-        let rated = |usb: f64| {
-            let mut fit = timegrapher_core::clock::ClockFit::for_rates(&log).unwrap();
-            fit.rate_from_usb(usb);
-            fit
-        };
-        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        assert_eq!(app.clock_disagreement(), None, "no take open");
-        app.take_clock = Some(rated(120.0));
-        let (short, long) = app.clock_disagreement().expect("100 ppm apart");
-        assert_eq!(short, "USB lines and clock log 100 ppm apart");
-        assert!(
-            long.contains("+120.0 ppm") && long.contains("+20 ± 0 ppm"),
-            "{long}"
-        );
-        app.take_clock = Some(rated(24.0));
-        assert_eq!(app.clock_disagreement(), None, "4 ppm apart");
-    }
-
     /// The Rate's hover names where an opened take's clock came from: its
     /// clock log, its USB lines or the correction kept for its input.
     #[test]
@@ -27334,127 +27257,6 @@ mod tests {
         assert_eq!(app.bph, None);
         assert_eq!(app.lift_deg, DEFAULT_LIFT_DEG);
         assert!(!app.bph_set_by_calibre() && app.lift_settable());
-    }
-
-    /// No banner ever pushes the window down: a crash last time, sound
-    /// kept from an earlier session, a newer release and an error are each
-    /// a word in the status bar, and the readings stay where they were.
-    /// The status bar repeats nothing the cards show and carries no links
-    /// the Help menu has.
-    #[test]
-    fn notices_sit_in_the_status_bar_and_never_move_the_readings() {
-        let ctx = themed();
-        let mut app = synthetic(15.0, 0.0);
-        let draw = |app: &mut TimegrapherApp| {
-            let mut found = Vec::new();
-            for _ in 0..3 {
-                let input = egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        Vec2::new(1440.0, 800.0),
-                    )),
-                    ..Default::default()
-                };
-                let out = ctx.run(input, |ctx| app.panels(ctx));
-                found.clear();
-                for c in &out.shapes {
-                    if let egui::Shape::Text(t) = &c.shape {
-                        found.push((t.galley.text().to_string(), t.visual_bounding_rect()));
-                    }
-                }
-            }
-            found
-        };
-        let top = |found: &[(String, egui::Rect)], text: &str| {
-            found
-                .iter()
-                .find(|(t, _)| t == text)
-                .map(|(_, r)| r.top())
-                .unwrap_or_else(|| panic!("{text}: {found:?}"))
-        };
-        let before = draw(&mut app);
-        let rate = top(&before, "Rate");
-        for gone in ["Check for Updates…", "Report a Problem…", "DU dial up"] {
-            assert!(!before.iter().any(|(t, _)| t == gone), "{gone}: {before:?}");
-        }
-        assert!(
-            !before
-                .iter()
-                .any(|(t, _)| t.ends_with("beats per hour") || t.starts_with("Showing")),
-            "{before:?}"
-        );
-        let crash = std::env::temp_dir().join(format!("tg-crash-{}.log", std::process::id()));
-        std::fs::write(&crash, "panicked").unwrap();
-        app.crash = Some(crash.clone());
-        app.message = Some(("The microphone couldn't be opened.".into(), true));
-        let after = draw(&mut app);
-        assert_eq!(top(&after, "Rate"), rate, "the readings didn't move");
-        let bar = top(&after, "Closed Unexpectedly…");
-        assert!(bar > 700.0, "in the status bar: {bar}");
-        assert!(top(&after, "The microphone couldn't be opened.…") > 700.0);
-        let _ = std::fs::remove_file(crash);
-    }
-
-    #[test]
-    fn the_status_bar_cuts_its_left_side_short_of_the_notices() {
-        let ctx = themed();
-        let (mut app, base) = save_failure_fixture("status-bar");
-        let crash = base.join("crash.log");
-        std::fs::write(&crash, "panicked").unwrap();
-        app.crash = Some(crash);
-        app.message = Some(("The microphone couldn't be opened.".into(), true));
-        // Listening to an input with a long name, whose words can be cut.
-        app.source_label = "USB PnP Sound Device Analog Stereo Microphone Input".into();
-        let _tx = queued_capture(&mut app, &base);
-        for w in [800.0, 1000.0, 1280.0] {
-            let mut found = Vec::new();
-            for _ in 0..3 {
-                let input = egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        Vec2::new(w, 700.0),
-                    )),
-                    ..Default::default()
-                };
-                let out = ctx.run(input, |ctx| app.panels(ctx));
-                found.clear();
-                for c in &out.shapes {
-                    if let egui::Shape::Text(t) = &c.shape {
-                        let r = t.visual_bounding_rect().intersect(c.clip_rect);
-                        if r.top() > 650.0 && r.is_positive() {
-                            found.push((t.galley.text().to_string(), r));
-                        }
-                    }
-                }
-            }
-            // The notices: the leftmost is the error's.
-            let notices = [
-                "Closed Unexpectedly…",
-                "The microphone couldn't be opened.…",
-            ];
-            let edge = found
-                .iter()
-                .filter(|(t, _)| notices.contains(&t.as_str()))
-                .map(|(_, r)| r.left())
-                .fold(f32::INFINITY, f32::min);
-            assert!(edge.is_finite(), "{w}: {found:?}");
-            for (t, r) in found.iter().filter(|(t, _)| !notices.contains(&t.as_str())) {
-                assert!(
-                    r.right() <= edge,
-                    "{w}: {t:?} {r:?} runs under the notices at {edge}"
-                );
-            }
-            // The take's state and whether it is saved always show whole.
-            for whole in ["Not saved", "Listening"] {
-                assert!(
-                    found
-                        .iter()
-                        .any(|(t, _)| t == whole || t.ends_with(&format!("· {whole}"))),
-                    "{w}: {whole}: {found:?}"
-                );
-            }
-        }
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -27852,3 +27654,7 @@ mod steady_tests;
 #[cfg(test)]
 #[path = "app_lift_tests.rs"]
 mod lift_tests;
+
+#[cfg(test)]
+#[path = "app_status_tests.rs"]
+mod status_tests;
