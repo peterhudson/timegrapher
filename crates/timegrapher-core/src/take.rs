@@ -725,9 +725,110 @@ pub fn measure_entry(
     })
 }
 
+/// The take described by `m` as one entry over the whole of its sound,
+/// for a reader of the whole take (`series`, `long`) to open with
+/// [`open_entry`]: the recording its entries name when they all name the
+/// same one (a take the app saved, one entry per position), with every
+/// entry's masks; else the take's folder, read as one recording. The
+/// clock log is the one the entries name. Positions, stretches and
+/// settling are left out: the whole take is read.
+///
+/// An error when the entries name different clock logs, or when they
+/// name different recordings and mask any of them, as a mask is placed in
+/// seconds into its own recording.
+pub fn whole_take(m: &Manifest) -> Result<RecordingEntry, String> {
+    let mut files: Vec<&str> = m.recordings.iter().map(|e| e.file.as_str()).collect();
+    files.sort_unstable();
+    files.dedup();
+    let mut clocks: Vec<&str> = m
+        .recordings
+        .iter()
+        .filter_map(|e| e.clock.as_deref())
+        .collect();
+    clocks.sort_unstable();
+    clocks.dedup();
+    if clocks.len() > 1 {
+        return Err(format!(
+            "{MANIFEST} names {} clock logs ({}); a whole take is read on one",
+            clocks.len(),
+            clocks.join(", ")
+        ));
+    }
+    let masked: Vec<[f64; 2]> = m
+        .recordings
+        .iter()
+        .flat_map(|e| e.masked.iter().copied())
+        .collect();
+    let file = match files.as_slice() {
+        [one] => one.to_string(),
+        _ if !masked.is_empty() => {
+            return Err(format!(
+                "{MANIFEST} lists {} recordings and masks stretches of them, in seconds into \
+                 each; read them one at a time with `timegrapher session`",
+                files.len()
+            ))
+        }
+        _ => ".".to_string(),
+    };
+    Ok(RecordingEntry {
+        file,
+        clock: clocks.first().map(|c| c.to_string()),
+        masked,
+        ..Default::default()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry(file: &str, clock: Option<&str>, masked: &[[f64; 2]]) -> RecordingEntry {
+        RecordingEntry {
+            file: file.into(),
+            position: Some("DU".into()),
+            clock: clock.map(Into::into),
+            start_s: Some(10.0),
+            settle_s: Some(0.0),
+            masked: masked.to_vec(),
+            ..Default::default()
+        }
+    }
+
+    /// A take the app saved, one entry per position over one recording,
+    /// is read whole: its recording, its clock log and every entry's
+    /// masks, with no stretch or settling.
+    #[test]
+    fn a_whole_take_keeps_its_recording_clock_log_and_masks() {
+        let m = Manifest {
+            recordings: vec![
+                entry("take.flac", Some("clock.csv"), &[[60.0, 70.0]]),
+                entry("take.flac", Some("clock.csv"), &[[600.0, 612.5]]),
+            ],
+            ..Default::default()
+        };
+        let e = whole_take(&m).unwrap();
+        assert_eq!(e.file, "take.flac");
+        assert_eq!(e.clock.as_deref(), Some("clock.csv"));
+        assert_eq!(e.masked, vec![[60.0, 70.0], [600.0, 612.5]]);
+        assert_eq!((e.start_s, e.end_s, e.settle_s), (None, None, None));
+    }
+
+    /// Several recordings are read as the take's folder; masks in them,
+    /// or two clock logs, are refused rather than placed wrong.
+    #[test]
+    fn a_whole_take_of_several_recordings_is_its_folder() {
+        let mut m = Manifest {
+            recordings: vec![entry("a.flac", None, &[]), entry("b.flac", None, &[])],
+            ..Default::default()
+        };
+        assert_eq!(whole_take(&m).unwrap().file, ".");
+        m.recordings[1].masked = vec![[5.0, 6.0]];
+        assert!(whole_take(&m).unwrap_err().contains("masks"));
+        m.recordings[1].masked.clear();
+        m.recordings[0].clock = Some("a.csv".into());
+        m.recordings[1].clock = Some("b.csv".into());
+        assert!(whole_take(&m).unwrap_err().contains("2 clock logs"));
+    }
 
     /// A kept take read at another lift has its amplitudes in proportion
     /// to the lift (58° on a take kept at 52° reads 58/52 as high), its

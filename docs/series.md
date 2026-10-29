@@ -42,7 +42,8 @@ timegrapher series take/ --lift 55 --clock take/clocklog.txt
 ```
 
 It reads the same input as `long`: one recording, several segments in
-order, or a folder. `--clock` corrects for the sound card's clock. The
+order, or a folder; a take's folder is read with its `session.toml` (see
+[long-runs.md](long-runs.md)). `--clock` corrects for the sound card's clock. The
 other options are the same as for `long`. `--reading` sets the length of
 each rate reading, 10 s by default. The beat error is the one measured
 from the unlock; where its sign turns over across a break, its readings
