@@ -12,6 +12,11 @@ input.settings.cycles
 input.settings.lift_deg
 input.settings.settle_s
 input.settings.shape
+left_out
+left_out[].file
+left_out[].position
+left_out[].start_s
+left_out[].why
 lift_deg
 notes
 owner
