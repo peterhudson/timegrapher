@@ -683,8 +683,8 @@ pub fn read(root: &Path, take: &EdgeTake) -> Result<Vec<take::EntryRead>, String
         .iter()
         .filter(|e| !take::reads_nothing(e))
         .map(|e| {
-            take::measure_entry(&dir, &m, e, &s, take::usb_ppm, |first| {
-                take::correction_ppm(&m, first)
+            take::measure_entry(&dir, &m, e, &s, take::usb, |first| {
+                take::correction_for(&m, first, None, None)
             })
             .map_err(|err| format!("{}: {err}", take.id))
         })
