@@ -75,8 +75,9 @@ stretches are joined end to end, 5 s apart, as the app's Steadiness panes
 join a position's stretches, and put on the take's clock as they are
 joined; `beats.csv` and `amplitude.csv` then give the joined times in both
 columns. A take that leaves nothing out this way (one entry with
-`settle_s = 0`, as the app keeps a take of one position), or whose entries
-name no position, is read whole. A take whose entries name several
+`settle_s = 0`, as the app keeps a take of one position), whose entries
+name no position, or whose entries' stretches overlap (the sound they
+share would be read twice), is read whole. A take whose entries name several
 recordings is read whole as its folder, in the order above; masks in such
 a take, or entries naming two clock logs, are refused rather than placed
 wrong. The JSON's `input.settings` gives the session file read as `take`,

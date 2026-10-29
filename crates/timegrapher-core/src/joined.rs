@@ -42,8 +42,8 @@ pub fn joined_duration(spans: &[(f64, f64)], end_s: f64, clock: Option<&ClockFit
 /// each entry's from the end of its settling, as `timegrapher session`
 /// reads it ([`take::measured`]), on a take whose entries are all one
 /// recording `duration_s` long and name their positions. None when that
-/// leaves the whole recording, or the entries are not like that: the take
-/// is then read whole.
+/// leaves the whole recording, when two entries' stretches overlap, or
+/// when the entries are not like that: the take is then read whole.
 pub fn take_spans(m: &Manifest, duration_s: f64) -> Option<Vec<(f64, f64)>> {
     let first = m.recordings.first()?;
     if m.recordings
@@ -65,6 +65,11 @@ pub fn take_spans(m: &Manifest, duration_s: f64) -> Option<Vec<(f64, f64)>> {
         .filter(|(a, b)| b > a)
         .collect();
     spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+    // Entries that overlap disagree about where the watch was; joined, the
+    // sound they share would be read twice.
+    if spans.windows(2).any(|w| w[1].0 < w[0].1) {
+        return None;
+    }
     match spans.as_slice() {
         [(a, b)] if *a <= 0.0 && *b >= duration_s => None,
         _ => Some(spans),
@@ -307,5 +312,11 @@ mod tests {
              [[recording]]\nfile = \"b.flac\"\nposition = \"CU\"\n",
         );
         assert_eq!(take_spans(&files, 3600.0), None);
+        // Entries that overlap would read their shared sound twice.
+        let overlap = manifest(
+            "[[recording]]\nfile = \"a.flac\"\nposition = \"DU\"\nend_s = 500.0\n\
+             [[recording]]\nfile = \"a.flac\"\nposition = \"DD\"\nstart_s = 400.0\n",
+        );
+        assert_eq!(take_spans(&overlap, 900.0), None);
     }
 }
