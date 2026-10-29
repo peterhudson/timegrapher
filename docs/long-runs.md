@@ -68,12 +68,21 @@ take, as `session` and the app read it: its beat rate, lift angle, escape
 wheel teeth, calibre and wheels, its `card_ppm`, the clock log its entries
 name and every entry's `masked` stretches, with `--bph`, `--lift`,
 `--calibre`, `--escape-teeth`, `--clock` and `long`'s `--card-ppm` and `--device` given
-first. Positions, `start_s`, `end_s` and settling are left out: the whole
-take is read. A take whose entries name several recordings is read as its
-folder, in the order above; masks in such a take, or entries naming two
-clock logs, are refused rather than placed wrong. The JSON's `input.settings`
-gives the session file read as `take` and the stretches left out as
-`masked`.
+first. A take of one recording whose entries name their positions is read
+as `session` reads each entry: from the end of its settling (`settle_s`,
+default 20 s) to its end, or for `measure_s` when one is set. Its
+stretches are joined end to end, 5 s apart, as the app's Steadiness panes
+join a position's stretches, and put on the take's clock as they are
+joined; `beats.csv` and `amplitude.csv` then give the joined times in both
+columns. A take that leaves nothing out this way (one entry with
+`settle_s = 0`, as the app keeps a take of one position), whose entries
+name no position, or whose entries' stretches overlap (the sound they
+share would be read twice), is read whole. A take whose entries name several
+recordings is read whole as its folder, in the order above; masks in such
+a take, or entries naming two clock logs, are refused rather than placed
+wrong. The JSON's `input.settings` gives the session file read as `take`,
+the stretches left out by hand as `masked`, and the stretches read, audio
+seconds, as `stretches` (null when the take is read whole).
 
 Options as for `analyze` (`--bph`, `--lift`, `--notch`, `--highpass`),
 plus three that name the periodic components after wheels:

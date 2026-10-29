@@ -58,6 +58,7 @@ input.settings.reference_lines
 input.settings.reference_lines[].label
 input.settings.reference_lines[].period_s
 input.settings.stretch_s
+input.settings.stretches
 input.settings.take
 input.settings.wheels
 input.settings.wind_h
