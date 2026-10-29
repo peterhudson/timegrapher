@@ -2,17 +2,15 @@
 //! shows in time order (a cycle, two levels, level changes, a trend,
 //! correlation between readings), with the statistics behind it.
 
-use crate::clock_cmd::{resolve as resolve_clock, AppliedClock};
-use std::io::IsTerminal;
+use crate::clock_cmd::AppliedClock;
 use std::path::{Path, PathBuf};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
 use timegrapher_core::steady_views;
-use timegrapher_core::stream::{self, StreamConfig};
+use timegrapher_core::stream::StreamConfig;
 use timegrapher_core::timefreq::size_number;
-use timegrapher_core::{audio, take};
 
 pub struct Options<'a> {
     pub files: &'a [PathBuf],
@@ -36,78 +34,52 @@ pub fn run(o: Options) -> Result<(), String> {
         .iter()
         .map(|w| crate::long::parse_wheel(w))
         .collect::<Result<_, _>>()?;
-    let resolved_train = o.train.resolve()?;
-    let mut stream_cfg = o.stream.clone();
-    stream_cfg.analysis.amplitude.lift_deg = resolved_train.lift_deg(o.lift);
-    let files = crate::long::expand_dirs(o.files)?;
-    let file = files.first().ok_or("no recording given")?.as_path();
-    let mut info = audio::info(file).map_err(|e| format!("{}: {e}", file.display()))?;
-    for f in &files[1..] {
-        let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
-        info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b);
-    }
-    // Once the recordings open, so a run that fails on them says only why.
-    if let Some(note) = resolved_train.lift_default_note(o.lift) {
-        eprintln!("{note}");
-    }
-    let total_s = info
-        .frames
-        .map_or(0.0, |f| f as f64 / info.sample_rate as f64);
-    let mut applied_clock = resolve_clock(
-        o.clock_log,
-        &info,
-        total_s,
-        || crate::clock_cmd::usb(&files),
-        || crate::clock_cmd::correction(&files[0], None, None),
+    let crate::long::Read {
+        files,
+        take: take_file,
+        cfg: stream_cfg,
+        train: resolved_train,
+        calibre,
+        escape_teeth,
+        clock_log,
+        wheels: take_wheels,
+        log,
+        clock: applied_clock,
+        breaks,
+        masked,
+        ..
+    } = crate::long::read(
+        o.files,
+        crate::long::ClockArgs {
+            log: o.clock_log,
+            device: None,
+            card_ppm: None,
+        },
+        &o.stream,
+        o.lift,
+        o.train,
     )?;
-
-    let total = info.frames.map(|f| f as f64 / info.sample_rate as f64);
-    let tty = std::io::stderr().is_terminal();
-    let mut last = 0.0;
-    let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
-    let log = stream::analyze_files(&paths, &stream_cfg, |done| {
-        if done - last >= 600.0 || total.is_some_and(|t| done >= t) {
-            last = done;
-            let msg = match total {
-                Some(t) => format!("analysed {:.0} of {:.0} min", done / 60.0, t / 60.0),
-                None => format!("analysed {:.0} min", done / 60.0),
-            };
-            if tty {
-                eprint!("\r{msg}   ");
-            } else {
-                eprintln!("{msg}");
-            }
-        }
-    })
-    .map_err(|e| e.to_string())?;
-    if tty {
-        eprintln!();
-    }
-
     let mut lc = LongConfig {
         wheels: resolved_train.wheels(log.bph),
         ..Default::default()
     };
+    lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
-    let mut log = log;
-    let breaks = take::breaks(
-        &mut log,
-        take::Listed::Files(&paths),
-        applied_clock.as_mut().map(|c| &mut c.fit),
-    );
     let clock = applied_clock.as_ref().map(|c| &c.fit);
     let long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
 
     if o.json {
         let settings = serde_json::json!({
-            "clock_log": o.clock_log.map(|p| p.display().to_string()),
+            "take": take_file.map(|p| p.display().to_string()),
+            "clock_log": clock_log.map(|p| p.display().to_string()),
             "bph": stream_cfg.analysis.bph,
             "lift_deg": stream_cfg.analysis.amplitude.lift_deg,
+            "masked": masked,
             "notch_hz": stream_cfg.analysis.envelope.notch_hz,
             "highpass_hz": stream_cfg.analysis.envelope.highpass_hz,
-            "calibre": o.train.calibre,
-            "escape_teeth": o.train.escape_teeth,
+            "calibre": calibre,
+            "escape_teeth": escape_teeth,
             "named_wheels": lc.wheels,
             "reference_lines": crate::long::reference_lines(&lc.wheels),
             "wheels": o.wheels,
@@ -417,7 +389,9 @@ fn add_scales(maps: &mut serde_json::Value, tf: &[timegrapher_core::timefreq::Ti
 )]
 mod tests {
     use super::*;
+    use crate::clock_cmd::resolve as resolve_clock;
     use std::fs;
+    use timegrapher_core::audio;
     use timegrapher_core::clock::{self, ClockFit};
 
     #[test]
