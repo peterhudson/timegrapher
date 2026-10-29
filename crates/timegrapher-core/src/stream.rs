@@ -414,3 +414,52 @@ impl Chunker {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::synth::{generate, SynthConfig};
+
+    /// The envelope windows kept are the good beats' in the first
+    /// SNIPPETS_KEPT_S: none for the faint beats of a quiet stretch
+    /// (−20 dB, 20 to 30 s), and none after.
+    #[test]
+    fn snippets_are_the_good_beats_of_the_first_minute() {
+        let mut a = generate(
+            &SynthConfig {
+                duration_s: 70.0,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        let fs = a.sample_rate as f64;
+        for (i, v) in a.samples.iter_mut().enumerate() {
+            if (20.0..30.0).contains(&(i as f64 / fs)) {
+                *v *= 0.1;
+            }
+        }
+        let log = analyze_samples(&a.samples, a.sample_rate, &StreamConfig::default());
+        let good: Vec<f64> = log
+            .beats
+            .iter()
+            .filter(|b| b.is_good() && b.time < SNIPPETS_KEPT_S)
+            .map(|b| b.time)
+            .collect();
+        assert!(log
+            .beats
+            .iter()
+            .any(|b| !b.is_good() && b.time < SNIPPETS_KEPT_S));
+        assert!(log.beats.iter().any(|b| b.time >= SNIPPETS_KEPT_S));
+        let kept: Vec<f64> = log.snippets.iter().map(|s| s.0).collect();
+        assert!(
+            kept.len() + 2 >= good.len(),
+            "{} of {}",
+            kept.len(),
+            good.len()
+        );
+        for t in kept {
+            assert!(good.iter().any(|&g| (g - t).abs() < 1e-9), "{t}");
+        }
+    }
+}

@@ -468,4 +468,37 @@ mod tests {
         assert_eq!(summary.amplitude_deg, m.amplitude_deg);
         assert_eq!(summary.beat_error_unlock_ms, m.beat_error_unlock_ms);
     }
+    /// The timing's periods are searched on the good beats alone: moving
+    /// the faint beats of a quiet stretch (−20 dB, 12 s) by 10 ms leaves
+    /// them as they are, and the watch's 10 s swing in rate is found.
+    #[test]
+    fn the_timing_periods_are_searched_on_good_beats_alone() {
+        let a = generate(
+            &SynthConfig {
+                duration_s: 60.0,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |t| 30.0 * (std::f64::consts::TAU * t / 10.0).sin(),
+        );
+        let fs = a.sample_rate as f64;
+        let periods = |shift: usize| {
+            let mut b = a.clone();
+            for (i, v) in b.samples.iter_mut().enumerate() {
+                if (20.0..32.0).contains(&(i as f64 / fs)) {
+                    *v = 0.1 * a.samples[i - shift];
+                }
+            }
+            let r = analyze(&b, &AnalysisConfig::default());
+            assert!(r.beats.iter().any(|b| !b.is_good()));
+            r.summary
+                .timing_periods
+                .iter()
+                .map(|c| c.period_s)
+                .collect::<Vec<_>>()
+        };
+        let still = periods(0);
+        assert!((still[0] - 10.0).abs() < 0.1, "{still:?}");
+        assert_eq!(periods((0.01 * fs) as usize), still);
+    }
 }
