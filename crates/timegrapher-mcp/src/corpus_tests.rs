@@ -112,7 +112,14 @@ fn figures(doc: &Value, reading: &Value) -> Vec<(&'static str, String, String)> 
         .filter(|_| heard)
         .map(|(at, span)| format!("{at:?} s for {span:?} s"));
     // session's beat shape is read from its settled start ([`take::measured`])
-    // for `measured_s`, where nothing at the start is masked.
+    // for `measured_s` when nothing is masked; a mask can move it later
+    // ([`analysis_take::shape_stretch`]), which the reading doesn't say.
+    assert!(
+        m["masked_s"].as_f64().unwrap_or(0.0) == 0.0,
+        "{}: masked, so its beat shape's start isn't the settled start; \
+         compare it through core's shape_stretch with the entry's masks",
+        reading["label"]
+    );
     let shape = reading["shape"]["measured_s"]
         .as_f64()
         .map(|len| format!("{:?} s for {len:?} s", m["start_s"].as_f64().unwrap_or(0.0)));
@@ -278,7 +285,13 @@ fn the_mcp_server_reads_each_corpus_recording_as_session_does() {
         }
     }
     for (what, why) in KNOWN_FIGURES {
-        eprintln!("{what}: differs, as known ({why})");
+        if seen.contains(what) {
+            eprintln!("{what}: differs, as known ({why})");
+        } else {
+            wrong.push(format!(
+                "{what}: now the same everywhere; take it off KNOWN_FIGURES"
+            ));
+        }
     }
     eprintln!("{compared} recordings compared");
     assert!(compared > 0, "no recording to compare in {root:?}");
