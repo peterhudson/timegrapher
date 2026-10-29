@@ -555,7 +555,7 @@ fn reserve_results(
     .ok()
     .flatten()
     .map(|a| a.fit);
-    let breaks = take::breaks(&mut log, take::Listed::Files(&paths), clock.as_mut());
+    let breaks = take::breaks(&mut log, take::Listed::Files(&paths), clock.as_mut()).breaks;
     let beat_s = 3600.0 / f64::from(log.bph.max(1));
     let heard = power_reserve::heard(&log.beats, beat_s);
     let mut r = Results::of(&heard, ending, started, pos.common(), true, |s| {
@@ -642,7 +642,7 @@ impl Feed {
                 Some(t),
                 r.rate_s_per_day,
                 r.amplitude_deg,
-                r.beat_error_unlock_ms,
+                session::beat_error_signed(r.beat_error_unlock_ms, r.beat_error_ms),
             ]);
             if self.trend.len() > MAX_TREND {
                 // Every other point of the older half goes.
@@ -760,7 +760,7 @@ fn live(
                     // The computer slept or the input stalled and sound was
                     // lost: a break, as after a pause, with the time
                     // between left out.
-                    rec.sound_lost();
+                    rec.sound_lost(gap);
                     if let Some(f) = feed.as_mut() {
                         f.live.skip(gap);
                     }
@@ -854,7 +854,7 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
         beats_expected: beats::expected_beats(m.end_s - m.start_s, log.bph).round() as usize,
         rate_s_per_day: m.rate_s_per_day.filter(|_| heard),
         amplitude_deg: m.amplitude_deg.filter(|_| heard),
-        beat_error_ms: m.beat_error_unlock_ms.filter(|_| heard),
+        beat_error_ms: m.beat_error_signed().filter(|_| heard),
         clipping: whole.clipping,
     })
 }
@@ -1089,6 +1089,41 @@ mod tests {
             "an hour of {} s for {heard_s} s heard and a {gap} s pause",
             r.hours[0].span_s
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A take whose unlock is never found is checked with the drop's beat
+    /// error, as `session` reads the take.
+    #[test]
+    fn a_take_whose_unlock_is_never_found_is_checked_with_the_drops_beat_error() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-record-unlock-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut cfg = SynthConfig {
+            duration_s: 60.0,
+            beat_error_ms: 0.8,
+            ..Default::default()
+        };
+        cfg.sounds[0].gain = 0.0;
+        let wav = dir.join("audio-001.wav");
+        audio::write_wav(&wav, &generate(&cfg, |_| 250.0, |_| 0.0)).unwrap();
+        let set = Settings {
+            watch: None,
+            calibre: None,
+            bph: Some(28800),
+            lift: 52.0,
+            lift_known: true,
+            settle_s: None,
+        };
+        let c = check(&dir, &set).unwrap();
+        let mut scfg = StreamConfig::default();
+        scfg.analysis.bph = set.bph;
+        let log = stream::analyze_files(&[wav.as_path()], &scfg, |_| {}).unwrap();
+        let m = session::measure(&log, None, c.from_s, c.to_s);
+        assert_eq!(m.beat_error_unlock_ms, None, "the unlock is never found");
+        assert!(m.beat_error_ms.is_some());
+        assert_eq!(c.beat_error_ms, m.beat_error_ms);
         let _ = fs::remove_dir_all(&dir);
     }
 

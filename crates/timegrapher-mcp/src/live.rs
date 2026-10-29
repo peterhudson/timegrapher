@@ -138,11 +138,11 @@ pub fn summary(doc: &Value) -> String {
         if let Some(v) = r["amplitude_deg"].as_f64() {
             s += &format!(" · {v:.0}°");
         }
-        if let Some(v) = r["beat_error_unlock_ms"]
-            .as_f64()
-            .or(r["beat_error_ms"].as_f64())
-        {
-            s += &format!(" · {:.1} ms", v.abs());
+        if let Some(v) = timegrapher_core::session::beat_error_size(
+            r["beat_error_unlock_ms"].as_f64(),
+            r["beat_error_ms"].as_f64(),
+        ) {
+            s += &format!(" · {v:.1} ms");
         }
     }
     s
