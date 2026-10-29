@@ -289,7 +289,7 @@ What each figure needs before it is shown today, and what happens when data is m
 **Lives in:** `take::clock_from` (take.rs:51). The fit maps each beat onto true time before any reading (`clean.rs:187`).
 
 - **A clock log is applied** only from 10 entries with an SE of 20 ppm (1.7 s/d) or less (`clock.rs:169-176`).
-- **Sources disagree** when the USB lines and the log are 5 ppm (0.43 s/d) and 2 SE apart (`clock.rs:160`). #635 brings the code to the order in section 3.
+- **Sources disagree** when the USB lines and the log are 5 ppm (0.43 s/d) and 2 SE apart (`clock.rs:160`). With no clock log, the USB lines are weighed against a stated or kept correction instead: the caveat fires when the two are more than 5 ppm apart, with no SE test, since a correction carries no scatter of its own (decided 29 Oct, #635). #635 brings the code to the order in section 3.
 - **ppm to s/d:** 1 ppm is 0.0864 s/d (`clock::rate_error_s_per_day`). A rate is corrected exactly, (1 + r/86400)/(1 + ppm·10⁻⁶) (`clockstore.rs:70`).
 - **Live** corrects the rate by the mean ppm over the span, after the fit (`live.rs:961`). For a straight-line clock this matches mapping each beat.
 - **Breach:** Power Reserve hours are cut every 3,600 s of sound-card time, not true time (`power_reserve.rs:255`, #642).
