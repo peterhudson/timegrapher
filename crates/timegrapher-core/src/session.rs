@@ -514,7 +514,7 @@ pub fn measure_masked(
     };
     let span = map(to_s) - map(from_s) - gaps - masked_s;
     let expected = crate::beats::expected_beats(span, log.bph);
-    let clean = beats.iter().filter(|b| b.quality > 0.4).count();
+    let clean = beats.iter().filter(|b| b.is_good()).count();
     let clipped = log
         .clipped_beats
         .iter()

@@ -310,7 +310,7 @@ pub fn windows_between(
     let long_origin = (long_pre_s * fs).round() as usize;
     let side_times = |win: &[Beat], even: bool| -> Vec<f64> {
         win.iter()
-            .filter(|b| b.quality > 0.4 && (b.index.rem_euclid(2) == 0) == even)
+            .filter(|b| b.is_good() && (b.index.rem_euclid(2) == 0) == even)
             .map(|b| b.time)
             .collect()
     };
