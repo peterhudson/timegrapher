@@ -1779,7 +1779,7 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
                 let mut lift = w.lift.unwrap_or(DEFAULT_LIFT_DEG);
                 let field = ui.add(
                     egui::DragValue::new(&mut lift)
-                        .range(10.0..=90.0)
+                        .range(timegrapher_core::input_domain::LIFT_ENTRY_DEG)
                         .suffix("°"),
                 );
                 if field.changed() {

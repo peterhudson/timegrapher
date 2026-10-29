@@ -18,6 +18,11 @@ pub fn escape_teeth(value: u32) -> Result<u32, String> {
     }
 }
 
+/// The lift angles the app lets a person type in, degrees. An editing
+/// range only: [`lift_deg`], which the command line, MCP and session files
+/// use, still accepts any finite positive angle.
+pub const LIFT_ENTRY_DEG: std::ops::RangeInclusive<f64> = 10.0..=90.0;
+
 pub fn lift_deg(value: f64) -> Result<f64, String> {
     if !value.is_finite() || value <= 0.0 {
         Err("lift angle must be finite and positive".into())
@@ -53,6 +58,8 @@ mod tests {
         for value in [f64::MIN_POSITIVE, f64::from_bits(1), 52.0, f64::MAX] {
             assert_eq!(lift_deg(value).unwrap().to_bits(), value.to_bits());
         }
+        assert!(LIFT_ENTRY_DEG.contains(&crate::take::DEFAULT_LIFT_DEG));
+        assert!(lift_deg(*LIFT_ENTRY_DEG.start()).is_ok());
         for value in [
             f64::NAN,
             f64::INFINITY,

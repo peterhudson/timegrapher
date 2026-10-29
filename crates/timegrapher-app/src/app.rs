@@ -8919,7 +8919,7 @@ impl TimegrapherApp {
                 ui,
                 "lift",
                 &mut lift,
-                10.0..=90.0,
+                timegrapher_core::input_domain::LIFT_ENTRY_DEG,
                 &DEGREES,
                 &LIFTS,
                 show_degrees,
@@ -10695,8 +10695,14 @@ impl TimegrapherApp {
                              pick a common one from the menu. Amplitude depends on it.",
                         ),
                         |ui| {
-                            let x =
-                                fields::entry(ui, "open lift", &mut a.lift, 10.0..=90.0, &MS, 44.0);
+                            let x = fields::entry(
+                                ui,
+                                "open lift",
+                                &mut a.lift,
+                                timegrapher_core::input_domain::LIFT_ENTRY_DEG,
+                                &MS,
+                                44.0,
+                            );
                             ui.label("°");
                             let y = fields::presets(
                                 ui,
