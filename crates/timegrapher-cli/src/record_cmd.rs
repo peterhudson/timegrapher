@@ -123,8 +123,9 @@ struct Settings {
     bph: Option<u32>,
     lift: f64,
     lift_known: bool,
-    /// Seconds `session` skips at the start of each take.
-    settle_s: f64,
+    /// Seconds `session` skips at the start of each take: the session
+    /// file's, none when it gives none ([`take::measured`]'s default).
+    settle_s: Option<f64>,
 }
 
 impl Options {
@@ -355,7 +356,7 @@ fn settings_with(
             bph,
             lift: lift.unwrap_or(take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
-            settle_s: take::SETTLE_S,
+            settle_s: None,
         });
     };
     // A session's takes must agree on how they are measured.
@@ -408,7 +409,7 @@ fn settings_with(
         bph: m.bph.or(bph),
         lift: m.lift.or(lift).unwrap_or(take::DEFAULT_LIFT_DEG),
         lift_known,
-        settle_s: m.settle_s.unwrap_or(take::SETTLE_S),
+        settle_s: m.settle_s,
     })
 }
 
@@ -641,7 +642,7 @@ impl Feed {
                 Some(t),
                 r.rate_s_per_day,
                 r.amplitude_deg,
-                r.beat_error_unlock_ms,
+                session::beat_error_signed(r.beat_error_unlock_ms, r.beat_error_ms),
             ]);
             if self.trend.len() > MAX_TREND {
                 // Every other point of the older half goes.
@@ -837,10 +838,10 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
     scfg.analysis.lift_known = set.lift_known;
     let log = stream::analyze_files(&[wav.as_path()], &scfg, |_| {})
         .map_err(|e| format!("{}: {e}", wav.display()))?;
-    let from = set.settle_s.min(log.duration_s / 2.0);
-    let m = session::measure(&log, None, from, log.duration_s);
+    let (from, to) = take::measured(0.0, log.duration_s, set.settle_s, None);
+    let m = session::measure(&log, None, from, to);
     // Readings only when that stretch alone hears the watch too; a take
-    // shorter than about twice the settling time may leave too little.
+    // not much longer than its settling may leave too little.
     let heard = whole.watch_heard && m.watch_heard;
     Ok(Check {
         from_s: m.start_s,
@@ -853,7 +854,7 @@ fn check(dir: &Path, set: &Settings) -> Result<Check, String> {
         beats_expected: beats::expected_beats(m.end_s - m.start_s, log.bph).round() as usize,
         rate_s_per_day: m.rate_s_per_day.filter(|_| heard),
         amplitude_deg: m.amplitude_deg.filter(|_| heard),
-        beat_error_ms: m.beat_error_unlock_ms.filter(|_| heard),
+        beat_error_ms: m.beat_error_signed().filter(|_| heard),
         clipping: whole.clipping,
     })
 }
@@ -930,9 +931,8 @@ fn add_to_session(
     let before = match fs::read_to_string(&file) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => format!(
-            "# Written by `timegrapher record`; edit freely.\n{}settle_s = {}\n",
-            header(set),
-            toml::Value::Float(take::SETTLE_S)
+            "# Written by `timegrapher record`; edit freely.\n{}",
+            header(set)
         ),
         Err(e) => return Err(format!("{}: {e}", file.display())),
     };
@@ -970,13 +970,10 @@ fn add_to_session(
 fn facts(c: &Check) -> Vec<String> {
     let mut f = Vec::new();
     if !c.watch_heard {
-        f.push(match (c.timing_scatter_ms, c.timing_scatter_fraction) {
-            (Some(ms), Some(x)) => format!(
-                "No regular beat found (timing scatter {ms:.1} ms, {:.1}% of a beat)",
-                100.0 * x
-            ),
-            _ => "No regular beat found".to_string(),
-        });
+        f.push(timegrapher_core::beats::no_regular_beat_text(
+            c.timing_scatter_ms.map(|ms| ms * 1000.0),
+            c.timing_scatter_fraction,
+        ));
     }
     if c.clipping.beats > 0 {
         f.push(format!(
@@ -1092,6 +1089,41 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// A take whose unlock is never found is checked with the drop's beat
+    /// error, as `session` reads the take.
+    #[test]
+    fn a_take_whose_unlock_is_never_found_is_checked_with_the_drops_beat_error() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-record-unlock-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut cfg = SynthConfig {
+            duration_s: 60.0,
+            beat_error_ms: 0.8,
+            ..Default::default()
+        };
+        cfg.sounds[0].gain = 0.0;
+        let wav = dir.join("audio-001.wav");
+        audio::write_wav(&wav, &generate(&cfg, |_| 250.0, |_| 0.0)).unwrap();
+        let set = Settings {
+            watch: None,
+            calibre: None,
+            bph: Some(28800),
+            lift: 52.0,
+            lift_known: true,
+            settle_s: None,
+        };
+        let c = check(&dir, &set).unwrap();
+        let mut scfg = StreamConfig::default();
+        scfg.analysis.bph = set.bph;
+        let log = stream::analyze_files(&[wav.as_path()], &scfg, |_| {}).unwrap();
+        let m = session::measure(&log, None, c.from_s, c.to_s);
+        assert_eq!(m.beat_error_unlock_ms, None, "the unlock is never found");
+        assert!(m.beat_error_ms.is_some());
+        assert_eq!(c.beat_error_ms, m.beat_error_ms);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     /// Two `record`s adding to one new session folder at the same moment
     /// each keep their entry: the audit of 2026-10-26 (finding ARCH-03)
     /// found the second wrote over the first. Each of six here starts as
@@ -1108,7 +1140,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
-            settle_s: take::SETTLE_S,
+            settle_s: None,
         };
         let check = || Check {
             from_s: 0.0,

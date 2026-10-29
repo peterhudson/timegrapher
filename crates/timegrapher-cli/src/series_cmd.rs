@@ -4,12 +4,13 @@
 
 use crate::clock_cmd::AppliedClock;
 use std::path::{Path, PathBuf};
+use timegrapher_core::clock::ClockFit;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::{self, p_text, Config, CycleSource, Report, SeriesCheck};
 use timegrapher_core::steady_views;
-use timegrapher_core::stream::StreamConfig;
+use timegrapher_core::stream::{BeatLog, StreamConfig};
 use timegrapher_core::timefreq::size_number;
 
 pub struct Options<'a> {
@@ -48,6 +49,7 @@ pub fn run(o: Options) -> Result<(), String> {
         breaks,
         unlisted,
         masked,
+        stretches,
         ..
     } = crate::long::read(
         o.files,
@@ -67,13 +69,18 @@ pub fn run(o: Options) -> Result<(), String> {
     lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
     let clock = applied_clock.as_ref().map(|c| &c.fit);
-    let mut long = longrun::analyse_with_breaks(&log, clock, &breaks, &lc);
+    let mut long = match stretches {
+        Some(_) => longrun::analyse_on_clock(&log, clock, &breaks, &lc),
+        None => longrun::analyse_with_breaks(&log, clock, &breaks, &lc),
+    };
     if let Some(why) = unlisted {
         timegrapher_core::measure::add(
             &mut long.caveats,
             timegrapher_core::measure::Caveat::BreaksUnlisted { why },
         );
     }
+    // A take read in stretches is on its clock already.
+    let clock = clock.filter(|_| stretches.is_none());
     let rep = steadiness::check(&log, clock, &long, &lc, &o.check);
 
     if o.json {
@@ -83,6 +90,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "bph": stream_cfg.analysis.bph,
             "lift_deg": stream_cfg.analysis.amplitude.lift_deg,
             "masked": masked,
+            "stretches": stretches,
             "notch_hz": stream_cfg.analysis.envelope.notch_hz,
             "highpass_hz": stream_cfg.analysis.envelope.highpass_hz,
             "calibre": calibre,
@@ -114,29 +122,37 @@ pub fn run(o: Options) -> Result<(), String> {
                 serde_json::to_value(views.period_span).map_err(|e| e.to_string())?;
         }
         if o.maps {
-            let tf = timegrapher_core::timefreq::for_take(&log, clock, &long, &lc);
-            doc["time_frequency"] = serde_json::to_value(&tf).map_err(|e| e.to_string())?;
-            add_scales(&mut doc["time_frequency"], &tf);
-            let coh = timegrapher_core::timefreq::coherences_for_take(
-                &log,
-                clock,
-                &long,
-                o.check.rate_reading_s,
-            );
-            doc["coherence"] = serde_json::to_value(coh).map_err(|e| e.to_string())?;
-            let ls =
-                timegrapher_core::gappy::for_take(&log, clock, &long, &lc, o.check.rate_reading_s);
-            doc["lomb_scargle"] = serde_json::to_value(ls).map_err(|e| e.to_string())?;
-            let kurt = timegrapher_core::timefreq::kurtograms_for_take(&log, clock, &long, &lc);
-            doc["kurtograms"] = serde_json::to_value(kurt).map_err(|e| e.to_string())?;
-            let turns = timegrapher_core::wheel_lines::turns_for_take(&long, &lc);
-            doc["wheel_turns"] = serde_json::to_value(turns).map_err(|e| e.to_string())?;
+            add_maps(&mut doc, &log, clock, &long, &lc, o.check.rate_reading_s)?;
         }
         crate::output::print("series", crate::output::input(&files, settings), &doc)
     } else {
         print_text(&rep, clock.is_some_and(|c| c.corrects()));
         Ok(())
     }
+}
+
+/// The time-frequency maps, coherences, Lomb-Scargle periodograms,
+/// kurtograms and wheel turns of each series, as --maps adds them.
+fn add_maps(
+    doc: &mut serde_json::Value,
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    long: &longrun::LongReport,
+    lc: &LongConfig,
+    reading_s: f64,
+) -> Result<(), String> {
+    let tf = timegrapher_core::timefreq::for_take(log, clock, long, lc);
+    doc["time_frequency"] = serde_json::to_value(&tf).map_err(|e| e.to_string())?;
+    add_scales(&mut doc["time_frequency"], &tf);
+    let coh = timegrapher_core::timefreq::coherences_for_take(log, clock, long, reading_s);
+    doc["coherence"] = serde_json::to_value(coh).map_err(|e| e.to_string())?;
+    let ls = timegrapher_core::gappy::for_take(log, clock, long, lc, reading_s);
+    doc["lomb_scargle"] = serde_json::to_value(ls).map_err(|e| e.to_string())?;
+    let kurt = timegrapher_core::timefreq::kurtograms_for_take(log, clock, long, lc);
+    doc["kurtograms"] = serde_json::to_value(kurt).map_err(|e| e.to_string())?;
+    let turns = timegrapher_core::wheel_lines::turns_for_take(long, lc);
+    doc["wheel_turns"] = serde_json::to_value(turns).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn report_document(
