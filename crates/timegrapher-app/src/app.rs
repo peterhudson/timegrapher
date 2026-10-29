@@ -4937,11 +4937,12 @@ impl TimegrapherApp {
                 if let Some(bph) = live.bph() {
                     let beats = live.beats();
                     if beats.len() >= 16 {
-                        self.anchor = Anchor::centre_on_wall(
+                        self.anchor = Anchor::centre_on_true(
                             &beats[..16],
                             3600.0 / bph as f64,
                             16,
                             self.take_breaks.as_deref().unwrap_or_default(),
+                            Self::rate_clock(&self.take_clock),
                         );
                     }
                 }
@@ -5637,15 +5638,16 @@ impl TimegrapherApp {
         let period = 3600.0 / bph as f64;
         let beats = live.beats();
         let breaks = self.take_breaks.as_deref().unwrap_or_default();
+        let clock = self.take_rate_clock();
         let centred = if self.follow {
-            Anchor::centre_on_wall(beats, period, 8, breaks)
+            Anchor::centre_on_true(beats, period, 8, breaks, clock)
         } else {
-            Anchor::centre_on_wall(&beats[..beats.len().min(16)], period, 16, breaks)
+            Anchor::centre_on_true(&beats[..beats.len().min(16)], period, 16, breaks, clock)
         };
         let Some(anchor) = centred else { return };
         let mut leads: Vec<f64> = beats
             .iter()
-            .map(|b| anchor.lead_on_wall(b, period, breaks))
+            .map(|b| anchor.lead_on_true(b, period, breaks, clock))
             .collect();
         leads.sort_by(f64::total_cmp);
         let stray = leads.len() / 1000;
@@ -5730,8 +5732,9 @@ impl TimegrapherApp {
                 let beats = l.beats();
                 let breaks = self.take_breaks.as_deref().unwrap_or_default();
                 let hi = beats.partition_point(|b| b.time <= end);
+                let clock = Self::rate_clock(&self.take_clock);
                 if let Some(a) =
-                    Anchor::centre_on_wall(&beats[..hi], 3600.0 / bph as f64, 8, breaks)
+                    Anchor::centre_on_true(&beats[..hi], 3600.0 / bph as f64, 8, breaks, clock)
                 {
                     self.anchor = Some(a);
                 }
@@ -14843,6 +14846,8 @@ impl TimegrapherApp {
             } else {
                 self.take_breaks.as_deref().unwrap_or_default()
             },
+            // The clock the rate line's reading is on: the live engine's.
+            clock: self.take_rate_clock(),
         };
         let Some(live) = &self.live else { return };
         // The possible beats numbered at the strip's beat period from the

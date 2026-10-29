@@ -71,7 +71,7 @@ fn a_steady_take_runs_on_through_a_pause_on_the_strip() {
         let live = app.live.as_ref().unwrap();
         let anchor = app.anchor.unwrap();
         for b in live.beats() {
-            let lead = anchor.lead_on_wall(b, 0.125, &breaks);
+            let lead = anchor.lead_on_true(b, 0.125, &breaks, app.take_rate_clock());
             assert!(lead.abs() < half, "{} at {}: {lead}", b.index, b.time);
         }
     }
