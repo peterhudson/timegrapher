@@ -654,7 +654,7 @@ mod tests {
             json!({
                 "ppm": expected.ppm,
                 "rate_error_s_per_day": expected.rate_error_s_per_day,
-                "from": format!("from clock log {}", log.0.display()),
+                "from": format!("from clock log {}", log.0.file_name().unwrap().to_string_lossy()),
                 "tracks_drift": expected.tracks_drift,
             })
         );
@@ -703,7 +703,7 @@ mod tests {
             applied.from,
             format!(
                 "from 12 USB lines in the recording, 0.1 ppm apart; clock log {} for its breaks",
-                log.0.display()
+                log.0.file_name().unwrap().to_string_lossy()
             )
         );
         let clock = &report_document(&report(), Some(&applied)).unwrap()["clock"];
