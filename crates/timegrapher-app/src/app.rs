@@ -12501,9 +12501,8 @@ impl TimegrapherApp {
             figure_row(
                 ui,
                 cards[4].figure,
-                unlock
-                    .or(drop)
-                    .map(|v| format!("{:.2}", v.abs()))
+                core_session::beat_error_size(unlock, drop)
+                    .map(|v| format!("{v:.2}"))
                     .as_deref(),
                 &unit,
                 unheard.as_ref(),
