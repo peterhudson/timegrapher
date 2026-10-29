@@ -91,6 +91,18 @@ jobs:
         if: steps.changes.outputs.full != 'false'
       - run: cargo test --locked --release
         if: steps.changes.outputs.full != 'false'
+      # Unused dependencies and libraries' licences (architecture guide,
+      # section 12; deny.toml). Each takes seconds.
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        if: runner.os == 'Linux' && steps.changes.outputs.full != 'false'
+        with:
+          tool: cargo-machete@0.9.2,cargo-deny@0.20.2
+      - name: Unused dependencies
+        if: runner.os == 'Linux' && steps.changes.outputs.full != 'false'
+        run: cargo machete
+      - name: Licences and bans
+        if: runner.os == 'Linux' && steps.changes.outputs.full != 'false'
+        run: cargo deny --all-features check licenses bans
 
   mcp-renderer:
     runs-on: ubuntu-24.04
@@ -101,6 +113,10 @@ jobs:
         with:
           node-version: '24.22.1'
       - run: node --test crates/timegrapher-mcp/tests/*.test.cjs
+      # Copied product blocks may not rise (.github/ci/literal_ratchet.py;
+      # architecture guide, section 12). Uses this job's Node for jscpd.
+      - name: Copied code
+        run: python3 .github/ci/literal_ratchet.py copies
 
   # The engine against tg on the public corpus's takes (docs/regress.md),
   # plus its smoke takes. The audio is downloaded from the corpus's
