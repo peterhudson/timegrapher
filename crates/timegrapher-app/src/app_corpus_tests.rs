@@ -121,12 +121,10 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
 
 /// Entries the app still reads differently from session, and why. Each
 /// must still differ, so the list only shrinks as the app is fixed.
-const KNOWN: &[(&str, &str)] = &[
-    (
-        "reverso21600_DU_level_overnight/take_part01-096.flac",
-        "26 s file: session reads its 13 s after settling; the app wants three average windows",
-    ),
-];
+const KNOWN: &[(&str, &str)] = &[(
+    "reverso21600_DU_level_overnight/take_part01-096.flac",
+    "26 s file: session reads its 13 s after settling; the app wants three average windows",
+)];
 
 /// Runs `work` on each item, on as many threads as the machine has, and
 /// returns what it gives in the items' order.
