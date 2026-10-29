@@ -13,6 +13,7 @@
 //! figure means for the movement are for the person, or for the
 //! watchmaker skill, to weigh.
 
+use crate::amplitude::AmplitudeWindow;
 use crate::beats::Beat;
 use crate::breaks::Break;
 use crate::clean::Cuts;
@@ -400,6 +401,58 @@ fn percentile(v: &[f64], q: f64) -> Option<f64> {
     Some(w[((w.len() - 1) as f64 * q).round() as usize])
 }
 
+/// The beats a reading of the stretch from `from_s` to `to_s` (audio
+/// seconds) takes, from a time-ordered `beats`: those at `from_s` or after
+/// and before `to_s`. Live and saved readings both take them so
+/// ([`crate::live::LiveAnalyzer::reading_at`], [`measure_masked`]).
+pub fn stretch_beats(beats: &[Beat], from_s: f64, to_s: f64) -> std::ops::Range<usize> {
+    let lo = beats.partition_point(|b| b.time < from_s);
+    let hi = beats.partition_point(|b| b.time < to_s);
+    lo.min(hi)..hi
+}
+
+/// The amplitude windows a reading of the stretch from `from_s` to `to_s`
+/// (audio seconds) takes: those `holes` keeps, clear of every hole on
+/// true time, that lie wholly inside the stretch. Live and saved readings
+/// both take them so, so one stretch reads one way.
+pub fn stretch_windows<'w>(
+    holes: &Cuts,
+    windows: &'w [AmplitudeWindow],
+    from_s: f64,
+    to_s: f64,
+) -> Vec<&'w AmplitudeWindow> {
+    holes
+        .amplitude_windows(windows)
+        .into_iter()
+        .filter(|w| w.start_s >= from_s - 1e-9 && w.end_s <= to_s + 1e-9)
+        .collect()
+}
+
+/// What a stretch's amplitude windows ([`stretch_windows`]) read.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct WindowFigures {
+    pub amplitude_deg: Option<f64>,
+    pub amplitude_even_deg: Option<f64>,
+    pub amplitude_odd_deg: Option<f64>,
+    /// Signed, as [`timing::median_signed`] gives it.
+    pub beat_error_unlock_ms: Option<f64>,
+}
+
+/// [`WindowFigures`] of `wins`: the medians of their amplitude, Tick's and
+/// Tock's, and of their unlock beat error, taken as sizes where `turned`
+/// ([`timing::sign_turns`] over the stretch's beats).
+pub fn window_figures(wins: &[&AmplitudeWindow], turned: bool) -> WindowFigures {
+    WindowFigures {
+        amplitude_deg: median_of(wins.iter().filter_map(|w| w.mean())),
+        amplitude_even_deg: median_of(wins.iter().filter_map(|w| w.even_deg)),
+        amplitude_odd_deg: median_of(wins.iter().filter_map(|w| w.odd_deg)),
+        beat_error_unlock_ms: timing::median_signed(
+            wins.iter().filter_map(|w| w.beat_error_unlock_ms),
+            turned,
+        ),
+    }
+}
+
 fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
     let mut w: Vec<f64> = v.filter(|x| x.is_finite()).collect();
     (!w.is_empty()).then(|| median(&mut w))
@@ -468,12 +521,7 @@ pub fn measure_masked(
     let on_time = holes.breaks();
     let map = |t: f64| holes.true_time(t);
     let cuts = holes.piece_cuts();
-    let in_range: Vec<Beat> = log
-        .beats
-        .iter()
-        .filter(|b| b.time >= from_s && b.time < to_s)
-        .copied()
-        .collect();
+    let in_range: Vec<Beat> = log.beats[stretch_beats(&log.beats, from_s, to_s)].to_vec();
     let beats = holes.beats(&in_range);
     let fit = timing::fit_pieces(&beats, log.bph, &cuts);
     let turned = timing::sign_turns(&beats, log.bph, &cuts);
@@ -494,11 +542,8 @@ pub fn measure_masked(
             ..Default::default()
         })
         .collect();
-    let amp: Vec<_> = holes
-        .amplitude_windows(&log.amplitude_windows)
-        .into_iter()
-        .filter(|w| w.start_s >= from_s && w.end_s <= to_s)
-        .collect();
+    let amp = stretch_windows(&holes, &log.amplitude_windows, from_s, to_s);
+    let figures = window_figures(&amp, turned);
     let amps: Vec<f64> = amp.iter().filter_map(|w| w.mean()).collect();
     // On true time, as the rate samples are, so a pause is a hole in the
     // two-state blocks.
@@ -576,13 +621,10 @@ pub fn measure_masked(
         calibrated: clock.is_some_and(ClockFit::corrects),
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms),
-        beat_error_unlock_ms: timing::median_signed(
-            amp.iter().filter_map(|w| w.beat_error_unlock_ms),
-            turned,
-        ),
-        amplitude_deg: median_of(amps.iter().copied()),
-        amplitude_even_deg: median_of(amp.iter().filter_map(|w| w.even_deg)),
-        amplitude_odd_deg: median_of(amp.iter().filter_map(|w| w.odd_deg)),
+        beat_error_unlock_ms: figures.beat_error_unlock_ms,
+        amplitude_deg: figures.amplitude_deg,
+        amplitude_even_deg: figures.amplitude_even_deg,
+        amplitude_odd_deg: figures.amplitude_odd_deg,
         jitter_us,
         watch_heard: no_watch.is_none(),
         rate_window_median_s_per_day: median_of(rates.iter().copied()),

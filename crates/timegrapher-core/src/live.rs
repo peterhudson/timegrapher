@@ -14,7 +14,7 @@ use crate::analysis::{AnalysisConfig, Clipping};
 use crate::beats::{self, Beat};
 use crate::breaks::Break;
 use crate::clean::Cuts;
-use crate::dsp::{envelope, median, median_f32};
+use crate::dsp::{envelope, median_f32};
 use crate::measure::{self, Caveat, NoWatchReason};
 use crate::profile::{self, Side, TickProfile};
 use std::collections::VecDeque;
@@ -849,9 +849,9 @@ impl LiveAnalyzer {
         // Only the latest unbroken run of beats.
         let cut = holes.run_cut(&self.beats, window_from, end_s);
         let from = window_from.max(cut);
-        let lo = self.beats.partition_point(|b| b.time < from);
-        let hi = self.beats.partition_point(|b| b.time <= end_s);
-        let lo = lo.min(hi);
+        // The stretch's beats and windows as a saved reading takes them.
+        let std::ops::Range { start: lo, end: hi } =
+            crate::session::stretch_beats(&self.beats, from, end_s);
         let span_s = if lo < hi {
             end_s - self.beats[lo].time.max(from)
         } else {
@@ -863,19 +863,11 @@ impl LiveAnalyzer {
                 .partition_point(|&t| t < self.beats.get(lo).map_or(end_s, |b| b.time));
         let bph = self.bph.or(self.logged_bph);
         let fit = bph.and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
-        let a0 = self.amp.partition_point(|w| w.end_s <= from);
-        let a1 = self.amp.partition_point(|w| w.end_s <= end_s + 1e-9);
-        // Nor a window that reaches back across the latest cut: a jump in
-        // a recording read whole falls inside one.
-        let wins: Vec<&AmplitudeWindow> = holes
-            .amplitude_windows(&self.amp[a0..a1.max(a0)])
-            .into_iter()
-            .filter(|w| w.start_s >= cut - 1e-9)
-            .collect();
-        let med = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Option<f64> {
-            let mut v: Vec<f64> = wins.iter().filter_map(|w| f(w)).collect();
-            (!v.is_empty()).then(|| median(&mut v))
-        };
+        // `from` is at or after the latest cut, so no window reaches back
+        // across one: a jump in a recording read whole falls inside one.
+        let wins = crate::session::stretch_windows(&holes, &self.amp, from, end_s);
+        // One unbroken run of beats: its beat error's sign does not turn.
+        let figures = crate::session::window_figures(&wins, false);
         let amplitude_error_deg = crate::confidence::standard_error(
             &wins.iter().filter_map(|w| w.mean()).collect::<Vec<_>>(),
         );
@@ -962,11 +954,11 @@ impl LiveAnalyzer {
                 })
             }),
             beat_error_ms: sided(fit.map(|f| f.beat_error_ms)),
-            beat_error_unlock_ms: sided(med(&|w| w.beat_error_unlock_ms)),
-            amplitude_deg: heard(med(&|w| w.mean())),
+            beat_error_unlock_ms: sided(figures.beat_error_unlock_ms),
+            amplitude_deg: heard(figures.amplitude_deg),
             amplitude_error_deg: heard(amplitude_error_deg),
-            amplitude_even_deg: sided(med(&|w| w.even_deg)),
-            amplitude_odd_deg: sided(med(&|w| w.odd_deg)),
+            amplitude_even_deg: sided(figures.amplitude_even_deg),
+            amplitude_odd_deg: sided(figures.amplitude_odd_deg),
             jitter_us,
             timing_scatter_fraction,
             beats_used: fit.map_or(0, |f| f.beats_used),
@@ -2118,5 +2110,50 @@ mod tests {
         a.set_lift(26.0);
         let after = a.reading(10.0).amplitude_deg.expect("amplitude");
         assert!((after - before / 2.0).abs() < 1e-9);
+    }
+
+    /// Over the same stretch of the same beats, a live reading and a saved
+    /// one (`session`) read the same figures: the same beats, the same
+    /// amplitude windows (none reaching back before the stretch) and the
+    /// same medians (#632).
+    #[test]
+    fn live_and_saved_read_one_stretch_alike() {
+        let cfg = SynthConfig {
+            duration_s: 30.0,
+            beat_error_ms: 0.5,
+            rate_s_per_day: 8.0,
+            ..Default::default()
+        };
+        // An amplitude that climbs, so a window more or less moves the
+        // median.
+        let audio = generate(&cfg, |t| 240.0 + 2.0 * t, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: a.duration_s(),
+            bph: a.bph().unwrap(),
+            lift_deg: a.config().analysis.amplitude.lift_deg,
+            beats: a.beats().to_vec(),
+            amplitude_windows: a.amp.clone(),
+            clipped_beats: a.clipped_beats().to_vec(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+            snippets: Vec::new(),
+        };
+        let end = a.settled_to;
+        // A stretch that starts partway through an amplitude window.
+        for average_s in [7.3, 9.1] {
+            let live = a.reading_at(end, average_s);
+            let saved = crate::session::measure_masked(&log, None, &[], &[], end - average_s, end);
+            assert!(live.amplitude_deg.is_some(), "{live:?}");
+            assert_eq!(live.amplitude_deg, saved.amplitude_deg, "{average_s}");
+            assert_eq!(live.amplitude_even_deg, saved.amplitude_even_deg);
+            assert_eq!(live.amplitude_odd_deg, saved.amplitude_odd_deg);
+            assert_eq!(live.beat_error_unlock_ms, saved.beat_error_unlock_ms);
+            assert_eq!(live.beat_error_ms, saved.beat_error_ms);
+        }
     }
 }
