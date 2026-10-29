@@ -1862,7 +1862,8 @@ fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
 /// to core with #294's one measurement context per take.
 ///
 /// Bumped in the put_* setters and in these places only: positions_moved
-/// and set_position (breaks), calibre_changed when the wheels change
+/// (breaks; also after the Settle field resettles the take) and
+/// set_position (breaks), calibre_changed when the wheels change
 /// (settings), and new_take from reset_session and show_log (every
 /// part). Any other write to `rev` is a defect.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -13683,6 +13684,7 @@ impl TimegrapherApp {
                         self.guided_settle_s = v;
                         // Every settle band redraws, and the table with it.
                         self.session.resettle(v);
+                        self.positions_moved(self.position);
                     }
                 })
                 .response
