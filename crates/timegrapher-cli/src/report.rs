@@ -409,26 +409,12 @@ fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
                 .collect()
         })
         .collect();
-    let dt = c.period_s / cols as f64;
     let merged: Vec<Vec<f64>> = match kind {
         RasterKind::Value(scale) => merged
             .into_iter()
             .map(|r| r.into_iter().map(|v| v * scale).collect())
             .collect(),
-        // A watch that gains runs early, so rate is minus the slope.
-        RasterKind::Rate => merged
-            .into_iter()
-            .map(|r| {
-                (0..cols)
-                    .map(|j| {
-                        let a = if j > 0 { r[j - 1] } else { r[j] };
-                        let b = if j + 1 < cols { r[j + 1] } else { r[j] };
-                        let span = if j > 0 && j + 1 < cols { 2.0 } else { 1.0 };
-                        -(b - a) / (span * dt) * 86400.0
-                    })
-                    .collect()
-            })
-            .collect(),
+        RasterKind::Rate => timegrapher_core::longterm::rate_rows(&merged, c.period_s),
     };
     let mut all: Vec<f64> = merged
         .iter()
