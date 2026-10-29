@@ -12765,6 +12765,18 @@ impl TimegrapherApp {
         });
     }
 
+    /// Where the take opened has USB lines and a clock log good enough to
+    /// correct on its own that measure its sound card apart, core's
+    /// caveat for it, short and long, in core's words. The rates stay
+    /// corrected by the USB lines.
+    fn clock_disagreement(&self) -> Option<(String, String)> {
+        let caveat = Caveat::from(self.take_clock.as_ref()?.sources_disagree()?);
+        Some((
+            caveat.short(self.lift_deg, 0)?,
+            caveat.long(Some(self.lift_deg))?,
+        ))
+    }
+
     /// The status bar's notices, right to left: a word each for what used
     /// to push the window down from the top (an error, the app having
     /// closed unexpectedly, sound kept from an earlier session, a newer
@@ -12928,6 +12940,10 @@ impl TimegrapherApp {
         if self.session.recorder.is_none() && self.marks_unsaved() {
             ui.label(RichText::new("Changes not saved").color(pal.text_secondary))
                 .on_hover_text(SAVE_MARKS_HINT);
+        }
+        if let Some((short, long)) = self.clock_disagreement() {
+            ui.label(RichText::new(short).small().color(pal.text_secondary))
+                .on_hover_text(long);
         }
         if let Some(r) = &self.session.recorder {
             let since = self.unsaved_s();
@@ -27035,6 +27051,38 @@ mod tests {
     /// Settings lists each kept clock; Forget removes that one from the
     /// file the command line reads, and the input listening loses its
     /// True Clock with it. Manage Calibres… opens Settings at Calibres.
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
+    fn usb_lines_and_a_good_log_apart_say_so_in_the_status_bar() {
+        // An exact log, an entry a minute for half an hour, the card
+        // 20 ppm slow; USB lines 100 ppm off that, then within 5 ppm.
+        let log: Vec<(f64, f64)> = (0..31)
+            .map(|i| {
+                let audio = f64::from(i) * 60.0;
+                (audio, 1.7e9 + audio * (1.0 + 20e-6))
+            })
+            .collect();
+        let rated = |usb: f64| {
+            let mut fit = timegrapher_core::clock::ClockFit::for_rates(&log).unwrap();
+            fit.rate_from_usb(usb);
+            fit
+        };
+        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+        assert_eq!(app.clock_disagreement(), None, "no take open");
+        app.take_clock = Some(rated(120.0));
+        let (short, long) = app.clock_disagreement().expect("100 ppm apart");
+        assert_eq!(short, "USB lines and clock log 100 ppm apart");
+        assert!(
+            long.contains("+120.0 ppm") && long.contains("+20 ± 0 ppm"),
+            "{long}"
+        );
+        app.take_clock = Some(rated(24.0));
+        assert_eq!(app.clock_disagreement(), None, "4 ppm apart");
+    }
+
     #[test]
     #[expect(
         clippy::disallowed_methods,

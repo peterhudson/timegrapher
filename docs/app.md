@@ -770,7 +770,11 @@ says what the log measured and why it isn't applied. Where the
 recording carries USB lines, they set the rate instead, log or not, as
 `timegrapher series` reads it: the log then places only the take's
 breaks, and the Rate's hover says first that the figure is on the take's USB lines,
-by how many ppm, and what the log measured. The lines are read from the
+by how many ppm, and what the log measured. Where that log is good enough
+to correct on its own and the two measure the card more than 5 ppm apart
+(and more than twice the log's standard error), the status bar says so,
+for instance "USB lines and clock log 100 ppm apart", with both figures
+in its hover; the rate stays on the USB lines. The lines are read from the
 first ten minutes of the take's sound after it opens, and the figures
 and charts follow once they are. In the Watches view, a take's Rate is
 corrected the same way. A log
