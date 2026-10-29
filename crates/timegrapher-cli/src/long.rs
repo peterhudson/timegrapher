@@ -12,7 +12,7 @@ use timegrapher_core::longterm::{Component, LongConfig};
 use timegrapher_core::periodicity::{common_escape_wheels, standard_wheels, Wheel};
 use timegrapher_core::stream::{self, BeatLog, StreamConfig};
 use timegrapher_core::timefreq::size_number;
-use timegrapher_core::{audio, take, timing};
+use timegrapher_core::{audio, joined, take, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
 /// number of teeth, or both common escape wheels when neither is given.
@@ -110,6 +110,30 @@ pub(crate) struct ResolvedTrain {
 pub(crate) type ResolvedCalibre = take::Calibre;
 
 impl Train<'_> {
+    /// The train of the take `m`: a calibre given is looked up; the
+    /// session file's may be a label of the owner's own, as `session`
+    /// reads it.
+    fn resolve_for_take(
+        &self,
+        m: &timegrapher_core::session::Manifest,
+    ) -> Result<ResolvedTrain, String> {
+        let resolved = match (self.calibre, m.calibre.as_deref()) {
+            (Some(_), _) | (None, None) => self.resolve()?,
+            (None, Some(name)) => {
+                let user = match calibre_store::default_path() {
+                    Some(p) => UserCalibres::load(&p)?,
+                    None => UserCalibres::default(),
+                };
+                Train {
+                    calibre: Some(name),
+                    escape_teeth: self.escape_teeth,
+                }
+                .resolve_label_with(&user)?
+            }
+        };
+        Ok(resolved.with_escape_teeth(self.escape_teeth.or(m.escape_teeth)))
+    }
+
     pub(crate) fn resolve(&self) -> Result<ResolvedTrain, String> {
         // Defaults must not depend on a catalogue that was not requested.
         if self.calibre.is_none() {
@@ -285,6 +309,10 @@ pub(crate) struct Read {
     pub unlisted: Option<timegrapher_core::breaks::Unlisted>,
     /// The stretches masked by hand and left out, start and end.
     pub masked: Vec<(f64, f64)>,
+    /// The take's stretches read, audio seconds, when it is read in
+    /// stretches ([`joined::take_spans`]): `log` and `breaks` are then
+    /// the stretches joined end to end, already on `clock`.
+    pub stretches: Option<Vec<(f64, f64)>>,
 }
 
 /// Read `files` for `long` and `series`. A take's folder (one holding a
@@ -358,6 +386,7 @@ pub(crate) fn read(
         breaks,
         unlisted,
         masked: Vec::new(),
+        stretches: None,
     })
 }
 
@@ -370,23 +399,7 @@ fn read_take(
     train: Train,
 ) -> Result<Read, String> {
     let (m, base, _) = crate::session_cmd::load_manifest_file(manifest)?;
-    // A calibre given is looked up; the session file's may be a label of
-    // the owner's own, as `session` reads it.
-    let resolved_train = match (train.calibre, m.calibre.as_deref()) {
-        (Some(_), _) | (None, None) => train.resolve()?,
-        (None, Some(name)) => {
-            let user = match calibre_store::default_path() {
-                Some(p) => UserCalibres::load(&p)?,
-                None => UserCalibres::default(),
-            };
-            Train {
-                calibre: Some(name),
-                escape_teeth: train.escape_teeth,
-            }
-            .resolve_label_with(&user)?
-        }
-    }
-    .with_escape_teeth(train.escape_teeth.or(m.escape_teeth));
+    let resolved_train = train.resolve_for_take(&m)?;
     let given = take::Given {
         bph: cfg.analysis.bph,
         lift_deg: lift,
@@ -431,7 +444,10 @@ fn read_take(
             };
             Ok(correction.as_ref().map(|(ppm, _)| *ppm))
         },
-        |done| progress.at(done * 100.0, Some(100.0), |d| format!("{d:.0}"), "%"),
+        |done, total| {
+            let pct = 100.0 * done / total.max(f64::MIN_POSITIVE);
+            progress.at(pct, Some(100.0), |d| format!("{d:.0}"), "%")
+        },
     )?;
     progress.end();
     let log_path = e.clock.as_ref().map(|c| base.join(c));
@@ -442,6 +458,18 @@ fn read_take(
         correction,
         log_path.as_deref(),
     );
+    // Each entry from the end of its settling, as `session` and the app
+    // read it.
+    let stretches = joined::take_spans(&m, opened.log.duration_s);
+    let (log, breaks) = match &stretches {
+        Some(spans) => joined::join(
+            &opened.log,
+            spans,
+            &opened.breaks,
+            clock.as_ref().map(|c| &c.fit),
+        ),
+        None => (opened.log, opened.breaks),
+    };
     let name = opened
         .files
         .first()
@@ -465,11 +493,12 @@ fn read_take(
         escape_teeth: train.escape_teeth.or(m.escape_teeth),
         clock_log: log_path,
         wheels,
-        log: opened.log,
+        log,
         clock,
-        breaks: opened.breaks,
+        breaks,
         unlisted: opened.unlisted,
         masked: opened.masked,
+        stretches,
     })
 }
 
@@ -546,6 +575,7 @@ pub fn run(
         breaks,
         unlisted,
         masked,
+        stretches,
     } = read(files, clock_args, cfg, lift, train)?;
     let cfg = &cfg;
     // Said beside the readings, except a clock log's own (the report
@@ -566,13 +596,18 @@ pub fn run(
     };
     lc.wheels.extend(take_wheels);
     lc.wheels.extend(extra);
-    let mut rep = longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc);
+    let mut rep = match stretches {
+        Some(_) => longrun::analyse_on_clock(&log, clock.as_ref(), &breaks, &lc),
+        None => longrun::analyse_with_breaks(&log, clock.as_ref(), &breaks, &lc),
+    };
     if let Some(why) = unlisted {
         timegrapher_core::measure::add(
             &mut rep.caveats,
             timegrapher_core::measure::Caveat::BreaksUnlisted { why },
         );
     }
+    // A take read in stretches is on its clock already.
+    let clock = clock.filter(|_| stretches.is_none());
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));
@@ -599,6 +634,7 @@ pub fn run(
         "bph": cfg.analysis.bph,
         "lift_deg": cfg.analysis.amplitude.lift_deg,
         "masked": masked,
+        "stretches": stretches,
         "notch_hz": cfg.analysis.envelope.notch_hz,
         "highpass_hz": cfg.analysis.envelope.highpass_hz,
         "calibre": calibre,
@@ -1436,8 +1472,14 @@ mod take_tests {
         assert_eq!(r.log.lift_deg, 49.0);
         assert_eq!(r.wheels[0].name, "third wheel");
         assert_eq!(r.masked, vec![(49.0, 57.0)]);
+        // Each position from the end of its settling, joined: the mask is
+        // 29 s to 37 s into the first stretch, read from 20 s.
+        assert_eq!(
+            r.stretches,
+            Some(vec![(take::SETTLE_S, 60.0), (60.0 + take::SETTLE_S, 120.0)])
+        );
         assert!(
-            !r.log.beats.iter().any(|b| (49.0..57.0).contains(&b.time)),
+            !r.log.beats.iter().any(|b| (29.0..37.0).contains(&b.time)),
             "a beat in the mask"
         );
         let clock = r.clock.unwrap();
@@ -1461,6 +1503,11 @@ mod take_tests {
         assert!(clock.from.contains("clock.csv"), "{}", clock.from);
         assert!(clock.fit.ppm.abs() < 1.0, "{}", clock.fit.ppm);
         assert_eq!(r.clock_log, Some(dir.join("clock.csv")));
+        // Read from the end of its settling, as `session` and the app read
+        // it: the first 20 s are left out.
+        assert_eq!(r.stretches, Some(vec![(take::SETTLE_S, 120.0)]));
+        assert!(r.log.beats[0].time < 1.0, "{:?}", r.log.beats[0]);
+        assert!((r.log.duration_s - (120.0 - take::SETTLE_S)).abs() < 0.01);
         assert!(!r.cfg.analysis.lift_known);
         let _ = fs::remove_dir_all(&dir);
     }

@@ -152,7 +152,31 @@ pub fn analyse_with_breaks(
     breaks: &[Break],
     cfg: &LongConfig,
 ) -> LongReport {
-    let holes = Cuts::new(clock, breaks, &[]);
+    analyse_read(log, clock, clock, breaks, cfg)
+}
+
+/// [`analyse_with_breaks`] of a log whose times were put on the take's
+/// `clock` already ([`crate::joined::join`]): the report gives that clock
+/// as the one it was read on, without putting the times on it again.
+pub fn analyse_on_clock(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    cfg: &LongConfig,
+) -> LongReport {
+    analyse_read(log, None, clock, breaks, cfg)
+}
+
+/// [`analyse_with_breaks`], its times put on `map` and its report saying
+/// it was read on `read_on`.
+fn analyse_read(
+    log: &BeatLog,
+    map: Option<&ClockFit>,
+    read_on: Option<&ClockFit>,
+    breaks: &[Break],
+    cfg: &LongConfig,
+) -> LongReport {
+    let holes = Cuts::new(map, breaks, &[]);
     let map = |t: f64| holes.true_time(t);
     let cuts = holes.piece_cuts();
     let beats = holes.beats(&log.beats);
@@ -293,7 +317,7 @@ pub fn analyse_with_breaks(
         lift_deg: log.lift_deg,
         beats_found: beats.len(),
         clean_fraction: (bw.len() as f64 / expected.max(1.0)).min(1.0),
-        clock: clock.cloned(),
+        clock: read_on.cloned(),
         breaks: breaks.to_vec(),
         caveats: (!log.by_count.is_empty())
             .then_some(crate::measure::Caveat::SidesByCount {
@@ -301,7 +325,7 @@ pub fn analyse_with_breaks(
             })
             .into_iter()
             .chain((turned && overall.is_some()).then_some(crate::measure::Caveat::BeatErrorAsSize))
-            .chain(clock.and_then(ClockFit::sources_disagree).map(Into::into))
+            .chain(read_on.and_then(ClockFit::sources_disagree).map(Into::into))
             .collect(),
         overall,
         beat_error_unlock_ms: timing::median_signed(uv.into_iter(), turned),

@@ -51,7 +51,7 @@ fn steadiness_stops_at_a_takes_breaks_with_their_gaps() {
     };
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     let cut = |audio_s, gap_s| Break { audio_s, gap_s };
-    let breaks = |app: &TimegrapherApp| app.steady_log(log.clone(), &[]).1;
+    let breaks = |app: &TimegrapherApp| app.steady_log(log.clone(), &[], None).1;
     // Heard here: each jump, with no time.
     assert_eq!(breaks(&app), [cut(200.0, 0.0), cut(400.0, 0.0)]);
     // Opened: the take's own break keeps the 30 s its gap held, as
