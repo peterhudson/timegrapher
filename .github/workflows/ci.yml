@@ -209,10 +209,22 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --release -p timegrapher-app corpus_tests -- --nocapture 2>&1 | tee app-corpus.txt
+      # Each sound file a take lists, read through the MCP server's
+      # analyze_recording, reads what `timegrapher session` reads.
+      - name: MCP server against session on every corpus recording
+        if: steps.changes.outputs.full != 'false'
+        timeout-minutes: 15
+        env:
+          TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
+          TIMEGRAPHER_REQUIRE_CORPUS: "1"
+          TIMEGRAPHER_CLI: ${{ github.workspace }}/target/release/timegrapher
+        run: |
+          set -o pipefail
+          cargo test --locked --release -p timegrapher-mcp --bins corpus_tests -- --nocapture 2>&1 | tee mcp-corpus.txt
       - name: Summary
         if: always()
         run: |
-          for result in regress.txt equivalence.txt app-corpus.txt; do
+          for result in regress.txt equivalence.txt app-corpus.txt mcp-corpus.txt; do
             if [ -f "$result" ]; then
               { echo "### $result"; echo '```'; cat "$result"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             fi
