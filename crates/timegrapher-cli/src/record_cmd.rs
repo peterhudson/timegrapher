@@ -642,7 +642,7 @@ impl Feed {
                 Some(t),
                 r.rate_s_per_day,
                 r.amplitude_deg,
-                r.beat_error_unlock_ms,
+                session::beat_error_signed(r.beat_error_unlock_ms, r.beat_error_ms),
             ]);
             if self.trend.len() > MAX_TREND {
                 // Every other point of the older half goes.
@@ -1114,13 +1114,13 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
-            settle_s: take::SETTLE_S,
+            settle_s: None,
         };
         let c = check(&dir, &set).unwrap();
         let mut scfg = StreamConfig::default();
         scfg.analysis.bph = set.bph;
         let log = stream::analyze_files(&[wav.as_path()], &scfg, |_| {}).unwrap();
-        let m = session::measure(&log, None, c.from_s, log.duration_s);
+        let m = session::measure(&log, None, c.from_s, c.to_s);
         assert_eq!(m.beat_error_unlock_ms, None, "the unlock is never found");
         assert!(m.beat_error_ms.is_some());
         assert_eq!(c.beat_error_ms, m.beat_error_ms);
