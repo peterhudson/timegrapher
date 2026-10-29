@@ -644,8 +644,8 @@ pub fn run(
     Ok(())
 }
 
-/// The `clock_sources_disagree`, `sides_by_count` and `beat_error_as_size`
-/// caveats in core's short words
+/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count` and
+/// `beat_error_as_size` caveats in core's short words
 /// ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
     caveats: &[timegrapher_core::measure::Caveat],
@@ -656,6 +656,7 @@ pub(crate) fn caveat_lines(
         .filter_map(|c| {
             let label = match c {
                 Caveat::ClockSourcesDisagree { .. } => "Clock",
+                Caveat::BreaksUnlisted { .. } => "Breaks",
                 Caveat::SidesByCount { .. } => "Sides",
                 Caveat::BeatErrorAsSize => "Conditions",
                 _ => return None,
@@ -1337,12 +1338,16 @@ mod caveat_tests {
                 log_ppm_sd: 2.0,
             },
             Caveat::LiftUnknown,
+            Caveat::BreaksUnlisted {
+                why: timegrapher_core::breaks::Unlisted::Unreadable,
+            },
             Caveat::BeatErrorAsSize,
         ]);
         assert_eq!(
             lines,
             [
                 ("Clock", "USB lines and clock log 100 ppm apart".to_string()),
+                ("Breaks", "breaks from the clock log".to_string()),
                 (
                     "Conditions",
                     "beat error given as a size: its sign differs either side of a cut".to_string()
