@@ -125,10 +125,6 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
 /// place among them: `file entry 1`.
 const KNOWN: &[(&str, &str)] = &[
     (
-        "reverso21600_DU_level_overnight/take_part01-096.flac",
-        "26 s file: session reads its 13 s after settling; the app wants three average windows",
-    ),
-    (
         "ym42_CR_long/take_part01-003.flac entry 1",
         "the first of two entries for one file, with its own measure_s: the app does not keep \
          its end",
