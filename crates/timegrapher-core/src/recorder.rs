@@ -66,12 +66,6 @@ struct SessionFile<'a> {
     result: Option<&'a serde_json::Value>,
 }
 
-/// Seconds after the watch is put in a new position that are left out of
-/// its readings while it settles (the hand leaving the stand, the balance
-/// steadying). The sound is still kept; a saved take's positions start
-/// after it.
-pub const SETTLE_S: f64 = 10.0;
-
 /// Where listening carried on after a pause. The audio runs straight on
 /// across it, but the time between is missing, so a reader starts afresh
 /// there: a fresh lock on the beats, and a clock fit that doesn't span it.

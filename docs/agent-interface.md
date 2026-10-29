@@ -239,7 +239,8 @@ is analysed at once. Whether a regular beat is found
 measured over the whole take, so a short take still gets them.
 The readings come from the stretch `session` will read: the check skips
 the take's `settle_s` from the session file (20 s in a file `record`
-writes, as in one with none; at most half the take) and reads the rest
+writes, up to the take's end; 20 s but at most half the take in a file
+with none) and reads the rest
 on the sound card's clock, as `session` does, so the check and the report agree on a take
 `record` creates (they can differ where `session` reads it otherwise, as
 [sessions.md](sessions.md) lists); they are

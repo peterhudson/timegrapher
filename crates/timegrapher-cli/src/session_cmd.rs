@@ -963,7 +963,7 @@ fn print_summary(s: &Session) {
         "BE is beat error as a size; which beat is longer is not shown, because it depends on the beat the analysis locked on first."
     );
     println!(
-        "Readings leave out the settling time at the start of each position, as record's quick check does. That check uses the session file's settle_s (30 s when the file has none, where this summary uses 20 s) and none of --settle, --bph, --lift, --calibre, a reading's own settle_s, measure_s, start_s, end_s, a clock log, card_ppm or a restart in listening, so a reading that uses one of these can differ from it."
+        "Readings leave out the settling time at the start of each position, as record's quick check does. That check uses the session file's settle_s (20 s when the file has none, as this summary does) and none of --settle, --bph, --lift, --calibre, a reading's own settle_s, measure_s, start_s, end_s, a clock log, card_ppm or a restart in listening, so a reading that uses one of these can differ from it."
     );
     if s.readings.iter().any(|r| r.measurement.calibrated) {
         println!("The sound card's clock is corrected where a clock log or card_ppm is given.");

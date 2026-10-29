@@ -331,7 +331,11 @@ anything lower, read back as 0). Stretches with no beats are left out.
 
 After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
 *Testing Methods for Mechanical Watches*, D40e, 2025, measurement tips, about p. 34), to the end
-of the recording or for `measure_s`:
+of the recording or for `measure_s`. A `settle_s` given (on the entry, the
+session file or `--settle`) is kept as it is: one that reaches the end of
+its stretch stops the run with an error naming the entry. The 20 s default
+takes at most half a stretch, so a short one still has something to read.
+Each reading is:
 
 - rate from one fit over every beat (Tick and Tock fitted together),
   corrected for the sound card's clock: by the clock log the session file

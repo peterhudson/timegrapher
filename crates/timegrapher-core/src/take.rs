@@ -233,18 +233,98 @@ pub fn entry_times(entry: &RecordingEntry, manifest: &Manifest) -> (Option<f64>,
 }
 
 /// The stretch of one recorded position that is read, from the position's
-/// `start_s` to `stop_s`: it starts once the watch has settled, `settle_s`
-/// (default [`SETTLE_S`]) after the start but no later than halfway, and
-/// runs `measure_s` from there, or to the stop.
+/// `start_s` to `stop_s`: it starts once the watch has settled and runs
+/// `measure_s` from there, or to the stop. A `settle_s` given is kept as
+/// it is, up to the stop; with none, the watch settles for [`SETTLE_S`]
+/// but no later than halfway, so a short position still has something to
+/// read.
 pub fn measured(
     start_s: f64,
     stop_s: f64,
     settle_s: Option<f64>,
     measure_s: Option<f64>,
 ) -> (f64, f64) {
-    let from = start_s + settle_s.unwrap_or(SETTLE_S).min((stop_s - start_s) / 2.0);
+    let settle = settle_s.unwrap_or(SETTLE_S.min((stop_s - start_s) / 2.0));
+    let from = (start_s + settle).min(stop_s);
     let to = measure_s.map_or(stop_s, |m| from + m).min(stop_s);
     (from, to)
+}
+
+/// The stretch of a recording one session entry reads: the stretch it
+/// names ([`span_of`]) and, within it, the stretch measured once the watch
+/// has settled ([`measured`]). Seconds into the entry's sound.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Window {
+    pub start_s: f64,
+    pub stop_s: f64,
+    pub from_s: f64,
+    pub to_s: f64,
+}
+
+/// Why a session entry gives no reading.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NoReading {
+    /// It settles right to its end ([`reads_nothing`]).
+    Nothing,
+    /// Its `start_s` and `end_s` leave nothing of the recording
+    /// ([`span_of`]'s text).
+    Outside(String),
+    /// The settling time it was given reaches the end of its stretch.
+    Unsettled {
+        file: String,
+        settle_s: f64,
+        length_s: f64,
+    },
+}
+
+impl std::fmt::Display for NoReading {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NoReading::Nothing => write!(f, "nothing to read: it settles right to its end"),
+            NoReading::Outside(why) => write!(f, "{why}"),
+            NoReading::Unsettled {
+                file,
+                settle_s,
+                length_s,
+            } => write!(
+                f,
+                "{file}: a settle_s of {settle_s} s leaves nothing of its {length_s:.0} s \
+                 stretch to read; give it a shorter settle_s"
+            ),
+        }
+    }
+}
+
+/// The stretch entry `e` of the take `m` reads in a recording of
+/// `duration_s`, with `given_settle_s` the settling time the reader gives
+/// (after the entry's own, before the session file's), or why it reads
+/// nothing. Every surface reads an entry from this window.
+pub fn reading_window(
+    e: &RecordingEntry,
+    m: &Manifest,
+    given_settle_s: Option<f64>,
+    duration_s: f64,
+) -> Result<Window, NoReading> {
+    if reads_nothing(e) {
+        return Err(NoReading::Nothing);
+    }
+    let (start_s, stop_s) = span_of(e, duration_s).map_err(NoReading::Outside)?;
+    let (settle, measure) = entry_times(e, m);
+    let settle = e.settle_s.or(given_settle_s).or(settle);
+    let (from_s, to_s) = measured(start_s, stop_s, settle, measure);
+    if from_s >= stop_s {
+        return Err(NoReading::Unsettled {
+            file: e.file.clone(),
+            settle_s: settle.unwrap_or(SETTLE_S),
+            length_s: stop_s - start_s,
+        });
+    }
+    Ok(Window {
+        start_s,
+        stop_s,
+        from_s,
+        to_s,
+    })
 }
 
 /// Whether `p` is a sound file a take keeps: WAV or FLAC.
@@ -695,14 +775,12 @@ pub fn measure_entry(
         masked,
     } = open_entry(base, m, e, s, usb, correction, |_| {})?;
     let cfg = &s.stream;
-    let (start_s, stop_s) = span_of(e, log.duration_s)?;
-    let (settle, measure) = entry_times(e, m);
-    let (settle_s, end_s) = measured(
+    let Window {
         start_s,
         stop_s,
-        e.settle_s.or(s.settle_s).or(settle),
-        measure,
-    );
+        from_s: settle_s,
+        to_s: end_s,
+    } = reading_window(e, m, s.settle_s, log.duration_s).map_err(|w| w.to_string())?;
     let mut measurement =
         session::measure_masked(&log, fit.as_ref(), &breaks, &masked, settle_s, end_s);
     if !cfg.analysis.lift_known {
@@ -974,10 +1052,55 @@ mod tests {
             measured(100.0, 400.0, Some(30.0), Some(60.0)),
             (130.0, 190.0)
         );
-        // Settling never takes more than half the position.
-        assert_eq!(measured(0.0, 30.0, Some(30.0), None), (15.0, 30.0));
+        // The default settling never takes more than half the position;
+        // a settling given is kept, up to the position's end.
+        assert_eq!(measured(0.0, 30.0, None, None), (15.0, 30.0));
+        assert_eq!(measured(0.0, 600.0, Some(377.0), None), (377.0, 600.0));
+        assert_eq!(measured(0.0, 30.0, Some(40.0), None), (30.0, 30.0));
         // Measuring stops at the position's end.
         assert_eq!(measured(0.0, 100.0, Some(0.0), Some(500.0)), (0.0, 100.0));
+    }
+
+    /// The window an entry reads: a settling given is kept even past
+    /// halfway (a take split at a jump in its sound, read from 20 s past
+    /// the jump), and an entry with nothing to read says why.
+    #[test]
+    fn an_entry_is_read_in_its_window_or_says_why_not() {
+        let m: Manifest = toml::from_str(
+            "[[recording]]\nfile = \"a.flac\"\nmeasure_s = 337\n\n\
+             [[recording]]\nfile = \"a.flac\"\nsettle_s = 377\n\n\
+             [[recording]]\nfile = \"b.flac\"\n\n\
+             [[recording]]\nfile = \"c.flac\"\nstart_s = 50\nend_s = 50\n\n\
+             [[recording]]\nfile = \"d.flac\"\nstart_s = 700\n",
+        )
+        .unwrap();
+        let w =
+            |i: usize, given: Option<f64>, d: f64| reading_window(&m.recordings[i], &m, given, d);
+        let at = |start_s, stop_s, from_s, to_s| {
+            Ok(Window {
+                start_s,
+                stop_s,
+                from_s,
+                to_s,
+            })
+        };
+        assert_eq!(w(0, None, 600.0), at(0.0, 600.0, 20.0, 357.0));
+        assert_eq!(w(1, None, 600.0), at(0.0, 600.0, 377.0, 600.0));
+        // The entry's own settling comes before the reader's.
+        assert_eq!(w(1, Some(5.0), 600.0), at(0.0, 600.0, 377.0, 600.0));
+        assert_eq!(w(2, Some(5.0), 600.0), at(0.0, 600.0, 5.0, 600.0));
+        // A short recording: the default settling stops halfway.
+        assert_eq!(w(2, None, 26.0), at(0.0, 26.0, 13.0, 26.0));
+        assert_eq!(
+            w(1, None, 300.0),
+            Err(NoReading::Unsettled {
+                file: "a.flac".into(),
+                settle_s: 377.0,
+                length_s: 300.0
+            })
+        );
+        assert_eq!(w(3, None, 600.0), Err(NoReading::Nothing));
+        assert!(matches!(w(4, None, 600.0), Err(NoReading::Outside(_))));
     }
 
     #[test]

@@ -111,8 +111,8 @@ fn takes_build_up_a_session() {
     // No time since winding was given, so none is claimed.
     assert!(j["wind_h"].is_null());
     // The check reads the stretch `session` reads: after the settling
-    // time (30 s, capped at half of this 35 s take).
-    assert_eq!(j["check"]["from_s"], 17.5);
+    // time the session file gives (20 s, kept as given on this 35 s take).
+    assert_eq!(j["check"]["from_s"], 20.0);
     let du = j["check"].clone();
 
     // The take is a folder as the app saves it, with the app's session file.
