@@ -5,10 +5,12 @@
 //! the last bit. Both read through core, so any difference is logic
 //! written twice.
 //!
+//! The same holds for core's synthetic edge takes, written afresh.
+//!
 //! Needs the corpus (`TIMEGRAPHER_CORPUS`, its audio fetched) and a built
-//! `timegrapher` (`TIMEGRAPHER_CLI`). With neither set it skips, saying
-//! so; with `TIMEGRAPHER_REQUIRE_CORPUS` set, as in CI, a missing one
-//! fails.
+//! `timegrapher` (`TIMEGRAPHER_CLI`); the edge takes need only the latter.
+//! With neither set it skips, saying so; with `TIMEGRAPHER_REQUIRE_CORPUS`
+//! set, as in CI, a missing one fails.
 
 use super::*;
 use std::time::Instant;
@@ -119,21 +121,15 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
     out
 }
 
-/// Entries the app still reads differently from session, and why. Each
-/// must still differ, so the list only shrinks as the app is fixed. A
+/// Corpus entries the app still reads differently from session, and why.
+/// Each must still differ, so the list only shrinks as the app is fixed. A
 /// file the session file lists more than once is named with its entry's
 /// place among them: `file entry 1`.
-const KNOWN: &[(&str, &str)] = &[
-    (
-        "reverso21600_DU_level_overnight/take_part01-096.flac",
-        "26 s file: session reads its 13 s after settling; the app wants three average windows",
-    ),
-    (
-        "ym42_CR_long/take_part01-003.flac entry 1",
-        "the first of two entries for one file, with its own measure_s: the app does not keep \
+const KNOWN: &[(&str, &str)] = &[(
+    "ym42_CR_long/take_part01-003.flac entry 1",
+    "the first of two entries for one file, with its own measure_s: the app does not keep \
          its end",
-    ),
-];
+)];
 
 /// Runs `work` on each item, on as many threads as the machine has, and
 /// returns what it gives in the items' order.
@@ -163,17 +159,14 @@ fn on_every_core<T: Sync, R: Send>(items: &[T], work: impl Fn(&T) -> R + Sync) -
     done.into_iter().map(|(_, r)| r).collect()
 }
 
-/// Every recording each corpus take lists reads the same on the app's
-/// cards as from `timegrapher session`. Takes, and then recordings, are
-/// read side by side, one to a core, so the whole corpus fits CI's time.
-#[test]
-fn the_app_reads_each_corpus_take_as_the_command_line_does() {
-    let Some((root, cli)) = corpus_and_cli() else {
-        return;
-    };
-    let ids = takes(&root);
+/// Each recording the takes under `root` list, read on the app's cards and
+/// by `timegrapher session`, compared: what differs and is not on `known`,
+/// or is on it and no longer differs. Takes, and then recordings, are read
+/// side by side, one to a core, so the whole corpus fits CI's time.
+fn compare(root: &Path, cli: &Path, known: &[(&str, &str)]) -> Vec<String> {
+    let ids = takes(root);
     let readings = on_every_core(&ids, |id| {
-        session_readings(&cli, &root.join("takes").join(id))
+        session_readings(cli, &root.join("takes").join(id))
     });
     let entries: Vec<(String, serde_json::Value)> = ids
         .iter()
@@ -204,12 +197,12 @@ fn the_app_reads_each_corpus_take_as_the_command_line_does() {
         let name = name.clone();
         let app = opened(&root.join("takes").join(id).join(label));
         let found = differences(&name, &app.whole_take(), reading);
-        match KNOWN.iter().find(|(k, _)| *k == name) {
+        match known.iter().find(|(k, _)| *k == name) {
             Some((_, why)) if !found.is_empty() => {
                 eprintln!("{name}: differs, as known ({why})");
                 Vec::new()
             }
-            Some(_) => vec![format!("{name}: now the same; take it off KNOWN")],
+            Some(_) => vec![format!("{name}: now the same; take it off its known list")],
             None => {
                 eprintln!(
                     "{name}: {}",
@@ -219,10 +212,46 @@ fn the_app_reads_each_corpus_take_as_the_command_line_does() {
             }
         }
     });
-    let compared = entries.len();
-    let wrong: Vec<String> = found.into_iter().flatten().collect();
-    eprintln!("{compared} recordings compared");
-    assert!(compared > 0, "no recording to compare in {root:?}");
+    eprintln!("{} recordings compared", entries.len());
+    assert!(!entries.is_empty(), "no recording to compare in {root:?}");
+    found.into_iter().flatten().collect()
+}
+
+/// Edge takes the app still reads differently from session, and why. Each
+/// must still differ, so the list only shrinks as the app is fixed.
+const EDGE_KNOWN: &[(&str, &str)] = &[];
+
+/// Every recording each corpus take lists reads the same on the app's
+/// cards as from `timegrapher session`.
+#[test]
+fn the_app_reads_each_corpus_take_as_the_command_line_does() {
+    let Some((root, cli)) = corpus_and_cli() else {
+        return;
+    };
+    let wrong = compare(&root, &cli, KNOWN);
+    assert!(
+        wrong.is_empty(),
+        "the app and session differ:\n{}",
+        wrong.join("\n")
+    );
+}
+
+/// Each synthetic edge take (core's `edge_takes`: short, paused, slept,
+/// silent, unlisted breaks, a drifting card) reads the same on the app's
+/// cards as from `timegrapher session`. Needs only `TIMEGRAPHER_CLI`.
+#[test]
+fn the_app_reads_each_edge_take_as_the_command_line_does() {
+    let required = std::env::var_os("TIMEGRAPHER_REQUIRE_CORPUS").is_some();
+    let Some(cli) = std::env::var_os("TIMEGRAPHER_CLI").map(PathBuf::from) else {
+        assert!(!required, "TIMEGRAPHER_CLI is needed");
+        eprintln!("SKIP: set TIMEGRAPHER_CLI to compare the app with the command line");
+        return;
+    };
+    let root = std::env::temp_dir().join(format!("tg-app-edge-takes-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    timegrapher_core::edge_takes::write_all(&root).unwrap();
+    let wrong = compare(&root, &cli, EDGE_KNOWN);
+    let _ = std::fs::remove_dir_all(&root);
     assert!(
         wrong.is_empty(),
         "the app and session differ:\n{}",

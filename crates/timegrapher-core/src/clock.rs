@@ -1287,6 +1287,33 @@ unix_s,frames
         assert!((fit.map(43200.0) - want(43200.0)).abs() < 0.005);
     }
 
+    /// A first entry dropped as late leaves the knots spanning the kept
+    /// entries alone, from the first kept to the last: the mapping runs on
+    /// past the last entry along the last two knots, as the sound outlasts
+    /// the log by a block or two.
+    #[test]
+    fn the_knots_run_from_the_first_kept_entry_to_the_last() {
+        // 5 h at 20 ppm, an entry a minute; the first 0.2 s late, so it is
+        // left out and the kept entries start 60 s in. 60 s plus 30 turns
+        // of 600 s ends on a knot.
+        let k = 1.0 + 20e-6;
+        let mut pairs: Vec<(f64, f64)> = (0..=301)
+            .map(|i| {
+                let a = i as f64 * 60.0;
+                (a, a * k)
+            })
+            .collect();
+        pairs[0].1 += 0.2;
+        let fit = ClockFit::new(&pairs).unwrap();
+        assert!(fit.tracks_drift);
+        let end = pairs[pairs.len() - 1].0;
+        assert_eq!(end - 60.0, 30.0 * 600.0);
+        for a in [end - 30.0, end, end + 30.0] {
+            let got = fit.map(a) - fit.map(60.0);
+            assert!((got - (a - 60.0) * k).abs() < 1e-3, "{a}: {got}");
+        }
+    }
+
     #[test]
     fn sparse_entries_over_40_hours_keep_one_line() {
         // Entries every 2.5 hours over a 40 h run are too sparse for any
