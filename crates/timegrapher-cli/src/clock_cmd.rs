@@ -134,17 +134,13 @@ pub fn describe(d: &DeviceClock) -> String {
         String::new()
     };
     format!(
-        "{}: {:.2}{sd} ppm {} (rates read {:.2} s/d {} on it); {} {}{span}",
+        "{}: {:.2}{sd} ppm {} (rates read {:.2} s/d {} on it); {}, {}{span}",
         d.device,
         d.ppm.abs(),
         if d.ppm >= 0.0 { "slow" } else { "fast" },
         d.rate_error_s_per_day().abs(),
         if d.ppm >= 0.0 { "fast" } else { "slow" },
-        match d.source.as_str() {
-            "measure" => "measured",
-            "log" => "from a clock log",
-            _ => "set by hand",
-        },
+        d.how_text(),
         d.measured_utc
     )
 }
