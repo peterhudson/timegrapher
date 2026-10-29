@@ -117,6 +117,49 @@ fn analyze_shape_and_profile_keep_their_fields() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A session file `analyze` cannot read beside the file, or one with an
+/// entry `session` would refuse, leaves the file's own reading standing:
+/// `take` gives the session file and the error, and the text says so on
+/// stderr.
+#[test]
+fn analyze_reads_its_file_beside_a_session_file_it_cannot_read() {
+    let dir = scratch("broken-take");
+    let wav = dir.join("du.wav");
+    watch_wav(&wav, 20.0);
+    let w = wav.to_str().unwrap();
+    let config = dir.join("config");
+    for text in [
+        "this is [ not a session file",
+        "[[recording]]\nfile = \"du.wav\"\nposition = \"sideways\"\n",
+    ] {
+        std::fs::write(dir.join("session.toml"), text).unwrap();
+        let j = json(&config, &["analyze", w, "--json"]);
+        assert!(j["beats_found"].as_u64().unwrap() > 0, "{j}");
+        let take = &j["take"];
+        assert!(
+            take["session_file"]
+                .as_str()
+                .unwrap()
+                .ends_with("session.toml"),
+            "{j}"
+        );
+        assert!(!take["error"].as_str().unwrap().is_empty(), "{j}");
+        assert!(take.get("readings").is_none(), "{j}");
+        let out = Command::new(env!("CARGO_BIN_EXE_timegrapher"))
+            .args(["analyze", w])
+            .env("TIMEGRAPHER_CONFIG_DIR", &config)
+            .output()
+            .unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{err}");
+        assert!(
+            err.contains("could not be read for this file's take"),
+            "{err}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn session_keeps_its_fields() {
     let dir = scratch("session");

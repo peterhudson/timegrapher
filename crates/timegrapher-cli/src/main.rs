@@ -729,7 +729,7 @@ fn main() -> ExitCode {
             cfg.amplitude.lift_deg = r.lift_deg;
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
-            let take = session_cmd::take_of(&file, bph, lift, calibre.clone())?;
+            let take = session_cmd::take_of(&file, bph, lift, calibre.clone());
             clock_cmd::correction(&file, device.as_deref(), card_ppm)
                 .and_then(|c| run_analyze(&file, &cfg, &r.train, (beats, windows), c, take, json))
         }),
@@ -1210,6 +1210,13 @@ fn run_analyze(
 /// What `session` reads of a take's file ([`session_cmd::take_of`]), one
 /// line for each entry naming it.
 fn print_take(t: &serde_json::Value) {
+    if let Some(error) = t["error"].as_str() {
+        eprintln!(
+            "note: {} could not be read for this file's take: {error}",
+            t["session_file"].as_str().unwrap_or("")
+        );
+        return;
+    }
     println!(
         "Take         {} lists this file; `timegrapher session` reads it:",
         t["session_file"].as_str().unwrap_or("")

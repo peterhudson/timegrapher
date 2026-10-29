@@ -459,15 +459,16 @@ fn lift_known(c: &Ctx, cal: Option<&ResolvedCalibre>) -> bool {
 /// it ([`read_one`], with `bph`, `lift` and `calibre` as `session`'s own
 /// flags and no cycles), and the entries naming it with nothing to read.
 /// None when the folder has no session file or it does not list `file`.
+/// A session file that cannot be read, or an entry naming `file` that
+/// `session` would refuse, gives `session_file` and the `error`, so the
+/// file's own reading still stands.
 pub(crate) fn take_of(
     file: &Path,
     bph: Option<u32>,
     lift: Option<f64>,
     calibre: Option<String>,
-) -> Result<Option<serde_json::Value>, String> {
-    let Some(dir) = file.parent() else {
-        return Ok(None);
-    };
+) -> Option<serde_json::Value> {
+    let dir = file.parent()?;
     let dir = if dir.as_os_str().is_empty() {
         Path::new(".")
     } else {
@@ -475,9 +476,24 @@ pub(crate) fn take_of(
     };
     let session_file = dir.join(take::MANIFEST);
     if !session_file.is_file() {
-        return Ok(None);
+        return None;
     }
-    let (mut m, base, _) = load_manifest_file(&session_file)?;
+    read_take_of(file, &session_file, bph, lift, calibre).unwrap_or_else(|error| {
+        Some(serde_json::json!({
+            "session_file": session_file,
+            "error": error,
+        }))
+    })
+}
+
+fn read_take_of(
+    file: &Path,
+    session_file: &Path,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    let (mut m, base, _) = load_manifest_file(session_file)?;
     let same =
         |e: &RecordingEntry| match (fs::canonicalize(base.join(&e.file)), fs::canonicalize(file)) {
             (Ok(a), Ok(b)) => a == b,
