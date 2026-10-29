@@ -215,6 +215,29 @@ pub fn all() -> Vec<EdgeTake> {
             known: None,
         },
         EdgeTake {
+            id: "edge_usb_lines_and_log",
+            summary: "120 s on a sound card 20 ppm slow whose recording carries the USB \
+                      bus's lines, with a clock log: the lines set the rate",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                rate: RATE - 20e-6 * 86_400.0,
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_usb_lines_and_correction",
+            summary: "120 s on a sound card 20 ppm slow whose recording carries the USB \
+                      bus's lines, with a correction of 20 ppm in the session file and no \
+                      clock log: the correction sets the rate",
+            caveats: &[&[]],
+            truth: Some(Truth {
+                rate: RATE - 20e-6 * 86_400.0,
+                ..MADE
+            }),
+            known: None,
+        },
+        EdgeTake {
             id: "edge_no_unlock",
             summary: "120 s of a watch whose unlock makes no sound: rate and the drop are \
                       heard, amplitude and the unlock's beat error are not",
@@ -269,6 +292,18 @@ fn watch_stepping_down(duration_s: f64, from_s: f64, drop_db: f64, seed: u64) ->
         .enumerate()
         .map(|(i, (&w, n))| if i < from { w } else { w * quieter } + n)
         .collect()
+}
+
+/// `samples` with the USB bus's lines added, 3 to 10 kHz on true time,
+/// as a card `ppm` slow hears them ([`crate::usbclock`]).
+fn with_usb_lines(mut samples: Vec<f32>, ppm: f64) -> Vec<f32> {
+    for k in 3..=10 {
+        let f = 1000.0 * k as f64 * (1.0 + ppm * 1e-6);
+        for (i, v) in samples.iter_mut().enumerate() {
+            *v += (0.001 * (2.0 * std::f64::consts::PI * f * i as f64 / FS as f64).sin()) as f32;
+        }
+    }
+    samples
 }
 
 /// The stand's noise and no watch, at the level `generate` adds it.
@@ -480,6 +515,16 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 s.extend(silence(120.0, seed + 50));
                 Recipe::of(s)
             }
+            "edge_usb_lines_and_log" => Recipe {
+                ppm: 20.0,
+                ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
+            },
+            "edge_usb_lines_and_correction" => Recipe {
+                ppm: 20.0,
+                extra: "card_ppm = 20\n",
+                entries: "[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+                ..Recipe::of(with_usb_lines(watch(120.0, seed), 20.0))
+            },
             "edge_no_unlock" => {
                 let mut cfg = made(120.0, seed);
                 cfg.sounds[0].gain = 0.0;
@@ -555,8 +600,10 @@ pub fn read(root: &Path, take: &EdgeTake) -> Result<Vec<take::EntryRead>, String
         .iter()
         .filter(|e| !take::reads_nothing(e))
         .map(|e| {
-            take::measure_entry(&dir, &m, e, &s, |_| Ok(None), |_| Ok(None))
-                .map_err(|err| format!("{}: {err}", take.id))
+            take::measure_entry(&dir, &m, e, &s, take::usb_ppm, |first| {
+                take::correction_ppm(&m, first)
+            })
+            .map_err(|err| format!("{}: {err}", take.id))
         })
         .collect()
 }
