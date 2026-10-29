@@ -1,11 +1,8 @@
 //! Each synthetic edge take, read as every surface reads a take
-//! ([`take::measure_entry`]): it opens, carries the caveats it must, and
+//! ([`edge_takes::read`]): it opens, carries the caveats it must, and
 //! where it holds enough of the watch, reads the watch it was made from.
 
 use timegrapher_core::edge_takes;
-use timegrapher_core::session::Manifest;
-use timegrapher_core::stream::StreamConfig;
-use timegrapher_core::take;
 
 #[test]
 fn every_edge_take_reads_as_it_was_made() {
@@ -13,32 +10,10 @@ fn every_edge_take_reads_as_it_was_made() {
     let takes = edge_takes::write_all(&root).unwrap();
     let mut wrong = Vec::new();
     for t in &takes {
-        let dir = root.join("takes").join(t.id);
-        let m: Manifest =
-            toml::from_str(&std::fs::read_to_string(dir.join("session.toml")).unwrap()).unwrap();
-        let mut stream = StreamConfig::default();
-        stream.analysis.bph = m.bph;
-        stream.analysis.amplitude.lift_deg = m.lift.unwrap();
-        stream.analysis.lift_known = true;
-        let s = take::EntrySettings {
-            stream,
-            card_clock: false,
-            settle_s: None,
-        };
-        let read = take::measure_entry(&dir, &m, &m.recordings[0], &s, |_| Ok(None), |_| Ok(None))
-            .unwrap_or_else(|e| panic!("{}: {e}", t.id));
+        let read = edge_takes::read(&root, t).unwrap_or_else(|e| panic!("{e}"));
         let m = &read.measurement;
         let mut here = Vec::new();
-        let codes: Vec<String> = m
-            .caveats
-            .iter()
-            .map(|c| {
-                serde_json::to_value(c).unwrap()["code"]
-                    .as_str()
-                    .unwrap()
-                    .to_string()
-            })
-            .collect();
+        let codes = edge_takes::caveat_codes(m);
         for c in t.caveats {
             if !codes.iter().any(|k| k == c) {
                 here.push(format!("{}: no {c} among {codes:?}", t.id));
