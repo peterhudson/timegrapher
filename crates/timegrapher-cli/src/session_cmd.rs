@@ -628,8 +628,8 @@ fn read_one_inner(
         card_clock: c.card_clock,
         settle_s: c.o.settle,
     };
-    let read = take::measure_entry(c.base, c.m, e, &settings, take::usb_ppm, |first| {
-        take::correction_ppm(c.m, first)
+    let read = take::measure_entry(c.base, c.m, e, &settings, take::usb, |first| {
+        take::correction_for(c.m, first, None, None)
     })?;
     if capture && read.kept.is_some() {
         return Err(format!(

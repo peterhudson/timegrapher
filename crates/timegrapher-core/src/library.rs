@@ -530,8 +530,8 @@ fn measure_take(dir: &Path) -> Result<Reading, String> {
         card_clock: false,
         settle_s: None,
     };
-    let read = crate::take::measure_entry(dir, &m, e, &settings, crate::take::usb_ppm, |first| {
-        crate::take::correction_ppm(&m, first)
+    let read = crate::take::measure_entry(dir, &m, e, &settings, crate::take::usb, |first| {
+        crate::take::correction_for(&m, first, None, None)
     })?;
     let x = &read.measurement;
     Ok(Reading {
@@ -1878,7 +1878,6 @@ mod tests {
         assert!((usb.ppm - 20.0).abs() < 0.5, "{}", usb.ppm);
         // Core's reading of them, for every surface, is the same.
         let files = [dir.join("audio-001.wav")];
-        assert_eq!(crate::take::usb_ppm(&files).unwrap(), Some(usb.ppm));
         assert_eq!(crate::take::usb(&files).unwrap(), Some(usb.correction()));
         let want = crate::clockstore::correct_rate(3.5, usb.ppm);
         assert_eq!(a.rate_corrected_s_per_day, Some(want));
