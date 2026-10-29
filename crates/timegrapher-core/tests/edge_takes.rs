@@ -14,10 +14,15 @@ fn every_edge_take_reads_as_it_was_made() {
         let m = &read.measurement;
         let mut here = Vec::new();
         let codes = edge_takes::caveat_codes(m);
-        for c in t.caveats {
-            if !codes.iter().any(|k| k == c) {
-                here.push(format!("{}: no {c} among {codes:?}", t.id));
-            }
+        let mut want: Vec<&str> = t.caveats.to_vec();
+        let mut got: Vec<&str> = codes.iter().map(String::as_str).collect();
+        want.sort_unstable();
+        got.sort_unstable();
+        if got != want {
+            here.push(format!(
+                "{}: caveats {codes:?}, made to carry {:?}",
+                t.id, t.caveats
+            ));
         }
         eprintln!(
             "{}: rate {:?} amplitude {:?} beat error {:?} {codes:?} breaks {:?}",
