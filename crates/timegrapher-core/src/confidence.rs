@@ -117,6 +117,78 @@ pub fn pooled_lag_one<'a>(stretches: impl IntoIterator<Item = &'a [f64]>) -> Opt
         .filter(|r| r.is_finite())
 }
 
+/// What [`long_run_sd`] takes out of the values before it reads their
+/// lag-one correlation, so slow change is not counted as memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slow {
+    /// Their least-squares line: a steady drift.
+    Line,
+    /// Their single largest step: each side's mean, split where the
+    /// running sum of the values less their mean is furthest from 0 (the
+    /// CUSUM's corner), so a real change of level does not read as memory
+    /// and widen the band that should find it.
+    Step,
+}
+
+/// The long-run σ of finite values in time order (NaN, a gap, is passed
+/// over), for statistics that assume independent readings (#647, #649):
+/// `short_sd`, their scatter from neighbour differences, which is
+/// σ√(1 − ρ) for AR(1) readings, times √(1 + ρ)/(1 − ρ), so that the
+/// result is σ√((1 + ρ)/(1 − ρ)), what the mean of n readings scatters as
+/// over √n. ρ is [`long_run_rho`]. `short_sd` itself with fewer than
+/// three values.
+pub fn long_run_sd(values: &[f64], short_sd: f64, slow: Slow) -> f64 {
+    let r = long_run_rho(values, slow);
+    short_sd * (1.0 + r).sqrt() / (1.0 - r)
+}
+
+/// The lag-one correlation [`long_run_sd`] allows for: that of the finite
+/// values less `slow`, plus 2(1 + 3ρ)/n for its bias downwards with two
+/// parameters taken out of n values (Marriott and Pope 1954), held to
+/// 0 ..= 0.99. On a seeded test of 360 AR(1) readings this keeps the
+/// CUSUM's false alarms at 4-6% from ρ 0 to 0.9 (#647).
+pub fn long_run_rho(values: &[f64], slow: Slow) -> f64 {
+    let mut x: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
+    if x.len() < 3 {
+        return 0.0;
+    }
+    match slow {
+        Slow::Line => crate::dsp::detrend_line(&mut x),
+        Slow::Step => take_out_step(&mut x),
+    }
+    let m = x.iter().sum::<f64>() / x.len() as f64;
+    x.iter_mut().for_each(|v| *v -= m);
+    let c0: f64 = x.iter().map(|v| v * v).sum();
+    if c0 <= 0.0 {
+        return 0.0;
+    }
+    let r = x.windows(2).map(|w| w[0] * w[1]).sum::<f64>() / c0;
+    let n = x.len() as f64;
+    let r = r + 2.0 * (1.0 + 3.0 * r) / n;
+    if r.is_finite() {
+        r.clamp(0.0, 0.99)
+    } else {
+        0.0
+    }
+}
+
+/// Each side of the values' largest step less its own mean ([`Slow::Step`]).
+fn take_out_step(x: &mut [f64]) {
+    let m = x.iter().sum::<f64>() / x.len() as f64;
+    let (mut run, mut far, mut at) = (0.0, 0.0f64, 1);
+    for (i, v) in x[..x.len() - 1].iter().enumerate() {
+        run += v - m;
+        if run.abs() > far {
+            (far, at) = (run.abs(), i + 1);
+        }
+    }
+    let (a, b) = x.split_at_mut(at);
+    for side in [a, b] {
+        let m = side.iter().sum::<f64>() / side.len() as f64;
+        side.iter_mut().for_each(|v| *v -= m);
+    }
+}
+
 /// Estimated standard error of a median from values in time order, in their
 /// own units. The scatter comes from successive differences, so a linear
 /// drift cancels exactly: s = 1.4826 MAD(differences) / sqrt(2). With the
@@ -313,6 +385,32 @@ mod tests {
             pooled_lag_one([[1.0, 2.0].as_slice(), a.as_slice()]),
             lag_one(&a)
         );
+    }
+
+    /// A step is not memory: independent readings with a level change
+    /// read ρ about 0 once [`Slow::Step`] takes the step out, and near 1
+    /// with only a line taken out.
+    #[test]
+    fn long_run_rho_takes_a_step_out() {
+        let mut seed = 5u64;
+        let y: Vec<f64> = (0..400)
+            .map(|i| {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let u = (seed >> 11) as f64 / (1u64 << 53) as f64 - 0.5;
+                u + if i >= 150 { 3.0 } else { 0.0 }
+            })
+            .collect();
+        assert!(
+            long_run_rho(&y, Slow::Step) < 0.05,
+            "{}",
+            long_run_rho(&y, Slow::Step)
+        );
+        assert!(
+            long_run_rho(&y, Slow::Line) > 0.5,
+            "{}",
+            long_run_rho(&y, Slow::Line)
+        );
+        assert_eq!(long_run_sd(&y[..2], 1.0, Slow::Step), 1.0);
     }
 
     #[test]

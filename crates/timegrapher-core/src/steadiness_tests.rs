@@ -1100,3 +1100,67 @@ fn no_reading_is_taken_from_part_of_its_span() {
     assert!(holes.clear(290.0, 300.0));
     assert!(holes.clear(301.0, 311.0));
 }
+
+/// `n` readings 10 s apart of AR(1) noise with lag-one correlation
+/// `rho`, scatter 1, and `step` added from halfway.
+fn correlated(z: &mut Noise, n: usize, rho: f64, step: f64) -> Grid {
+    let mut v = z.next();
+    let y = (0..n)
+        .map(|i| {
+            v = rho * v + (1.0 - rho * rho).sqrt() * z.next();
+            v + if i >= n / 2 { step } else { 0.0 }
+        })
+        .collect();
+    grid(y, 10.0)
+}
+
+/// Of `runs` takes of `n` readings, how many the CUSUM and the change
+/// finder each flag.
+fn flagged(rho: f64, step: f64, n: usize, runs: usize) -> (usize, usize) {
+    let mut z = Noise(647);
+    let (mut cusum, mut changes) = (0, 0);
+    for _ in 0..runs {
+        let s = check_series(
+            SeriesKind::Rate,
+            correlated(&mut z, n, rho, step),
+            None,
+            None,
+            None,
+            &[],
+            &Config::default(),
+        );
+        cusum += usize::from(s.cusum.unwrap().max > CUSUM_BAND);
+        changes += usize::from(s.changes.unwrap().segments.len() > 1);
+    }
+    (cusum, changes)
+}
+
+/// Correlated readings that never change level pass the CUSUM's 95% band
+/// about 95 times in 100, as independent ones do: scaled by the
+/// short-term σ alone it flagged 82% of these at ρ 0.5 and all at 0.9
+/// (#647). The change finder, judged against the same long-run σ, finds
+/// no change that is not there in 95 of 100 two-hour takes at ρ 0.9
+/// (#649).
+#[test]
+fn correlated_steady_readings_raise_few_false_alarms() {
+    // About 5% at ρ 0.5 and 6.5% at ρ 0.9, where 360 readings say least
+    // about ρ; 8% leaves room for the draw.
+    for (rho, runs) in [(0.5, 1000), (0.9, 2000)] {
+        let (cusum, _) = flagged(rho, 0.0, 360, runs);
+        assert!(
+            cusum * 100 <= 8 * runs,
+            "CUSUM: {cusum} of {runs} at ρ {rho}"
+        );
+    }
+    let (_, changes) = flagged(0.9, 0.0, 720, 400);
+    assert!(changes <= 20, "change finder: {changes} of 400");
+}
+
+/// A real step twice the readings' scatter is still found at ρ 0.9.
+#[test]
+fn a_step_in_correlated_readings_is_still_found() {
+    let (cusum, _) = flagged(0.9, 2.0, 360, 200);
+    assert!(cusum >= 160, "CUSUM: {cusum} of 200");
+    let (_, changes) = flagged(0.9, 2.0, 720, 200);
+    assert!(changes >= 160, "change finder: {changes} of 200");
+}
