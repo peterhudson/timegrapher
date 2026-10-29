@@ -4,7 +4,7 @@
   "timegrapher-app": {
    "files": {
     "crates/timegrapher-app/src/app.rs": {
-     "bounds": 37,
+     "bounds": 33,
      "comparisons": 35,
      "constants": 20,
      "defaults": 2
@@ -22,7 +22,7 @@
      "defaults": 0
     },
     "crates/timegrapher-app/src/calibre_ui.rs": {
-     "bounds": 6,
+     "bounds": 5,
      "comparisons": 1,
      "constants": 4,
      "defaults": 0
@@ -142,14 +142,14 @@
      "defaults": 1
     },
     "crates/timegrapher-app/src/watches.rs": {
-     "bounds": 8,
+     "bounds": 6,
      "comparisons": 4,
      "constants": 0,
      "defaults": 0
     }
    },
    "total": {
-    "bounds": 118,
+    "bounds": 111,
     "comparisons": 122,
     "constants": 59,
     "defaults": 5
@@ -273,8 +273,8 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 27859,
-  "crates/timegrapher-app/src/calibre_ui.rs": 3283,
+  "crates/timegrapher-app/src/app.rs": 27768,
+  "crates/timegrapher-app/src/calibre_ui.rs": 3186,
   "crates/timegrapher-core/src/steadiness.rs": 4046
  }
 }

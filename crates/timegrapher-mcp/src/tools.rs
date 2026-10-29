@@ -668,7 +668,11 @@ pub fn definition(t: &ToolSpec) -> Value {
             Kind::Choice(words) => json!({"type": "string", "enum": words}),
             Kind::Paths => json!({"type": "array", "items": {"type": "string"}, "minItems": 1}),
             Kind::BeatRate => json!({"type":"integer", "minimum":1, "maximum":u32::MAX}),
-            Kind::LiftAngle => json!({"type":"number", "exclusiveMinimum":0}),
+            Kind::LiftAngle => json!({
+                "type": "number",
+                "minimum": timegrapher_core::input_domain::LIFT_RANGE_DEG.start(),
+                "maximum": timegrapher_core::input_domain::LIFT_RANGE_DEG.end(),
+            }),
             Kind::Number => json!({"type": "number"}),
             Kind::CaptureSeconds => json!({"type": "number", "exclusiveMinimum": 0}),
             Kind::Switch => json!({"type": "boolean"}),
@@ -752,9 +756,14 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                 vec![n.to_string()]
             }
             (Kind::LiftAngle, Value::Number(n)) => {
-                let value = n
-                    .as_f64()
-                    .ok_or_else(|| format!("{}: {} must be finite and positive", t.name, p.name))?;
+                let value = n.as_f64().ok_or_else(|| {
+                    format!(
+                        "{}: {}: {}",
+                        t.name,
+                        p.name,
+                        timegrapher_core::input_domain::LIFT_RANGE_TEXT
+                    )
+                })?;
                 timegrapher_core::input_domain::lift_deg(value)
                     .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
                 vec![n.to_string()]
@@ -1094,7 +1103,7 @@ mod numeric_input_tests {
             .unwrap_err();
             assert!(error.contains("bph"), "wrong rejection: {error}");
         }
-        for value in [json!(0), json!(-0.0), json!(-1.0)] {
+        for value in [json!(0), json!(-0.0), json!(-1.0), json!(9.9), json!(95)] {
             let error = command_line(
                 t,
                 &args(json!({"recording":full("unused.wav"),"lift_deg":value})),
@@ -1108,8 +1117,12 @@ mod numeric_input_tests {
             u32::MAX
         );
         assert_eq!(
-            schema["inputSchema"]["properties"]["lift_deg"]["exclusiveMinimum"],
-            0
+            schema["inputSchema"]["properties"]["lift_deg"]["minimum"],
+            10.0
+        );
+        assert_eq!(
+            schema["inputSchema"]["properties"]["lift_deg"]["maximum"],
+            90.0
         );
         let line = command_line(
             t,
@@ -1145,8 +1158,12 @@ mod numeric_input_tests {
             u32::MAX
         );
         assert_eq!(
-            schema["inputSchema"]["properties"]["lift_deg"]["exclusiveMinimum"],
-            0
+            schema["inputSchema"]["properties"]["lift_deg"]["minimum"],
+            10.0
+        );
+        assert_eq!(
+            schema["inputSchema"]["properties"]["lift_deg"]["maximum"],
+            90.0
         );
         for a in [
             json!({"bph":0}),
