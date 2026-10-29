@@ -79,10 +79,7 @@ pub fn all() -> Vec<EdgeTake> {
                       on unheard",
             caveats: &["beats_missing"],
             truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
-            known: Some(
-                "#609: the beats are tracked into the silence, so the jumps fall inside \
-                 the second stretch and no regular beat is found",
-            ),
+            known: None,
         },
         EdgeTake {
             id: "edge_all_silence",
@@ -106,6 +103,14 @@ pub fn all() -> Vec<EdgeTake> {
             // Made at 5 s/d on the card's seconds; a true second is 20 ppm
             // longer, so on true time the watch runs 1.728 s/d slower.
             truth: Some((RATE - 20e-6 * 86_400.0, AMPLITUDE, BEAT_ERROR)),
+            known: None,
+        },
+        EdgeTake {
+            id: "edge_silence_long",
+            summary: "300 s of silence, over several of the stream's chunks, between two \
+                      stretches of 60 s of the watch, which runs on unheard",
+            caveats: &["beats_missing"],
+            truth: Some((RATE, AMPLITUDE, BEAT_ERROR)),
             known: None,
         },
     ]
@@ -230,6 +235,13 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 let mut s = watch(150.0, seed);
                 let quiet = silence(60.0, seed + 50);
                 let from = 45 * FS as usize;
+                s[from..from + quiet.len()].copy_from_slice(&quiet);
+                (s, vec![], vec![], 0.0, "")
+            }
+            "edge_silence_long" => {
+                let mut s = watch(420.0, seed);
+                let quiet = silence(300.0, seed + 50);
+                let from = 60 * FS as usize;
                 s[from..from + quiet.len()].copy_from_slice(&quiet);
                 (s, vec![], vec![], 0.0, "")
             }

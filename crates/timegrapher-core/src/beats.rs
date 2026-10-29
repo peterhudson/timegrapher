@@ -104,26 +104,46 @@ impl Beat {
 /// [`BEAT_WINDOW_S`] of where it is due instead, and taken from there if it
 /// matches at least [`BEAT_WINDOW_FLOOR`] of that side's typical beat, so
 /// the knock does not cost the beat.
-fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f32)> {
+///
+/// `level` is the typical beat's match carried from the sound before `x`
+/// (as this returns it). With it, a peak far weaker than that does not
+/// steer the track, and is dropped where it lies in a run missed, so a
+/// stretch that opens on silence, or falls silent, does not take the noise
+/// for the beat. Without it, as for a take's first stretch and live
+/// listening's short windows, every peak may be a beat.
+fn track_peaks(
+    x: &[f32],
+    fs: f64,
+    beat: f64,
+    gate: Option<f64>,
+    level: Option<f32>,
+) -> (Vec<(f64, f32)>, Option<f32>) {
     let n = x.len();
     let start_span = (beat * fs * 1.5) as usize;
     let Some((first, _)) = argmax(x, 0, start_span) else {
-        return Vec::new();
+        return (Vec::new(), level);
     };
     // Found peaks with the number of the beat each one is, and whether
     // later beats may be predicted from it (not from one found by the beat
     // window, which may be a knock's tail where the track was already off).
-    let mut out: Vec<(f64, f32, i64, bool)> = Vec::new();
+    // And whether it is weak (below), kept only between beats that are not
+    // a run missed apart.
+    let mut out: Vec<(f64, f32, i64, bool, bool)> = Vec::new();
     let mut per = beat * fs;
     let mut pred = first as f64;
     let mut k = 0i64;
     let mut misses = 0;
     // A slow average of each side's match, for the beat window's floor.
-    let mut typical = [0.0f32; 2];
+    let mut typical = [level.unwrap_or(0.0); 2];
     let half = 0.3 * beat * fs;
     while pred + half < n as f64 {
-        let a = (pred - half).max(0.0) as usize;
-        let b = (pred + half) as usize;
+        // With a level to judge by, a track lost (a long run missed) looks
+        // over a whole beat, so a watch heard again out of step with it is
+        // found wherever it is.
+        let lost = level.is_some() && misses >= MAX_MISSES;
+        let reach = if lost { 0.5 * per } else { half };
+        let a = (pred - reach).max(0.0) as usize;
+        let b = (pred + reach) as usize;
         let Some((mut i, mut v)) = argmax(x, a, b) else {
             break;
         };
@@ -160,14 +180,20 @@ fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f3
         // Once the correlation track is running, a peak far from where the
         // beat is due is a knock or other noise, not the beat: count the
         // beat as missed rather than let it pull the track off by a beat.
-        // After MAX_MISSES in a row the track takes what it finds, to
-        // recover. Pass 1 (with a gate) only feeds a median template, so it
-        // takes every peak.
-        if gate.is_some()
+        // After MAX_MISSES in a row the track takes the strongest beat it
+        // finds, to recover. Pass 1 (with a gate) only feeds a median
+        // template, so it takes every peak.
+        // With a level to judge by, a peak far weaker than the side's
+        // typical beat may be a faint beat or, in a silence, the noise: it
+        // is kept, but neither steers the track nor ends a run missed, and
+        // a lost track takes only a beat as strong as the watch's (#609).
+        let weak =
+            level.is_some() && v < TRACK_FLOOR * typical[side(k)] * lost_decay(misses, per / fs);
+        let take = gate.is_some()
             || out.len() < 4
             || (t - pred).abs() < MAX_OFFSET * per
-            || misses >= MAX_MISSES
-        {
+            || misses >= MAX_MISSES && !weak;
+        if take && !weak {
             let anchors = out.iter().rev().filter(|o| o.3).take(3);
             if let Some(&(t2, ..)) = anchors.clone().find(|o| o.2 == k - 2 && !rescued) {
                 // Update on the tick-to-tick interval so beat error doesn't pull the loop.
@@ -176,11 +202,14 @@ fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f3
                     per = 0.9 * per + 0.1 * meas;
                 }
             }
-            out.push((t, v, k, !rescued));
+            out.push((t, v, k, !rescued, false));
             misses = 0;
             let ty = &mut typical[side(k)];
             *ty = if *ty > 0.0 { 0.95 * *ty + 0.05 * v } else { v };
         } else {
+            if take {
+                out.push((t, v, k, false, true));
+            }
             misses += 1;
         }
         k += 1;
@@ -191,12 +220,29 @@ fn track_peaks(x: &[f32], fs: f64, beat: f64, gate: Option<f64>) -> Vec<(f64, f3
         pred = match same_side.filter(|_| out.len() > 2) {
             Some(&(t2, ..)) => t2 + 2.0 * per,
             None => match anchors.next() {
-                Some(&(t1, _, k1, _)) => t1 + (k - k1) as f64 * per,
+                Some(&(t1, _, k1, ..)) => t1 + (k - k1) as f64 * per,
                 None => pred + per,
             },
         };
     }
-    out.into_iter().map(|(t, v, ..)| (t / fs, v)).collect()
+    let level = (typical[0] > 0.0 && typical[1] > 0.0)
+        .then(|| 0.5 * (typical[0] + typical[1]))
+        .or(level);
+    // Weak peaks across a run missed (MAX_MISSES beats or more between
+    // the beats either side) are a silence's noise, not beats.
+    let strong: Vec<i64> = out.iter().filter(|o| !o.4).map(|o| o.2).collect();
+    let in_silence = |k: i64| {
+        let at = strong.partition_point(|&s| s < k);
+        let before = at.checked_sub(1).map_or(i64::MIN / 2, |i| strong[i]);
+        let after = strong.get(at).copied().unwrap_or(i64::MAX / 2);
+        after - before > MAX_MISSES as i64
+    };
+    let peaks = out
+        .into_iter()
+        .filter(|o| !(o.4 && in_silence(o.2)))
+        .map(|(t, v, ..)| (t / fs, v))
+        .collect();
+    (peaks, level)
 }
 
 /// How far from where it is due a beat may be found once the track is
@@ -216,9 +262,33 @@ const BEAT_WINDOW_S: f64 = 0.002;
 /// How well the best match in that window must compare with the typical
 /// beat's to be taken as the beat; below it the whole span is searched.
 const BEAT_WINDOW_FLOOR: f32 = 0.5;
-/// Beats in a row that may be missed before the track takes whatever it
-/// finds, so it can recover from a real jump.
+/// Beats in a row that may be missed before the track takes the strongest
+/// beat it finds anywhere, so it can recover from a real jump.
 const MAX_MISSES: usize = 16;
+
+/// How strong a peak must be, against its side's typical beat, to steer a
+/// track that has a level to judge by; a weaker one is weak. Noise on a
+/// silent stand matches the template at a few percent of a beat, and a
+/// watch's beats seldom fall below half their typical match, but a faint
+/// beat now and then does, so a weak peak is still kept unless it lies in
+/// a run missed.
+const TRACK_FLOOR: f32 = 0.25;
+
+/// Seconds of beats missed in a row over which [`TRACK_FLOOR`] halves, so
+/// a watch heard again more quietly is still found.
+const FLOOR_HALVES_S: f64 = 60.0;
+
+/// The least [`TRACK_FLOOR`] is scaled to, however long the run missed,
+/// so a long silence's noise never becomes a beat.
+const FLOOR_LEAST: f64 = 0.5;
+
+/// What [`TRACK_FLOOR`] is scaled by after `misses` beats of `beat_s`
+/// missed in a row: 1 until the track is lost, then halving every
+/// [`FLOOR_HALVES_S`], down to [`FLOOR_LEAST`].
+fn lost_decay(misses: usize, beat_s: f64) -> f32 {
+    let lost_s = misses.saturating_sub(MAX_MISSES) as f64 * beat_s;
+    0.5f64.powf(lost_s / FLOOR_HALVES_S).max(FLOOR_LEAST) as f32
+}
 
 /// Window around each beat used for templates: from `PRE_S` before the
 /// drop to `POST_S` after it. 20 ms before covers the unlock down to
@@ -339,9 +409,16 @@ fn window_stat(
 /// one on each side, and each side's beats are moved onto that side's drop
 /// before the template is built.
 pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
+    let (beats, template, _) = detect_levelled(env, fs, bph);
+    (beats, template)
+}
+
+/// [`detect`], with the level to carry on to the sound after
+/// ([`detect_after`]).
+pub fn detect_levelled(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>, Option<f32>) {
     let beat = 3600.0 / bph as f64;
     // Pass 1: maxima, used only to build the template.
-    let coarse = track_peaks(env, fs, beat, Some(PASS1_GATE_S));
+    let (coarse, _) = track_peaks(env, fs, beat, Some(PASS1_GATE_S), None);
     let origin = (PRE_S * fs).round() as usize;
     let mut sample = Vec::new();
     for side in 0..2 {
@@ -357,7 +434,7 @@ pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
         sample.extend(times.iter().map(|t| t + drop));
     }
     let template = median_template(env, fs, &sample);
-    let beats = detect_with_template(env, fs, bph, &template);
+    let (beats, level) = detect_after(env, fs, bph, &template, None);
     // Pass 2 lines the beats up more closely than the maxima did, so a
     // template rebuilt from its beats is sharper for the final pass.
     let good: Vec<f64> = beats
@@ -368,10 +445,11 @@ pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
     let step = (good.len() / 2000).max(1);
     let sample: Vec<f64> = good.into_iter().step_by(step).collect();
     if sample.len() < 10 {
-        return (beats, template);
+        return (beats, template, level);
     }
     let template = median_template(env, fs, &sample);
-    (detect_with_template(env, fs, bph, &template), template)
+    let (beats, level) = detect_after(env, fs, bph, &template, None);
+    (beats, template, level)
 }
 
 /// How far from its last beat pass 1 looks for a side's next one, seconds.
@@ -412,13 +490,27 @@ fn drop_offset(template: &[f32], fs: f64, origin: usize) -> Option<f64> {
 /// are processed in chunks with one template throughout, so the beat's
 /// reference point cannot shift from one chunk to the next.
 pub fn detect_with_template(env: &[f32], fs: f64, bph: u32, template: &[f32]) -> Vec<Beat> {
+    detect_after(env, fs, bph, template, None).0
+}
+
+/// [`detect_with_template`] on sound that follows sound already tracked,
+/// whose typical beat matched the template at `level`: returns the beats
+/// and the level to carry on to the sound after. A stretch heard as
+/// silence then gives no beats, rather than the noise's peaks (#609).
+pub fn detect_after(
+    env: &[f32],
+    fs: f64,
+    bph: u32,
+    template: &[f32],
+    level: Option<f32>,
+) -> (Vec<Beat>, Option<f32>) {
     let beat = 3600.0 / bph as f64;
     // Pass 2: correlate with the zero-mean template and track its peaks.
     let mean = template.iter().sum::<f32>() / template.len().max(1) as f32;
     let zm: Vec<f32> = template.iter().map(|v| v - mean).collect();
     let corr = correlate(env, &zm);
     let pre = PRE_S * fs;
-    let peaks = track_peaks(&corr, fs, beat, None);
+    let (peaks, level) = track_peaks(&corr, fs, beat, None, level);
     let mut q: Vec<f32> = peaks.iter().map(|p| p.1).collect();
     let typical = median_f32(&mut q).max(f32::MIN_POSITIVE);
 
@@ -435,7 +527,7 @@ pub fn detect_with_template(env: &[f32], fs: f64, bph: u32, template: &[f32]) ->
         });
     }
     keep_sides_on_one_sound(&corr, fs, typical, &mut beats);
-    beats
+    (beats, level)
 }
 
 /// Same-side beats either way of a beat that set where its side's beats
@@ -1376,7 +1468,7 @@ mod tests {
         }
         let knock = ((0.05 + 20.0 * beat - 0.030) * fs) as usize;
         x[knock] = 3.0;
-        let peaks = track_peaks(&x, fs, beat, None);
+        let (peaks, _) = track_peaks(&x, fs, beat, None, None);
         assert_eq!(peaks.len(), 32, "beat 20 is found under the knock");
         for (t, _) in &peaks {
             let k = ((t - 0.05) / beat).round();
@@ -1385,6 +1477,91 @@ mod tests {
                 "peak at {t} s is off the beats"
             );
         }
+    }
+
+    /// `len_s` of noise peaks a twentieth as high as a beat, at 8 kHz, with
+    /// a beat of 1 every 0.125 s for each `(from, beats, phase)`: `beats`
+    /// beats from `from` s, `phase` s into each beat.
+    fn track_of(len_s: f64, stretches: &[(f64, usize, f64)]) -> Vec<f32> {
+        let fs = 8000.0;
+        let mut x: Vec<f32> = (0..(len_s * fs) as usize)
+            .map(|i| 0.05 * ((i as f32 * 0.37).sin() * (i as f32 * 0.011).cos()).abs())
+            .collect();
+        for &(from, beats, phase) in stretches {
+            for k in 0..beats {
+                let i = ((from + phase + k as f64 * 0.125) * fs).round() as usize;
+                x[i] = 1.0;
+                x[i - 1] = 0.6;
+                x[i + 1] = 0.6;
+            }
+        }
+        x
+    }
+
+    /// After sound whose level is known, a silence gives no beats, and
+    /// the watch heard again in step or out of it is followed on, with no
+    /// beat out of place (#609).
+    #[test]
+    fn a_silence_gives_no_beats_and_the_watch_is_found_again() {
+        let beat = 0.125;
+        // 10 s of watch, 20 s of silence, 10 s of watch in step.
+        let x = track_of(40.0, &[(0.0, 80, 0.05), (30.0, 80, 0.05)]);
+        let (peaks, _) = track_peaks(&x, 8000.0, beat, None, Some(1.0));
+        // How far `t` is from the nearest beat at `phase` s into a beat.
+        let off = |t: f64, phase: f64| {
+            let k = ((t - phase) / beat).round();
+            (t - phase - k * beat).abs()
+        };
+        assert!(
+            peaks.iter().all(|&(t, _)| !(10.0..30.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert!(
+            peaks.iter().all(|&(t, _)| off(t, 0.05) < 0.001),
+            "a beat off the watch's"
+        );
+        assert_eq!(peaks.len(), 160);
+        // Heard again out of step by nearly half a beat, it is found within
+        // a few seconds.
+        let x = track_of(40.0, &[(0.0, 80, 0.05), (30.0, 80, 0.105)]);
+        let (peaks, _) = track_peaks(&x, 8000.0, beat, None, Some(1.0));
+        let after: Vec<f64> = peaks.iter().map(|p| p.0).filter(|&t| t >= 30.0).collect();
+        assert!(
+            after.first().is_some_and(|&t| t < 33.0),
+            "found at {:?}",
+            after.first()
+        );
+        assert!(
+            after.iter().all(|&t| off(t, 0.105) < 0.001),
+            "a beat off the watch's"
+        );
+    }
+
+    /// Half an hour of silence, as in three 600 s parts of a long take
+    /// left silent, gives no beats however long the track is lost.
+    #[test]
+    fn a_long_silence_gives_no_beats() {
+        let x = track_of(1900.0, &[(0.0, 400, 0.05), (1850.0, 400, 0.08)]);
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(50.0..1850.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 800);
+    }
+
+    /// A stretch that opens on silence, after sound whose level is carried
+    /// in, gives no beats until the watch is heard.
+    #[test]
+    fn a_stretch_opening_on_silence_waits_for_the_watch() {
+        let x = track_of(20.0, &[(10.0, 80, 0.05)]);
+        let (peaks, level) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(peaks.iter().all(|&(t, _)| t >= 10.0), "{:?}", &peaks[..3]);
+        assert_eq!(peaks.len(), 80);
+        assert!(level.is_some_and(|l| (l - 1.0).abs() < 0.01), "{level:?}");
+        // With no level, as at a take's start, the noise is followed.
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
+        assert!(peaks.iter().any(|&(t, _)| t < 10.0));
     }
 
     /// A side whose beats match the template at two sounds 6 ms apart, as
