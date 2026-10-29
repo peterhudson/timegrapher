@@ -69,6 +69,23 @@ pub struct Bin {
     pub beats: usize,
 }
 
+/// True seconds from the start of the take for audio second `t`, as the
+/// readings are measured: the clock fit's map, with the gaps in. Without
+/// a clock fit, or with one that saw no pause, each of `breaks`' gaps is
+/// added after it (a negative gap counts as none).
+pub fn true_time(clock: Option<&ClockFit>, breaks: &[Break], t: f64) -> f64 {
+    let base = clock.map_or(t, |c| c.map(t));
+    if clock.is_some_and(|c| !c.breaks.is_empty()) {
+        base
+    } else {
+        base + breaks
+            .iter()
+            .filter(|b| b.audio_s <= t)
+            .map(|b| b.gap_s.max(0.0))
+            .sum::<f64>()
+    }
+}
+
 /// Every cut in a take, and the answers that follow from them.
 #[derive(Debug, Clone)]
 pub struct Cuts<'a> {
@@ -181,21 +198,10 @@ impl<'a> Cuts<'a> {
         holes
     }
 
-    /// True seconds from the start of the take for audio second `t`: the
-    /// clock fit's map, with the gaps in. Without a clock fit, or with one
-    /// that saw no pause, each break's gap is added after it.
+    /// True seconds from the start of the take for audio second `t`
+    /// ([`true_time`]).
     pub fn true_time(&self, t: f64) -> f64 {
-        let base = self.clock.map_or(t, |c| c.map(t));
-        if self.clock.is_some_and(|c| !c.breaks.is_empty()) {
-            base
-        } else {
-            base + self
-                .breaks
-                .iter()
-                .filter(|b| b.audio_s <= t)
-                .map(|b| b.gap_s)
-                .sum::<f64>()
-        }
+        true_time(self.clock, &self.breaks, t)
     }
 
     /// The breaks, sorted, a negative gap taken as none.

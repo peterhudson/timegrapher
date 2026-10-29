@@ -43,9 +43,8 @@ impl Anchor {
     }
 
     /// [`Anchor::centre_on`] on true time, as the readings are measured:
-    /// each beat at its true second across `breaks`, and on the take's
-    /// `clock` where it has one ([`on_true_time`]). For
-    /// [`Anchor::lead_on_true`].
+    /// each beat at its true second across `breaks` and on the take's
+    /// `clock` ([`on_true_time`]). For [`Anchor::lead_on_true`].
     pub fn centre_on_true(
         beats: &[Beat],
         period_s: f64,
@@ -108,15 +107,11 @@ fn on_wall(b: &Beat, breaks: &[crate::breaks::Break]) -> Beat {
     }
 }
 
-/// Beat `b` at its true second as the readings measure it: on the take's
-/// `clock` ([`ClockFit::map`], as `session::measure` puts beats on it),
-/// with the gaps of those of `breaks` the clock does not already put back
-/// (a listed break the log did not see, or none at all without a clock).
+/// Beat `b` at its true second as the readings measure it, across
+/// `breaks` and on the take's `clock` ([`crate::clean::true_time`]).
 pub fn on_true_time(b: &Beat, breaks: &[crate::breaks::Break], clock: Option<&ClockFit>) -> Beat {
-    let wall = |breaks: &[crate::breaks::Break]| crate::breaks::wall(breaks, b.time);
-    let drift = clock.map_or(0.0, |c| c.map(b.time) - wall(&c.breaks));
     Beat {
-        time: wall(breaks) + drift,
+        time: crate::clean::true_time(clock, breaks, b.time),
         ..*b
     }
 }
@@ -460,8 +455,7 @@ mod tests {
     fn each_break_is_counted_once() {
         // A 60 s pause at 1,800 s: listed but not in a fixed clock, its gap
         // comes from the breaks; seen in the clock log too, the clock puts
-        // it back and the breaks (as core gives them on that clock) do not
-        // add it again.
+        // it back and is not given it again.
         let at = 1_800.0;
         let beats = heard_on_slow_card(at, 60.0);
         let listed = vec![crate::breaks::Break {
@@ -480,6 +474,43 @@ mod tests {
         let breaks = crate::breaks::on_clock(listed, Some(&mut logged));
         assert_eq!(logged.breaks.len(), 1);
         assert!(spread(&beats, &breaks, &logged) < 1e-3);
+    }
+
+    #[test]
+    fn a_beat_is_on_the_true_time_the_readings_use() {
+        // Two listed breaks, the log seeing only the first: each beat's
+        // true second is the one the readings' cuts give it.
+        let k = 1.0 + 20e-6;
+        let pairs: Vec<(f64, f64)> = (0..=720)
+            .map(|i| {
+                let a = i as f64 * 5.0;
+                (a, 1.79e9 + a * k + if a >= 600.0 { 60.0 } else { 0.0 })
+            })
+            .collect();
+        let mut clock = ClockFit::new(&pairs).unwrap();
+        let listed = vec![
+            crate::breaks::Break {
+                audio_s: 600.0,
+                gap_s: 60.0,
+            },
+            crate::breaks::Break {
+                audio_s: 900.0,
+                gap_s: 30.0,
+            },
+        ];
+        let breaks = crate::breaks::on_clock(listed, Some(&mut clock));
+        let cuts = crate::clean::Cuts::new(Some(&clock), &breaks, &[]);
+        for t in [100.0, 700.0, 1_000.0, 3_000.0] {
+            let b = Beat {
+                index: 0,
+                time: t,
+                quality: 1.0,
+            };
+            assert_eq!(
+                on_true_time(&b, &breaks, Some(&clock)).time,
+                cuts.true_time(t)
+            );
+        }
     }
 
     #[test]
