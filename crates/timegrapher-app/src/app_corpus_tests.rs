@@ -123,13 +123,11 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
 /// must still differ, so the list only shrinks as the app is fixed. A
 /// file the session file lists more than once is named with its entry's
 /// place among them: `file entry 1`.
-const KNOWN: &[(&str, &str)] = &[
-    (
-        "ym42_CR_long/take_part01-003.flac entry 1",
-        "the first of two entries for one file, with its own measure_s: the app does not keep \
+const KNOWN: &[(&str, &str)] = &[(
+    "ym42_CR_long/take_part01-003.flac entry 1",
+    "the first of two entries for one file, with its own measure_s: the app does not keep \
          its end",
-    ),
-];
+)];
 
 /// Runs `work` on each item, on as many threads as the machine has, and
 /// returns what it gives in the items' order.
