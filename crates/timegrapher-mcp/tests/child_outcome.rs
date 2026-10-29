@@ -213,11 +213,13 @@ fn auxiliary_profile_uses_effective_analysis_settings() {
             child_args.contains(&format!("--bph={bph}").as_str()),
             "{name}: {child_args:?}"
         );
+        // Core's beat-shape stretch: settled after 20 s, then the 40 s left
+        // of this 60 s recording.
         assert!(
-            child_args.contains(&"--at=25"),
-            "profile keeps the selected middle interval"
+            child_args.contains(&"--at=20"),
+            "profile reads core's beat-shape stretch: {child_args:?}"
         );
-        assert!(child_args.contains(&"--span=10"));
+        assert!(child_args.contains(&"--span=40"), "{child_args:?}");
     }
 }
 
