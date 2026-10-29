@@ -258,14 +258,14 @@
      "defaults": 0
     },
     "crates/timegrapher-mcp/src/views.rs": {
-     "bounds": 1,
+     "bounds": 0,
      "comparisons": 0,
      "constants": 3,
      "defaults": 0
     }
    },
    "total": {
-    "bounds": 1,
+    "bounds": 0,
     "comparisons": 1,
     "constants": 5,
     "defaults": 1
