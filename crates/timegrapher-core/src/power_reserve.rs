@@ -28,8 +28,6 @@ pub const LIMIT_S: f64 = 80.0 * 3600.0;
 pub const PAUSE_S: f64 = 30.0;
 /// Good beats in a row for them to count as the watch.
 pub const RUN_BEATS: usize = 8;
-/// A beat's quality over this is a good match to the beat's sound.
-const GOOD: f32 = 0.4;
 
 /// How a run ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,7 +131,7 @@ pub fn heard(beats: &[Beat], beat_s: f64) -> Heard {
         }
         run.clear();
     };
-    for b in beats.iter().filter(|b| b.quality > GOOD) {
+    for b in beats.iter().filter(|b| b.is_good()) {
         if run.last().is_some_and(|&l| b.time - l > gap) {
             close(&mut run, &mut out);
         }

@@ -188,7 +188,7 @@ pub fn analyse_with_breaks(
     let (bw, br): (Vec<f64>, Vec<f64>) = beats
         .iter()
         .zip(&residuals)
-        .filter(|(b, r)| b.quality > 0.4 && r.is_finite())
+        .filter(|(b, r)| b.is_good() && r.is_finite())
         .map(|(b, &r)| (watch(b), r))
         .unzip();
     let timing_grid = grid_median(&bw, &br, 0.0, step, n);

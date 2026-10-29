@@ -153,6 +153,13 @@ states that same basis. This tool uses the recording's automatic stored/USB
 resolution and exposes no explicit clock-log or card-correction input.
 Older CLI documents without this field keep their existing lead.
 
+`analyze_recording`'s lead and view give the rate the CLI chose: the rate
+in its `clock` block where it applied a correction (stored, given, or the
+recording's USB lines, in that order), else the rate on the sound card's
+clock. They do not choose `rate_corrected_s_per_day` themselves. The lead's
+beat error is core's: the unlock's where it was found, else the drop's, as
+a size.
+
 ### Repeated and overlapping calls
 
 Each tool tells the chat app whether it changes anything (`readOnlyHint`)

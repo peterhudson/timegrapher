@@ -173,7 +173,8 @@ enum Command {
     Long {
         /// The recording; several files are read as one continuous
         /// recording, in the order given (a capture split into segments).
-        /// A folder stands for its WAV and FLAC files, sorted by name.
+        /// A folder stands for its WAV and FLAC files, sorted by name; a
+        /// take's folder is read with its session.toml.
         #[arg(required = true)]
         files: Vec<PathBuf>,
         /// Clock log for calibrating the sound card: audio position against
@@ -231,7 +232,8 @@ enum Command {
     Series {
         /// The recording; several files are read as one continuous
         /// recording, in the order given. A folder stands for its WAV and
-        /// FLAC files, sorted by name.
+        /// FLAC files, sorted by name; a take's folder is read with its
+        /// session.toml.
         #[arg(required = true)]
         files: Vec<PathBuf>,
         /// Clock log for calibrating the sound card (as for `long`).

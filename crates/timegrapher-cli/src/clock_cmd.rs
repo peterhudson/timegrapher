@@ -318,13 +318,24 @@ pub fn resolve(
         Some(path) => format!("{}: {e}", path.display()),
         None => e,
     })?;
-    let Some(source) = take::clock_from(
+    let source = take::clock_from(
         log.is_some(),
         usb.as_ref().map(|(ppm, _)| *ppm),
         correction.as_ref().map(|(ppm, _)| *ppm),
-    ) else {
-        return Ok(None);
-    };
+    );
+    Ok(applied(fit, source, usb, correction, log))
+}
+
+/// The clock `fit` read from `source`, with the rate the USB lines or the
+/// correction give and where it came from in words.
+pub fn applied(
+    fit: Option<ClockFit>,
+    source: Option<take::ClockFrom>,
+    usb: Option<(f64, String)>,
+    correction: Option<(f64, String)>,
+    log: Option<&Path>,
+) -> Option<AppliedClock> {
+    let source = source?;
     let ppm = match source {
         take::ClockFrom::Log => None,
         take::ClockFrom::LogRatedByUsb | take::ClockFrom::Usb => usb.as_ref().map(|(p, _)| *p),
@@ -336,7 +347,7 @@ pub fn resolve(
         correction.as_ref().map(|(_, f)| f.as_str()),
         log,
     );
-    Ok(fit.map(|fit| AppliedClock { fit, ppm, from }))
+    fit.map(|fit| AppliedClock { fit, ppm, from })
 }
 
 /// The correction to apply to a recording, and the sound card's error
