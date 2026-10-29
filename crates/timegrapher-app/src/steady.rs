@@ -172,6 +172,23 @@ pub struct Steadiness {
     pub upto_s: f64,
 }
 
+/// The breaks a reading of `log` is cut at: those the take lists
+/// (`listed`; none for a session heard here), with every jump its beats
+/// show as a break of no length. Core's `take::breaks` does the same for
+/// a take it opens, and also renumbers the beats across them; a live log
+/// is renumbered by the live engine as it goes, so only the cuts are
+/// added here.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a live log: core take::breaks would renumber beats the live engine already numbered"
+)]
+pub fn reading_breaks(
+    listed: Vec<timegrapher_core::breaks::Break>,
+    log: &BeatLog,
+) -> Vec<timegrapher_core::breaks::Break> {
+    timegrapher_core::breaks::with_jumps(listed, &log.jumps)
+}
+
 /// The session's beats and amplitude windows so far, as a recording's
 /// analysis would give them.
 pub fn log_of(live: &LiveAnalyzer) -> Option<BeatLog> {
@@ -2538,6 +2555,10 @@ mod tests {
     /// Over Time's rate dots move by the correction, as the tests' median
     /// does, so the plot and the cards give one rate.
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's clock fixture, not a take being opened"
+    )]
     fn a_takes_clock_corrects_the_readings_drawn() {
         let mut log = context_log();
         log.duration_s = 900.0;

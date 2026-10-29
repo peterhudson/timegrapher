@@ -182,7 +182,7 @@ impl RateLine {
     fn ends(&self, beats: &[Beat], anchor: Anchor, period_s: f64) -> Option<[(f64, f64); 2]> {
         let lo = beats.partition_point(|b| b.time < self.from_s);
         let hi = beats.partition_point(|b| b.time <= self.to_s);
-        let used: Vec<&Beat> = beats[lo..hi].iter().filter(|b| b.quality >= 0.4).collect();
+        let used: Vec<&Beat> = beats[lo..hi].iter().filter(|b| b.is_good()).collect();
         if used.len() < 6 {
             return None;
         }
@@ -1570,7 +1570,7 @@ pub fn draw_strip(
     let every = (per_px / MAX_BEATS_PER_PX).ceil().max(1.0) as i64;
     let painter = painter.with_clip_rect(r.expand(3.0));
     for b in shown {
-        if b.quality < 0.4 || b.index.div_euclid(2).rem_euclid(every) != 0 {
+        if !b.is_good() || b.index.div_euclid(2).rem_euclid(every) != 0 {
             continue;
         }
         let p = g.pos(wrap(anchor.lead_ms(b, period_s), half), b.time);
