@@ -921,18 +921,26 @@ impl LiveAnalyzer {
         };
         let timing_scatter_fraction =
             bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
-        // Under 10 s the beats' averaged sound, from the beats kept for
-        // the profiles, says whether a watch is heard.
-        let beat_sound = match bph {
-            Some(b) if !measure::regularity_assessed(judged_s) => measure::beat_sound_found(
-                self.snippets
+        // Where the timing can't say, the beats' averaged sound, from the
+        // beats kept for the profiles, says whether a watch is heard: the
+        // same stretch as a saved reading judges ([`BeatLog::beat_sound`]).
+        let beat_sound = match (bph, &self.beats[lo..hi]) {
+            (Some(b), [first, .., last]) if measure::beat_sound_needed(jitter_us, b, judged_s) => {
+                let snips: Vec<(f64, bool, &[f32])> = self
+                    .snippets
                     .iter()
-                    .filter(|s| s.0 >= from && s.0 <= end_s)
-                    .map(|s| (s.1, s.2.as_slice())),
-                self.fs,
-                2.0 * 3600.0 / b as f64,
-                &self.cfg.analysis.amplitude,
-            ),
+                    .filter(|s| s.0 >= first.time && s.0 <= last.time)
+                    .map(|s| (s.0, s.1, s.2.as_slice()))
+                    .collect();
+                measure::stretch_beat_sound(
+                    &snips,
+                    first.time,
+                    last.time,
+                    self.fs,
+                    2.0 * 3600.0 / b as f64,
+                    &self.cfg.analysis.amplitude,
+                )
+            }
             _ => None,
         };
         let no_watch = match bph {
