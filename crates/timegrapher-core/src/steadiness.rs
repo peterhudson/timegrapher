@@ -476,6 +476,10 @@ pub struct Report {
     /// 2 s windows.
     pub spectra: Vec<crate::spectrum::AmplitudeSpectrum>,
     pub findings: Vec<Finding>,
+    /// Which of each series' search lines (rate, amplitude, beat error, in
+    /// the long-run report's order) the family keeps ([`hold_to_family`]).
+    #[serde(skip)]
+    pub named_lines: Vec<Vec<bool>>,
 }
 
 // ---------------------------------------------------------------- statistics
@@ -2340,36 +2344,41 @@ pub fn check(
     })
     .collect();
 
-    let series = vec![
-        check_series(
-            SeriesKind::Rate,
-            rate_grid,
-            None,
-            rate_period,
-            Some(twostate::find(&rate_samples, &p)),
-            &long_cfg.wheels,
-            cfg,
-        ),
-        check_series(
-            SeriesKind::Amplitude,
-            amp_readings,
-            Some(amp_grid),
-            amp_period,
-            Some(twostate::find(&amp_samples, &p)),
-            &long_cfg.wheels,
-            cfg,
-        ),
-        check_series(
-            SeriesKind::BeatError,
-            be_readings,
-            Some(be_grid),
-            be_period,
-            None,
-            &long_cfg.wheels,
-            cfg,
-        ),
-    ];
-    let mut series = series;
+    let sig = |c: &[longterm::Component]| c.iter().map(|c| c.significance).collect();
+    let rate_sig = long
+        .rate_components
+        .iter()
+        .map(|c| c.component.significance);
+    let (mut series, named_lines) = family::check_all(
+        vec![
+            (
+                SeriesKind::Rate,
+                rate_grid,
+                None,
+                rate_period,
+                rate_sig.collect(),
+                Some(twostate::find(&rate_samples, &p)),
+            ),
+            (
+                SeriesKind::Amplitude,
+                amp_readings,
+                Some(amp_grid),
+                amp_period,
+                sig(&long.amplitude.components),
+                Some(twostate::find(&amp_samples, &p)),
+            ),
+            (
+                SeriesKind::BeatError,
+                be_readings,
+                Some(be_grid),
+                be_period,
+                sig(&be_long.components),
+                None,
+            ),
+        ],
+        &long_cfg.wheels,
+        cfg,
+    );
     // An amplitude split one side carries alone is the unlock mark
     // hopping (the two-state finder's direct check): whatever the
     // amplitude and the beat error from the unlock seem to do may be the
@@ -2419,6 +2428,7 @@ pub fn check(
         distributions,
         spectra,
         findings,
+        named_lines,
     }
 }
 
@@ -2866,6 +2876,10 @@ fn wind_down(rate: &Grid, amp: &Grid, be: &Grid, cfg: &Config) -> Option<WindDow
 #[cfg(test)]
 #[path = "steadiness_tests.rs"]
 mod tests;
+
+#[path = "steadiness_family.rs"]
+mod family;
+pub use family::{family_long, hold_to_family};
 
 #[cfg(test)]
 mod window_grid_tests {

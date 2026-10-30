@@ -739,10 +739,10 @@ fn read_one_inner(
             .collect();
         inside.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
         let part_clock = clock.as_ref().filter(|c| c.breaks.is_empty());
-        session::cycles(
-            &longrun::analyse_with_breaks(&part, part_clock, &inside, &lc),
-            &lc.wheels,
-        )
+        let mut long = longrun::analyse_with_breaks(&part, part_clock, &inside, &lc);
+        // The cycles the Steadiness pane names (#659).
+        timegrapher_core::steadiness::family_long(&part, part_clock, &mut long, &lc);
+        session::cycles(&long, &lc.wheels)
     };
 
     let shape = if !heard || c.o.no_shape || c.m.shape == Some(false) {
