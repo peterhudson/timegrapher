@@ -286,6 +286,14 @@ pub fn all() -> Vec<EdgeTake> {
             }),
             known: None,
         },
+        EdgeTake {
+            id: "edge_45s",
+            summary: "45 s of the watch with the default settling time: 25 s is measured, \
+                      under the 30 s the app's whole take once needed at a 10 s Average Over",
+            caveats: &[&["clock_unknown"]],
+            truth: Some(MADE),
+            known: None,
+        },
     ]
 }
 
@@ -471,6 +479,7 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
         let seed = 100 + n as u64;
         let r = match take.id {
             "edge_short_8s" => Recipe::of(watch(8.0, seed)),
+            "edge_45s" => Recipe::of(watch(45.0, seed)),
             "edge_short_25s_settle_20" => Recipe {
                 extra: "settle_s = 20\n",
                 ..Recipe::of(watch(25.0, seed))

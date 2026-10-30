@@ -290,9 +290,15 @@ fn a_takes_usb_lines_set_its_rate() {
         "the charts are on the lines' clock: {last} {heard}"
     );
     let words = app.true_clock_words(rate).expect("said");
-    assert!(words.starts_with("On this take's USB lines"), "{words}");
-    // The figure the lines measured, as the hover prints it.
-    let said = format!("clock, {ppm:.1} ppm slow.");
+    // Where the clock came from in core's words: the lines rate it, the
+    // log keeps its breaks.
+    let source = app.take_clock_source.clone().expect("core's words");
+    assert!(
+        source.contains("USB lines in the recording") && source.ends_with("for its breaks"),
+        "{source}"
+    );
+    // The figure the lines measured, as the hover prints it, and the source.
+    let said = format!("clock, {ppm:.1} ppm slow, {source},");
     assert!(words.contains(&said), "{words} {said}");
     assert!(words.contains("The clock log's 5 entries"), "{words}");
     let _ = std::fs::remove_dir_all(&base);
@@ -360,7 +366,7 @@ fn every_pane_follows_the_lift_the_clock_and_the_masks() {
             Box::new(move |app| {
                 app.put_take_clock(
                     Some(timegrapher_core::clock::ClockFit::fixed(50.0, duration)),
-                    Some(timegrapher_core::take::ClockFrom::Log),
+                    None,
                 )
             }),
         ),
