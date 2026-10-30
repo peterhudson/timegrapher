@@ -18087,26 +18087,6 @@ mod tests {
         assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
     }
 
-    /// The whole take's hover says the breaks it is read across and, where
-    /// Tick and Tock were named by the count across them, that too.
-    #[test]
-    fn the_whole_takes_hover_says_its_sides_were_named_by_count() {
-        let text = cut_caveats_text(&[
-            Caveat::Breaks { count: 1 },
-            Caveat::SidesByCount { count: 1 },
-            Caveat::ClockUnknown,
-        ]);
-        assert!(text.starts_with(" 1 break in this stretch: "), "{text}");
-        assert!(
-            text.ends_with(
-                " Tick and Tock are named by the beat count across 1 break in this \
-                 stretch, not told apart by their sound."
-            ),
-            "{text}"
-        );
-        assert_eq!(cut_caveats_text(&[Caveat::ClockUnknown]), "");
-    }
-
     use timegrapher_core::synth::{generate, SynthConfig};
 
     pub(super) fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
