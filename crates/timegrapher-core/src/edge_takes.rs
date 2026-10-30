@@ -717,15 +717,16 @@ mod tests {
     use super::*;
 
     /// The stand's noise alone, as edge_all_silence makes it, reads
-    /// `no_watch` whatever the noise draws, in session and, up to 90 s, on
+    /// `no_watch` on these seeded draws, in session and, up to 90 s, on
     /// the live card: before #675, 16 in 100 draws of 30 s, 6 in 100 of
     /// 90 s and 5 in 100 of 120 s were read as a watch with a rate, and
     /// with the sound of one side deciding, 3 in 200 more of 30 s. Not
     /// every draw passes: seed 5032 of 30 s sounds like a watch on both
-    /// sides at 1.94% scatter and is read as one (1 in 60 of seeds
-    /// 5000–5059).
+    /// sides at 1.94% scatter and is read as one (about 1 in 60 draws of
+    /// 30 s), and under 10 s of sound, where one side's sound decides, 4
+    /// in 150 draws of 10 s are.
     #[test]
-    fn stand_noise_is_never_read_as_a_watch() {
+    fn stand_noise_reads_no_watch_on_the_seeded_draws() {
         let take = all()
             .into_iter()
             .find(|t| t.id == "edge_all_silence")
