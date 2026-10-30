@@ -395,6 +395,7 @@ mod tests {
                     usb_ppm,
                     log_ppm,
                     log_ppm_sd,
+                    ..
                 } => Some((usb_ppm, log_ppm, log_ppm_sd)),
                 _ => None,
             })

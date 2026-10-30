@@ -240,14 +240,13 @@ pub fn all() -> Vec<EdgeTake> {
         EdgeTake {
             id: "edge_usb_lines_and_other_correction",
             summary: "the same sound with a correction of 15 ppm in the session file, which \
-                      the lines (20 ppm) contradict, and no clock log: the correction sets \
-                      the rate, as the clock's order of sources has it",
-            caveats: &[&[]],
-            // Read on the correction's 15 ppm, not the card's true 20, and
-            // with no clock_sources_disagree: the order of sources is
-            // Peter's to decide; this pins what it does today.
+                      the lines (20 ppm) contradict, and no clock log: the lines set the \
+                      rate, and the caveat names both",
+            caveats: &[&["clock_sources_disagree"]],
+            // Read on the lines' 20 ppm, the card's true error, over the
+            // correction's 15, and said: 5 ppm or more apart (#635).
             truth: Some(Truth {
-                rate: RATE - 15e-6 * 86_400.0,
+                rate: RATE - 20e-6 * 86_400.0,
                 ..MADE
             }),
             known: None,

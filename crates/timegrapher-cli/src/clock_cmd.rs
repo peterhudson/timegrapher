@@ -281,7 +281,7 @@ pub struct AppliedClock {
 
 /// The clock for a take `total_s` long, read as `info` says: from the clock
 /// `log` when there is one, with the recording's `usb` lines setting its
-/// rate; else a `correction` known for the input, else the USB lines
+/// rate; else the USB lines, else a `correction` known for the input
 /// ([`take::clock_from`]). A log makes a correction unneeded, so
 /// `correction` is only asked for without one.
 pub fn resolve(

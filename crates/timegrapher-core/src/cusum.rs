@@ -19,10 +19,10 @@ pub struct Cusum {
     pub max: f64,
     pub at_s: f64,
     pub at: f64,
-    /// Chance of a max this large from independent readings
-    /// (Kolmogorov).
+    /// Chance of a max this large from readings with no change of level
+    /// (Kolmogorov), the CUSUM being scaled by their long-run σ.
     pub p_value: f64,
-    /// Independent readings stay inside ±`band` 95% of the time
+    /// Readings with no change of level stay inside ±`band` 95% of the time
     /// ([`CUSUM_BAND`]); `shift` when `max` is past it, so the level
     /// changes near `at_s`.
     pub band: f64,
