@@ -1186,23 +1186,21 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
     }
     let moves = !matches!(s.lead, Lead::ShiftingMean | Lead::Drifting);
     if let Some(ch) = level_change(s, cfg).filter(|_| moves) {
-        {
-            let lo = ch
-                .segments
-                .iter()
-                .map(|g| g.mean)
-                .fold(f64::INFINITY, f64::min);
-            let hi = ch
-                .segments
-                .iter()
-                .map(|g| g.mean)
-                .fold(f64::NEG_INFINITY, f64::max);
-            out.push(format!(
-                "{the}'s level also moves over the take, between {} and {}.",
-                k.fmt(lo),
-                k.fmt(hi)
-            ));
-        }
+        let lo = ch
+            .segments
+            .iter()
+            .map(|g| g.mean)
+            .fold(f64::INFINITY, f64::min);
+        let hi = ch
+            .segments
+            .iter()
+            .map(|g| g.mean)
+            .fold(f64::NEG_INFINITY, f64::max);
+        out.push(format!(
+            "{the}'s level also moves over the take, between {} and {}.",
+            k.fmt(lo),
+            k.fmt(hi)
+        ));
     }
     (!out.is_empty()).then(|| out.join(" "))
 }
