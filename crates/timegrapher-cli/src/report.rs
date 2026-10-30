@@ -472,7 +472,7 @@ fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
                 i * group + 1,
                 (j as f64 + 0.5) / cols as f64 * c.period_s,
                 if val.is_finite() {
-                    format!("{val:+.2} {unit}")
+                    format!("{} {unit}", timegrapher_core::library::signed_text(val, 2))
                 } else {
                     "no data".into()
                 }
@@ -524,7 +524,12 @@ fn component(
             pts: p.iter().enumerate().map(|(i, &v)| (x(i), v)).collect(),
             class: "dot",
             dots: true,
-            tip: Box::new(move |x, y| format!("{x:.1} s: {y:+.2} {u} (median over cycles)")),
+            tip: Box::new(move |x, y| {
+                format!(
+                    "{x:.1} s: {} {u} (median over cycles)",
+                    timegrapher_core::library::signed_text(y, 2)
+                )
+            }),
         });
     }
     lines.push(Line {
@@ -566,6 +571,14 @@ fn capitalise(s: &str) -> String {
     }
 }
 
+/// The take's rate as the report gives it, no sign at zero.
+fn rate_text(rate_s_per_day: f64) -> String {
+    format!(
+        "{} s/d",
+        timegrapher_core::library::signed_text(rate_s_per_day, 2)
+    )
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "over the limit before it was set; split it (architecture guide, section 12)"
@@ -573,7 +586,7 @@ fn capitalise(s: &str) -> String {
 pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&str>) -> String {
     let mut body = String::new();
     let rate = r.overall.map_or("not enough clean beats".into(), |f| {
-        format!("{:+.2} s/d", f.rate_s_per_day)
+        rate_text(f.rate_s_per_day)
     });
     let clock = match (&r.clock, clock_note) {
         (Some(c), Some(note)) => format!(
@@ -836,5 +849,84 @@ mod tests {
             "{:?}",
             rows[0]
         );
+    }
+
+    /// A fold-map cell at zero reads without a sign in its hover label
+    /// (Walter's walkthrough of #746).
+    #[test]
+    fn a_fold_map_cell_at_zero_reads_without_a_sign() {
+        let bins = 10;
+        let cells: Vec<Vec<f64>> = (0..4)
+            .map(|k| {
+                (0..bins)
+                    .map(|j| if (k + j) % 2 == 0 { -1e-4 } else { 0.5 })
+                    .collect()
+            })
+            .collect();
+        let c = Component {
+            period_s: 10.0,
+            resolution_s: 0.0,
+            significance: 0.0,
+            harmonics: 1,
+            explained: 0.0,
+            peak_to_peak: 0.0,
+            wheel: None,
+            nearest_wheel: None,
+            shape: vec![0.0; bins],
+            fold: Fold {
+                period_s: 10.0,
+                profile: vec![0.0; bins],
+                counts: vec![4; bins],
+                raster: cells,
+                t0: 0.0,
+            },
+            harmonic_of: None,
+        };
+        let svg = raster(&c, RasterKind::Value(1.0), "deg");
+        assert!(!svg.contains("-0.00"), "{svg}");
+        assert!(svg.contains(": 0.00 deg</title>") && svg.contains(": +0.50 deg</title>"));
+    }
+
+    /// The one-cycle chart's hover and the report's rate read without a
+    /// sign at zero (Trevor's review of #746).
+    #[test]
+    fn the_cycle_hover_and_the_rate_at_zero_read_without_a_sign() {
+        let bins = 10;
+        let c = Component {
+            period_s: 10.0,
+            resolution_s: 0.0,
+            significance: 0.0,
+            harmonics: 1,
+            explained: 0.0,
+            peak_to_peak: 0.0,
+            wheel: None,
+            nearest_wheel: None,
+            shape: vec![0.0; bins],
+            fold: Fold {
+                period_s: 10.0,
+                profile: vec![0.0; bins],
+                counts: vec![4; bins],
+                raster: vec![vec![0.0; bins]; 4],
+                t0: 0.0,
+            },
+            harmonic_of: None,
+        };
+        let points: Vec<f64> = (0..bins)
+            .map(|j| if j % 2 == 0 { -1e-4 } else { 0.5 })
+            .collect();
+        let svg = component(
+            &c,
+            "amplitude",
+            String::new(),
+            &c.shape,
+            Some(&points),
+            "deg",
+            RasterKind::Value(1.0),
+        );
+        assert!(!svg.contains("-0.00"), "{svg}");
+        assert!(svg.contains(": 0.00 deg (median over cycles)"), "{svg}");
+        assert!(svg.contains(": +0.50 deg (median over cycles)"), "{svg}");
+        assert_eq!(rate_text(-0.001), "0.00 s/d");
+        assert_eq!(rate_text(1.234), "+1.23 s/d");
     }
 }

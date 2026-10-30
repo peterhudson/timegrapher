@@ -44,6 +44,7 @@ mod charts;
 mod distributions;
 mod paper_strip;
 mod scope_panes;
+mod steadiness_panes;
 
 /// The A and B sides' sounds.
 type Profiles = [Option<TickProfile>; 2];
@@ -1835,6 +1836,20 @@ impl RateTwoS {
     }
 }
 
+/// How long the Listen button takes no tap after it replaces Stop, s: a
+/// lagging window can still show Stop for a moment after it has gone.
+const LISTEN_SETTLE_S: f64 = 0.5;
+
+/// The Listen button's state now (`now`, s), from last frame's (`None` when
+/// Stop stood there): when its count began, from the frame after Listen first
+/// shows, and whether the latest press came [`LISTEN_SETTLE_S`] after that.
+/// A press delivered sooner was made while Stop was on screen (#725).
+fn listen_tap(was: Option<(f64, bool)>, now: f64, pressed: bool) -> (f64, bool) {
+    let (since, armed) = was.map_or((f64::INFINITY, false), |(t, a)| (t.min(now), a));
+    let settled = since.is_finite() && now - since >= LISTEN_SETTLE_S;
+    (since, if pressed { settled } else { armed })
+}
+
 /// The key a run of readings is kept under: its averaging time in ms.
 fn trend_key(seconds: f64) -> u64 {
     (seconds * 1000.0).round() as u64
@@ -2393,6 +2408,9 @@ pub struct TimegrapherApp {
     live: Option<LiveAnalyzer>,
     source_label: String,
     batch: Option<Batch>,
+    /// The Listen button since it last stood in for Stop: see
+    /// [`listen_tap`] (#725).
+    listen_tap: Option<(f64, bool)>,
     anchor: Option<Anchor>,
     /// The settings a take on show is read again with, for a new beat
     /// rate, in place of what the take saved.
@@ -2878,6 +2896,7 @@ impl TimegrapherApp {
             live: None,
             source_label: String::new(),
             batch: None,
+            listen_tap: None,
             anchor: None,
             reread_with: None,
             live_strip: None,
@@ -7649,256 +7668,6 @@ impl TimegrapherApp {
         }
     }
 
-    /// A Steadiness pane's Rate, Amplitude and Beat Error switches.
-    /// The series a steadiness pane shows: its own switches, or for the
-    /// two maps their one shared choice, one map at a time.
-    fn series_shown(&self, view: steady::View) -> [bool; 3] {
-        if view.is_map() {
-            steady::one_series(
-                self.steady_series
-                    .get(&steady::View::Stft)
-                    .copied()
-                    .unwrap_or(RATE_ONLY),
-            )
-        } else {
-            self.steady_series.get(&view).copied().unwrap_or(RATE_ONLY)
-        }
-    }
-
-    fn steady_settings(&mut self, ui: &mut egui::Ui, pane: Pane) {
-        let Some(view) = pane.steady_view() else {
-            return;
-        };
-        if view.is_map() {
-            steady::series_choice(
-                ui,
-                self.steady_series
-                    .entry(steady::View::Stft)
-                    .or_insert(RATE_ONLY),
-            );
-        } else {
-            steady::series_switches(ui, self.steady_series.entry(view).or_insert(RATE_ONLY));
-        }
-        let accent = theme::pal(ui).accent;
-        if view == steady::View::Periods {
-            theme::bar_gap(ui);
-            theme::tool_switch(
-                ui,
-                Icon::Db,
-                accent,
-                "dB Scale",
-                &mut self.periods_db,
-                "Show the scores in decibels. Off: linear.",
-            );
-        }
-        if view == steady::View::Fft {
-            theme::bar_gap(ui);
-            theme::tool_switch(
-                ui,
-                Icon::Stopwatch,
-                accent,
-                "Timing",
-                &mut self.fft_timing,
-                "Draw rate as the beat timing's spectrum, in ms, at every period, rather than \
-                 the swing it makes in 10 s rate readings, in s/d",
-            );
-        }
-        if matches!(view, steady::View::Stft | steady::View::Wavelet) {
-            theme::bar_gap(ui);
-            theme::tool_switch(
-                ui,
-                Icon::Db,
-                accent,
-                "dB Scale",
-                &mut self.maps_db,
-                "Show the sizes in decibels. Off: linear.",
-            );
-        }
-        if matches!(
-            view,
-            steady::View::Periods | steady::View::Fft | steady::View::Stft | steady::View::Wavelet
-        ) {
-            theme::tool_switch(
-                ui,
-                Icon::Wheel,
-                accent,
-                "Wheel Periods",
-                &mut self.show_wheels,
-                steady::WHEELS_HINT,
-            );
-        }
-    }
-
-    fn update_steady(&mut self, ctx: &egui::Context) -> f64 {
-        // What was read before the take's settings, clock, breaks or masks
-        // last changed is read again.
-        if self.steady_job.as_ref().is_some_and(|j| j.0 != self.rev) {
-            self.steady_job = None;
-        }
-        if self.steady.as_ref().is_some_and(|s| s.0 != self.rev) {
-            self.steady = None;
-        }
-        if let Some((rev, rx)) = &self.steady_job {
-            match rx.try_recv() {
-                Ok(s) => {
-                    self.steady = Some((*rev, s));
-                    self.steady_job = None;
-                }
-                Err(TryRecvError::Disconnected) => self.steady_job = None,
-                Err(TryRecvError::Empty) => {}
-            }
-        }
-        // Only the beats in the position the watch is in now, joined.
-        let spans = self.current_spans();
-        let clock = Self::rate_clock(&self.take_clock).cloned();
-        let joined = !self.session.stretches().is_empty();
-        let dur = self.live.as_ref().map_or(0.0, |l| {
-            steady::joined_duration(&spans, l.duration_s(), clock.as_ref().filter(|_| joined))
-        });
-        let upto = self.steady.as_ref().map(|s| s.1.upto_s);
-        let due = match upto {
-            None => true,
-            Some(u) if self.running() => dur - u >= steady::RERUN_S,
-            Some(u) => dur - u > 1.0,
-        };
-        if self.steady_job.is_none() && due && dur >= steady::MIN_S {
-            let log = self.live.as_ref().and_then(steady::log_of);
-            if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &spans, clock.as_ref())) {
-                let wheels = self.calibre_wheels();
-                let clock = clock.filter(|_| !joined); // A joined log is on it.
-                let (tx, rx) = std::sync::mpsc::channel();
-                let ctx = ctx.clone();
-                let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
-                self.steady_work = (stage.clone(), std::time::Instant::now());
-                std::thread::spawn(move || {
-                    let _ = tx.send(steady::compute_with(
-                        &log,
-                        &breaks,
-                        wheels,
-                        clock.as_ref(),
-                        &stage,
-                    ));
-                    ctx.request_repaint();
-                });
-                self.steady_job = Some((self.rev, rx));
-            }
-        }
-        dur
-    }
-
-    /// What the steadiness tests read of `log`, and the cuts they stop at:
-    /// a take with no position marked whole, at its own breaks with the time
-    /// each gap held and every other jump, as `timegrapher series` reads it;
-    /// else the position's stretches `spans` joined end to end on the take's
-    /// `clock` ([`steady::join`]).
-    fn steady_log(
-        &self,
-        log: BeatLog,
-        spans: &[(f64, f64)],
-        clock: Option<&timegrapher_core::clock::ClockFit>,
-    ) -> (BeatLog, Vec<timegrapher_core::breaks::Break>) {
-        let opened = self.take_breaks.clone().unwrap_or_default();
-        if self.session.stretches().is_empty() {
-            let breaks = steady::reading_breaks(opened, &log);
-            (log, breaks)
-        } else {
-            steady::join(&log, spans, &opened, clock)
-        }
-    }
-
-    /// While the steadiness tests run: a spinner, the step they're on and
-    /// how long they've taken, for the Steadiness and Isochronism panes.
-    /// Nothing when they aren't running.
-    fn steady_working(&self, ui: &mut egui::Ui) {
-        if self.steady_job.is_none() {
-            return;
-        }
-        let pal = theme::pal(ui);
-        let (stage, since) = &self.steady_work;
-        let stage = stage.load(std::sync::atomic::Ordering::Relaxed);
-        ui.horizontal(|ui| {
-            ui.add(egui::Spinner::new().size(12.0).color(pal.text_secondary));
-            ui.label(
-                RichText::new(format!(
-                    "{}… {}",
-                    steady::stage_text(stage),
-                    length_text(since.elapsed().as_secs_f64())
-                ))
-                .small()
-                .color(pal.text_secondary),
-            );
-        })
-        .response
-        .on_hover_text(
-            "The tests run in the background over every reading of the session, so a \
-             session of many hours takes a while; what is shown meanwhile is the last \
-             answer, if there is one.",
-        );
-    }
-
-    fn isochronism_pane(&mut self, ui: &mut egui::Ui) {
-        let dur = self.update_steady(ui.ctx());
-        let pal = theme::pal(ui);
-        self.steady_working(ui);
-        match &self.steady {
-            Some((_, s)) => isochronism::ui(ui, s.report.isochronism.as_ref()),
-            None if self.steady_job.is_some() => {}
-            None => {
-                ui.label(
-                    RichText::new(self.steady_wait(dur))
-                        .small()
-                        .color(pal.text_secondary),
-                );
-            }
-        }
-    }
-
-    /// What the steadiness tests wait for, in the terms of what is being
-    /// done: a Positions Test never stays long enough in one position.
-    fn steady_wait(&self, dur: f64) -> String {
-        if self.guided.is_some() {
-            "Needs 5 minutes of beats in one position, longer than a Positions Test \
-             stays in each. Record one position for 5 minutes or more to see it."
-                .to_string()
-        } else {
-            format!(
-                "Needs 5 minutes of beats in one position; {} so far.",
-                length_text(dur)
-            )
-        }
-    }
-
-    fn steady_pane(&mut self, ui: &mut egui::Ui, view: steady::View) {
-        let dur = self.update_steady(ui.ctx());
-        let upto = self.steady.as_ref().map(|s| s.1.upto_s);
-        let working = self.steady_job.is_some();
-        let of = if self.session.stretches().is_empty() {
-            String::new()
-        } else {
-            format!("{} ", self.position.name())
-        };
-        self.steady_working(ui);
-        let status = match upto {
-            Some(u) => format!("Tested over {} of {of}beats", length_text(u)),
-            None if working => String::new(),
-            None => self.steady_wait(dur),
-        };
-        steady::draw(
-            ui,
-            self.steady.as_ref().map(|s| &s.1),
-            &status,
-            view,
-            &self.series_shown(view),
-            steady::Opts {
-                periods_db: self.periods_db,
-                fft_timing: self.fft_timing,
-                maps_db: self.maps_db,
-                wheels: self.show_wheels,
-                info: self.steady_info,
-            },
-        );
-    }
-
     /// What the strip shows, for the status line: the take's name, its
     /// watch and its state.
     fn status_words(&self) -> String {
@@ -8314,6 +8083,7 @@ impl TimegrapherApp {
         let word = |ui: &mut egui::Ui, b: egui::Button<'_>| {
             ui.add(b.min_size(Vec2::new(0.0, LISTEN_BUTTON)))
         };
+        let was_listen = self.listen_tap.take();
         if let Some(kind) = self.ready_test() {
             // The one place a take starts, test or not.
             let name = if kind == NewTake::Positions {
@@ -8379,6 +8149,13 @@ impl TimegrapherApp {
             if compact {
                 hint += &length_hint;
             }
+            let (now, pressed) = ui_b.input(|i| (i.time, i.pointer.any_pressed()));
+            let tap = listen_tap(was_listen, now, pressed);
+            self.listen_tap = Some(tap);
+            if tap.0.is_infinite() {
+                ui_b.ctx().request_repaint(); // so the count starts unprompted
+            }
+            let armed = tap.1;
             if ui_b
                 .add_enabled_ui(!self.running() && self.batch.is_none(), |ui| {
                     theme::icon_button(ui, Icon::Listen, LISTEN_BUTTON, 8, pal.accent, true, false)
@@ -8386,6 +8163,7 @@ impl TimegrapherApp {
                 .inner
                 .on_hover_text(hint)
                 .clicked()
+                && armed
             {
                 if watch.is_some() {
                     self.new_take(NewTake::Listen, false);
@@ -18645,92 +18423,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// While a take is heard, Save's Keep in a Watch items are greyed and
-    /// say why: a take goes into a watch once it ends, so a pick is never
-    /// a silent no-op.
-    #[test]
-    fn keep_in_a_watch_waits_for_the_take_to_end() {
-        let base = std::env::temp_dir().join(format!("tg-app-keep-live-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
-        let root = base.join("Timegrapher Data");
-        let mut lib = library::Library::create(&root).unwrap();
-        lib.add(&library::Watch::new("Pepsi")).unwrap();
-        drop(lib);
-        let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-        app.use_library(Some(root.clone()));
-        app.quick_listen = true;
-        app.session.listen();
-        let info = app.info("", 48000, 16);
-        let mut r = Recorder::start(&base.join("unsaved"), info).unwrap();
-        r.write(&timegrapher_core::capture::Block {
-            samples: vec![0.0; 48000 * 5],
-            at: std::time::SystemTime::now(),
-        })
-        .unwrap();
-        app.session.recorder = Some(r);
-        let _tx = queued_capture(&mut app, &base);
-        assert!(app.running() && app.session.allows(Action::Save));
-        let ctx = egui::Context::default();
-        theme::install(&ctx);
-        let mut time = 0.0;
-        let mut pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
-            time += 0.25;
-            let input = egui::RawInput {
-                time: Some(time),
-                events,
-                ..Default::default()
-            };
-            let out = ctx.run(input, |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| app.save_menu(ui, 32.0));
-            });
-            out.shapes
-                .iter()
-                .filter_map(|c| match &c.shape {
-                    egui::Shape::Text(t) => Some((
-                        t.galley.text().to_string(),
-                        t.galley.rect.translate(t.pos.to_vec2()).center(),
-                    )),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-        };
-        let click = |at: egui::Pos2| {
-            let button = |pressed| egui::Event::PointerButton {
-                pos: at,
-                button: egui::PointerButton::Primary,
-                pressed,
-                modifiers: Default::default(),
-            };
-            vec![egui::Event::PointerMoved(at), button(true), button(false)]
-        };
-        pass(&mut app, Vec::new());
-        // The Save button at the panel's top left: its menu opens.
-        pass(&mut app, click(egui::pos2(8.0 + 16.0, 8.0 + 16.0)));
-        let drawn = pass(&mut app, Vec::new());
-        let pepsi = drawn
-            .iter()
-            .find(|t| t.0 == "Pepsi")
-            .unwrap_or_else(|| panic!("{drawn:?}"))
-            .1;
-        assert!(drawn.iter().any(|t| t.0 == "New Watch…"), "{drawn:?}");
-        // Over the watch: greyed, it says why.
-        let mut said = false;
-        pass(&mut app, vec![egui::Event::PointerMoved(pepsi)]);
-        for _ in 0..8 {
-            let drawn = pass(&mut app, Vec::new());
-            said |= drawn.iter().any(|t| t.0 == KEEP_AFTER_STOP);
-        }
-        assert!(said, "the hover says why");
-        // A click on it keeps nothing and changes no watch.
-        pass(&mut app, click(pepsi));
-        pass(&mut app, Vec::new());
-        assert!(app.watch_open.is_none() && app.keep_back.is_none());
-        assert!(app.session.saved_to().is_none());
-        app.capture = None;
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
     #[test]
     #[expect(
         clippy::cognitive_complexity,
@@ -25341,3 +25033,7 @@ mod reserve_tests;
 #[cfg(test)]
 #[path = "app_capture_tests.rs"]
 mod capture_tests;
+
+#[cfg(test)]
+#[path = "app_listen_tests.rs"]
+mod listen_tests;
