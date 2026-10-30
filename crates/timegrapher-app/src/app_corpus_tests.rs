@@ -57,6 +57,9 @@ fn takes(root: &Path) -> Vec<String> {
 /// The take opened as File > Open Recording opens it, waited for.
 fn opened(dir: &Path) -> TimegrapherApp {
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    // At 10 s, so edge_45s (25 s measured) guards against the whole take
+    // needing a multiple of Average Over again.
+    app.set_average(10.0);
     app.start_batch(dir);
     let t = Instant::now();
     while app.batch.is_some() && t.elapsed().as_secs() < OPEN_LIMIT_S {
