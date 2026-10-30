@@ -178,6 +178,9 @@ pub fn join(
             index: x.index - shift_i,
             ..*x
         }));
+        // Wholly inside the part, not `session::window_in` (#636): each
+        // end of a part is a cut in the joined log, or one of its ends,
+        // and no window reaches across a cut.
         out.amplitude_windows.extend(
             log.amplitude_windows
                 .iter()

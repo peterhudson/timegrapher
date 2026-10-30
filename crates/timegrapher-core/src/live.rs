@@ -863,8 +863,10 @@ impl LiveAnalyzer {
                 .partition_point(|&t| t < self.beats.get(lo).map_or(end_s, |b| b.time));
         let bph = self.bph.or(self.logged_bph);
         let fit = bph.and_then(|bph| timing::fit(&self.beats[lo..hi], bph));
-        // `from` is at or after the latest cut, so no window reaches back
-        // across one: a jump in a recording read whole falls inside one.
+        // No window reaches back across the latest cut: the amplitude
+        // windows' grid starts again at each cut, and `stretch_windows`
+        // keeps only windows clear of every hole, so a jump in a recording
+        // read whole falls between two.
         let wins = crate::session::stretch_windows(&holes, &self.amp, from, end_s);
         // One unbroken run of beats: its beat error's sign does not turn.
         let figures = crate::session::window_figures(&wins, false);

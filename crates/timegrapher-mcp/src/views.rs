@@ -40,11 +40,26 @@ pub fn page() -> &'static str {
             .map(|&(pc, label)| (label, normal_quantile(pc / 100.0)))
             .collect();
         let marks = serde_json::to_string(&marks).expect("the probability marks as JSON");
+        let positions = serde_json::to_string(&positions()).expect("the positions as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*VIRIDIS*/null", &viridis)
             .replace("/*PERIOD_TICKS*/null", &period_ticks)
             .replace("/*PROBABILITY_MARKS*/null", &marks)
+            .replace("/*POSITIONS*/null", &positions)
     })
+}
+
+/// Each position's common code and name, as core gives them, under both its
+/// Witschi code and its common one, so the page names a reading whichever
+/// code it carries and writes no name of its own.
+fn positions() -> Map<String, Value> {
+    let mut map = Map::new();
+    for p in timegrapher_core::session::Position::ALL {
+        let entry = json!([p.common(), p.name()]);
+        map.insert(p.code().to_string(), entry.clone());
+        map.insert(p.common().to_string(), entry);
+    }
+    map
 }
 
 /// Shares labelled up the probability plot, percent, as on probability
@@ -623,6 +638,24 @@ mod tests {
         assert!(!page.contains("/*PERIOD_TICKS*/"));
         let ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS).unwrap();
         assert!(page.contains(&format!("const PERIOD_TICKS = {ticks};")));
+    }
+
+    #[test]
+    fn the_view_names_positions_as_core_names_them() {
+        let page = page();
+        assert!(!page.contains("/*POSITIONS*/"));
+        assert!(
+            !HTML.contains("\"Dial Up\""),
+            "the page writes no name of its own"
+        );
+        let at = page.find("const POSITIONS = ").unwrap() + 18;
+        let end = at + page[at..].find(';').unwrap();
+        let names: Map<String, Value> = serde_json::from_str(&page[at..end]).unwrap();
+        assert_eq!(names.len(), 12);
+        assert_eq!(names["CH"], json!(["DU", "Dial Up"]));
+        assert_eq!(names["DU"], names["CH"]);
+        assert_eq!(names["3H"], json!(["CU", "Crown Up"]));
+        assert_eq!(names["CR"], names["12H"]);
     }
 
     #[test]
