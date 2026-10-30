@@ -900,15 +900,16 @@ impl LiveAnalyzer {
         // average holds a whole window. Within that of a break, before a
         // window can be whole, regularity is not assessed; past it, no
         // whole window is noise.
+        let scatter_from = window_from
+            .min(end_s - SCATTER_LOOKBACK_S)
+            .max(since)
+            .max(0.0);
         let scatter = bph.map_or_else(Vec::new, |b| {
             crate::session::scatter_windows(
                 &holes,
                 &self.beats[..hi],
                 b,
-                window_from
-                    .min(end_s - SCATTER_LOOKBACK_S)
-                    .max(since)
-                    .max(0.0),
+                scatter_from,
                 end_s,
                 crate::session::window_part_s(&self.amp),
             )
@@ -922,9 +923,11 @@ impl LiveAnalyzer {
         let timing_scatter_fraction =
             bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
         // Where the timing can't say, the beats' averaged sound, from the
-        // beats kept for the profiles, says whether a watch is heard: the
-        // same stretch as a saved reading judges ([`BeatLog::beat_sound`]).
-        let beat_sound = match (bph, &self.beats[lo..hi]) {
+        // beats kept for the profiles, says whether a watch is heard: over
+        // the beats the scatter is read from, as a saved reading judges
+        // its stretch's ([`BeatLog::beat_sound`]), not the latest run's.
+        let sound_beats = crate::session::stretch_beats(&self.beats, scatter_from, end_s);
+        let beat_sound = match (bph, &self.beats[sound_beats]) {
             (Some(b), [first, .., last]) if measure::beat_sound_needed(jitter_us, b, judged_s) => {
                 let snips: Vec<(f64, bool, &[f32])> = self
                     .snippets

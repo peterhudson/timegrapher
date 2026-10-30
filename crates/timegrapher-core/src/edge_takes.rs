@@ -739,9 +739,9 @@ mod tests {
         &[(30.0, 1001), (30.0, 1014), (120.0, 1), (120.0, 6)];
 
     /// The draws of the test below the live card judges otherwise than
-    /// session: it takes the scatter from one fit over the stretch, session
-    /// the median of its 10 s windows' (#680).
-    const LIVE_DIFFERS: &[(f64, u64)] = &[(30.0, 1001), (30.0, 1014), (90.0, 1), (90.0, 1004)];
+    /// session. None since the live card reads session's scatter and beat
+    /// sound over the same beats (#679, #680); the list only shrinks.
+    const LIVE_DIFFERS: &[(f64, u64)] = &[];
 
     #[test]
     fn stand_noise_reads_no_watch_on_the_seeded_draws() {
