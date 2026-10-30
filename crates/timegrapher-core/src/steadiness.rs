@@ -17,7 +17,8 @@
 //! - **CUSUM**: the running sum of each reading's distance from the
 //!   mean, in units of the long-run σ√n. With no change of level,
 //!   correlated or not, it wanders inside ±1.36 (95%); a shift of the
-//!   mean bends it into a V or a tent with the corner at the shift.
+//!   mean bends it into a V or a tent. The corner is marked only at a
+//!   change point below, so one rule names a level change (#697).
 //! - **Change points**: binary segmentation of block medians into
 //!   stretches of constant mean, each change kept only when it is
 //!   strong evidence against one level.
@@ -1003,6 +1004,7 @@ pub fn check_series(
     // out (#647).
     let lr = confidence::long_run_sd(y, sst, Slow::Step);
     out.long_run_sd = Some(lr);
+    let mut walk = None;
     if lr > 0.0 {
         let scale = lr * nf.sqrt();
         let mut s = 0.0;
@@ -1015,7 +1017,7 @@ pub fn check_series(
                 ss.push(s);
             }
         }
-        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points)));
+        walk = Some((ts, ss));
     }
 
     // Straight-line trend.
@@ -1096,6 +1098,15 @@ pub fn check_series(
         });
     }
     out.trend = Some(trend);
+    if let Some((ts, ss)) = walk {
+        // The corner is marked only where the change finder cut (#697).
+        let cuts: Vec<f64> = out
+            .changes
+            .iter()
+            .flat_map(|c| c.segments.iter().skip(1).map(|g| g.start_s))
+            .collect();
+        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points), &cuts));
+    }
 
     out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
     out.lead = lead(&out, cfg);

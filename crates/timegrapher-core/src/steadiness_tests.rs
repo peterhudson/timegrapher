@@ -1196,3 +1196,42 @@ fn a_step_in_correlated_readings_is_still_found() {
     let (_, changes) = flagged(0.9, 2.0, 720, 200, Gaps::None);
     assert!(changes >= 160, "change finder: {changes} of 200");
 }
+
+/// One rule names a level change (#697): the CUSUM marks its corner only
+/// where the change finder cut, so a steady take whose CUSUM wanders past
+/// the band names none, and a real step twice the scatter is still named,
+/// at the finder's cut.
+#[test]
+fn the_cusum_names_a_change_only_where_the_finder_cuts() {
+    let mut z = Noise(697);
+    let mut past_band = 0;
+    for (step, runs) in [(0.0, 400), (2.0, 200)] {
+        let mut named = 0;
+        for _ in 0..runs {
+            let s = check_series(
+                SeriesKind::Rate,
+                correlated(&mut z, 720, 0.9, step, Gaps::None),
+                None,
+                None,
+                None,
+                &[],
+                &Config::default(),
+            );
+            let (cu, ch) = (s.cusum.unwrap(), s.changes.unwrap());
+            assert_eq!(cu.shift, ch.segments.len() > 1);
+            if cu.shift {
+                assert!(ch.segments[1..].iter().any(|g| g.start_s == cu.at_s));
+            } else if step == 0.0 && cu.max > CUSUM_BAND {
+                past_band += 1;
+            }
+            named += usize::from(cu.shift);
+        }
+        if step == 0.0 {
+            assert!(named <= 20, "steady: {named} of {runs} named a change");
+        } else {
+            assert!(named >= 160, "step: {named} of {runs} named a change");
+        }
+    }
+    // The case #697 found: past the band, and no change named.
+    assert!(past_band > 0);
+}

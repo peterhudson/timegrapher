@@ -323,11 +323,15 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     }
     if let Some(c) = &s.cusum {
         println!(
-            "  {:<14} max {:.2} at {:.0} s (p {} if independent)",
+            "  {:<14} max {:.2} (p {} with no change of level){}",
             "CUSUM",
             c.max,
-            c.at_s,
-            p_text(c.p_value)
+            p_text(c.p_value),
+            if c.shift {
+                format!("; level changes near {:.0} s", c.at_s)
+            } else {
+                String::new()
+            }
         );
     }
     if let Some(c) = s.changes.as_ref().filter(|c| c.segments.len() > 1) {
