@@ -800,6 +800,10 @@ mod tests {
         let lo = r.values.iter().copied().fold(f64::INFINITY, f64::min);
         let hi = r.values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         assert!(hi - lo > 20.0, "{lo} to {hi}");
+        // Their scale is core's, and holds the swing.
+        let [y0, y1] = r.y_range.expect("readings scale");
+        assert_eq!(chart_scale::spread(&r.values), Some((y0, y1)));
+        assert!(y0 < lo + 1.0 && y1 > hi - 1.0, "{y0} to {y1}");
 
         // Periods: the rate's search peaks near a minute, over its threshold.
         let s = v.series[0].search.as_ref().expect("rate search");
@@ -826,6 +830,20 @@ mod tests {
         assert!(f.raster.iter().all(|row| row.len() == f.profile.len()));
         assert_eq!(f.columns.len(), f.profile.len());
         assert!(f.swing.is_some() && f.middle_half.is_some());
+        // Its scale is fold_range's, over every cycle, and holds every dot.
+        let [y0, y1] = f.y_range.expect("fold scale");
+        let dots: Vec<f64> = f
+            .raster
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|v| v.is_finite())
+            .collect();
+        assert_eq!(chart_scale::spread(&dots), Some((y0, y1)));
+        assert!(
+            dots.iter().filter(|&&d| d < y0 || d > y1).count() <= dots.len() / 50,
+            "{y0} to {y1}"
+        );
         let fa = v.series[1].fold.as_ref().expect("amplitude fold");
         assert_ne!(fa.from, "own");
     }
