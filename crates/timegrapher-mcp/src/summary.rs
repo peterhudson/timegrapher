@@ -282,7 +282,11 @@ fn with_limits(mut lines: Vec<String>, doc: &Value) -> Option<String> {
         .filter(|l| !lines.contains(l))
         .collect();
     if !limits.is_empty() {
-        lines.push("What limits these readings:".to_string());
+        lines.push(if doc["take"]["readings"].is_array() {
+            "What limits the take's readings:".to_string()
+        } else {
+            "What limits these readings:".to_string()
+        });
         lines.extend(limits.into_iter().map(|l| format!("- {l}")));
     }
     (!lines.is_empty()).then(|| lines.join("\n"))
@@ -676,6 +680,36 @@ mod tests {
             ),
             "{s}"
         );
+    }
+
+    /// The limits of a file its take lists are the take readings' own, not
+    /// the whole file's: a take read on a measured clock has no clock caveat.
+    #[test]
+    fn a_takes_file_is_limited_by_the_takes_readings() {
+        let doc = json!({
+            "schema": "timegrapher.analyze/2",
+            "watch_heard": true,
+            "overall": { "rate_s_per_day": 5.0 },
+            "caveats": [{ "code": "clock_unknown" }],
+            "take": {
+                "session_file": "take/session.toml",
+                "readings": [{ "position": "DU", "measurement": {
+                    "rate_s_per_day": 3.3, "caveats": [{ "code": "lift_unknown" }] } }],
+            },
+        });
+        let limits = crate::caveats::limits(&doc);
+        assert_eq!(limits.len(), 1, "{limits:?}");
+        assert_eq!(limits[0]["where"], "Dial Up (DU)");
+        assert!(
+            limits[0]["text"].as_str().unwrap().contains("lift angle"),
+            "{limits:?}"
+        );
+        let s = lead(&doc, &Map::new()).unwrap();
+        assert!(
+            s.contains("What limits the take's readings:\n- Dial Up (DU): The lift angle"),
+            "{s}"
+        );
+        assert!(!s.contains("clock hasn't been measured"), "{s}");
     }
 
     #[test]

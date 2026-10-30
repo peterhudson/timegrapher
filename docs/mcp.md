@@ -266,9 +266,11 @@ the timegrapher app draws them:
   time, and the Tick and Tock profiles over the stretch `session` measures the
   beat shape on: the first minute after the watch has settled. For a file
   its take's `session.toml` lists, that is where `session` measured the
-  first entry naming the file, its settling and masks included, and the
-  lead gives what `session` reads of the file, entry by entry, before the
-  whole file read alone.
+  first entry naming the file, its settling and masks included. The lead
+  gives what `session` reads of the file, entry by entry, before the whole
+  file read alone; the view's figures are the take's, a row of them for
+  each entry, and what limits them is said of the take's readings. The
+  rate and amplitude over time stay the whole file's.
 - `run_session`: each position's readings, the characteristic values, and
   rate and amplitude by position. It sets no limits: the server does not
   judge the readings against a tolerance, so `run_session` takes no
@@ -308,10 +310,10 @@ the timegrapher app draws them:
   `series --maps --json` gives both whole.
 
 The charts use the app's colours for each reading (rate red, amplitude
-purple, beat error yellow, Tick blue, Tock orange) and its scales: like the
-app, a chart over time is scaled to all but the highest and lowest 2% of
-its readings, so one glitch doesn't flatten it, and says how many are off
-the scale. Beat error is shown as a size, without a sign, because which
+purple, beat error yellow, Tick blue, Tock orange) and its scales, which
+the core works out for both: a chart over time holds every point of its
+lines, padded a little, and the steadiness views leave out the 1% at each
+end and lone wild values, so one knock doesn't flatten them. Beat error is shown as a size, without a sign, because which
 beat counts as the Tick can change between runs of the same recording.
 A period axis is marked, as in the app, at times a watchmaker reads (5 s,
 1 min, 1 h, 24 h), as many as have room, from the same list in the core.

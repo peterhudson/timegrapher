@@ -1,7 +1,7 @@
-//! The CUSUM of a series and how far independent readings take it: the
-//! running sum of each reading's distance from the mean, in units of
-//! σ√n, which for independent readings wanders inside ±[`CUSUM_BAND`]
-//! 95% of the time. Every surface draws the band and marks the corner
+//! The CUSUM of a series and how far readings with no change of level
+//! take it: the running sum of each reading's distance from the mean, in
+//! units of the long-run σ√n, which with no change of level, correlated
+//! or not, wanders inside ±[`CUSUM_BAND`] 95% of the time. Every surface draws the band and marks the corner
 //! where the level changes from here.
 
 use serde::Serialize;

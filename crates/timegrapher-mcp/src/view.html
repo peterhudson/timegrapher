@@ -175,7 +175,8 @@ new ResizeObserver(notifySize).observe(document.body);
 // The app's order: Dial Up, Dial Down, Crown Up, Crown Down, Crown Left, Crown Right.
 const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
 // Each position's common code and name, from core, under both its Witschi
-// code and its common one: the server fills it in.
+// code and its common one: the server fills it in (null in the raw file,
+// so its readers fall back to the code).
 const POSITIONS = /*POSITIONS*/null;
 
 function esc(s) {
@@ -246,17 +247,6 @@ function fmtTime(t) {
     : `${Math.floor(s / 60)}:${pad(s % 60)}`;
 }
 
-// The app's scale for its charts: the 2nd to 98th percentile, padded, so one
-// glitch doesn't flatten the line.
-function percentileRange(values) {
-  if (values.length < 2) return null;
-  const ys = values.slice().sort((a, b) => a - b);
-  const q = (f) => ys[Math.round((ys.length - 1) * f)];
-  const lo = q(0.02), hi = q(0.98);
-  const pad = Math.max((hi - lo) * 0.15, 0.05);
-  return [lo - pad, hi + pad];
-}
-
 let clipCount = 0;
 
 // The plot's background and the clip that keeps the marks inside it.
@@ -276,7 +266,7 @@ function lineSample(s) {
 // A line chart with one value axis.
 //   series: [{name, color, key, dash, opacity, main, points: [[x, y]], band: [[x, lo, hi]]}]
 //   unit, decimals: the value's; time: x is seconds, read m:ss; xUnit otherwise
-//   robust: scale to the 2nd to 98th percentile; yRange: [lo, hi] instead
+//   yRange: [lo, hi], the scale core gives (else the lines' own, padded)
 //   marks: [{x, color, label, width, dash, row}]; hlines: [{y, color, dash}]
 //   hover: false for no readout (the sound plots have none, as in the app)
 function lineChart(o) {
@@ -289,10 +279,6 @@ function lineChart(o) {
   if (!ys.length) return `<p class="empty">No ${esc(o.title || "data")} to draw.</p>`;
   const lo = Math.min(...ys), hi = Math.max(...ys);
   let [y0, y1] = o.yRange || [lo - (hi - lo) * 0.08, hi + (hi - lo) * 0.08];
-  if (o.robust && !o.yRange) {
-    const r = percentileRange(ys);
-    if (r) [y0, y1] = r;
-  }
   if (y1 - y0 < (o.minSpan || 1e-9)) { const m = (y0 + y1) / 2, h = (o.minSpan || 1) / 2; y0 = m - h; y1 = m + h; }
   let [x0, x1] = o.xRange || [Math.min(...xs), Math.max(...xs)];
   if (!(x1 > x0)) x1 = x0 + 1;
@@ -439,16 +425,18 @@ function timeLabel(s) {
 function stripCards(strip) {
   if (!strip) return "";
   const has = (k) => strip[k] && strip[k].length;
+  // Each chart's scale is core's (chart_scale::data_range), from the server.
+  const range = (k) => (strip.y_range && strip.y_range[k]) || undefined;
   const cards = [];
   if (has("rate")) {
-    cards.push(["Rate", "The rate over the whole recording", lineChart({
-      title: "Rate", time: true, robust: true, unit: " s/day", decimals: 1, minSpan: 1,
+    cards.push(["Rate", "The rate over the whole recording, on the sound card's clock", lineChart({
+      title: "Rate", time: true, yRange: range("rate"), unit: " s/day", decimals: 1,
       series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
     })]);
   }
   if (has("amplitude")) {
     cards.push(["Amplitude", "The amplitude over the whole recording, from the ticks and tocks", lineChart({
-      title: "Amplitude", time: true, legend: has("amplitude_tick") || has("amplitude_tock"), robust: true, unit: "°", decimals: 0, minSpan: 4,
+      title: "Amplitude", time: true, legend: has("amplitude_tick") || has("amplitude_tock"), yRange: range("amplitude"), unit: "°", decimals: 0,
       series: [
         { name: "Average Amplitude", color: "--amplitude", points: strip.amplitude },
         { name: "Amplitude from Tick", color: "--amplitude", key: "--tick", dash: "dashed", main: false, points: strip.amplitude_tick || [] },
@@ -458,7 +446,7 @@ function stripCards(strip) {
   }
   if (has("beat_error_unlock") || has("beat_error_drop")) {
     cards.push(["Beat Error", "The beat error over the whole recording", lineChart({
-      title: "Beat Error", time: true, legend: has("beat_error_unlock") && has("beat_error_drop"), robust: true, unit: " ms", decimals: 2, minSpan: 0.1,
+      title: "Beat Error", time: true, legend: has("beat_error_unlock") && has("beat_error_drop"), yRange: range("beat_error"), unit: " ms", decimals: 2,
       series: [
         { name: "From the Unlock", color: "--beat-error", points: strip.beat_error_unlock || [] },
         { name: "From the Drop", color: "--beat-error", opacity: 0.6, dash: "dashed", main: false, points: strip.beat_error_drop || [] },
@@ -523,47 +511,94 @@ function analyzeRate(doc) {
   const clock = doc.clock || {};
   if (Number.isFinite(clock.rate_s_per_day)) {
     const from = typeof clock.from === "string" ? clock.from : "correction supplied by the CLI";
-    return { value: clock.rate_s_per_day, basis: `corrected for the sound card's clock (${from})` };
+    return { value: clock.rate_s_per_day, basis: rateBasis(true, from) };
   }
-  return { value: (doc.overall || {}).rate_s_per_day, basis: "on the sound card's clock" };
+  return { value: (doc.overall || {}).rate_s_per_day, basis: rateBasis(false) };
+}
+
+// Which clock a rate is on: corrected for the sound card's, with where the
+// correction came from when the document says, or the card's own.
+function rateBasis(corrected, from) {
+  if (!corrected) return "on the sound card's clock";
+  return `corrected for the sound card's clock${from ? ` (${from})` : ""}`;
 }
 
 function recordingView(doc, extra, limits, noBeat) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
+  const takeReadings = doc.take && Array.isArray(doc.take.readings) && doc.take.readings.length ? doc.take.readings : null;
+  if (takeReadings) {
+    // The profile is the first reading's stretch with a shape (views.rs
+    // profile_stretch), so its drop beat error places Tick and Tock.
+    const shaped = takeReadings.find((r) => r.shape && Number.isFinite(r.shape.from_s)) || {};
+    return head + takeTiles(takeReadings) + recordingCards(doc, extra, limits, (shaped.measurement || {}).beat_error_ms);
+  }
   if (doc.watch_heard === false) {
     return head + `<div class="card notice"><b>No Regular Beat Found</b>${esc(noBeat || "")}</div>`;
   }
   const o = doc.overall || {};
-  // The headline beat error is the unlock's, with the drop's beside it, as
-  // on the app's card. Both show the size only: which side is Tick can
-  // change between runs of the same take, so a sign would mean nothing.
-  const unlock = doc.beat_error_unlock_ms, drop = o.beat_error_ms;
-  const be = Number.isFinite(unlock) ? unlock : drop;
-  const beNote = Number.isFinite(unlock)
-    ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${num(abs(drop), 2)} ms` : ""}` : "from the drop";
-  const sides = Number.isFinite(doc.amplitude_even_deg) && Number.isFinite(doc.amplitude_odd_deg)
-    ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(doc.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(doc.amplitude_odd_deg, 0)}°` : "";
   const rate = analyzeRate(doc);
   const rateNote = [esc(rate.basis)];
   if (Number.isFinite(doc.rate_p05)) rateNote.push(`Card-clock 90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}`);
   const conf = doc.confidence || {};
-  const rateSe = conf.rate && Number.isFinite(conf.rate.se) ? conf.rate.se : null;
-  const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
-  const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
-  let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(rate.value, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", rateNote.join("<br>"))}
-    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
+  const html = head + readingTiles({
+    rate: rate.value, rateSe: conf.rate && conf.rate.se, rateNote: rateNote.join("<br>"),
+    amplitude: doc.amplitude_deg, amplitudeSe: doc.amplitude_se_deg, even: doc.amplitude_even_deg, odd: doc.amplitude_odd_deg,
+    unlock: doc.beat_error_unlock_ms, drop: o.beat_error_ms,
+    beats: doc.beats_found, jitter: Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us,
+  });
+  return html + recordingCards(doc, extra, limits, o.beat_error_ms);
+}
+
+// One reading's four tiles, for the whole file or a take's reading. The
+// headline beat error is the unlock's, with the drop's beside it, as on the
+// app's card. Both show the size only: which side is Tick can change
+// between runs of the same take, so a sign would mean nothing.
+function readingTiles(f) {
+  const be = Number.isFinite(f.unlock) ? f.unlock : f.drop;
+  const beNote = Number.isFinite(f.unlock)
+    ? `from the unlock${Number.isFinite(f.drop) ? ` · from the drop ${num(abs(f.drop), 2)} ms` : ""}` : "from the drop";
+  const sides = Number.isFinite(f.even) && Number.isFinite(f.odd)
+    ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(f.even, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(f.odd, 0)}°` : "";
+  return `<div class="tiles">
+    ${tile("Rate", "--rate", signed(f.rate, 1), Number.isFinite(f.rateSe) ? `± ${num(f.rateSe, 1)} seconds per day` : "seconds per day", f.rateNote)}
+    ${tile("Amplitude", "--amplitude", num(f.amplitude, 0), Number.isFinite(f.amplitudeSe) ? `± ${Math.max(1, Math.round(f.amplitudeSe))}°` : "", sides, "°")}
     ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
-    ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
+    ${tile("Beats", "", esc(f.beats), "", Number.isFinite(f.jitter) ? `jitter ${num(f.jitter, 0)} µs` : "")}
   </div>`;
-  // The caveats say what limits the readings, clipping among them; a
-  // server without them still gets the clipping notice.
+}
+
+// What follows the tiles: the caveats, which say what limits the readings,
+// clipping among them (a server without them still gets the clipping
+// notice), then the strips and the Tick and Tock profile.
+function recordingCards(doc, extra, limits, dropBeatError) {
+  const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
+  let html = "";
   if (limits && limits.length) html += limitsCard(limits);
   else if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped.</div>`;
   html += stripCards(extra && extra.strip);
-  html += profileCard(extra && extra.profile, "Tick and Tock", o.beat_error_ms);
+  html += profileCard(extra && extra.profile, "Tick and Tock", dropBeatError);
   return html;
+}
+
+// A file its take's session file lists is shown as that take reads it, as
+// the app and `session` show it: each reading's settled stretch at the
+// take's settings, not the whole file read alone. Several readings (a file
+// listed twice, or in parts) each get their own row of tiles.
+function takeTiles(readings) {
+  return readings.map((r) => {
+    const m = r.measurement || {};
+    const label = `${positionName(r.position)}${r.label && r.label !== "." ? ` · ${r.label}` : ""}`;
+    const span = Number.isFinite(m.start_s) && Number.isFinite(m.end_s) ? `${timeLabel(m.start_s)} to ${timeLabel(m.end_s)}` : "";
+    const head = `<p class="sub">${esc(label)}${span ? ` · ${esc(span)}` : ""} · as the take reads it</p>`;
+    if (m.watch_heard === false) return head + `<div class="card notice"><b>No Regular Beat Found</b></div>`;
+    const conf = m.confidence || {};
+    return head + readingTiles({
+      rate: m.rate_s_per_day, rateSe: conf.rate && conf.rate.se, rateNote: esc(rateBasis(m.calibrated === true)),
+      amplitude: m.amplitude_deg, amplitudeSe: conf.amplitude && conf.amplitude.se, even: m.amplitude_even_deg, odd: m.amplitude_odd_deg,
+      unlock: m.beat_error_unlock_ms, drop: m.beat_error_ms, beats: m.beats, jitter: m.jitter_us,
+    });
+  }).join("");
 }
 
 function sessionView(doc, limits) {
@@ -585,7 +620,7 @@ function sessionView(doc, limits) {
   html += `<div class="card"><h2>Positions</h2><table><thead><tr><th>Position</th><th>Rate, s/d</th><th>Amplitude, °</th><th>Beat Error, ms</th><th>Wind, h</th></tr></thead><tbody>`;
   readings.forEach((r) => {
     const m = r.measurement || {};
-    const pos = POSITIONS[r.position] || [r.position, r.position];
+    const pos = (POSITIONS || {})[r.position] || [r.position, r.position];
     const heard = m.watch_heard !== false;
     html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
       (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
@@ -597,7 +632,7 @@ function sessionView(doc, limits) {
   if (limits && limits.length) html += limitsCard(limits);
   const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
   if (heard.length) {
-    const name = (r) => (POSITIONS[r.position] || [r.position, r.position])[1];
+    const name = (r) => ((POSITIONS || {})[r.position] || [r.position, r.position])[1];
     const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day }));
     const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg }));
     if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate</p>${bars(rate, "--rate", " s/day", 1)}</div>`;
@@ -675,7 +710,7 @@ const STEADY_VIEWS = [
   ["cycle", "Cycle", "The readings folded at the cycle the tests found: every cycle's readings as dots, coloured by when the cycle came (purple first, yellow-green last), a box round the middle half of each phase's readings, and their median shape as the line; the note gives the line's swing beside a box's median height"],
   ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
   ["allan", "Allan Deviation", "How much the rate's average scatters when averaged over longer and longer times; lower is steadier. On or below the dashed line, the rate only jitters from moment to moment; above it towards the right, it wanders or drifts, and a cycle puts a bump near 0.37 of its period. Both axes are logarithmic"],
-  ["cusum", "CUSUM", "The running sum of each reading's distance from the mean: independent readings stay inside the dashed lines; a step in the level bends it into a V or a tent, with the corner at the step"],
+  ["cusum", "CUSUM", "The running sum of each reading's distance from the mean, scaled by their long-run spread: readings with no change of level, correlated or not, stay inside the dashed lines about 95 times in 100; a step in the level bends it into a V or a tent, with the corner at the step"],
   ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: the size estimated at each period for complete data, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
   ["stft", "STFT Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from the amplitude spectrum of each 20 minutes of readings, stepped 5 minutes: every period is read over the same window, so this map gives a line's size and shows a line that comes and goes. The rate's map is of the beat timing, in ms. Empty where a window has a reading missing"],
   ["wavelet", "Wavelet Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from a synchrosqueezed wavelet transform: short periods read over short times and long ones over long, each moved to the period its own phase turns at, so a line shows sharply where and when it is; under noise one row reads under the line's size, so read its size from the STFT Map. Each unbroken stretch is read alone, and its ends, which a period's wavelet can't reach, are left empty"],
@@ -1211,7 +1246,7 @@ function steadyPlot(s, view, doc) {
       const r = v.readings;
       if (!r || !r.t_s || r.t_s.length < 2) return steadyNote("No readings to draw.");
       const pts = r.t_s.map((t, i) => [t, r.values[i]]).filter(([, y]) => Number.isFinite(y));
-      const [lo, hi] = spreadRange(pts.map((p) => p[1]));
+      const [lo, hi] = r.y_range || [0, 1];
       const segs = s.changes && s.changes.segments && s.changes.segments.length > 1 ? s.changes.segments : [];
       const ts = s.two_state && s.two_state.two_levels ? s.two_state : null;
       return xyChart({
@@ -1271,7 +1306,7 @@ function steadyPlot(s, view, doc) {
         dots.push([at(b), y]);
       }));
       const shape = f.profile.map((y, b) => [at(b), y]);
-      const [lo, hi] = spreadRange(dots.length ? dots.map((q) => q[1]) : shape.map((q) => q[1]));
+      const [lo, hi] = f.y_range || [0, 1];
       // Each phase's middle half, over every cycle folded (core's columns).
       const boxW = 0.3 * f.period_s / bins;
       const rects = (f.columns || []).map((q, b) => q && { x0: at(b) - boxW, x1: at(b) + boxW, y0: q[0], y1: q[2], color: "--text3" }).filter(Boolean);
@@ -1402,15 +1437,6 @@ function steadyPlot(s, view, doc) {
     }
   }
   return "";
-}
-
-// steady::spread: the 1st to 99th percentile, padded 12%.
-function spreadRange(values) {
-  const v = values.filter(Number.isFinite).sort((a, b) => a - b);
-  if (v.length < 2) return v.length ? [v[0] - 1, v[0] + 1] : [0, 1];
-  const q = (f) => v[Math.round((v.length - 1) * f)];
-  const lo = q(0.01), hi = q(0.99), pad = Math.max((hi - lo) * 0.12, 1e-3);
-  return [lo - pad, hi + pad];
 }
 
 // The statistics behind a series' headline, as the JSON gives them.
@@ -1765,7 +1791,7 @@ function seriesView(doc, extra, limits) {
 // until its result arrives. A chat app that does not pass the view's calls
 // on leaves the progress messages in the chat to say how far it has got.
 
-function positionName(p) { return (POSITIONS[p] || [p, p || ""])[1]; }
+function positionName(p) { return ((POSITIONS || {})[p] || [p, p || ""])[1]; }
 
 let live = null;
 

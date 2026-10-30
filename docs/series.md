@@ -105,9 +105,11 @@ For each series:
   averaging time with the smallest scatter, so the most repeatable
   reading.
 - **CUSUM**: the running sum of each reading's distance from the mean,
-  in units of σ√n, where σ is the reading-to-reading scatter. For
-  independent readings it stays within ±1.36 (95%). A step in the mean
-  bends it into a V or a tent, with the corner at the step.
+  in units of σ√n, where σ is the readings' long-run scatter
+  (`long_run_sd`: the reading-to-reading scatter allowing for their
+  correlation). With no change of level, correlated or not, it stays
+  within ±1.36 about 95% of the time. A step in the mean bends it into a
+  V or a tent, with the corner at the step.
 - **Change points**: 30 s block medians split into stretches of constant
   mean, at least 5 minutes each. A change is kept only when it is strong
   evidence against one level: the gain must exceed 3 ln n, and never be
@@ -405,7 +407,7 @@ Each entry of `series[]`:
 | `two_state` | the two-state finder's full result (rate and amplitude only) |
 | `cycle` | the cycle found, if any, from the 2 s windows for the amplitude and the beat error: `period_s`, `peak_to_peak`, `explained`, `source` (`two_state`, `autocorrelation`, `period_search`), `wheel`, and `inner_period_s`, `inner_explained`, `turns` when the period is a whole number of turns of a shorter cycle that explains at least half as much |
 | `unlock_hopping` | amplitude and beat error only: one side's unlock edges or 2 s windows fall in two clusters the other side's do not |
-| `views` | with `--views`: the chart data for each series besides the arrays above. `readings` (`step_s`, `n`, `stride`, `t_s[]`, `values[]`: the readings the tests were made on, on the tests' time (the clock's, with each pause left empty), 10 s for the rate and 2 s windows for the amplitude and the beat error, at most 3000, every `stride`th); `search` (`period_s[]` longest first, `score[]`, `threshold`: the period search, at most 600 periods; null when there is none); `fold` (`period_s`, `from` (`own`, another series' name, or `wheel` with `wheel` naming it), `profile[]` (median per phase bin: one bin per phase the readings fall on when those repeat within two turns, at most 40; otherwise one per reading in a turn, 6 to 40), `cycles`, `raster[][]` (at most 200 of the cycles, evenly spread, one value per bin, null where empty), `columns[]` (each bin's quartiles over every cycle folded, `[lower, median, upper]`, null for a bin with fewer than four readings: the app's boxes), `swing` (the median line's highest less its lowest) and `middle_half` (the median of the columns' upper less lower), null unless both can be given; null when no period fits) |
+| `views` | with `--views`: the chart data for each series besides the arrays above. `readings` (`step_s`, `n`, `stride`, `t_s[]`, `values[]`: the readings the tests were made on, on the tests' time (the clock's, with each pause left empty), 10 s for the rate and 2 s windows for the amplitude and the beat error, at most 3000, every `stride`th; `y_range`: the value scale the app draws them on, `[low, high]`, null with fewer than two); `search` (`period_s[]` longest first, `score[]`, `threshold`: the period search, at most 600 periods; null when there is none); `fold` (`period_s`, `from` (`own`, another series' name, or `wheel` with `wheel` naming it), `profile[]` (median per phase bin: one bin per phase the readings fall on when those repeat within two turns, at most 40; otherwise one per reading in a turn, 6 to 40), `cycles`, `raster[][]` (at most 200 of the cycles, evenly spread, one value per bin, null where empty), `columns[]` (each bin's quartiles over every cycle folded, `[lower, median, upper]`, null for a bin with fewer than four readings: the app's boxes), `swing` (the median line's highest less its lowest) and `middle_half` (the median of the columns' upper less lower), null unless both can be given; `y_range` (the value scale the app draws the fold on, `[low, high]`); null when no period fits) |
 
 `--views` (with `--json`) adds the chart data: the `points` and `views`
 above, a few hundred kB on a long take (about 600 kB over 2 h 40 min), so
