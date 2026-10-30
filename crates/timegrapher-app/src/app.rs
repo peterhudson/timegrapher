@@ -1378,6 +1378,10 @@ const TAB_BAR_H: f32 = 24.0;
 /// taken from the panes with room to spare, so opening a pane never
 /// crushes the others into a sliver. Worked from the sizes of the last
 /// frame; a window too small for them all shares its room in proportion.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn keep_room(
     tiles: &mut Tiles<Pane>,
     need: impl Fn(Pane) -> Option<f32>,
@@ -1683,8 +1687,8 @@ const FRAME_BUDGET: Duration = Duration::from_millis(20);
 /// The same for [`TimegrapherApp::pump`], which runs off the window's
 /// thread and only holds the window up while it works.
 pub(crate) const PUMP_BUDGET: Duration = Duration::from_millis(50);
-/// Averaging times offered for the readings, seconds: core's.
-use timegrapher_core::live::AVERAGES;
+/// Averaging times offered for the readings, seconds.
+const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
 /// beat at 28,800 bph, the widest view in which tick and tock can't wrap
 /// onto each other; the wider ones keep a long take's drift from wrapping.
@@ -1733,6 +1737,8 @@ const SETTLES: [f64; 4] = [10.0, 20.0, 30.0, 60.0];
 const MEASURES: [f64; 6] = [30.0, 60.0, 90.0, 120.0, 180.0, 300.0];
 /// Lift angles offered, degrees.
 const LIFTS: [f64; 6] = [44.0, 49.0, 50.0, 52.0, 53.0, 55.0];
+/// Most points kept on a chart when it is rebuilt from the whole session.
+const TREND_POINTS: f64 = 4000.0;
 
 const MS: Format = Format {
     show: fields::plain,
@@ -1830,9 +1836,17 @@ fn trend_key(seconds: f64) -> u64 {
 }
 
 /// The readings over the whole of what `live` holds, averaged over
-/// `seconds`, at core's trend times ([`LiveAnalyzer::trend`]).
+/// `seconds`, at up to [`TREND_POINTS`] times.
 fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
-    live.trend(seconds).iter().map(TrendPoint::from).collect()
+    let end = live.duration_s();
+    let step = (end / TREND_POINTS).max(0.5);
+    let mut out = Vec::new();
+    let mut t = step;
+    while t <= end + 1e-9 {
+        out.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
+        t += step;
+    }
+    out
 }
 
 /// What the take on show's readings rest on, a counter for each part,
@@ -1898,25 +1912,32 @@ impl TrendPoint {
         core_session::beat_error_signed(self.beat_error_unlock, self.beat_error_drop)
     }
 
-    /// The reading at `t`, as core reads a trend's
-    /// ([`timegrapher_core::live::TrendReading::of`]): one whose averaging
-    /// time is not a whole bin has no values.
+    /// The reading at `t`; a reading whose averaging time
+    /// is not a whole bin (just after the start, a break or a masked
+    /// stretch, or over a dropout; see `LiveReading::whole`) has no
+    /// values, since it isn't the average the chart is of.
     fn of(t: f64, r: &LiveReading) -> Self {
-        Self::from(&timegrapher_core::live::TrendReading::of(t, r))
-    }
-}
-
-impl From<&timegrapher_core::live::TrendReading> for TrendPoint {
-    fn from(r: &timegrapher_core::live::TrendReading) -> Self {
+        if !r.whole {
+            return TrendPoint {
+                t,
+                rate: None,
+                amplitude: None,
+                amplitude_a: None,
+                amplitude_b: None,
+                beat_error_unlock: None,
+                beat_error_drop: None,
+                heard: false,
+            };
+        }
         TrendPoint {
-            t: r.t,
+            t,
             rate: r.rate_s_per_day,
             amplitude: r.amplitude_deg,
             amplitude_a: r.amplitude_even_deg,
             amplitude_b: r.amplitude_odd_deg,
             beat_error_unlock: r.beat_error_unlock_ms,
             beat_error_drop: r.beat_error_ms,
-            heard: r.heard,
+            heard: r.beats_used > 0 && r.watch_heard,
         }
     }
 }
@@ -2535,6 +2556,10 @@ impl TimegrapherApp {
     /// Put back the views and choices from the last time. A pane layout
     /// from another version of the app, missing a pane or holding one twice,
     /// is set aside for the starting one.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     pub fn apply_settings(&mut self, s: Settings) {
         let Settings {
             device,
@@ -2683,6 +2708,10 @@ impl TimegrapherApp {
 
     /// The app with a given device list. Tests pass an empty one: listing
     /// devices from several test threads at once crashes on Windows.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn with_devices(devices: Vec<InputDevice>, file: Option<PathBuf>) -> Self {
         let device = capture::choices(&devices).first().map(|c| c.id.clone());
         let home = std::env::var_os("HOME")
@@ -4388,6 +4417,10 @@ impl TimegrapherApp {
 
     /// Analyse `path` whole. Without a session file it starts from
     /// `carried`, else from the defaults.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn analyse_whole(&mut self, path: &Path, carried: Option<WatchSetup>) {
         // Refused before anything on show is stopped.
         if let Some(why) = no_analysis_to_read(path).or_else(|| {
@@ -4781,6 +4814,11 @@ impl TimegrapherApp {
     /// Save and read the sound that has come in, for up to `budget`, so a
     /// backlog never holds up the window for long. Returns the blocks of
     /// sound taken.
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn poll_for(&mut self, budget: Duration) -> usize {
         let started = Instant::now();
         // After a while with nothing run, the input gets the usual grace
@@ -5174,6 +5212,10 @@ impl TimegrapherApp {
     /// position's code on a teal swatch, and a menu of the six positions, then Stop
     /// Painting while it is on. In the toolbar's "…" menu, a menu of the
     /// same.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn brush_control(&mut self, ui: &mut egui::Ui, live: bool) {
         let pal = theme::pal(ui);
         let test = self.in_test();
@@ -5914,6 +5956,10 @@ impl TimegrapherApp {
     }
 
     /// The question before throwing away unsaved sound.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
         let Some(what) = self.confirm.clone() else {
             return;
@@ -6793,6 +6839,10 @@ impl TimegrapherApp {
     /// background, writing it beside the take; [`Self::poll_take_keep`]
     /// then puts it in the take's place. Only a take whose session file
     /// names the whole folder in each entry, as the app's own takes do.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn start_take_keep(&mut self, take: PathBuf) {
         if self.take_keep.is_some() {
             return;
@@ -7081,6 +7131,10 @@ impl TimegrapherApp {
 
     /// The Watches view's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn watches_tools(&mut self, ui: &mut egui::Ui) {
         // One at a time in a narrow window: the watch shown has only the
         // way back to the list.
@@ -8123,6 +8177,10 @@ impl TimegrapherApp {
     /// the six instead of the buttons. The buttons set the position in a
     /// free live take; on a take on show or during a test they only show
     /// it.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn position_card(&mut self, ui: &mut egui::Ui, compact: bool) {
         self.position_card_title = if compact {
             "Position"
@@ -8360,6 +8418,10 @@ impl TimegrapherApp {
     /// with the take's length and state beside them, then Average Over. On
     /// a compact card, the length goes in Listen's hover and Average Over
     /// loses its label to its hover.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn listen_buttons(&mut self, ui: &mut egui::Ui, compact: bool) {
         let pal = theme::pal(ui);
         let area = ui.max_rect();
@@ -8539,6 +8601,10 @@ impl TimegrapherApp {
         self.quick_listen && self.session.saved_to().is_none() && self.watch_takes_dir().is_some()
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn save_menu(&mut self, ui: &mut egui::Ui, size: f32) {
         let pal = theme::pal(ui);
         let can = self.session.allows(Action::Save) && self.saving.is_none();
@@ -8933,6 +8999,10 @@ impl TimegrapherApp {
     /// rate, each as text where the calibre sets it. Where the row is too
     /// narrow for both, the lift alone (nothing finds it, while Auto finds
     /// the beat rate), the beat rates heading the Calibre menu.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn rate_and_lift(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let heard = self.live.as_ref().and_then(|l| l.bph());
@@ -9546,6 +9616,10 @@ impl TimegrapherApp {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn strip_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let overlays = &mut self.overlays;
@@ -9893,6 +9967,10 @@ impl TimegrapherApp {
         self.watch_search_focus = true;
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         let command = |key| egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key);
         if ui
@@ -10311,6 +10389,10 @@ impl TimegrapherApp {
     /// its level set against the watch on the stand, in three numbered
     /// steps, listening all the while so the meter moves. Done keeps
     /// listening; Not Now stops, and the sheet doesn't come back by itself.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn setup_sheet_dialog(&mut self, ctx: &egui::Context) {
         if !self.setup_sheet || self.open_ask.is_some() || self.confirm.is_some() {
             return;
@@ -10504,6 +10586,10 @@ impl TimegrapherApp {
 
     /// A test that ended with no watch picked: Keep in Unsorted, Keep in a
     /// Watch… or Throw Away.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn test_keep_dialog(&mut self, ctx: &egui::Context) {
         let Some(kind) = self.test_keep else {
             return;
@@ -10658,6 +10744,10 @@ impl TimegrapherApp {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn open_ask_dialog(&mut self, ctx: &egui::Context) {
         let Some(mut a) = self.open_ask.take() else {
             return;
@@ -11036,6 +11126,10 @@ impl TimegrapherApp {
         self.settings_gear(ui);
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn pane_icon_groups(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.x = 2.0;
         let pal = theme::pal(ui);
@@ -12210,6 +12304,10 @@ impl TimegrapherApp {
     /// three rows (title, figure, controls) and one height at every width;
     /// where the full controls don't fit, the compact form of every card.
     /// Returns what the cards asked for, and where their controls go.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn readouts(&self, ui: &mut egui::Ui) -> Readouts {
         let pal = theme::pal(ui);
         let r = self.reading();
@@ -12919,6 +13017,10 @@ impl TimegrapherApp {
     /// closed unexpectedly, sound kept from an earlier session, a newer
     /// release) and the take's USB lines and clock log disagreeing, each
     /// opening its whole message and buttons over the window. The bar keeps its height whatever it shows.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn status_notices(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         // A warning or a failure starts with its icon; the words are in the
@@ -13125,6 +13227,10 @@ impl TimegrapherApp {
     /// The status bar's facts after the take's name, none cut short: the
     /// analysis under way, unsaved changes, the recording's state and the
     /// signal.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn status_facts(&self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         if let Some(b) = &self.batch {
@@ -13627,6 +13733,10 @@ impl TimegrapherApp {
     /// The Positions Test pane's toolbar: start the test, load the
     /// full-wind results for the 24 hour half, the times in each
     /// position, and saving or copying the results.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn positions_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.guided_running();
         // While it runs, the step panel and the Listen card carry its
@@ -13923,6 +14033,10 @@ impl TimegrapherApp {
 
     /// The Power Reserve pane's toolbar: the position it runs in (set on
     /// the Current Position card), the keeping, and Start Test.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn reserve_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.reserve_running();
         let pal = theme::pal(ui);
@@ -14724,6 +14838,10 @@ impl TimegrapherApp {
         (pts, step)
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn strip_pane(&mut self, ui: &mut egui::Ui) {
         // Before there is a take to show, or while nothing in it beats
         // regularly: where things stand, in the strip's place.
@@ -14981,6 +15099,10 @@ impl TimegrapherApp {
 
     /// The Scope pane: the latest beats' sound up to the time on show, from
     /// what the live engine still holds, else read from the recording.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn scope_pane(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let view = self.scope_view;
@@ -15354,6 +15476,10 @@ impl TimegrapherApp {
 
     /// How often each value of a reading came up, over the session or the
     /// strip's length: bars, or the cumulative share.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn histogram(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
@@ -15629,6 +15755,10 @@ impl TimegrapherApp {
             .insert(pane, above + least + STACKED_NOTE_H + 6.0);
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn chart(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
         let pal = theme::pal(ui);
         let weak = pal.text_tertiary;
@@ -17083,6 +17213,10 @@ fn lists(dir: &Path, file: &str, path: &Path) -> bool {
 /// entry per stretch in place of those entries, each keeping what the
 /// first of them said besides. Positions are refused where the entries
 /// list more than one file.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn save_marks_to_take(
     path: &Path,
     masked: &[[f64; 2]],
@@ -18153,6 +18287,10 @@ mod tests {
     /// on the trace, the ring hollow; on a short plot, with the edges'
     /// names inside it, no bar or ring crosses a name.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn the_profiles_marks_keep_off_the_names() {
         let mut app = synthetic(30.0, 0.0);
         // Stopped, the profile is the one kept at the end.
@@ -18942,6 +19080,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn recording_failure_stops_capture_and_retains_scratch_with_or_without_input_error() {
         for input_error in [false, true] {
             let (mut app, base) = save_failure_fixture(if input_error {
@@ -19528,6 +19670,10 @@ mod tests {
     /// the library for the first), shows a watch's details and takes, and
     /// Save… then saves into that watch with no question.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn the_watches_pane_adds_a_watch_and_saves_its_takes_into_it() {
         let base = std::env::temp_dir().join(format!("tg-app-watches-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -19813,6 +19959,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn open_adds_a_recording_to_a_watch_asking_only_for_what_is_missing() {
         let base = std::env::temp_dir().join(format!("tg-app-open-into-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20254,6 +20404,11 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn quick_listen_keeps_its_take_in_unsorted_until_filed() {
         let base = std::env::temp_dir().join(format!("tg-app-quick-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20534,6 +20689,11 @@ mod tests {
     /// and deleted from the Watches view, and a take from outside is added
     /// to a watch; the recording opened follows a take that moves.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_watchs_takes_are_kept_moved_deleted_and_added() {
         let base = std::env::temp_dir().join(format!("tg-app-take-ops-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20781,6 +20941,11 @@ mod tests {
     /// with the same beats, readings and charts as the take with its sound,
     /// the Tick Tock profiles it kept, and no Replay or waveform.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_session_kept_as_its_analysis_opens_as_the_sound_does() {
         let base = std::env::temp_dir().join(format!("tg-app-analysis-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20949,6 +21114,10 @@ mod tests {
     /// and reopen: sound after a save still counts as unsaved, Save Again
     /// keeps it, and the saved take keeps the position it started in.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_take_saved_twice_across_a_move_keeps_everything() {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -21146,6 +21315,10 @@ mod tests {
     /// marked in the take: each one's settled duration and readings, the
     /// positions never marked, and the largest rate difference.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn the_positions_table_reads_a_free_take() {
         let mut app = synthetic(40.0, 0.0);
         app.session.listen();
@@ -22925,6 +23098,11 @@ mod tests {
     /// A saved take carries a session file with the watch, its calibre,
     /// lift angle, beat rate and positions, and opening it takes them back.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_saved_take_brings_back_its_calibre_and_positions() {
         let base = std::env::temp_dir().join(format!("tg-app-sidecar-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -25980,6 +26158,10 @@ mod tests {
     /// picked asks where it goes: Keep in Unsorted, Keep in a Watch… or
     /// Throw Away. Quick Listen's sound still goes without a question.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_test_with_no_watch_asks_where_it_goes() {
         let base = std::env::temp_dir().join(format!("tg-app-test-keep-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -26328,6 +26510,10 @@ mod tests {
         clippy::disallowed_methods,
         reason = "a test's clock fixture, not a take being opened"
     )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn settings_forgets_a_kept_clock() {
         const MARKER: &str = "TIMEGRAPHER_FORGET_TEST_CHILD";
         if std::env::var_os(MARKER).is_none() {
@@ -26655,7 +26841,7 @@ mod tests {
         // the 7 h 28 min Pepsi take, the strip works out its own.
         let mut app = synthetic(40.0, 20.0);
         let thin = |app: &mut TimegrapherApp| {
-            let step = 26_880.0 / timegrapher_core::live::TREND_POINTS;
+            let step = 26_880.0 / TREND_POINTS;
             let mut t = 0.0;
             let mut thin = Vec::new();
             while t <= 40.0 {

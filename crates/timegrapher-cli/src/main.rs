@@ -752,7 +752,16 @@ fn main() -> ExitCode {
                     &file,
                     &cfg,
                     &r.train,
-                    (beats, windows, trend.map(|p| (p, trend_average))),
+                    (
+                        beats,
+                        windows,
+                        trend.map(|path| TrendOut {
+                            path,
+                            average_s: trend_average,
+                            card_ppm,
+                            device: device.clone(),
+                        }),
+                    ),
                     c,
                     take,
                     json,
@@ -1158,7 +1167,7 @@ fn run_analyze(
     file: &Path,
     cfg: &AnalysisConfig,
     train: &long::ResolvedTrain,
-    (beats, windows, trend): (Option<PathBuf>, Option<PathBuf>, Option<(PathBuf, f64)>),
+    (beats, windows, trend): (Option<PathBuf>, Option<PathBuf>, Option<TrendOut>),
     clock: Option<(f64, String)>,
     take: Option<serde_json::Value>,
     json: bool,
@@ -1195,8 +1204,8 @@ fn run_analyze(
     if let Some(p) = windows {
         write_windows(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
     }
-    if let Some((p, average_s)) = trend {
-        write_trend(&p, file, cfg, average_s)?;
+    if let Some(t) = trend {
+        write_trend(file, cfg, &t)?;
     }
     if json {
         use timegrapher_core::analyze_doc;
@@ -1583,18 +1592,59 @@ fn write_beats(p: &Path, a: &Analysis) -> std::io::Result<()> {
     w.flush()
 }
 
-/// The readings over time as the app's charts read them: the file's beats
-/// found as the app finds them on opening it, then core's trend, each
-/// reading averaged over `average_s` (`LiveAnalyzer::trend`). A reading
-/// with no figures (not a whole averaging time) is a row of blanks.
-fn write_trend(p: &Path, file: &Path, cfg: &AnalysisConfig, average_s: f64) -> Result<(), String> {
+/// Where `analyze --trend` writes, and how it reads the take.
+struct TrendOut {
+    path: PathBuf,
+    average_s: f64,
+    /// The correction the reader gives, as for the whole file.
+    card_ppm: Option<f64>,
+    device: Option<String>,
+}
+
+/// The readings over time as the app's charts read them: the file opened
+/// as the app opens it (core's `take::open_entry` on `take::whole_entry`:
+/// its beats, clock and breaks), cut where the app cuts a take's readings
+/// (its breaks, moves and settling ends, `take::reading_cuts`, and the
+/// masks of the session file's entries naming it), on the take's clock
+/// where it corrects, then core's trend, each reading averaged over
+/// `average_s` (`LiveAnalyzer::trend`). A reading with no figures (not a
+/// whole averaging time) is a row of blanks. `clock_ppm` is the ppm the
+/// rates are corrected by, blank where they are on the sound card's clock.
+fn write_trend(file: &Path, cfg: &AnalysisConfig, t: &TrendOut) -> Result<(), String> {
     use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
-    let stream = StreamConfig {
-        analysis: cfg.clone(),
-        ..Default::default()
+    use timegrapher_core::take;
+    let p = &t.path;
+    let average_s = t.average_s;
+    // A session file that can't be read leaves the file read alone, as
+    // the whole file's own reading is; `take` says why.
+    let listing = session_cmd::listing_of(file).ok().flatten();
+    let entries = listing.as_ref().map_or(&[][..], |(m, _)| &m.recordings[..]);
+    let (base, m, entry) =
+        take::whole_entry(file, listing.as_ref().map(|(m, _)| (m, &m.recordings[..])));
+    let settings = take::EntrySettings {
+        stream: StreamConfig {
+            analysis: cfg.clone(),
+            ..Default::default()
+        },
+        card_clock: false,
+        settle_s: None,
     };
-    let log = timegrapher_core::stream::analyze_files(&[file], &stream, |_| {})
-        .map_err(|e| format!("{}: {e}", file.display()))?;
+    let opened = take::open_entry(
+        &base,
+        &m,
+        &entry,
+        &settings,
+        take::usb,
+        |first| take::correction_for(&m, first, t.card_ppm, t.device.as_deref()),
+        |_, _| {},
+    )?;
+    let length_s = timegrapher_core::audio::info(file)
+        .ok()
+        .and_then(|i| Some(i.frames? as f64 / f64::from(i.sample_rate)))
+        .unwrap_or(f64::INFINITY);
+    let (stretches, settles) =
+        take::positions_of(take::listed_positions(&m, entries, length_s).into_iter());
+    let changes: Vec<f64> = stretches.iter().map(|s| s.0).collect();
     // Every beat of the file, however long, not only the day a live
     // listen keeps.
     let live_cfg = LiveConfig {
@@ -1602,18 +1652,25 @@ fn write_trend(p: &Path, file: &Path, cfg: &AnalysisConfig, average_s: f64) -> R
         max_beats: usize::MAX,
         ..Default::default()
     };
-    let trend = LiveAnalyzer::from_log(log, live_cfg).trend(average_s);
+    let mut live = LiveAnalyzer::from_log(opened.log, live_cfg);
+    live.set_breaks(take::reading_cuts(&opened.breaks, &changes, &settles));
+    live.set_masked(&take::masks_of(entries));
+    let clock = opened.clock.as_ref().filter(|c| c.corrects());
+    live.set_rate_clock(clock);
+    let trend = live.trend(average_s);
+    // The rates' clock: the correction's ppm, blank on the card's.
+    let clock_ppm = clock.map_or(String::new(), |c| format!("{:.3}", c.ppm));
     let write = || -> std::io::Result<()> {
         let mut w = BufWriter::new(File::create(p)?);
         writeln!(
             w,
-            "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard"
+            "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard,clock_ppm"
         )?;
         let v = |x: Option<f64>, d: usize| x.map_or(String::new(), |x| format!("{x:.d$}"));
         for r in &trend {
             writeln!(
                 w,
-                "{:.2},{average_s},{},{},{},{},{},{},{}",
+                "{:.2},{average_s},{},{},{},{},{},{},{},{clock_ppm}",
                 r.t,
                 v(r.rate_s_per_day, 3),
                 v(r.amplitude_deg, 2),

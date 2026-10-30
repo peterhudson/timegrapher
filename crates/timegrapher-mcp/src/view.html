@@ -433,7 +433,8 @@ function stripCards(strip) {
   const over = (hint) => average ? `${hint}, ${average}` : hint;
   const cards = [];
   if (has("rate")) {
-    cards.push(["Rate", over("The rate over the whole recording, on the sound card's clock"), lineChart({
+    const clock = Number.isFinite(strip.clock_ppm) ? `${signed(strip.clock_ppm, 1)} ppm` : "";
+    cards.push(["Rate", over(`The rate over the whole recording, ${rateBasis(!!clock, clock)}`), lineChart({
       title: "Rate", time: true, yRange: range("rate"), unit: " s/day", decimals: 1,
       series: [{ name: average ? `Rate in seconds per day, ${average}` : "Rate in seconds per day", color: "--rate", points: strip.rate }],
     })]);

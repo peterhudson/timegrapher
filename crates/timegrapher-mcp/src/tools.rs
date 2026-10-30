@@ -27,6 +27,8 @@ pub enum Kind {
     BeatRate,
     /// Finite positive lift angle; no empirical upper limit.
     LiftAngle,
+    /// One of the app's averaging times, seconds (core `live::AVERAGES`).
+    Average,
     Number,
     /// Finite, positive acquisition seconds, checked before child spawn.
     CaptureSeconds,
@@ -127,7 +129,7 @@ const LIFT_OR_CALIBRE: Param = p(
 /// The charts over time in the view, averaged as the app's Average Over.
 const AVERAGE: Param = p(
     "average_s",
-    Kind::Number,
+    Kind::Average,
     Arg::Flag("--trend-average"),
     false,
     "Seconds each point of the charts over time is averaged over, as the app's Average \
@@ -682,6 +684,9 @@ pub fn definition(t: &ToolSpec) -> Value {
                 "minimum": timegrapher_core::input_domain::LIFT_RANGE_DEG.start(),
                 "maximum": timegrapher_core::input_domain::LIFT_RANGE_DEG.end(),
             }),
+            Kind::Average => {
+                json!({"type": "number", "enum": timegrapher_core::live::AVERAGES})
+            }
             Kind::Number => json!({"type": "number"}),
             Kind::CaptureSeconds => json!({"type": "number", "exclusiveMinimum": 0}),
             Kind::Switch => json!({"type": "boolean"}),
@@ -774,6 +779,11 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                     )
                 })?;
                 timegrapher_core::input_domain::lift_deg(value)
+                    .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
+                vec![n.to_string()]
+            }
+            (Kind::Average, Value::Number(n)) => {
+                timegrapher_core::input_domain::average_s(n.as_f64().unwrap_or(f64::NAN))
                     .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
                 vec![n.to_string()]
             }
@@ -1120,7 +1130,21 @@ mod numeric_input_tests {
             .unwrap_err();
             assert!(error.contains("lift_deg"), "wrong rejection: {error}");
         }
+        // The averaging time is refused by its own name, before the CLI.
+        for value in [json!(15), json!(0), json!(-10)] {
+            let error = command_line(
+                t,
+                &args(json!({"recording":full("unused.wav"),"average_s":value})),
+            )
+            .unwrap_err();
+            assert!(error.contains("average_s"), "wrong rejection: {error}");
+            assert!(!error.contains("--trend-average"), "{error}");
+        }
         let schema = definition(t);
+        assert_eq!(
+            schema["inputSchema"]["properties"]["average_s"]["enum"],
+            json!(timegrapher_core::live::AVERAGES)
+        );
         assert_eq!(
             schema["inputSchema"]["properties"]["bph"]["maximum"],
             u32::MAX

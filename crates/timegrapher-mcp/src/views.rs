@@ -167,7 +167,8 @@ pub fn analyze_extras() -> (Vec<String>, TempFile) {
 
 /// The readings over time written by `analyze --trend` (see
 /// [`analyze_extras`]), each averaged as the app's charts average them, as
-/// the three series of the strip, with the averaging time and each chart's
+/// the three series of the strip, with the averaging time, the ppm the
+/// rates are corrected by (none on the sound card's clock) and each chart's
 /// scale ([`timegrapher_core::chart_scale::data_range`]).
 fn strip(csv: &str, duration_s: f64) -> Value {
     let mut lines = csv.lines();
@@ -187,6 +188,7 @@ fn strip(csv: &str, duration_s: f64) -> Value {
     .map(col);
     let mut series: [Vec<[f64; 2]>; 6] = Default::default();
     let mut average_s = None;
+    let mut clock_ppm = None;
     for line in lines {
         let f: Vec<&str> = line.split(',').collect();
         let get = |i: Option<usize>| {
@@ -198,6 +200,7 @@ fn strip(csv: &str, duration_s: f64) -> Value {
             continue;
         };
         average_s = average_s.or(get(col("average_s")));
+        clock_ppm = clock_ppm.or(get(col("clock_ppm")));
         for (k, c) in cols.iter().enumerate() {
             if let Some(v) = get(*c) {
                 series[k].push([t, v]);
@@ -219,6 +222,7 @@ fn strip(csv: &str, duration_s: f64) -> Value {
     json!({
         "duration_s": duration_s,
         "average_s": average_s,
+        "clock_ppm": clock_ppm,
         "y_range": ranges,
         "rate": thin(rates),
         "amplitude": thin(amps),
@@ -552,12 +556,13 @@ mod tests {
 
     #[test]
     fn strip_from_trend() {
-        let csv = "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard\n\
-                   1,10,,,,,,,false\n\
-                   2,10,4.5,269,270,268,-0.38,-0.39,true\n\
-                   3,10,4.7,272,272,,,-0.41,true\n";
+        let csv = "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard,clock_ppm\n\
+                   1,10,,,,,,,false,20.000\n\
+                   2,10,4.5,269,270,268,-0.38,-0.39,true,20.000\n\
+                   3,10,4.7,272,272,,,-0.41,true,20.000\n";
         let s = strip(csv, 30.0);
         assert_eq!(s["average_s"], json!(10.0));
+        assert_eq!(s["clock_ppm"], json!(20.0));
         assert_eq!(s["rate"], json!([[2.0, 4.5], [3.0, 4.7]]));
         assert_eq!(s["amplitude"], json!([[2.0, 269.0], [3.0, 272.0]]));
         assert_eq!(s["amplitude_tick"], json!([[2.0, 270.0], [3.0, 272.0]]));
