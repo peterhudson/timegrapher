@@ -54,13 +54,17 @@ pub struct LiveConfig {
     pub profile_s: f64,
 }
 
+/// [`LiveConfig::min_snr`]'s default: beats louder than this many times
+/// the envelope's median count as signal.
+pub const MIN_SNR: f32 = 4.0;
+
 impl Default for LiveConfig {
     fn default() -> Self {
         LiveConfig {
             analysis: AnalysisConfig::default(),
             window_s: 4.0,
             update_s: 0.5,
-            min_snr: 4.0,
+            min_snr: MIN_SNR,
             max_beats: 700_000,
             profile_s: 3.0,
         }
