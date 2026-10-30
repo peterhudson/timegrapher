@@ -85,22 +85,14 @@ fn readings(m: &Value, [rate, amplitude, beat_error]: [Option<f64>; 3]) -> Optio
     (!parts.is_empty()).then(|| parts.join(", "))
 }
 
-fn position_name(p: &str) -> &str {
-    match p {
-        "DU" => "Dial Up (DU)",
-        "DD" => "Dial Down (DD)",
-        "CU" => "Crown Up (CU)",
-        "CD" => "Crown Down (CD)",
-        "CL" => "Crown Left (CL)",
-        "CR" => "Crown Right (CR)",
-        "CH" => "Dial Up (DU)",
-        "CB" => "Dial Down (DD)",
-        "3H" => "Crown Up (CU)",
-        "6H" => "Crown Left (CL)",
-        "9H" => "Crown Down (CD)",
-        "12H" => "Crown Right (CR)",
-        other => other,
-    }
+/// A position as the app and the text report name it, from core
+/// ([`Position::display_label`]): "Dial Up (DU)", "Crown Up (CU, 3H)".
+/// A code core doesn't know stays as given.
+///
+/// [`Position::display_label`]: timegrapher_core::session::Position::display_label
+pub(crate) fn position_name(p: &str) -> String {
+    timegrapher_core::session::Position::parse(p)
+        .map_or_else(|| p.to_string(), |p| p.display_label())
 }
 
 fn count(n: u64, one: &str, many: &str) -> String {
@@ -225,7 +217,7 @@ fn position_lines(list: &Value) -> Vec<String> {
         .flatten()
         .map(|r| {
             let m = &r["measurement"];
-            let mut name = position_name(r["position"].as_str().unwrap_or("")).to_string();
+            let mut name = position_name(r["position"].as_str().unwrap_or(""));
             if let Some(h) = r["wind_h"].as_f64().filter(|h| *h > 0.0) {
                 name += &format!(" after {h} h");
             }
@@ -629,6 +621,18 @@ mod tests {
         );
     }
 
+    /// Positions are named as core names them, whichever of its codes
+    /// or aliases the document gives (#691).
+    #[test]
+    fn positions_are_named_as_core_names_them() {
+        assert_eq!(position_name("DU"), "Dial Up (DU)");
+        assert_eq!(position_name("CB"), "Dial Down (DD)");
+        assert_eq!(position_name("3H"), "Crown Up (CU, 3H)");
+        assert_eq!(position_name("PU"), "Crown Up (CU, 3H)");
+        assert_eq!(position_name("12H"), "Crown Right (CR, 12H)");
+        assert_eq!(position_name("XX"), "XX");
+    }
+
     /// A file its take lists leads with what `session` reads of it, entry
     /// by entry, before the whole file read alone.
     #[test]
@@ -651,7 +655,7 @@ mod tests {
             s.starts_with(
                 "The take's session file lists this file; `session` reads it:\n\
                  - Dial Up (DU): rate +5.2 s/day, amplitude 281°, beat error 0.30 ms\n\
-                 - Crown Up (CU): left out, nothing after settling\n\
+                 - Crown Up (CU, 3H): left out, nothing after settling\n\
                  The whole file read alone (no settling, none of the take's settings):\n\
                  Readings: rate +6.0 s/day, amplitude 270°, beat error 0.39 ms."
             ),
@@ -764,7 +768,7 @@ mod tests {
         let s = lead(&doc, &Map::new()).unwrap();
         assert_eq!(
             s,
-            "Recorded Crown Up (CU) for 30 s. No regular beat found (timing scatter 8.6 ms, \
+            "Recorded Crown Up (CU, 3H) for 30 s. No regular beat found (timing scatter 8.6 ms, \
              6.9% of a beat) over the whole take. 40 of 120 expected beats were found. 3 \
              beats (2.5%) were clipped. The take was added to the test."
         );

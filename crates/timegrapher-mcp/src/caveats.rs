@@ -69,22 +69,14 @@ pub fn no_beat(doc: &Value) -> Option<String> {
     None
 }
 
-/// A session reading's name: its position, and its state of wind when the
+/// A session reading's name: its position as core names it
+/// ([`crate::summary::position_name`]), and its state of wind when the
 /// session has more than one.
 fn reading_name(r: &Value) -> String {
-    let p = r["position"].as_str().unwrap_or("");
-    let name = match p {
-        "CH" => "Dial Up",
-        "CB" => "Dial Down",
-        "3H" => "Crown Up",
-        "6H" => "Crown Left",
-        "9H" => "Crown Down",
-        "12H" => "Crown Right",
-        other => other,
-    };
+    let name = crate::summary::position_name(r["position"].as_str().unwrap_or(""));
     match r["wind_h"].as_f64() {
         Some(h) if h > 0.0 => format!("{name} after {h} h"),
-        _ => name.to_string(),
+        _ => name,
     }
 }
 
@@ -232,11 +224,27 @@ mod tests {
         assert_eq!(l.len(), 2, "{l:?}");
         assert_eq!(l[0]["where"], Value::Null, "every position: said once");
         assert!(l[0]["text"].as_str().unwrap().contains("clock"));
-        assert_eq!(l[1]["where"], "Dial Down and Crown Up after 24 h");
+        assert_eq!(
+            l[1]["where"],
+            "Dial Down (DD) and Crown Up (CU, 3H) after 24 h"
+        );
         assert!(l[1]["text"]
             .as_str()
             .unwrap()
             .starts_with("4% of the beats"));
+    }
+
+    /// A reading named by any code core reads ("DU" or Witschi's "CH")
+    /// is named in the limits as the lead names it (#691).
+    #[test]
+    fn a_readings_position_is_named_as_core_names_it() {
+        for code in ["DU", "CH"] {
+            let r = json!({ "position": code });
+            assert_eq!(reading_name(&r), "Dial Up (DU)");
+            assert_eq!(reading_name(&r), crate::summary::position_name(code));
+        }
+        let r = json!({ "position": "PU", "wind_h": 24.0 });
+        assert_eq!(reading_name(&r), "Crown Up (CU, 3H) after 24 h");
     }
 
     #[test]
@@ -252,7 +260,8 @@ mod tests {
         let said = notes(&doc);
         assert_eq!(said.len(), 1, "{said:?}");
         assert!(
-            said[0].starts_with("Dial Down: No regular beat found") && said[0].contains("span 3 s"),
+            said[0].starts_with("Dial Down (DD): No regular beat found")
+                && said[0].contains("span 3 s"),
             "{said:?}"
         );
     }
