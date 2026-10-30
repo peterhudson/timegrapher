@@ -318,7 +318,7 @@ const TRACK_FLOOR: f32 = 0.25;
 /// noise as often as not, and are left out rather than tracked by the
 /// noise's strongest points, which give a rate tens of s/d out. Every
 /// beat of the stored takes clears it; at 6 a few on the Dandong do not.
-const CLEAR: f32 = 4.0;
+pub const CLEAR: f32 = 4.0;
 
 /// Faint peaks in a row, each where its beat is due (or, for a lost
 /// track, each a beat after the last), that are the watch heard more
