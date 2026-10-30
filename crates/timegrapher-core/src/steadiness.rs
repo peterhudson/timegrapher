@@ -2655,6 +2655,34 @@ fn wquad(x: &[f64], y: &[f64], w: &[f64]) -> Option<[f64; 3]> {
     Some([b[0] / a[0][0], b[1] / a[1][1], b[2] / a[2][2]])
 }
 
+/// The 2° bins of `(amplitude, rate, hours from wind)` from `lo` to `hi`
+/// that hold at least [`ISO_MIN_READINGS`] readings.
+fn amplitude_bins(pairs: &[(f64, f64, f64)], lo: f64, hi: f64) -> Vec<AmplitudeBin> {
+    let mut bins: Vec<AmplitudeBin> = Vec::new();
+    let first = (lo / ISO_BIN_DEG).floor() as i64;
+    let last = (hi / ISO_BIN_DEG).floor() as i64;
+    for b in first..=last {
+        let (a0, a1) = (b as f64 * ISO_BIN_DEG, (b + 1) as f64 * ISO_BIN_DEG);
+        let inbin: Vec<&(f64, f64, f64)> = pairs.iter().filter(|p| p.0 >= a0 && p.0 < a1).collect();
+        if inbin.len() < ISO_MIN_READINGS {
+            continue;
+        }
+        let mut r: Vec<f64> = inbin.iter().map(|p| p.1).collect();
+        r.sort_by(f64::total_cmp);
+        let hours = inbin.iter().map(|p| p.2);
+        bins.push(AmplitudeBin {
+            amplitude_deg: (a0 + a1) / 2.0,
+            readings: inbin.len(),
+            rate_s_per_day: quantile(&r, 0.5),
+            rate_q25: quantile(&r, 0.25),
+            rate_q75: quantile(&r, 0.75),
+            from_wind_h: hours.clone().fold(f64::INFINITY, f64::min),
+            to_wind_h: hours.fold(f64::NEG_INFINITY, f64::max),
+        });
+    }
+    bins
+}
+
 /// The rate binned by amplitude, reading against the same reading. Needs
 /// at least [`ISO_MIN_BINS`] bins with enough readings.
 fn isochronism_curve(
@@ -2687,28 +2715,7 @@ fn isochronism_curve(
     let mut amps: Vec<f64> = pairs.iter().map(|p| p.0).collect();
     amps.sort_by(f64::total_cmp);
     let (lo, hi) = (quantile(&amps, 0.02), quantile(&amps, 0.98));
-    let mut bins: Vec<AmplitudeBin> = Vec::new();
-    let first = (lo / ISO_BIN_DEG).floor() as i64;
-    let last = (hi / ISO_BIN_DEG).floor() as i64;
-    for b in first..=last {
-        let (a0, a1) = (b as f64 * ISO_BIN_DEG, (b + 1) as f64 * ISO_BIN_DEG);
-        let inbin: Vec<&(f64, f64, f64)> = pairs.iter().filter(|p| p.0 >= a0 && p.0 < a1).collect();
-        if inbin.len() < ISO_MIN_READINGS {
-            continue;
-        }
-        let mut r: Vec<f64> = inbin.iter().map(|p| p.1).collect();
-        r.sort_by(f64::total_cmp);
-        let hours = inbin.iter().map(|p| p.2);
-        bins.push(AmplitudeBin {
-            amplitude_deg: (a0 + a1) / 2.0,
-            readings: inbin.len(),
-            rate_s_per_day: quantile(&r, 0.5),
-            rate_q25: quantile(&r, 0.25),
-            rate_q75: quantile(&r, 0.75),
-            from_wind_h: hours.clone().fold(f64::INFINITY, f64::min),
-            to_wind_h: hours.fold(f64::NEG_INFINITY, f64::max),
-        });
-    }
+    let bins = amplitude_bins(&pairs, lo, hi);
     if bins.len() < ISO_MIN_BINS {
         return None;
     }
