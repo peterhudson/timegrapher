@@ -222,8 +222,20 @@ fn strip(csv: &str, duration_s: f64) -> Value {
             _ => {}
         }
     }
+    // Each chart's scale, as the app's charts over time take it: every
+    // point of its lines.
+    let range = |lines: &[&Vec<[f64; 2]>]| {
+        let ys: Vec<f64> = lines.iter().flat_map(|l| l.iter().map(|p| p[1])).collect();
+        timegrapher_core::chart_scale::data_range(&ys).map(|(lo, hi)| [lo, hi])
+    };
+    let ranges = json!({
+        "rate": range(&[&rates]),
+        "amplitude": range(&[&amps, &ticks, &tocks]),
+        "beat_error": range(&[&unlocks, &drops]),
+    });
     json!({
         "duration_s": duration_s,
+        "y_range": ranges,
         "rate": thin(rates),
         "amplitude": thin(amps),
         "amplitude_tick": thin(ticks),
@@ -567,6 +579,14 @@ mod tests {
         assert_eq!(s["amplitude_tock"], json!([[1.0, 268.0]]));
         assert_eq!(s["beat_error_unlock"], json!([[1.0, -0.38]]));
         assert_eq!(s["beat_error_drop"], json!([[1.0, -0.39], [3.0, -0.41]]));
+        // Each chart's scale is core's, over every point of its lines.
+        let range = |ys: &[f64]| {
+            let (lo, hi) = timegrapher_core::chart_scale::data_range(ys).unwrap();
+            json!([lo, hi])
+        };
+        assert_eq!(s["y_range"]["rate"], range(&[4.5]));
+        assert_eq!(s["y_range"]["amplitude"], range(&[268.0, 272.0]));
+        assert_eq!(s["y_range"]["beat_error"], range(&[-0.38, -0.39, -0.41]));
     }
 
     #[test]

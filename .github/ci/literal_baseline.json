@@ -197,7 +197,7 @@
      "bounds": 2,
      "comparisons": 3,
      "constants": 3,
-     "defaults": 1
+     "defaults": 0
     },
     "crates/timegrapher-cli/src/regress_cmd.rs": {
      "bounds": 0,
@@ -234,7 +234,7 @@
     "bounds": 13,
     "comparisons": 19,
     "constants": 20,
-    "defaults": 29
+    "defaults": 28
    }
   },
   "timegrapher-mcp": {

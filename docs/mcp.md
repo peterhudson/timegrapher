@@ -310,10 +310,10 @@ the timegrapher app draws them:
   `series --maps --json` gives both whole.
 
 The charts use the app's colours for each reading (rate red, amplitude
-purple, beat error yellow, Tick blue, Tock orange) and its scales: like the
-app, a chart over time is scaled to all but the highest and lowest 2% of
-its readings, so one glitch doesn't flatten it, and says how many are off
-the scale. Beat error is shown as a size, without a sign, because which
+purple, beat error yellow, Tick blue, Tock orange) and its scales, which
+the core works out for both: a chart over time holds every point of its
+lines, padded a little, and the steadiness views leave out the 1% at each
+end and lone wild values, so one knock doesn't flatten them. Beat error is shown as a size, without a sign, because which
 beat counts as the Tick can change between runs of the same recording.
 A period axis is marked, as in the app, at times a watchmaker reads (5 s,
 1 min, 1 h, 24 h), as many as have room, from the same list in the core.
