@@ -702,3 +702,42 @@ pub fn caveat_codes(m: &crate::session::Measurement) -> Vec<String> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The stand's noise alone, as edge_all_silence makes it, reads
+    /// `no_watch` whatever the noise draws: before #675, 16 in 100 draws
+    /// of 30 s and 6 in 100 of 90 s were read as a watch with a rate.
+    #[test]
+    fn stand_noise_is_never_read_as_a_watch() {
+        let take = all()
+            .into_iter()
+            .find(|t| t.id == "edge_all_silence")
+            .expect("edge_all_silence");
+        let root = std::env::temp_dir().join(format!("tg-stand-noise-{}", std::process::id()));
+        let dir = root.join("takes").join(take.id);
+        std::fs::create_dir_all(&dir).unwrap();
+        write(&dir, "session.toml", &manifest(&take, LIFT, "", WHOLE_TAKE)).unwrap();
+        write(&dir, "session.json", &record(&[])).unwrap();
+        let mut heard = Vec::new();
+        for (duration_s, draws) in [(30.0, 40), (90.0, 20)] {
+            let frames = (duration_s * FS as f64) as usize;
+            write(&dir, "clock.csv", &clock_log(frames, 0.0, &[])).unwrap();
+            for seed in 0..draws {
+                let audio = Audio {
+                    samples: silence(duration_s, seed),
+                    sample_rate: FS,
+                };
+                write_wav(&dir.join("audio-001.wav"), &audio).unwrap();
+                let m = &read(&root, &take).unwrap()[0].measurement;
+                if !caveat_codes(m).iter().any(|c| c == "no_watch") {
+                    heard.push((duration_s, seed, m.rate_s_per_day));
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(heard.is_empty(), "noise read as a watch: {heard:?}");
+    }
+}

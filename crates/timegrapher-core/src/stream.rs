@@ -84,15 +84,17 @@ pub const SNIPPETS_KEPT_S: f64 = 60.0;
 impl BeatLog {
     /// [`crate::measure::beat_sound_found`] for `beats`, a stretch's
     /// beats as this log holds them (audio time): the profiles of their
-    /// kept envelope windows, Tick from the even beats. `None` when the
-    /// stretch reaches past [`SNIPPETS_KEPT_S`] or holds too few clean
-    /// beats for a profile.
+    /// kept envelope windows, Tick from the even beats. A stretch that
+    /// reaches past [`SNIPPETS_KEPT_S`] is judged on its beats before it,
+    /// when they span at least half of it. `None` when they span less, or
+    /// hold too few clean beats for a profile.
     pub fn beat_sound(
         &self,
         beats: &[Beat],
         cfg: &crate::amplitude::AmplitudeConfig,
     ) -> Option<bool> {
-        if beats.last().is_some_and(|b| b.time >= SNIPPETS_KEPT_S) {
+        let (first, last) = (beats.first()?.time, beats.last()?.time);
+        if last >= SNIPPETS_KEPT_S && SNIPPETS_KEPT_S - first < 0.5 * (last - first) {
             return None;
         }
         let find = |t: f64| {

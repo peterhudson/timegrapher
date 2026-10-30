@@ -12,11 +12,12 @@
 //!
 //! Whether the beats are regular is assessed on 10 s windows, so with
 //! less than [`SHORT_SPAN_S`] of sound their timing is not assessed. What
-//! is looked at instead is the beats' averaged sound: when neither the
-//! Tick's nor the Tock's shows an unlock or a drop, no regular beat is
-//! found (`no_watch`, reason `no_beat_sound`). Otherwise the readings are
-//! given, `watch_heard` stays true, and `short_span` says how short the
-//! stretch is (see [`no_watch_reason`]).
+//! is looked at instead, and on a longer stretch whose scatter is not far
+//! below noise's, is the beats' averaged sound: when neither the Tick's
+//! nor the Tock's shows an unlock or a drop, no regular beat is found
+//! (`no_watch`, reason `no_beat_sound`). Otherwise the readings are given,
+//! `watch_heard` stays true, and `short_span` says how short a stretch
+//! under 10 s is (see [`no_watch_reason`]).
 //!
 //! The beat error's sign: positive means Tick comes late. Each take starts
 //! positive: Tick is the beat that comes late over the take's first stretch
@@ -42,28 +43,35 @@ pub fn regularity_assessed(listened_s: f64) -> bool {
 /// False when a regular beat was looked for and not found: with at least
 /// [`SHORT_SPAN_S`] of sound, the beat timing scatter is at or above
 /// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat. With less sound,
-/// regularity is not assessed and this is true; [`no_watch_reason`] also
-/// looks at the beats' sound there.
+/// regularity is not assessed and this is true. [`no_watch_reason`] also
+/// looks at the beats' sound.
 pub fn watch_heard(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
     !regularity_assessed(listened_s) || crate::beats::watch_heard(jitter_us, bph)
 }
 
 /// Why no regular beat was found, or `None` when one was: with at least
-/// [`SHORT_SPAN_S`] of sound, the timing scatter ([`watch_heard`]); with
-/// less, the beats' averaged sound, when `beat_sound` (from
-/// [`beat_sound_found`]) says neither side shows an unlock or a drop. With
-/// less sound and no profile to look at, `None`, as before.
+/// [`SHORT_SPAN_S`] of sound, the timing scatter ([`watch_heard`]). Then
+/// the beats' averaged sound, when `beat_sound` (from
+/// [`beat_sound_found`]) says neither side shows an unlock or a drop: on a
+/// stretch under [`SHORT_SPAN_S`], or on a longer one whose scatter is
+/// at or above [`crate::beats::NOISE_DOUBT_FRACTION`], where noise can
+/// still scatter as little as this (#675). A watch's scatter is far
+/// below it, so a noisy watch whose profile is hard to find keeps its
+/// readings. With no profile to look at, the scatter alone.
 pub fn no_watch_reason(
     jitter_us: Option<f64>,
     bph: u32,
     listened_s: f64,
     beat_sound: Option<bool>,
 ) -> Option<NoWatchReason> {
-    if regularity_assessed(listened_s) {
-        (!crate::beats::watch_heard(jitter_us, bph)).then_some(NoWatchReason::Scatter)
-    } else {
-        (beat_sound == Some(false)).then_some(NoWatchReason::NoBeatSound)
+    let assessed = regularity_assessed(listened_s);
+    if assessed && !crate::beats::watch_heard(jitter_us, bph) {
+        return Some(NoWatchReason::Scatter);
     }
+    let in_doubt = !assessed
+        || crate::beats::timing_scatter_fraction(jitter_us, bph)
+            .is_some_and(|f| f >= crate::beats::NOISE_DOUBT_FRACTION);
+    (in_doubt && beat_sound == Some(false)).then_some(NoWatchReason::NoBeatSound)
 }
 
 /// Whether the beats' averaged Tick and Tock sounds show a watch's sound:
