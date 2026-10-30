@@ -5,6 +5,7 @@
 //! from the same per-beat log. See `docs/` in the repository.
 
 pub mod amplitude;
+pub mod amplitude_slope;
 pub mod analysis;
 pub mod analysis_take;
 pub mod analyze_doc;
