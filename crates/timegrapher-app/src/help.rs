@@ -1,6 +1,15 @@
 //! The longer explanations behind the "?" buttons, one per part of the
 //! window, so they read alike and live in one place.
 
+use std::sync::LazyLock;
+use timegrapher_core::take::{DEFAULT_LIFT_DEG, SETTLE_S};
+
+/// Paragraphs that state a number core or the app sets, worded once with
+/// it, for the "?" that takes plain text.
+fn worded(paragraphs: Vec<String>) -> Vec<&'static str> {
+    paragraphs.into_iter().map(|p| &*p.leak()).collect()
+}
+
 pub const MICROPHONE: &[&str] = &[
     "The app looks for microphones only when the microphone menu opens, Rescan is \
      pressed or listening starts, and at launch only when Listen When the App Opens is \
@@ -89,21 +98,26 @@ pub const BEAT_ERROR: &[&str] = &[
      beats, a short stretch) is named beside the title.",
 ];
 
-pub const POSITION: &[&str] = &[
-    "The position the watch is in on the stand: Dial Up, Dial Down, or standing on its \
+pub static POSITION: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    worded(vec![
+        "The position the watch is in on the stand: Dial Up, Dial Down, or standing on its \
      edge with the crown up, down, left or right. The picture shows the watch as it lies, \
      the hour that points up at the top; beside it are its name and codes, the common one \
      then Witschi's (CD · 9H). While you listen, the six buttons DU, DD, CU, CD, CL and CR \
-     set it (on a narrow window, one pop-up of them), as keys 1 to 6 do, one key each.",
-    "Looking at a take, or during a Positions Test or a Power Reserve Test, the buttons \
+     set it (on a narrow window, one pop-up of them), as keys 1 to 6 do, one key each."
+            .into(),
+        "Looking at a take, or during a Positions Test or a Power Reserve Test, the buttons \
      only show the position: the one at the strip's latest beat on show, or the one the \
-     test set. A take's positions can't be changed afterwards.",
-    "Changing it while listening marks a new stretch on the strip and the charts, and the \
+     test set. A take's positions can't be changed afterwards."
+            .into(),
+        format!(
+            "Changing it while listening marks a new stretch on the strip and the charts, and the \
      readings, profile, distributions and Steadiness then use only this position's beats. \
-     The settling after a move, the Positions Test pane's Settle (20 s unless set), is \
-     left out of the readings. A saved take notes each \
-     position.",
-];
+     The settling after a move, the Positions Test pane's Settle ({SETTLE_S:.0} s unless \
+     set), is left out of the readings. A saved take notes each position."
+        ),
+    ])
+});
 
 pub const LISTEN: &[&str] = &[
     "Listen starts the microphone: with a watch picked in Watches, a new take of it, saved \
@@ -114,21 +128,28 @@ pub const LISTEN: &[&str] = &[
      follows changes sooner.",
 ];
 
-pub const CALIBRE: &[&str] = &[
-    "The title is the watch on the microphone, or No Watch (Quick Listen). Click it to pick \
-     another, add one, or find one in Watches; the figure under it is its calibre.",
-    "What the readings are worked out for: the watch's calibre, its beat rate and its \
-     lift angle, the three in one place.",
-    "Pick the calibre from the table and it sets the beat rate and the lift angle, \
+pub static CALIBRE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    worded(vec![
+        "The title is the watch on the microphone, or No Watch (Quick Listen). Click it to \
+     pick another, add one, or find one in Watches; the figure under it is its calibre."
+            .into(),
+        "What the readings are worked out for: the watch's calibre, its beat rate and its \
+     lift angle, the three in one place."
+            .into(),
+        format!(
+            "Pick the calibre from the table and it sets the beat rate and the lift angle, \
      which then show here as text. With no calibre set, Beat Rate is Auto (the standard \
      rate nearest to the beats of the first few seconds, shown beside it) and \
-     Lift is the default 52°; set either here, for a watch that beats at an unusual rate \
-     or runs far off, or whose lift angle you know. For a watch with no calibre, what you \
-     set here is saved to the watch.",
-    "A beat rate is how many beats the watch makes an hour, ticks and tocks counted \
+     Lift is the default {DEFAULT_LIFT_DEG:.0}°; set either here, for a watch that beats at \
+     an unusual rate or runs far off, or whose lift angle you know. For a watch with no \
+     calibre, what you set here is saved to the watch."
+        ),
+        "A beat rate is how many beats the watch makes an hour, ticks and tocks counted \
      alike: 28,800 for a balance swinging 4 times a second each way, 21,600 for 3, \
-     18,000 for 2.5. The lift angle is what Amplitude is worked out from.",
-];
+     18,000 for 2.5. The lift angle is what Amplitude is worked out from."
+            .into(),
+    ])
+});
 
 /// The last paragraph of every pane toolbar's "?": how its icons work.
 pub const TOOLBAR: &str = "The toolbar's icons name themselves on hover, with what they do, \
@@ -237,35 +258,43 @@ pub const SCOPE: &[&str] = &[
      vary, which the Tick Tock Profile averages away.",
 ];
 
-pub const POSITIONS_TEST: &[&str] = &[
-    "New Test sets the test up on a clear Bench, and Start Test on the Listen card \
+pub static POSITIONS_TEST: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    worded(vec![
+        format!(
+            "New Test sets the test up on a clear Bench, and Start Test on the Listen card \
      starts it. It leads the watch through the six positions in turn: dial up, dial down, \
      crown down, crown left, crown up and crown right. In each, the watch settles for \
-     the time under Settle (20 s unless set otherwise), then is measured for the time \
-     under Measure (60 s unless set otherwise); the banner says which position comes \
+     the time under Settle ({SETTLE_S:.0} s unless set otherwise), then is measured for the \
+     time under Measure ({:.0} s unless set otherwise); the banner says which position comes \
      next, and Start Measurement goes on once the watch is turned. The table fills in \
      as each position is measured, with the figures the command line gives for the \
      same stretches: each rate, its difference from the mean, amplitude and beat error, \
      then the means, the largest difference between the rates and vertical less \
      horizontal.",
-    "Pause holds the test: what the position measured so far isn't used, and Resume \
+            crate::guided::MEASURE_S
+        ),
+        "Pause holds the test: what the position measured so far isn't used, and Resume \
      settles and measures it again from the start. Restart Measurement does the same at \
      once, as after a knock. Stop Test… on the Listen card asks, then ends the test; the \
      session and its positions stay. After the sixth position the test ends by itself. \
      The Paper Strip marks Before Test, Settling, each measured stretch and the time Not \
-     Used for Positions Test.",
-    "For the test 24 hours after winding: run it just after winding and keep its results \
+     Used for Positions Test."
+            .into(),
+        "For the test 24 hours after winding: run it just after winding and keep its results \
      with Save Results for 24 Hours… (saving the session keeps them too, as \
      positions-test.json). 24 hours later, without winding or wearing the watch in \
      between, pick that test in Compare With (or, with no watch, Load Full-Wind \
      Results…) and start the test: the pane shows the earlier \
      results, this test's, and both side by side with the change in each position, the \
      largest change in rate with crown right left out (Im) and the change in the mean \
-     rate (Ie).",
-    "Save as CSV… and Copy write the watch's name, its calibre, beat rate and lift angle, \
+     rate (Ie)."
+            .into(),
+        "Save as CSV… and Copy write the watch's name, its calibre, beat rate and lift angle, \
      when the test began and its times, then the table, and in the 24 hour half both \
-     tests side by side. Copy puts tabs between the columns, for a spreadsheet.",
-];
+     tests side by side. Copy puts tabs between the columns, for a spreadsheet."
+            .into(),
+    ])
+});
 
 pub const ISOCHRONISM: &[&str] = &[
     "How the rate changes with the amplitude as the mainspring lets down: a watch whose \
@@ -349,6 +378,20 @@ pub fn power_reserve(card: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    /// The "?" texts that give a default state the one core and the app
+    /// use: the settle, the lift angle and a Positions Test's measure.
+    #[test]
+    fn the_help_states_the_defaults_in_use() {
+        use timegrapher_core::take::{DEFAULT_LIFT_DEG, SETTLE_S};
+        let settle = format!("Settle ({SETTLE_S:.0} s unless");
+        assert!(super::POSITION.concat().contains(&settle));
+        let lift = format!("Lift is the default {DEFAULT_LIFT_DEG:.0}°");
+        assert!(super::CALIBRE.concat().contains(&lift));
+        let test = super::POSITIONS_TEST.concat();
+        let measure = format!("Measure ({:.0} s unless", crate::guided::MEASURE_S);
+        assert!(test.contains(&settle) && test.contains(&measure), "{test}");
+    }
+
     /// The Power Reserve "?" names the position card as it is captioned
     /// and gives core's limits: ten minutes with no beat, and 80 h.
     #[test]
