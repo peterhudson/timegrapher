@@ -1683,8 +1683,8 @@ const FRAME_BUDGET: Duration = Duration::from_millis(20);
 /// The same for [`TimegrapherApp::pump`], which runs off the window's
 /// thread and only holds the window up while it works.
 pub(crate) const PUMP_BUDGET: Duration = Duration::from_millis(50);
-/// Averaging times offered for the readings, seconds.
-const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
+/// Averaging times offered for the readings, seconds: core's.
+use timegrapher_core::live::AVERAGES;
 /// Strip widths offered, ms either side of the centre. 62.5 ms is half a
 /// beat at 28,800 bph, the widest view in which tick and tock can't wrap
 /// onto each other; the wider ones keep a long take's drift from wrapping.
@@ -1733,8 +1733,6 @@ const SETTLES: [f64; 4] = [10.0, 20.0, 30.0, 60.0];
 const MEASURES: [f64; 6] = [30.0, 60.0, 90.0, 120.0, 180.0, 300.0];
 /// Lift angles offered, degrees.
 const LIFTS: [f64; 6] = [44.0, 49.0, 50.0, 52.0, 53.0, 55.0];
-/// Most points kept on a chart when it is rebuilt from the whole session.
-const TREND_POINTS: f64 = 4000.0;
 
 const MS: Format = Format {
     show: fields::plain,
@@ -1832,17 +1830,9 @@ fn trend_key(seconds: f64) -> u64 {
 }
 
 /// The readings over the whole of what `live` holds, averaged over
-/// `seconds`, at up to [`TREND_POINTS`] times.
+/// `seconds`, at core's trend times ([`LiveAnalyzer::trend`]).
 fn trend_over(live: &LiveAnalyzer, seconds: f64) -> Vec<TrendPoint> {
-    let end = live.duration_s();
-    let step = (end / TREND_POINTS).max(0.5);
-    let mut out = Vec::new();
-    let mut t = step;
-    while t <= end + 1e-9 {
-        out.push(TrendPoint::of(t, &live.reading_at(t, seconds)));
-        t += step;
-    }
-    out
+    live.trend(seconds).iter().map(TrendPoint::from).collect()
 }
 
 /// What the take on show's readings rest on, a counter for each part,
@@ -1908,32 +1898,25 @@ impl TrendPoint {
         core_session::beat_error_signed(self.beat_error_unlock, self.beat_error_drop)
     }
 
-    /// The reading at `t`; a reading whose averaging time
-    /// is not a whole bin (just after the start, a break or a masked
-    /// stretch, or over a dropout; see `LiveReading::whole`) has no
-    /// values, since it isn't the average the chart is of.
+    /// The reading at `t`, as core reads a trend's
+    /// ([`timegrapher_core::live::TrendReading::of`]): one whose averaging
+    /// time is not a whole bin has no values.
     fn of(t: f64, r: &LiveReading) -> Self {
-        if !r.whole {
-            return TrendPoint {
-                t,
-                rate: None,
-                amplitude: None,
-                amplitude_a: None,
-                amplitude_b: None,
-                beat_error_unlock: None,
-                beat_error_drop: None,
-                heard: false,
-            };
-        }
+        Self::from(&timegrapher_core::live::TrendReading::of(t, r))
+    }
+}
+
+impl From<&timegrapher_core::live::TrendReading> for TrendPoint {
+    fn from(r: &timegrapher_core::live::TrendReading) -> Self {
         TrendPoint {
-            t,
+            t: r.t,
             rate: r.rate_s_per_day,
             amplitude: r.amplitude_deg,
             amplitude_a: r.amplitude_even_deg,
             amplitude_b: r.amplitude_odd_deg,
             beat_error_unlock: r.beat_error_unlock_ms,
             beat_error_drop: r.beat_error_ms,
-            heard: r.beats_used > 0 && r.watch_heard,
+            heard: r.heard,
         }
     }
 }
@@ -26672,7 +26655,7 @@ mod tests {
         // the 7 h 28 min Pepsi take, the strip works out its own.
         let mut app = synthetic(40.0, 20.0);
         let thin = |app: &mut TimegrapherApp| {
-            let step = 26_880.0 / TREND_POINTS;
+            let step = 26_880.0 / timegrapher_core::live::TREND_POINTS;
             let mut t = 0.0;
             let mut thin = Vec::new();
             while t <= 40.0 {

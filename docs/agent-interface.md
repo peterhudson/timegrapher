@@ -476,6 +476,9 @@ range (core `input_domain::LIFT_RANGE_DEG`, which the app's lift fields use too)
   finite, with `1 + ppm × 10⁻⁶ > 0`, so the clock scale advances time and
   the correction denominator is positive. Zero and admissible negative ppm
   remain valid; this does not establish calibration accuracy.
+- `--trend-average` (`analyze`): one of the app's averaging times, 2, 4,
+  10, 20, 30 or 60 seconds (core `live::AVERAGES`), as is MCP's
+  `average_s`.
 
 CLI validation happens during argument parsing, before audio/device access,
 output creation or storing a correction. MCP validates exposed measurement BPH

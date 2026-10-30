@@ -124,6 +124,15 @@ const LIFT_OR_CALIBRE: Param = p(
     "Lift angle of the calibre in degrees (the calibre's if one is given and the table \
      has its lift angle, else 52). Amplitude depends on it.",
 );
+/// The charts over time in the view, averaged as the app's Average Over.
+const AVERAGE: Param = p(
+    "average_s",
+    Kind::Number,
+    Arg::Flag("--trend-average"),
+    false,
+    "Seconds each point of the charts over time is averaged over, as the app's Average \
+     Over: 2, 4, 10, 20, 30 or 60 (10 if left out). Changes only the charts.",
+);
 const CALIBRE: Param = p(
     "calibre",
     Kind::Text,
@@ -162,7 +171,7 @@ pub const TOOLS: &[ToolSpec] = &[
             beats are, and whether a regular beat was found. When `watch_heard` is false \
             no regular beat was found, and the readings are null.",
         command: &["analyze"],
-        params: &[RECORDING, CALIBRE_READING, BPH, LIFT_OR_CALIBRE],
+        params: &[RECORDING, CALIBRE_READING, BPH, LIFT_OR_CALIBRE, AVERAGE],
         charts: true,
         read_only: true,
         idempotent: true,

@@ -46,6 +46,12 @@ fn parse_escape_teeth(text: &str) -> Result<u32, String> {
             .map_err(|_| "escape teeth must be a positive u32 integer".to_string())?,
     )
 }
+fn parse_trend_average(text: &str) -> Result<f64, String> {
+    timegrapher_core::input_domain::average_s(
+        text.parse()
+            .map_err(|_| "the averaging time must be a number of seconds".to_string())?,
+    )
+}
 fn parse_card_ppm(text: &str) -> Result<f64, String> {
     timegrapher_core::input_domain::card_ppm(
         text.parse()
@@ -102,6 +108,15 @@ enum Command {
         /// Write rate and amplitude per window to this CSV file.
         #[arg(long)]
         windows: Option<PathBuf>,
+        /// Write the readings over time, each averaged over
+        /// `--trend-average` seconds as the app's charts read them, to this
+        /// CSV file.
+        #[arg(long)]
+        trend: Option<PathBuf>,
+        /// Seconds each `--trend` reading is averaged over (the app's
+        /// Average Over).
+        #[arg(long, default_value_t = timegrapher_core::live::DEFAULT_AVERAGE_S, value_parser = parse_trend_average)]
+        trend_average: f64,
         /// Correct the rate with the clock error stored for this input
         /// (see `clock`). Without it, the input named in the recording's
         /// sidecar is used when one is stored.
@@ -716,6 +731,8 @@ fn main() -> ExitCode {
             escape_teeth,
             beats,
             windows,
+            trend,
+            trend_average,
             device,
             card_ppm,
             json,
@@ -730,8 +747,17 @@ fn main() -> ExitCode {
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
             let take = session_cmd::take_of(&file, bph, lift, calibre.clone());
-            clock_cmd::correction(&file, device.as_deref(), card_ppm)
-                .and_then(|c| run_analyze(&file, &cfg, &r.train, (beats, windows), c, take, json))
+            clock_cmd::correction(&file, device.as_deref(), card_ppm).and_then(|c| {
+                run_analyze(
+                    &file,
+                    &cfg,
+                    &r.train,
+                    (beats, windows, trend.map(|p| (p, trend_average))),
+                    c,
+                    take,
+                    json,
+                )
+            })
         }),
         Command::Shape {
             file,
@@ -1132,7 +1158,7 @@ fn run_analyze(
     file: &Path,
     cfg: &AnalysisConfig,
     train: &long::ResolvedTrain,
-    (beats, windows): (Option<PathBuf>, Option<PathBuf>),
+    (beats, windows, trend): (Option<PathBuf>, Option<PathBuf>, Option<(PathBuf, f64)>),
     clock: Option<(f64, String)>,
     take: Option<serde_json::Value>,
     json: bool,
@@ -1168,6 +1194,9 @@ fn run_analyze(
     }
     if let Some(p) = windows {
         write_windows(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
+    }
+    if let Some((p, average_s)) = trend {
+        write_trend(&p, file, cfg, average_s)?;
     }
     if json {
         use timegrapher_core::analyze_doc;
@@ -1552,6 +1581,52 @@ fn write_beats(p: &Path, a: &Analysis) -> std::io::Result<()> {
         )?;
     }
     w.flush()
+}
+
+/// The readings over time as the app's charts read them: the file's beats
+/// found as the app finds them on opening it, then core's trend, each
+/// reading averaged over `average_s` (`LiveAnalyzer::trend`). A reading
+/// with no figures (not a whole averaging time) is a row of blanks.
+fn write_trend(p: &Path, file: &Path, cfg: &AnalysisConfig, average_s: f64) -> Result<(), String> {
+    use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
+    let stream = StreamConfig {
+        analysis: cfg.clone(),
+        ..Default::default()
+    };
+    let log = timegrapher_core::stream::analyze_files(&[file], &stream, |_| {})
+        .map_err(|e| format!("{}: {e}", file.display()))?;
+    // Every beat of the file, however long, not only the day a live
+    // listen keeps.
+    let live_cfg = LiveConfig {
+        analysis: cfg.clone(),
+        max_beats: usize::MAX,
+        ..Default::default()
+    };
+    let trend = LiveAnalyzer::from_log(log, live_cfg).trend(average_s);
+    let write = || -> std::io::Result<()> {
+        let mut w = BufWriter::new(File::create(p)?);
+        writeln!(
+            w,
+            "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard"
+        )?;
+        let v = |x: Option<f64>, d: usize| x.map_or(String::new(), |x| format!("{x:.d$}"));
+        for r in &trend {
+            writeln!(
+                w,
+                "{:.2},{average_s},{},{},{},{},{},{},{}",
+                r.t,
+                v(r.rate_s_per_day, 3),
+                v(r.amplitude_deg, 2),
+                v(r.amplitude_even_deg, 2),
+                v(r.amplitude_odd_deg, 2),
+                v(r.beat_error_unlock_ms, 4),
+                v(r.beat_error_ms, 4),
+                r.heard
+            )?;
+        }
+        w.flush()
+    };
+    write().map_err(|e| format!("{}: {e}", p.display()))
 }
 
 fn write_windows(p: &Path, a: &Analysis) -> std::io::Result<()> {
