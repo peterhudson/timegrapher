@@ -28,6 +28,7 @@
 
 use crate::clean::Cuts;
 use crate::clock::ClockFit;
+use crate::confidence::{self, Slow};
 pub use crate::cusum::{kolmogorov_tail, Cusum, CUSUM_BAND};
 use crate::distribution::{self, Distributions};
 use crate::dsp::median;
@@ -221,6 +222,9 @@ pub struct Changes {
     pub block_s: f64,
     /// Noise of one block median, from the differences of neighbours.
     pub block_sigma: f64,
+    /// The same allowing for the medians' correlation
+    /// ([`confidence::long_run_sd`]): what a split is judged against.
+    pub long_run_sigma: f64,
     pub segments: Vec<Segment>,
     /// Share of the variance the segment means explain.
     pub explained: f64,
@@ -333,6 +337,10 @@ pub struct SeriesCheck {
     /// Scatter from one reading to the next, √(½·mean of squared
     /// differences): the noise without the slow changes.
     pub short_term_sd: Option<f64>,
+    /// What the mean of the readings scatters as, times √n: the short-term
+    /// σ allowing for their correlation once their largest step is out
+    /// ([`confidence::long_run_sd`]). The CUSUM is scaled by it.
+    pub long_run_sd: Option<f64>,
     /// Null, like the other tests, when there are too few readings to
     /// search (the headline says how many).
     pub autocorrelation: Option<Autocorrelation>,
@@ -918,6 +926,7 @@ pub fn check_series(
         },
         sd: mean_sd(y).map(|m| m.1),
         short_term_sd: short_term_sd(y),
+        long_run_sd: None,
         autocorrelation: None,
         allan: None,
         cusum: None,
@@ -988,10 +997,14 @@ pub fn check_series(
         });
     }
 
-    // CUSUM against the mean, scaled by the short-term σ so that slow
-    // change cannot hide itself by inflating the scale.
-    if sst > 0.0 {
-        let scale = sst * nf.sqrt();
+    // CUSUM against the mean, scaled by the readings' long-run σ: the
+    // short-term σ, so slow change cannot hide itself by inflating the
+    // scale, allowing for their correlation once their largest step is
+    // out (#647).
+    let lr = confidence::long_run_sd(y, sst, Slow::Step);
+    out.long_run_sd = Some(lr);
+    if lr > 0.0 {
+        let scale = lr * nf.sqrt();
         let mut s = 0.0;
         let mut ts = Vec::with_capacity(n);
         let mut ss = Vec::with_capacity(n);
@@ -1051,10 +1064,13 @@ pub fn check_series(
         .collect();
     let bv: Vec<f64> = blocks.iter().map(|b| b.1).collect();
     if let Some(bs) = robust_diff_sigma(&bv).filter(|s| *s > 0.0) {
+        // Each split is judged against the medians' long-run σ, as the
+        // CUSUM is (#649).
+        let lr = confidence::long_run_sd(&bv, bs, Slow::Step);
         let min_len = ((cfg.change_min_segment_s / (per as f64 * g.step)).ceil() as usize).max(3);
         // Strong evidence: well past a BIC penalty for each extra mean.
         let penalty = (3.0 * (bv.len() as f64).ln()).max(15.0);
-        let cuts = segment(&bv, bs, min_len, penalty);
+        let cuts = segment(&bv, lr, min_len, penalty);
         let mut segs = Vec::new();
         let mut fitted = vec![f64::NAN; y.len()];
         for (j, &a) in cuts.iter().enumerate() {
@@ -1074,6 +1090,7 @@ pub fn check_series(
         out.changes = Some(Changes {
             block_s: per as f64 * g.step,
             block_sigma: bs,
+            long_run_sigma: lr,
             explained: explained(y, &fitted),
             segments: segs,
         });

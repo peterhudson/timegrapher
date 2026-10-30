@@ -1357,6 +1357,7 @@ mod caveat_tests {
                 usb_ppm: 120.0,
                 log_ppm: 20.0,
                 log_ppm_sd: 2.0,
+                against: Default::default(),
             },
             Caveat::LiftUnknown,
             Caveat::BreaksUnlisted {
