@@ -634,6 +634,10 @@ impl LiveAnalyzer {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn pass_on(&mut self, buf: &[f32]) {
         let fs = self.fs;
         let win = ((self.cfg.window_s * fs).ceil() as usize).min(buf.len());
@@ -835,6 +839,10 @@ impl LiveAnalyzer {
     }
 
     /// Readings over the `average_s` seconds before `end_s`.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
         let window_from = end_s - average_s;
         let masked_s = crate::session::masked_within(&self.masked, window_from, end_s);

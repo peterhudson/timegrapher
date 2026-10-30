@@ -851,6 +851,10 @@ fn state_levels(t: Option<&timegrapher_core::twostate::TwoState>) -> Option<[f64
 
 /// One series' title and plot. Its findings and statistics are in the
 /// Info panel.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
     let db = opts.periods_db;
     let pal = theme::pal(ui);

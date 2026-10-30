@@ -196,6 +196,10 @@ pub fn shape_stretch(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> Option<(f
 /// shape of each stretch in `shapes` ([`shape_stretches`]). `progress` is
 /// called with the seconds of sound read so far, over both readings (so up
 /// to twice the take's length).
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn measure(
     files: &[&Path],
     cfg: &StreamConfig,
@@ -990,6 +994,10 @@ mod tests {
     /// with its number, quality and clipping, every amplitude window
     /// exactly, the profiles to a quarter dB, and the header.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_kept_analysis_reads_back_as_measured() {
         let dir = scratch("roundtrip");
         let wav = take(&dir, 40.0);

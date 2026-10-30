@@ -171,6 +171,10 @@ fn count(n: usize, one: &str, many: &str) -> String {
 /// `Ok(None)` when none is at `root` yet. `moving` names where it is being
 /// moved to, while it is. `chosen` is true when the user picked the
 /// location (not the default).
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn library_section(
     ui: &mut egui::Ui,
     root: Option<&Path>,
@@ -389,6 +393,10 @@ pub enum QuartzAct {
 /// computer's clock, with Keep once it is, then each input's kept clock
 /// error, with Forget beside it; `current` is the input listening,
 /// marked. `store` is the list as last read, or why it couldn't be.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn quartz_section(
     ui: &mut egui::Ui,
     store: &Result<ClockStore, String>,

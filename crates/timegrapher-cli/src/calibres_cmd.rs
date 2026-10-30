@@ -80,6 +80,10 @@ pub fn rename(components: &mut [Component], wheels: &[Wheel]) {
 /// one called NAME with each wheel's period and where it comes from, or
 /// those answering QUERY, best first. What the user added in the app
 /// (`calibre_store::default_path`) is read over the table.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(name: Option<&str>, search: Option<&str>, json: bool) -> Result<(), String> {
     let path = calibre_store::default_path();
     let user = match &path {

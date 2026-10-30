@@ -59,6 +59,10 @@ const MADE: Truth = Truth {
 };
 
 /// The takes, in the order they are written.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn all() -> Vec<EdgeTake> {
     vec![
         EdgeTake {
@@ -471,6 +475,10 @@ fn write(dir: &Path, name: &str, text: &str) -> Result<(), String> {
 /// Write every edge take under `root`, laid out as a corpus: `corpus.json`
 /// and `takes/<id>/` (`audio-001.wav`, `session.toml`, `session.json`,
 /// `clock.csv`). Returns the takes written.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
     let takes = all();
     for (n, take) in takes.iter().enumerate() {

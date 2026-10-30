@@ -55,6 +55,10 @@ fn sine(v: f64, ptp: f64, period: f64) -> Track {
 }
 
 /// The scenarios, in the order they are listed.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn all() -> Vec<Scenario> {
     vec![
         Scenario {

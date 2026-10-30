@@ -430,6 +430,10 @@ impl ClockFit {
     /// [`ClockFit::new`], with a break also at the first entry after each of
     /// `at` (audio seconds; an entry at the same second is the last one
     /// before it), whatever the size of its step.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn fit_at(pairs: &[(f64, f64)], at: &[f64]) -> Result<ClockFit, ClockError> {
         let mut p: Vec<(f64, f64)> = pairs
             .iter()
@@ -907,6 +911,10 @@ pub fn usb_lines(
 /// is the one that makes it advance at one second per second. Only the
 /// slope of the mapping matters, so a constant offset in the audio count
 /// (a file header, a pipe buffer) does no harm.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn parse_log(
     text: &str,
     sample_rate: u32,

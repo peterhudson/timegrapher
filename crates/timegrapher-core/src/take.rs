@@ -718,6 +718,10 @@ pub struct EntryRead {
 /// found: the seconds of sound read, and the seconds of sound there are
 /// in all (`done_s` reaches `total_s` at the end); a take kept as its
 /// analysis alone has no sound to go through.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn open_entry(
     base: &Path,
     m: &Manifest,

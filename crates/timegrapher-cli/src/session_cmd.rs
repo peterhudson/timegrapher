@@ -617,6 +617,10 @@ pub(crate) fn read_one_with_context(
     Ok((reading, context))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn read_one_inner(
     e: &RecordingEntry,
     c: &Ctx,
@@ -813,6 +817,10 @@ pub struct Session<'a> {
     pub power_reserve: Option<timegrapher_core::power_reserve::Results>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     check_seconds("--settle", o.settle, 0.0, false)?;
     if o.init {
@@ -1025,6 +1033,10 @@ fn finding_lines(f: &Finding) {
     println!("    {}", f.evidence);
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn print_summary(s: &Session) {
     let r = &s.report;
     let name = match (s.watch, s.calibre) {
@@ -1377,6 +1389,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn custom_session_catalogue_preserves_value_context_precedence_and_snapshot() {
         let mut user: UserCalibres = serde_json::from_value(serde_json::json!({
             "schema": calibre_store::SCHEMA,
@@ -1738,6 +1754,10 @@ mod tests {
     /// sound has: its listed pause, and a step in its clock log that no
     /// listed pause explains.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_kept_take_has_the_breaks_its_sound_has() {
         use timegrapher_core::synth::{generate, SynthConfig};
         let base =
@@ -1974,6 +1994,10 @@ mod tests {
     /// did: the same readings and beat shape for each position, with the
     /// report saying no sound was kept.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_take_kept_as_its_analysis_reads_as_its_sound() {
         use timegrapher_core::synth::{generate, SynthConfig};
         let base = std::env::temp_dir().join(format!("tg-session-kept-{}", std::process::id()));
