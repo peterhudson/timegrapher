@@ -2650,9 +2650,8 @@ fn isochronism_curve(
     // The slope from every reading, none smoothed, so a short swing of
     // amplitude counts, read off the amplitude's noise (#651).
     let eiv = eiv_slope(
-        &kept
-            .iter()
-            .map(|&i| (x.y[i], y.y[i], noise.get(i).copied().unwrap_or(f64::NAN)))
+        &(0..y.y.len().min(x.y.len()))
+            .map(|i| (x.y[i], y.y[i], noise.get(i).copied().unwrap_or(f64::NAN)))
             .collect::<Vec<_>>(),
     );
     let shown = eiv.filter(|e| e.reliability >= MIN_RELIABILITY);

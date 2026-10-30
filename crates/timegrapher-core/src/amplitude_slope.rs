@@ -4,9 +4,9 @@
 //! the rate against the amplitude in [`crate::steadiness`] read their
 //! slopes here.
 
-use crate::confidence;
+use crate::confidence::{self, Slow};
 use crate::longterm::{self, Grid};
-use crate::steadiness::{acf, chi2_tail, drop_outliers, finite_or_nan, p_text, Config};
+use crate::steadiness::{chi2_tail, drop_outliers, finite_or_nan, p_text, Config};
 use serde::Serialize;
 
 /// The noise in each reading `steadiness` averages `fine`'s windows into: the variance of
@@ -60,31 +60,50 @@ pub(crate) struct EivSlope {
 /// of its spread to read a slope from it (#651).
 pub(crate) const MIN_RELIABILITY: f64 = 0.5;
 
-/// [`EivSlope`] of `(x, y, noise variance of x)` in time order. The
-/// standard error allows for x's and the residuals' lag-one correlation
-/// ([`confidence::effective_readings`] of their product) and for λ, but
-/// not for λ's own uncertainty. `None` with under 30 pairs, no noise
-/// known, or no spread in x.
+/// [`EivSlope`] of `(x, y, noise variance of x)`, one per reading in time
+/// order, a missing reading's x or y NaN. The standard error allows for
+/// λ and for x's and the residuals' lag-one correlation by Bartlett's
+/// factor for a slope, n/n_eff with n_eff [`confidence::effective_readings`]
+/// of ρx·ρres, each ρ read by [`confidence::long_run_rho`] (its line out,
+/// only across neighbouring readings, bias-corrected), but not for λ's
+/// own uncertainty. `None` with under 30 pairs, no noise known, or no
+/// spread in x.
 pub(crate) fn eiv_slope(p: &[(f64, f64, f64)]) -> Option<EivSlope> {
-    let noise: Vec<f64> = p.iter().map(|q| q.2).filter(|v| v.is_finite()).collect();
-    if p.len() < 30 || noise.len() < p.len() / 2 {
+    let present = |q: &&(f64, f64, f64)| q.0.is_finite() && q.1.is_finite();
+    let kept: Vec<(f64, f64, f64)> = p.iter().filter(present).copied().collect();
+    let noise: Vec<f64> = kept.iter().map(|q| q.2).filter(|v| v.is_finite()).collect();
+    if kept.len() < 30 || noise.len() < kept.len() / 2 {
         return None;
     }
-    let n = p.len() as f64;
-    let mx = p.iter().map(|q| q.0).sum::<f64>() / n;
-    let my = p.iter().map(|q| q.1).sum::<f64>() / n;
-    let sxx: f64 = p.iter().map(|q| (q.0 - mx).powi(2)).sum();
-    let sxy: f64 = p.iter().map(|q| (q.0 - mx) * (q.1 - my)).sum();
+    let n = kept.len() as f64;
+    let mx = kept.iter().map(|q| q.0).sum::<f64>() / n;
+    let my = kept.iter().map(|q| q.1).sum::<f64>() / n;
+    let sxx: f64 = kept.iter().map(|q| (q.0 - mx).powi(2)).sum();
+    let sxy: f64 = kept.iter().map(|q| (q.0 - mx) * (q.1 - my)).sum();
     if sxx <= 0.0 {
         return None;
     }
     let b = sxy / sxx;
     let reliability = 1.0 - noise.iter().sum::<f64>() / noise.len() as f64 / (sxx / (n - 1.0));
-    let res: Vec<f64> = p.iter().map(|q| q.1 - my - b * (q.0 - mx)).collect();
-    let xs: Vec<f64> = p.iter().map(|q| q.0).collect();
-    let rho = confidence::lag_one(&xs).unwrap_or(0.0) * confidence::lag_one(&res).unwrap_or(0.0);
-    let n_eff = confidence::effective_readings(n, rho.max(0.0)).max(3.0);
-    let se = (res.iter().map(|e| e * e).sum::<f64>() / (n - 2.0) / sxx * n / n_eff).sqrt();
+    // x and the residuals in place, NaN where a reading is missing, so ρ
+    // never pairs readings a gap separates.
+    let (xs, res): (Vec<f64>, Vec<f64>) = p
+        .iter()
+        .map(|q| {
+            if present(&q) {
+                (q.0, q.1 - my - b * (q.0 - mx))
+            } else {
+                (f64::NAN, f64::NAN)
+            }
+        })
+        .unzip();
+    // Each ρ is held at 0 or above, which drops the rare case of both
+    // negative, where the product would be positive.
+    let rho =
+        confidence::long_run_rho(&xs, Slow::Line) * confidence::long_run_rho(&res, Slow::Line);
+    let n_eff = confidence::effective_readings(n, rho).max(3.0);
+    let ss: f64 = res.iter().filter(|e| e.is_finite()).map(|e| e * e).sum();
+    let se = (ss / (n - 2.0) / sxx * n / n_eff).sqrt();
     let lam = reliability.max(f64::MIN_POSITIVE);
     Some(EivSlope {
         slope: b / lam,
@@ -172,21 +191,17 @@ pub(crate) fn cross_correlation(
     // The slope read off the amplitude's noise, as the isochronism's is.
     let eiv = eiv_slope(
         &(0..yd.y.len().min(xd.y.len()))
-            .filter(|&i| xd.y[i].is_finite() && yd.y[i].is_finite())
             .map(|i| (xd.y[i], yd.y[i], noise.get(i).copied().unwrap_or(f64::NAN)))
             .collect::<Vec<_>>(),
     );
     let shown = eiv.filter(|e| e.reliability >= MIN_RELIABILITY);
     let (take_r, take_slope) = stats(&pairs(&x, &y));
     let n = p.len() as f64;
-    let rho = |g: &Grid| {
-        acf(&g.y, 1)
-            .get(1)
-            .copied()
-            .filter(|v| v.is_finite())
-            .unwrap_or(0.0)
-    };
-    let n_eff = crate::confidence::effective_readings(n, rho(&xd) * rho(&yd)).max(4.0);
+    // Bartlett's factor for a correlation, each ρ as the slope's is read
+    // (#651): held at 0 or above, which drops the rare case of both
+    // negative.
+    let rho = |g: &Grid| confidence::long_run_rho(&g.y, Slow::Line);
+    let n_eff = confidence::effective_readings(n, rho(&xd) * rho(&yd)).max(4.0);
     let z = r.clamp(-0.999_999, 0.999_999).atanh() * (n_eff - 3.0).sqrt();
     let p_value = chi2_tail(z * z, 1);
     let step = rate.step;
@@ -222,4 +237,62 @@ pub(crate) fn cross_correlation(
         take_s_per_day_per_deg: finite_or_nan(take_slope),
         headline,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::synth::Rng;
+
+    /// Of `runs` seeded takes of `n` readings, amplitude and the rate's
+    /// residual each AR(1) at `rho`, the rate −0.5 s/d per degree, how
+    /// many the slope's ±1.96 SE holds the true slope in. `drop(i, z)` says
+    /// whether reading i is missing.
+    fn covered(rho: f64, n: usize, runs: usize, drop: impl Fn(usize, &mut Rng) -> bool) -> usize {
+        let mut z = Rng::new(651);
+        let mut hits = 0;
+        for _ in 0..runs {
+            let (mut a, mut e) = (z.normal(), z.normal());
+            let k = (1.0 - rho * rho).sqrt();
+            let p: Vec<(f64, f64, f64)> = (0..n)
+                .map(|i| {
+                    a = rho * a + k * z.normal();
+                    e = rho * e + k * z.normal();
+                    let x = 270.0 + 5.0 * a;
+                    if drop(i, &mut z) {
+                        (f64::NAN, f64::NAN, f64::NAN)
+                    } else {
+                        (x, -0.5 * (x - 270.0) + e, 1e-9)
+                    }
+                })
+                .collect();
+            let s = eiv_slope(&p).unwrap();
+            hits += usize::from((s.slope + 0.5).abs() <= 1.96 * s.se);
+        }
+        hits
+    }
+
+    /// The ± holds the true slope about 95 times in 100 at ρ 0.9, gaps or
+    /// none (#651): 936, 959 and 982 of 1000 with none, with blocks and
+    /// with half missing (half missing leaves fewer neighbours to carry
+    /// the correlation, so it errs wide). With ρ read from the readings
+    /// closed up over gaps and no bias correction it held 925, 926 and
+    /// 920.
+    #[test]
+    fn the_slopes_pm_holds_the_true_slope_in_correlated_readings_with_gaps() {
+        let n = 720;
+        let blocks = move |i: usize, z: &mut Rng| {
+            (n / 6..n / 3).contains(&i) || (n / 2..n / 2 + n / 9).contains(&i) || z.next_f64() < 0.1
+        };
+        for (gaps, hits) in [
+            ("no", covered(0.9, n, 1000, |_, _| false)),
+            ("block", covered(0.9, n, 1000, blocks)),
+            ("half", covered(0.9, n, 1000, |_, z| z.next_f64() < 0.5)),
+        ] {
+            assert!(
+                (930..=990).contains(&hits),
+                "{hits} of 1000 with {gaps} gaps"
+            );
+        }
+    }
 }
