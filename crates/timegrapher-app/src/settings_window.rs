@@ -332,15 +332,6 @@ pub fn library_section(
     act
 }
 
-/// How a kept clock was measured, in words.
-pub fn source_words(source: &str) -> &'static str {
-    match source {
-        "log" => "from a recording's clock log",
-        "measure" => "while listening, against the computer's clock",
-        _ => "typed in",
-    }
-}
-
 /// "12.3 ppm slow", "4.0 ppm fast", or "0.0 ppm" for a clock that keeps
 /// time as it reads.
 pub fn ppm_words(ppm: f64) -> String {
@@ -499,7 +490,7 @@ pub fn quartz_section(
                 "{}. Measured {}, {}{over}.",
                 error_words(c),
                 c.measured_utc.get(..10).unwrap_or(&c.measured_utc),
-                source_words(&c.source)
+                c.how_text()
             );
             let hint = format!(
                 "This input's clock runs {}{}: rates read on it are {} s/d off, and True Clock \
