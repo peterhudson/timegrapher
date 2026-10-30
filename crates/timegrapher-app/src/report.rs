@@ -245,6 +245,10 @@ impl ReportDialog {
         self.clip = None;
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn contents(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         ui.set_width(620.0);
@@ -396,6 +400,10 @@ impl ReportDialog {
     }
 
     /// The waveform with its handles, Play, and the consent boxes.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn sound(&mut self, ui: &mut egui::Ui, src: &Source) {
         let pal = theme::pal(ui);
         let span = src.total_s.min(SPAN_S);
@@ -663,6 +671,10 @@ struct Job {
 
 impl Job {
     /// Write the zip; its size in bytes.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn write(&self) -> Result<u64, String> {
         let mut red = Redactor::from_env();
         let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
@@ -1030,6 +1042,10 @@ mod tests {
     /// analysis `report --replay` runs again, the app's readings and the
     /// consent, all listed in the manifest with their checksums.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_report_holds_the_excerpt_and_its_analysis() {
         let dir = std::env::temp_dir().join(format!("tg-report-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

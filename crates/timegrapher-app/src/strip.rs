@@ -569,6 +569,10 @@ fn track_label(
 /// Positions Test the time it didn't use plain, with what it is; masked
 /// stretches grey over them, named "Masked".
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn paint_track(
     painter: &egui::Painter,
     lane: Rect,
@@ -956,6 +960,11 @@ fn paint_masked(
 /// across slides the trace, and a double click returns to the newest
 /// beats.
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn draw_strip(
     ui: &mut egui::Ui,
     beats: &[Beat],

@@ -82,19 +82,14 @@ pub struct BeatLog {
 pub const SNIPPETS_KEPT_S: f64 = 60.0;
 
 impl BeatLog {
-    /// [`crate::measure::beat_sound_found`] for `beats`, a stretch's
+    /// [`crate::measure::stretch_beat_sound`] for `beats`, a stretch's
     /// beats as this log holds them (audio time): the profiles of their
-    /// kept envelope windows, Tick from the even beats. `None` when the
-    /// stretch reaches past [`SNIPPETS_KEPT_S`] or holds too few clean
-    /// beats for a profile.
+    /// kept envelope windows, Tick from the even beats.
     pub fn beat_sound(
         &self,
         beats: &[Beat],
         cfg: &crate::amplitude::AmplitudeConfig,
     ) -> Option<bool> {
-        if beats.last().is_some_and(|b| b.time >= SNIPPETS_KEPT_S) {
-            return None;
-        }
         let find = |t: f64| {
             let k = self.snippets.partition_point(|s| s.0 < t - 1e-9);
             self.snippets
@@ -102,12 +97,20 @@ impl BeatLog {
                 .filter(|s| (s.0 - t).abs() < 1e-9)
                 .map(|s| s.1.as_slice())
         };
-        let snips = beats
+        let snips: Vec<(f64, bool, &[f32])> = beats
             .iter()
             .filter(|b| b.is_good())
-            .filter_map(|b| Some((b.index.rem_euclid(2) == 0, find(b.time)?)));
+            .filter_map(|b| Some((b.time, b.index.rem_euclid(2) == 0, find(b.time)?)))
+            .collect();
         let beat = 3600.0 / self.bph.max(1) as f64;
-        crate::measure::beat_sound_found(snips, self.sample_rate as f64, 2.0 * beat, cfg)
+        crate::measure::stretch_beat_sound(
+            &snips,
+            beats.first()?.time,
+            beats.last()?.time,
+            self.sample_rate as f64,
+            2.0 * beat,
+            cfg,
+        )
     }
 }
 
@@ -135,6 +138,10 @@ struct State {
 impl State {
     /// Analyse `x`, which starts at sample `x0`, keeping the beats whose
     /// time falls in `[core_a, core_b)` (seconds).
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn chunk(&mut self, x: &[f32], x0: usize, core_a: f64, core_b: f64) {
         let fs = self.fs;
         let a = &self.cfg.analysis;

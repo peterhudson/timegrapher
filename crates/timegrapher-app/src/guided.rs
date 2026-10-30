@@ -558,6 +558,10 @@ fn step_title(test: &Test) -> String {
 /// throughout: the position, a chip for each of the six (done, now, to
 /// come), a progress bar for its settling and measuring, one line of what
 /// happens next, and Pause and Restart. Stop Test… is on the Listen card.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn banner(ui: &mut egui::Ui, test: &Test, phase: Phase) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
@@ -1146,6 +1150,10 @@ fn earlier_line(full: &FullWind) -> String {
 /// results loaded, those results and both tests side by side. Returns
 /// what a button asked for.
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn pane(
     ui: &mut egui::Ui,
     test: Option<&Test>,
@@ -2333,6 +2341,11 @@ mod tests {
     /// one measurement: the test reads each position's rate and the
     /// largest difference between them.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn six_positions_read_their_own_rates() {
         let each = SETTLE_S + MEASURE_S;
         let rates = [2.0, 4.0, -3.0, -1.0, 0.0, 6.0];

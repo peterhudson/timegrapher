@@ -334,7 +334,7 @@ function lineChart(o) {
   charts.set(id, { o, sx, x0, x1, L, plotW, W, T, plotH });
   // Values off the scale are counted under the chart.
   let off = 0;
-  for (const s of o.series) for (const [, y] of s.points) if (y < y0 || y > y1) off++;
+  for (const s of o.series) for (const [, y] of s.points) if (Number.isFinite(y) && (y < y0 || y > y1)) off++;
   const offNote = off ? `<p class="sub off">${off} ${off === 1 ? "outlier" : "outliers"} off the scale</p>` : "";
   const legend = o.series.length > 1 || o.legend
     // Inside the plot, as in the app, where there is room; above it on a phone.
@@ -427,15 +427,20 @@ function stripCards(strip) {
   const has = (k) => strip[k] && strip[k].length;
   // Each chart's scale is core's (chart_scale::data_range), from the server.
   const range = (k) => (strip.y_range && strip.y_range[k]) || undefined;
+  // Each point is the reading over the seconds before it, as the app's
+  // Average Over (core live::LiveAnalyzer::trend).
+  const average = Number.isFinite(strip.average_s) ? `${num(strip.average_s, 0)} s average` : "";
+  const over = (hint) => average ? `${hint}, ${average}` : hint;
   const cards = [];
   if (has("rate")) {
-    cards.push(["Rate", "The rate over the whole recording, on the sound card's clock", lineChart({
+    const clock = Number.isFinite(strip.clock_ppm) ? `${signed(strip.clock_ppm, 1)} ppm` : "";
+    cards.push(["Rate", over(`The rate over the whole recording, ${rateBasis(!!clock, clock)}`), lineChart({
       title: "Rate", time: true, yRange: range("rate"), unit: " s/day", decimals: 1,
-      series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
+      series: [{ name: average ? `Rate in seconds per day, ${average}` : "Rate in seconds per day", color: "--rate", points: strip.rate }],
     })]);
   }
   if (has("amplitude")) {
-    cards.push(["Amplitude", "The amplitude over the whole recording, from the ticks and tocks", lineChart({
+    cards.push(["Amplitude", over("The amplitude over the whole recording, from the ticks and tocks"), lineChart({
       title: "Amplitude", time: true, legend: has("amplitude_tick") || has("amplitude_tock"), yRange: range("amplitude"), unit: "°", decimals: 0,
       series: [
         { name: "Average Amplitude", color: "--amplitude", points: strip.amplitude },
@@ -445,7 +450,7 @@ function stripCards(strip) {
     })]);
   }
   if (has("beat_error_unlock") || has("beat_error_drop")) {
-    cards.push(["Beat Error", "The beat error over the whole recording", lineChart({
+    cards.push(["Beat Error", over("The beat error over the whole recording"), lineChart({
       title: "Beat Error", time: true, legend: has("beat_error_unlock") && has("beat_error_drop"), yRange: range("beat_error"), unit: " ms", decimals: 2,
       series: [
         { name: "From the Unlock", color: "--beat-error", points: strip.beat_error_unlock || [] },
@@ -710,7 +715,7 @@ const STEADY_VIEWS = [
   ["cycle", "Cycle", "The readings folded at the cycle the tests found: every cycle's readings as dots, coloured by when the cycle came (purple first, yellow-green last), a box round the middle half of each phase's readings, and their median shape as the line; the note gives the line's swing beside a box's median height"],
   ["autocorrelation", "Autocorrelation", "How much each reading resembles the one a lag later: independent readings stay inside the dashed band; a rise back to a peak means they repeat"],
   ["allan", "Allan Deviation", "How much the rate's average scatters when averaged over longer and longer times; lower is steadier. On or below the dashed line, the rate only jitters from moment to moment; above it towards the right, it wanders or drifts, and a cycle puts a bump near 0.37 of its period. Both axes are logarithmic"],
-  ["cusum", "CUSUM", "The running sum of each reading's distance from the mean, scaled by their long-run spread: readings with no change of level, correlated or not, stay inside the dashed lines about 95 times in 100; a step in the level bends it into a V or a tent, with the corner at the step"],
+  ["cusum", "CUSUM", "The running sum of each reading's distance from the mean, scaled by their long-run spread: readings with no change of level, correlated or not, stay inside the dashed lines about 95 times in 100; a step in the level bends it into a V or a tent. The corner is marked only where the headline names a level change"],
   ["spectrum", "FFT", "The plain amplitude spectrum of each series, like Witschi's FFT: the size estimated at each period for complete data, the rate's as the swing peak to peak it makes in 10 s rate readings (or the beat timing's, in ms, with Timing), with the wheels' periods marked and twice a turn dashed. Both axes are logarithmic"],
   ["stft", "STFT Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from the amplitude spectrum of each 20 minutes of readings, stepped 5 minutes: every period is read over the same window, so this map gives a line's size and shows a line that comes and goes. The rate's map is of the beat timing, in ms. Empty where a window has a reading missing"],
   ["wavelet", "Wavelet Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from a synchrosqueezed wavelet transform: short periods read over short times and long ones over long, each moved to the period its own phase turns at, so a line shows sharply where and when it is; under noise one row reads under the line's size, so read its size from the STFT Map. Each unbroken stretch is read alone, and its ends, which a period's wavelet can't reach, are left empty"],

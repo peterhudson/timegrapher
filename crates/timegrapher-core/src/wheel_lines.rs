@@ -318,6 +318,10 @@ pub fn line(
 /// enough, and over the turns in each [`TURN_BAND_DEG`] of the amplitude
 /// `amp` read over the turn. `None` when the period is under four
 /// readings or fewer than [`MIN_TURNS`] turns are read.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn turns(
     g: &Grid,
     amp: &Grid,

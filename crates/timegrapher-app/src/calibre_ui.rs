@@ -474,6 +474,10 @@ impl Calibres {
 
     /// [`Self::picker`], reading `unset` while no calibre is picked, its
     /// menu starting with what `before` draws.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     pub fn picker_with(
         &mut self,
         ui: &mut egui::Ui,
@@ -682,6 +686,10 @@ impl Calibres {
     /// another wheel by name, and the table's sources and notes. `place`
     /// keeps the boxes apart from the same calibre's shown elsewhere. True
     /// when a wheel's period changed.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn wheels_and_sources(&mut self, ui: &mut egui::Ui, name: &str, place: &str) -> bool {
         let pal = theme::pal(ui);
         let Some(e) = self.find(name) else {
@@ -874,6 +882,10 @@ impl Calibres {
         out
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn manager_body(&mut self, ui: &mut egui::Ui, current: &str, version: &str, out: &mut Managed) {
         let pal = theme::pal(ui);
         // A load failure can leave no selected calibre; show the warning before
@@ -1292,6 +1304,10 @@ impl Calibres {
 
     /// The headings: a click sorts on one, a second click reverses it;
     /// each has a funnel to pick the values it shows.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn table_head(&mut self, ui: &mut egui::Ui, widths: &[f32; 5]) {
         let pal = theme::pal(ui);
         let (rect, _) =
@@ -1451,6 +1467,10 @@ impl Calibres {
     /// A column's funnel, laid out as a spreadsheet's column filter: sort
     /// either way, clear the column's filter, then its values, each with a
     /// tickbox, under a search over them and Select All, kept only on OK.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn funnel_menu(&mut self, ui: &mut egui::Ui, col: Col, title: &str) {
         let pal = theme::pal(ui);
         let (up, down) = match col {
@@ -1603,6 +1623,10 @@ impl Calibres {
     }
 
     /// One calibre's row; true when it was clicked.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn table_row(
         &self,
         ui: &mut egui::Ui,

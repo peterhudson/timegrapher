@@ -638,6 +638,10 @@ impl LiveAnalyzer {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn pass_on(&mut self, buf: &[f32]) {
         let fs = self.fs;
         let win = ((self.cfg.window_s * fs).ceil() as usize).min(buf.len());
@@ -839,6 +843,10 @@ impl LiveAnalyzer {
     }
 
     /// Readings over the `average_s` seconds before `end_s`.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     pub fn reading_at(&self, end_s: f64, average_s: f64) -> LiveReading {
         let window_from = end_s - average_s;
         let masked_s = crate::session::masked_within(&self.masked, window_from, end_s);
@@ -882,18 +890,28 @@ impl LiveAnalyzer {
         let jitter_us = fit.map(|f| f.jitter_us);
         let timing_scatter_fraction =
             bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
-        // Under 10 s the beats' averaged sound, from the beats kept for
-        // the profiles, says whether a watch is heard.
-        let beat_sound = match bph {
-            Some(b) if !measure::regularity_assessed(listened_s) => measure::beat_sound_found(
-                self.snippets
+        // Where the timing can't say, the beats' averaged sound, from the
+        // beats kept for the profiles, says whether a watch is heard: the
+        // same stretch as a saved reading judges ([`BeatLog::beat_sound`]).
+        let beat_sound = match (bph, &self.beats[lo..hi]) {
+            (Some(b), [first, .., last])
+                if measure::beat_sound_needed(jitter_us, b, listened_s) =>
+            {
+                let snips: Vec<(f64, bool, &[f32])> = self
+                    .snippets
                     .iter()
-                    .filter(|s| s.0 >= from && s.0 <= end_s)
-                    .map(|s| (s.1, s.2.as_slice())),
-                self.fs,
-                2.0 * 3600.0 / b as f64,
-                &self.cfg.analysis.amplitude,
-            ),
+                    .filter(|s| s.0 >= first.time && s.0 <= last.time)
+                    .map(|s| (s.0, s.1, s.2.as_slice()))
+                    .collect();
+                measure::stretch_beat_sound(
+                    &snips,
+                    first.time,
+                    last.time,
+                    self.fs,
+                    2.0 * 3600.0 / b as f64,
+                    &self.cfg.analysis.amplitude,
+                )
+            }
             _ => None,
         };
         let no_watch = match bph {
@@ -1021,6 +1039,88 @@ fn snr(env: &[f32], fs: f64, beats: &[Beat]) -> Option<f32> {
 /// with no figure, is not.
 fn heard_over(snr: Option<f32>, min: f32) -> bool {
     snr.is_some_and(|s| s >= min)
+}
+
+/// Averaging times offered for the readings, seconds: the app's Average
+/// Over, and what `analyze --trend-average` takes.
+pub const AVERAGES: [f64; 6] = [2.0, 4.0, 10.0, 20.0, 30.0, 60.0];
+/// The averaging time the app starts at, seconds.
+pub const DEFAULT_AVERAGE_S: f64 = 10.0;
+
+/// Most readings a trend over a whole take is read at: the app's charts
+/// over time, and the MCP view's.
+pub const TREND_POINTS: f64 = 4000.0;
+
+/// The times a trend over `duration_s` seconds is read at: evenly spaced,
+/// at most [`TREND_POINTS`] of them and no closer than 0.5 s, the last at
+/// or before the end.
+pub fn trend_times(duration_s: f64) -> Vec<f64> {
+    let step = (duration_s / TREND_POINTS).max(0.5);
+    let mut out = Vec::new();
+    let mut t = step;
+    while t <= duration_s + 1e-9 {
+        out.push(t);
+        t += step;
+    }
+    out
+}
+
+/// One reading of a trend over a take: the figures a chart over time
+/// draws at `t`. A reading whose averaging time is not a whole bin (just
+/// after the start, a break or a masked stretch, or over a dropout; see
+/// [`LiveReading::whole`]) has no figures, since it isn't the average the
+/// chart is of.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrendReading {
+    pub t: f64,
+    pub rate_s_per_day: Option<f64>,
+    pub amplitude_deg: Option<f64>,
+    /// The Tick's (even beats') and the Tock's amplitude.
+    pub amplitude_even_deg: Option<f64>,
+    pub amplitude_odd_deg: Option<f64>,
+    pub beat_error_unlock_ms: Option<f64>,
+    pub beat_error_ms: Option<f64>,
+    /// The beats were spaced like a watch's, not scattered like noise.
+    pub heard: bool,
+}
+
+impl TrendReading {
+    /// The trend's reading at `t` from the live reading there.
+    pub fn of(t: f64, r: &LiveReading) -> Self {
+        if !r.whole {
+            return TrendReading {
+                t,
+                rate_s_per_day: None,
+                amplitude_deg: None,
+                amplitude_even_deg: None,
+                amplitude_odd_deg: None,
+                beat_error_unlock_ms: None,
+                beat_error_ms: None,
+                heard: false,
+            };
+        }
+        TrendReading {
+            t,
+            rate_s_per_day: r.rate_s_per_day,
+            amplitude_deg: r.amplitude_deg,
+            amplitude_even_deg: r.amplitude_even_deg,
+            amplitude_odd_deg: r.amplitude_odd_deg,
+            beat_error_unlock_ms: r.beat_error_unlock_ms,
+            beat_error_ms: r.beat_error_ms,
+            heard: r.beats_used > 0 && r.watch_heard,
+        }
+    }
+}
+
+impl LiveAnalyzer {
+    /// The readings over the whole of what has been heard, each averaged
+    /// over `average_s` ([`Self::reading_at`]), at [`trend_times`].
+    pub fn trend(&self, average_s: f64) -> Vec<TrendReading> {
+        trend_times(self.duration_s())
+            .into_iter()
+            .map(|t| TrendReading::of(t, &self.reading_at(t, average_s)))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -2102,6 +2202,40 @@ mod tests {
         assert!(
             mean.abs() < 100e-6 && rms < 10e-6,
             "offset {mean}, rms {rms}"
+        );
+    }
+
+    #[test]
+    fn a_trend_is_read_at_core_times_and_only_whole_readings_have_figures() {
+        let t = trend_times(60.0);
+        assert_eq!((t.len(), t[0], *t.last().unwrap()), (120, 0.5, 60.0));
+        let long = trend_times(8.0 * 3600.0);
+        assert!((TREND_POINTS as usize - 1..=TREND_POINTS as usize).contains(&long.len()));
+        assert!((long[1] - long[0] - 7.2).abs() < 1e-9);
+
+        let cfg = SynthConfig {
+            duration_s: 40.0,
+            rate_s_per_day: 6.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 270.0, |_| 0.0);
+        let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
+        feed(&mut a, &audio.samples);
+        let trend = a.trend(10.0);
+        assert_eq!(trend.len(), trend_times(a.duration_s()).len());
+        for p in &trend {
+            let r = a.reading_at(p.t, 10.0);
+            assert_eq!(*p, TrendReading::of(p.t, &r));
+            assert_eq!(
+                p.rate_s_per_day.is_some(),
+                r.whole && r.rate_s_per_day.is_some()
+            );
+        }
+        // The last reads the watch's rate.
+        let last = trend.last().unwrap();
+        assert!(
+            last.heard && (last.rate_s_per_day.unwrap() - 6.0).abs() < 0.5,
+            "{last:?}"
         );
     }
 

@@ -121,6 +121,10 @@ struct VLine {
     label: String,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn chart(
     xa: &Axis,
     ya: &Axis,
@@ -562,6 +566,10 @@ fn capitalise(s: &str) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&str>) -> String {
     let mut body = String::new();
     let rate = r.overall.map_or("not enough clean beats".into(), |f| {

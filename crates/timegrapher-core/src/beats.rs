@@ -111,6 +111,10 @@ impl Beat {
 /// stretch that opens on silence, or falls silent, does not take the noise
 /// for the beat. Without it, as for a take's first stretch and live
 /// listening's short windows, every peak may be a beat.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn track_peaks(
     x: &[f32],
     fs: f64,
@@ -337,7 +341,19 @@ pub const POST_S: f64 = 0.008;
 /// on an empty stand the tracker still finds a "beat" in each window, but
 /// anywhere in it, and the scatter is 5% of the beat (8.1 and 8.6 ms in the
 /// silence take at 21,600). 2% leaves a factor of three on each side.
+/// On a short stretch noise can scatter less: see [`NOISE_DOUBT_FRACTION`].
 pub const NO_WATCH_JITTER_FRACTION: f64 = 0.02;
+
+/// Timing scatter, as a fraction of the beat period, from which a stretch
+/// under [`NO_WATCH_JITTER_FRACTION`] may still be noise. The beat track
+/// steers to where it expects the next beat, so on a short stretch of
+/// noise its picks scatter less than across the whole window: 1.2% of the
+/// beat at the least over 200 draws of 30 s of stand noise, and 1.8% over
+/// 90 s (#675). A watch in the corpus stays under 0.6%, but one about to
+/// stop can scatter more: up to 1.4% in the last 25 minutes of a recorded
+/// take. From here a beat sound that shows no watch can veto
+/// ([`crate::measure::no_watch_reason`]).
+pub const NOISE_DOUBT_FRACTION: f64 = 0.008;
 
 /// False when a regular beat was looked for and not found: the median
 /// timing scatter in the rate windows (see [`crate::timing::WindowFit`])

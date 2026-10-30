@@ -273,6 +273,10 @@ fn an_empty_stand_is_no_watch() {
 /// names nothing. Which side the detector calls the Tick depends on which
 /// beat it hears first, so one-sided changes are checked as one-sided.
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn shape_measures_follow_the_sound() {
     use timegrapher_core::shape::{Measures, SideMeasures};
     let base = || SynthConfig {

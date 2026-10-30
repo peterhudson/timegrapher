@@ -604,6 +604,10 @@ fn max_of(it: impl Iterator<Item = Option<f64>>) -> Option<f64> {
         .fold(None, |m, v| Some(m.map_or(v, |m: f64| m.max(v))))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(o: &Options) -> Result<bool, String> {
     if !o.root.is_dir() {
         return Err(format!("{}: not a folder", o.root.display()));
@@ -1105,6 +1109,10 @@ fn verdict(s: Status) -> &'static str {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn print_text(o: &Outcome, names: bool) {
     println!("Engine against tg, worst reading of each take (distance from tg):");
     println!(
