@@ -720,7 +720,10 @@ mod tests {
     /// `no_watch` whatever the noise draws, in session and, up to 90 s, on
     /// the live card: before #675, 16 in 100 draws of 30 s, 6 in 100 of
     /// 90 s and 5 in 100 of 120 s were read as a watch with a rate, and
-    /// with the sound of one side deciding, 3 in 200 more of 30 s.
+    /// with the sound of one side deciding, 3 in 200 more of 30 s. Not
+    /// every draw passes: seed 5032 of 30 s sounds like a watch on both
+    /// sides at 1.94% scatter and is read as one (1 in 60 of seeds
+    /// 5000–5059).
     #[test]
     fn stand_noise_is_never_read_as_a_watch() {
         let take = all()
