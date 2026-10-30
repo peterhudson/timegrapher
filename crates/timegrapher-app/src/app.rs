@@ -27,7 +27,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
 use std::time::{Duration, Instant};
 use timegrapher_core::beats::STANDARD_BPH;
-use timegrapher_core::capture::{self, Block, Capture, Event, InputDevice, Level};
+use timegrapher_core::breaks::{GapWatch, Live};
+use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
 use timegrapher_core::library;
 use timegrapher_core::library::{length_text, size_text};
@@ -1676,18 +1677,6 @@ const PROBABILITY_MARKS: [(f64, &str); 11] = [
     (99.9, "99.9%"),
 ];
 
-/// Silence between two of the microphone's blocks longer than this, by
-/// the system clock, is the computer having slept.
-const SLEPT_S: f64 = 5.0;
-
-/// The seconds the computer slept before block `b`, which came after a
-/// block that arrived at `before`; `None` if it didn't.
-fn slept(before: Option<std::time::SystemTime>, b: &Block, sample_rate: u32) -> Option<f64> {
-    let block_s = b.samples.len() as f64 / sample_rate.max(1) as f64;
-    let gap = b.at.duration_since(before?).ok()?.as_secs_f64() - block_s;
-    (gap > SLEPT_S).then_some(gap)
-}
-
 /// The longest a frame spends saving and reading sound that has come in;
 /// any more waits for the next frame.
 const FRAME_BUDGET: Duration = Duration::from_millis(20);
@@ -2477,9 +2466,9 @@ pub struct TimegrapherApp {
     /// When the microphone was opened and when it last sent audio.
     opened_at: Instant,
     audio_at: Option<Instant>,
-    /// When the microphone's last block arrived, by the system clock, to
-    /// tell when the computer slept between two blocks.
-    block_at: Option<std::time::SystemTime>,
+    /// Core's gap rule over a live input's blocks: a break where the
+    /// computer slept or the input stalled.
+    gaps: Option<GapWatch>,
     /// When the sound was last taken in, to tell when nothing ran at all
     /// (the computer asleep, a dialog open) from an input gone quiet.
     polled_at: Instant,
@@ -2913,7 +2902,7 @@ impl TimegrapherApp {
             all_inputs: false,
             opened_at: Instant::now(),
             audio_at: None,
-            block_at: None,
+            gaps: None,
             polled_at: Instant::now(),
         };
         if let Some(f) = file {
@@ -3101,7 +3090,7 @@ impl TimegrapherApp {
                 );
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                self.block_at = None;
+                self.gaps = None;
                 self.session.listen();
                 self.put_input_clock(clocks.get(&c.label).cloned());
                 self.clock_track = Some(ClockTrack {
@@ -3226,7 +3215,7 @@ impl TimegrapherApp {
                 }
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                self.block_at = None;
+                self.gaps = None;
                 self.strip_end = None;
                 self.message = None;
                 applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
@@ -4700,6 +4689,104 @@ impl TimegrapherApp {
         self.poll_for(FRAME_BUDGET);
     }
 
+    /// One block of a capture, or a break core's gap rule found before the
+    /// next: saved and read.
+    fn take_live(&mut self, l: Live) -> Result<(), CaptureFailure> {
+        let (Some(cap), Some(live)) = (self.capture.as_ref(), self.live.as_mut()) else {
+            return Ok(());
+        };
+        let b = match l {
+            Live::Block(b) => b,
+            Live::Break(gap) => {
+                // The computer slept or the input stalled: carry on, as
+                // after a pause, with the time between out.
+                if let Ok(Err(e)) = self.session.pause(live.duration_s()) {
+                    return Err(CaptureFailure::Recording(e.to_string()));
+                }
+                if self.session.resume(&cap.label).is_ok() {
+                    if let Some(r) = self.session.recorder.as_mut() {
+                        r.sound_lost(gap);
+                    }
+                    live.skip(gap);
+                    self.session.resumed_at(live.duration_s());
+                }
+                if let Some(t) = self.clock_track.as_mut() {
+                    t.restart(live.sample_rate());
+                }
+                let m = format!(
+                    "The sound's timestamps jumped by {}, as they do when the \
+                     computer sleeps. The jump is left out of the take as a \
+                     break, and listening carries on.",
+                    fields::duration(gap.round())
+                );
+                applog::warn(&m);
+                self.message = Some((m, false));
+                return Ok(());
+            }
+        };
+        if let Some(r) = self.session.recorder.as_mut() {
+            // An error stops the queued sound being processed, and no
+            // later input error replaces it.
+            r.write(&b)
+                .map_err(|e| CaptureFailure::Recording(e.to_string()))?;
+        }
+        self.audio_at = Some(Instant::now());
+        if let Some(t) = self.clock_track.as_mut() {
+            t.push(b.samples.len(), b.at);
+        }
+        let l = Level::of(&b.samples);
+        if self.level_at.elapsed().as_secs_f64() > 0.5 || l.peak_dbfs > self.level.peak_dbfs {
+            self.level = l;
+            self.level_at = Instant::now();
+        }
+        if l.clipped_fraction > 0.0 {
+            self.clipped_at = Some(Instant::now());
+        }
+        if live.push(&b.samples) {
+            // A jump the beats' timing shows is found a second
+            // or two after it: the points read since reached
+            // across it, so they go.
+            let jumps = live.jumps();
+            if jumps != self.jumps_seen.as_slice() {
+                let recent = live.duration_s() - 10.0;
+                let new = jumps
+                    .iter()
+                    .copied()
+                    .filter(|j| *j > recent && !self.jumps_seen.contains(j))
+                    .reduce(f64::min);
+                if let Some(j) = new {
+                    self.trend.retain(|p| p.t <= j);
+                    self.sound_history.retain(|h| h.0 <= j);
+                }
+                self.jumps_seen = jumps.to_vec();
+            }
+            // While the watch settles after a move nothing is
+            // read; then the readings start afresh.
+            match self.session.settling_now(live.duration_s()) {
+                Some(true) => return Ok(()),
+                Some(false) => {
+                    live.new_stretch();
+                    return Ok(());
+                }
+                None => {}
+            }
+            let r = live.reading(self.average_s);
+            if !self.session.replay_reading_allowed(r.time_s) {
+                return Ok(());
+            }
+            self.trend.push(TrendPoint::of(r.time_s, &r));
+            let p = live.tick_profiles();
+            let due = self
+                .sound_history
+                .last()
+                .is_none_or(|h| r.time_s - h.0 >= SOUND_EVERY_S);
+            if due && p.iter().any(Option::is_some) {
+                self.sound_history.push((r.time_s, p.clone()));
+            }
+        }
+        Ok(())
+    }
+
     /// Save and read the sound that has come in, for up to `budget`, so a
     /// backlog never holds up the window for long. Returns the blocks of
     /// sound taken.
@@ -4715,128 +4802,53 @@ impl TimegrapherApp {
         let mut taken = 0;
         let mut ended = false;
         let mut failure = None;
-        if let (Some(cap), Some(live)) = (self.capture.as_ref(), self.live.as_mut()) {
-            loop {
-                if taken > 0 && started.elapsed() > budget {
-                    break;
-                }
-                let event = cap.rx.try_recv();
-                if matches!(event, Ok(Event::Audio(_))) {
+        while self.live.is_some() {
+            let Some(cap) = self.capture.as_ref() else {
+                break;
+            };
+            if taken > 0 && started.elapsed() > budget {
+                break;
+            }
+            let is_file = cap.is_file;
+            // A live input's blocks go through core's gap rule, which lets
+            // each through once no break before it is in doubt (#689).
+            let came = match cap.rx.try_recv() {
+                Ok(Event::Audio(b)) => {
                     taken += 1;
-                }
-                match event {
-                    Ok(Event::Audio(b)) => {
-                        if !cap.is_file {
-                            if let Some(gap) = slept(self.block_at, &b, live.sample_rate()) {
-                                // The computer slept: carry on, as after a
-                                // pause, with the time between out.
-                                if let Ok(Err(e)) = self.session.pause(live.duration_s()) {
-                                    failure = Some(CaptureFailure::Recording(e.to_string()));
-                                    break;
-                                }
-                                if self.session.resume(&cap.label).is_ok() {
-                                    live.skip(gap);
-                                    self.session.resumed_at(live.duration_s());
-                                }
-                                if let Some(t) = self.clock_track.as_mut() {
-                                    t.restart(live.sample_rate());
-                                }
-                                let m = format!(
-                                    "The sound's timestamps jumped by {}, as they do when the \
-                                     computer sleeps. The jump is left out of the take as a \
-                                     break, and listening carries on.",
-                                    fields::duration(gap.round())
-                                );
-                                applog::warn(&m);
-                                self.message = Some((m, false));
-                            }
-                            self.block_at = Some(b.at);
-                        }
-                        if let Some(r) = self.session.recorder.as_mut() {
-                            if let Err(e) = r.write(&b) {
-                                failure = Some(CaptureFailure::Recording(e.to_string()));
-                                // Do not process more queued sound or let a later
-                                // input error replace this primary recording error.
-                                break;
-                            }
-                        }
-                        self.audio_at = Some(Instant::now());
-                        if let Some(t) = self.clock_track.as_mut() {
-                            t.push(b.samples.len(), b.at);
-                        }
-                        let l = Level::of(&b.samples);
-                        if self.level_at.elapsed().as_secs_f64() > 0.5
-                            || l.peak_dbfs > self.level.peak_dbfs
-                        {
-                            self.level = l;
-                            self.level_at = Instant::now();
-                        }
-                        if l.clipped_fraction > 0.0 {
-                            self.clipped_at = Some(Instant::now());
-                        }
-                        if live.push(&b.samples) {
-                            // A jump the beats' timing shows is found a second
-                            // or two after it: the points read since reached
-                            // across it, so they go.
-                            let jumps = live.jumps();
-                            if jumps != self.jumps_seen.as_slice() {
-                                let recent = live.duration_s() - 10.0;
-                                let new = jumps
-                                    .iter()
-                                    .copied()
-                                    .filter(|j| *j > recent && !self.jumps_seen.contains(j))
-                                    .reduce(f64::min);
-                                if let Some(j) = new {
-                                    self.trend.retain(|p| p.t <= j);
-                                    self.sound_history.retain(|h| h.0 <= j);
-                                }
-                                self.jumps_seen = jumps.to_vec();
-                            }
-                            // While the watch settles after a move nothing is
-                            // read; then the readings start afresh.
-                            match self.session.settling_now(live.duration_s()) {
-                                Some(true) => continue,
-                                Some(false) => {
-                                    live.new_stretch();
-                                    continue;
-                                }
-                                None => {}
-                            }
-                            let r = live.reading(self.average_s);
-                            if !self.session.replay_reading_allowed(r.time_s) {
-                                continue;
-                            }
-                            self.trend.push(TrendPoint::of(r.time_s, &r));
-                            let p = live.tick_profiles();
-                            let due = self
-                                .sound_history
-                                .last()
-                                .is_none_or(|h| r.time_s - h.0 >= SOUND_EVERY_S);
-                            if due && p.iter().any(Option::is_some) {
-                                self.sound_history.push((r.time_s, p.clone()));
-                            }
-                        }
-                    }
-                    Ok(Event::End) => {
-                        ended = true;
-                        break;
-                    }
-                    Ok(Event::Error(e)) => {
-                        failure = Some(CaptureFailure::Input(format!(
-                            "Input stopped. {}",
-                            capture::explain_error(&e)
-                        )));
-                        if !cap.is_file {
-                            ended = true;
-                            break;
-                        }
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        ended = true;
-                        break;
+                    if is_file {
+                        vec![Live::Block(b)]
+                    } else {
+                        let rate = self.live.as_ref().map_or(1, |l| l.sample_rate());
+                        self.gaps.get_or_insert_with(|| GapWatch::new(rate)).push(b)
                     }
                 }
+                Ok(Event::Error(e)) if is_file => {
+                    failure = Some(CaptureFailure::Input(format!(
+                        "Input stopped. {}",
+                        capture::explain_error(&e)
+                    )));
+                    continue;
+                }
+                Ok(Event::Error(e)) => {
+                    failure = Some(CaptureFailure::Input(format!(
+                        "Input stopped. {}",
+                        capture::explain_error(&e)
+                    )));
+                    ended = true;
+                    self.gaps.as_mut().map(GapWatch::finish).unwrap_or_default()
+                }
+                Ok(Event::End) | Err(TryRecvError::Disconnected) => {
+                    ended = true;
+                    self.gaps.as_mut().map(GapWatch::finish).unwrap_or_default()
+                }
+                Err(TryRecvError::Empty) => break,
+            };
+            if let Err(e) = came.into_iter().try_for_each(|l| self.take_live(l)) {
+                failure = Some(e);
+                break;
+            }
+            if ended {
+                break;
             }
         }
         // A microphone that opened but sends nothing.
@@ -26872,9 +26884,42 @@ mod tests {
     }
 
     /// A computer that slept mid-take carries on, with the gap a break.
+    /// Core's gap rule holds the blocks after a jump until it has seen
+    /// enough of them, so the sound runs on 10 s after waking (#689).
     #[test]
     fn a_sleep_becomes_a_break() {
-        let (mut app, base) = save_failure_fixture("slept");
+        let (app, heard, base) = stalled("slept", 3_600_000);
+        let breaks = app.session.recorder.as_ref().unwrap().breaks();
+        assert_eq!(breaks.len(), 1);
+        assert!(
+            (breaks[0].gap_s - 3600.0).abs() < 0.05,
+            "{}",
+            breaks[0].gap_s
+        );
+        assert!((app.heard_s() - heard - 3610.0).abs() < 0.05);
+        let (m, error) = app.message.clone().unwrap();
+        assert!(!error);
+        assert!(m.contains("timestamps jumped by"), "{m}");
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// A stall of a second, under the 5 s the app once took for a sleep,
+    /// is a break by core's gap rule, as `record` lists it (#689).
+    #[test]
+    fn a_short_stall_is_a_break_by_cores_rule() {
+        let (app, heard, base) = stalled("stall", 1000);
+        let breaks = app.session.recorder.as_ref().unwrap().breaks();
+        assert_eq!(breaks.len(), 1);
+        assert!((breaks[0].gap_s - 1.0).abs() < 0.05, "{}", breaks[0].gap_s);
+        assert!((app.heard_s() - heard - 11.0).abs() < 0.05);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// A take listened to for 1 s, then nothing for `gap_ms` by the
+    /// blocks' timestamps, then 10 s more: the app after all of it, what
+    /// it had heard before the gap, and the take's folder.
+    fn stalled(name: &str, gap_ms: u64) -> (TimegrapherApp, f64, PathBuf) {
+        let (mut app, base) = save_failure_fixture(name);
         let tx = queued_capture(&mut app, &base);
         let block = |ms: u64| {
             Event::Audio(timegrapher_core::capture::Block {
@@ -26889,26 +26934,14 @@ mod tests {
         while app.poll_for(Duration::from_secs(60)) > 0 {}
         let heard = app.heard_s();
         assert!(app.session.recorder.as_ref().unwrap().breaks().is_empty());
-        // An hour asleep, then the sound runs on.
-        let woke = 2000 + 20 * 49 + 3_600_000;
-        for k in 0..50 {
+        let woke = 2000 + 20 * 49 + gap_ms;
+        for k in 0..500 {
             tx.send(block(woke + 20 * k)).unwrap();
         }
         while app.poll_for(Duration::from_secs(60)) > 0 {}
         assert!(app.running());
-        let breaks = app.session.recorder.as_ref().unwrap().breaks();
-        assert_eq!(breaks.len(), 1);
-        assert!(
-            (breaks[0].gap_s - 3600.0).abs() < 0.05,
-            "{}",
-            breaks[0].gap_s
-        );
-        assert!((app.heard_s() - heard - 3601.0).abs() < 0.05);
-        let (m, error) = app.message.clone().unwrap();
-        assert!(!error);
-        assert!(m.contains("timestamps jumped by"), "{m}");
         drop(tx);
-        let _ = std::fs::remove_dir_all(base);
+        (app, heard, base)
     }
 }
 
