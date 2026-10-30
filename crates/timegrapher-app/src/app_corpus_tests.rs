@@ -250,11 +250,6 @@ const EDGE_KNOWN: &[(&str, &str)] = &[
         "edge_reads_nothing/. (0–90 s)",
         "a stretch of a file: the app opens a file whole, not a stretch of it",
     ),
-    (
-        "edge_mask_across_settle/.",
-        "a mask across the end of the settling time: the app's whole take adds a breaks \
-         caveat that session does not give, with the same figures (#682)",
-    ),
 ];
 
 /// Every recording each corpus take lists reads the same on the app's
