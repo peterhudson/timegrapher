@@ -50,10 +50,14 @@ pub struct LongConfig {
     pub wheels: Vec<Wheel>,
 }
 
+/// The slow change [`detrend`] takes out by default: a 30-minute running
+/// median, longer than any cycle searched for.
+pub const DETREND_S: f64 = 1800.0;
+
 impl Default for LongConfig {
     fn default() -> Self {
         LongConfig {
-            detrend_s: 1800.0,
+            detrend_s: DETREND_S,
             min_period_s: 3.0,
             max_period_s: None,
             max_components: 4,
