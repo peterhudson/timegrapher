@@ -49,29 +49,71 @@ pub fn watch_heard(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
     !regularity_assessed(listened_s) || crate::beats::watch_heard(jitter_us, bph)
 }
 
-/// Why no regular beat was found, or `None` when one was: with at least
-/// [`SHORT_SPAN_S`] of sound, the timing scatter ([`watch_heard`]). Then
-/// the beats' averaged sound, when `beat_sound` (from
-/// [`beat_sound_found`]) says neither side shows an unlock or a drop: on a
-/// stretch under [`SHORT_SPAN_S`], or on a longer one whose scatter is
-/// at or above [`crate::beats::NOISE_DOUBT_FRACTION`], where noise can
-/// still scatter as little as this (#675). A watch's scatter is far
-/// below it, so a noisy watch whose profile is hard to find keeps its
-/// readings. With no profile to look at, the scatter alone.
+/// Whether the beats' averaged sound has a say in [`no_watch_reason`]: on
+/// a stretch under [`SHORT_SPAN_S`], where the timing is not assessed, or
+/// on a longer one whose timing scatter is at or above
+/// [`crate::beats::NOISE_DOUBT_FRACTION`], where noise can still scatter as
+/// little as this (#675). Every reader asks this before working out the
+/// sound ([`stretch_beat_sound`]), so all of them judge a stretch alike.
+pub fn beat_sound_needed(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
+    !regularity_assessed(listened_s) || in_doubt(jitter_us, bph)
+}
+
+/// A timing scatter at or above [`crate::beats::NOISE_DOUBT_FRACTION`].
+fn in_doubt(jitter_us: Option<f64>, bph: u32) -> bool {
+    crate::beats::timing_scatter_fraction(jitter_us, bph)
+        .is_some_and(|f| f >= crate::beats::NOISE_DOUBT_FRACTION)
+}
+
+/// Why no regular beat was found, or `None` when one was, from the timing
+/// scatter and the beats' averaged sound (`beat_sound`, from
+/// [`stretch_beat_sound`]: whether either side shows an unlock or a drop):
+/// - under [`SHORT_SPAN_S`], the timing is not assessed, and the sound
+///   decides when it can be judged;
+/// - with more, a scatter at or above [`crate::beats::NO_WATCH_JITTER_FRACTION`]
+///   is no watch;
+/// - a scatter from [`crate::beats::NOISE_DOUBT_FRACTION`] up to it, where
+///   noise can still fall (#675) and no watch in the corpus does, is a
+///   watch only when the sound shows one.
 pub fn no_watch_reason(
     jitter_us: Option<f64>,
     bph: u32,
     listened_s: f64,
     beat_sound: Option<bool>,
 ) -> Option<NoWatchReason> {
-    let assessed = regularity_assessed(listened_s);
-    if assessed && !crate::beats::watch_heard(jitter_us, bph) {
-        return Some(NoWatchReason::Scatter);
+    if !regularity_assessed(listened_s) {
+        (beat_sound == Some(false)).then_some(NoWatchReason::NoBeatSound)
+    } else if !crate::beats::watch_heard(jitter_us, bph) {
+        Some(NoWatchReason::Scatter)
+    } else if in_doubt(jitter_us, bph) && beat_sound != Some(true) {
+        Some(match beat_sound {
+            Some(false) => NoWatchReason::NoBeatSound,
+            _ => NoWatchReason::Scatter,
+        })
+    } else {
+        None
     }
-    let in_doubt = !assessed
-        || crate::beats::timing_scatter_fraction(jitter_us, bph)
-            .is_some_and(|f| f >= crate::beats::NOISE_DOUBT_FRACTION);
-    (in_doubt && beat_sound == Some(false)).then_some(NoWatchReason::NoBeatSound)
+}
+
+/// [`beat_sound_found`] for a stretch whose beats run from `first_s` to
+/// `last_s`, from `snippets`: its clean beats whose envelope windows are
+/// kept, each at its time with whether it is a Tick. `None` when the kept
+/// ones span less than half the stretch (a long take keeps its first
+/// minute's windows alone, [`crate::stream::SNIPPETS_KEPT_S`]), so a
+/// stretch is not judged on a small part of it.
+pub fn stretch_beat_sound(
+    snippets: &[(f64, bool, &[f32])],
+    first_s: f64,
+    last_s: f64,
+    fs: f64,
+    osc_period_s: f64,
+    cfg: &crate::amplitude::AmplitudeConfig,
+) -> Option<bool> {
+    let kept = snippets.last()?.0 - snippets.first()?.0;
+    if kept < 0.5 * (last_s - first_s) {
+        return None;
+    }
+    beat_sound_found(snippets.iter().map(|s| (s.1, s.2)), fs, osc_period_s, cfg)
 }
 
 /// Whether the beats' averaged Tick and Tock sounds show a watch's sound:

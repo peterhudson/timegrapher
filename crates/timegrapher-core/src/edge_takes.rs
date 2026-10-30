@@ -717,8 +717,9 @@ mod tests {
     use super::*;
 
     /// The stand's noise alone, as edge_all_silence makes it, reads
-    /// `no_watch` whatever the noise draws: before #675, 16 in 100 draws
-    /// of 30 s and 6 in 100 of 90 s were read as a watch with a rate.
+    /// `no_watch` whatever the noise draws, in session and, up to 90 s, on
+    /// the live card: before #675, 16 in 100 draws of 30 s, 6 in 100 of
+    /// 90 s and 5 in 100 of 120 s were read as a watch with a rate.
     #[test]
     fn stand_noise_is_never_read_as_a_watch() {
         let take = all()
@@ -731,7 +732,8 @@ mod tests {
         write(&dir, "session.toml", &manifest(&take, LIFT, "", WHOLE_TAKE)).unwrap();
         write(&dir, "session.json", &record(&[])).unwrap();
         let mut heard = Vec::new();
-        for (duration_s, draws) in [(30.0, 40), (90.0, 20)] {
+        let mut split = Vec::new();
+        for (duration_s, draws) in [(30.0, 40), (90.0, 20), (120.0, 20)] {
             let frames = (duration_s * FS as f64) as usize;
             write(&dir, "clock.csv", &clock_log(frames, 0.0, &[])).unwrap();
             for seed in 0..draws {
@@ -740,13 +742,29 @@ mod tests {
                     sample_rate: FS,
                 };
                 write_wav(&dir.join("audio-001.wav"), &audio).unwrap();
-                let m = &read(&root, &take).unwrap()[0].measurement;
+                let e = &read(&root, &take).unwrap()[0];
+                let m = &e.measurement;
                 if !caveat_codes(m).iter().any(|c| c == "no_watch") {
                     heard.push((duration_s, seed, m.rate_s_per_day));
+                }
+                // The live card, opened on the same take, reads the same
+                // stretch alike. Past 90 s it can read a short last run
+                // of beats between noise's jumps instead (#675).
+                if duration_s > 90.0 {
+                    continue;
+                }
+                let live = crate::live::LiveAnalyzer::from_log(e.log.clone(), Default::default())
+                    .reading_at(m.end_s, m.end_s - m.start_s);
+                if live.watch_heard != m.watch_heard {
+                    split.push((duration_s, seed, live.rate_s_per_day));
                 }
             }
         }
         let _ = std::fs::remove_dir_all(&root);
         assert!(heard.is_empty(), "noise read as a watch: {heard:?}");
+        assert!(
+            split.is_empty(),
+            "the live card and session differ: {split:?}"
+        );
     }
 }

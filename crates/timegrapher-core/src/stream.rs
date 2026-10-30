@@ -82,21 +82,14 @@ pub struct BeatLog {
 pub const SNIPPETS_KEPT_S: f64 = 60.0;
 
 impl BeatLog {
-    /// [`crate::measure::beat_sound_found`] for `beats`, a stretch's
+    /// [`crate::measure::stretch_beat_sound`] for `beats`, a stretch's
     /// beats as this log holds them (audio time): the profiles of their
-    /// kept envelope windows, Tick from the even beats. A stretch that
-    /// reaches past [`SNIPPETS_KEPT_S`] is judged on its beats before it,
-    /// when they span at least half of it. `None` when they span less, or
-    /// hold too few clean beats for a profile.
+    /// kept envelope windows, Tick from the even beats.
     pub fn beat_sound(
         &self,
         beats: &[Beat],
         cfg: &crate::amplitude::AmplitudeConfig,
     ) -> Option<bool> {
-        let (first, last) = (beats.first()?.time, beats.last()?.time);
-        if last >= SNIPPETS_KEPT_S && SNIPPETS_KEPT_S - first < 0.5 * (last - first) {
-            return None;
-        }
         let find = |t: f64| {
             let k = self.snippets.partition_point(|s| s.0 < t - 1e-9);
             self.snippets
@@ -104,12 +97,20 @@ impl BeatLog {
                 .filter(|s| (s.0 - t).abs() < 1e-9)
                 .map(|s| s.1.as_slice())
         };
-        let snips = beats
+        let snips: Vec<(f64, bool, &[f32])> = beats
             .iter()
             .filter(|b| b.is_good())
-            .filter_map(|b| Some((b.index.rem_euclid(2) == 0, find(b.time)?)));
+            .filter_map(|b| Some((b.time, b.index.rem_euclid(2) == 0, find(b.time)?)))
+            .collect();
         let beat = 3600.0 / self.bph.max(1) as f64;
-        crate::measure::beat_sound_found(snips, self.sample_rate as f64, 2.0 * beat, cfg)
+        crate::measure::stretch_beat_sound(
+            &snips,
+            beats.first()?.time,
+            beats.last()?.time,
+            self.sample_rate as f64,
+            2.0 * beat,
+            cfg,
+        )
     }
 }
 
