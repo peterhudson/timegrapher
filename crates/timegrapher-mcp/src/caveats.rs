@@ -83,7 +83,8 @@ fn reading_name(r: &Value) -> String {
 /// What limits the readings in an `analyze` or `session` document, as
 /// `[{where, text}]`: `where` names the session positions a sentence is
 /// about, or is null for a single recording (or every position). Empty for
-/// any other document.
+/// any other document. A recording its take's session file lists is read as
+/// that take reads it, so its limits are the take readings' own.
 pub fn limits(doc: &Value) -> Vec<Value> {
     let schema = doc["schema"].as_str().unwrap_or("");
     let lift = doc["input"]["settings"]["lift_deg"]
@@ -96,6 +97,11 @@ pub fn limits(doc: &Value) -> Vec<Value> {
         Some("no_watch") => Some(no_regular_beat(m, m["bph"].as_f64().or(bph))),
         _ => fact(c, lift),
     };
+    if schema.starts_with("timegrapher.analyze/") {
+        if let Some(readings) = doc["take"]["readings"].as_array() {
+            return by_reading(readings, say);
+        }
+    }
     // `long` and `series` carry theirs at the top, for the whole take.
     if [
         "timegrapher.analyze/",
@@ -117,10 +123,15 @@ pub fn limits(doc: &Value) -> Vec<Value> {
         return Vec::new();
     }
     let readings = doc["readings"].as_array().cloned().unwrap_or_default();
+    by_reading(&readings, say)
+}
+
+/// Each reading's caveats as sentences, with the readings each is about.
+fn by_reading(readings: &[Value], say: impl Fn(&Value, &Value) -> Option<String>) -> Vec<Value> {
     // Each sentence once, with the readings it applies to, in the order
     // first seen.
     let mut out: Vec<(String, Vec<String>)> = Vec::new();
-    for r in &readings {
+    for r in readings {
         for c in r["measurement"]["caveats"].as_array().into_iter().flatten() {
             let Some(text) = say(c, &r["measurement"]) else {
                 continue;

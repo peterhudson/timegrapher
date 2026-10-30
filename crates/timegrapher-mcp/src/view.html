@@ -175,7 +175,8 @@ new ResizeObserver(notifySize).observe(document.body);
 // The app's order: Dial Up, Dial Down, Crown Up, Crown Down, Crown Left, Crown Right.
 const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
 // Each position's common code and name, from core, under both its Witschi
-// code and its common one: the server fills it in.
+// code and its common one: the server fills it in (null in the raw file,
+// so its readers fall back to the code).
 const POSITIONS = /*POSITIONS*/null;
 
 function esc(s) {
@@ -441,7 +442,7 @@ function stripCards(strip) {
   const has = (k) => strip[k] && strip[k].length;
   const cards = [];
   if (has("rate")) {
-    cards.push(["Rate", "The rate over the whole recording", lineChart({
+    cards.push(["Rate", "The rate over the whole recording, on the sound card's clock", lineChart({
       title: "Rate", time: true, robust: true, unit: " s/day", decimals: 1, minSpan: 1,
       series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
     })]);
@@ -523,47 +524,94 @@ function analyzeRate(doc) {
   const clock = doc.clock || {};
   if (Number.isFinite(clock.rate_s_per_day)) {
     const from = typeof clock.from === "string" ? clock.from : "correction supplied by the CLI";
-    return { value: clock.rate_s_per_day, basis: `corrected for the sound card's clock (${from})` };
+    return { value: clock.rate_s_per_day, basis: rateBasis(true, from) };
   }
-  return { value: (doc.overall || {}).rate_s_per_day, basis: "on the sound card's clock" };
+  return { value: (doc.overall || {}).rate_s_per_day, basis: rateBasis(false) };
+}
+
+// Which clock a rate is on: corrected for the sound card's, with where the
+// correction came from when the document says, or the card's own.
+function rateBasis(corrected, from) {
+  if (!corrected) return "on the sound card's clock";
+  return `corrected for the sound card's clock${from ? ` (${from})` : ""}`;
 }
 
 function recordingView(doc, extra, limits, noBeat) {
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
+  const takeReadings = doc.take && Array.isArray(doc.take.readings) && doc.take.readings.length ? doc.take.readings : null;
+  if (takeReadings) {
+    // The profile is the first reading's stretch with a shape (views.rs
+    // profile_stretch), so its drop beat error places Tick and Tock.
+    const shaped = takeReadings.find((r) => r.shape && Number.isFinite(r.shape.from_s)) || {};
+    return head + takeTiles(takeReadings) + recordingCards(doc, extra, limits, (shaped.measurement || {}).beat_error_ms);
+  }
   if (doc.watch_heard === false) {
     return head + `<div class="card notice"><b>No Regular Beat Found</b>${esc(noBeat || "")}</div>`;
   }
   const o = doc.overall || {};
-  // The headline beat error is the unlock's, with the drop's beside it, as
-  // on the app's card. Both show the size only: which side is Tick can
-  // change between runs of the same take, so a sign would mean nothing.
-  const unlock = doc.beat_error_unlock_ms, drop = o.beat_error_ms;
-  const be = Number.isFinite(unlock) ? unlock : drop;
-  const beNote = Number.isFinite(unlock)
-    ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${num(abs(drop), 2)} ms` : ""}` : "from the drop";
-  const sides = Number.isFinite(doc.amplitude_even_deg) && Number.isFinite(doc.amplitude_odd_deg)
-    ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(doc.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(doc.amplitude_odd_deg, 0)}°` : "";
   const rate = analyzeRate(doc);
   const rateNote = [esc(rate.basis)];
   if (Number.isFinite(doc.rate_p05)) rateNote.push(`Card-clock 90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}`);
   const conf = doc.confidence || {};
-  const rateSe = conf.rate && Number.isFinite(conf.rate.se) ? conf.rate.se : null;
-  const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
-  const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
-  let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(rate.value, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", rateNote.join("<br>"))}
-    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
+  const html = head + readingTiles({
+    rate: rate.value, rateSe: conf.rate && conf.rate.se, rateNote: rateNote.join("<br>"),
+    amplitude: doc.amplitude_deg, amplitudeSe: doc.amplitude_se_deg, even: doc.amplitude_even_deg, odd: doc.amplitude_odd_deg,
+    unlock: doc.beat_error_unlock_ms, drop: o.beat_error_ms,
+    beats: doc.beats_found, jitter: Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us,
+  });
+  return html + recordingCards(doc, extra, limits, o.beat_error_ms);
+}
+
+// One reading's four tiles, for the whole file or a take's reading. The
+// headline beat error is the unlock's, with the drop's beside it, as on the
+// app's card. Both show the size only: which side is Tick can change
+// between runs of the same take, so a sign would mean nothing.
+function readingTiles(f) {
+  const be = Number.isFinite(f.unlock) ? f.unlock : f.drop;
+  const beNote = Number.isFinite(f.unlock)
+    ? `from the unlock${Number.isFinite(f.drop) ? ` · from the drop ${num(abs(f.drop), 2)} ms` : ""}` : "from the drop";
+  const sides = Number.isFinite(f.even) && Number.isFinite(f.odd)
+    ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(f.even, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(f.odd, 0)}°` : "";
+  return `<div class="tiles">
+    ${tile("Rate", "--rate", signed(f.rate, 1), Number.isFinite(f.rateSe) ? `± ${num(f.rateSe, 1)} seconds per day` : "seconds per day", f.rateNote)}
+    ${tile("Amplitude", "--amplitude", num(f.amplitude, 0), Number.isFinite(f.amplitudeSe) ? `± ${Math.max(1, Math.round(f.amplitudeSe))}°` : "", sides, "°")}
     ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
-    ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
+    ${tile("Beats", "", esc(f.beats), "", Number.isFinite(f.jitter) ? `jitter ${num(f.jitter, 0)} µs` : "")}
   </div>`;
-  // The caveats say what limits the readings, clipping among them; a
-  // server without them still gets the clipping notice.
+}
+
+// What follows the tiles: the caveats, which say what limits the readings,
+// clipping among them (a server without them still gets the clipping
+// notice), then the strips and the Tick and Tock profile.
+function recordingCards(doc, extra, limits, dropBeatError) {
+  const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
+  let html = "";
   if (limits && limits.length) html += limitsCard(limits);
   else if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped.</div>`;
   html += stripCards(extra && extra.strip);
-  html += profileCard(extra && extra.profile, "Tick and Tock", o.beat_error_ms);
+  html += profileCard(extra && extra.profile, "Tick and Tock", dropBeatError);
   return html;
+}
+
+// A file its take's session file lists is shown as that take reads it, as
+// the app and `session` show it: each reading's settled stretch at the
+// take's settings, not the whole file read alone. Several readings (a file
+// listed twice, or in parts) each get their own row of tiles.
+function takeTiles(readings) {
+  return readings.map((r) => {
+    const m = r.measurement || {};
+    const label = `${positionName(r.position)}${r.label && r.label !== "." ? ` · ${r.label}` : ""}`;
+    const span = Number.isFinite(m.start_s) && Number.isFinite(m.end_s) ? `${timeLabel(m.start_s)} to ${timeLabel(m.end_s)}` : "";
+    const head = `<p class="sub">${esc(label)}${span ? ` · ${esc(span)}` : ""} · as the take reads it</p>`;
+    if (m.watch_heard === false) return head + `<div class="card notice"><b>No Regular Beat Found</b></div>`;
+    const conf = m.confidence || {};
+    return head + readingTiles({
+      rate: m.rate_s_per_day, rateSe: conf.rate && conf.rate.se, rateNote: esc(rateBasis(m.calibrated === true)),
+      amplitude: m.amplitude_deg, amplitudeSe: conf.amplitude && conf.amplitude.se, even: m.amplitude_even_deg, odd: m.amplitude_odd_deg,
+      unlock: m.beat_error_unlock_ms, drop: m.beat_error_ms, beats: m.beats, jitter: m.jitter_us,
+    });
+  }).join("");
 }
 
 function sessionView(doc, limits) {
@@ -585,7 +633,7 @@ function sessionView(doc, limits) {
   html += `<div class="card"><h2>Positions</h2><table><thead><tr><th>Position</th><th>Rate, s/d</th><th>Amplitude, °</th><th>Beat Error, ms</th><th>Wind, h</th></tr></thead><tbody>`;
   readings.forEach((r) => {
     const m = r.measurement || {};
-    const pos = POSITIONS[r.position] || [r.position, r.position];
+    const pos = (POSITIONS || {})[r.position] || [r.position, r.position];
     const heard = m.watch_heard !== false;
     html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
       (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
@@ -597,7 +645,7 @@ function sessionView(doc, limits) {
   if (limits && limits.length) html += limitsCard(limits);
   const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
   if (heard.length) {
-    const name = (r) => (POSITIONS[r.position] || [r.position, r.position])[1];
+    const name = (r) => ((POSITIONS || {})[r.position] || [r.position, r.position])[1];
     const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day }));
     const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg }));
     if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate</p>${bars(rate, "--rate", " s/day", 1)}</div>`;
@@ -1765,7 +1813,7 @@ function seriesView(doc, extra, limits) {
 // until its result arrives. A chat app that does not pass the view's calls
 // on leaves the progress messages in the chat to say how far it has got.
 
-function positionName(p) { return (POSITIONS[p] || [p, p || ""])[1]; }
+function positionName(p) { return ((POSITIONS || {})[p] || [p, p || ""])[1]; }
 
 let live = null;
 
