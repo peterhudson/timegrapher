@@ -21,7 +21,7 @@ const context = vm.createContext({
   stripCards: () => "", limitsCard: () => "",
   profileCard: (p, title, dropBeatError) => `<profile drop="${dropBeatError}">`,
 });
-vm.runInContext(["esc", "num", "signed", "abs", "tile", "recordingView", "readingTiles", "recordingCards", "takeTiles"]
+vm.runInContext(["esc", "num", "signed", "abs", "tile", "rateBasis", "recordingView", "readingTiles", "recordingCards", "takeTiles"]
   .map(n => definition(n)).concat(definition("analyzeRate", true)).join("\n"), context);
 
 function render(doc) { return context.recordingView(doc, null, null); }
@@ -75,7 +75,7 @@ function listed(readings) {
 }
 const reading = (position, rate, extra = {}) => ({ position, label: ".", shape: { from_s: 20 },
   measurement: { rate_s_per_day: rate, amplitude_deg: 280, beat_error_ms: 0.4, beat_error_unlock_ms: 0.3,
-    beats: 800, start_s: 20, end_s: 120, watch_heard: true, confidence: { rate: { se: 0.2 } } }, ...extra });
+    beats: 800, start_s: 20, end_s: 120, watch_heard: true, calibrated: true, confidence: { rate: { se: 0.2 } } }, ...extra });
 
 test("a file its take lists shows the take's reading, not the whole file's", () => {
   const markup = render(listed([reading("DU", 5)]));
@@ -84,6 +84,11 @@ test("a file its take lists shows the take's reading, not the whole file's", () 
   assert.ok(markup.includes(">280°<") && !markup.includes(">250°<"), markup);
   assert.ok(markup.includes(">0.30<") && markup.includes(">800<"), markup);
   assert.ok(markup.includes('<profile drop="0.4">'), "the profile takes the reading's drop beat error");
+  // The take read it on a measured clock, so its rate says so.
+  assert.ok(markup.includes("corrected for the sound card&#39;s clock"), markup);
+  const raw = listed([reading("DU", 5)]);
+  raw.take.readings[0].measurement.calibrated = false;
+  assert.ok(render(raw).includes("on the sound card&#39;s clock"));
 });
 
 test("each of a take's readings of the file gets its own tiles", () => {

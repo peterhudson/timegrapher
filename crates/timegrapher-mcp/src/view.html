@@ -175,7 +175,8 @@ new ResizeObserver(notifySize).observe(document.body);
 // The app's order: Dial Up, Dial Down, Crown Up, Crown Down, Crown Left, Crown Right.
 const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
 // Each position's common code and name, from core, under both its Witschi
-// code and its common one: the server fills it in.
+// code and its common one: the server fills it in (null in the raw file,
+// so its readers fall back to the code).
 const POSITIONS = /*POSITIONS*/null;
 
 function esc(s) {
@@ -441,7 +442,7 @@ function stripCards(strip) {
   const has = (k) => strip[k] && strip[k].length;
   const cards = [];
   if (has("rate")) {
-    cards.push(["Rate", "The rate over the whole recording", lineChart({
+    cards.push(["Rate", "The rate over the whole recording, on the sound card's clock", lineChart({
       title: "Rate", time: true, robust: true, unit: " s/day", decimals: 1, minSpan: 1,
       series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
     })]);
@@ -523,9 +524,16 @@ function analyzeRate(doc) {
   const clock = doc.clock || {};
   if (Number.isFinite(clock.rate_s_per_day)) {
     const from = typeof clock.from === "string" ? clock.from : "correction supplied by the CLI";
-    return { value: clock.rate_s_per_day, basis: `corrected for the sound card's clock (${from})` };
+    return { value: clock.rate_s_per_day, basis: rateBasis(true, from) };
   }
-  return { value: (doc.overall || {}).rate_s_per_day, basis: "on the sound card's clock" };
+  return { value: (doc.overall || {}).rate_s_per_day, basis: rateBasis(false) };
+}
+
+// Which clock a rate is on: corrected for the sound card's, with where the
+// correction came from when the document says, or the card's own.
+function rateBasis(corrected, from) {
+  if (!corrected) return "on the sound card's clock";
+  return `corrected for the sound card's clock${from ? ` (${from})` : ""}`;
 }
 
 function recordingView(doc, extra, limits, noBeat) {
@@ -599,7 +607,7 @@ function takeTiles(readings) {
     if (m.watch_heard === false) return head + `<div class="card notice"><b>No Regular Beat Found</b></div>`;
     const conf = m.confidence || {};
     return head + readingTiles({
-      rate: m.rate_s_per_day, rateSe: conf.rate && conf.rate.se, rateNote: "",
+      rate: m.rate_s_per_day, rateSe: conf.rate && conf.rate.se, rateNote: esc(rateBasis(m.calibrated === true)),
       amplitude: m.amplitude_deg, amplitudeSe: conf.amplitude && conf.amplitude.se, even: m.amplitude_even_deg, odd: m.amplitude_odd_deg,
       unlock: m.beat_error_unlock_ms, drop: m.beat_error_ms, beats: m.beats, jitter: m.jitter_us,
     });
@@ -625,7 +633,7 @@ function sessionView(doc, limits) {
   html += `<div class="card"><h2>Positions</h2><table><thead><tr><th>Position</th><th>Rate, s/d</th><th>Amplitude, °</th><th>Beat Error, ms</th><th>Wind, h</th></tr></thead><tbody>`;
   readings.forEach((r) => {
     const m = r.measurement || {};
-    const pos = POSITIONS[r.position] || [r.position, r.position];
+    const pos = (POSITIONS || {})[r.position] || [r.position, r.position];
     const heard = m.watch_heard !== false;
     html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
       (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
@@ -637,7 +645,7 @@ function sessionView(doc, limits) {
   if (limits && limits.length) html += limitsCard(limits);
   const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
   if (heard.length) {
-    const name = (r) => (POSITIONS[r.position] || [r.position, r.position])[1];
+    const name = (r) => ((POSITIONS || {})[r.position] || [r.position, r.position])[1];
     const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day }));
     const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg }));
     if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate</p>${bars(rate, "--rate", " s/day", 1)}</div>`;
@@ -1805,7 +1813,7 @@ function seriesView(doc, extra, limits) {
 // until its result arrives. A chat app that does not pass the view's calls
 // on leaves the progress messages in the chat to say how far it has got.
 
-function positionName(p) { return (POSITIONS[p] || [p, p || ""])[1]; }
+function positionName(p) { return ((POSITIONS || {})[p] || [p, p || ""])[1]; }
 
 let live = null;
 
