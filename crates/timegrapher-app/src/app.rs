@@ -8401,6 +8401,9 @@ impl TimegrapherApp {
             let (now, pressed) = ui_b.input(|i| (i.time, i.pointer.any_pressed()));
             let tap = listen_tap(was_listen, now, pressed);
             self.listen_tap = Some(tap);
+            if tap.0.is_infinite() {
+                ui_b.ctx().request_repaint(); // so the count starts unprompted
+            }
             let armed = tap.1;
             if ui_b
                 .add_enabled_ui(!self.running() && self.batch.is_none(), |ui| {
