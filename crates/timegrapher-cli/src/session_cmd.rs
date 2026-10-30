@@ -405,7 +405,9 @@ fn excerpt(files: &[PathBuf], from_s: f64, len_s: f64) -> Result<(Vec<f32>, f64)
     Ok((out, fs))
 }
 
-/// The log from `from_s` on, with times shifted to start at zero.
+/// The log from `from_s` to `to_s`, with times shifted to start at zero.
+/// Its amplitude windows are those [`session::window_in`] the stretch
+/// (#636).
 fn trimmed(log: &BeatLog, from_s: f64, to_s: f64) -> BeatLog {
     let mut l = log.clone();
     l.beats.retain(|b| b.time >= from_s && b.time < to_s);
@@ -413,7 +415,7 @@ fn trimmed(log: &BeatLog, from_s: f64, to_s: f64) -> BeatLog {
         b.time -= from_s;
     }
     l.amplitude_windows
-        .retain(|w| w.start_s >= from_s && w.end_s <= to_s);
+        .retain(|w| session::window_in(w, from_s, to_s));
     for w in &mut l.amplitude_windows {
         w.start_s -= from_s;
         w.end_s -= from_s;
@@ -1182,6 +1184,42 @@ fn print_summary(s: &Session) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A part of a log takes the amplitude windows whose midpoint is in
+    /// it, as every reading does, not only those wholly inside (#636).
+    #[test]
+    fn a_part_of_a_log_takes_the_windows_whose_midpoint_is_in_it() {
+        let w = |start_s: f64| timegrapher_core::amplitude::AmplitudeWindow {
+            start_s,
+            end_s: start_s + 2.0,
+            even_deg: Some(250.0),
+            odd_deg: Some(250.0),
+            beat_error_ms: None,
+            beat_error_unlock_ms: None,
+            even_unlock_ms: None,
+            odd_unlock_ms: None,
+            even_drop_ms: None,
+            odd_drop_ms: None,
+        };
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: 40.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: Vec::new(),
+            amplitude_windows: [8.5, 9.5, 10.5, 28.5, 29.5].map(w).to_vec(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+            snippets: Vec::new(),
+        };
+        let part = trimmed(&log, 10.0, 30.0);
+        let starts: Vec<f64> = part.amplitude_windows.iter().map(|w| w.start_s).collect();
+        // Midpoints 10.5, 11.5 and 29.5 are in [10, 30); 9.5 and 30.5 not.
+        assert_eq!(starts, vec![-0.5, 0.5, 18.5]);
+    }
 
     fn options(bph: Option<u32>, lift: Option<f64>, calibre: Option<&str>) -> Options {
         Options {
