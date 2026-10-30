@@ -29,6 +29,12 @@ pub const MAX_PROFILE_S: f64 = 60.0;
 /// holds too few windows to judge the rate on its own.
 pub const RATE_RUN_S: f64 = 300.0;
 
+/// The least time back from a reading's end, within the sound heard since
+/// the latest break, whose 10 s windows judge whether a watch is heard
+/// (`session::scatter_jitter_us`): enough for one whole window under a
+/// 10 s average.
+pub const SCATTER_LOOKBACK_S: f64 = 15.0;
+
 use crate::stream::BeatLog;
 use crate::timing;
 use serde::Serialize;
@@ -887,13 +893,38 @@ impl LiveAnalyzer {
         );
         // Beats scattered like noise are no regular beat: no readings, as
         // `analyze` gives none. Under 10 s of sound it is not assessed.
-        let jitter_us = fit.map(|f| f.jitter_us);
+        // The scatter is a saved reading's, from the 10 s windows over the
+        // sound heard since the latest break, not the latest run's alone:
+        // a short regular run at the end of noise is no watch (#679,
+        // #680). It looks back at least SCATTER_LOOKBACK_S, so a 10 s
+        // average holds a whole window. Within that of a break, before a
+        // window can be whole, regularity is not assessed; past it, no
+        // whole window is noise.
+        let scatter = bph.map_or_else(Vec::new, |b| {
+            crate::session::scatter_windows(
+                &holes,
+                &self.beats[..hi],
+                b,
+                window_from
+                    .min(end_s - SCATTER_LOOKBACK_S)
+                    .max(since)
+                    .max(0.0),
+                end_s,
+                crate::session::window_part_s(&self.amp),
+            )
+        });
+        let jitter_us = crate::session::scatter_jitter_us(&scatter);
+        let judged_s = if scatter.is_empty() && end_s - since < SCATTER_LOOKBACK_S {
+            0.0
+        } else {
+            listened_s
+        };
         let timing_scatter_fraction =
             bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
         // Under 10 s the beats' averaged sound, from the beats kept for
         // the profiles, says whether a watch is heard.
         let beat_sound = match bph {
-            Some(b) if !measure::regularity_assessed(listened_s) => measure::beat_sound_found(
+            Some(b) if !measure::regularity_assessed(judged_s) => measure::beat_sound_found(
                 self.snippets
                     .iter()
                     .filter(|s| s.0 >= from && s.0 <= end_s)
@@ -905,7 +936,7 @@ impl LiveAnalyzer {
             _ => None,
         };
         let no_watch = match bph {
-            Some(b) => measure::no_watch_reason(jitter_us, b, listened_s, beat_sound),
+            Some(b) => measure::no_watch_reason(jitter_us, b, judged_s, beat_sound),
             None => measure::regularity_assessed(listened_s).then_some(NoWatchReason::Scatter),
         };
         let watch_heard = no_watch.is_none();
@@ -1845,6 +1876,60 @@ mod tests {
                 ((x >> 40) as f32 / (1u64 << 24) as f32 - 0.5) * 0.02
             })
             .collect()
+    }
+
+    /// Noise-scattered beats, a pause, then a few seconds of a tidy run:
+    /// the live card judges the sound since the latest break, as a saved
+    /// reading does, so the short run at the end is no watch, and live and
+    /// saved give one scatter (#679, #680).
+    #[test]
+    fn a_short_tidy_run_after_noise_is_no_watch_live_or_saved() {
+        let mut x = 0x2545_f491_4f6c_dd1du64;
+        let mut rand = || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x >> 40) as f64 / (1u64 << 24) as f64
+        };
+        let mut times: Vec<f64> = Vec::new();
+        let mut t = 0.0;
+        while t < 114.0 {
+            times.push(t);
+            t += 0.05 + 0.15 * rand();
+        }
+        times.extend((0..30).map(|i| 116.2 + i as f64 * 0.125));
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: 120.0,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats: times
+                .iter()
+                .enumerate()
+                .map(|(index, &time)| Beat {
+                    index: index as i64,
+                    time,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: Vec::new(),
+            by_count: Vec::new(),
+            snippets: Vec::new(),
+        };
+        let a = LiveAnalyzer::from_log(log.clone(), LiveConfig::default());
+        let end = 120.0;
+        for average_s in [10.0, 30.0] {
+            let live = a.reading_at(end, average_s);
+            assert!(!live.watch_heard, "{average_s}: {live:?}");
+        }
+        let live = a.reading_at(end, 30.0);
+        let saved = crate::session::measure_masked(&log, None, &[], &[], end - 30.0, end);
+        assert!(!saved.watch_heard);
+        assert_eq!(live.jitter_us, saved.jitter_us);
     }
 
     /// An empty stand, heard live or read back from its beat log over a
