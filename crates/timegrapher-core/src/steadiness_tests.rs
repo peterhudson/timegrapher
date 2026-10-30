@@ -857,8 +857,20 @@ fn isochronism_curve_and_wind_down_follow_the_run_down() {
         .collect();
     let be = vec![0.3; n];
     let cfg = Config::default();
-    let c = isochronism_curve(&grid(rate.clone(), 10.0), &grid(amp.clone(), 10.0), &cfg).unwrap();
-    assert!((c.s_per_day_per_deg - 0.5).abs() < 0.05, "{}", c.headline);
+    // Each amplitude reading's noise: the 2° scattered on it.
+    let noise = vec![4.0; n];
+    let c = isochronism_curve(
+        &grid(rate.clone(), 10.0),
+        &grid(amp.clone(), 10.0),
+        &noise,
+        &cfg,
+    )
+    .unwrap();
+    assert!(
+        (c.s_per_day_per_deg.unwrap() - 0.5).abs() < 0.05,
+        "{}",
+        c.headline
+    );
     assert!(c.bins.len() >= 20);
     let w = wind_down(&grid(rate, 10.0), &grid(amp, 10.0), &grid(be, 10.0), &cfg).unwrap();
     assert!(w.at_24h, "{}", w.headline);
@@ -1294,4 +1306,92 @@ fn a_small_share_cut_and_a_slide_name_no_change() {
     assert!(slide.changes.as_ref().unwrap().segments.len() > 1);
     assert!(!slide.cusum.as_ref().unwrap().shift);
     assert!(!headline_names_a_change(&slide), "{}", slide.headline);
+}
+
+/// Two hours of 2 s amplitude windows wandering a few degrees over
+/// minutes, each window `window_noise`° off, and 10 s rate readings
+/// following the true amplitude at −0.5 s/d per degree.
+fn noisy_amplitude(window_noise: f64, seed: u64) -> (Grid, Grid, Vec<f64>) {
+    let mut z = Noise(seed);
+    let true_amp = |t: f64| 250.0 + 3.0 * (t / 900.0).sin() + 2.0 * (t / 377.0).cos();
+    let fine = Grid {
+        t0: 0.0,
+        step: 2.0,
+        y: (0..3600)
+            .map(|i| true_amp(2.0 * i as f64 + 1.0) + window_noise * z.next())
+            .collect(),
+    };
+    let n = 720;
+    let amp = rebin(&fine, 0.0, 10.0, n);
+    let noise = reading_noise(&fine, 0.0, 10.0, n);
+    let rate = grid(
+        (0..n)
+            .map(|i| {
+                let t = 10.0 * i as f64;
+                let a = (0..5)
+                    .map(|k| true_amp(t + 2.0 * k as f64 + 1.0))
+                    .sum::<f64>()
+                    / 5.0;
+                -0.5 * (a - 250.0) + 0.5 * z.next()
+            })
+            .collect(),
+        10.0,
+    );
+    (rate, amp, noise)
+}
+
+/// Noise in the amplitude readings shrinks a least-squares slope towards
+/// 0; read off each reading's own windows, it is undone, and the slope
+/// carries a ± that covers the truth (#651). Here the readings' noise of
+/// about 1.5° shrinks the plain slope by about a fifth.
+#[test]
+fn the_isochronism_slope_is_read_off_the_amplitudes_noise() {
+    let (rate, amp, noise) = noisy_amplitude(3.35, 21);
+    // Each reading's noise is its five windows' over five.
+    let mean = noise.iter().sum::<f64>() / noise.len() as f64;
+    assert!((mean - 3.35f64.powi(2) / 5.0).abs() < 0.4, "{mean}");
+    let c = isochronism_curve(&rate, &amp, &noise, &Config::default()).unwrap();
+    let (slope, se) = (
+        c.s_per_day_per_deg.unwrap(),
+        c.s_per_day_per_deg_se.unwrap(),
+    );
+    assert!(
+        (slope + 0.5).abs() < 2.0 * se + 0.01,
+        "{slope} ± {se}: {}",
+        c.headline
+    );
+    assert!(se > 0.0 && se < 0.05, "{se}");
+    assert!(
+        c.reliability.unwrap() > 0.5 && c.reliability.unwrap() < 0.95,
+        "{:?}",
+        c.reliability
+    );
+    assert!(c.headline.contains(" ± "), "{}", c.headline);
+    // Taking the noise as nothing leaves the shrunken slope.
+    let plain = isochronism_curve(&rate, &amp, &vec![0.0; noise.len()], &Config::default())
+        .unwrap()
+        .s_per_day_per_deg
+        .unwrap();
+    assert!(plain > slope + 0.05, "{plain} against {slope}");
+    // The rate against the amplitude within half an hour reads the same
+    // noise: with the slow wander taken out, it is most of what is left,
+    // so no slope is given there.
+    let x = cross_correlation(&rate, &amp, &noise, &Config::default()).unwrap();
+    assert!(x.reliability.unwrap() < 0.5, "{}", x.headline);
+    assert_eq!(x.s_per_day_per_deg, None);
+}
+
+/// When the amplitude's noise is most of its spread, no slope is read.
+#[test]
+fn a_slope_is_withheld_when_the_amplitude_is_mostly_noise() {
+    let (rate, amp, noise) = noisy_amplitude(30.0, 22);
+    let c = isochronism_curve(&rate, &amp, &noise, &Config::default()).unwrap();
+    assert!(c.reliability.unwrap() < 0.5);
+    assert_eq!(c.s_per_day_per_deg, None);
+    assert_eq!(c.rate_change_s_per_day, None);
+    assert!(
+        c.headline.contains("too much of its spread"),
+        "{}",
+        c.headline
+    );
 }
