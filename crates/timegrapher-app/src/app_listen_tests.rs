@@ -115,6 +115,9 @@ fn listen_counts_a_press_only_once_settled() {
 #[test]
 fn a_second_tap_on_stop_starts_nothing() {
     let (mut app, base) = save_failure_fixture("second-stop-tap");
+    // No Watches folder to keep a take in, on every system: a counted tap
+    // on Listen then says so, and never opens a folder in the real home.
+    app.library = Err("none in this test".into());
     let _tx = queued_capture(&mut app, &base);
     assert!(app.running() && app.session.mic());
     let ctx = egui::Context::default();
@@ -156,11 +159,18 @@ fn a_second_tap_on_stop_starts_nothing() {
     pass(&mut app, quick, tap());
     assert!(!app.running());
     assert_eq!((app.message.clone(), app.confirm.is_some()), stopped);
-    // Once settled, a tap on Listen counts: it asks about the take not
-    // kept, or says why it can't listen.
+    // Once settled, a tap on Listen counts: it says why it can't listen.
     pass(&mut app, LISTEN_SETTLE_S, Vec::new());
     pass(&mut app, quick, tap());
-    assert_ne!((app.message.clone(), app.confirm.is_some()), stopped);
+    let said = app
+        .message
+        .as_ref()
+        .map(|m| m.0.as_str())
+        .unwrap_or_default();
+    assert!(
+        said.starts_with("Quick Listen can't keep its take"),
+        "{said}"
+    );
     app.capture = None;
     let _ = std::fs::remove_dir_all(&base);
 }
