@@ -286,6 +286,11 @@ fn synth(cli: &Path, out: &Path, rate: &str) {
 }
 
 #[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn a_chat_app_reads_a_watch() {
     let cli = cli();
     let dir = std::env::temp_dir().join(format!("timegrapher-mcp-test-{}", std::process::id()));
@@ -496,6 +501,10 @@ fn a_chat_app_reads_a_watch() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn a_chat_app_finds_a_watchs_takes_in_the_library() {
     use timegrapher_core::library::{Library, Watch, TAKES};
     let cli = cli();

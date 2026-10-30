@@ -15,3 +15,10 @@ timegrapher-core = { path = "crates/timegrapher-core" }
 
 [profile.release]
 debug = 1
+
+# Function limits (architecture guide, section 12): 100 lines and a
+# cognitive complexity of 25, Clippy's defaults. A function over either
+# today carries #[expect]; the mark comes off when it is split.
+[workspace.lints.clippy]
+too_many_lines = "warn"
+cognitive_complexity = "warn"

@@ -98,6 +98,10 @@ fn name_of(p: &Path) -> String {
         .unwrap_or_else(|| p.display().to_string())
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(o: &Options) -> Result<(), String> {
     let now = SystemTime::now();
     let created = recorder::utc(now);
@@ -453,6 +457,10 @@ fn safe_to_replay(args: &[String]) -> bool {
             .all(|p| matches!(p[0].as_str(), "--bph" | "--lift") && p[1].parse::<f64>().is_ok())
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn replay(bundle: &Path, json: bool) -> Result<(), String> {
     let files = load_bundle(bundle)?;
     let get = |name: &str| files.iter().find(|(p, _)| p == name).map(|(_, d)| d);

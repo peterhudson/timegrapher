@@ -1200,6 +1200,10 @@ fn take_menu(
 /// The watch's takes as a table, newest first: a click picks a row, a
 /// double click opens it (unless `busy` says why not), a right click
 /// offers the rest. Nothing is inserted between rows.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn takes_table(
     ui: &mut egui::Ui,
     e: &WatchEntry,
@@ -1513,6 +1517,10 @@ fn folder_label(p: &std::path::Path) -> String {
 
 /// The window asking `ask`: `Some(true)` when the user goes ahead,
 /// `Some(false)` when they cancel.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn ask_dialog(
     ctx: &egui::Context,
     ask: &mut Ask,
@@ -1725,6 +1733,10 @@ pub fn form(ctx: &egui::Context, f: &mut Form, cal: &mut Calibres) -> Option<For
 const FROM_CALIBRE: &str =
     "Set by the calibre: pick another calibre, or change it in Manage Calibres…";
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
     let pal = theme::pal(ui);
     theme::row(
@@ -2171,6 +2183,10 @@ mod tests {
     /// date gives way, cut short with "…", its tags cut or left out after
     /// it, and Size (MB) is still read whole at the right.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_narrow_takes_table_keeps_its_size_column() {
         let take = |name: &str, audio: bool| Take {
             name: name.into(),

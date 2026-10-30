@@ -67,6 +67,10 @@ fn tool_error(text: String) -> CallToolResult {
         .expect("a text result")
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 async fn call(
     name: &str,
     args: &Map<String, Value>,

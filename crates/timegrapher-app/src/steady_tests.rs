@@ -1046,6 +1046,10 @@ fn the_beat_error_view_gives_sizes_where_its_sign_turns() {
 /// A watch whose rate swings once a minute (a fourth wheel fault) is
 /// found periodic, and every view draws.
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn a_once_a_minute_swing_reads_periodic_and_every_view_draws() {
     let cfg = SynthConfig {
         duration_s: 600.0,

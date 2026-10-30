@@ -181,6 +181,10 @@ impl Test {
 /// and scroll in it. `card` is the position card's title as drawn,
 /// `watch` the watch the take is kept in (none: Unsorted), and `ready`
 /// whether a run is set up, waiting for Start Test on the Listen card.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn pane(
     ui: &mut egui::Ui,
     test: Option<&Test>,
@@ -773,6 +777,10 @@ mod tests {
     /// Amplitude chart and its last hour, and opens again at its top; in a
     /// pane with room, its one hour's row shows whole.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_short_panes_run_scrolls_to_its_last_hour_and_opens_at_its_top() {
         let run = |hours: u32| {
             let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);

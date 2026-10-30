@@ -608,6 +608,10 @@ fn a_half_turn_of_an_alias_counts_only_where_it_holds_the_line() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn a_summary_names_each_lead_in_a_few_words() {
     let check = |kind, y: Vec<f64>, step, two: Option<TwoState>| {
         check_series(
@@ -1195,4 +1199,99 @@ fn a_step_in_correlated_readings_is_still_found() {
     assert!(cusum >= 160, "CUSUM: {cusum} of 200");
     let (_, changes) = flagged(0.9, 2.0, 720, 200, Gaps::None);
     assert!(changes >= 160, "change finder: {changes} of 200");
+}
+
+/// Whether the headline names a level change: as its lead, or as the
+/// level also moving.
+fn headline_names_a_change(s: &SeriesCheck) -> bool {
+    s.headline.contains("shifts level") || s.headline.contains("level also moves")
+}
+
+/// One rule names a level change (#697): the CUSUM marks its corner only
+/// where the headline names one, at one of the change finder's cuts. A
+/// steady take whose CUSUM wanders past the band names none, and a real
+/// step twice the scatter is still named.
+#[test]
+fn the_cusum_names_a_change_only_where_the_headline_does() {
+    let mut z = Noise(697);
+    let mut past_band = 0;
+    for (step, runs) in [(0.0, 400), (2.0, 200)] {
+        let (mut named, mut moved) = (0, 0);
+        for _ in 0..runs {
+            let s = check_series(
+                SeriesKind::Rate,
+                correlated(&mut z, 720, 0.9, step, Gaps::None),
+                None,
+                None,
+                None,
+                &[],
+                &Config::default(),
+            );
+            let cu = s.cusum.as_ref().unwrap();
+            assert_eq!(cu.shift, headline_names_a_change(&s), "{}", s.headline);
+            if cu.shift {
+                let ch = s.changes.as_ref().unwrap();
+                assert!(ch.segments[1..].iter().any(|g| g.start_s == cu.at_s));
+            } else if step == 0.0 && cu.max > CUSUM_BAND {
+                past_band += 1;
+            }
+            named += usize::from(cu.shift);
+            moved += usize::from(cu.shift || s.lead == Lead::Drifting);
+        }
+        if step == 0.0 {
+            assert!(named <= 20, "steady: {named} of {runs} named a change");
+        } else {
+            // The headline tells a step from a slide by how much of it a
+            // line explains, and calls about two in five of these slides
+            // (111 named, 58 cut and called slides at this seed); either
+            // way it says the level moved.
+            assert!(named >= 100, "step: {named} of {runs} named a change");
+            assert!(moved >= 160, "step: {moved} of {runs} moved");
+        }
+    }
+    // The case #697 found: past the band, and no change named.
+    assert!(past_band > 0);
+}
+
+/// A step the change finder cuts but that explains under a fifth of the
+/// readings' variance is not named, by the headline or the CUSUM (as on
+/// an ETA 2824's beat error, #717); nor is a slide the finder cuts into
+/// steps, which the headline calls a slide (as on a Reverso's).
+#[test]
+fn a_small_share_cut_and_a_slide_name_no_change() {
+    let mut z = Noise(717);
+    let small = (0..20)
+        .map(|_| {
+            check_series(
+                SeriesKind::Rate,
+                correlated(&mut z, 720, 0.0, 0.5, Gaps::None),
+                None,
+                None,
+                None,
+                &[],
+                &Config::default(),
+            )
+        })
+        .find(|s| s.changes.as_ref().unwrap().segments.len() > 1)
+        .expect("a small step the finder cuts");
+    assert!(small.changes.as_ref().unwrap().explained < Config::default().min_explained);
+    assert!(!small.cusum.as_ref().unwrap().shift);
+    assert!(!headline_names_a_change(&small), "{}", small.headline);
+
+    let y: Vec<f64> = (0..720)
+        .map(|i| i as f64 / 180.0 + 0.3 * z.next())
+        .collect();
+    let slide = check_series(
+        SeriesKind::Rate,
+        grid(y, 10.0),
+        None,
+        None,
+        None,
+        &[],
+        &Config::default(),
+    );
+    assert_eq!(slide.lead, Lead::Drifting, "{}", slide.headline);
+    assert!(slide.changes.as_ref().unwrap().segments.len() > 1);
+    assert!(!slide.cusum.as_ref().unwrap().shift);
+    assert!(!headline_names_a_change(&slide), "{}", slide.headline);
 }

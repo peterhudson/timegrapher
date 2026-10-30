@@ -135,6 +135,10 @@ struct State {
 impl State {
     /// Analyse `x`, which starts at sample `x0`, keeping the beats whose
     /// time falls in `[core_a, core_b)` (seconds).
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn chunk(&mut self, x: &[f32], x0: usize, core_a: f64, core_b: f64) {
         let fs = self.fs;
         let a = &self.cfg.analysis;
