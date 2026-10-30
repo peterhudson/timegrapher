@@ -174,10 +174,9 @@ new ResizeObserver(notifySize).observe(document.body);
 
 // The app's order: Dial Up, Dial Down, Crown Up, Crown Down, Crown Left, Crown Right.
 const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
-const POSITIONS = {
-  CH: ["DU", "Dial Up"], CB: ["DD", "Dial Down"], "3H": ["CU", "Crown Up"],
-  "6H": ["CL", "Crown Left"], "9H": ["CD", "Crown Down"], "12H": ["CR", "Crown Right"],
-};
+// Each position's common code and name, from core, under both its Witschi
+// code and its common one: the server fills it in.
+const POSITIONS = /*POSITIONS*/null;
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
@@ -1766,8 +1765,7 @@ function seriesView(doc, extra, limits) {
 // until its result arrives. A chat app that does not pass the view's calls
 // on leaves the progress messages in the chat to say how far it has got.
 
-const COMMON = { DU: "Dial Up", DD: "Dial Down", CU: "Crown Up", CD: "Crown Down", CL: "Crown Left", CR: "Crown Right" };
-function positionName(p) { return COMMON[p] || p || ""; }
+function positionName(p) { return (POSITIONS[p] || [p, p || ""])[1]; }
 
 let live = null;
 
