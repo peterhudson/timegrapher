@@ -5450,10 +5450,12 @@ impl TimegrapherApp {
             let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
             let mut log = steady::log_of(live)?;
             let clock = self.reading_clock(log.duration_s);
-            // The cuts the app adds (a settling's end, a move) where they
-            // bound the reading rather than fall within it change nothing
-            // it reads, and session has none there.
-            log.jumps.retain(|&j| from < j && j < to);
+            // The cuts the app adds (a settling's end, a move, a mask's ends)
+            // at the reading's or a mask's edges change nothing it reads, and
+            // session has none there (#682).
+            let edge =
+                |j: f64| j <= from || j >= to || self.masked.iter().any(|m| j == m.0 || j == m.1);
+            log.jumps.retain(|&j| !edge(j));
             let breaks = self.reading_breaks(&log);
             // The time between the stretches, another position or its
             // settling, is left out as a mask is.
