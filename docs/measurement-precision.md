@@ -171,7 +171,7 @@ produced peak heights 10.000000000 with a full grid, 5.000000000 with every
 second bin missing, and 1.816707781 with the middle half missing. This illustrated
 the zero-filled, full-window normalization's dependence on support, which the
 spectrum used then; it is not a test of the period-search significance model.
-The spectrum now reads a grid with samples missing by Lomb–Scargle, nothing
+The spectrum now reads a grid with samples missing by Hann-weighted Lomb–Scargle, nothing
 filled in (#652; [FFT guide](series.md)).
 
 These are historical model observations assessed against
