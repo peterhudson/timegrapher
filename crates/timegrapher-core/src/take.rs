@@ -381,6 +381,110 @@ pub fn reading_window(
     })
 }
 
+/// What is opened to read the recording at `path` (a recording or a
+/// take's folder) whole, as `analyze --trend` reads it: the folder its
+/// session file is read from, the session file (an empty one without)
+/// and one entry for the whole recording. With a session file `m`
+/// (holding only its entries for the recording), that entry is
+/// [`whole_take`]'s: one clock log, every entry's masks.
+pub fn whole_entry(
+    path: &Path,
+    manifest: Option<&Manifest>,
+) -> Result<(PathBuf, Manifest, RecordingEntry), String> {
+    let (base, file) = if path.is_dir() {
+        (path.to_path_buf(), ".".to_string())
+    } else {
+        (
+            path.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        )
+    };
+    Ok(match manifest {
+        Some(m) if !m.recordings.is_empty() => (base, m.clone(), whole_take(m)?),
+        _ => (
+            base,
+            Manifest::default(),
+            RecordingEntry {
+                file,
+                ..Default::default()
+            },
+        ),
+    })
+}
+
+/// Each of `entries` of the take `m` that names a position: the
+/// stretch's start, the start of what is read once the watch has settled
+/// and the end of that ([`reading_window`], an entry that reads nothing
+/// settling to its end), and the position. `length_s` is the recording's
+/// length, infinite where it is not known.
+pub fn listed_positions(
+    m: &Manifest,
+    entries: &[RecordingEntry],
+    length_s: f64,
+) -> Vec<(f64, f64, Option<f64>, session::Position)> {
+    entries
+        .iter()
+        .filter_map(|e| {
+            let p = session::Position::parse(e.position.as_deref()?)?;
+            let start = e.start_s.unwrap_or(0.0);
+            let (from, to) = match reading_window(e, m, None, length_s) {
+                Ok(w) => (w.from_s, w.to_s),
+                Err(_) => {
+                    let end = e.end_s.unwrap_or(start);
+                    (end, end)
+                }
+            };
+            Some((start, from, to.is_finite().then_some(to), p))
+        })
+        .collect()
+}
+
+/// A take's changes of position (where each began, and the position)
+/// and the settling after each (start, end).
+pub type Positions<P> = (Vec<(f64, P)>, Vec<(f64, f64)>);
+
+/// The positions listed (start, start of what is read, end, position),
+/// as changes oldest first and the settling before each: from the end of
+/// the one before (or the take's start, for the first) to where its
+/// reading starts.
+pub fn positions_of<P: Copy>(
+    listed: impl Iterator<Item = (f64, f64, Option<f64>, P)>,
+) -> Positions<P> {
+    let mut listed: Vec<(f64, f64, Option<f64>, P)> = listed.collect();
+    listed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out = Vec::new();
+    let mut settles = Vec::new();
+    for (i, &(start, from, _, p)) in listed.iter().enumerate() {
+        // The position began where the one before it ended, the first at
+        // the take's start: the app saves each entry from the end of its
+        // settling, the first's too.
+        let began = match i.checked_sub(1).map(|j| listed[j].2) {
+            None => 0.0,
+            Some(Some(end)) if end < start => end,
+            Some(_) => start,
+        };
+        if from > began {
+            settles.push((began, from));
+        }
+        out.push((began, p));
+    }
+    (out, settles)
+}
+
+/// Where no reading over a take may reach across: its breaks, each change
+/// of position after the first (`changes`, oldest first) and the end of
+/// each settling, in order.
+pub fn reading_cuts(breaks: &[Break], changes: &[f64], settles: &[(f64, f64)]) -> Vec<f64> {
+    let mut cuts: Vec<f64> = breaks.iter().map(|b| b.audio_s).collect();
+    cuts.extend(changes.iter().skip(1).copied());
+    cuts.extend(settles.iter().map(|s| s.1));
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup();
+    cuts
+}
+
 /// Whether `p` is a sound file a take keeps: WAV or FLAC.
 pub fn is_sound(p: &Path) -> bool {
     p.extension()

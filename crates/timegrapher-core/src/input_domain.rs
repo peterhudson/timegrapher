@@ -47,6 +47,23 @@ pub fn card_ppm(value: f64) -> Result<f64, String> {
 /// Why a lift angle outside [`LIFT_RANGE_DEG`] is refused.
 pub const LIFT_RANGE_TEXT: &str = "lift angle must be from 10 to 90 degrees";
 
+/// `value` if it is one of the averaging times the app offers
+/// ([`crate::live::AVERAGES`]).
+pub fn average_s(value: f64) -> Result<f64, String> {
+    if crate::live::AVERAGES.contains(&value) {
+        Ok(value)
+    } else {
+        let offered: Vec<String> = crate::live::AVERAGES
+            .iter()
+            .map(|a| a.to_string())
+            .collect();
+        Err(format!(
+            "the averaging time must be one of {} seconds",
+            offered.join(", ")
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

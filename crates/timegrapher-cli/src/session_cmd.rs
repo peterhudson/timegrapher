@@ -492,13 +492,24 @@ pub(crate) fn take_of(
     })
 }
 
-fn read_take_of(
-    file: &Path,
-    session_file: &Path,
-    bph: Option<u32>,
-    lift: Option<f64>,
-    calibre: Option<String>,
-) -> Result<Option<serde_json::Value>, String> {
+/// The session file in `file`'s folder, if it has one, with only its
+/// entries naming the file, and the folder they are read from: none when
+/// there is no session file or no entry names the file.
+pub(crate) fn listing_of(file: &Path) -> Result<Option<(Manifest, PathBuf)>, String> {
+    let dir = match file.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d,
+        _ => Path::new("."),
+    };
+    let session_file = dir.join(take::MANIFEST);
+    if !session_file.is_file() {
+        return Ok(None);
+    }
+    listing_in(file, &session_file)
+}
+
+/// The session file `session_file` with only its entries naming `file`,
+/// and the folder they are read from; none when no entry names it.
+fn listing_in(file: &Path, session_file: &Path) -> Result<Option<(Manifest, PathBuf)>, String> {
     let (mut m, base, _) = load_manifest_file(session_file)?;
     // An entry names the file when its sound is that file alone: as a
     // path, or as a folder (".", a take's own) whose only sound it is.
@@ -512,9 +523,19 @@ fn read_take_of(
         }
     };
     m.recordings.retain(same);
-    if m.recordings.is_empty() {
+    Ok((!m.recordings.is_empty()).then_some((m, base)))
+}
+
+fn read_take_of(
+    file: &Path,
+    session_file: &Path,
+    bph: Option<u32>,
+    lift: Option<f64>,
+    calibre: Option<String>,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some((m, base)) = listing_in(file, session_file)? else {
         return Ok(None);
-    }
+    };
     let o = Options {
         bph,
         lift,
