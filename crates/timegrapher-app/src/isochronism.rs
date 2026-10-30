@@ -66,6 +66,10 @@ fn rate_label(v: f64, step: f64) -> String {
     format!("{v:+.d$} s/d")
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
     let pal = theme::pal(ui);
     let colour = pal.trace_rate;
@@ -230,8 +234,10 @@ mod tests {
             bins,
             amplitude_from_deg: 235.0,
             amplitude_to_deg: 265.0,
-            s_per_day_per_deg: 0.4,
-            rate_change_s_per_day: 12.0,
+            s_per_day_per_deg: Some(0.4),
+            s_per_day_per_deg_se: Some(0.02),
+            rate_change_s_per_day: Some(12.0),
+            reliability: Some(0.9),
             curve_centre_deg: 250.0,
             curve: [16.8, 0.2, -0.015],
             curve_explained: 0.95,

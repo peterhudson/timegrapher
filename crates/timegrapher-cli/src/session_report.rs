@@ -44,6 +44,10 @@ struct Series<'a> {
 }
 
 /// Values per position as dots.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn position_chart(unit: &str, series: &[Series], zero: bool) -> String {
     let vals: Vec<f64> = series
         .iter()
@@ -543,6 +547,10 @@ fn kept_row(v: &serde_json::Value) -> String {
     )
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn html(sn: &Session) -> String {
     let r = &sn.report;
     let title = match (sn.watch, sn.calibre) {

@@ -405,6 +405,11 @@ fn the_set_up_the_microphone_sheet_holds_long_microphone_names() {
 /// is either in the row or in the menu, never both. The Watches view's
 /// New Watch… never folds.
 #[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
     let ctx = {
         let ctx = egui::Context::default();

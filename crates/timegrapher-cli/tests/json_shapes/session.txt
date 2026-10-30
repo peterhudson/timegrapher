@@ -136,6 +136,7 @@ readings[].shape.even.noise_ratio
 readings[].shape.even.ratio13
 readings[].shape.even.ratio23
 readings[].shape.even.sound1_found
+readings[].shape.from_s
 readings[].shape.measured_s
 readings[].shape.odd
 readings[].shape.odd.extra_post

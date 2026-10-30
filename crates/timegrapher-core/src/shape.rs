@@ -204,6 +204,10 @@ pub fn measure(template: &[f32], fs: f64, origin: usize, cfg: &ShapeConfig) -> O
     measure_at(template, fs, origin, cfg).map(|m| m.0)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn measure_at(
     template: &[f32],
     fs: f64,
@@ -476,6 +480,10 @@ fn beat_offset(
 }
 
 /// Shape of both sides in windows and over the whole recording.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn analyze(
     env: &[f32],
     fs: f64,

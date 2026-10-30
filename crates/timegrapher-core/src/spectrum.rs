@@ -20,12 +20,17 @@ pub struct AmplitudeSpectrum {
     pub unit: &'static str,
     /// Spacing of the series the spectrum was taken of, seconds.
     pub step_s: f64,
-    /// Periods, seconds, longest first, and estimated sine-wave size at
-    /// each for complete regular inputs (half its peak to peak). Each point is the largest in its
+    /// Periods, seconds, longest first, and the size of the sine fitted
+    /// at each (half its peak to peak). Each point is the largest in its
     /// slice of a log-spaced period axis, so narrow lines survive the
     /// thinning.
     pub period_s: Vec<f64>,
     pub amplitude: Vec<f64>,
+    /// Every size is read the one way, a sine fitted to the readings
+    /// present with Hann weights ([`amplitude_spectrum`]); this names the
+    /// grid: `hann_fft` with no reading missing, where that is the Hann
+    /// FFT's size, `lomb_scargle` with gaps (#652).
+    pub method: &'static str,
     /// Finite support of the actual FFT input grid, excluding zero-padding.
     pub support: SpectrumSupport,
     /// The same sizes averaged over segments that hold no missing
@@ -187,10 +192,23 @@ pub fn welch(g: &Grid, scale: f64, max_points: usize) -> Option<Welch> {
 }
 
 /// Input-grid availability, not acoustic coverage or share of watch beats heard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// In JSON it also carries its [`SpectrumSupport::description`], the one
+/// wording every surface shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpectrumSupport {
     pub finite_bins: usize,
     pub total_bins: usize,
+}
+
+impl Serialize for SpectrumSupport {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut st = s.serialize_struct("SpectrumSupport", 3)?;
+        st.serialize_field("finite_bins", &self.finite_bins)?;
+        st.serialize_field("total_bins", &self.total_bins)?;
+        st.serialize_field("description", &self.description())?;
+        st.end()
+    }
 }
 
 impl SpectrumSupport {
@@ -200,21 +218,24 @@ impl SpectrumSupport {
             self.finite_bins, self.total_bins
         );
         if self.finite_bins < self.total_bins {
-            text.push_str(" Missing samples affect peak heights and shapes; values are not corrected for gaps.");
+            text.push_str(" With samples missing, each size is a sine fitted to the samples present, weighted by the Hann window (Lomb–Scargle); nothing is filled in.");
         }
         text
     }
 }
 
 /// The amplitude spectrum of `g` between `4 × step` and half the span,
-/// with the series' mean taken off and empty readings set to it. A Hann
-/// window keeps a strong line from spreading over the whole axis; sizes
-/// are corrected for it, estimating sine-wave size for complete regular data.
-/// Nonfinite bins become zero after subtracting the finite-data mean. The
-/// denominator remains the full grid's Hann-weight sum, without a correction
-/// for missing data; gap patterns therefore affect heights and shapes.
-/// `scale` multiplies the values (1000 for seconds to ms). At most
-/// `max_points` points.
+/// as the size of the sine at each period (half its peak to peak): the
+/// sine fitted by least squares to the readings present, each weighted by
+/// a Hann window over the whole grid, less their weighted mean
+/// (Lomb–Scargle with weights), nothing filled in. With every reading
+/// present this is the Hann-windowed FFT's size, the window keeping a
+/// strong line from spreading over the whole axis; with readings missing
+/// a line keeps its size, and one reading out leaves the spectrum as it
+/// was (#652). Its sums are read off two Fourier transforms (the weighted
+/// readings, zero where missing, and the weights of those present), as
+/// Press and Rybicki (1989) do. `scale` multiplies the values (1000 for
+/// seconds to ms). At most `max_points` points.
 pub fn amplitude_spectrum(
     g: &Grid,
     series: &'static str,
@@ -227,21 +248,51 @@ pub fn amplitude_spectrum(
     if fin.len() < 16 || g.step <= 0.0 {
         return None;
     }
-    let mean = fin.iter().sum::<f64>() / fin.len() as f64;
-    let l = n.next_power_of_two();
-    let mut buf = vec![0.0; l];
-    let mut wsum = 0.0;
-    for (i, (b, &v)) in buf.iter_mut().zip(&g.y).enumerate() {
-        let w = 0.5 - 0.5 * (2.0 * std::f64::consts::PI * (i as f64 + 0.5) / n as f64).cos();
+    let gaps = fin.len() < n;
+    // The Hann taper over the whole grid, the weight each present reading
+    // carries in the fit (#652).
+    let hann =
+        |i: usize| 0.5 - 0.5 * (2.0 * std::f64::consts::PI * (i as f64 + 0.5) / n as f64).cos();
+    let (mut sw, mut swy) = (0.0, 0.0);
+    for (i, &v) in g.y.iter().enumerate() {
         if v.is_finite() {
-            *b = (v - mean) * scale * w;
+            sw += hann(i);
+            swy += hann(i) * v;
         }
-        wsum += w;
     }
+    let mean = swy / sw;
+    let l = n.next_power_of_two();
     let mut planner = RealFftPlanner::<f64>::new();
     let fwd = planner.plan_fft_forward(l);
-    let mut spec = fwd.make_output_vec();
-    fwd.process(&mut buf, &mut spec).ok()?;
+    let transform = |mut buf: Vec<f64>| {
+        let mut out = fwd.make_output_vec();
+        fwd.process(&mut buf, &mut out).ok().map(|_| out)
+    };
+    let mut buf = vec![0.0; l];
+    let mut present = vec![0.0; l];
+    for (i, &v) in g.y.iter().enumerate() {
+        if v.is_finite() {
+            buf[i] = (v - mean) * scale * hann(i);
+            present[i] = hann(i);
+        }
+    }
+    let spec = transform(buf)?;
+    let mask = transform(present)?;
+    // The size at bin j: the Hann-weighted Lomb–Scargle fit from the sums
+    // at ω and 2ω (bin 2j). With every reading present it is the Hann
+    // FFT's own size, 2|X|/Σw, but for the 2ω term near 0.
+    let size = |j: usize| -> f64 {
+        let m = mask.get(2 * j).copied().unwrap_or_default();
+        crate::periodicity::LsSums {
+            yc: spec[j].re,
+            ys: -spec[j].im,
+            c2: m.re,
+            s2: -m.im,
+            n: sw,
+        }
+        .fit()
+        .amplitude()
+    };
     let df = 1.0 / (l as f64 * g.step);
     let (min_p, max_p) = (4.0 * g.step, g.span() / 2.0);
     let jmin = ((1.0 / max_p) / df).ceil().max(1.0) as usize;
@@ -256,9 +307,9 @@ pub fn amplitude_spectrum(
     );
     let slices = max_points.max(2);
     let mut best: Vec<Option<(f64, f64)>> = vec![None; slices];
-    for (j, c) in spec.iter().enumerate().take(jmax + 1).skip(jmin) {
+    for j in jmin..=jmax {
         let p = 1.0 / (j as f64 * df);
-        let a = 2.0 * c.norm() / wsum;
+        let a = size(j);
         let k = (((hi - p.ln()) / (hi - lo)) * (slices - 1) as f64).round() as usize;
         let k = k.min(slices - 1);
         if best[k].is_none_or(|(_, b)| a > b) {
@@ -272,6 +323,7 @@ pub fn amplitude_spectrum(
         step_s: g.step,
         period_s,
         amplitude,
+        method: if gaps { "lomb_scargle" } else { "hann_fft" },
         support: SpectrumSupport {
             finite_bins: fin.len(),
             total_bins: n,
@@ -400,12 +452,17 @@ mod tests {
                 .description()
                 .contains(&format!("{expected} of {n}")));
             assert_eq!(
-                s.support.description().contains("not corrected for gaps"),
+                s.support.description().contains("Lomb–Scargle"),
                 expected < n
             );
+            assert_eq!(s.method == "lomb_scargle", expected < n);
             assert_eq!(
                 serde_json::to_value(&s).unwrap()["support"]["finite_bins"],
                 expected
+            );
+            assert_eq!(
+                serde_json::to_value(&s).unwrap()["support"]["description"],
+                s.support.description()
             );
         }
         // Counts exclude next-power-of-two FFT padding.
@@ -465,6 +522,183 @@ mod tests {
                 .collect(),
         };
         assert!(welch(&short, 1.0, 600).is_none());
+    }
+
+    /// 2 at 320 s on 10 s readings: the size at that period, largest
+    /// near it.
+    fn size_at_320(y: Vec<f64>) -> (f64, &'static str) {
+        let s = amplitude_spectrum(
+            &Grid {
+                t0: 0.0,
+                step: 10.0,
+                y,
+            },
+            "amplitude",
+            "deg",
+            1.0,
+            600,
+        )
+        .unwrap();
+        let a = s
+            .period_s
+            .iter()
+            .zip(&s.amplitude)
+            .filter(|(p, _)| (*p / 320.0 - 1.0).abs() < 0.03)
+            .map(|(_, a)| *a)
+            .fold(0.0, f64::max);
+        (a, s.method)
+    }
+
+    fn line_320(i: usize) -> f64 {
+        250.0 + 2.0 * (std::f64::consts::TAU * i as f64 * 10.0 / 320.0).sin()
+    }
+
+    /// A line keeps its size as readings go missing: with gaps the size is
+    /// a sine fitted to the readings present, where filling them with the
+    /// mean shrank it by the share missing (#652). With every reading
+    /// present the windowed FFT gives the same size.
+    #[test]
+    fn a_lines_size_holds_as_readings_go_missing() {
+        let whole = size_at_320((0..2048).map(line_320).collect());
+        assert_eq!(whole.1, "hann_fft");
+        assert!((whole.0 - 2.0).abs() < 0.02, "{}", whole.0);
+        for missing in [1, 3, 5] {
+            // `missing` of every ten minutes' readings gone, in a block.
+            let y = (0..2048)
+                .map(|i| {
+                    if i % 60 < 6 * missing {
+                        f64::NAN
+                    } else {
+                        line_320(i)
+                    }
+                })
+                .collect();
+            let (a, method) = size_at_320(y);
+            assert_eq!(method, "lomb_scargle");
+            assert!((a - 2.0).abs() < 0.1, "{missing}/10 missing: {a}");
+        }
+    }
+
+    /// Every bin of the spectrum, longest period first.
+    fn bins(y: Vec<f64>) -> Vec<f64> {
+        let g = Grid {
+            t0: 0.0,
+            step: 10.0,
+            y,
+        };
+        amplitude_spectrum(&g, "rate", "ms", 1.0, 1 << 20)
+            .unwrap()
+            .amplitude
+    }
+
+    /// Seeded AR(1) readings at `rho`, scatter 1.
+    fn red(n: usize, rho: f64, seed: u64) -> Vec<f64> {
+        let mut z = crate::synth::Rng::new(seed);
+        let mut v = z.normal();
+        (0..n)
+            .map(|_| {
+                v = rho * v + (1.0 - rho * rho).sqrt() * z.normal();
+                v
+            })
+            .collect()
+    }
+
+    /// The median of `a`'s bins over `b`'s, the furthest from 1 of their
+    /// 16-bin band means' ratios, and whether the largest bin is the same.
+    fn compare(a: &[f64], b: &[f64]) -> (f64, f64, bool) {
+        assert_eq!(a.len(), b.len());
+        let mut r: Vec<f64> = a.iter().zip(b).map(|(x, y)| x / y).collect();
+        r.sort_by(f64::total_cmp);
+        let band = a
+            .chunks(16)
+            .zip(b.chunks(16))
+            .map(|(x, y)| x.iter().sum::<f64>() / y.iter().sum::<f64>())
+            .fold(1.0f64, |w, q| {
+                if (q - 1.0).abs() > (w - 1.0).abs() {
+                    q
+                } else {
+                    w
+                }
+            });
+        let top = |v: &[f64]| (0..v.len()).max_by(|&i, &j| v[i].total_cmp(&v[j]));
+        (r[r.len() / 2], band, top(a) == top(b))
+    }
+
+    /// On a complete grid the weighted fit is the Hann FFT's size.
+    #[test]
+    fn a_complete_grid_reads_as_the_hann_fft() {
+        let y = red(4096, 0.9, 11);
+        let n = y.len();
+        let w: Vec<f64> = (0..n)
+            .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * (i as f64 + 0.5) / n as f64).cos())
+            .collect();
+        let m = y.iter().zip(&w).map(|(v, w)| v * w).sum::<f64>() / w.iter().sum::<f64>();
+        let mut buf: Vec<f64> = y.iter().zip(&w).map(|(v, w)| (v - m) * w).collect();
+        let mut out = RealFftPlanner::<f64>::new()
+            .plan_fft_forward(n)
+            .make_output_vec();
+        RealFftPlanner::<f64>::new()
+            .plan_fft_forward(n)
+            .process(&mut buf, &mut out)
+            .unwrap();
+        let wsum: f64 = w.iter().sum();
+        let s = bins(y);
+        // Bins 2 (half the span) to n/4 (four readings): longest first.
+        let hann: Vec<f64> = (2..=n / 4).map(|j| 2.0 * out[j].norm() / wsum).collect();
+        assert_eq!(s.len(), hann.len());
+        for (k, (a, b)) in s.iter().zip(&hann).enumerate() {
+            assert!((a / b - 1.0).abs() < 0.005, "bin {k}: {a} against {b}");
+        }
+    }
+
+    /// One reading out leaves red noise's spectrum as it was, and 1%
+    /// scattered out moves it little: an unweighted fit moved single bins
+    /// ×0.12 to ×5 with one reading out (#652).
+    #[test]
+    fn a_reading_or_a_few_out_leave_the_spectrum_as_it_was() {
+        // At ρ 0.99 the shortest periods hold so little that the missing
+        // reading's own spike shows over them: one out mid-take lifted a
+        // band there by 10-14%, by under 3% at ρ 0.9.
+        for (rho, seed, bound) in [(0.9, 3, 0.05), (0.99, 4, 0.15)] {
+            let y = red(4096, rho, seed);
+            let whole = bins(y.clone());
+            let mut one = y.clone();
+            one[1733] = f64::NAN;
+            let (median, band, top) = compare(&bins(one), &whole);
+            assert!(
+                (median - 1.0).abs() < 0.02,
+                "ρ {rho}, one out: median {median}"
+            );
+            assert!((band - 1.0).abs() < bound, "ρ {rho}, one out: band {band}");
+            assert!(top, "ρ {rho}, one out: largest bin moved");
+        }
+        // 1% out at random lifts the shortest periods by the gaps' own
+        // spikes, a few percent on average and up to a third in a single
+        // 16-bin band, so each quarter of the period axis is held instead,
+        // over twelve takes.
+        for seed in 20..32u64 {
+            let y = red(4096, 0.9, seed);
+            let whole = bins(y.clone());
+            let mut z = crate::synth::Rng::new(seed + 100);
+            let few = bins(
+                y.iter()
+                    .map(|&v| if z.next_f64() < 0.01 { f64::NAN } else { v })
+                    .collect(),
+            );
+            let (median, _, _) = compare(&few, &whole);
+            assert!(
+                (median - 1.0).abs() < 0.03,
+                "1% out, take {seed}: median {median}"
+            );
+            let q = whole.len().div_ceil(4);
+            for (k, (a, b)) in few.chunks(q).zip(whole.chunks(q)).enumerate() {
+                let r = a.iter().sum::<f64>() / b.iter().sum::<f64>();
+                assert!(
+                    (r - 1.0).abs() < 0.10,
+                    "1% out, take {seed}: quarter {k} {r}"
+                );
+            }
+        }
     }
 
     #[test]

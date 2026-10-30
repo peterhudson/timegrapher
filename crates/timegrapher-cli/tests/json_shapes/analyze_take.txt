@@ -198,6 +198,7 @@ take.readings[].shape.even.noise_ratio
 take.readings[].shape.even.ratio13
 take.readings[].shape.even.ratio23
 take.readings[].shape.even.sound1_found
+take.readings[].shape.from_s
 take.readings[].shape.measured_s
 take.readings[].shape.odd
 take.readings[].shape.odd.extra_post

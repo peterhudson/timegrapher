@@ -174,6 +174,10 @@ pub fn clipped_indices(x: &[f32], clip_level: f32) -> Vec<usize> {
 }
 
 /// Measure a short recording and name the conditions detected in it.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     let fs = audio.sample_rate as f64;
     let x = &audio.samples;

@@ -245,6 +245,10 @@ impl ReportDialog {
         self.clip = None;
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn contents(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         ui.set_width(620.0);
@@ -396,6 +400,10 @@ impl ReportDialog {
     }
 
     /// The waveform with its handles, Play, and the consent boxes.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn sound(&mut self, ui: &mut egui::Ui, src: &Source) {
         let pal = theme::pal(ui);
         let span = src.total_s.min(SPAN_S);
@@ -663,6 +671,10 @@ struct Job {
 
 impl Job {
     /// Write the zip; its size in bytes.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn write(&self) -> Result<u64, String> {
         let mut red = Redactor::from_env();
         let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
@@ -798,19 +810,17 @@ fn pretty(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
 }
 
-/// The configuration of the explicit excerpt replay command.
+/// The configuration of the explicit excerpt replay command: core's
+/// defaults, as `analyze` reads with no other flag, at `bph` and `lift_deg`.
 fn excerpt_analysis_config(bph: Option<u32>, lift_deg: f64) -> AnalysisConfig {
     let mut cfg = AnalysisConfig {
         bph,
         // Job::write always emits --lift, including a numeric value of 52.
         // This describes replay arguments, not the original app's provenance.
         lift_known: true,
-        escape_teeth: 15,
         ..Default::default()
     };
     cfg.amplitude.lift_deg = lift_deg;
-    cfg.envelope.notch_hz = Vec::new();
-    cfg.envelope.highpass_hz = 1500.0;
     cfg
 }
 
@@ -828,31 +838,20 @@ fn analyze_like_the_cli(flac: &[u8], bph: Option<u32>, lift_deg: f64) -> Result<
     excerpt_document(&a.summary, &cfg)
 }
 
-/// The same raw-summary plus correction-wrapper contract as CLI analyze.
+/// The excerpt's `analyze --json` document: core's settings and body
+/// (`analyze_doc`), as the command line writes them, in its envelope.
 fn excerpt_document(summary: &Summary, cfg: &AnalysisConfig) -> Result<Value, String> {
+    use timegrapher_core::analyze_doc;
     let mut doc = json!({
         "schema": "timegrapher.analyze/2",
         "software": software(),
         "input": {
             "files": [{ "path": "audio/excerpt.flac" }],
-            "settings": {
-                "bph": cfg.bph,
-                "lift_deg": cfg.amplitude.lift_deg,
-                "notch_hz": cfg.envelope.notch_hz,
-                "highpass_hz": cfg.envelope.highpass_hz,
-                "escape_teeth": cfg.escape_teeth,
-            },
+            "settings": analyze_doc::settings(cfg, None),
         },
     });
-    let mut body = serde_json::to_value(summary).map_err(|e| e.to_string())?;
-    if let Some(usb) = summary.usb_clock {
-        let (ppm, from) = usb.correction();
-        body["clock"] = clockstore::correction_json(
-            ppm,
-            &from,
-            summary.overall.as_ref().map(|f| f.rate_s_per_day),
-        );
-    }
+    let usb = analyze_doc::usb_clock(summary);
+    let body = analyze_doc::body(summary, usb.as_ref().map(|(p, f)| (*p, f.as_str())))?;
     if let (Some(d), Value::Object(b)) = (doc.as_object_mut(), body) {
         d.extend(b);
     }
@@ -1043,6 +1042,10 @@ mod tests {
     /// analysis `report --replay` runs again, the app's readings and the
     /// consent, all listed in the manifest with their checksums.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_report_holds_the_excerpt_and_its_analysis() {
         let dir = std::env::temp_dir().join(format!("tg-report-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

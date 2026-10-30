@@ -46,6 +46,12 @@ fn parse_escape_teeth(text: &str) -> Result<u32, String> {
             .map_err(|_| "escape teeth must be a positive u32 integer".to_string())?,
     )
 }
+fn parse_trend_average(text: &str) -> Result<f64, String> {
+    timegrapher_core::input_domain::average_s(
+        text.parse()
+            .map_err(|_| "the averaging time must be a number of seconds".to_string())?,
+    )
+}
 fn parse_card_ppm(text: &str) -> Result<f64, String> {
     timegrapher_core::input_domain::card_ppm(
         text.parse()
@@ -102,6 +108,15 @@ enum Command {
         /// Write rate and amplitude per window to this CSV file.
         #[arg(long)]
         windows: Option<PathBuf>,
+        /// Write the readings over time, each averaged over
+        /// `--trend-average` seconds as the app's charts read them, to this
+        /// CSV file.
+        #[arg(long)]
+        trend: Option<PathBuf>,
+        /// Seconds each `--trend` reading is averaged over (the app's
+        /// Average Over).
+        #[arg(long, default_value_t = timegrapher_core::live::DEFAULT_AVERAGE_S, value_parser = parse_trend_average)]
+        trend_average: f64,
         /// Correct the rate with the clock error stored for this input
         /// (see `clock`). Without it, the input named in the recording's
         /// sidecar is used when one is stored.
@@ -703,6 +718,10 @@ enum ClockAction {
     Forget { device: String },
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let res = match cli.command {
@@ -716,6 +735,8 @@ fn main() -> ExitCode {
             escape_teeth,
             beats,
             windows,
+            trend,
+            trend_average,
             device,
             card_ppm,
             json,
@@ -730,8 +751,26 @@ fn main() -> ExitCode {
             cfg.envelope.notch_hz = notch;
             cfg.envelope.highpass_hz = highpass;
             let take = session_cmd::take_of(&file, bph, lift, calibre.clone());
-            clock_cmd::correction(&file, device.as_deref(), card_ppm)
-                .and_then(|c| run_analyze(&file, &cfg, &r.train, (beats, windows), c, take, json))
+            clock_cmd::correction(&file, device.as_deref(), card_ppm).and_then(|c| {
+                run_analyze(
+                    &file,
+                    &cfg,
+                    &r.train,
+                    (
+                        beats,
+                        windows,
+                        trend.map(|path| TrendOut {
+                            path,
+                            average_s: trend_average,
+                            card_ppm,
+                            device: device.clone(),
+                        }),
+                    ),
+                    c,
+                    take,
+                    json,
+                )
+            })
         }),
         Command::Shape {
             file,
@@ -1132,7 +1171,7 @@ fn run_analyze(
     file: &Path,
     cfg: &AnalysisConfig,
     train: &long::ResolvedTrain,
-    (beats, windows): (Option<PathBuf>, Option<PathBuf>),
+    (beats, windows, trend): (Option<PathBuf>, Option<PathBuf>, Option<TrendOut>),
     clock: Option<(f64, String)>,
     take: Option<serde_json::Value>,
     json: bool,
@@ -1151,7 +1190,7 @@ fn run_analyze(
     if clock.is_some() {
         a.summary.clock_known();
     }
-    let usb = a.summary.usb_clock.map(|c| c.correction());
+    let usb = timegrapher_core::analyze_doc::usb_clock(&a.summary);
     let ppm = |c: &Option<(f64, String)>| c.as_ref().map(|(p, _)| *p);
     use timegrapher_core::take::{clock as take_clock, clock_from, ClockFrom};
     let fit = take_clock(None, 0, 0, ppm(&usb), ppm(&clock), a.summary.duration_s)?;
@@ -1169,26 +1208,16 @@ fn run_analyze(
     if let Some(p) = windows {
         write_windows(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
     }
+    if let Some(t) = trend {
+        write_trend(file, cfg, &t)?;
+    }
     if json {
-        let settings = serde_json::json!({
-            "calibre": calibre.map(|c| &c.name),
-            "bph": cfg.bph,
-            "lift_deg": cfg.amplitude.lift_deg,
-            "notch_hz": cfg.envelope.notch_hz,
-            "highpass_hz": cfg.envelope.highpass_hz,
-            "escape_teeth": cfg.escape_teeth,
-        });
-        // The summary's rates stay on the sound card's clock (what tg reads
-        // and the regression check compares); the correction goes beside
-        // them.
-        let mut body = serde_json::to_value(&a.summary).map_err(|e| e.to_string())?;
-        if let Some((ppm, from)) = &clock {
-            body["clock"] = clock_json(
-                *ppm,
-                from,
-                a.summary.overall.as_ref().map(|f| f.rate_s_per_day),
-            );
-        }
+        use timegrapher_core::analyze_doc;
+        let settings = analyze_doc::settings(cfg, calibre.map(|c| c.name.as_str()));
+        let mut body = analyze_doc::body(
+            &a.summary,
+            clock.as_ref().map(|(ppm, from)| (*ppm, from.as_str())),
+        )?;
         // The file is a take's: what `session` reads of it, beside the
         // whole file read alone.
         if let Some(t) = take {
@@ -1384,6 +1413,10 @@ pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn print_summary(
     a: &Analysis,
     clock: Option<&(f64, String)>,
@@ -1565,6 +1598,101 @@ fn write_beats(p: &Path, a: &Analysis) -> std::io::Result<()> {
         )?;
     }
     w.flush()
+}
+
+/// Where `analyze --trend` writes, and how it reads the take.
+struct TrendOut {
+    path: PathBuf,
+    average_s: f64,
+    /// The correction the reader gives, as for the whole file.
+    card_ppm: Option<f64>,
+    device: Option<String>,
+}
+
+/// The readings over time as the app's charts read them: the file opened
+/// whole (core's `take::open_entry` on `take::whole_entry`: its beats,
+/// clock, breaks and the masks of the session file's entries naming it),
+/// cut where the app cuts a take's readings (its breaks, moves and
+/// settling ends, `take::reading_cuts`), on the take's clock where it
+/// corrects, then core's trend, each reading averaged over `average_s`
+/// (`LiveAnalyzer::trend`), over every beat of the file (the app keeps
+/// the latest `RUN_BEATS_KEPT`). A reading with no figures (not a whole
+/// averaging time) is a row of blanks. `clock_ppm` is the clock fit's
+/// steady ppm, blank where the rates are on the sound card's clock; a
+/// fit that drifts corrects each reading by its ppm over that reading.
+fn write_trend(file: &Path, cfg: &AnalysisConfig, t: &TrendOut) -> Result<(), String> {
+    use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
+    use timegrapher_core::take;
+    let p = &t.path;
+    let average_s = t.average_s;
+    // A session file that can't be read leaves the file read alone, as
+    // the whole file's own reading is; `take` says why.
+    let listing = session_cmd::listing_of(file).ok().flatten();
+    let entries = listing.as_ref().map_or(&[][..], |(m, _)| &m.recordings[..]);
+    let (base, m, entry) = take::whole_entry(file, listing.as_ref().map(|(m, _)| m))?;
+    let settings = take::EntrySettings {
+        stream: StreamConfig {
+            analysis: cfg.clone(),
+            ..Default::default()
+        },
+        card_clock: false,
+        settle_s: None,
+    };
+    let opened = take::open_entry(
+        &base,
+        &m,
+        &entry,
+        &settings,
+        take::usb,
+        |first| take::correction_for(&m, first, t.card_ppm, t.device.as_deref()),
+        |_, _| {},
+    )?;
+    let length_s = timegrapher_core::audio::info(file)
+        .ok()
+        .and_then(|i| Some(i.frames? as f64 / f64::from(i.sample_rate)))
+        .unwrap_or(f64::INFINITY);
+    let (stretches, settles) =
+        take::positions_of(take::listed_positions(&m, entries, length_s).into_iter());
+    let changes: Vec<f64> = stretches.iter().map(|s| s.0).collect();
+    // Every beat of the file, however long, not only the day a live
+    // listen keeps.
+    let live_cfg = LiveConfig {
+        analysis: cfg.clone(),
+        max_beats: usize::MAX,
+        ..Default::default()
+    };
+    let mut live = LiveAnalyzer::from_log(opened.log, live_cfg);
+    live.set_breaks(take::reading_cuts(&opened.breaks, &changes, &settles));
+    live.set_masked(&opened.masked);
+    let clock = opened.clock.as_ref().filter(|c| c.corrects());
+    live.set_rate_clock(clock);
+    let trend = live.trend(average_s);
+    // The rates' clock: the correction's ppm, blank on the card's.
+    let clock_ppm = clock.map_or(String::new(), |c| format!("{:.3}", c.ppm));
+    let write = || -> std::io::Result<()> {
+        let mut w = BufWriter::new(File::create(p)?);
+        writeln!(
+            w,
+            "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard,clock_ppm"
+        )?;
+        let v = |x: Option<f64>, d: usize| x.map_or(String::new(), |x| format!("{x:.d$}"));
+        for r in &trend {
+            writeln!(
+                w,
+                "{:.2},{average_s},{},{},{},{},{},{},{},{clock_ppm}",
+                r.t,
+                v(r.rate_s_per_day, 3),
+                v(r.amplitude_deg, 2),
+                v(r.amplitude_even_deg, 2),
+                v(r.amplitude_odd_deg, 2),
+                v(r.beat_error_unlock_ms, 4),
+                v(r.beat_error_ms, 4),
+                r.heard
+            )?;
+        }
+        w.flush()
+    };
+    write().map_err(|e| format!("{}: {e}", p.display()))
 }
 
 fn write_windows(p: &Path, a: &Analysis) -> std::io::Result<()> {
