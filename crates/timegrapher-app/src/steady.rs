@@ -116,9 +116,10 @@ impl View {
                  cycle puts a bump near 0.37 of its period. Both axes are logarithmic"
             }
             View::Cusum => {
-                "The running sum of each reading's distance from the mean: independent \
-                 readings stay inside the dashed lines; a step in the level bends it into a \
-                 V or a tent, with the corner at the step"
+                "The running sum of each reading's distance from the mean, scaled by their \
+                 long-run spread: readings with no change of level, correlated or not, stay \
+                 inside the dashed lines about 95 times in 100; a step in the level bends it \
+                 into a V or a tent, with the corner at the step"
             }
             View::Fft => {
                 "The plain amplitude spectrum of each series, like Witschi's FFT: the size \
