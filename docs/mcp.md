@@ -273,7 +273,10 @@ the timegrapher app draws them:
   rate, amplitude and beat error over time stay the whole file's, each
   point the reading over the seconds before it as the app's charts over
   time read it, averaged over `average_s` (the app's Average Over: 2, 4,
-  10, 20, 30 or 60 s; 10 if left out), which each chart states.
+  10, 20, 30 or 60 s; 10 if left out), which each chart states. As in the
+  app, no reading reaches across the take's breaks, moves, settling ends
+  or masks, and the rates are on the take's clock where it corrects them,
+  which the rate chart states.
 - `run_session`: each position's readings, the characteristic values, and
   rate and amplitude by position. It sets no limits: the server does not
   judge the readings against a tolerance, so `run_session` takes no

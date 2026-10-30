@@ -722,6 +722,14 @@ pub fn definition(t: &ToolSpec) -> Value {
     d
 }
 
+/// The averaging time `n` for `p`, refused by its own name when it is
+/// not one of the app's ([`timegrapher_core::input_domain::average_s`]).
+fn average_arg(t: &ToolSpec, p: &Param, n: &serde_json::Number) -> Result<Vec<String>, String> {
+    timegrapher_core::input_domain::average_s(n.as_f64().unwrap_or(f64::NAN))
+        .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
+    Ok(vec![n.to_string()])
+}
+
 /// The command line for a call, after the `timegrapher` program name.
 pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<String>, String> {
     if let Some(unknown) = args
@@ -782,11 +790,7 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                     .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
                 vec![n.to_string()]
             }
-            (Kind::Average, Value::Number(n)) => {
-                timegrapher_core::input_domain::average_s(n.as_f64().unwrap_or(f64::NAN))
-                    .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
-                vec![n.to_string()]
-            }
+            (Kind::Average, Value::Number(n)) => average_arg(t, p, n)?,
             (Kind::Number, Value::Number(n)) if n.as_f64().is_some_and(f64::is_finite) => {
                 vec![n.to_string()]
             }
