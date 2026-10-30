@@ -512,7 +512,8 @@ no regular beat was found, and its readings are then null;
 `clipped_fraction` the share of clipped beats and `jitter_us` the median
 timing scatter. `calibrated` says whether the rate is corrected for the
 sound card's clock; `clock_ppm` is the steady error that clock corrects,
-in ppm, and `clock_source` says in words where the clock came from (the
+in ppm, positive when the sound card runs slow (as every clock ppm is
+today; #657 plans to flip it), and `clock_source` says in words where the clock came from (the
 USB lines, a clock log, or a stored correction), as the app's clock line
 says it. Either is left out when the take has no clock, and `clock_ppm`
 is left out for a clock log, which has no single figure. `amplitude_states` and `rate_states` in each measurement
