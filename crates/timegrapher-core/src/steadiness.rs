@@ -17,7 +17,8 @@
 //! - **CUSUM**: the running sum of each reading's distance from the
 //!   mean, in units of the long-run σ√n. With no change of level,
 //!   correlated or not, it wanders inside ±1.36 (95%); a shift of the
-//!   mean bends it into a V or a tent with the corner at the shift.
+//!   mean bends it into a V or a tent. The corner is marked only at a
+//!   level change the headline names, so one rule names it (#697).
 //! - **Change points**: binary segmentation of block medians into
 //!   stretches of constant mean, each change kept only when it is
 //!   strong evidence against one level.
@@ -1003,6 +1004,7 @@ pub fn check_series(
     // out (#647).
     let lr = confidence::long_run_sd(y, sst, Slow::Step);
     out.long_run_sd = Some(lr);
+    let mut walk = None;
     if lr > 0.0 {
         let scale = lr * nf.sqrt();
         let mut s = 0.0;
@@ -1015,7 +1017,7 @@ pub fn check_series(
                 ss.push(s);
             }
         }
-        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points)));
+        walk = Some((ts, ss));
     }
 
     // Straight-line trend.
@@ -1099,6 +1101,15 @@ pub fn check_series(
 
     out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
     out.lead = lead(&out, cfg);
+    if let Some((ts, ss)) = walk {
+        // The corner is marked only at a level change the headline
+        // names (#697).
+        let cuts: Vec<f64> = level_change(&out, cfg)
+            .iter()
+            .flat_map(|c| c.segments.iter().skip(1).map(|g| g.start_s))
+            .collect();
+        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points), &cuts));
+    }
     out.headline = lead_text(&out, mean);
     out.summary = lead_summary(&out);
     if let Some(more) = also(&out, cfg) {
@@ -1188,8 +1199,8 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
         ));
     }
     let moves = !matches!(s.lead, Lead::ShiftingMean | Lead::Drifting);
-    if let Some(ch) = s.changes.as_ref().filter(|_| moves) {
-        if ch.segments.len() >= 2 && ch.explained >= cfg.min_explained {
+    if let Some(ch) = level_change(s, cfg).filter(|_| moves) {
+        {
             let lo = ch
                 .segments
                 .iter()
@@ -1723,6 +1734,21 @@ fn refine(d: &Grid, p: f64, rel: f64) -> f64 {
     }
 }
 
+/// The change finder's stretches when they say the level moves: cut, and
+/// explaining at least `min_explained` of the variance.
+fn level_moves<'a>(s: &'a SeriesCheck, cfg: &Config) -> Option<&'a Changes> {
+    s.changes
+        .as_ref()
+        .filter(|c| c.segments.len() > 1 && c.explained >= cfg.min_explained)
+}
+
+/// The one rule that names a level change, read by the headline and the
+/// CUSUM's corner alike (#697): the level moves and the lead is not a
+/// slide, which a slide cut into steps is.
+fn level_change<'a>(s: &'a SeriesCheck, cfg: &Config) -> Option<&'a Changes> {
+    level_moves(s, cfg).filter(|_| s.lead != Lead::Drifting)
+}
+
 fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
     if let Some(t) = &s.two_state {
         if t.switching_levels() {
@@ -1739,15 +1765,13 @@ fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
         .trend
         .as_ref()
         .map_or(0.0, |t| t.explained.max(t.curve_explained));
-    if let Some(ch) = &s.changes {
-        if ch.segments.len() > 1 && ch.explained >= cfg.min_explained {
-            // A slide cut into steps is still a slide.
-            return if trend >= 0.8 * ch.explained {
-                Lead::Drifting
-            } else {
-                Lead::ShiftingMean
-            };
-        }
+    if let Some(ch) = level_moves(s, cfg) {
+        // A slide cut into steps is still a slide.
+        return if trend >= 0.8 * ch.explained {
+            Lead::Drifting
+        } else {
+            Lead::ShiftingMean
+        };
     }
     if trend >= cfg.min_explained {
         return Lead::Drifting;
