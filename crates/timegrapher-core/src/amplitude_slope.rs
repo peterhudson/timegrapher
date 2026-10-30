@@ -60,6 +60,21 @@ pub(crate) struct EivSlope {
 /// of its spread to read a slope from it (#651).
 pub(crate) const MIN_RELIABILITY: f64 = 0.5;
 
+/// Why no slope is read when the reliability is under [`MIN_RELIABILITY`],
+/// in a watchmaker's words.
+pub(crate) const TOO_NOISY: &str =
+    "the amplitude readings' own noise is half or more of their spread, so no slope is read";
+
+/// A slope and its ± in s/d per degree, a slope that rounds to zero
+/// given no sign.
+pub(crate) fn slope_text(e: &EivSlope) -> String {
+    format!(
+        "{} ± {:.2} s/d per degree",
+        crate::library::signed_text(e.slope, 2),
+        e.se
+    )
+}
+
 /// [`EivSlope`] of `(x, y, noise variance of x)`, one per reading in time
 /// order, a missing reading's x or y NaN. The standard error is Fuller's
 /// (1987, §1.2) for a slope with the noise variance σuu known (here the
@@ -227,11 +242,8 @@ pub(crate) fn cross_correlation(
     let p_value = chi2_tail(z * z, 1);
     let step = rate.step;
     let slope_text = match (shown, eiv) {
-        (Some(e), _) => format!("{:+.2} ± {:.2} s/d per degree", e.slope, e.se),
-        (None, Some(e)) => format!(
-            "no slope (the amplitude's noise is too much of its spread, reliability {:.2})",
-            e.reliability
-        ),
+        (Some(e), _) => slope_text(&e),
+        (None, Some(_)) => format!("no slope ({TOO_NOISY})"),
         (None, None) => "no slope (the amplitude's noise is not known)".into(),
     };
     let headline = format!(
@@ -332,5 +344,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A slope that rounds to zero takes no sign (#734).
+    #[test]
+    fn a_slope_of_about_zero_reads_without_a_sign() {
+        let e = |slope| EivSlope {
+            slope,
+            se: 0.01,
+            reliability: 0.97,
+        };
+        assert_eq!(slope_text(&e(-0.004)), "0.00 ± 0.01 s/d per degree");
+        assert_eq!(slope_text(&e(-0.02)), "-0.02 ± 0.01 s/d per degree");
+        assert_eq!(slope_text(&e(0.5)), "+0.50 ± 0.01 s/d per degree");
     }
 }

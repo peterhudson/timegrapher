@@ -270,7 +270,9 @@ impl Caveat {
                 "beat error given as a size: its sign differs either side of a cut".to_string()
             }
             Caveat::Masked { seconds } => format!("{} s masked", masked_seconds(*seconds)?),
-            Caveat::Positions { count } => format!("{count} positions"),
+            Caveat::Positions { count } => format!(
+                "{count} positions: a rate change with position can read as one with amplitude"
+            ),
         })
     }
 
@@ -878,6 +880,11 @@ mod tests {
         assert_eq!(
             Caveat::Masked { seconds: 12.4 }.short(0.0, 0).unwrap(),
             "12 s masked"
+        );
+        // Says what the positions limit (#734).
+        assert_eq!(
+            Caveat::Positions { count: 2 }.short(0.0, 0).unwrap(),
+            "2 positions: a rate change with position can read as one with amplitude"
         );
         assert_eq!(
             Caveat::Masked { seconds: 0.3 }.short(0.0, 0).unwrap(),

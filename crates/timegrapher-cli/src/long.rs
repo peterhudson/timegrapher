@@ -1390,7 +1390,11 @@ mod caveat_tests {
                     "Conditions",
                     "beat error given as a size: its sign differs either side of a cut".to_string()
                 ),
-                ("Positions", "3 positions".to_string()),
+                (
+                    "Positions",
+                    "3 positions: a rate change with position can read as one with amplitude"
+                        .to_string()
+                ),
             ]
         );
     }

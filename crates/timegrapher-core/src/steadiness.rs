@@ -28,7 +28,9 @@
 //! the two-state finder, and one headline is drawn from all of them.
 
 pub use crate::amplitude_slope::CrossCorrelation;
-use crate::amplitude_slope::{cross_correlation, eiv_slope, reading_noise, MIN_RELIABILITY};
+use crate::amplitude_slope::{
+    cross_correlation, eiv_slope, reading_noise, slope_text, MIN_RELIABILITY, TOO_NOISY,
+};
 use crate::clean::Cuts;
 use crate::clock::ClockFit;
 use crate::confidence::{self, Slow};
@@ -2757,18 +2759,14 @@ fn isochronism_curve(
     // Said as going together, not as cause: the amplitude and the rate
     // both change with what is not logged, such as temperature.
     let goes = match (shown, eiv) {
-        (Some(e), _) => format!(
-            "the rate goes with the amplitude by {:+.2} ± {:.2} s/d per degree",
-            e.slope, e.se
-        ),
-        (None, Some(e)) => format!(
-            "the amplitude's noise is too much of its spread to read a slope (reliability {:.2})",
-            e.reliability
-        ),
+        (Some(e), _) => format!("the rate goes with the amplitude by {}", slope_text(&e)),
+        (None, Some(_)) => TOO_NOISY.into(),
         (None, None) => "the amplitude's noise is not known, so no slope is read".into(),
     };
+    // The end bins as a sentence of their own: two medians, not the
+    // slope's own evidence.
     let headline = format!(
-        "Between {:.0}° and {:.0}° {goes}: {:+.1} s/d at {:.0}° and {:+.1} s/d at {:.0}°{}. Temperature is not logged.",
+        "Between {:.0}° and {:.0}° {goes}. The rate reads {:+.1} s/d at {:.0}° and {:+.1} s/d at {:.0}°{}. Temperature is not logged.",
         b0,
         b1,
         by[0],
