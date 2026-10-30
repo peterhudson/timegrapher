@@ -61,13 +61,17 @@ pub(crate) struct EivSlope {
 pub(crate) const MIN_RELIABILITY: f64 = 0.5;
 
 /// [`EivSlope`] of `(x, y, noise variance of x)`, one per reading in time
-/// order, a missing reading's x or y NaN. The standard error allows for
-/// λ and for x's and the residuals' lag-one correlation by Bartlett's
-/// factor for a slope, n/n_eff with n_eff [`confidence::effective_readings`]
-/// of ρx·ρres, each ρ read by [`confidence::long_run_rho`] (its line out,
-/// only across neighbouring readings, bias-corrected), but not for λ's
-/// own uncertainty. `None` with under 30 pairs, no noise known, or no
-/// spread in x.
+/// order, a missing reading's x or y NaN. The standard error is Fuller's
+/// (1987, §1.2) for a slope with the noise variance σuu known (here the
+/// mean of the readings'), from the residuals of the corrected slope and
+/// the amplitude's own variance m̂XX = mxx − σuu. Its equation-error term
+/// σee/m̂XX is widened by Bartlett's factor (1 + ρX·ρe)/(1 − ρX·ρe) for
+/// the readings' lag-one correlation, ρX = ρx/λ of the amplitude and
+/// ρe = ρv·σvv/σee of the equation error, each ρ read by
+/// [`confidence::long_run_rho`] (its line out, only across neighbouring
+/// readings, bias-corrected) and each held at 0.99 at most; the noise in
+/// x is taken as independent from one reading to the next. `None` with
+/// under 30 pairs, no noise known, or no spread in x.
 pub(crate) fn eiv_slope(p: &[(f64, f64, f64)]) -> Option<EivSlope> {
     let present = |q: &&(f64, f64, f64)| q.0.is_finite() && q.1.is_finite();
     let kept: Vec<(f64, f64, f64)> = p.iter().filter(present).copied().collect();
@@ -84,30 +88,47 @@ pub(crate) fn eiv_slope(p: &[(f64, f64, f64)]) -> Option<EivSlope> {
         return None;
     }
     let b = sxy / sxx;
-    let reliability = 1.0 - noise.iter().sum::<f64>() / noise.len() as f64 / (sxx / (n - 1.0));
-    // x and the residuals in place, NaN where a reading is missing, so ρ
-    // never pairs readings a gap separates.
-    let (xs, res): (Vec<f64>, Vec<f64>) = p
+    let suu = noise.iter().sum::<f64>() / noise.len() as f64;
+    let mxx = sxx / (n - 1.0);
+    let reliability = 1.0 - suu / mxx;
+    let lam = reliability.max(f64::MIN_POSITIVE);
+    let slope = b / lam;
+    let mxx_true = (mxx - suu).max(f64::MIN_POSITIVE);
+    // x and the residuals of the corrected slope in place, NaN where a
+    // reading is missing, so ρ never pairs readings a gap separates.
+    let (xs, v): (Vec<f64>, Vec<f64>) = p
         .iter()
         .map(|q| {
             if present(&q) {
-                (q.0, q.1 - my - b * (q.0 - mx))
+                (q.0, q.1 - my - slope * (q.0 - mx))
             } else {
                 (f64::NAN, f64::NAN)
             }
         })
         .unzip();
-    // Each ρ is held at 0 or above, which drops the rare case of both
-    // negative, where the product would be positive.
-    let rho =
-        confidence::long_run_rho(&xs, Slow::Line) * confidence::long_run_rho(&res, Slow::Line);
-    let n_eff = confidence::effective_readings(n, rho).max(3.0);
-    let ss: f64 = res.iter().filter(|e| e.is_finite()).map(|e| e * e).sum();
-    let se = (ss / (n - 2.0) / sxx * n / n_eff).sqrt();
-    let lam = reliability.max(f64::MIN_POSITIVE);
+    let svv = v
+        .iter()
+        .filter(|e| e.is_finite())
+        .map(|e| e * e)
+        .sum::<f64>()
+        / (n - 2.0);
+    // The residual is the equation error less slope × the noise in x.
+    let see = (svv - slope * slope * suu).max(0.0);
+    let rho_x = (confidence::long_run_rho(&xs, Slow::Line) / lam).min(0.99);
+    let rho_e = if see > 0.0 {
+        (confidence::long_run_rho(&v, Slow::Line) * svv / see).min(0.99)
+    } else {
+        0.0
+    };
+    let r = rho_x * rho_e;
+    let bartlett = (1.0 + r) / (1.0 - r);
+    let var = (see * bartlett / mxx_true
+        + slope * slope * suu / mxx_true
+        + (suu * svv + (slope * suu).powi(2)) / mxx_true.powi(2))
+        / (n - 1.0);
     Some(EivSlope {
-        slope: b / lam,
-        se: se / lam,
+        slope,
+        se: var.sqrt(),
         reliability,
     })
 }
@@ -244,11 +265,18 @@ mod tests {
     use super::*;
     use crate::synth::Rng;
 
-    /// Of `runs` seeded takes of `n` readings, amplitude and the rate's
-    /// residual each AR(1) at `rho`, the rate −0.5 s/d per degree, how
-    /// many the slope's ±1.96 SE holds the true slope in. `drop(i, z)` says
-    /// whether reading i is missing.
-    fn covered(rho: f64, n: usize, runs: usize, drop: impl Fn(usize, &mut Rng) -> bool) -> usize {
+    /// Of `runs` seeded takes of `n` readings, amplitude (spread 5°) and
+    /// the rate's residual each AR(1) at `rho`, the rate −0.5 s/d per
+    /// degree, each amplitude reading off by independent noise of SD
+    /// `noise`, how many the slope's ±1.96 SE holds the true slope in.
+    /// `drop(i, z)` says whether reading i is missing.
+    fn covered(
+        rho: f64,
+        noise: f64,
+        n: usize,
+        runs: usize,
+        drop: impl Fn(usize, &mut Rng) -> bool,
+    ) -> usize {
         let mut z = Rng::new(651);
         let mut hits = 0;
         for _ in 0..runs {
@@ -259,10 +287,11 @@ mod tests {
                     a = rho * a + k * z.normal();
                     e = rho * e + k * z.normal();
                     let x = 270.0 + 5.0 * a;
+                    let seen = x + noise * z.normal();
                     if drop(i, &mut z) {
                         (f64::NAN, f64::NAN, f64::NAN)
                     } else {
-                        (x, -0.5 * (x - 270.0) + e, 1e-9)
+                        (seen, -0.5 * (x - 270.0) + e, (noise * noise).max(1e-9))
                     }
                 })
                 .collect();
@@ -272,27 +301,36 @@ mod tests {
         hits
     }
 
-    /// The ± holds the true slope about 95 times in 100 at ρ 0.9, gaps or
-    /// none (#651): 936, 959 and 982 of 1000 with none, with blocks and
-    /// with half missing (half missing leaves fewer neighbours to carry
-    /// the correlation, so it errs wide). With ρ read from the readings
-    /// closed up over gaps and no bias correction it held 925, 926 and
-    /// 920.
+    /// The ± holds the true slope about 95 times in 100 with real noise
+    /// in the amplitude and memory in both series, gaps or none (#651,
+    /// #728): over ρ 0, 0.5 and 0.9, amplitude noise of SD 0 to 3.5° on a
+    /// 5° spread (λ down to about 0.67), and no gaps, blocks or half
+    /// missing, 929 to 991 of 1000 (half missing at ρ 0.9 leaves fewer
+    /// neighbours to carry the correlation, so it errs wide). With the
+    /// least-squares SE over λ and Bartlett's factor on all of it, noise of
+    /// 3.5° at ρ 0 held 869, and ρ 0.9 with no gaps 816 to 844.
     #[test]
-    fn the_slopes_pm_holds_the_true_slope_in_correlated_readings_with_gaps() {
+    fn the_slopes_pm_holds_the_true_slope_in_noisy_correlated_readings_with_gaps() {
         let n = 720;
         let blocks = move |i: usize, z: &mut Rng| {
             (n / 6..n / 3).contains(&i) || (n / 2..n / 2 + n / 9).contains(&i) || z.next_f64() < 0.1
         };
-        for (gaps, hits) in [
-            ("no", covered(0.9, n, 1000, |_, _| false)),
-            ("block", covered(0.9, n, 1000, blocks)),
-            ("half", covered(0.9, n, 1000, |_, z| z.next_f64() < 0.5)),
-        ] {
-            assert!(
-                (930..=990).contains(&hits),
-                "{hits} of 1000 with {gaps} gaps"
-            );
+        for rho in [0.0, 0.5, 0.9] {
+            for noise in [0.0, 1.5, 2.5, 3.5] {
+                for (gaps, hits) in [
+                    ("no", covered(rho, noise, n, 1000, |_, _| false)),
+                    ("block", covered(rho, noise, n, 1000, blocks)),
+                    (
+                        "half",
+                        covered(rho, noise, n, 1000, |_, z| z.next_f64() < 0.5),
+                    ),
+                ] {
+                    assert!(
+                        (925..=995).contains(&hits),
+                        "{hits} of 1000 at ρ {rho}, noise {noise}° and {gaps} gaps"
+                    );
+                }
+            }
         }
     }
 }
