@@ -334,7 +334,7 @@ function lineChart(o) {
   charts.set(id, { o, sx, x0, x1, L, plotW, W, T, plotH });
   // Values off the scale are counted under the chart.
   let off = 0;
-  for (const s of o.series) for (const [, y] of s.points) if (y < y0 || y > y1) off++;
+  for (const s of o.series) for (const [, y] of s.points) if (Number.isFinite(y) && (y < y0 || y > y1)) off++;
   const offNote = off ? `<p class="sub off">${off} ${off === 1 ? "outlier" : "outliers"} off the scale</p>` : "";
   const legend = o.series.length > 1 || o.legend
     // Inside the plot, as in the app, where there is room; above it on a phone.

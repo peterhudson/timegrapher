@@ -45,3 +45,17 @@ test("without an averaging time no average is claimed", () => {
   assert.equal(charts[0].series[0].name, "Rate in seconds per day");
   assert.ok(!markup.includes("average"));
 });
+
+test("a line lifts where a reading has no figure, as the app leaves a cut empty", () => {
+  const constant = (n) => html.match(new RegExp(`^const ${n} = [\\s\\S]*?;$`, "m"))[0].replace("const ", "var ");
+  const real = vm.createContext({ chartWidth: () => 600, CHAR_W: 6.6, clipCount: 0 });
+  vm.runInContext(["DASH", "TIME_STEPS", "charts"].map(constant).join("\n") + "\n" +
+    ["plotArea", "lineSample", "lineChart", "nearest", "gridFor", "axisLabel", "esc", "fmtTime", "markLabels"].map(definition).join("\n"), real);
+  const svg = real.lineChart({
+    title: "Rate", time: true, yRange: [4, 5], unit: " s/day", decimals: 1,
+    series: [{ name: "Rate", color: "--rate", points: [[1, 4.5], [2, 4.6], [3, null], [6, 4.7], [7, 4.8]] }],
+  });
+  const d = svg.match(/<path d="([^"]*)"/)[1];
+  assert.equal((d.match(/M/g) || []).length, 2, d);
+  assert.ok(!svg.includes("off the scale"), "a gap is not an outlier");
+});
