@@ -1610,14 +1610,16 @@ struct TrendOut {
 }
 
 /// The readings over time as the app's charts read them: the file opened
-/// as the app opens it (core's `take::open_entry` on `take::whole_entry`:
-/// its beats, clock and breaks), cut where the app cuts a take's readings
-/// (its breaks, moves and settling ends, `take::reading_cuts`, and the
-/// masks of the session file's entries naming it), on the take's clock
-/// where it corrects, then core's trend, each reading averaged over
-/// `average_s` (`LiveAnalyzer::trend`). A reading with no figures (not a
-/// whole averaging time) is a row of blanks. `clock_ppm` is the ppm the
-/// rates are corrected by, blank where they are on the sound card's clock.
+/// whole (core's `take::open_entry` on `take::whole_entry`: its beats,
+/// clock, breaks and the masks of the session file's entries naming it),
+/// cut where the app cuts a take's readings (its breaks, moves and
+/// settling ends, `take::reading_cuts`), on the take's clock where it
+/// corrects, then core's trend, each reading averaged over `average_s`
+/// (`LiveAnalyzer::trend`), over every beat of the file (the app keeps
+/// the latest `RUN_BEATS_KEPT`). A reading with no figures (not a whole
+/// averaging time) is a row of blanks. `clock_ppm` is the clock fit's
+/// steady ppm, blank where the rates are on the sound card's clock; a
+/// fit that drifts corrects each reading by its ppm over that reading.
 fn write_trend(file: &Path, cfg: &AnalysisConfig, t: &TrendOut) -> Result<(), String> {
     use timegrapher_core::live::{LiveAnalyzer, LiveConfig};
     use timegrapher_core::take;
@@ -1627,8 +1629,7 @@ fn write_trend(file: &Path, cfg: &AnalysisConfig, t: &TrendOut) -> Result<(), St
     // the whole file's own reading is; `take` says why.
     let listing = session_cmd::listing_of(file).ok().flatten();
     let entries = listing.as_ref().map_or(&[][..], |(m, _)| &m.recordings[..]);
-    let (base, m, entry) =
-        take::whole_entry(file, listing.as_ref().map(|(m, _)| (m, &m.recordings[..])));
+    let (base, m, entry) = take::whole_entry(file, listing.as_ref().map(|(m, _)| m))?;
     let settings = take::EntrySettings {
         stream: StreamConfig {
             analysis: cfg.clone(),
@@ -1662,7 +1663,7 @@ fn write_trend(file: &Path, cfg: &AnalysisConfig, t: &TrendOut) -> Result<(), St
     };
     let mut live = LiveAnalyzer::from_log(opened.log, live_cfg);
     live.set_breaks(take::reading_cuts(&opened.breaks, &changes, &settles));
-    live.set_masked(&take::masks_of(entries));
+    live.set_masked(&opened.masked);
     let clock = opened.clock.as_ref().filter(|c| c.corrects());
     live.set_rate_clock(clock);
     let trend = live.trend(average_s);

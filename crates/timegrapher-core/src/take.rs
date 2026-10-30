@@ -381,16 +381,16 @@ pub fn reading_window(
     })
 }
 
-/// What is opened to read a take over time, as the app and `analyze
-/// --trend` read the recording at `path`, a recording or a take's folder:
-/// the folder its session file is read from, the session file (an empty
-/// one without) and one entry for the whole recording, on the clock log
-/// the first of `entries` (the session file's entries listing it) names.
-/// The entry leaves the masks to the reader ([`masks_of`]).
+/// What is opened to read the recording at `path` (a recording or a
+/// take's folder) whole, as `analyze --trend` reads it: the folder its
+/// session file is read from, the session file (an empty one without)
+/// and one entry for the whole recording. With a session file `m`
+/// (holding only its entries for the recording), that entry is
+/// [`whole_take`]'s: one clock log, every entry's masks.
 pub fn whole_entry(
     path: &Path,
-    manifest: Option<(&Manifest, &[RecordingEntry])>,
-) -> (PathBuf, Manifest, RecordingEntry) {
+    manifest: Option<&Manifest>,
+) -> Result<(PathBuf, Manifest, RecordingEntry), String> {
     let (base, file) = if path.is_dir() {
         (path.to_path_buf(), ".".to_string())
     } else {
@@ -401,23 +401,17 @@ pub fn whole_entry(
                 .unwrap_or_default(),
         )
     };
-    let (m, first) = match manifest {
-        Some((m, e)) => (m.clone(), e.first()),
-        None => (Manifest::default(), None),
-    };
-    let entry = RecordingEntry {
-        file,
-        clock: first.and_then(|e| e.clock.clone()),
-        ..Default::default()
-    };
-    (base, m, entry)
-}
-
-/// The stretches masked by hand in `entries`, in seconds into the
-/// recording, cleaned ([`session::masked_spans`]).
-pub fn masks_of(entries: &[RecordingEntry]) -> Vec<(f64, f64)> {
-    let masked: Vec<[f64; 2]> = entries.iter().flat_map(|e| e.masked.clone()).collect();
-    session::masked_spans(&masked)
+    Ok(match manifest {
+        Some(m) if !m.recordings.is_empty() => (base, m.clone(), whole_take(m)?),
+        _ => (
+            base,
+            Manifest::default(),
+            RecordingEntry {
+                file,
+                ..Default::default()
+            },
+        ),
+    })
 }
 
 /// Each of `entries` of the take `m` that names a position: the
