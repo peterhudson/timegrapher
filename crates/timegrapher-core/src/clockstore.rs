@@ -380,4 +380,43 @@ mod tests {
         assert!(t.get("Built-in Microphone").is_none());
         let _ = fs::remove_dir_all(&dir);
     }
+
+    /// A recording's sidecar is its own name with `.json` added.
+    #[test]
+    fn a_sidecar_is_the_recording_name_with_json_added() {
+        assert_eq!(
+            sidecar_path(Path::new("takes/one/take.wav")),
+            PathBuf::from("takes/one/take.wav.json")
+        );
+    }
+
+    /// The input a recording was made on comes from its sidecar first,
+    /// then the session.json of its folder, and is unknown with neither.
+    #[test]
+    fn the_recorded_input_comes_from_the_sidecar_then_the_folder() {
+        let dir = std::env::temp_dir().join(format!("tg-recorded-device-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("take.wav");
+        assert_eq!(recorded_device(&file), None);
+        fs::write(dir.join(crate::take::RECORD), r#"{"device": "Card"}"#).unwrap();
+        assert_eq!(recorded_device(&file).as_deref(), Some("Card"));
+        fs::write(
+            sidecar_path(&file),
+            r#"{"recording": {"source": {"device": {"name": "USB Mic"}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(recorded_device(&file).as_deref(), Some("USB Mic"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A stored correction says which input it is for and when it was
+    /// measured.
+    #[test]
+    fn a_stored_correction_says_its_input_and_when() {
+        assert_eq!(
+            entry("USB", 3.0).source_text(),
+            "stored for 'USB', 2026-10-10T03:00:00Z"
+        );
+    }
 }
