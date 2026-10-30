@@ -1788,31 +1788,11 @@ fn log_label(
 /// How many colours the Cycle view's dots take, first cycle to last.
 const TIME_BANDS: usize = 12;
 
-/// The 1st to 99th percentile of the points' values, padded a little,
-/// leaving out lone wild values (a knock, a dropped beat) so that two of
-/// them don't flatten the rest: those beyond three interquartile ranges
-/// of the middle half, unless they are more than 3% of the values (then
-/// they are part of what the watch does, as in the steadiness test).
+/// The points' value scale: core's ([`timegrapher_core::chart_scale::spread`]),
+/// which leaves out lone wild values and which the MCP view uses too.
 fn spread(pts: &[[f64; 2]]) -> Option<(f64, f64)> {
-    if pts.len() < 2 {
-        return None;
-    }
-    let mut v: Vec<f64> = pts.iter().map(|p| p[1]).collect();
-    v.sort_by(f64::total_cmp);
-    let q = |v: &[f64], f: f64| v[((v.len() - 1) as f64 * f).round() as usize];
-    let (q1, q3) = (q(&v, 0.25), q(&v, 0.75));
-    let fence = 3.0 * (q3 - q1);
-    let kept: Vec<f64> = v
-        .iter()
-        .copied()
-        .filter(|&x| x >= q1 - fence && x <= q3 + fence)
-        .collect();
-    if kept.len() >= 2 && (v.len() - kept.len()) as f64 <= 0.03 * v.len() as f64 {
-        v = kept;
-    }
-    let (lo, hi) = (q(&v, 0.01), q(&v, 0.99));
-    let pad = ((hi - lo) * 0.12).max(1e-3);
-    Some((lo - pad, hi + pad))
+    let ys: Vec<f64> = pts.iter().map(|p| p[1]).collect();
+    timegrapher_core::chart_scale::spread(&ys)
 }
 
 fn note(ui: &mut egui::Ui, text: &str) {

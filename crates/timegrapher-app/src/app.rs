@@ -16268,17 +16268,10 @@ fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
 }
 
 /// From the lowest value to the highest, padded a little, so every point
-/// drawn is inside the chart.
+/// drawn is inside the chart: core's scale, which the MCP view uses too.
 fn data_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
-    let (lo, hi) = points
-        .iter()
-        .map(|p| p[1])
-        .filter(|y| y.is_finite())
-        .fold(None, |r: Option<(f64, f64)>, y| {
-            Some(r.map_or((y, y), |(lo, hi)| (lo.min(y), hi.max(y))))
-        })?;
-    let pad = ((hi - lo) * 0.08).max(0.05);
-    Some((lo - pad, hi + pad))
+    let ys: Vec<f64> = points.iter().map(|p| p[1]).collect();
+    timegrapher_core::chart_scale::data_range(&ys)
 }
 
 /// A pane being saved as a picture: it's drawn with its name in place of
