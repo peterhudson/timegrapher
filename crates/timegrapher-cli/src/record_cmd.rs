@@ -511,7 +511,7 @@ impl StopWatch {
     /// How the test has ended by the sound taken in so far, if it has
     /// ([`power_reserve::Heard::ending`]), as the app decides it.
     fn ending(&self) -> Option<power_reserve::Ending> {
-        let beat_s = 3600.0 / f64::from(self.live.bph().unwrap_or(18_000).max(1));
+        let beat_s = power_reserve::beat_s(self.live.bph());
         power_reserve::heard(self.live.beats(), beat_s).ending(self.live.duration_s(), 0.0)
     }
 
