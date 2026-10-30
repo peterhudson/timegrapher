@@ -1387,7 +1387,7 @@ fn the_isochronism_slope_is_read_off_the_amplitudes_noise() {
     assert_eq!(x.s_per_day_per_deg, None);
     assert!(
         x.headline
-            .contains("own noise is half or more of their spread")
+            .contains("own noise is half or more of their variance")
             && !x.headline.contains("reliability"),
         "{}",
         x.headline
@@ -1405,7 +1405,7 @@ fn a_slope_is_withheld_when_the_amplitude_is_mostly_noise() {
     // Said in a watchmaker's words, not by the statistic's name (#734).
     assert!(
         c.headline
-            .contains("own noise is half or more of their spread")
+            .contains("own noise is half or more of their variance")
             && !c.headline.contains("reliability"),
         "{}",
         c.headline

@@ -64,7 +64,7 @@ pub(crate) const MIN_RELIABILITY: f64 = 0.5;
 /// Why no slope is read when the reliability is under [`MIN_RELIABILITY`],
 /// in a watchmaker's words.
 pub(crate) const TOO_NOISY: &str =
-    "the amplitude readings' own noise is half or more of their spread, so no slope is read";
+    "the amplitude readings' own noise is half or more of their variance, so no slope is read";
 
 /// A slope and its ± in s/d per degree to `digits` decimals, a slope
 /// that rounds to zero given no sign: the one text every surface prints
