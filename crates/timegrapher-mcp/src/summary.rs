@@ -90,7 +90,7 @@ fn readings(m: &Value, [rate, amplitude, beat_error]: [Option<f64>; 3]) -> Optio
 /// A code core doesn't know stays as given.
 ///
 /// [`Position::display_label`]: timegrapher_core::session::Position::display_label
-fn position_name(p: &str) -> String {
+pub(crate) fn position_name(p: &str) -> String {
     timegrapher_core::session::Position::parse(p)
         .map_or_else(|| p.to_string(), |p| p.display_label())
 }
