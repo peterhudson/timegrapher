@@ -1152,7 +1152,7 @@ fn run_analyze(
             a.summary.clock_known();
             Some(c)
         }
-        None => a.summary.usb_clock.map(|c| c.correction()),
+        None => timegrapher_core::analyze_doc::usb_clock(&a.summary),
     };
     if let Some(p) = beats {
         write_beats(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -1161,25 +1161,12 @@ fn run_analyze(
         write_windows(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;
     }
     if json {
-        let settings = serde_json::json!({
-            "calibre": calibre.map(|c| &c.name),
-            "bph": cfg.bph,
-            "lift_deg": cfg.amplitude.lift_deg,
-            "notch_hz": cfg.envelope.notch_hz,
-            "highpass_hz": cfg.envelope.highpass_hz,
-            "escape_teeth": cfg.escape_teeth,
-        });
-        // The summary's rates stay on the sound card's clock (what tg reads
-        // and the regression check compares); the correction goes beside
-        // them.
-        let mut body = serde_json::to_value(&a.summary).map_err(|e| e.to_string())?;
-        if let Some((ppm, from)) = &clock {
-            body["clock"] = clock_json(
-                *ppm,
-                from,
-                a.summary.overall.as_ref().map(|f| f.rate_s_per_day),
-            );
-        }
+        use timegrapher_core::analyze_doc;
+        let settings = analyze_doc::settings(cfg, calibre.map(|c| c.name.as_str()));
+        let mut body = analyze_doc::body(
+            &a.summary,
+            clock.as_ref().map(|(ppm, from)| (*ppm, from.as_str())),
+        )?;
         // The file is a take's: what `session` reads of it, beside the
         // whole file read alone.
         if let Some(t) = take {
