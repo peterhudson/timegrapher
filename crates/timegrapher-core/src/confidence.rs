@@ -199,6 +199,9 @@ fn take_out_step(x: &mut [f64]) {
     }
 }
 
+/// The fewest values [`standard_error`] gives a figure from.
+pub const MIN_VALUES: usize = 3;
+
 /// Estimated standard error of a median from values in time order, in their
 /// own units. The scatter comes from successive differences, so a linear
 /// drift cancels exactly: s = 1.4826 MAD(differences) / sqrt(2). With the
@@ -207,9 +210,9 @@ fn take_out_step(x: &mut [f64]) {
 /// [`effective_readings`] independent ones, so
 /// SE = 1.2533 × s / sqrt(1 − ρ) / sqrt(n_eff). With ρ = 0 this is
 /// 1.2533 s / sqrt(n), the median's standard error under independent
-/// Gaussian noise. None with fewer than three values.
+/// Gaussian noise. None with fewer than [`MIN_VALUES`].
 pub fn standard_error(values: &[f64]) -> Option<f64> {
-    if values.len() < 3 {
+    if values.len() < MIN_VALUES {
         return None;
     }
     let d: Vec<f64> = values.windows(2).map(|w| w[1] - w[0]).collect();

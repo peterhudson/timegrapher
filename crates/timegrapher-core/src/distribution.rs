@@ -22,6 +22,9 @@ pub const SHARES: [f64; 11] = [
 /// paper at any width a chart is drawn, small enough for a day's take.
 pub const MAX_POINTS: usize = 400;
 
+/// The share of values at each end left off the bins' scale as outliers.
+pub const TRIM: f64 = 0.005;
+
 /// Which reading a distribution counts, and how its values print.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Kind {
@@ -129,7 +132,7 @@ pub fn distribution(
     step_s: f64,
 ) -> Option<Distribution> {
     let opt = Options {
-        trim: 0.005,
+        trim: TRIM,
         ..Options::new(kind.resolution)
     };
     let h: Histogram = histogram::histogram_with(values, &opt)?;
