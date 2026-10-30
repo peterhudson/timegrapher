@@ -5,6 +5,7 @@
 use crate::clock_cmd::AppliedClock;
 use std::path::{Path, PathBuf};
 use timegrapher_core::clock::ClockFit;
+use timegrapher_core::library::signed_text;
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
 use timegrapher_core::periodicity::Wheel;
@@ -240,18 +241,7 @@ fn print_text(r: &Report, calibrated: bool) {
     if let Some(x) = &r.rate_amplitude {
         println!();
         println!("{}", x.headline);
-        println!(
-            "  {:<14} r {:.2} over {} pairs (worth about {:.0} independent); {}; p {}",
-            "rate vs amp.",
-            x.r,
-            x.readings,
-            x.effective_readings,
-            match (x.s_per_day_per_deg, x.s_per_day_per_deg_se) {
-                (Some(b), Some(se)) => format!("{b:+.3} ± {se:.3} s/d per degree"),
-                _ => "no slope".into(),
-            },
-            p_text(x.p_value)
-        );
+        println!("{}", rate_amplitude_line(x));
     }
     let d = &r.distributions;
     if !d.overall.is_empty() {
@@ -288,6 +278,39 @@ fn opt(v: Option<f64>, d: usize) -> String {
     v.map_or("-".into(), |x| format!("{x:.d$}"))
 }
 
+/// Series' text line under the rate-against-amplitude headline, every
+/// signed figure as core gives it (#734).
+fn rate_amplitude_line(x: &timegrapher_core::amplitude_slope::CrossCorrelation) -> String {
+    format!(
+        "  {:<14} r {} over {} pairs (worth about {:.0} independent); {}; p {}",
+        "rate vs amp.",
+        signed_text(x.r, 2),
+        x.readings,
+        x.effective_readings,
+        match (x.s_per_day_per_deg, x.s_per_day_per_deg_se) {
+            (Some(b), Some(se)) => timegrapher_core::amplitude_slope::slope_pm_text(b, se, 3),
+            _ => "no slope".into(),
+        },
+        p_text(x.p_value)
+    )
+}
+
+/// Series' text line for a series' readings' independence, its r as
+/// core gives a signed figure (#734).
+fn independence_line(a: &timegrapher_core::steadiness::Autocorrelation) -> String {
+    format!(
+        "  {:<14} lag-1 r {}, largest of {} lags {} (band ±{:.2}); Ljung–Box p {}{}",
+        "independence",
+        a.r.get(1).map_or("NaN".into(), |&r| signed_text(r, 2)),
+        a.ljung_box_lags,
+        signed_text(a.max_short_lag_r, 2),
+        a.band,
+        p_text(a.p_value),
+        a.memory_s
+            .map_or(String::new(), |m| format!("; memory {m:.0} s"))
+    )
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "over the limit before it was set; split it (architecture guide, section 12)"
@@ -309,17 +332,7 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
         s.unit
     );
     if let Some(a) = &s.autocorrelation {
-        println!(
-            "  {:<14} lag-1 r {:.2}, largest of {} lags {:.2} (band ±{:.2}); Ljung–Box p {}{}",
-            "independence",
-            a.r.get(1).copied().unwrap_or(f64::NAN),
-            a.ljung_box_lags,
-            a.max_short_lag_r,
-            a.band,
-            p_text(a.p_value),
-            a.memory_s
-                .map_or(String::new(), |m| format!("; memory {m:.0} s"))
-        );
+        println!("{}", independence_line(a));
     }
     if let Some(a) = &s.allan {
         println!(
@@ -431,6 +444,51 @@ mod tests {
     use std::fs;
     use timegrapher_core::audio;
     use timegrapher_core::clock::{self, ClockFit};
+
+    /// Series' text says r as core gives a signed figure: no sign at
+    /// zero, a sign otherwise (Walter's walkthrough of #746).
+    #[test]
+    fn series_text_gives_each_r_as_a_signed_figure() {
+        let x = timegrapher_core::amplitude_slope::CrossCorrelation {
+            step_s: 10.0,
+            readings: 719,
+            r: -0.001,
+            effective_readings: 700.0,
+            p_value: 0.9,
+            s_per_day_per_deg: Some(-0.0004),
+            s_per_day_per_deg_se: Some(0.002),
+            reliability: Some(0.9),
+            take_r: 0.0,
+            take_s_per_day_per_deg: 0.0,
+            headline: String::new(),
+        };
+        let line = rate_amplitude_line(&x);
+        assert!(line.contains(" r 0.00 over 719 pairs"), "{line}");
+        assert!(line.contains("0.000 ± 0.002 s/d per degree"), "{line}");
+        let line = rate_amplitude_line(&timegrapher_core::amplitude_slope::CrossCorrelation {
+            r: 0.92,
+            ..x
+        });
+        assert!(line.contains(" r +0.92 over"), "{line}");
+        let a = timegrapher_core::steadiness::Autocorrelation {
+            lag_s: vec![0.0, 10.0],
+            r: vec![1.0, -0.001],
+            band: 0.07,
+            band_by_lag: vec![0.07, 0.07],
+            ljung_box_q: 3.0,
+            ljung_box_lags: 10,
+            p_value: 0.9,
+            max_short_lag_r: 0.04,
+            repeat_lag_s: None,
+            repeat_r: None,
+            memory_s: None,
+        };
+        let line = independence_line(&a);
+        assert!(
+            line.contains("lag-1 r 0.00, largest of 10 lags +0.04"),
+            "{line}"
+        );
+    }
 
     #[test]
     fn each_map_carries_the_scale_the_app_draws_it_in() {

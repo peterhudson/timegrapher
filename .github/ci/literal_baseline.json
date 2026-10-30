@@ -6,7 +6,7 @@
     "crates/timegrapher-app/src/app.rs": {
      "bounds": 28,
      "comparisons": 27,
-     "constants": 19,
+     "constants": 20,
      "defaults": 1
     },
     "crates/timegrapher-app/src/app/distributions.rs": {
@@ -169,7 +169,7 @@
    "total": {
     "bounds": 109,
     "comparisons": 119,
-    "constants": 55,
+    "constants": 56,
     "defaults": 5
    }
   },
@@ -291,7 +291,7 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 24945,
+  "crates/timegrapher-app/src/app.rs": 24890,
   "crates/timegrapher-app/src/calibre_ui.rs": 3186
  }
 }

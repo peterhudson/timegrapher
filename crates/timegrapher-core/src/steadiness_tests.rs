@@ -1367,6 +1367,12 @@ fn the_isochronism_slope_is_read_off_the_amplitudes_noise() {
         c.reliability
     );
     assert!(c.headline.contains(" ± "), "{}", c.headline);
+    // The end bins are their own sentence, not the slope's evidence (#734).
+    assert!(
+        c.headline.contains("per degree. The rate reads "),
+        "{}",
+        c.headline
+    );
     // Taking the noise as nothing leaves the shrunken slope.
     let plain = isochronism_curve(&rate, &amp, &vec![0.0; noise.len()], &Config::default())
         .unwrap()
@@ -1379,6 +1385,14 @@ fn the_isochronism_slope_is_read_off_the_amplitudes_noise() {
     let x = cross_correlation(&rate, &amp, &noise, &Config::default()).unwrap();
     assert!(x.reliability.unwrap() < 0.5, "{}", x.headline);
     assert_eq!(x.s_per_day_per_deg, None);
+    assert!(
+        x.headline
+            .contains("own noise is half or more of their variance")
+            && !x.headline.contains("reliability")
+            && x.headline.matches("no slope").count() == 1,
+        "{}",
+        x.headline
+    );
 }
 
 /// When the amplitude's noise is most of its spread, no slope is read.
@@ -1389,8 +1403,11 @@ fn a_slope_is_withheld_when_the_amplitude_is_mostly_noise() {
     assert!(c.reliability.unwrap() < 0.5);
     assert_eq!(c.s_per_day_per_deg, None);
     assert_eq!(c.rate_change_s_per_day, None);
+    // Said in a watchmaker's words, not by the statistic's name (#734).
     assert!(
-        c.headline.contains("too much of its spread"),
+        c.headline
+            .contains("own noise is half or more of their variance, so no slope is read")
+            && !c.headline.contains("reliability"),
         "{}",
         c.headline
     );
