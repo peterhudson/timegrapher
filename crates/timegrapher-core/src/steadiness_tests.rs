@@ -1388,7 +1388,8 @@ fn the_isochronism_slope_is_read_off_the_amplitudes_noise() {
     assert!(
         x.headline
             .contains("own noise is half or more of their variance")
-            && !x.headline.contains("reliability"),
+            && !x.headline.contains("reliability")
+            && x.headline.matches("no slope").count() == 1,
         "{}",
         x.headline
     );
@@ -1405,7 +1406,7 @@ fn a_slope_is_withheld_when_the_amplitude_is_mostly_noise() {
     // Said in a watchmaker's words, not by the statistic's name (#734).
     assert!(
         c.headline
-            .contains("own noise is half or more of their variance")
+            .contains("own noise is half or more of their variance, so no slope is read")
             && !c.headline.contains("reliability"),
         "{}",
         c.headline

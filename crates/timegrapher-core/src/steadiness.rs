@@ -2760,7 +2760,7 @@ fn isochronism_curve(
     // both change with what is not logged, such as temperature.
     let goes = match (shown, eiv) {
         (Some(e), _) => format!("the rate goes with the amplitude by {}", slope_text(&e)),
-        (None, Some(_)) => TOO_NOISY.into(),
+        (None, Some(_)) => format!("{TOO_NOISY}, so no slope is read"),
         (None, None) => "the amplitude's noise is not known, so no slope is read".into(),
     };
     // The end bins as a sentence of their own: two medians, not the

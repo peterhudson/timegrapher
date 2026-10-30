@@ -472,7 +472,7 @@ fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
                 i * group + 1,
                 (j as f64 + 0.5) / cols as f64 * c.period_s,
                 if val.is_finite() {
-                    format!("{val:+.2} {unit}")
+                    format!("{} {unit}", timegrapher_core::library::signed_text(val, 2))
                 } else {
                     "no data".into()
                 }
@@ -836,5 +836,41 @@ mod tests {
             "{:?}",
             rows[0]
         );
+    }
+
+    /// A fold-map cell at zero reads without a sign in its hover label
+    /// (Walter's walkthrough of #746).
+    #[test]
+    fn a_fold_map_cell_at_zero_reads_without_a_sign() {
+        let bins = 10;
+        let cells: Vec<Vec<f64>> = (0..4)
+            .map(|k| {
+                (0..bins)
+                    .map(|j| if (k + j) % 2 == 0 { -1e-4 } else { 0.5 })
+                    .collect()
+            })
+            .collect();
+        let c = Component {
+            period_s: 10.0,
+            resolution_s: 0.0,
+            significance: 0.0,
+            harmonics: 1,
+            explained: 0.0,
+            peak_to_peak: 0.0,
+            wheel: None,
+            nearest_wheel: None,
+            shape: vec![0.0; bins],
+            fold: Fold {
+                period_s: 10.0,
+                profile: vec![0.0; bins],
+                counts: vec![4; bins],
+                raster: cells,
+                t0: 0.0,
+            },
+            harmonic_of: None,
+        };
+        let svg = raster(&c, RasterKind::Value(1.0), "deg");
+        assert!(!svg.contains("-0.00"), "{svg}");
+        assert!(svg.contains(": 0.00 deg</title>") && svg.contains(": +0.50 deg</title>"));
     }
 }
