@@ -2,8 +2,9 @@
 //! window, so they read alike and live in one place.
 
 use std::sync::LazyLock;
-use timegrapher_core::beats::{CLEAR, NO_WATCH_JITTER_FRACTION};
+use timegrapher_core::beats::NO_WATCH_JITTER_FRACTION;
 use timegrapher_core::distribution::{self, STRETCH_S};
+use timegrapher_core::live::MIN_SNR;
 use timegrapher_core::measure::{RATE_SE_MIN_S, RATE_WINDOW_S};
 use timegrapher_core::steadiness::{ISO_BIN_DEG, ISO_MIN_BINS, ISO_MIN_READINGS};
 use timegrapher_core::take::{DEFAULT_LIFT_DEG, SETTLE_S};
@@ -371,7 +372,7 @@ pub static SIGNAL: LazyLock<&'static str> = LazyLock::new(|| {
     format!(
         "How far the beats stand above the background noise: the \
      typical beat's peak over the typical level between beats. Pure noise reads about \
-     2×; below {CLEAR:.0}× no beats are logged.\n\
+     2×; below {MIN_SNR:.0}× no beats are logged.\n\
      It measures loudness, not the shape of the tick: hum, knocks or a holder that \
      smears the sound are not caught by it."
     )
@@ -446,7 +447,7 @@ mod tests {
     /// The "?" texts that state a limit core reads by give core's own
     /// figure: the rate's ± and its windows, the isochronism curve's
     /// bands, the Distributions scale's trim and its 2 s values, the
-    /// no-watch scatter (#690) and the signal a beat must clear (#704).
+    /// no-watch scatter (#690) and the signal the live screen needs (#704).
     #[test]
     fn the_help_states_the_limits_core_reads_by() {
         let rate = RATE.concat();
@@ -465,7 +466,7 @@ mod tests {
         assert!(HISTOGRAMS.concat().contains(&trim));
         let window = format!("2 s counts each {STRETCH_S:.0} seconds of beats");
         assert!(HISTOGRAMS.concat().contains(&window));
-        let floor = format!("below {CLEAR:.0}× no beats are logged");
+        let floor = format!("below {MIN_SNR:.0}× no beats are logged");
         assert!(SIGNAL.contains(&floor), "{}", *SIGNAL);
         let scatter = format!("is {:.0}% of a beat", percent(NO_WATCH_JITTER_FRACTION));
         assert!(NO_REGULAR_BEAT.contains(&scatter), "{}", *NO_REGULAR_BEAT);
