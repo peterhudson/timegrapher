@@ -13247,7 +13247,7 @@ impl TimegrapherApp {
                         .small()
                         .color(pal.text_secondary),
                 )
-                .on_hover_text(help::SIGNAL);
+                .on_hover_text(*help::SIGNAL);
             }
         }
     }
