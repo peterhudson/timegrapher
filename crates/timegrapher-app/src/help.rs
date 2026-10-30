@@ -2,12 +2,21 @@
 //! window, so they read alike and live in one place.
 
 use std::sync::LazyLock;
+use timegrapher_core::beats::NO_WATCH_JITTER_FRACTION;
+use timegrapher_core::distribution;
+use timegrapher_core::measure::{RATE_SE_MIN_S, RATE_WINDOW_S};
+use timegrapher_core::steadiness::{ISO_BIN_DEG, ISO_MIN_BINS, ISO_MIN_READINGS};
 use timegrapher_core::take::{DEFAULT_LIFT_DEG, SETTLE_S};
 
 /// Paragraphs that state a number core or the app sets, worded once with
 /// it, for the "?" that takes plain text.
 fn worded(paragraphs: Vec<String>) -> Vec<&'static str> {
     paragraphs.into_iter().map(|p| &*p.leak()).collect()
+}
+
+/// A share as the percent the help states it in.
+fn percent(share: f64) -> f64 {
+    share * 100.0
 }
 
 pub const MICROPHONE: &[&str] = &[
@@ -29,21 +38,26 @@ pub const MICROPHONE: &[&str] = &[
      changes the correction used.",
 ];
 
-pub const RATE: &[&str] = &[
-    "How many seconds a day the watch would gain (+) or lose (−) if it kept running \
-     exactly as it did over the beats the reading was fitted to.",
-    "It comes from a straight line fitted to the time of every beat: a watch on time \
+pub static RATE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    worded(vec![
+        "How many seconds a day the watch would gain (+) or lose (−) if it kept running \
+     exactly as it did over the beats the reading was fitted to."
+            .into(),
+        "It comes from a straight line fitted to the time of every beat: a watch on time \
      beats exactly as often as its beat rate says, a gaining one a little more often. \
-     The fit takes the tick and the tock together, so beat error doesn't move it.",
-    "The ± figure is roughly how far the rate could be off from the scatter of the \
-     beats alone. It shrinks with a longer averaging time.",
-    "Under it: how many beats the reading used over how many seconds, and the jitter: \
+     The fit takes the tick and the tock together, so beat error doesn't move it."
+            .into(),
+        "The ± figure is roughly how far the rate could be off from the scatter of the \
+     beats alone. It shrinks with a longer averaging time."
+            .into(),
+        "Under it: how many beats the reading used over how many seconds, and the jitter: \
      how far single beats land from that straight line, as a robust standard deviation \
      in microseconds (millionths of a second). It is the spread of the dots across the \
      paper strip; smaller means less scatter. Background noise, a muffled sound and \
      the stand add to it as well as the watch, so figures from different stands and \
-     microphones differ. tg doesn't show it.",
-    "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
+     microphones differ. tg doesn't show it."
+            .into(),
+        "True Clock, when shown, is the rate corrected for the sound card's own clock. A \
      card's crystal runs a steady 10 to 50 parts per million off, which moves every \
      rate read on it by 1 to 4 seconds a day. The app times the card's clock against \
      the computer's while it listens. After 20 minutes, once the timing is known to \
@@ -55,14 +69,18 @@ pub const RATE: &[&str] = &[
      recording's clock log), the corrected rate is in the big \
      figure's hover. Settings > Microphone > Quartz Correction lists each input's. Until then the rate is read on the card's clock alone, as tg reads \
      it. The big figure stays on the card's clock, the same clock tg and an analysis of the \
-     recording read, so the two compare directly.",
-    "The ± is how far the figure could be off from the scatter of 10-second rates over \
+     recording read, so the two compare directly."
+            .into(),
+        format!(
+            "The ± is how far the figure could be off from the scatter of {RATE_WINDOW_S:.0}-second rates over \
      the run so far: a property of the measurement, not of the watch. \
-     It needs about 30 s of unbroken beats. Anything the ± can't show (a short stretch, \
+     It needs about {RATE_SE_MIN_S:.0} s of unbroken beats. Anything the ± can't show (a short stretch, \
      missing beats) is named beside the title. Stopped after a long run, a line \
      under the figure gives the whole take as the command line reads it, with \
-     the 5th to 95th percentile of its 10-second rates.",
-];
+     the 5th to 95th percentile of its {RATE_WINDOW_S:.0}-second rates."
+        ),
+    ])
+});
 
 /// The rest of a "Clipped" chip's hover.
 pub const CLIPPING: &str = "The loudest part of each tick reaches the top of the input's \
@@ -265,7 +283,7 @@ pub static POSITIONS_TEST: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
      starts it. It leads the watch through the six positions in turn: dial up, dial down, \
      crown down, crown left, crown up and crown right. In each, the watch settles for \
      the time under Settle ({SETTLE_S:.0} s unless set otherwise), then is measured for the \
-     time under Measure ({:.0} s unless set otherwise); the banner says which position comes \
+     time under Each Position ({:.0} s unless set otherwise); the banner says which position comes \
      next, and Start Measurement goes on once the watch is turned. The table fills in \
      as each position is measured, with the figures the command line gives for the \
      same stretches: each rate, its difference from the mean, amplitude and beat error, \
@@ -296,42 +314,57 @@ pub static POSITIONS_TEST: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     ])
 });
 
-pub const ISOCHRONISM: &[&str] = &[
-    "How the rate changes with the amplitude as the mainspring lets down: a watch whose \
+pub static ISOCHRONISM: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    worded(vec![
+        "How the rate changes with the amplitude as the mainspring lets down: a watch whose \
      rate holds as the amplitude falls is isochronous. Each dot is the median rate in a \
      band of amplitude, with a bar over its middle half; the line is the curve through \
-     them, and the upright line named Turn marks where it turns, if it does.",
-    "The curve needs the amplitude to fall through at least three 2° bands with 10 \
-     readings in each, which a session of some hours from full wind gives. It comes \
-     from the same tests as Steadiness, which the command line runs too.",
-];
+     them, and the upright line named Turn marks where it turns, if it does."
+            .into(),
+        format!(
+            "The curve needs the amplitude to fall through at least {ISO_MIN_BINS} bands of {ISO_BIN_DEG:.0}° with \
+     {ISO_MIN_READINGS} readings in each, which a session of some hours from full wind gives. It comes \
+     from the same tests as Steadiness, which the command line runs too."
+        ),
+    ])
+});
 
-pub const HISTOGRAMS: &[&str] = &[
-    "How the rate's, amplitude's and beat error's values spread over the whole session \
+pub static HISTOGRAMS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    worded(vec![
+        "How the rate's, amplitude's and beat error's values spread over the whole session \
      (masked stretches left out), one plot above the other. The hare, the swing and the \
      seesaw in the toolbar show or hide each one; at least one stays on. An average gives \
      one number; these show whether the values come from one steady \
      state or from two, say a high and a low amplitude as a rubbing part comes and \
-     goes, which a single average hides.",
-    "Show: Probability is probability paper, as in flood-frequency analysis. Each value \
+     goes, which a single average hides."
+            .into(),
+        "Show: Probability is probability paper, as in flood-frequency analysis. Each value \
      is plotted against its rank, on a scale spaced in standard deviations and labelled \
      in percent. Values from one steady state, scattered about one mean, fall along the \
      dashed straight line (drawn through the median, with a slope from the middle half \
      of the values). Two states draw two straighter stretches joined by a bend, or an S \
      across the line; a gap between two clusters shows as a flat step. The ends curling \
-     away from the line are a few unusual readings.",
-    "Cumulative draws the share of values at or below each value, on a plain scale: \
+     away from the line are a few unusual readings."
+            .into(),
+        "Cumulative draws the share of values at or below each value, on a plain scale: \
      one state rises in one steep stretch, two states rise twice with a flatter stretch \
-     between.",
-    "Neither plot keeps the time order, so a slow swing between two states shows only \
-     as a bend. The strip and the charts show when it happens.",
-    "Values: Readings counts each reading, averaged over Average Over as on the charts \
+     between."
+            .into(),
+        "Neither plot keeps the time order, so a slow swing between two states shows only \
+     as a bend. The strip and the charts show when it happens."
+            .into(),
+        "Values: Readings counts each reading, averaged over Average Over as on the charts \
      and the strip, so states lasting longer than that stand out clearly. 2 s counts \
      each 2 seconds of beats, the finest the app measures amplitude and beat error: it \
-     catches quicker changes, with more scatter. Rate always counts readings.",
-    "The scale leaves out the most extreme 0.5% at each end, so a few stray readings \
+     catches quicker changes, with more scatter. Rate always counts readings."
+            .into(),
+        format!(
+            "The scale leaves out the most extreme {}% at each end, so a few stray readings \
      can't squeeze the rest together; the line above says how many were left off.",
-];
+            percent(distribution::TRIM)
+        ),
+    ])
+});
 
 pub const SIGNAL: &str = "How far the beats stand above the background noise: the \
      typical beat's peak over the typical level between beats. Pure noise reads about \
@@ -339,10 +372,16 @@ pub const SIGNAL: &str = "How far the beats stand above the background noise: th
      It measures loudness, not the shape of the tick: hum, knocks or a holder that \
      smears the sound are not caught by it.";
 
-pub const NO_REGULAR_BEAT: &str = "The beats found don't come at regular intervals: \
-     their timing scatter (the median jitter about a straight-line fit) is 2% of a beat \
+pub static NO_REGULAR_BEAT: LazyLock<&'static str> = LazyLock::new(|| {
+    format!(
+        "The beats found don't come at regular intervals: \
+     their timing scatter (the median jitter about a straight-line fit) is {:.0}% of a beat \
      or more, as on an empty stand, where it is about 5%. No rate, amplitude or beat \
-     error is shown then, since those figures would describe noise.";
+     error is shown then, since those figures would describe noise.",
+        percent(NO_WATCH_JITTER_FRACTION)
+    )
+    .leak()
+});
 
 /// The Power Reserve pane's "?", its limits from core's and the position
 /// card named by its title at this width.
@@ -378,18 +417,48 @@ pub fn power_reserve(card: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     /// The "?" texts that give a default state the one core and the app
-    /// use: the settle, the lift angle and a Positions Test's measure.
+    /// use: the settle, the lift angle and a Positions Test's measure,
+    /// under the control that sets it (#684).
     #[test]
     fn the_help_states_the_defaults_in_use() {
-        use timegrapher_core::take::{DEFAULT_LIFT_DEG, SETTLE_S};
         let settle = format!("Settle ({SETTLE_S:.0} s unless");
         assert!(super::POSITION.concat().contains(&settle));
         let lift = format!("Lift is the default {DEFAULT_LIFT_DEG:.0}°");
         assert!(super::CALIBRE.concat().contains(&lift));
         let test = super::POSITIONS_TEST.concat();
-        let measure = format!("Measure ({:.0} s unless", crate::guided::MEASURE_S);
+        let measure = format!(
+            "time under Each Position ({:.0} s unless",
+            crate::guided::MEASURE_S
+        );
         assert!(test.contains(&settle) && test.contains(&measure), "{test}");
+        assert!(!test.contains("under Measure"), "{test}");
+    }
+
+    /// The "?" texts that state a limit core reads by give core's own
+    /// figure: the rate's ± and its windows, the isochronism curve's
+    /// bands, the Distributions scale's trim and the no-watch scatter
+    /// (#690).
+    #[test]
+    fn the_help_states_the_limits_core_reads_by() {
+        let rate = RATE.concat();
+        let window = format!("{RATE_WINDOW_S:.0}-second rates");
+        let unbroken = format!("about {RATE_SE_MIN_S:.0} s of unbroken beats");
+        assert!(rate.contains(&window) && rate.contains(&unbroken), "{rate}");
+        let iso = ISOCHRONISM.concat();
+        let bands = format!(
+            "at least {ISO_MIN_BINS} bands of {ISO_BIN_DEG:.0}° with {ISO_MIN_READINGS} readings"
+        );
+        assert!(iso.contains(&bands), "{iso}");
+        let trim = format!(
+            "the most extreme {}% at each end",
+            percent(distribution::TRIM)
+        );
+        assert!(HISTOGRAMS.concat().contains(&trim));
+        let scatter = format!("is {:.0}% of a beat", percent(NO_WATCH_JITTER_FRACTION));
+        assert!(NO_REGULAR_BEAT.contains(&scatter), "{}", *NO_REGULAR_BEAT);
     }
 
     /// The Power Reserve "?" names the position card as it is captioned

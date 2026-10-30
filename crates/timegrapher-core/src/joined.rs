@@ -322,4 +322,181 @@ mod tests {
         );
         assert_eq!(take_spans(&overlap, 900.0), None);
     }
+
+    fn cut(audio_s: f64, gap_s: f64) -> Break {
+        Break { audio_s, gap_s }
+    }
+
+    /// Two stretches of [`log`]: 10-40 s and 100-190 s, the second
+    /// starting [`JOIN_S`] after the first ends.
+    const SPANS: [(f64, f64); 2] = [(10.0, 40.0), (100.0, 190.0)];
+
+    /// Each stretch's beats are kept and shifted: the first starts at 0
+    /// with its own number, the second JOIN_S after the first ends, its
+    /// beats numbered on by the beats that would fit between (#692).
+    #[test]
+    fn a_join_shifts_and_renumbers_each_stretchs_beats() {
+        let (joined, cuts) = join(&log(), &SPANS, &[], None);
+        assert_eq!(joined.beats.len(), 150 + 450);
+        assert_eq!((joined.beats[0].time, joined.beats[0].index), (0.0, 0));
+        let last = &joined.beats[149];
+        assert!((last.time - 29.8).abs() < 1e-9 && last.index == 149);
+        // 35 s is 5.2 s after the last beat: 26 beats on.
+        let next = &joined.beats[150];
+        assert!((next.time - 35.0).abs() < 1e-9, "{}", next.time);
+        assert_eq!(next.index, 149 + 26);
+        assert!(joined
+            .beats
+            .windows(2)
+            .all(|b| b[1].index > b[0].index && b[1].time > b[0].time));
+        assert!((joined.duration_s - 125.0).abs() < 1e-9);
+        assert_eq!(joined.jumps.len(), 1);
+        assert!((joined.jumps[0] - 35.0).abs() < 1e-9);
+        assert_eq!(cuts.len(), 1);
+        assert!((cuts[0].audio_s - 35.0).abs() < 1e-9 && cuts[0].gap_s == 0.0);
+        // The header is the log's; the beats' quality is kept.
+        assert_eq!((joined.bph, joined.lift_deg), (18_000, 52.0));
+        assert!(joined.beats.iter().all(|b| b.quality == 1.0));
+    }
+
+    /// A stretch that runs past the recording ends with it, and one that
+    /// holds no beat adds nothing, not even a join.
+    #[test]
+    fn a_join_ends_at_the_recording_and_skips_an_empty_stretch() {
+        let (joined, cuts) = join(
+            &log(),
+            &[(10.0, 40.0), (40.05, 40.15), (150.0, 500.0)],
+            &[],
+            None,
+        );
+        assert_eq!(joined.beats.len(), 150 + 250);
+        assert!(
+            (joined.duration_s - (30.0 + JOIN_S + 50.0)).abs() < 1e-9,
+            "{}",
+            joined.duration_s
+        );
+        assert_eq!(cuts.len(), 1, "{cuts:?}");
+        let (one, _) = join(&log(), &[(150.0, 500.0)], &[], None);
+        assert!((one.duration_s - 50.0).abs() < 1e-9 && one.jumps.is_empty());
+        assert_eq!(one.beats[0].index, 0);
+    }
+
+    /// What is marked at a time goes with its stretch: from its start up to
+    /// but not including its end, on the joined times, sorted and once.
+    #[test]
+    fn a_join_carries_the_marks_inside_each_stretch() {
+        let mut log = log();
+        log.clipped_beats = vec![5.0, 10.0, 39.9, 40.0, 100.0, 189.9, 195.0];
+        log.jumps = vec![12.0, 100.0, 150.0];
+        log.sided = vec![150.0, 12.0];
+        let (joined, _) = join(&log, &SPANS, &[], None);
+        let near = |a: &[f64], b: &[f64]| {
+            a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9)
+        };
+        assert!(
+            near(&joined.clipped_beats, &[0.0, 29.9, 35.0, 124.9]),
+            "{:?}",
+            joined.clipped_beats
+        );
+        // The jump at the second stretch's start is the join's, once.
+        assert!(
+            near(&joined.jumps, &[2.0, 35.0, 85.0]),
+            "{:?}",
+            joined.jumps
+        );
+        assert!(near(&joined.sided, &[2.0, 85.0]), "{:?}", joined.sided);
+    }
+
+    /// A break inside a stretch is a cut on the joined times with the time
+    /// its gap held; one at a stretch's edge is not, the join cutting there
+    /// already. A clock that puts the pauses back leaves them no gap, and
+    /// each of its own steps inside a stretch is a cut, once.
+    #[test]
+    fn a_join_cuts_at_the_breaks_inside_its_stretches() {
+        let breaks = [
+            cut(10.0, 9.0),
+            cut(20.0, 30.0),
+            cut(40.0, 9.0),
+            cut(150.0, 12.0),
+        ];
+        let (_, cuts) = join(&log(), &SPANS, &breaks, None);
+        let got: Vec<(f64, f64)> = cuts
+            .iter()
+            .map(|c| ((c.audio_s * 1e6).round() / 1e6, c.gap_s))
+            .collect();
+        assert_eq!(got, [(10.0, 30.0), (35.0, 0.0), (85.0, 12.0)]);
+        let mut clock = ClockFit::fixed(0.0, 200.0);
+        clock.breaks = vec![cut(150.0, 12.0), cut(170.0, 4.0), cut(60.0, 4.0)];
+        let (_, cuts) = join(&log(), &SPANS, &breaks, Some(&clock));
+        let got: Vec<(f64, f64)> = cuts
+            .iter()
+            .map(|c| ((c.audio_s * 1e6).round() / 1e6, c.gap_s))
+            .collect();
+        // The clock puts each pause back: 4 s before the second stretch
+        // and 12 s at 150 s, so its times run on by them.
+        assert_eq!(got, [(10.0, 0.0), (35.0, 0.0), (97.0, 0.0), (121.0, 0.0)]);
+    }
+
+    /// An amplitude window inside a stretch is kept on the joined times;
+    /// where the stretch's beats were renumbered by an odd count its sides
+    /// trade places and its signed beat errors turn over, so each figure
+    /// stays on the beats it was read from.
+    #[test]
+    fn a_join_keeps_each_amplitude_window_on_its_beats() {
+        use crate::amplitude::AmplitudeWindow;
+        let window = |a: f64| AmplitudeWindow {
+            start_s: a,
+            end_s: a + 2.0,
+            even_deg: Some(260.0),
+            odd_deg: Some(280.0),
+            beat_error_ms: Some(0.4),
+            beat_error_unlock_ms: Some(-0.2),
+            even_unlock_ms: Some(-3.0),
+            odd_unlock_ms: Some(-4.0),
+            even_drop_ms: Some(0.1),
+            odd_drop_ms: Some(0.5),
+        };
+        let mut log = log();
+        log.amplitude_windows = vec![window(12.0), window(60.0), window(120.0)];
+        let (joined, _) = join(&log, &SPANS, &[], None);
+        let w = &joined.amplitude_windows;
+        assert_eq!(w.len(), 2, "{w:?}");
+        // The first stretch is renumbered by 50, an even count.
+        assert!((w[0].start_s - 2.0).abs() < 1e-9 && (w[0].end_s - 4.0).abs() < 1e-9);
+        assert_eq!(
+            (w[0].even_deg, w[0].beat_error_ms),
+            (Some(260.0), Some(0.4))
+        );
+        // The second by 500 − 175 = 325, an odd one.
+        assert_eq!(joined.beats[150].index, 175);
+        assert!((w[1].start_s - 55.0).abs() < 1e-9 && (w[1].end_s - 57.0).abs() < 1e-9);
+        assert_eq!((w[1].even_deg, w[1].odd_deg), (Some(280.0), Some(260.0)));
+        assert_eq!(
+            (w[1].beat_error_ms, w[1].beat_error_unlock_ms),
+            (Some(-0.4), Some(0.2))
+        );
+        assert_eq!(
+            (w[1].even_unlock_ms, w[1].odd_drop_ms),
+            (Some(-4.0), Some(0.1))
+        );
+    }
+
+    /// The joined length: each stretch inside the recording, on the clock,
+    /// and JOIN_S between each two, as [`join`] makes it.
+    #[test]
+    fn the_joined_length_is_the_stretches_and_the_joins_between() {
+        let spans = [(-5.0, 40.0), (100.0, 300.0)];
+        assert!((joined_duration(&spans, 200.0, None) - (40.0 + JOIN_S + 100.0)).abs() < 1e-9);
+        assert_eq!(joined_duration(&[(250.0, 300.0)], 200.0, None), 0.0);
+        assert_eq!(joined_duration(&[], 200.0, None), 0.0);
+        let clock = ClockFit::fixed(1000.0, 200.0);
+        let on = joined_duration(&[(0.0, 100.0)], 200.0, Some(&clock));
+        assert!((on - 100.1).abs() < 1e-9, "{on}");
+        let (joined, _) = join(&log(), &[(0.0, 40.0), (100.0, 200.0)], &[], None);
+        assert!(
+            (joined.duration_s - joined_duration(&[(0.0, 40.0), (100.0, 200.0)], 200.0, None))
+                .abs()
+                < 1e-9
+        );
+    }
 }

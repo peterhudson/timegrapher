@@ -2651,10 +2651,11 @@ fn finite_or_nan(v: f64) -> f64 {
     }
 }
 
-/// Amplitude bin width for the isochronism curve, degrees, and the
-/// readings a bin needs.
-const ISO_BIN_DEG: f64 = 2.0;
-const ISO_MIN_READINGS: usize = 10;
+/// Amplitude bin width for the isochronism curve, degrees, the readings a
+/// bin needs, and the bins the curve needs.
+pub const ISO_BIN_DEG: f64 = 2.0;
+pub const ISO_MIN_READINGS: usize = 10;
+pub const ISO_MIN_BINS: usize = 3;
 
 fn quantile(sorted: &[f64], q: f64) -> f64 {
     let x = q * (sorted.len() - 1) as f64;
@@ -2698,7 +2699,7 @@ fn wquad(x: &[f64], y: &[f64], w: &[f64]) -> Option<[f64; 3]> {
 }
 
 /// The rate binned by amplitude, reading against the same reading. Needs
-/// at least three bins with enough readings.
+/// at least [`ISO_MIN_BINS`] bins with enough readings.
 fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<IsochronismCurve> {
     let (mut x, mut y) = (amp.clone(), rate.clone());
     drop_outliers(&mut x, cfg.outlier_sigma);
@@ -2707,7 +2708,7 @@ fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<Isochronis
         .filter(|&i| x.y[i].is_finite() && y.y[i].is_finite())
         .map(|i| (x.y[i], y.y[i], cfg.wind_h + y.time(i) / 3600.0))
         .collect();
-    if pairs.len() < 3 * ISO_MIN_READINGS {
+    if pairs.len() < ISO_MIN_BINS * ISO_MIN_READINGS {
         return None;
     }
     let mut amps: Vec<f64> = pairs.iter().map(|p| p.0).collect();
@@ -2735,7 +2736,7 @@ fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<Isochronis
             to_wind_h: hours.fold(f64::NEG_INFINITY, f64::max),
         });
     }
-    if bins.len() < 3 {
+    if bins.len() < ISO_MIN_BINS {
         return None;
     }
     let w: Vec<f64> = bins.iter().map(|b| b.readings as f64).collect();

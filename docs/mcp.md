@@ -264,7 +264,11 @@ the timegrapher app draws them:
 
 - `analyze_recording`: the rate, amplitude and beat error, those three over
   time, and the Tick and Tock profiles over the stretch `session` measures the
-  beat shape on: the first minute after the watch has settled.
+  beat shape on: the first minute after the watch has settled. For a file
+  its take's `session.toml` lists, that is where `session` measured the
+  first entry naming the file, its settling and masks included, and the
+  lead gives what `session` reads of the file, entry by entry, before the
+  whole file read alone.
 - `run_session`: each position's readings, the characteristic values, and
   rate and amplitude by position. It sets no limits: the server does not
   judge the readings against a tolerance, so `run_session` takes no

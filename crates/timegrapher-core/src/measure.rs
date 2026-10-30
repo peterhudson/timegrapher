@@ -416,7 +416,12 @@ pub struct Context {
 }
 
 /// The length of a rate window, s.
-const RATE_WINDOW_S: f64 = 10.0;
+pub const RATE_WINDOW_S: f64 = 10.0;
+
+/// The unbroken beats the rate's ± needs, s: the windows half overlap and
+/// [`confidence::rate_se`] takes every other one, so its
+/// [`confidence::MIN_VALUES`] need that many window lengths.
+pub const RATE_SE_MIN_S: f64 = confidence::MIN_VALUES as f64 * RATE_WINDOW_S;
 
 /// The rate's ± for a figure averaged over `average_s` within a run whose
 /// rate windows are given: the windows' scatter scaled to that time. Over

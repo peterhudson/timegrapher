@@ -49,12 +49,6 @@ fn analyze_drop(doc: &Value) -> Option<f64> {
     doc["overall"]["beat_error_ms"].as_f64()
 }
 
-/// The figures the lead gives for an `analyze` document ([`figures`]).
-#[cfg(test)]
-pub fn analyze_figures(doc: &Value) -> [Option<f64>; 3] {
-    figures(doc, analyze_rate(doc).map(|r| r.0), analyze_drop(doc))
-}
-
 /// One reading's rate (s/day, as given), amplitude (°) and beat error (ms):
 /// the beat error is core's choice of the reading's signed unlock and drop
 /// figures (`drop_ms`), as a size.
@@ -66,11 +60,10 @@ fn figures(m: &Value, rate: Option<f64>, drop_ms: Option<f64>) -> [Option<f64>; 
     ]
 }
 
-/// One reading ([`figures`]): rate, amplitude and beat error, each with its
-/// standard error where the document gives one.
-fn readings(m: &Value, rate: Option<f64>, drop_ms: Option<f64>) -> Option<String> {
+/// One reading's figures ([`figures`]): rate, amplitude and beat error,
+/// each with its standard error where `m` gives one.
+fn readings(m: &Value, [rate, amplitude, beat_error]: [Option<f64>; 3]) -> Option<String> {
     let conf = &m["confidence"];
-    let [rate, amplitude, beat_error] = figures(m, rate, drop_ms);
     let mut parts = Vec::new();
     if let Some(r) = rate {
         parts.push(format!(
@@ -191,11 +184,18 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
         return Some(watch(doc));
     }
     if schema.starts_with("timegrapher.analyze/") {
+        lines.extend(take_lines(&doc["take"]));
+        if doc["take"]["readings"].is_array() {
+            lines.push(
+                "The whole file read alone (no settling, none of the take's settings):".to_string(),
+            );
+        }
         if doc["watch_heard"] == false {
             lines.push(crate::caveats::no_regular_beat(doc, doc["bph"].as_f64()));
         } else {
             let selected = analyze_rate(doc);
-            if let Some(r) = readings(doc, selected.as_ref().map(|r| r.0), analyze_drop(doc)) {
+            let found = figures(doc, selected.as_ref().map(|r| r.0), analyze_drop(doc));
+            if let Some(r) = readings(doc, found) {
                 lines.push(format!("Readings: {r}."));
             }
             if let Some((_, basis)) = selected {
@@ -207,7 +207,23 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
             lines.push(l);
         }
         lines.push("Readings by position:".to_string());
-        for r in doc["readings"].as_array().into_iter().flatten() {
+        lines.extend(position_lines(&doc["readings"]));
+        for s in doc["report"]["states"].as_array().into_iter().flatten() {
+            lines.push(characteristic_values(s));
+        }
+    } else {
+        return None;
+    }
+    with_limits(lines, doc)
+}
+
+/// One line for each of `session`'s readings: its position, and its
+/// figures or that no regular beat was found.
+fn position_lines(list: &Value) -> Vec<String> {
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| {
             let m = &r["measurement"];
             let mut name = position_name(r["position"].as_str().unwrap_or("")).to_string();
             if let Some(h) = r["wind_h"].as_f64().filter(|h| *h > 0.0) {
@@ -216,18 +232,53 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
             let said = if m["watch_heard"] == false {
                 "no regular beat found".to_string()
             } else {
-                readings(m, m["rate_s_per_day"].as_f64(), m["beat_error_ms"].as_f64())
-                    .unwrap_or_default()
+                readings(m, session_figures(m)).unwrap_or_default()
             };
-            lines.push(format!("- {name}: {said}"));
-        }
-        for s in doc["report"]["states"].as_array().into_iter().flatten() {
-            lines.push(characteristic_values(s));
-        }
-    } else {
-        return None;
+            format!("- {name}: {said}")
+        })
+        .collect()
+}
+
+/// A `session` reading's figures as the lead gives them ([`figures`]).
+fn session_figures(m: &Value) -> [Option<f64>; 3] {
+    figures(m, m["rate_s_per_day"].as_f64(), m["beat_error_ms"].as_f64())
+}
+
+/// What `analyze`'s `take` block says `session` reads of the file: a line
+/// for each entry naming it, and for each left out. Empty with no block.
+fn take_lines(take: &Value) -> Vec<String> {
+    if take.is_null() {
+        return Vec::new();
     }
-    with_limits(lines, doc)
+    if let Some(error) = take["error"].as_str() {
+        return vec![format!(
+            "The session file in this file's folder couldn't be read for it ({error}); \
+             the readings below are the whole file's."
+        )];
+    }
+    let mut lines =
+        vec!["The take's session file lists this file; `session` reads it:".to_string()];
+    lines.extend(position_lines(&take["readings"]));
+    for l in take["left_out"].as_array().into_iter().flatten() {
+        lines.push(format!(
+            "- {}: left out, {}",
+            position_name(l["position"].as_str().unwrap_or("")),
+            l["why"].as_str().unwrap_or("")
+        ));
+    }
+    lines
+}
+
+/// The figures the lead gives for each reading of an `analyze`
+/// document's `take` block ([`session_figures`]).
+#[cfg(test)]
+pub fn take_figures(doc: &Value) -> Vec<[Option<f64>; 3]> {
+    doc["take"]["readings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| session_figures(&r["measurement"]))
+        .collect()
 }
 
 /// The lead `lines` with what limits the readings after them, or `None`
@@ -444,14 +495,9 @@ fn series(doc: &Value) -> Option<String> {
     if let Some(supports) = doc["spectrum_support"].as_array() {
         for s in supports {
             let series = s["series"].as_str().unwrap_or("series");
-            let c = &s["support"];
-            let counts = c["finite_bins"]
-                .as_u64()
-                .zip(c["total_bins"].as_u64())
-                .filter(|&(f, n)| n > 0 && f <= n);
-            lines.push(match counts {
-                Some((f, n)) => format!("FFT {series} input: {f} of {n} grid samples available.{}",
-                    if f < n { " Missing samples affect peak heights and shapes; values are not corrected for gaps." } else { "" }),
+            // Core's own words for what the FFT read.
+            lines.push(match s["support"]["description"].as_str() {
+                Some(d) => format!("{series}: {d}"),
                 None => format!("FFT {series} input support was not recorded."),
             });
         }
@@ -579,6 +625,51 @@ mod tests {
         }
         assert!(
             s.contains("What limits these readings:\n- The lift angle is the default 52°"),
+            "{s}"
+        );
+    }
+
+    /// A file its take lists leads with what `session` reads of it, entry
+    /// by entry, before the whole file read alone.
+    #[test]
+    fn a_takes_file_leads_with_what_session_reads_of_it() {
+        let doc = json!({
+            "schema": "timegrapher.analyze/2",
+            "watch_heard": true,
+            "overall": { "rate_s_per_day": 6.01, "beat_error_ms": -0.39 },
+            "amplitude_deg": 269.6,
+            "take": {
+                "session_file": "take/session.toml",
+                "readings": [{ "position": "DU", "measurement": {
+                    "rate_s_per_day": 5.2, "amplitude_deg": 281.0,
+                    "beat_error_unlock_ms": null, "beat_error_ms": -0.3 } }],
+                "left_out": [{ "position": "CU", "why": "nothing after settling" }],
+            },
+        });
+        let s = lead(&doc, &Map::new()).unwrap();
+        assert!(
+            s.starts_with(
+                "The take's session file lists this file; `session` reads it:\n\
+                 - Dial Up (DU): rate +5.2 s/day, amplitude 281°, beat error 0.30 ms\n\
+                 - Crown Up (CU): left out, nothing after settling\n\
+                 The whole file read alone (no settling, none of the take's settings):\n\
+                 Readings: rate +6.0 s/day, amplitude 270°, beat error 0.39 ms."
+            ),
+            "{s}"
+        );
+        assert_eq!(take_figures(&doc), [[Some(5.2), Some(281.0), Some(0.3)]]);
+        let unread = json!({
+            "schema": "timegrapher.analyze/2",
+            "watch_heard": true,
+            "overall": { "rate_s_per_day": 6.01 },
+            "take": { "session_file": "take/session.toml", "error": "bad toml" },
+        });
+        let s = lead(&unread, &Map::new()).unwrap();
+        assert!(
+            s.starts_with(
+                "The session file in this file's folder couldn't be read for it (bad toml); \
+                 the readings below are the whole file's.\nReadings: rate +6.0 s/day"
+            ),
             "{s}"
         );
     }
@@ -862,10 +953,19 @@ mod tests {
         let legacy = lead(&doc, &Map::new()).unwrap();
         assert!(!legacy.contains("FFT"));
         for (support, expected) in [
-            (json!({"finite_bins":256,"total_bins":256}), "FFT rate input: 256 of 256 grid samples available."),
-            (json!({"finite_bins":128,"total_bins":256}), "FFT rate input: 128 of 256 grid samples available. Missing samples affect peak heights and shapes; values are not corrected for gaps."),
+            (
+                json!({"finite_bins":256,"total_bins":256,"description":"FFT input: 256 of 256 grid samples available."}),
+                "rate: FFT input: 256 of 256 grid samples available.",
+            ),
+            (
+                json!({"finite_bins":128,"total_bins":256,"description":"Core's words."}),
+                "rate: Core's words.",
+            ),
             (Value::Null, "FFT rate input support was not recorded."),
-            (json!({"finite_bins":true,"total_bins":256}), "FFT rate input support was not recorded."),
+            (
+                json!({"finite_bins":true,"total_bins":256}),
+                "FFT rate input support was not recorded.",
+            ),
         ] {
             doc["spectrum_support"] = json!([{"series":"rate","support":support}]);
             let text = lead(&doc, &Map::new()).unwrap();

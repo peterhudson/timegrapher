@@ -346,15 +346,29 @@ fn map_outline(m: &Value) -> Value {
 }
 
 /// Where the Recording view's Tick and Tock profiles are read, as start and
-/// length in seconds: core's beat-shape stretch
-/// ([`analysis_take::shape_stretch`]), the first [`analysis_take::SHAPE_S`]
-/// once the watch has settled ([`take::measured`]). `analyze` reads one
-/// sound file, which has no masked stretches. None for an empty recording.
+/// length in seconds. For a file its take's session file lists, where
+/// `session` measured the beat shape of the first entry naming it (its
+/// `shape`'s `from_s` and `measured_s`, in `analyze`'s `take` block),
+/// none where it measured none. For a file alone, core's beat-shape
+/// stretch ([`analysis_take::shape_stretch`]): the first
+/// [`analysis_take::SHAPE_S`] once the watch has settled
+/// ([`take::measured`]), with nothing masked. None for an empty recording
+/// or one with no regular beat.
 ///
 /// [`analysis_take::shape_stretch`]: timegrapher_core::analysis_take::shape_stretch
 /// [`analysis_take::SHAPE_S`]: timegrapher_core::analysis_take::SHAPE_S
 /// [`take::measured`]: timegrapher_core::take::measured
-pub fn profile_stretch(duration_s: f64) -> Option<(f64, f64)> {
+pub fn profile_stretch(doc: &Value) -> Option<(f64, f64)> {
+    if let Some(readings) = doc["take"]["readings"].as_array() {
+        return readings.iter().find_map(|r| {
+            let shape = &r["shape"];
+            Some((shape["from_s"].as_f64()?, shape["measured_s"].as_f64()?))
+        });
+    }
+    if doc["watch_heard"] == json!(false) {
+        return None;
+    }
+    let duration_s = doc["duration_s"].as_f64().unwrap_or(0.0);
     let (from, to) = timegrapher_core::take::measured(0.0, duration_s, None, None);
     timegrapher_core::analysis_take::shape_stretch(&[], from, to)
 }
@@ -377,7 +391,7 @@ pub async fn analyze_charts(
             out.insert("strip".into(), strip(&csv, duration));
         }
     }
-    let stretch = profile_stretch(duration).filter(|_| doc["watch_heard"] != json!(false));
+    let stretch = profile_stretch(doc);
     if let Some((at, span)) = stretch {
         let mut line = vec![
             "profile".to_string(),
@@ -419,9 +433,30 @@ mod tests {
     fn the_profiles_are_read_where_core_reads_the_beat_shape() {
         // Settled for 20 s, then a minute; a short recording settles for
         // half its length and reads the rest.
-        assert_eq!(profile_stretch(300.0), Some((20.0, 60.0)));
-        assert_eq!(profile_stretch(30.0), Some((15.0, 15.0)));
-        assert_eq!(profile_stretch(0.0), None);
+        let file = |d: f64| profile_stretch(&json!({ "duration_s": d }));
+        assert_eq!(file(300.0), Some((20.0, 60.0)));
+        assert_eq!(file(30.0), Some((15.0, 15.0)));
+        assert_eq!(file(0.0), None);
+        assert_eq!(
+            profile_stretch(&json!({ "duration_s": 300.0, "watch_heard": false })),
+            None
+        );
+    }
+
+    /// A file its take lists is read where `session` measured the beat
+    /// shape, wherever the take's settling or masks put it.
+    #[test]
+    fn a_takes_file_has_its_profiles_read_where_session_read_its_shape() {
+        let take =
+            |readings: Value| json!({ "duration_s": 300.0, "take": { "readings": readings } });
+        assert_eq!(
+            profile_stretch(&take(json!([
+                { "measurement": { "watch_heard": false } },
+                { "shape": { "from_s": 95.0, "measured_s": 60.0 } },
+            ]))),
+            Some((95.0, 60.0))
+        );
+        assert_eq!(profile_stretch(&take(json!([{ "shape": null }]))), None);
     }
 
     #[test]
@@ -456,7 +491,11 @@ mod tests {
 
     #[test]
     fn fft_support_remains_model_visible_when_arrays_move_to_charts() {
-        for support in [Value::Null, json!({"finite_bins": 128, "total_bins": 256})] {
+        let description = "FFT input: 128 of 256 grid samples available. With samples missing, each size is a sine fitted to the samples present (Lomb–Scargle); nothing is filled in.";
+        for support in [
+            Value::Null,
+            json!({"finite_bins": 128, "total_bins": 256, "description": description}),
+        ] {
             let mut spectrum = json!({"series":"rate", "unit":"ms", "period_s":[64.0,32.0], "amplitude":[5.0,1.0]});
             if !support.is_null() {
                 spectrum["support"] = support.clone();
@@ -478,7 +517,7 @@ mod tests {
             } else {
                 "128 of 256 grid samples available"
             }));
-            assert_eq!(lead.contains("not corrected for gaps"), !support.is_null());
+            assert_eq!(lead.contains(description), !support.is_null());
         }
     }
 
