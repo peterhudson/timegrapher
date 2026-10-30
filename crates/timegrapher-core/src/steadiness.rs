@@ -15,9 +15,9 @@
 //!   readings; wander and drift lift the curve at long τ, and a cycle
 //!   of period P puts a bump near 0.37 P.
 //! - **CUSUM**: the running sum of each reading's distance from the
-//!   mean, in units of σ√n. For independent readings it wanders inside
-//!   ±1.36 (95%); a shift of the mean bends it into a V or a tent with
-//!   the corner at the shift.
+//!   mean, in units of the long-run σ√n. With no change of level,
+//!   correlated or not, it wanders inside ±1.36 (95%); a shift of the
+//!   mean bends it into a V or a tent with the corner at the shift.
 //! - **Change points**: binary segmentation of block medians into
 //!   stretches of constant mean, each change kept only when it is
 //!   strong evidence against one level.
