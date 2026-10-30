@@ -511,6 +511,10 @@ pub fn measure_with_breaks(
 /// one; the masks' beats and amplitude windows are left out,
 /// the beats expected and the sound listened to leave out their time, and
 /// the caveats say how much was masked.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn measure_masked(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -1279,6 +1283,10 @@ pub fn no_regular_beat_in(m: &Measurement, bph: u32) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn findings(readings: &[Reading]) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut push = |code: &'static str, recording: usize, title: String, evidence: String| {

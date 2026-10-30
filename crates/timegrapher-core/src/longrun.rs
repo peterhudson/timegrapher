@@ -169,6 +169,10 @@ pub fn analyse_on_clock(
 
 /// [`analyse_with_breaks`], its times put on `map` and its report saying
 /// it was read on `read_on`.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn analyse_read(
     log: &BeatLog,
     map: Option<&ClockFit>,

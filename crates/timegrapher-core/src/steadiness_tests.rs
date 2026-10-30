@@ -608,6 +608,10 @@ fn a_half_turn_of_an_alias_counts_only_where_it_holds_the_line() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn a_summary_names_each_lead_in_a_few_words() {
     let check = |kind, y: Vec<f64>, step, two: Option<TwoState>| {
         check_series(

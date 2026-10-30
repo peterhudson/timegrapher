@@ -111,6 +111,10 @@ impl Beat {
 /// stretch that opens on silence, or falls silent, does not take the noise
 /// for the beat. Without it, as for a take's first stretch and live
 /// listening's short windows, every peak may be a beat.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn track_peaks(
     x: &[f32],
     fs: f64,

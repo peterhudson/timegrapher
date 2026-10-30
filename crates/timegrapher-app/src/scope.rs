@@ -163,6 +163,10 @@ impl Mark {
 }
 
 /// Draw the rows one above the other, sharing a time axis.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn draw(ui: &mut egui::Ui, rows: &[Row], zoom: Zoom, beat_s: f64, fs: f64) {
     let pal = theme::pal(ui);
     let avail = ui.available_size();

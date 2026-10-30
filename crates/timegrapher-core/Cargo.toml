@@ -44,3 +44,6 @@ windows = { version = "0.62", features = [
 capture = ["dep:cpal"]
 # The update check (`update::check`): one HTTPS request to GitHub.
 update-check = ["dep:ureq"]
+
+[lints]
+workspace = true

@@ -820,6 +820,10 @@ mod tests {
     /// its copy of these rules too: each gives the places these rules
     /// give.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn the_shared_cases_place_as_given() {
         let cases: serde_json::Value =
             serde_json::from_str(include_str!("marks_cases.json")).expect("marks_cases.json");

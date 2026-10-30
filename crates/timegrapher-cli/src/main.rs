@@ -703,6 +703,10 @@ enum ClockAction {
     Forget { device: String },
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let res = match cli.command {
@@ -1371,6 +1375,10 @@ pub fn beat_error_text(unlock_ms: Option<f64>, drop_ms: f64) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn print_summary(
     a: &Analysis,
     clock: Option<&(f64, String)>,

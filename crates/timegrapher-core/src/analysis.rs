@@ -222,6 +222,10 @@ fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
     (!w.is_empty()).then(|| median(&mut w))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let fs = audio.sample_rate as f64;
     let env = envelope(&audio.samples, fs, &cfg.envelope);
