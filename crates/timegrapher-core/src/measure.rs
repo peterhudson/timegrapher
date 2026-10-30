@@ -190,6 +190,9 @@ pub enum Caveat {
     /// Stretches of the take were masked out of the readings by hand;
     /// `seconds` is their total within the stretch.
     Masked { seconds: f64 },
+    /// The take's entries name `count` positions, so what goes with the
+    /// amplitude across it may go with the position instead (#651).
+    Positions { count: usize },
 }
 
 impl Caveat {
@@ -222,6 +225,7 @@ impl Caveat {
                 "beat error given as a size: its sign differs either side of a cut".to_string()
             }
             Caveat::Masked { seconds } => format!("{} s masked", masked_seconds(*seconds)?),
+            Caveat::Positions { count } => format!("{count} positions"),
         })
     }
 
@@ -301,6 +305,10 @@ impl Caveat {
                 "{} s of this stretch were masked out and left out of the readings.",
                 masked_seconds(*seconds)?
             ),
+            Caveat::Positions { count } => format!(
+                "The take holds {count} positions, so a rate that changes with the \
+                 position can show as one that goes with the amplitude."
+            ),
         })
     }
 
@@ -339,6 +347,7 @@ impl Caveat {
             Caveat::SidesByCount { .. } => 10,
             Caveat::Masked { .. } => 11,
             Caveat::BeatErrorAsSize => 12,
+            Caveat::Positions { .. } => 13,
         }
     }
 }
