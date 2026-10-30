@@ -247,17 +247,6 @@ function fmtTime(t) {
     : `${Math.floor(s / 60)}:${pad(s % 60)}`;
 }
 
-// The app's scale for its charts: the 2nd to 98th percentile, padded, so one
-// glitch doesn't flatten the line.
-function percentileRange(values) {
-  if (values.length < 2) return null;
-  const ys = values.slice().sort((a, b) => a - b);
-  const q = (f) => ys[Math.round((ys.length - 1) * f)];
-  const lo = q(0.02), hi = q(0.98);
-  const pad = Math.max((hi - lo) * 0.15, 0.05);
-  return [lo - pad, hi + pad];
-}
-
 let clipCount = 0;
 
 // The plot's background and the clip that keeps the marks inside it.
@@ -277,7 +266,7 @@ function lineSample(s) {
 // A line chart with one value axis.
 //   series: [{name, color, key, dash, opacity, main, points: [[x, y]], band: [[x, lo, hi]]}]
 //   unit, decimals: the value's; time: x is seconds, read m:ss; xUnit otherwise
-//   robust: scale to the 2nd to 98th percentile; yRange: [lo, hi] instead
+//   yRange: [lo, hi], the scale core gives (else the lines' own, padded)
 //   marks: [{x, color, label, width, dash, row}]; hlines: [{y, color, dash}]
 //   hover: false for no readout (the sound plots have none, as in the app)
 function lineChart(o) {
@@ -290,10 +279,6 @@ function lineChart(o) {
   if (!ys.length) return `<p class="empty">No ${esc(o.title || "data")} to draw.</p>`;
   const lo = Math.min(...ys), hi = Math.max(...ys);
   let [y0, y1] = o.yRange || [lo - (hi - lo) * 0.08, hi + (hi - lo) * 0.08];
-  if (o.robust && !o.yRange) {
-    const r = percentileRange(ys);
-    if (r) [y0, y1] = r;
-  }
   if (y1 - y0 < (o.minSpan || 1e-9)) { const m = (y0 + y1) / 2, h = (o.minSpan || 1) / 2; y0 = m - h; y1 = m + h; }
   let [x0, x1] = o.xRange || [Math.min(...xs), Math.max(...xs)];
   if (!(x1 > x0)) x1 = x0 + 1;
@@ -440,16 +425,18 @@ function timeLabel(s) {
 function stripCards(strip) {
   if (!strip) return "";
   const has = (k) => strip[k] && strip[k].length;
+  // Each chart's scale is core's (chart_scale::data_range), from the server.
+  const range = (k) => (strip.y_range && strip.y_range[k]) || undefined;
   const cards = [];
   if (has("rate")) {
     cards.push(["Rate", "The rate over the whole recording, on the sound card's clock", lineChart({
-      title: "Rate", time: true, robust: true, unit: " s/day", decimals: 1, minSpan: 1,
+      title: "Rate", time: true, yRange: range("rate"), unit: " s/day", decimals: 1,
       series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
     })]);
   }
   if (has("amplitude")) {
     cards.push(["Amplitude", "The amplitude over the whole recording, from the ticks and tocks", lineChart({
-      title: "Amplitude", time: true, legend: has("amplitude_tick") || has("amplitude_tock"), robust: true, unit: "°", decimals: 0, minSpan: 4,
+      title: "Amplitude", time: true, legend: has("amplitude_tick") || has("amplitude_tock"), yRange: range("amplitude"), unit: "°", decimals: 0,
       series: [
         { name: "Average Amplitude", color: "--amplitude", points: strip.amplitude },
         { name: "Amplitude from Tick", color: "--amplitude", key: "--tick", dash: "dashed", main: false, points: strip.amplitude_tick || [] },
@@ -459,7 +446,7 @@ function stripCards(strip) {
   }
   if (has("beat_error_unlock") || has("beat_error_drop")) {
     cards.push(["Beat Error", "The beat error over the whole recording", lineChart({
-      title: "Beat Error", time: true, legend: has("beat_error_unlock") && has("beat_error_drop"), robust: true, unit: " ms", decimals: 2, minSpan: 0.1,
+      title: "Beat Error", time: true, legend: has("beat_error_unlock") && has("beat_error_drop"), yRange: range("beat_error"), unit: " ms", decimals: 2,
       series: [
         { name: "From the Unlock", color: "--beat-error", points: strip.beat_error_unlock || [] },
         { name: "From the Drop", color: "--beat-error", opacity: 0.6, dash: "dashed", main: false, points: strip.beat_error_drop || [] },
@@ -1259,7 +1246,7 @@ function steadyPlot(s, view, doc) {
       const r = v.readings;
       if (!r || !r.t_s || r.t_s.length < 2) return steadyNote("No readings to draw.");
       const pts = r.t_s.map((t, i) => [t, r.values[i]]).filter(([, y]) => Number.isFinite(y));
-      const [lo, hi] = spreadRange(pts.map((p) => p[1]));
+      const [lo, hi] = r.y_range || [0, 1];
       const segs = s.changes && s.changes.segments && s.changes.segments.length > 1 ? s.changes.segments : [];
       const ts = s.two_state && s.two_state.two_levels ? s.two_state : null;
       return xyChart({
@@ -1319,7 +1306,7 @@ function steadyPlot(s, view, doc) {
         dots.push([at(b), y]);
       }));
       const shape = f.profile.map((y, b) => [at(b), y]);
-      const [lo, hi] = spreadRange(dots.length ? dots.map((q) => q[1]) : shape.map((q) => q[1]));
+      const [lo, hi] = f.y_range || [0, 1];
       // Each phase's middle half, over every cycle folded (core's columns).
       const boxW = 0.3 * f.period_s / bins;
       const rects = (f.columns || []).map((q, b) => q && { x0: at(b) - boxW, x1: at(b) + boxW, y0: q[0], y1: q[2], color: "--text3" }).filter(Boolean);
@@ -1450,15 +1437,6 @@ function steadyPlot(s, view, doc) {
     }
   }
   return "";
-}
-
-// steady::spread: the 1st to 99th percentile, padded 12%.
-function spreadRange(values) {
-  const v = values.filter(Number.isFinite).sort((a, b) => a - b);
-  if (v.length < 2) return v.length ? [v[0] - 1, v[0] + 1] : [0, 1];
-  const q = (f) => v[Math.round((v.length - 1) * f)];
-  const lo = q(0.01), hi = q(0.99), pad = Math.max((hi - lo) * 0.12, 1e-3);
-  return [lo - pad, hi + pad];
 }
 
 // The statistics behind a series' headline, as the JSON gives them.

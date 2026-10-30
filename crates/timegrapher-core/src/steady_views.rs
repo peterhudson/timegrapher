@@ -11,6 +11,7 @@
 //! with no clock fit and only zero-length breaks. The searches and folds are the app's, and
 //! only the output is thinned, so a day's take stays small.
 
+use crate::chart_scale;
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig, Search};
 use crate::steadiness::Report;
@@ -49,6 +50,9 @@ pub struct Readings {
     /// with a value.
     pub t_s: Vec<f64>,
     pub values: Vec<f64>,
+    /// The value scale they are drawn on ([`crate::chart_scale::spread`]),
+    /// null with fewer than two.
+    pub y_range: Option<[f64; 2]>,
 }
 
 /// The period search: how strongly the series repeats at each period.
@@ -86,6 +90,9 @@ pub struct FoldView {
     /// the columns' middle-half heights: null unless both can be given.
     pub swing: Option<f64>,
     pub middle_half: Option<f64>,
+    /// The value scale the fold is drawn on: [`crate::chart_scale::spread`]
+    /// of the cycles kept, or of the median line when none has a value.
+    pub y_range: Option<[f64; 2]>,
 }
 
 /// Each phase bin's quartiles over the fold's cycles (lower, median,
@@ -359,7 +366,7 @@ pub fn views(
             let g = &grids[i];
             let n = g.y.len();
             let stride = n.div_ceil(MAX_READINGS).max(1);
-            let (t_s, values) = (0..n)
+            let (t_s, values): (Vec<f64>, Vec<f64>) = (0..n)
                 .step_by(stride)
                 .filter(|&j| g.y[j].is_finite())
                 .map(|j| (g.time(j), g.y[j]))
@@ -383,19 +390,32 @@ pub fn views(
                 };
                 let columns = fold_columns(f);
                 let spread_of = fold_spread(f, &columns);
+                let raster: Vec<Vec<f64>> = spread(f.raster.len(), MAX_CYCLES)
+                    .into_iter()
+                    .map(|k| f.raster[k].clone())
+                    .collect();
+                let dots: Vec<f64> = raster
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .filter(|v| v.is_finite())
+                    .collect();
+                let y_range = if dots.is_empty() {
+                    chart_scale::spread(&f.profile)
+                } else {
+                    chart_scale::spread(&dots)
+                };
                 FoldView {
                     period_s: f.period_s,
                     from,
                     wheel,
                     profile: f.profile.clone(),
                     cycles: f.raster.len(),
-                    raster: spread(f.raster.len(), MAX_CYCLES)
-                        .into_iter()
-                        .map(|k| f.raster[k].clone())
-                        .collect(),
+                    raster,
                     columns,
                     swing: spread_of.map(|s| s.0),
                     middle_half: spread_of.map(|s| s.1),
+                    y_range: y_range.map(|(a, b)| [a, b]),
                 }
             });
             SeriesViews {
@@ -404,6 +424,7 @@ pub fn views(
                     step_s: g.step,
                     n,
                     stride,
+                    y_range: chart_scale::spread(&values).map(|(a, b)| [a, b]),
                     t_s,
                     values,
                 },
