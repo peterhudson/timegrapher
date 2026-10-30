@@ -607,6 +607,8 @@ pub fn run(
     }
     // A take read in stretches is on its clock already.
     let clock = clock.filter(|_| stretches.is_none());
+    // The cycles listed are the ones the Steadiness pane names (#659).
+    timegrapher_core::steadiness::family_long(&log, clock.as_ref(), &mut rep, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));
@@ -920,7 +922,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     };
     println!("Periodic changes in rate (the rate itself, not 10 s readings):");
     if r.rate_components.is_empty() {
-        println!("  none above the 1% false-alarm level");
+        println!("  none named (1% false-alarm level, held across the take's tests)");
     }
     for c in &r.rate_components {
         let swing = match c.size() {
@@ -931,7 +933,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     }
     println!("Periodic changes in amplitude:");
     if r.amplitude.components.is_empty() {
-        println!("  none above the 1% false-alarm level");
+        println!("  none named (1% false-alarm level, held across the take's tests)");
     }
     for c in &r.amplitude.components {
         line(c, format!("swing {} deg p-p", size_number(c.peak_to_peak)));

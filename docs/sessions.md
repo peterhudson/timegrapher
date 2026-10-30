@@ -483,7 +483,7 @@ the watchmaker skill, each with its source.
 | `unlock_unreliable` | Unlock found in 45% of windows | fewer than 60% of the 2 s amplitude windows find the unlock on both sides; amplitude and the beat error from the unlock rest on those windows |
 | `clipping` | Clipped on 3.2% of beats | over 1% of the measured beats have a clipped sample in their template window, as `analyze` counts them |
 | `measurement_short` | 25 s measured | under 40 s measured after settling (D40e's "≥40 s measurement time", about p. 34) |
-| `cycle_wheel` | Regular rate change once per turn of the fourth wheel | a periodic change above the 1% false-alarm level matches a wheel's turn |
+| `cycle_wheel` | Regular rate change once per turn of the fourth wheel | a periodic change named (1% false-alarm level, held across the recording's tests) matches a wheel's turn |
 | `cycle_wheel_fraction` | Regular rate change at 1/3 of the fourth wheel's turn | as above, the turn is a whole number (2 or more) of the period |
 | `cycle_other` | Regular amplitude change not tied to a listed wheel | as above, no wheel; the nearest is named |
 | `shape_unlock_loud` | Unlocking as loud as the drop on Tick | the level of sound 1 to sound 3 is 1 or more |

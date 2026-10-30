@@ -442,7 +442,7 @@ fn cycles_table(sn: &Session) -> String {
         .collect();
     let mut s = String::from("<h2>Periodic changes</h2>");
     if rows.is_empty() {
-        s.push_str("<p>No periodic change in rate or amplitude above the 1% false-alarm level in any recording.</p>");
+        s.push_str("<p>No periodic change in rate or amplitude named in any recording (1% false-alarm level, held across each recording's tests).</p>");
         return s;
     }
     s.push_str(r#"<table class="data"><thead><tr><th>Position</th><th>In</th><th class="num">Period s</th><th class="num">Size p-p</th><th class="num">Share</th><th class="num">False alarm</th><th>Wheel</th><th>Recording</th></tr></thead><tbody>"#);
