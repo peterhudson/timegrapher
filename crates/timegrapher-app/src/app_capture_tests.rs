@@ -3,6 +3,7 @@
 
 use super::tests::{queued_capture, save_failure_fixture};
 use super::*;
+use std::sync::mpsc::Sender;
 
 /// With the window drawing no frames at all (a locked screen, a
 /// minimised window), the sound is still saved and read as it comes in.
@@ -104,18 +105,60 @@ fn a_short_stall_is_a_break_by_cores_rule() {
     let _ = std::fs::remove_dir_all(base);
 }
 
+/// Sound held by core's gap rule after a jump counts as heard, so the
+/// input isn't taken for silent ("No sound is arriving") while the rule
+/// waits on it (#689).
+#[test]
+fn sound_held_after_a_jump_is_heard() {
+    let (mut app, base, tx, _) = listened("held-heard");
+    // The last block heard long enough ago that silence would stop
+    // listening, then half a second of sound after a 1 s jump: held.
+    app.audio_at = Some(Instant::now() - Duration::from_secs(10));
+    send_after(&tx, 1000, 25);
+    while app.poll_for(Duration::from_secs(60)) > 0 {}
+    assert!(app.running());
+    assert!(app.audio_at.unwrap().elapsed() < Duration::from_secs(3));
+    drop(tx);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// Stopped while core's gap rule holds sound after a jump, the take
+/// keeps that sound and its break (#689).
+#[test]
+fn a_pause_keeps_the_sound_held_after_a_jump() {
+    let (mut app, base, tx, heard) = listened("held-pause");
+    send_after(&tx, 1000, 25);
+    while app.poll_for(Duration::from_secs(60)) > 0 {}
+    app.pause();
+    let breaks = app.session.recorder.as_ref().unwrap().breaks();
+    assert_eq!(breaks.len(), 1);
+    assert!((breaks[0].gap_s - 1.0).abs() < 0.05, "{}", breaks[0].gap_s);
+    assert!(
+        (app.heard_s() - heard - 1.5).abs() < 0.05,
+        "{}",
+        app.heard_s()
+    );
+    drop(tx);
+    let _ = std::fs::remove_dir_all(base);
+}
+
 /// A take listened to for 1 s, then nothing for `gap_ms` by the
 /// blocks' timestamps, then 10 s more: the app after all of it, what
 /// it had heard before the gap, and the take's folder.
 fn stalled(name: &str, gap_ms: u64) -> (TimegrapherApp, f64, PathBuf) {
+    let (mut app, base, tx, heard) = listened(name);
+    send_after(&tx, gap_ms, 500);
+    while app.poll_for(Duration::from_secs(60)) > 0 {}
+    assert!(app.running());
+    drop(tx);
+    (app, heard, base)
+}
+
+/// A take listened to for 1 s of 20 ms blocks: the app, its folder, the
+/// input's queue and what it has heard.
+fn listened(name: &str) -> (TimegrapherApp, PathBuf, Sender<Event>, f64) {
     let (mut app, base) = save_failure_fixture(name);
     let tx = queued_capture(&mut app, &base);
-    let block = |ms: u64| {
-        Event::Audio(timegrapher_core::capture::Block {
-            samples: vec![0.0; 960],
-            at: std::time::UNIX_EPOCH + Duration::from_millis(ms),
-        })
-    };
     for k in 0..50 {
         tx.send(block(2000 + 20 * k)).unwrap();
     }
@@ -123,12 +166,21 @@ fn stalled(name: &str, gap_ms: u64) -> (TimegrapherApp, f64, PathBuf) {
     while app.poll_for(Duration::from_secs(60)) > 0 {}
     let heard = app.heard_s();
     assert!(app.session.recorder.as_ref().unwrap().breaks().is_empty());
+    (app, base, tx, heard)
+}
+
+/// `n` blocks after [`listened`]'s, the first `gap_ms` after its last.
+fn send_after(tx: &Sender<Event>, gap_ms: u64, n: u64) {
     let woke = 2000 + 20 * 49 + gap_ms;
-    for k in 0..500 {
+    for k in 0..n {
         tx.send(block(woke + 20 * k)).unwrap();
     }
-    while app.poll_for(Duration::from_secs(60)) > 0 {}
-    assert!(app.running());
-    drop(tx);
-    (app, heard, base)
+}
+
+/// A 20 ms block of silence at 48 kHz stamped `ms` after the epoch.
+fn block(ms: u64) -> Event {
+    Event::Audio(timegrapher_core::capture::Block {
+        samples: vec![0.0; 960],
+        at: std::time::UNIX_EPOCH + Duration::from_millis(ms),
+    })
 }

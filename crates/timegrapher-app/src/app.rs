@@ -3149,6 +3149,15 @@ impl TimegrapherApp {
         if self.capture.is_none() {
             return;
         }
+        // The sound core's gap rule still holds is the take's too.
+        let held = self.gaps.as_mut().map(GapWatch::finish);
+        if let Err(CaptureFailure::Recording(e)) = held
+            .into_iter()
+            .flatten()
+            .try_for_each(|l| self.take_live(l))
+        {
+            return self.recording_failed(e);
+        }
         self.release_capture();
         if self.session.mic() {
             applog::info("microphone stopped and released");
@@ -4730,7 +4739,6 @@ impl TimegrapherApp {
             r.write(&b)
                 .map_err(|e| CaptureFailure::Recording(e.to_string()))?;
         }
-        self.audio_at = Some(Instant::now());
         if let Some(t) = self.clock_track.as_mut() {
             t.push(b.samples.len(), b.at);
         }
@@ -4815,6 +4823,9 @@ impl TimegrapherApp {
             let came = match cap.rx.try_recv() {
                 Ok(Event::Audio(b)) => {
                     taken += 1;
+                    // Heard as it arrives, though core's gap rule may hold
+                    // it a while.
+                    self.audio_at = Some(Instant::now());
                     if is_file {
                         vec![Live::Block(b)]
                     } else {
