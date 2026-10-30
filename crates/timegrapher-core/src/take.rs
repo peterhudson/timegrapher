@@ -1294,6 +1294,43 @@ mod tests {
         assert!(matches!(w(4, None, 600.0), Err(NoReading::Outside(_))));
     }
 
+    /// A stretch that starts partway into its recording settles halfway
+    /// through its own length, not the recording's, and an unsettled
+    /// entry gives its stretch's length; each reason for no reading says
+    /// itself in words (#694).
+    #[test]
+    fn a_stretch_partway_in_is_measured_on_its_own_length() {
+        assert_eq!(measured(100.0, 110.0, None, None), (105.0, 110.0));
+        let m: Manifest =
+            toml::from_str("[[recording]]\nfile = \"a.flac\"\nstart_s = 100\nsettle_s = 50\n")
+                .unwrap();
+        let no = reading_window(&m.recordings[0], &m, None, 130.0).unwrap_err();
+        assert_eq!(
+            no,
+            NoReading::Unsettled {
+                file: "a.flac".into(),
+                settle_s: 50.0,
+                length_s: 30.0
+            }
+        );
+        assert_eq!(
+            no.to_string(),
+            "a.flac: a settle_s of 50 s leaves nothing of its 30 s stretch to read; \
+             give it a shorter settle_s"
+        );
+        assert_eq!(
+            NoReading::Nothing.to_string(),
+            "nothing to read: it settles right to its end"
+        );
+        assert_eq!(NoReading::Outside("out".into()).to_string(), "out");
+        assert_eq!(
+            EntryError::NoReading(NoReading::Nothing).to_string(),
+            NoReading::Nothing.to_string()
+        );
+        assert_eq!(EntryError::Failed("bad".into()).to_string(), "bad");
+        assert_eq!(String::from(EntryError::from("bad".to_string())), "bad");
+    }
+
     #[test]
     fn an_entrys_own_times_come_before_its_session_files() {
         let m: Manifest =
