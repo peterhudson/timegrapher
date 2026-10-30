@@ -728,12 +728,15 @@ impl ClockFit {
                 .copied()
                 .unwrap_or(f64::NEG_INFINITY);
             let end = ends.get(i).copied().unwrap_or(b.audio_s);
+            // A short pause the refit above put in is moved back however
+            // far its step lands from it: no log line was near it, or the
+            // log would have shown the step (#688).
             if let Some(l) = listed
                 .iter()
                 .filter(|l| {
                     l.audio_s > after - 1e-6
                         && l.audio_s <= end
-                        && end - l.audio_s <= breaks::JUMP_MATCH_S
+                        && (end - l.audio_s <= breaks::JUMP_MATCH_S || missed.contains(&l.audio_s))
                 })
                 .max_by(|x, y| x.audio_s.total_cmp(&y.audio_s))
             {
@@ -1698,6 +1701,32 @@ unix_s,frames
         let at: Vec<f64> = fit.breaks.iter().map(|b| b.audio_s).collect();
         assert_eq!(at, [150.0, 300.0], "{:?}", fit.breaks);
         assert!((fit.breaks[1].gap_s - 0.2).abs() < 1e-3, "{:?}", fit.breaks);
+        assert!((fit.ppm - 20.0).abs() < 0.1, "ppm {}", fit.ppm);
+    }
+
+    #[test]
+    fn a_short_listed_pause_far_from_a_log_line_is_one_break() {
+        // As above, but paused at 293 s, 7 s before the next line: the
+        // break the refit puts at that line is the listed one, at its own
+        // second, not a second break beside it (#688).
+        let k = 1.0 + 20e-6;
+        let line = |a: f64, off: f64| (a, 1.79e9 + a * k + off);
+        let mut pairs: Vec<(f64, f64)> = (0..=29).map(|i| line(i as f64 * 10.0, 0.0)).collect();
+        pairs.extend((0..30).map(|i| line(300.0 + i as f64 * 10.0, 0.2)));
+        let mut fit = ClockFit::new(&pairs).unwrap();
+        let listed = vec![Break {
+            audio_s: 293.0,
+            gap_s: 0.0,
+        }];
+        let out = breaks::on_clock(listed, Some(&mut fit));
+        let at: Vec<f64> = out.iter().map(|b| b.audio_s).collect();
+        assert_eq!(at, [293.0], "{out:?}");
+        assert_eq!(fit.breaks.len(), 1, "{:?}", fit.breaks);
+        assert!(
+            (fit.breaks[0].audio_s - 293.0).abs() < 1e-9,
+            "{:?}",
+            fit.breaks
+        );
         assert!((fit.ppm - 20.0).abs() < 0.1, "ppm {}", fit.ppm);
     }
 
