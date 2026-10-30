@@ -494,11 +494,17 @@ fn read_take_of(
     calibre: Option<String>,
 ) -> Result<Option<serde_json::Value>, String> {
     let (mut m, base, _) = load_manifest_file(session_file)?;
-    let same =
-        |e: &RecordingEntry| match (fs::canonicalize(base.join(&e.file)), fs::canonicalize(file)) {
-            (Ok(a), Ok(b)) => a == b,
-            _ => false,
+    // An entry names the file when its sound is that file alone: as a
+    // path, or as a folder (".", a take's own) whose only sound it is.
+    let same = |e: &RecordingEntry| {
+        let Ok(file) = fs::canonicalize(file) else {
+            return false;
         };
+        match take::sound_files(&[base.join(&e.file)]).as_deref() {
+            Ok([one]) => fs::canonicalize(one).is_ok_and(|one| one == file),
+            _ => false,
+        }
+    };
     m.recordings.retain(same);
     if m.recordings.is_empty() {
         return Ok(None);
@@ -721,14 +727,18 @@ fn read_one_inner(
                             && r.position == e.position
                     })
                 });
-        i.and_then(|i| k.shape_of(i)).map(|s| s.summary.clone())
+        i.and_then(|i| k.shape_of(i))
+            .map(|s| session::ShapeSummary {
+                from_s: s.summary.from_s.or(Some(s.from_s)),
+                ..s.summary.clone()
+            })
     } else if let Some((from, len)) = analysis_take::shape_stretch(&masked, settle, end) {
         let (x, fs) = excerpt(&files, from, len)?;
         let env = envelope(&x, fs, &EnvelopeConfig::default());
         let (found, _) = beats::detect(&env, fs, log.bph);
         let beat_s = timing::fit(&found, log.bph).map_or(3600.0 / log.bph as f64, |f| f.period_s);
         let r = shape::analyze(&env, fs, &found, beat_s, &ShapeConfig::default());
-        Some(session::shape_summary(&r, x.len() as f64 / fs))
+        Some(session::shape_summary(&r, from, x.len() as f64 / fs))
     } else {
         None
     };

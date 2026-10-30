@@ -203,6 +203,50 @@ fn session_keeps_its_fields() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A take listed as its own folder ("."), as the app writes one, names
+/// its only sound file: `analyze` on that file says what `session` reads.
+#[test]
+fn analyze_reads_a_one_file_take_listed_as_its_folder() {
+    let dir = scratch("dot-take");
+    let wav = dir.join("audio-001.wav");
+    watch_wav(&wav, 60.0);
+    std::fs::write(
+        dir.join("session.toml"),
+        "bph = 28800\nlift = 52\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+    )
+    .unwrap();
+    let out = dir.join("out");
+    let session = json(
+        &dir.join("config"),
+        &[
+            "session",
+            dir.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    let analyze = json(
+        &dir.join("config"),
+        &["analyze", wav.to_str().unwrap(), "--json"],
+    );
+    let readings = analyze["take"]["readings"]
+        .as_array()
+        .expect("a take block");
+    assert_eq!(readings.len(), 1);
+    assert_eq!(
+        readings[0]["measurement"],
+        session["readings"][0]["measurement"]
+    );
+    // The beat shape says where it was measured: from the settled start.
+    assert_eq!(readings[0]["shape"], session["readings"][0]["shape"]);
+    assert_eq!(
+        session["readings"][0]["shape"]["from_s"],
+        session["readings"][0]["measurement"]["start_s"]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn calibres_keep_their_fields() {
     let config = scratch("calibres");

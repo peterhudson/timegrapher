@@ -297,7 +297,7 @@ pub fn measure(
         .filter_map(|(i, s)| Some((i, (*s)?)))
         .zip(cuts)
         .filter_map(|((recording, (from_s, to_s)), (_, _, x))| {
-            let summary = measure_shape(&x, fs, log.bph)?;
+            let summary = measure_shape(&x, fs, log.bph, from_s)?;
             Some(StoredShape {
                 recording,
                 from_s,
@@ -341,8 +341,9 @@ pub fn measure(
     })
 }
 
-/// The beat shape of `x`, as `timegrapher session` measures it.
-fn measure_shape(x: &[f32], fs: f64, bph: u32) -> Option<ShapeSummary> {
+/// The beat shape of `x`, from `from_s` seconds into the recording, as
+/// `timegrapher session` measures it.
+fn measure_shape(x: &[f32], fs: f64, bph: u32, from_s: f64) -> Option<ShapeSummary> {
     if x.is_empty() {
         return None;
     }
@@ -352,7 +353,7 @@ fn measure_shape(x: &[f32], fs: f64, bph: u32) -> Option<ShapeSummary> {
     let (found, _) = beats::detect(&env, fs, bph);
     let beat_s = timing::fit(&found, bph).map_or(3600.0 / bph as f64, |f| f.period_s);
     let r = shape::analyze(&env, fs, &found, beat_s, &ShapeConfig::default());
-    Some(session::shape_summary(&r, x.len() as f64 / fs))
+    Some(session::shape_summary(&r, from_s, x.len() as f64 / fs))
 }
 
 /// The analysis settings, as the header lists them.
