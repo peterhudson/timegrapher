@@ -1,7 +1,7 @@
 //! The Listen card's Stop and Listen button, which share one place,
 //! and the Save menu beside it.
 
-use super::tests::queued_capture;
+use super::tests::{queued_capture, save_failure_fixture};
 use super::*;
 
 /// While a take is heard, Save's Keep in a Watch items are greyed and
@@ -86,6 +86,72 @@ fn keep_in_a_watch_waits_for_the_take_to_end() {
     pass(&mut app, Vec::new());
     assert!(app.watch_open.is_none() && app.keep_back.is_none());
     assert!(app.session.saved_to().is_none());
+    app.capture = None;
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The Listen button's state starts when it first shows, and a press
+/// counts only from [`LISTEN_SETTLE_S`] after that (#725).
+#[test]
+fn listen_counts_a_press_only_once_settled() {
+    // First drawn with a press in it: aimed at Stop.
+    let tap = listen_tap(None, 7.0, true);
+    assert_eq!(tap, (7.0, false));
+    // A press just after: still Stop's.
+    let tap = listen_tap(Some(tap), 7.0 + LISTEN_SETTLE_S / 2.0, true);
+    assert_eq!(tap, (7.0, false));
+    // A press once settled arms it, and it stays armed to the release.
+    let tap = listen_tap(Some(tap), 7.0 + LISTEN_SETTLE_S, true);
+    assert_eq!(tap, (7.0, true));
+    assert_eq!(listen_tap(Some(tap), 9.0, false), (7.0, true));
+}
+
+/// Two taps on Stop while the app lags: the first stops, and the second,
+/// landing on Listen a moment later, starts nothing (#725).
+#[test]
+fn a_second_tap_on_stop_starts_nothing() {
+    let (mut app, base) = save_failure_fixture("second-stop-tap");
+    let _tx = queued_capture(&mut app, &base);
+    assert!(app.running() && app.session.mic());
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut time = 0.0;
+    let mut pass = |app: &mut TimegrapherApp, after: f64, events: Vec<egui::Event>| {
+        time += after;
+        let input = egui::RawInput {
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.listen_buttons(ui, false));
+        });
+    };
+    let at = egui::pos2(8.0 + LISTEN_BUTTON / 2.0, 8.0 + LISTEN_BUTTON / 2.0);
+    let tap = || {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        vec![egui::Event::PointerMoved(at), button(true), button(false)]
+    };
+    let quick = LISTEN_SETTLE_S / 5.0;
+    pass(&mut app, quick, Vec::new());
+    pass(&mut app, quick, tap());
+    assert!(!app.running(), "the first tap stops");
+    let stopped = (app.message.clone(), app.confirm.is_some());
+    // Listen shows, and the second tap lands on it a moment later.
+    pass(&mut app, quick, Vec::new());
+    pass(&mut app, quick, tap());
+    assert!(!app.running());
+    assert_eq!((app.message.clone(), app.confirm.is_some()), stopped);
+    // Once settled, a tap on Listen counts: it asks about the take not
+    // kept, or says why it can't listen.
+    pass(&mut app, LISTEN_SETTLE_S, Vec::new());
+    pass(&mut app, quick, tap());
+    assert_ne!((app.message.clone(), app.confirm.is_some()), stopped);
     app.capture = None;
     let _ = std::fs::remove_dir_all(&base);
 }

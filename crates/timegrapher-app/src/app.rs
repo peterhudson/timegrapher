@@ -1826,6 +1826,26 @@ impl RateTwoS {
     }
 }
 
+/// How long the Listen button takes no tap after it replaces Stop, s: a
+/// lagging window can still show Stop for a moment after it has gone.
+const LISTEN_SETTLE_S: f64 = 0.5;
+
+/// The Listen button's state now (`now`, s), from last frame's (`None`
+/// when Stop stood there): when it first showed, and whether the latest
+/// press came [`LISTEN_SETTLE_S`] or more after that. Only such a press
+/// starts a take, so a second tap meant for Stop starts nothing (#725).
+fn listen_tap(was: Option<(f64, bool)>, now: f64, pressed: bool) -> (f64, bool) {
+    let (shown, armed) = was.unwrap_or((now, false));
+    (
+        shown,
+        if pressed {
+            now - shown >= LISTEN_SETTLE_S
+        } else {
+            armed
+        },
+    )
+}
+
 /// The key a run of readings is kept under: its averaging time in ms.
 fn trend_key(seconds: f64) -> u64 {
     (seconds * 1000.0).round() as u64
@@ -2384,6 +2404,9 @@ pub struct TimegrapherApp {
     live: Option<LiveAnalyzer>,
     source_label: String,
     batch: Option<Batch>,
+    /// The Listen button since it last stood in for Stop: see
+    /// [`listen_tap`] (#725).
+    listen_tap: Option<(f64, bool)>,
     anchor: Option<Anchor>,
     /// The settings a take on show is read again with, for a new beat
     /// rate, in place of what the take saved.
@@ -2861,6 +2884,7 @@ impl TimegrapherApp {
             live: None,
             source_label: String::new(),
             batch: None,
+            listen_tap: None,
             anchor: None,
             reread_with: None,
             live_strip: None,
@@ -8399,6 +8423,7 @@ impl TimegrapherApp {
         let word = |ui: &mut egui::Ui, b: egui::Button<'_>| {
             ui.add(b.min_size(Vec2::new(0.0, LISTEN_BUTTON)))
         };
+        let was_listen = self.listen_tap.take();
         if let Some(kind) = self.ready_test() {
             // The one place a take starts, test or not.
             let name = if kind == NewTake::Positions {
@@ -8464,6 +8489,10 @@ impl TimegrapherApp {
             if compact {
                 hint += &length_hint;
             }
+            let (now, pressed) = ui_b.input(|i| (i.time, i.pointer.any_pressed()));
+            let tap = listen_tap(was_listen, now, pressed);
+            self.listen_tap = Some(tap);
+            let armed = tap.1;
             if ui_b
                 .add_enabled_ui(!self.running() && self.batch.is_none(), |ui| {
                     theme::icon_button(ui, Icon::Listen, LISTEN_BUTTON, 8, pal.accent, true, false)
@@ -8471,6 +8500,7 @@ impl TimegrapherApp {
                 .inner
                 .on_hover_text(hint)
                 .clicked()
+                && armed
             {
                 if watch.is_some() {
                     self.new_take(NewTake::Listen, false);
