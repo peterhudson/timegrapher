@@ -291,16 +291,21 @@ fn compare(root: &Path, cli: &Path) -> (usize, Vec<String>) {
         for (i, r) in doc["readings"].as_array().into_iter().flatten().enumerate() {
             let label = r["label"].as_str().unwrap_or("");
             let whole_folder = label == "." || label.starts_with(". (");
-            if !used[t][i] && !sounds[t].is_empty() && !(whole_folder && sounds[t].len() > 1) {
-                wrong.push(format!(
-                    "{}/{label}: no file read through analyze names it",
-                    ids[t]
-                ));
-            } else if !used[t][i] {
+            // No one sound file to read it through.
+            let unreachable = sounds[t].is_empty() || (whole_folder && sounds[t].len() > 1);
+            if used[t][i] {
+                continue;
+            }
+            if unreachable {
                 eprintln!(
                     "{}/{label}: names no one sound file, so not read through analyze",
                     ids[t]
                 );
+            } else {
+                wrong.push(format!(
+                    "{}/{label}: no file read through analyze names it",
+                    ids[t]
+                ));
             }
         }
     }
