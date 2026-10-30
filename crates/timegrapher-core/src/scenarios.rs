@@ -462,4 +462,32 @@ mod tests {
             eprintln!("{}: {}", s.name, shown.join(" | "));
         }
     }
+
+    /// The whole pane on a steady watch (#659): how many 2 h control
+    /// takes, of 200 seeds, name anything at all, a finding or a line the
+    /// headline adds. The target is 95 in 100 naming nothing (at most 10
+    /// of 200), which is not met yet: Holm's correction across the pane
+    /// leaves 17, nearly all the period search's own false alarms at
+    /// p well under its bar (#723). This count may only fall.
+    #[test]
+    fn a_steady_watch_names_nothing_on_the_whole_pane() {
+        use crate::longterm::LongConfig;
+        use crate::steadiness::{self, Config};
+        let wheels = crate::periodicity::standard_wheels(BPH, 20);
+        let s = find("control").unwrap();
+        let quiet = "no cycle, level change, trend or correlation between readings detected.";
+        let named = (1..=200)
+            .filter(|&seed| {
+                let log = beat_log(&s, seed);
+                let lc = LongConfig {
+                    wheels: wheels.clone(),
+                    ..Default::default()
+                };
+                let long = crate::longrun::analyse(&log, None, &lc);
+                let r = steadiness::check(&log, None, &long, &lc, &Config::default());
+                !r.findings.is_empty() || r.series.iter().any(|c| !c.headline.ends_with(quiet))
+            })
+            .count();
+        assert!(named <= 17, "{named} of 200 steady takes name something");
+    }
 }

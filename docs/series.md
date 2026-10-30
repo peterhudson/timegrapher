@@ -37,6 +37,14 @@ The thresholds are detection thresholds, stated with each test below
 (a false-alarm chance, a share of the variance explained); none is a
 tolerance for a watch.
 
+The p-gated tests across the three series, each one's period search
+lines and its Ljung–Box test, are one family: a line or memory is named
+only when its own test and Holm's correction at 0.05 across the family
+both keep it (#659), so one take's several tests do not add up to a
+false alarm. Each test's own figures are given as they are. The target
+is a steady watch naming nothing on 95 takes in 100; the period search's
+own false alarms still keep it short of that (#723).
+
 ```sh
 timegrapher series take/ --lift 55 --clock take/clocklog.txt
 ```
