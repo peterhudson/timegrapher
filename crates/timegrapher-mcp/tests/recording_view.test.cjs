@@ -17,10 +17,11 @@ function definition(name, optional = false) {
   return source ? source[0] : "";
 }
 const context = vm.createContext({
-  fileName: () => "test.wav", timeLabel: String,
-  stripCards: () => "", profileCard: () => "", limitsCard: () => "",
+  fileName: () => "test.wav", timeLabel: String, positionName: (p) => `name of ${p}`,
+  stripCards: () => "", limitsCard: () => "",
+  profileCard: (p, title, dropBeatError) => `<profile drop="${dropBeatError}">`,
 });
-vm.runInContext(["esc", "num", "signed", "abs", "tile", "recordingView"]
+vm.runInContext(["esc", "num", "signed", "abs", "tile", "recordingView", "recordingCards", "takeTiles"]
   .map(n => definition(n)).concat(definition("analyzeRate", true)).join("\n"), context);
 
 function render(doc) { return context.recordingView(doc, null, null); }
@@ -64,4 +65,41 @@ test("corrected headline identifies raw percentile basis and escapes the source"
   assert.ok(markup.includes("Card-clock 90% of windows +5.0 to +8.0"));
   assert.ok(markup.includes("&lt;img"));
   assert.ok(!markup.includes("<img"));
+});
+
+// A file its take lists: the whole file read alone says +9.0 s/d, the take's
+// settled stretch +5.0, as `session` reads it.
+function listed(readings) {
+  return { overall: { rate_s_per_day: 9, beat_error_ms: 0.9 }, amplitude_deg: 250, beat_error_unlock_ms: 0.8,
+    beats_found: 1000, watch_heard: true, take: { session_file: "session.toml", readings } };
+}
+const reading = (position, rate, extra = {}) => ({ position, label: ".", shape: { from_s: 20 },
+  measurement: { rate_s_per_day: rate, amplitude_deg: 280, beat_error_ms: 0.4, beat_error_unlock_ms: 0.3,
+    beats: 800, start_s: 20, end_s: 120, watch_heard: true, confidence: { rate: { se: 0.2 } } }, ...extra });
+
+test("a file its take lists shows the take's reading, not the whole file's", () => {
+  const markup = render(listed([reading("DU", 5)]));
+  assert.equal(rateValue(markup), 5);
+  assert.ok(markup.includes("name of DU · 20 to 120 · as the take reads it"), markup);
+  assert.ok(markup.includes(">280°<") && !markup.includes(">250°<"), markup);
+  assert.ok(markup.includes(">0.30<") && markup.includes(">800<"), markup);
+  assert.ok(markup.includes('<profile drop="0.4">'), "the profile takes the reading's drop beat error");
+});
+
+test("each of a take's readings of the file gets its own tiles", () => {
+  const markup = render(listed([reading("DU", 5, { label: ". (0–90 s)" }), reading("DD", -3, { label: ". (90–180 s)" })]));
+  const rates = [...markup.matchAll(/Rate<\/div>\s*<div class="value">([^<]+)/g)].map((m) => Number(m[1]));
+  assert.deepEqual(rates, [5, -3]);
+  assert.ok(markup.includes("name of DD · . (90–180 s)"), markup);
+});
+
+test("a take reading with no regular beat draws no figures", () => {
+  const markup = render(listed([reading("DU", 5, { measurement: { watch_heard: false } })]));
+  assert.ok(markup.includes("No Regular Beat Found") && !markup.includes('class="tile"'), markup);
+});
+
+test("a take that couldn't be read leaves the whole file's figures", () => {
+  const doc = listed(undefined);
+  doc.take = { session_file: "session.toml", error: "unreadable" };
+  assert.equal(rateValue(render(doc)), 9);
 });
