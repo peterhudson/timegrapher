@@ -7,6 +7,7 @@
 use crate::beats::Beat;
 use crate::breaks::{self, Break};
 use crate::clock::ClockFit;
+use crate::measure::Caveat;
 use crate::session::Manifest;
 use crate::stream::BeatLog;
 use crate::take;
@@ -36,6 +37,24 @@ pub fn joined_duration(spans: &[(f64, f64)], end_s: f64, clock: Option<&ClockFit
         .map(|(a, b)| on_clock(clock, b) - on_clock(clock, a))
         .collect();
     lens.iter().sum::<f64>() + JOIN_S * lens.len().saturating_sub(1) as f64
+}
+
+/// [`Caveat::Positions`] for a take whose entries that read anything
+/// name more than one position, read whole or joined: the isochronism
+/// and the rate against the amplitude span the positions (#651).
+pub fn positions_caveat(m: &Manifest) -> Option<Caveat> {
+    let mut seen: Vec<&str> = Vec::new();
+    for p in m
+        .recordings
+        .iter()
+        .filter(|e| !take::reads_nothing(e))
+        .filter_map(|e| e.position.as_deref())
+    {
+        if !seen.contains(&p) {
+            seen.push(p);
+        }
+    }
+    (seen.len() > 1).then_some(Caveat::Positions { count: seen.len() })
 }
 
 /// The stretches of a take that are read, audio seconds, in time order:
@@ -284,6 +303,27 @@ mod tests {
 
     fn manifest(text: &str) -> Manifest {
         toml::from_str(text).unwrap()
+    }
+
+    /// A take that names two positions carries the caveat, wherever its
+    /// sound is; one position, or none named, does not (#651).
+    #[test]
+    fn a_take_in_several_positions_says_so() {
+        let two = manifest(
+            "[[recording]]\nfile = \"a.flac\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"b.flac\"\nposition = \"CU\"\n\
+             [[recording]]\nfile = \"c.flac\"\nposition = \"DU\"\n",
+        );
+        assert_eq!(positions_caveat(&two), Some(Caveat::Positions { count: 2 }));
+        let one = manifest(
+            "[[recording]]\nfile = \"a.flac\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"b.flac\"\nposition = \"DU\"\n",
+        );
+        assert_eq!(positions_caveat(&one), None);
+        assert_eq!(
+            positions_caveat(&manifest("[[recording]]\nfile = \"a.flac\"\n")),
+            None
+        );
     }
 
     /// A take recorded in one position is read from the end of its
