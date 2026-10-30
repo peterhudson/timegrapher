@@ -90,24 +90,28 @@ fn keep_in_a_watch_waits_for_the_take_to_end() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// The Listen button's state starts when it first shows, and a press
-/// counts only from [`LISTEN_SETTLE_S`] after that (#725).
+/// The Listen button's count starts at the frame after it first shows,
+/// and a press counts only from [`LISTEN_SETTLE_S`] after that (#725).
 #[test]
 fn listen_counts_a_press_only_once_settled() {
     // First drawn with a press in it: aimed at Stop.
     let tap = listen_tap(None, 7.0, true);
-    assert_eq!(tap, (7.0, false));
-    // A press just after: still Stop's.
-    let tap = listen_tap(Some(tap), 7.0 + LISTEN_SETTLE_S / 2.0, true);
-    assert_eq!(tap, (7.0, false));
+    assert_eq!(tap, (f64::INFINITY, false));
+    // The next frame ran long, and delivers a press made while it ran,
+    // with Stop still on screen: the count starts, the press is Stop's.
+    let tap = listen_tap(Some(tap), 8.0, true);
+    assert_eq!(tap, (8.0, false));
+    // A press just after: still not counted.
+    let tap = listen_tap(Some(tap), 8.0 + LISTEN_SETTLE_S / 2.0, true);
+    assert_eq!(tap, (8.0, false));
     // A press once settled arms it, and it stays armed to the release.
-    let tap = listen_tap(Some(tap), 7.0 + LISTEN_SETTLE_S, true);
-    assert_eq!(tap, (7.0, true));
-    assert_eq!(listen_tap(Some(tap), 9.0, false), (7.0, true));
+    let tap = listen_tap(Some(tap), 8.0 + LISTEN_SETTLE_S, true);
+    assert_eq!(tap, (8.0, true));
+    assert_eq!(listen_tap(Some(tap), 10.0, false), (8.0, true));
 }
 
-/// Two taps on Stop while the app lags: the first stops, and the second,
-/// landing on Listen a moment later, starts nothing (#725).
+/// Taps on Stop while the app lags: the first stops, and the next, landing
+/// on Listen in a long frame or a moment later, start nothing (#725).
 #[test]
 fn a_second_tap_on_stop_starts_nothing() {
     let (mut app, base) = save_failure_fixture("second-stop-tap");
@@ -142,8 +146,13 @@ fn a_second_tap_on_stop_starts_nothing() {
     pass(&mut app, quick, tap());
     assert!(!app.running(), "the first tap stops");
     let stopped = (app.message.clone(), app.confirm.is_some());
-    // Listen shows, and the second tap lands on it a moment later.
+    // Listen shows, and the frame after runs long, as a lagging app's
+    // does: the second tap it delivers was made while Stop was on screen.
     pass(&mut app, quick, Vec::new());
+    pass(&mut app, LISTEN_SETTLE_S * 2.0, tap());
+    assert!(!app.running());
+    assert_eq!((app.message.clone(), app.confirm.is_some()), stopped);
+    // A third tap a moment later: still nothing.
     pass(&mut app, quick, tap());
     assert!(!app.running());
     assert_eq!((app.message.clone(), app.confirm.is_some()), stopped);

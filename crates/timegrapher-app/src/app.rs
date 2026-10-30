@@ -1839,20 +1839,14 @@ impl RateTwoS {
 /// lagging window can still show Stop for a moment after it has gone.
 const LISTEN_SETTLE_S: f64 = 0.5;
 
-/// The Listen button's state now (`now`, s), from last frame's (`None`
-/// when Stop stood there): when it first showed, and whether the latest
-/// press came [`LISTEN_SETTLE_S`] or more after that. Only such a press
-/// starts a take, so a second tap meant for Stop starts nothing (#725).
+/// The Listen button's state now (`now`, s), from last frame's (`None` when
+/// Stop stood there): when its count began, from the frame after Listen first
+/// shows, and whether the latest press came [`LISTEN_SETTLE_S`] after that.
+/// A press delivered sooner was made while Stop was on screen (#725).
 fn listen_tap(was: Option<(f64, bool)>, now: f64, pressed: bool) -> (f64, bool) {
-    let (shown, armed) = was.unwrap_or((now, false));
-    (
-        shown,
-        if pressed {
-            now - shown >= LISTEN_SETTLE_S
-        } else {
-            armed
-        },
-    )
+    let (since, armed) = was.map_or((f64::INFINITY, false), |(t, a)| (t.min(now), a));
+    let settled = since.is_finite() && now - since >= LISTEN_SETTLE_S;
+    (since, if pressed { settled } else { armed })
 }
 
 /// The key a run of readings is kept under: its averaging time in ms.
