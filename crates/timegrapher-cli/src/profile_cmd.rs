@@ -94,6 +94,10 @@ fn print_side(p: &TickProfile) {
 
 /// Two stacked plots (tick above tock) on a log level scale, with the median, the
 /// 10–90% band and the marks.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn svg(profiles: &[Option<TickProfile>; 2], file: &Path, from: f64, to: f64, lift: f64) -> String {
     let (w, h, ml, mr, mt, gap) = (900.0, 260.0, 60.0, 20.0, 40.0, 50.0);
     let total = mt + 2.0 * h + gap + 40.0;

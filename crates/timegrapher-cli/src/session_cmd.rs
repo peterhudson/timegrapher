@@ -7,6 +7,7 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use timegrapher_core::calibre_store::{self, UserCalibres};
 use timegrapher_core::calibres;
+use timegrapher_core::clean::Cuts;
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::longrun;
 use timegrapher_core::longterm::LongConfig;
@@ -406,16 +407,19 @@ fn excerpt(files: &[PathBuf], from_s: f64, len_s: f64) -> Result<(Vec<f32>, f64)
 }
 
 /// The log from `from_s` to `to_s`, with times shifted to start at zero.
-/// Its amplitude windows are those [`session::window_in`] the stretch
-/// (#636).
-fn trimmed(log: &BeatLog, from_s: f64, to_s: f64) -> BeatLog {
+/// Its amplitude windows are the reading's: those
+/// [`session::stretch_windows`] keeps in the stretch with the reading's
+/// cuts `holes`, so none reaches into a mask or a pause (#636).
+fn trimmed(log: &BeatLog, holes: &Cuts, from_s: f64, to_s: f64) -> BeatLog {
     let mut l = log.clone();
     l.beats.retain(|b| b.time >= from_s && b.time < to_s);
     for b in &mut l.beats {
         b.time -= from_s;
     }
-    l.amplitude_windows
-        .retain(|w| session::window_in(w, from_s, to_s));
+    l.amplitude_windows = session::stretch_windows(holes, &log.amplitude_windows, from_s, to_s)
+        .into_iter()
+        .cloned()
+        .collect();
     for w in &mut l.amplitude_windows {
         w.start_s -= from_s;
         w.end_s -= from_s;
@@ -617,6 +621,10 @@ pub(crate) fn read_one_with_context(
     Ok((reading, context))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn read_one_inner(
     e: &RecordingEntry,
     c: &Ctx,
@@ -683,7 +691,10 @@ fn read_one_inner(
                 .collect(),
             ..Default::default()
         };
-        let part = trimmed(&log, settle, end);
+        // The reading's own windows: its cuts, as `measure_masked` makes
+        // them.
+        let holes = Cuts::new(clock.as_ref(), &breaks, &masked);
+        let part = trimmed(&log, &holes, settle, end);
         // The part's times start at `settle`, so its breaks move with
         // it; a clock fit that holds the gaps at their own places is left
         // out (a ppm or so makes no odds to a cycle's period).
@@ -813,6 +824,10 @@ pub struct Session<'a> {
     pub power_reserve: Option<timegrapher_core::power_reserve::Results>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     check_seconds("--settle", o.settle, 0.0, false)?;
     if o.init {
@@ -1025,6 +1040,10 @@ fn finding_lines(f: &Finding) {
     println!("    {}", f.evidence);
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn print_summary(s: &Session) {
     let r = &s.report;
     let name = match (s.watch, s.calibre) {
@@ -1195,8 +1214,8 @@ fn print_summary(s: &Session) {
 mod tests {
     use super::*;
 
-    /// A part of a log takes the amplitude windows whose midpoint is in
-    /// it, as every reading does, not only those wholly inside (#636).
+    /// A part of a log takes the reading's amplitude windows: those whose
+    /// midpoint is in it and that reach into no cut (#636).
     #[test]
     fn a_part_of_a_log_takes_the_windows_whose_midpoint_is_in_it() {
         let w = |start_s: f64| timegrapher_core::amplitude::AmplitudeWindow {
@@ -1225,10 +1244,17 @@ mod tests {
             by_count: Vec::new(),
             snippets: Vec::new(),
         };
-        let part = trimmed(&log, 10.0, 30.0);
+        let none = Cuts::new(None, &[], &[]);
+        let part = trimmed(&log, &none, 10.0, 30.0);
         let starts: Vec<f64> = part.amplitude_windows.iter().map(|w| w.start_s).collect();
         // Midpoints 10.5, 11.5 and 29.5 are in [10, 30); 9.5 and 30.5 not.
         assert_eq!(starts, vec![-0.5, 0.5, 18.5]);
+        // A window that reaches into a mask is not the reading's, so not
+        // the part's either.
+        let masked = Cuts::new(None, &[], &[(11.0, 12.0)]);
+        let part = trimmed(&log, &masked, 10.0, 30.0);
+        let starts: Vec<f64> = part.amplitude_windows.iter().map(|w| w.start_s).collect();
+        assert_eq!(starts, vec![18.5]);
     }
 
     fn options(bph: Option<u32>, lift: Option<f64>, calibre: Option<&str>) -> Options {
@@ -1377,6 +1403,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn custom_session_catalogue_preserves_value_context_precedence_and_snapshot() {
         let mut user: UserCalibres = serde_json::from_value(serde_json::json!({
             "schema": calibre_store::SCHEMA,
@@ -1738,6 +1768,10 @@ mod tests {
     /// sound has: its listed pause, and a step in its clock log that no
     /// listed pause explains.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_kept_take_has_the_breaks_its_sound_has() {
         use timegrapher_core::synth::{generate, SynthConfig};
         let base =
@@ -1974,6 +2008,10 @@ mod tests {
     /// did: the same readings and beat shape for each position, with the
     /// report saying no sound was kept.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_take_kept_as_its_analysis_reads_as_its_sound() {
         use timegrapher_core::synth::{generate, SynthConfig};
         let base = std::env::temp_dir().join(format!("tg-session-kept-{}", std::process::id()));

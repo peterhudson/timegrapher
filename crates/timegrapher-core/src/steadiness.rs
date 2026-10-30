@@ -881,6 +881,10 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
 /// headline is read from `g`, but cycles are looked for in `fine`, which
 /// keeps cycles too short for `g`'s readings.
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn check_series(
     kind: SeriesKind,
     mut g: Grid,
@@ -1884,6 +1888,10 @@ fn lead_summary(s: &SeriesCheck) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn lead_text(s: &SeriesCheck, mean: f64) -> String {
     let k = s.series;
     let name = k.name();
@@ -2199,6 +2207,10 @@ pub fn p_text(p: f64) -> String {
 /// Check the rate, the amplitude and the beat error of a long-run
 /// analysis. `log` and `clock` are what `long` was run on, and `long`
 /// its report (whose period search is reused).
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn check(
     log: &BeatLog,
     clock: Option<&ClockFit>,

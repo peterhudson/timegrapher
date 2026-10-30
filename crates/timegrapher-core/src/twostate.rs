@@ -362,6 +362,10 @@ fn split_alone(pairs: &[(f64, f64)], p: &Params) -> Option<bool> {
 }
 
 /// Look for two states in `samples`, in time order.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn find(samples: &[Sample], p: &Params) -> TwoState {
     let (b, block_s) = blocks(samples, p);
     let n = b.len();

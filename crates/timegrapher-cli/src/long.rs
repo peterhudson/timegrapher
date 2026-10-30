@@ -537,6 +537,10 @@ impl Progress {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(
     files: &[PathBuf],
     clock_args: ClockArgs,

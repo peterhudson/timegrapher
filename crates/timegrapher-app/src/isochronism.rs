@@ -66,6 +66,10 @@ fn rate_label(v: f64, step: f64) -> String {
     format!("{v:+.d$} s/d")
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32) {
     let pal = theme::pal(ui);
     let colour = pal.trace_rate;

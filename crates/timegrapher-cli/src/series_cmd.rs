@@ -288,6 +288,10 @@ fn opt(v: Option<f64>, d: usize) -> String {
     v.map_or("-".into(), |x| format!("{x:.d$}"))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     let name = s.series.name();
     println!();

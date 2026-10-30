@@ -1464,6 +1464,10 @@ pub fn pane_toolbar_pinned(
 
 /// A pane's toolbar: its controls, then at its right end its `note`, its
 /// `pinned` control and the "?".
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn pane_toolbar_full(
     ui: &mut Ui,
     title: &str,
