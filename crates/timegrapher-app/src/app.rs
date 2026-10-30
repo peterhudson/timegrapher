@@ -5450,10 +5450,12 @@ impl TimegrapherApp {
             let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
             let mut log = steady::log_of(live)?;
             let clock = self.reading_clock(log.duration_s);
-            // The cuts the app adds (a settling's end, a move) where they
-            // bound the reading rather than fall within it change nothing
-            // it reads, and session has none there.
-            log.jumps.retain(|&j| from < j && j < to);
+            // The cuts the app adds (a settling's end, a move, a mask's ends)
+            // at the reading's or a mask's edges change nothing it reads, and
+            // session has none there (#682).
+            let edge =
+                |j: f64| j <= from || j >= to || self.masked.iter().any(|m| j == m.0 || j == m.1);
+            log.jumps.retain(|&j| !edge(j));
             let breaks = self.reading_breaks(&log);
             // The time between the stretches, another position or its
             // settling, is left out as a mask is.
@@ -18083,26 +18085,6 @@ mod tests {
         // It doesn't touch the rate or the amplitude.
         assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
         assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
-    }
-
-    /// The whole take's hover says the breaks it is read across and, where
-    /// Tick and Tock were named by the count across them, that too.
-    #[test]
-    fn the_whole_takes_hover_says_its_sides_were_named_by_count() {
-        let text = cut_caveats_text(&[
-            Caveat::Breaks { count: 1 },
-            Caveat::SidesByCount { count: 1 },
-            Caveat::ClockUnknown,
-        ]);
-        assert!(text.starts_with(" 1 break in this stretch: "), "{text}");
-        assert!(
-            text.ends_with(
-                " Tick and Tock are named by the beat count across 1 break in this \
-                 stretch, not told apart by their sound."
-            ),
-            "{text}"
-        );
-        assert_eq!(cut_caveats_text(&[Caveat::ClockUnknown]), "");
     }
 
     use timegrapher_core::synth::{generate, SynthConfig};

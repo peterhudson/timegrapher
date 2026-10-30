@@ -1294,6 +1294,43 @@ mod tests {
         assert!(matches!(w(4, None, 600.0), Err(NoReading::Outside(_))));
     }
 
+    /// A stretch that starts partway into its recording settles halfway
+    /// through its own length, not the recording's, and an unsettled
+    /// entry gives its stretch's length; each reason for no reading says
+    /// itself in words (#694).
+    #[test]
+    fn a_stretch_partway_in_is_measured_on_its_own_length() {
+        assert_eq!(measured(100.0, 110.0, None, None), (105.0, 110.0));
+        let m: Manifest =
+            toml::from_str("[[recording]]\nfile = \"a.flac\"\nstart_s = 100\nsettle_s = 50\n")
+                .unwrap();
+        let no = reading_window(&m.recordings[0], &m, None, 130.0).unwrap_err();
+        assert_eq!(
+            no,
+            NoReading::Unsettled {
+                file: "a.flac".into(),
+                settle_s: 50.0,
+                length_s: 30.0
+            }
+        );
+        assert_eq!(
+            no.to_string(),
+            "a.flac: a settle_s of 50 s leaves nothing of its 30 s stretch to read; \
+             give it a shorter settle_s"
+        );
+        assert_eq!(
+            NoReading::Nothing.to_string(),
+            "nothing to read: it settles right to its end"
+        );
+        assert_eq!(NoReading::Outside("out".into()).to_string(), "out");
+        assert_eq!(
+            EntryError::NoReading(NoReading::Nothing).to_string(),
+            NoReading::Nothing.to_string()
+        );
+        assert_eq!(EntryError::Failed("bad".into()).to_string(), "bad");
+        assert_eq!(String::from(EntryError::from("bad".to_string())), "bad");
+    }
+
     #[test]
     fn an_entrys_own_times_come_before_its_session_files() {
         let m: Manifest =
@@ -1446,5 +1483,47 @@ mod tests {
         assert_eq!(done, total);
         assert!((total - read.log.duration_s).abs() < 1e-6, "{told:?}");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The words for where a take's clock came from, for each source; a
+    /// clock log is named by its file name alone (#669).
+    #[test]
+    fn clock_source_text_words_each_source() {
+        let usb = Some("USB lines, +12.0 ppm");
+        let stored = Some("stored for 'USB', 2026-10-10T03:00:00Z");
+        let log = Some(Path::new("take/clock.csv"));
+        let text = |from| clock_source_text(from, usb, stored, log);
+        assert_eq!(
+            text(ClockFrom::LogRatedByUsb),
+            "USB lines, +12.0 ppm; clock log clock.csv for its breaks"
+        );
+        assert_eq!(text(ClockFrom::Log), "from clock log clock.csv");
+        assert_eq!(
+            text(ClockFrom::Correction),
+            "stored for 'USB', 2026-10-10T03:00:00Z"
+        );
+        assert_eq!(text(ClockFrom::Usb), "USB lines, +12.0 ppm");
+    }
+
+    /// A calibre named from the table keeps its figures and the table's
+    /// order of wheels; a name in neither the table nor the user's
+    /// calibres finds nothing.
+    #[test]
+    fn a_table_calibre_keeps_its_figures_and_wheel_order() {
+        let user = crate::calibre_store::UserCalibres::default();
+        let c = calibre_named("ETA 2824-2", &user).unwrap();
+        assert_eq!(c.name, "ETA 2824-2");
+        assert_eq!(
+            (c.bph, c.lift_angle_deg, c.escape_teeth),
+            (Some(28800), Some(50.0), Some(20))
+        );
+        let table = crate::calibres::find("ETA 2824-2").unwrap();
+        let named: Vec<&str> = c.wheels.iter().map(|w| w.name.as_str()).collect();
+        let listed: Vec<&str> = table.wheels.iter().map(|w| w.name.as_str()).collect();
+        assert!(listed.len() >= 2, "{listed:?}");
+        assert_eq!(&named[..listed.len()], &listed[..]);
+        assert_eq!(c.wheels[0].name, "barrel");
+        assert!((c.wheels[0].period_s - 21114.027).abs() < 0.01);
+        assert!(calibre_named("No Such Calibre 9999", &user).is_none());
     }
 }

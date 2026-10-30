@@ -1655,7 +1655,11 @@ mod tests {
     fn an_opened_log_says_where_its_sides_were_named_by_count() {
         let mut log = viewer_phase_log(0.0, 0.0);
         log.by_count = log.jumps.clone();
+        let jumps = log.jumps.clone();
         let a = LiveAnalyzer::from_log(log, LiveConfig::default());
+        // The app's hover lists them as the log gave them.
+        assert!(!jumps.is_empty());
+        assert_eq!(a.by_count(), jumps.as_slice());
         let by_count = |end_s: f64| {
             a.reading_at(end_s, 20.0)
                 .caveats
@@ -1670,6 +1674,7 @@ mod tests {
         assert_eq!(by_count(90.0), Some(1));
         // Without the log's by-count jumps, nothing is said.
         let plain = LiveAnalyzer::from_log(viewer_phase_log(0.0, 0.0), LiveConfig::default());
+        assert!(plain.by_count().is_empty());
         assert!(!plain
             .reading_at(90.0, 20.0)
             .caveats
@@ -2155,5 +2160,37 @@ mod tests {
             assert_eq!(live.beat_error_unlock_ms, saved.beat_error_unlock_ms);
             assert_eq!(live.beat_error_ms, saved.beat_error_ms);
         }
+    }
+
+    /// A profile's guide for each side is the unlock of the latest window
+    /// to end by then that read that side, or of the first window after
+    /// when none has ended yet.
+    #[test]
+    fn profile_guides_come_from_the_latest_window_that_read_them() {
+        let w = |start_s: f64, even: Option<f64>, odd: Option<f64>| AmplitudeWindow {
+            start_s,
+            end_s: start_s + 10.0,
+            even_deg: None,
+            odd_deg: None,
+            beat_error_ms: None,
+            beat_error_unlock_ms: None,
+            even_unlock_ms: even,
+            odd_unlock_ms: odd,
+            even_drop_ms: None,
+            odd_drop_ms: None,
+        };
+        let mut a = LiveAnalyzer::new(8000, LiveConfig::default());
+        a.amp = vec![
+            w(0.0, Some(1.0), Some(2.0)),
+            w(10.0, Some(3.0), None),
+            w(20.0, Some(5.0), Some(6.0)),
+        ];
+        // Before any window has ended: the first after.
+        assert_eq!(a.profile_guides_at(5.0), [Some(1.0), Some(2.0)]);
+        // A window ending at the time counts; a side the latest did not
+        // read takes the one before.
+        assert_eq!(a.profile_guides_at(20.0), [Some(3.0), Some(2.0)]);
+        assert_eq!(a.profile_guides_at(25.0), [Some(3.0), Some(2.0)]);
+        assert_eq!(a.profile_guides_at(100.0), [Some(5.0), Some(6.0)]);
     }
 }
