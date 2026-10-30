@@ -46,8 +46,9 @@ pub enum ClockFrom {
 /// Where the clock comes from for a take with a clock log (`log`), USB
 /// lines (`usb_ppm`) and a known correction (`correction_ppm`), as
 /// [`clock`] picks it; `None` when the readings stay on the sound card's
-/// clock. USB lines set the rate whenever there is a log; without one, a
-/// known correction comes before them.
+/// clock. USB lines set the rate whenever the take has them, as they time
+/// its card on this take; without them, a log comes before a known
+/// correction (#635).
 pub fn clock_from(
     log: bool,
     usb_ppm: Option<f64>,
@@ -56,8 +57,8 @@ pub fn clock_from(
     match (log, usb_ppm, correction_ppm) {
         (true, Some(_), _) => Some(ClockFrom::LogRatedByUsb),
         (true, None, _) => Some(ClockFrom::Log),
-        (false, _, Some(_)) => Some(ClockFrom::Correction),
-        (false, Some(_), None) => Some(ClockFrom::Usb),
+        (false, Some(_), _) => Some(ClockFrom::Usb),
+        (false, None, Some(_)) => Some(ClockFrom::Correction),
         (false, None, None) => None,
     }
 }
@@ -70,7 +71,9 @@ pub fn clock_from(
 ///   the recording has USB lines (`usb_ppm`, slow positive), they set the
 ///   rate and the log keeps only its breaks ([`ClockFit::rate_from_usb`]).
 /// - A correction or the USB lines alone are one steady error over the
-///   take ([`ClockFit::fixed`]).
+///   take ([`ClockFit::fixed`]); USB lines over a correction keep the
+///   correction beside them, to say when the two disagree
+///   ([`ClockFit::usb_over_correction`]).
 pub fn clock(
     log_text: Option<&str>,
     sample_rate: u32,
@@ -97,7 +100,10 @@ pub fn clock(
             (Some(ClockFrom::Correction), _) => {
                 correction_ppm.map(|p| ClockFit::fixed(p, duration_s))
             }
-            (Some(ClockFrom::Usb), _) => usb_ppm.map(|p| ClockFit::fixed(p, duration_s)),
+            (Some(ClockFrom::Usb), _) => usb_ppm.map(|p| match correction_ppm {
+                Some(c) => ClockFit::usb_over_correction(p, c, duration_s),
+                None => ClockFit::fixed(p, duration_s),
+            }),
             _ => None,
         },
     )
@@ -1159,27 +1165,43 @@ mod tests {
     }
 
     #[test]
-    fn without_a_log_a_known_correction_comes_before_the_usb_lines() {
+    fn without_a_log_the_usb_lines_come_before_a_known_correction() {
         let fixed = |ppm| ClockFit::fixed(ppm, 600.0).map(300.0);
-        let at = |c: Option<ClockFit>| c.map(|c| c.map(300.0));
+        let at = |c: &Option<ClockFit>| c.as_ref().map(|c| c.map(300.0));
+        // The USB lines set the rate; the correction is kept beside them,
+        // and said when they are more than 5 ppm apart (#635).
+        let over = clock(None, 48_000, 2, Some(12.0), Some(5.0), 600.0).unwrap();
+        assert_eq!(at(&over), Some(fixed(12.0)));
+        let over = over.unwrap();
+        assert!(over.corrects() && over.withheld.is_none());
         assert_eq!(
-            at(clock(None, 48_000, 2, Some(12.0), Some(5.0), 600.0).unwrap()),
-            Some(fixed(5.0))
+            over.sources_disagree(),
+            Some(crate::clock::SourcesDisagree {
+                usb_ppm: 12.0,
+                log_ppm: 5.0,
+                log_ppm_sd: 0.0,
+                against: crate::clock::Against::Correction,
+            })
         );
-        assert_eq!(
-            at(clock(None, 48_000, 2, Some(12.0), None, 600.0).unwrap()),
-            Some(fixed(12.0))
-        );
+        let near = clock(None, 48_000, 2, Some(12.0), Some(8.0), 600.0).unwrap();
+        assert_eq!(at(&near), Some(fixed(12.0)));
+        assert_eq!(near.unwrap().sources_disagree(), None);
+        let alone = clock(None, 48_000, 2, Some(12.0), None, 600.0).unwrap();
+        assert_eq!(at(&alone), Some(fixed(12.0)));
+        assert_eq!(alone.unwrap().sources_disagree(), None);
+        let correction = clock(None, 48_000, 2, None, Some(5.0), 600.0).unwrap();
+        assert_eq!(at(&correction), Some(fixed(5.0)));
         assert!(clock(None, 48_000, 2, None, None, 600.0).unwrap().is_none());
     }
 
     #[test]
-    fn the_clock_comes_from_the_log_and_usb_lines_else_a_correction_else_usb() {
+    fn the_clock_comes_from_the_log_and_usb_lines_else_usb_else_a_correction() {
         use ClockFrom::*;
         assert_eq!(clock_from(true, Some(1.0), Some(2.0)), Some(LogRatedByUsb));
         assert_eq!(clock_from(true, None, Some(2.0)), Some(Log));
-        assert_eq!(clock_from(false, Some(1.0), Some(2.0)), Some(Correction));
+        assert_eq!(clock_from(false, Some(1.0), Some(2.0)), Some(Usb));
         assert_eq!(clock_from(false, Some(1.0), None), Some(Usb));
+        assert_eq!(clock_from(false, None, Some(2.0)), Some(Correction));
         assert_eq!(clock_from(false, None, None), None);
     }
 
