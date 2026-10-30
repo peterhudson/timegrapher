@@ -298,6 +298,15 @@ pub fn all() -> Vec<EdgeTake> {
             truth: Some(MADE),
             known: None,
         },
+        EdgeTake {
+            id: "edge_zero_gap_pause",
+            summary: "two stretches of 90 s with a pause between that the session lists \
+                      at no length, as an app pause and resume within one frame: the \
+                      watch's beats jump at the join",
+            caveats: &[&["breaks"]],
+            truth: Some(MADE),
+            known: None,
+        },
     ]
 }
 
@@ -499,6 +508,16 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 Recipe {
                     breaks: vec![(join, 90.0)],
                     steps: vec![(join, 90.0)],
+                    ..Recipe::of(s)
+                }
+            }
+            "edge_zero_gap_pause" => {
+                let mut s = watch(90.0, seed);
+                let join = s.len();
+                s.extend(watch(90.0, seed + 50));
+                Recipe {
+                    breaks: vec![(join, 0.0)],
+                    steps: vec![(join, 0.0)],
                     ..Recipe::of(s)
                 }
             }
