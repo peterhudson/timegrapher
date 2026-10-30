@@ -153,6 +153,30 @@ pub fn fold_spread(f: &longterm::Fold, columns: &[Option<[f64; 3]>]) -> Option<(
     Some((hi - lo, middle))
 }
 
+/// A fold as its view gives it: up to [`MAX_CYCLES`] of its cycles kept
+/// for drawing, its columns and spread over every cycle, and its scale
+/// ([`fold_range`]).
+fn fold_view(f: &longterm::Fold, from: &'static str, wheel: Option<String>) -> FoldView {
+    let columns = fold_columns(f);
+    let spread_of = fold_spread(f, &columns);
+    let raster: Vec<Vec<f64>> = spread(f.raster.len(), MAX_CYCLES)
+        .into_iter()
+        .map(|k| f.raster[k].clone())
+        .collect();
+    FoldView {
+        period_s: f.period_s,
+        from,
+        wheel,
+        profile: f.profile.clone(),
+        cycles: f.raster.len(),
+        raster,
+        columns,
+        swing: spread_of.map(|s| s.0),
+        middle_half: spread_of.map(|s| s.1),
+        y_range: fold_range(f).map(|(a, b)| [a, b]),
+    }
+}
+
 /// The views for each series, in the report's order.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Views {
@@ -396,24 +420,7 @@ pub fn views(
                     FoldFrom::Series(j) => (NAMES[*j], None),
                     FoldFrom::Wheel(w) => ("wheel", Some(w.clone())),
                 };
-                let columns = fold_columns(f);
-                let spread_of = fold_spread(f, &columns);
-                let raster: Vec<Vec<f64>> = spread(f.raster.len(), MAX_CYCLES)
-                    .into_iter()
-                    .map(|k| f.raster[k].clone())
-                    .collect();
-                FoldView {
-                    period_s: f.period_s,
-                    from,
-                    wheel,
-                    profile: f.profile.clone(),
-                    cycles: f.raster.len(),
-                    raster,
-                    columns,
-                    swing: spread_of.map(|s| s.0),
-                    middle_half: spread_of.map(|s| s.1),
-                    y_range: fold_range(f).map(|(a, b)| [a, b]),
-                }
+                fold_view(f, from, wheel)
             });
             SeriesViews {
                 series: NAMES[i],
@@ -830,20 +837,6 @@ mod tests {
         assert!(f.raster.iter().all(|row| row.len() == f.profile.len()));
         assert_eq!(f.columns.len(), f.profile.len());
         assert!(f.swing.is_some() && f.middle_half.is_some());
-        // Its scale is fold_range's, over every cycle, and holds every dot.
-        let [y0, y1] = f.y_range.expect("fold scale");
-        let dots: Vec<f64> = f
-            .raster
-            .iter()
-            .flatten()
-            .copied()
-            .filter(|v| v.is_finite())
-            .collect();
-        assert_eq!(chart_scale::spread(&dots), Some((y0, y1)));
-        assert!(
-            dots.iter().filter(|&&d| d < y0 || d > y1).count() <= dots.len() / 50,
-            "{y0} to {y1}"
-        );
         let fa = v.series[1].fold.as_ref().expect("amplitude fold");
         assert_ne!(fa.from, "own");
     }
@@ -892,6 +885,18 @@ mod tests {
             t0: 0.0,
         };
         assert_eq!(fold_range(&f), chart_scale::spread(&all));
+        // The view keeps 200 cycles to draw, and its scale is still every
+        // cycle's.
+        let v = fold_view(&f, "own", None);
+        assert!(
+            v.raster.len() < v.cycles,
+            "{} of {}",
+            v.raster.len(),
+            v.cycles
+        );
+        assert_eq!(v.y_range, fold_range(&f).map(|(a, b)| [a, b]));
+        let drawn: Vec<f64> = v.raster.iter().map(|r| r[0]).collect();
+        assert_ne!(v.y_range, chart_scale::spread(&drawn).map(|(a, b)| [a, b]));
         assert_ne!(fold_range(&f), chart_scale::spread(&vec![0.0; kept.len()]));
         let empty = longterm::Fold {
             raster: vec![vec![nan, nan]],
