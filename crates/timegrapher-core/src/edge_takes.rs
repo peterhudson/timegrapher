@@ -719,7 +719,8 @@ mod tests {
     /// The stand's noise alone, as edge_all_silence makes it, reads
     /// `no_watch` whatever the noise draws, in session and, up to 90 s, on
     /// the live card: before #675, 16 in 100 draws of 30 s, 6 in 100 of
-    /// 90 s and 5 in 100 of 120 s were read as a watch with a rate.
+    /// 90 s and 5 in 100 of 120 s were read as a watch with a rate, and
+    /// with the sound of one side deciding, 3 in 200 more of 30 s.
     #[test]
     fn stand_noise_is_never_read_as_a_watch() {
         let take = all()
@@ -733,10 +734,11 @@ mod tests {
         write(&dir, "session.json", &record(&[])).unwrap();
         let mut heard = Vec::new();
         let mut split = Vec::new();
-        for (duration_s, draws) in [(30.0, 40), (90.0, 20), (120.0, 20)] {
+        // Draws from two ranges of seeds, so the test is not tuned to one.
+        for (duration_s, draws) in [(30.0, 20), (90.0, 10), (120.0, 10)] {
             let frames = (duration_s * FS as f64) as usize;
             write(&dir, "clock.csv", &clock_log(frames, 0.0, &[])).unwrap();
-            for seed in 0..draws {
+            for seed in (0..draws).chain(1000..1000 + draws) {
                 let audio = Audio {
                     samples: silence(duration_s, seed),
                     sample_rate: FS,
