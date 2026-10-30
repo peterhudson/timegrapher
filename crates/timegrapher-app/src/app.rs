@@ -7503,7 +7503,7 @@ impl TimegrapherApp {
                 });
                 self.steady_info = info;
             }
-            Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |ui| {
+            Pane::Isochronism => theme::pane_toolbar(ui, title, &help::ISOCHRONISM, |ui| {
                 self.export_button(ui, pane)
             }),
             Pane::PositionsTest => theme::pane_toolbar(ui, title, &help::POSITIONS_TEST, |ui| {
@@ -7517,7 +7517,7 @@ impl TimegrapherApp {
                     self.reserve_settings(ui);
                 })
             }
-            Pane::Distributions => theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
+            Pane::Distributions => theme::pane_toolbar(ui, title, &help::HISTOGRAMS, |ui| {
                 steady::series_switches(ui, &mut self.dist_series);
                 theme::bar_gap(ui);
                 self.histogram_settings(ui);
@@ -12358,7 +12358,7 @@ impl TimegrapherApp {
         let unheard_hover = format!(
             "{}.\n\n{}",
             r.as_ref().map(no_regular_beat).unwrap_or_default(),
-            help::NO_REGULAR_BEAT
+            *help::NO_REGULAR_BEAT
         );
         let unheard = (!heard).then(|| (unheard_line.clone(), unheard_hover.clone()));
         let r = r.as_ref().filter(|_| heard);
@@ -12418,7 +12418,7 @@ impl TimegrapherApp {
         {
             let rate = r.and_then(|r| r.rate_s_per_day);
             let rate_facts = reading_limits("Rate", caveats, lift_now, beats);
-            title(ui, cards[2].title, "Rate", help::RATE, &rate_facts, None);
+            title(ui, cards[2].title, "Rate", &help::RATE, &rate_facts, None);
             let unit = match pm {
                 Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
                 _ => "s/d".to_string(),
@@ -13306,7 +13306,7 @@ impl TimegrapherApp {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = 8.0;
                         ui.label(RichText::new(&line).font(theme::semibold(17.0)))
-                            .on_hover_text(help::NO_REGULAR_BEAT);
+                            .on_hover_text(*help::NO_REGULAR_BEAT);
                         ui.add(
                             egui::Label::new(
                                 RichText::new(
