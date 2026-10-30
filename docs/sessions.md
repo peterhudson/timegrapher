@@ -98,11 +98,10 @@ marker applies only to its accompanying numeric `lift`; an explicit CLI
 `--lift`, including 52, wins over both. A calibre name without a lift value
 does not make an assumed angle known.
 
-Older files have no recoverable provenance marker. The CLI retains its legacy
-interpretation that a numeric manifest lift is supplied; the desktop retains
-its default-angle inference, using actual calibre lift data rather than a name
-alone. The desktop preserves newly restored context when the value is edited
-and reverted. Entering or reselecting an unchanged 52 in its existing controls
+Older files have no marker. Every reader takes one rule for them
+(`take::file_lift_known`): a lift of 52°, the default, is assumed unless the
+file's calibre gives a lift; any other value was supplied. The desktop
+preserves newly restored context when the value is edited and reverted. Entering or reselecting an unchanged 52 in its existing controls
 still cannot distinguish a new explicit confirmation from the default.
 Older program versions that reject unknown manifest fields cannot read the new
 marker; removing it restores their legacy inference, not the original context.

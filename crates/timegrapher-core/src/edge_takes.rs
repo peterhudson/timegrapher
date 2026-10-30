@@ -453,9 +453,11 @@ impl Recipe {
     }
 }
 
+/// The take's session file. Its lift is the one the sound was made at, so
+/// supplied (#685).
 fn manifest(take: &EdgeTake, lift: f64, extra: &str, entries: &str) -> String {
     format!(
-        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {lift}\nnotes = \"{}\"\n{extra}\n{entries}",
+        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {lift}\nlift_known = true\nnotes = \"{}\"\n{extra}\n{entries}",
         take.id, take.summary
     )
 }

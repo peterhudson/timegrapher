@@ -653,8 +653,7 @@ pub struct Given {
 ///   none means it is measured;
 /// - lift angle: given, else the session file's, else the calibre's,
 ///   else [`DEFAULT_LIFT_DEG`]; known when given, when the session file
-///   gives it (unless it says `lift_known = false`), or when the calibre
-///   does;
+///   gives it and [`file_lift_known`] says so, or when the calibre does;
 /// - escape wheel teeth: the session file's, else the calibre's, else
 ///   [`ESCAPE_TEETH`].
 pub fn stream_settings(m: &Manifest, cal: Option<&Calibre>, given: Given) -> StreamConfig {
@@ -667,8 +666,8 @@ pub fn stream_settings(m: &Manifest, cal: Option<&Calibre>, given: Given) -> Str
         .unwrap_or(DEFAULT_LIFT_DEG);
     cfg.analysis.lift_known = if given.lift_deg.is_some() {
         true
-    } else if m.lift.is_some() {
-        m.lift_known.unwrap_or(true)
+    } else if let Some(known) = file_lift_known(m, cal) {
+        known
     } else {
         cal.is_some_and(|c| c.lift_angle_deg.is_some())
     };
@@ -677,6 +676,19 @@ pub fn stream_settings(m: &Manifest, cal: Option<&Calibre>, given: Given) -> Str
         .or(cal.and_then(|c| c.escape_teeth))
         .unwrap_or(ESCAPE_TEETH);
     cfg
+}
+
+/// Whether the lift a session file `m` gives was supplied, or `None`
+/// when it gives none: its `lift_known` where it says, else (an older
+/// file, which did not record it) supplied unless it is the default
+/// [`DEFAULT_LIFT_DEG`] and its calibre `cal` gives no lift (#685). Every
+/// reader of a session file, and every writer, takes it from here.
+pub fn file_lift_known(m: &Manifest, cal: Option<&Calibre>) -> Option<bool> {
+    let lift = m.lift?;
+    Some(
+        m.lift_known
+            .unwrap_or(lift != DEFAULT_LIFT_DEG || cal.is_some_and(|c| c.lift_angle_deg.is_some())),
+    )
 }
 
 /// The correction stored for the input `file` was recorded on
@@ -1516,6 +1528,35 @@ mod tests {
         assert_eq!(from_reader.analysis.bph, Some(28_800));
         assert_eq!(from_reader.analysis.amplitude.lift_deg, 53.0);
         assert!(from_reader.analysis.lift_known);
+    }
+
+    /// An older session file, with no `lift_known`, gave its lift; it was
+    /// assumed when it is the default and the calibre gives none (#685).
+    #[test]
+    fn an_older_files_default_lift_is_assumed_unless_its_calibre_gives_one() {
+        let cal = |lift| Calibre {
+            name: "Test".into(),
+            bph: None,
+            lift_angle_deg: lift,
+            lift_set_aside_deg: None,
+            escape_teeth: None,
+            wheels: Vec::new(),
+        };
+        let file = |text: &str| -> Manifest { toml::from_str(text).unwrap() };
+        let known = |m: &Manifest, c: Option<&Calibre>| {
+            stream_settings(m, c, Given::default()).analysis.lift_known
+        };
+        let bare_52 = file("lift = 52");
+        assert_eq!(file_lift_known(&bare_52, None), Some(false));
+        assert!(!known(&bare_52, None));
+        assert!(!known(&bare_52, Some(&cal(None))));
+        assert!(known(&bare_52, Some(&cal(Some(52.0)))));
+        let bare_50 = file("lift = 50");
+        assert!(known(&bare_50, None));
+        // A marker says it, whatever the value.
+        assert!(known(&file("lift = 52\nlift_known = true"), None));
+        assert!(!known(&file("lift = 50\nlift_known = false"), None));
+        assert_eq!(file_lift_known(&file(""), None), None);
     }
 
     /// Opening an entry reads it as measuring it does, and tells how far
