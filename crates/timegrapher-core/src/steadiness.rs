@@ -27,6 +27,8 @@
 //! scores each period with a false-alarm chance and names the wheel) and
 //! the two-state finder, and one headline is drawn from all of them.
 
+pub use crate::amplitude_slope::CrossCorrelation;
+use crate::amplitude_slope::{cross_correlation, eiv_slope, reading_noise, MIN_RELIABILITY};
 use crate::clean::Cuts;
 use crate::clock::ClockFit;
 use crate::confidence::{self, Slow};
@@ -397,10 +399,16 @@ pub struct IsochronismCurve {
     /// Amplitudes the take covers (2nd and 98th percentile), degrees.
     pub amplitude_from_deg: f64,
     pub amplitude_to_deg: f64,
-    /// Straight line through the bins (weighted by readings): s/d per
-    /// degree, and the rate change over the amplitudes covered, s/d.
-    pub s_per_day_per_deg: f64,
-    pub rate_change_s_per_day: f64,
+    /// The rate's slope against the amplitude over every reading, s/d per
+    /// degree, corrected for the noise in the amplitude readings (#651),
+    /// its standard error, and the rate change it makes over the bins'
+    /// amplitudes, s/d. `None` when [`Self::reliability`] is under 0.5.
+    pub s_per_day_per_deg: Option<f64>,
+    pub s_per_day_per_deg_se: Option<f64>,
+    pub rate_change_s_per_day: Option<f64>,
+    /// The share of the amplitude readings' spread that is the amplitude
+    /// and not their noise (from each reading's own 2 s windows).
+    pub reliability: Option<f64>,
     /// A quadratic through the bins: rate = c0 + c1·(A − centre) +
     /// c2·(A − centre)², and the share of the bins' spread it explains.
     pub curve_centre_deg: f64,
@@ -440,28 +448,6 @@ pub struct WindDown {
     pub rate_change_s_per_day: Option<f64>,
     pub amplitude_change_deg: Option<f64>,
     pub beat_error_change_ms: Option<f64>,
-    pub headline: String,
-}
-
-/// How the rate moves with the amplitude, reading by reading.
-#[derive(Debug, Clone, Serialize)]
-pub struct CrossCorrelation {
-    /// Length of each reading, seconds, and the pairs of readings used.
-    pub step_s: f64,
-    pub readings: usize,
-    /// Correlation of the two, reading against the same reading.
-    pub r: f64,
-    /// Readings that are worth as much as independent ones, allowing for
-    /// each series' memory.
-    pub effective_readings: f64,
-    /// Chance of an r this large from unrelated series.
-    pub p_value: f64,
-    /// Rate change per degree of amplitude within half an hour, s/d.
-    pub s_per_day_per_deg: f64,
-    /// The plain correlation and slope over the whole take at no lag,
-    /// slow change included (a shared drift counts here).
-    pub take_r: f64,
-    pub take_s_per_day_per_deg: f64,
     pub headline: String,
 }
 
@@ -751,7 +737,7 @@ fn explained(y: &[f64], fitted: &[f64]) -> f64 {
 /// the spread about the trend. When more than 3% of the readings would
 /// go, they are part of what the watch does (a cycle, a state), not
 /// outliers, and all are kept.
-fn drop_outliers(g: &mut Grid, k: f64) -> usize {
+pub(crate) fn drop_outliers(g: &mut Grid, k: f64) -> usize {
     let base = longterm::detrend(g, 300.0);
     let mut dev: Vec<f64> = base
         .y
@@ -2250,9 +2236,10 @@ pub fn check(
         (rate_grid.t0, rate_grid.y.len())
     };
     let amp_readings = rebin(&amp_grid, t0, r, n);
+    let amp_noise = reading_noise(&amp_grid, t0, r, n);
     let be_readings = rebin(&be_grid, t0, r, n);
-    let rate_amplitude = cross_correlation(&rate_grid, &amp_readings, cfg);
-    let isochronism = isochronism_curve(&rate_grid, &amp_readings, cfg);
+    let rate_amplitude = cross_correlation(&rate_grid, &amp_readings, &amp_noise, cfg);
+    let isochronism = isochronism_curve(&rate_grid, &amp_readings, &amp_noise, cfg);
     let wind_down = wind_down(&rate_grid, &amp_readings, &be_readings, cfg);
     let distributions = {
         use distribution::{Input, AMPLITUDE, BEAT_ERROR, RATE};
@@ -2587,87 +2574,7 @@ fn rebin(fine: &Grid, t0: f64, step: f64, n: usize) -> Grid {
     }
 }
 
-/// Correlate the rate with the amplitude, each reading against the same
-/// reading (no lag: the rate answers the amplitude at once, and a lag
-/// search on a shared cycle finds the half-turn where the two
-/// anticorrelate). Both grids share `t0` and step.
-/// The test is on the changes within half an hour (both series with
-/// their slow change taken out): two series that both drift correlate
-/// whether or not one drives the other, and their drift leaves too few
-/// independent readings to tell. The whole-take slope is given beside it.
-fn cross_correlation(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<CrossCorrelation> {
-    let (mut x, mut y) = (amp.clone(), rate.clone());
-    drop_outliers(&mut x, cfg.outlier_sigma);
-    drop_outliers(&mut y, cfg.outlier_sigma);
-    let (xd, yd) = (
-        longterm::detrend(&x, longterm::DETREND_S),
-        longterm::detrend(&y, longterm::DETREND_S),
-    );
-    let pairs = |x: &Grid, y: &Grid| -> Vec<(f64, f64)> {
-        (0..y.y.len().min(x.y.len()))
-            .filter_map(|i| {
-                let (a, b) = (x.y[i], y.y[i]);
-                (a.is_finite() && b.is_finite()).then_some((a, b))
-            })
-            .collect()
-    };
-    let stats = |p: &[(f64, f64)]| {
-        let n = p.len() as f64;
-        let (ma, mb) = (
-            p.iter().map(|q| q.0).sum::<f64>() / n,
-            p.iter().map(|q| q.1).sum::<f64>() / n,
-        );
-        let sab: f64 = p.iter().map(|q| (q.0 - ma) * (q.1 - mb)).sum();
-        let saa: f64 = p.iter().map(|q| (q.0 - ma).powi(2)).sum();
-        let sbb: f64 = p.iter().map(|q| (q.1 - mb).powi(2)).sum();
-        (sab / (saa * sbb).sqrt(), sab / saa)
-    };
-    let p = pairs(&xd, &yd);
-    if p.len() < 30 {
-        return None;
-    }
-    let (r, slope) = stats(&p);
-    if !r.is_finite() {
-        return None;
-    }
-    let (take_r, take_slope) = stats(&pairs(&x, &y));
-    let n = p.len() as f64;
-    let rho = |g: &Grid| {
-        acf(&g.y, 1)
-            .get(1)
-            .copied()
-            .filter(|v| v.is_finite())
-            .unwrap_or(0.0)
-    };
-    let n_eff = crate::confidence::effective_readings(n, rho(&xd) * rho(&yd)).max(4.0);
-    let z = r.clamp(-0.999_999, 0.999_999).atanh() * (n_eff - 3.0).sqrt();
-    let p_value = chi2_tail(z * z, 1);
-    let step = rate.step;
-    let headline = format!(
-        "Rate against amplitude from one {:.0} s reading to the next: {:+.2} s/d per degree, r {:.2}, p {} over {} pairs (worth about {:.0} independent ones); over the whole take, {:+.2} s/d per degree (r {:.2}).",
-        step,
-        slope,
-        r,
-        p_text(p_value),
-        p.len(),
-        n_eff,
-        take_slope,
-        take_r
-    );
-    Some(CrossCorrelation {
-        step_s: step,
-        readings: p.len(),
-        r,
-        effective_readings: n_eff,
-        p_value,
-        s_per_day_per_deg: slope,
-        take_r: finite_or_nan(take_r),
-        take_s_per_day_per_deg: finite_or_nan(take_slope),
-        headline,
-    })
-}
-
-fn finite_or_nan(v: f64) -> f64 {
+pub(crate) fn finite_or_nan(v: f64) -> f64 {
     if v.is_finite() {
         v
     } else {
@@ -2724,14 +2631,31 @@ fn wquad(x: &[f64], y: &[f64], w: &[f64]) -> Option<[f64; 3]> {
 
 /// The rate binned by amplitude, reading against the same reading. Needs
 /// at least [`ISO_MIN_BINS`] bins with enough readings.
-fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<IsochronismCurve> {
+fn isochronism_curve(
+    rate: &Grid,
+    amp: &Grid,
+    noise: &[f64],
+    cfg: &Config,
+) -> Option<IsochronismCurve> {
     let (mut x, mut y) = (amp.clone(), rate.clone());
     drop_outliers(&mut x, cfg.outlier_sigma);
     drop_outliers(&mut y, cfg.outlier_sigma);
-    let pairs: Vec<(f64, f64, f64)> = (0..y.y.len().min(x.y.len()))
+    let kept: Vec<usize> = (0..y.y.len().min(x.y.len()))
         .filter(|&i| x.y[i].is_finite() && y.y[i].is_finite())
-        .map(|i| (x.y[i], y.y[i], cfg.wind_h + y.time(i) / 3600.0))
         .collect();
+    let pairs: Vec<(f64, f64, f64)> = kept
+        .iter()
+        .map(|&i| (x.y[i], y.y[i], cfg.wind_h + y.time(i) / 3600.0))
+        .collect();
+    // The slope from every reading, none smoothed, so a short swing of
+    // amplitude counts, read off the amplitude's noise (#651).
+    let eiv = eiv_slope(
+        &kept
+            .iter()
+            .map(|&i| (x.y[i], y.y[i], noise.get(i).copied().unwrap_or(f64::NAN)))
+            .collect::<Vec<_>>(),
+    );
+    let shown = eiv.filter(|e| e.reliability >= MIN_RELIABILITY);
     if pairs.len() < ISO_MIN_BINS * ISO_MIN_READINGS {
         return None;
     }
@@ -2774,14 +2698,6 @@ fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<Isochronis
     let bx: Vec<f64> = bins.iter().map(|b| b.amplitude_deg - centre).collect();
     let by: Vec<f64> = bins.iter().map(|b| b.rate_s_per_day).collect();
     let my = by.iter().zip(&w).map(|(y, w)| y * w).sum::<f64>() / sw;
-    let sxx: f64 = bx.iter().zip(&w).map(|(x, w)| w * x * x).sum();
-    let sxy: f64 = bx
-        .iter()
-        .zip(&by)
-        .zip(&w)
-        .map(|((x, y), w)| w * x * (y - my))
-        .sum();
-    let slope = sxy / sxx;
     let curve = wquad(&bx, &by, &w)?;
     let at = |x: f64| curve[0] + curve[1] * x + curve[2] * x * x;
     let sst: f64 = by.iter().zip(&w).map(|(y, w)| w * (y - my).powi(2)).sum();
@@ -2796,12 +2712,23 @@ fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<Isochronis
     let turn = (curve[2] != 0.0)
         .then(|| centre - curve[1] / (2.0 * curve[2]))
         .filter(|t| *t > b0 + 0.1 * (b1 - b0) && *t < b1 - 0.1 * (b1 - b0));
-    let change = slope * (b1 - b0);
+    // Said as going together, not as cause: the amplitude and the rate
+    // both change with what is not logged, such as temperature.
+    let goes = match (shown, eiv) {
+        (Some(e), _) => format!(
+            "the rate goes with the amplitude by {:+.2} ± {:.2} s/d per degree",
+            e.slope, e.se
+        ),
+        (None, Some(e)) => format!(
+            "the amplitude's noise is too much of its spread to read a slope (reliability {:.2})",
+            e.reliability
+        ),
+        (None, None) => "the amplitude's noise is not known, so no slope is read".into(),
+    };
     let headline = format!(
-        "Between {:.0}° and {:.0}° the rate moves {:+.2} s/d per degree of amplitude: {:+.1} s/d at {:.0}° and {:+.1} s/d at {:.0}°{}.",
+        "Between {:.0}° and {:.0}° {goes}: {:+.1} s/d at {:.0}° and {:+.1} s/d at {:.0}°{}. Temperature is not logged.",
         b0,
         b1,
-        slope,
         by[0],
         b0,
         by[by.len() - 1],
@@ -2816,8 +2743,10 @@ fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<Isochronis
         bins,
         amplitude_from_deg: lo,
         amplitude_to_deg: hi,
-        s_per_day_per_deg: slope,
-        rate_change_s_per_day: change,
+        s_per_day_per_deg: shown.map(|e| e.slope),
+        s_per_day_per_deg_se: shown.map(|e| e.se),
+        reliability: eiv.map(|e| e.reliability),
+        rate_change_s_per_day: shown.map(|e| e.slope * (b1 - b0)),
         curve_centre_deg: centre,
         curve,
         curve_explained,

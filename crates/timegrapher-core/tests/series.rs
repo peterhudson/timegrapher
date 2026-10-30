@@ -298,7 +298,11 @@ fn rate_against_amplitude_gives_slope_r_and_p() {
     }
     let x = r.rate_amplitude.as_ref().unwrap();
     assert!(x.r > 0.9 && x.p_value < 0.01, "{}", x.headline);
-    assert!((x.s_per_day_per_deg - 0.5).abs() < 0.1, "{}", x.headline);
+    assert!(
+        (x.s_per_day_per_deg.unwrap() - 0.5).abs() < 0.1,
+        "{}",
+        x.headline
+    );
     // Always stated as numbers, never as a finding.
     assert!(x.headline.contains("per degree") && x.headline.contains(" p "));
     assert!(r
