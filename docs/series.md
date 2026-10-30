@@ -109,11 +109,13 @@ For each series:
   (`long_run_sd`: the reading-to-reading scatter allowing for their
   correlation). With no change of level, correlated or not, it stays
   within ±1.36 about 95% of the time. A step in the mean bends it into a
-  V or a tent. The band is a guide: the corner is marked, and a level
-  change named, only where the change finder below cuts the series, at
-  its cut nearest the CUSUM's largest excursion (#697). A step small
-  enough that only the CUSUM shows it goes unnamed, though the line still
-  bends.
+  V or a tent. The band is a guide: the corner is marked only where the
+  headline names a level change (#697): the change finder below cuts the
+  series, the stretches explain at least a fifth of the variance, and the
+  lead is not a slide. The corner is the cut nearest the CUSUM's largest
+  excursion. A step that only the CUSUM shows, that explains under a
+  fifth of the variance, or that a line explains nearly as well goes
+  unnamed, though the line still bends.
 - **Change points**: 30 s block medians split into stretches of constant
   mean, at least 5 minutes each. A change is kept only when it is strong
   evidence against one level: the gain must exceed 3 ln n, and never be
@@ -404,7 +406,7 @@ Each entry of `series[]`:
 | `median`, `sd`, `short_term_sd`, `long_run_sd` | level, spread, reading-to-reading scatter, and the scatter allowing for correlated readings (the short-term σ × √(1+ρ)/(1−ρ), ρ the lag-one correlation once the largest step is out, bias-corrected), which the CUSUM is scaled by |
 | `autocorrelation` | `lag_s[]`, `r[]` (thinned to about 600 points), `band`, `band_by_lag[]` (the band at each of `lag_s`, 1.96/√pairs from the pairs that lag was read from: wider than `band` where gaps leave fewer pairs; null where none), `ljung_box_q`, `ljung_box_lags`, `p_value`, `max_short_lag_r`, `memory_s`, `repeat_lag_s`, `repeat_r` |
 | `allan` | `tau_s[]`, `deviation[]`, `white[]`, `pairs[]`, `slope_short`, `best_tau_s`, `best_deviation`, `max_excess` (largest deviation over the white line) |
-| `cusum` | `t_s[]`, `s[]` (thinned, scaled by `long_run_sd`), `max`, `at_s`, `at` (the CUSUM there, signed), `p_value`, `band` (1.36: readings with no change of level, correlated or not, stay inside ±band about 95% of the time) and `shift` (the change finder cut the series, so the level changes near `at_s`, its cut nearest `max`; `max` past the band alone does not set it). Without a cut, `at_s` and `at` are where `max` is |
+| `cusum` | `t_s[]`, `s[]` (thinned, scaled by `long_run_sd`), `max`, `at_s`, `at` (the CUSUM there, signed), `p_value`, `band` (1.36: readings with no change of level, correlated or not, stay inside ±band about 95% of the time) and `shift` (the headline names a level change, so the level changes near `at_s`, the change finder's cut nearest `max`; `max` past the band alone does not set it). Without a cut, `at_s` and `at` are where `max` is |
 | `changes` | `block_s`, `block_sigma`, `long_run_sigma` (the block medians' long-run σ, as `long_run_sd`, which each split is judged against), `segments[]` (`start_s`, `end_s`, `mean`), `explained` |
 | `trend` | `per_hour`, `explained`, `curve_explained`, `start`, `end`, `turn` (`[time, value]` or null) |
 | `period` | the period search's strongest component (`other_periods_s`: the weaker ones, each also tried as a cycle): `period_s`, `significance` (−log10 false alarm), `explained`, `peak_to_peak` (for the rate, the swing of the rate itself from the slope of the average cycle, which 10 s readings show less of; see [long-runs.md](long-runs.md)), `timing_peak_to_peak_ms` (rate only), `size` and `size_unit` (the figure to show: ms of timing for a rate cycle under 30 s, see [long-runs.md](long-runs.md)), `wheel`, `harmonic_of` and `other_harmonic_of[]` (one per `other_periods_s`): null, or `period_s` and `n` when a longer cycle the search also found is n times this period (n 2 to 8, within both cycles' resolutions or 1%, and only when that tolerance is under half this period, so no other whole number fits) |

@@ -119,8 +119,8 @@ impl View {
                 "The running sum of each reading's distance from the mean, scaled by their \
                  long-run spread: readings with no change of level, correlated or not, stay \
                  inside the dashed lines about 95 times in 100; a step in the level bends it \
-                 into a V or a tent. The corner is marked only where the change finder \
-                 finds the level changes"
+                 into a V or a tent. The corner is marked only where the headline names \
+                 a level change"
             }
             View::Fft => {
                 "The plain amplitude spectrum of each series, like Witschi's FFT: the size \

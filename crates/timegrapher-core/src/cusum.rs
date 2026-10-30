@@ -2,8 +2,8 @@
 //! take it: the running sum of each reading's distance from the mean, in
 //! units of the long-run σ√n, which with no change of level, correlated
 //! or not, wanders inside ±[`CUSUM_BAND`] 95% of the time. Every surface
-//! draws the band, and marks the corner from here only where the change
-//! finder cut the series: one rule names a level change (#697).
+//! draws the band, and marks the corner from here only at a level change
+//! the headline names: one rule names a level change (#697).
 
 use serde::Serialize;
 
@@ -26,7 +26,7 @@ pub struct Cusum {
     pub p_value: f64,
     /// Readings with no change of level stay inside ±`band` 95% of the time
     /// ([`CUSUM_BAND`]); a guide to the eye, not the test. `shift` when
-    /// the change finder cut the series, so the level changes near `at_s`.
+    /// the headline names a level change, so the level changes near `at_s`.
     pub band: f64,
     pub shift: bool,
 }
@@ -34,8 +34,8 @@ pub struct Cusum {
 impl Cusum {
     /// The CUSUM `s` at times `t_s` (seconds, one per reading), kept at
     /// every `stride`th point for drawing; its largest |s| is read from
-    /// every point. `cuts` are the times the change finder starts a new
-    /// level; the corner is the cut nearest the largest |s|.
+    /// every point. `cuts` are the times a level change the headline
+    /// names starts a new level, from the change finder; the corner is the cut nearest the largest |s|.
     pub fn of(t_s: &[f64], s: &[f64], stride: usize, cuts: &[f64]) -> Cusum {
         let (mut k, max) = s
             .iter()
@@ -104,7 +104,7 @@ mod tests {
     }
 
     /// Past the band with no cut, no change is named (#697): the band is
-    /// a guide, and the change finder alone names a level change.
+    /// a guide, and the headline's rule alone names a level change.
     #[test]
     fn past_the_band_without_a_cut_names_no_change() {
         let t: Vec<f64> = (0..5).map(|i| i as f64 * 10.0).collect();
