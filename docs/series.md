@@ -105,9 +105,11 @@ For each series:
   averaging time with the smallest scatter, so the most repeatable
   reading.
 - **CUSUM**: the running sum of each reading's distance from the mean,
-  in units of σ√n, where σ is the reading-to-reading scatter. For
-  independent readings it stays within ±1.36 (95%). A step in the mean
-  bends it into a V or a tent, with the corner at the step.
+  in units of σ√n, where σ is the readings' long-run scatter
+  (`long_run_sd`: the reading-to-reading scatter allowing for their
+  correlation). With no change of level, correlated or not, it stays
+  within ±1.36 about 95% of the time. A step in the mean bends it into a
+  V or a tent, with the corner at the step.
 - **Change points**: 30 s block medians split into stretches of constant
   mean, at least 5 minutes each. A change is kept only when it is strong
   evidence against one level: the gain must exceed 3 ln n, and never be
