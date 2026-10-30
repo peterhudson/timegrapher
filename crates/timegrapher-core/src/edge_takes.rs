@@ -718,3 +718,99 @@ pub fn caveat_codes(m: &crate::session::Measurement) -> Vec<String> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The stand's noise alone, as edge_all_silence makes it, reads
+    /// `no_watch` on these seeded draws, in session and, up to 90 s, on
+    /// the live card, but for the draws [`NOISE_READ_AS_A_WATCH`] names.
+    /// Before #675, 16 in 100 draws of 30 s, 6 in 100 of 90 s and 5 in 100
+    /// of 120 s were read as a watch with a rate. Now a scatter from
+    /// [`crate::beats::NOISE_DOUBT_FRACTION`] up is a watch unless its sound
+    /// shows none, since a weak watch about to stop scatters as much: about
+    /// 1 in 70 draws of 30 s (6 of seeds 1000–1199 and 2000–2199) and 2 of
+    /// 60 of 90 s are still read as a watch.
+    /// The draws of the test below still read as a watch, by length and
+    /// seed: their scatter is in the doubt zone and their sound shows a
+    /// watch or can't be judged. The list only shrinks.
+    const NOISE_READ_AS_A_WATCH: &[(f64, u64)] =
+        &[(30.0, 1001), (30.0, 1014), (120.0, 1), (120.0, 6)];
+
+    /// The draws of the test below the live card judges otherwise than
+    /// session: it takes the scatter from one fit over the stretch, session
+    /// the median of its 10 s windows' (#680).
+    const LIVE_DIFFERS: &[(f64, u64)] = &[(30.0, 1001), (30.0, 1014), (90.0, 1), (90.0, 1004)];
+
+    #[test]
+    fn stand_noise_reads_no_watch_on_the_seeded_draws() {
+        let take = all()
+            .into_iter()
+            .find(|t| t.id == "edge_all_silence")
+            .expect("edge_all_silence");
+        let root = std::env::temp_dir().join(format!("tg-stand-noise-{}", std::process::id()));
+        let dir = root.join("takes").join(take.id);
+        std::fs::create_dir_all(&dir).unwrap();
+        write(&dir, "session.toml", &manifest(&take, LIFT, "", WHOLE_TAKE)).unwrap();
+        write(&dir, "session.json", &record(&[])).unwrap();
+        let mut heard = Vec::new();
+        let mut split = Vec::new();
+        // Draws from two ranges of seeds, so the test is not tuned to one.
+        for (duration_s, draws) in [(30.0, 20), (90.0, 10), (120.0, 10)] {
+            let frames = (duration_s * FS as f64) as usize;
+            write(&dir, "clock.csv", &clock_log(frames, 0.0, &[])).unwrap();
+            for seed in (0..draws).chain(1000..1000 + draws) {
+                let audio = Audio {
+                    samples: silence(duration_s, seed),
+                    sample_rate: FS,
+                };
+                write_wav(&dir.join("audio-001.wav"), &audio).unwrap();
+                let e = &read(&root, &take).unwrap()[0];
+                let m = &e.measurement;
+                if !caveat_codes(m).iter().any(|c| c == "no_watch") {
+                    heard.push((duration_s, seed, m.rate_s_per_day));
+                }
+                // The live card, opened on the same take, reads the same
+                // stretch alike, but for LIVE_DIFFERS. Past 90 s it can
+                // read a short last run of beats between noise's jumps
+                // instead (#679).
+                if duration_s > 90.0 {
+                    continue;
+                }
+                let live = crate::live::LiveAnalyzer::from_log(e.log.clone(), Default::default())
+                    .reading_at(m.end_s, m.end_s - m.start_s);
+                if live.watch_heard != m.watch_heard {
+                    split.push((duration_s, seed, live.rate_s_per_day));
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        let unknown: Vec<_> = heard
+            .iter()
+            .filter(|(d, seed, _)| !NOISE_READ_AS_A_WATCH.contains(&(*d, *seed)))
+            .collect();
+        assert!(unknown.is_empty(), "noise read as a watch: {unknown:?}");
+        let gone: Vec<_> = NOISE_READ_AS_A_WATCH
+            .iter()
+            .filter(|k| !heard.iter().any(|(d, seed, _)| (*d, *seed) == **k))
+            .collect();
+        assert!(
+            gone.is_empty(),
+            "now read as no_watch; take them off NOISE_READ_AS_A_WATCH: {gone:?}"
+        );
+        let new: Vec<_> = split
+            .iter()
+            .filter(|(d, seed, _)| !LIVE_DIFFERS.contains(&(*d, *seed)))
+            .collect();
+        assert!(new.is_empty(), "the live card and session differ: {new:?}");
+        let alike: Vec<_> = LIVE_DIFFERS
+            .iter()
+            .filter(|k| !split.iter().any(|(d, seed, _)| (*d, *seed) == **k))
+            .collect();
+        assert!(
+            alike.is_empty(),
+            "now read alike; take them off LIVE_DIFFERS: {alike:?}"
+        );
+    }
+}
