@@ -143,27 +143,37 @@ pub fn long_run_sd(values: &[f64], short_sd: f64, slow: Slow) -> f64 {
 }
 
 /// The lag-one correlation [`long_run_sd`] allows for: that of the finite
-/// values less `slow`, plus 2(1 + 3ρ)/n for its bias downwards with two
-/// parameters taken out of n values (Marriott and Pope 1954), held to
-/// 0 ..= 0.99. On a seeded test of 360 AR(1) readings this keeps the
-/// CUSUM's false alarms at 4-6% from ρ 0 to 0.9 (#647).
+/// values less `slow`, read only from neighbours that are both finite so
+/// that a gap never joins readings that were not next to each other (as
+/// [`pooled_lag_one`] reads it), plus 2(1 + 3ρ)/n for its bias downwards
+/// with two parameters taken out (Marriott and Pope 1954), n one more than
+/// the neighbouring pairs read (the values' count when none is missing),
+/// held to 0 ..= 0.99. On a seeded test of 360 AR(1) readings this keeps
+/// the CUSUM's false alarms at 4-6% from ρ 0 to 0.9, and under 8% at
+/// ρ 0.9 with block gaps or scattered dropouts (#647).
 pub fn long_run_rho(values: &[f64], slow: Slow) -> f64 {
-    let mut x: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
-    if x.len() < 3 {
+    let at: Vec<usize> = (0..values.len())
+        .filter(|&i| values[i].is_finite())
+        .collect();
+    if at.len() < 3 {
         return 0.0;
     }
+    let mut x: Vec<f64> = at.iter().map(|&i| values[i]).collect();
     match slow {
         Slow::Line => crate::dsp::detrend_line(&mut x),
         Slow::Step => take_out_step(&mut x),
     }
     let m = x.iter().sum::<f64>() / x.len() as f64;
     x.iter_mut().for_each(|v| *v -= m);
-    let c0: f64 = x.iter().map(|v| v * v).sum();
-    if c0 <= 0.0 {
+    let c0 = x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64;
+    let (s1, pairs) = (1..x.len())
+        .filter(|&k| at[k] == at[k - 1] + 1)
+        .fold((0.0, 0usize), |(s, c), k| (s + x[k] * x[k - 1], c + 1));
+    if c0 <= 0.0 || pairs == 0 {
         return 0.0;
     }
-    let r = x.windows(2).map(|w| w[0] * w[1]).sum::<f64>() / c0;
-    let n = x.len() as f64;
+    let r = s1 / pairs as f64 / c0;
+    let n = (pairs + 1) as f64;
     let r = r + 2.0 * (1.0 + 3.0 * r) / n;
     if r.is_finite() {
         r.clamp(0.0, 0.99)

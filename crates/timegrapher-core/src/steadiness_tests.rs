@@ -1103,26 +1103,50 @@ fn no_reading_is_taken_from_part_of_its_span() {
 
 /// `n` readings 10 s apart of AR(1) noise with lag-one correlation
 /// `rho`, scatter 1, and `step` added from halfway.
-fn correlated(z: &mut Noise, n: usize, rho: f64, step: f64) -> Grid {
+fn correlated(z: &mut Noise, n: usize, rho: f64, step: f64, gaps: Gaps) -> Grid {
     let mut v = z.next();
     let y = (0..n)
         .map(|i| {
             v = rho * v + (1.0 - rho * rho).sqrt() * z.next();
-            v + if i >= n / 2 { step } else { 0.0 }
+            let missing = match gaps {
+                Gaps::None => false,
+                // Two blocks of a sixth and a ninth of the take, and a
+                // tenth of the rest dropped here and there.
+                Gaps::Blocks => {
+                    (n / 6..n / 3).contains(&i)
+                        || (n / 2..n / 2 + n / 9).contains(&i)
+                        || z.next() > 1.28
+                }
+                Gaps::Half => z.next() > 0.0,
+            };
+            if missing {
+                f64::NAN
+            } else {
+                v + if i >= n / 2 { step } else { 0.0 }
+            }
         })
         .collect();
     grid(y, 10.0)
 }
 
+/// Readings missing from [`correlated`] ones.
+#[derive(Clone, Copy, Debug)]
+enum Gaps {
+    None,
+    Blocks,
+    /// Half of them, at random.
+    Half,
+}
+
 /// Of `runs` takes of `n` readings, how many the CUSUM and the change
 /// finder each flag.
-fn flagged(rho: f64, step: f64, n: usize, runs: usize) -> (usize, usize) {
+fn flagged(rho: f64, step: f64, n: usize, runs: usize, gaps: Gaps) -> (usize, usize) {
     let mut z = Noise(647);
     let (mut cusum, mut changes) = (0, 0);
     for _ in 0..runs {
         let s = check_series(
             SeriesKind::Rate,
-            correlated(&mut z, n, rho, step),
+            correlated(&mut z, n, rho, step, gaps),
             None,
             None,
             None,
@@ -1146,21 +1170,28 @@ fn correlated_steady_readings_raise_few_false_alarms() {
     // About 5% at ρ 0.5 and 6.5% at ρ 0.9, where 360 readings say least
     // about ρ; 8% leaves room for the draw.
     for (rho, runs) in [(0.5, 1000), (0.9, 2000)] {
-        let (cusum, _) = flagged(rho, 0.0, 360, runs);
+        let (cusum, _) = flagged(rho, 0.0, 360, runs, Gaps::None);
         assert!(
             cusum * 100 <= 8 * runs,
             "CUSUM: {cusum} of {runs} at ρ {rho}"
         );
     }
-    let (_, changes) = flagged(0.9, 0.0, 720, 400);
+    // A gap must not join readings that were not neighbours: read across
+    // it, ρ came out low and the CUSUM flagged 20% with half missing
+    // (8% with the blocks); now about 6% and 5%.
+    for gaps in [Gaps::Blocks, Gaps::Half] {
+        let (cusum, _) = flagged(0.9, 0.0, 360, 2000, gaps);
+        assert!(cusum <= 160, "CUSUM: {cusum} of 2000 with {gaps:?} gaps");
+    }
+    let (_, changes) = flagged(0.9, 0.0, 720, 400, Gaps::None);
     assert!(changes <= 20, "change finder: {changes} of 400");
 }
 
 /// A real step twice the readings' scatter is still found at ρ 0.9.
 #[test]
 fn a_step_in_correlated_readings_is_still_found() {
-    let (cusum, _) = flagged(0.9, 2.0, 360, 200);
+    let (cusum, _) = flagged(0.9, 2.0, 360, 200, Gaps::None);
     assert!(cusum >= 160, "CUSUM: {cusum} of 200");
-    let (_, changes) = flagged(0.9, 2.0, 720, 200);
+    let (_, changes) = flagged(0.9, 2.0, 720, 200, Gaps::None);
     assert!(changes >= 160, "change finder: {changes} of 200");
 }
