@@ -673,8 +673,8 @@ pub fn run(
     Ok(())
 }
 
-/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count` and
-/// `beat_error_as_size` caveats in core's short words
+/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count`,
+/// `beat_error_as_size` and `positions` caveats in core's short words
 /// ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
     caveats: &[timegrapher_core::measure::Caveat],
@@ -688,6 +688,7 @@ pub(crate) fn caveat_lines(
                 Caveat::BreaksUnlisted { .. } => "Breaks",
                 Caveat::SidesByCount { .. } => "Sides",
                 Caveat::BeatErrorAsSize => "Conditions",
+                Caveat::Positions { .. } => "Positions",
                 _ => return None,
             };
             // None of their words use the lift angle or the beats found.
@@ -1372,6 +1373,7 @@ mod caveat_tests {
                 why: timegrapher_core::breaks::Unlisted::Unreadable,
             },
             Caveat::BeatErrorAsSize,
+            Caveat::Positions { count: 3 },
         ]);
         assert_eq!(
             lines,
@@ -1382,6 +1384,7 @@ mod caveat_tests {
                     "Conditions",
                     "beat error given as a size: its sign differs either side of a cut".to_string()
                 ),
+                ("Positions", "3 positions".to_string()),
             ]
         );
     }

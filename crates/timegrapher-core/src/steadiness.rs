@@ -2378,6 +2378,22 @@ pub fn check(
         }
     }
     let findings: Vec<Finding> = series.iter().filter_map(findings).collect();
+    // A take over several positions: said with each figure that reads the
+    // rate against the amplitude, wherever its headline is shown (#651).
+    let positions = long.caveats.iter().find_map(|c| match c {
+        crate::measure::Caveat::Positions { .. } => c.long(None),
+        _ => None,
+    });
+    let (mut rate_amplitude, mut isochronism) = (rate_amplitude, isochronism);
+    if let Some(p) = positions {
+        let heads = [
+            rate_amplitude.as_mut().map(|c| &mut c.headline),
+            isochronism.as_mut().map(|c| &mut c.headline),
+        ];
+        for h in heads.into_iter().flatten() {
+            *h = format!("{h} {p}");
+        }
+    }
     Report {
         duration_s: long.duration_s,
         bph: log.bph,

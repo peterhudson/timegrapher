@@ -3,11 +3,12 @@
 
 use std::path::PathBuf;
 use timegrapher_core::audio::write_wav;
-use timegrapher_core::longrun;
+use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::LongConfig;
+use timegrapher_core::measure::Caveat;
 use timegrapher_core::periodicity::standard_wheels;
 use timegrapher_core::steadiness::{self, Config, Report, SeriesKind};
-use timegrapher_core::stream::{analyze_file, StreamConfig};
+use timegrapher_core::stream::{analyze_file, BeatLog, StreamConfig};
 use timegrapher_core::synth::{generate, SynthConfig};
 
 fn run(name: &str, duration_s: f64, amp: impl Fn(f64) -> f64, rate: impl Fn(f64) -> f64) -> Report {
@@ -32,6 +33,19 @@ fn run_at(
     rate: impl Fn(f64) -> f64,
     escape_teeth: u32,
 ) -> Report {
+    let (log, long, lc) = read_at(name, duration_s, bph, amp, rate, escape_teeth);
+    steadiness::check(&log, None, &long, &lc, &Config::default())
+}
+
+/// The synthetic take's beats and long-run report, before the check.
+fn read_at(
+    name: &str,
+    duration_s: f64,
+    bph: u32,
+    amp: impl Fn(f64) -> f64,
+    rate: impl Fn(f64) -> f64,
+    escape_teeth: u32,
+) -> (BeatLog, LongReport, LongConfig) {
     let cfg = SynthConfig {
         duration_s,
         bph,
@@ -49,7 +63,7 @@ fn run_at(
         ..Default::default()
     };
     let long = longrun::analyse(&log, None, &lc);
-    steadiness::check(&log, None, &long, &lc, &Config::default())
+    (log, long, lc)
 }
 
 fn series(r: &Report, k: SeriesKind) -> &steadiness::SeriesCheck {
@@ -309,4 +323,34 @@ fn rate_against_amplitude_gives_slope_r_and_p() {
         .findings
         .iter()
         .all(|f| f.code != "rate_moves_with_amplitude"));
+}
+
+/// A take over several positions says so in both headlines that read the
+/// rate against the amplitude, so the app, `long` and `series` all show
+/// it with the figure (#651).
+#[test]
+fn a_take_over_several_positions_says_so_with_the_amplitude_slopes() {
+    // Amplitude falls 30° over 40 minutes and the rate follows it.
+    let amp = |t: f64| 270.0 - 30.0 * t / 2400.0;
+    let (log, mut long, lc) = read_at(
+        "positions",
+        2400.0,
+        28800,
+        amp,
+        move |t| 0.5 * (amp(t) - 255.0),
+        15,
+    );
+    let said = Caveat::Positions { count: 2 }.long(None).unwrap();
+    let plain = steadiness::check(&log, None, &long, &lc, &Config::default());
+    long.caveats.push(Caveat::Positions { count: 2 });
+    let r = steadiness::check(&log, None, &long, &lc, &Config::default());
+    let heads = |r: &Report| {
+        [
+            r.rate_amplitude.as_ref().unwrap().headline.clone(),
+            r.isochronism.as_ref().unwrap().headline.clone(),
+        ]
+    };
+    for (with, without) in heads(&r).iter().zip(heads(&plain)) {
+        assert_eq!(*with, format!("{without} {said}"));
+    }
 }
