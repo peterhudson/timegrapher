@@ -542,28 +542,35 @@ function recordingView(doc, extra, limits, noBeat) {
     return head + `<div class="card notice"><b>No Regular Beat Found</b>${esc(noBeat || "")}</div>`;
   }
   const o = doc.overall || {};
-  // The headline beat error is the unlock's, with the drop's beside it, as
-  // on the app's card. Both show the size only: which side is Tick can
-  // change between runs of the same take, so a sign would mean nothing.
-  const unlock = doc.beat_error_unlock_ms, drop = o.beat_error_ms;
-  const be = Number.isFinite(unlock) ? unlock : drop;
-  const beNote = Number.isFinite(unlock)
-    ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${num(abs(drop), 2)} ms` : ""}` : "from the drop";
-  const sides = Number.isFinite(doc.amplitude_even_deg) && Number.isFinite(doc.amplitude_odd_deg)
-    ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(doc.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(doc.amplitude_odd_deg, 0)}°` : "";
   const rate = analyzeRate(doc);
   const rateNote = [esc(rate.basis)];
   if (Number.isFinite(doc.rate_p05)) rateNote.push(`Card-clock 90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}`);
   const conf = doc.confidence || {};
-  const rateSe = conf.rate && Number.isFinite(conf.rate.se) ? conf.rate.se : null;
-  const jitter = Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us;
-  let html = head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(rate.value, 1), rateSe != null ? `± ${num(rateSe, 1)} seconds per day` : "seconds per day", rateNote.join("<br>"))}
-    ${tile("Amplitude", "--amplitude", num(doc.amplitude_deg, 0), Number.isFinite(doc.amplitude_se_deg) ? `± ${Math.max(1, Math.round(doc.amplitude_se_deg))}°` : "", sides, "°")}
-    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
-    ${tile("Beats", "", esc(doc.beats_found), "", Number.isFinite(jitter) ? `jitter ${num(jitter, 0)} µs` : "")}
-  </div>`;
+  const html = head + readingTiles({
+    rate: rate.value, rateSe: conf.rate && conf.rate.se, rateNote: rateNote.join("<br>"),
+    amplitude: doc.amplitude_deg, amplitudeSe: doc.amplitude_se_deg, even: doc.amplitude_even_deg, odd: doc.amplitude_odd_deg,
+    unlock: doc.beat_error_unlock_ms, drop: o.beat_error_ms,
+    beats: doc.beats_found, jitter: Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us,
+  });
   return html + recordingCards(doc, extra, limits, o.beat_error_ms);
+}
+
+// One reading's four tiles, for the whole file or a take's reading. The
+// headline beat error is the unlock's, with the drop's beside it, as on the
+// app's card. Both show the size only: which side is Tick can change
+// between runs of the same take, so a sign would mean nothing.
+function readingTiles(f) {
+  const be = Number.isFinite(f.unlock) ? f.unlock : f.drop;
+  const beNote = Number.isFinite(f.unlock)
+    ? `from the unlock${Number.isFinite(f.drop) ? ` · from the drop ${num(abs(f.drop), 2)} ms` : ""}` : "from the drop";
+  const sides = Number.isFinite(f.even) && Number.isFinite(f.odd)
+    ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(f.even, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(f.odd, 0)}°` : "";
+  return `<div class="tiles">
+    ${tile("Rate", "--rate", signed(f.rate, 1), Number.isFinite(f.rateSe) ? `± ${num(f.rateSe, 1)} seconds per day` : "seconds per day", f.rateNote)}
+    ${tile("Amplitude", "--amplitude", num(f.amplitude, 0), Number.isFinite(f.amplitudeSe) ? `± ${Math.max(1, Math.round(f.amplitudeSe))}°` : "", sides, "°")}
+    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
+    ${tile("Beats", "", esc(f.beats), "", Number.isFinite(f.jitter) ? `jitter ${num(f.jitter, 0)} µs` : "")}
+  </div>`;
 }
 
 // What follows the tiles: the caveats, which say what limits the readings,
@@ -591,19 +598,11 @@ function takeTiles(readings) {
     const head = `<p class="sub">${esc(label)}${span ? ` · ${esc(span)}` : ""} · as the take reads it</p>`;
     if (m.watch_heard === false) return head + `<div class="card notice"><b>No Regular Beat Found</b></div>`;
     const conf = m.confidence || {};
-    const se = (k) => conf[k] && Number.isFinite(conf[k].se) ? conf[k].se : null;
-    const unlock = m.beat_error_unlock_ms, drop = m.beat_error_ms;
-    const be = Number.isFinite(unlock) ? unlock : drop;
-    const beNote = Number.isFinite(unlock)
-      ? `from the unlock${Number.isFinite(drop) ? ` · from the drop ${num(abs(drop), 2)} ms` : ""}` : "from the drop";
-    const sides = Number.isFinite(m.amplitude_even_deg) && Number.isFinite(m.amplitude_odd_deg)
-      ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(m.amplitude_even_deg, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(m.amplitude_odd_deg, 0)}°` : "";
-    return head + `<div class="tiles">
-    ${tile("Rate", "--rate", signed(m.rate_s_per_day, 1), se("rate") != null ? `± ${num(se("rate"), 1)} seconds per day` : "seconds per day", "")}
-    ${tile("Amplitude", "--amplitude", num(m.amplitude_deg, 0), se("amplitude") != null ? `± ${Math.max(1, Math.round(se("amplitude")))}°` : "", sides, "°")}
-    ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
-    ${tile("Beats", "", esc(m.beats), "", Number.isFinite(m.jitter_us) ? `jitter ${num(m.jitter_us, 0)} µs` : "")}
-  </div>`;
+    return head + readingTiles({
+      rate: m.rate_s_per_day, rateSe: conf.rate && conf.rate.se, rateNote: "",
+      amplitude: m.amplitude_deg, amplitudeSe: conf.amplitude && conf.amplitude.se, even: m.amplitude_even_deg, odd: m.amplitude_odd_deg,
+      unlock: m.beat_error_unlock_ms, drop: m.beat_error_ms, beats: m.beats, jitter: m.jitter_us,
+    });
   }).join("");
 }
 

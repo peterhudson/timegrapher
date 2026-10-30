@@ -21,7 +21,7 @@ const context = vm.createContext({
   stripCards: () => "", limitsCard: () => "",
   profileCard: (p, title, dropBeatError) => `<profile drop="${dropBeatError}">`,
 });
-vm.runInContext(["esc", "num", "signed", "abs", "tile", "recordingView", "recordingCards", "takeTiles"]
+vm.runInContext(["esc", "num", "signed", "abs", "tile", "recordingView", "readingTiles", "recordingCards", "takeTiles"]
   .map(n => definition(n)).concat(definition("analyzeRate", true)).join("\n"), context);
 
 function render(doc) { return context.recordingView(doc, null, null); }
