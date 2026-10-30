@@ -28,8 +28,6 @@ pub use timegrapher_core::joined::{join, joined_duration, MIN_S};
 
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
-/// Most readings drawn on the Readings view per series.
-const MAX_DRAWN: usize = 3000;
 /// Shortest row, and narrowest column, in which a series' plot stays
 /// readable, points.
 const MIN_ROW: f32 = 120.0;
@@ -891,7 +889,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
         View::Readings => {
             let g = &s.grids[i];
             let n = g.y.len();
-            let stride = n.div_ceil(MAX_DRAWN).max(1);
+            let stride = n.div_ceil(steady_views::MAX_READINGS).max(1);
             let pts: Vec<[f64; 2]> = (0..n)
                 .step_by(stride)
                 .filter(|&j| g.y[j].is_finite())
@@ -1064,7 +1062,6 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                         .map(|(b, v)| [x(b), *v]),
                 );
             }
-            let dots: Vec<[f64; 2]> = by_time.iter().flatten().copied().collect();
             let boxes = steady_views::fold_columns(f);
             let box_w = 0.3 * f.period_s / bins as f64;
             let shape: Vec<[f64; 2]> = f
@@ -1074,7 +1071,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .filter(|(_, v)| v.is_finite())
                 .map(|(b, v)| [x(b), *v])
                 .collect();
-            let range = spread(&dots);
+            let range = steady_views::fold_range(f);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
                 .x_axis_formatter(clear_of_edge(plot_w, lag_text))

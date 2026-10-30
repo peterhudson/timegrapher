@@ -90,8 +90,8 @@ pub struct FoldView {
     /// the columns' middle-half heights: null unless both can be given.
     pub swing: Option<f64>,
     pub middle_half: Option<f64>,
-    /// The value scale the fold is drawn on: [`crate::chart_scale::spread`]
-    /// of the cycles kept, or of the median line when none has a value.
+    /// The value scale the fold is drawn on ([`fold_range`]): every
+    /// cycle's readings, not only those kept; null when none has one.
     pub y_range: Option<[f64; 2]>,
 }
 
@@ -118,6 +118,14 @@ pub fn fold_columns(f: &longterm::Fold) -> Vec<Option<[f64; 3]>> {
             Some([q(0.25), q(0.5), q(0.75)])
         })
         .collect()
+}
+
+/// The value scale a fold is drawn on: [`chart_scale::spread`] of every
+/// cycle's readings, not only the rows kept for drawing; `None` when no
+/// cycle has a reading.
+pub fn fold_range(f: &longterm::Fold) -> Option<(f64, f64)> {
+    let dots: Vec<f64> = f.raster.iter().flatten().copied().collect();
+    chart_scale::spread(&dots)
 }
 
 /// The median line's swing (highest less lowest) and the median of the
@@ -394,17 +402,6 @@ pub fn views(
                     .into_iter()
                     .map(|k| f.raster[k].clone())
                     .collect();
-                let dots: Vec<f64> = raster
-                    .iter()
-                    .flatten()
-                    .copied()
-                    .filter(|v| v.is_finite())
-                    .collect();
-                let y_range = if dots.is_empty() {
-                    chart_scale::spread(&f.profile)
-                } else {
-                    chart_scale::spread(&dots)
-                };
                 FoldView {
                     period_s: f.period_s,
                     from,
@@ -415,7 +412,7 @@ pub fn views(
                     columns,
                     swing: spread_of.map(|s| s.0),
                     middle_half: spread_of.map(|s| s.1),
-                    y_range: y_range.map(|(a, b)| [a, b]),
+                    y_range: fold_range(f).map(|(a, b)| [a, b]),
                 }
             });
             SeriesViews {
@@ -855,6 +852,34 @@ mod tests {
         // The line swings 5 - 2; the columns' middle halves are 2 and 0.
         assert_eq!(fold_spread(&f, &c), Some((3.0, 1.0)));
         assert_eq!(fold_spread(&f, &[None, None, None]), None);
+    }
+
+    /// A fold's scale is taken over every cycle, not only the rows kept
+    /// for drawing, so it is the same however many cycles there are.
+    #[test]
+    fn a_folds_scale_takes_every_cycle() {
+        let nan = f64::NAN;
+        // 1000 cycles: those kept for drawing read 0, the rest 1, so the
+        // rows kept and the whole fold have different scales.
+        let kept = spread(1000, MAX_CYCLES);
+        let raster: Vec<Vec<f64>> = (0..1000)
+            .map(|r| vec![if kept.contains(&r) { 0.0 } else { 1.0 }, nan])
+            .collect();
+        let all: Vec<f64> = raster.iter().map(|r| r[0]).collect();
+        let f = longterm::Fold {
+            period_s: 30.0,
+            profile: vec![1.0, nan],
+            counts: vec![1000, 0],
+            raster,
+            t0: 0.0,
+        };
+        assert_eq!(fold_range(&f), chart_scale::spread(&all));
+        assert_ne!(fold_range(&f), chart_scale::spread(&vec![0.0; kept.len()]));
+        let empty = longterm::Fold {
+            raster: vec![vec![nan, nan]],
+            ..f
+        };
+        assert_eq!(fold_range(&empty), None);
     }
 
     #[test]
