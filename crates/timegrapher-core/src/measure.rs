@@ -15,8 +15,7 @@
 //! is looked at instead, and on a longer stretch whose scatter is not far
 //! below noise's, is the beats' averaged sound: when neither the Tick's
 //! nor the Tock's shows an unlock or a drop, no regular beat is found
-//! (`no_watch`, reason `no_beat_sound`); on the longer stretch both must
-//! show one. Otherwise the readings are given,
+//! (`no_watch`, reason `no_beat_sound`). Otherwise the readings are given,
 //! `watch_heard` stays true, and `short_span` says how short a stretch
 //! under 10 s is (see [`no_watch_reason`]).
 //!
@@ -66,41 +65,26 @@ fn in_doubt(jitter_us: Option<f64>, bph: u32) -> bool {
         .is_some_and(|f| f >= crate::beats::NOISE_DOUBT_FRACTION)
 }
 
-/// How many of the beats' averaged sounds, the Tick's and the Tock's,
-/// show an unlock or a drop ([`beat_sound_found`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BeatSound {
-    Neither,
-    OneSide,
-    BothSides,
-}
-
 /// Why no regular beat was found, or `None` when one was, from the timing
 /// scatter and the beats' averaged sound (`beat_sound`, from
-/// [`stretch_beat_sound`]):
+/// [`stretch_beat_sound`]: whether either side shows an unlock or a drop):
 /// - under [`SHORT_SPAN_S`], the timing is not assessed, and the sound
-///   decides when it can be judged: a watch unless neither side shows one;
+///   decides when it can be judged;
 /// - with more, a scatter at or above [`crate::beats::NO_WATCH_JITTER_FRACTION`]
 ///   is no watch;
 /// - a scatter from [`crate::beats::NOISE_DOUBT_FRACTION`] up to it, where
-///   noise can still fall (#675) and no watch in the corpus does, is a
-///   watch only when both sides sound like one: noise's averaged sound
-///   can show an unlock and a drop on one side.
+///   noise can still fall (#675) and so can a weak watch about to stop, is
+///   a watch unless the sound shows none.
 pub fn no_watch_reason(
     jitter_us: Option<f64>,
     bph: u32,
     listened_s: f64,
-    beat_sound: Option<BeatSound>,
+    beat_sound: Option<bool>,
 ) -> Option<NoWatchReason> {
-    if !regularity_assessed(listened_s) {
-        (beat_sound == Some(BeatSound::Neither)).then_some(NoWatchReason::NoBeatSound)
-    } else if !crate::beats::watch_heard(jitter_us, bph) {
+    if !crate::beats::watch_heard(jitter_us, bph) && regularity_assessed(listened_s) {
         Some(NoWatchReason::Scatter)
-    } else if in_doubt(jitter_us, bph) && beat_sound != Some(BeatSound::BothSides) {
-        Some(match beat_sound {
-            Some(BeatSound::Neither) => NoWatchReason::NoBeatSound,
-            _ => NoWatchReason::Scatter,
-        })
+    } else if beat_sound_needed(jitter_us, bph, listened_s) && beat_sound == Some(false) {
+        Some(NoWatchReason::NoBeatSound)
     } else {
         None
     }
@@ -119,7 +103,7 @@ pub fn stretch_beat_sound(
     fs: f64,
     osc_period_s: f64,
     cfg: &crate::amplitude::AmplitudeConfig,
-) -> Option<BeatSound> {
+) -> Option<bool> {
     let kept = snippets.last()?.0 - snippets.first()?.0;
     if kept < 0.5 * (last_s - first_s) {
         return None;
@@ -127,8 +111,8 @@ pub fn stretch_beat_sound(
     beat_sound_found(snippets.iter().map(|s| (s.1, s.2)), fs, osc_period_s, cfg)
 }
 
-/// Which of the beats' averaged Tick and Tock sounds show a watch's sound:
-/// an unlock or a drop, as [`crate::profile`] finds them on
+/// Whether the beats' averaged Tick and Tock sounds show a watch's sound:
+/// an unlock or a drop on either side, as [`crate::profile`] finds them on
 /// the same template amplitude uses. `snippets` are each beat's envelope
 /// window ([`crate::profile::snippet`]) with whether it is a Tick (an even
 /// beat). `None` when neither side has enough beats for a profile.
@@ -137,7 +121,7 @@ pub fn beat_sound_found<'a>(
     fs: f64,
     osc_period_s: f64,
     cfg: &crate::amplitude::AmplitudeConfig,
-) -> Option<BeatSound> {
+) -> Option<bool> {
     let (tick, tock): (Vec<_>, Vec<_>) = snippets.into_iter().partition(|s| s.0);
     let shows = |side: crate::profile::Side, w: Vec<(bool, &[f32])>| {
         let w: Vec<&[f32]> = w.into_iter().map(|s| s.1).collect();
@@ -149,9 +133,7 @@ pub fn beat_sound_found<'a>(
         shows(crate::profile::Side::B, tock),
     ) {
         (None, None) => None,
-        (Some(true), Some(true)) => Some(BeatSound::BothSides),
-        (Some(true), _) | (_, Some(true)) => Some(BeatSound::OneSide),
-        _ => Some(BeatSound::Neither),
+        (a, b) => Some(a == Some(true) || b == Some(true)),
     }
 }
 
@@ -768,34 +750,24 @@ mod tests {
         assert!(a.confidence.is_some());
     }
 
-    /// Where noise can still scatter as little (#675), one side sounding
-    /// like a watch is not enough: noise's averaged sound can show an
-    /// unlock and a drop on one side. Under 10 s it is.
+    /// Where noise can still scatter as little (#675), and so can a weak
+    /// watch about to stop, the timing says a watch unless the sound shows
+    /// none, as under 10 s.
     #[test]
-    fn in_the_doubt_zone_both_sides_must_sound_like_a_watch() {
+    fn in_the_doubt_zone_only_a_silent_beat_sound_is_no_watch() {
         // 1.5% of a beat at 28,800 bph.
         let doubt = Some(0.015 * 125_000.0);
         let reason = |s, sound| no_watch_reason(doubt, 28_800, s, sound);
-        assert_eq!(reason(30.0, Some(BeatSound::BothSides)), None);
-        assert_eq!(
-            reason(30.0, Some(BeatSound::OneSide)),
-            Some(NoWatchReason::Scatter)
-        );
-        assert_eq!(
-            reason(30.0, Some(BeatSound::Neither)),
-            Some(NoWatchReason::NoBeatSound)
-        );
-        assert_eq!(reason(30.0, None), Some(NoWatchReason::Scatter));
-        assert_eq!(reason(5.0, Some(BeatSound::OneSide)), None);
-        assert_eq!(
-            reason(5.0, Some(BeatSound::Neither)),
-            Some(NoWatchReason::NoBeatSound)
-        );
-        // Below the zone the timing alone says a watch.
-        assert_eq!(
-            no_watch_reason(Some(0.005 * 125_000.0), 28_800, 30.0, None),
-            None
-        );
+        for s in [5.0, 30.0] {
+            assert_eq!(reason(s, Some(true)), None);
+            assert_eq!(reason(s, None), None);
+            assert_eq!(reason(s, Some(false)), Some(NoWatchReason::NoBeatSound));
+        }
+        // Below the zone the timing alone says a watch, and at the limit
+        // no watch, whatever the sound.
+        let at = |f: f64, sound| no_watch_reason(Some(f * 125_000.0), 28_800, 30.0, sound);
+        assert_eq!(at(0.005, Some(false)), None);
+        assert_eq!(at(0.02, Some(true)), Some(NoWatchReason::Scatter));
     }
 
     /// Beats too scattered to make 10 s of a run, in a minute of sound, as

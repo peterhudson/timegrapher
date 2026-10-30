@@ -89,7 +89,7 @@ impl BeatLog {
         &self,
         beats: &[Beat],
         cfg: &crate::amplitude::AmplitudeConfig,
-    ) -> Option<crate::measure::BeatSound> {
+    ) -> Option<bool> {
         let find = |t: f64| {
             let k = self.snippets.partition_point(|s| s.0 < t - 1e-9);
             self.snippets
