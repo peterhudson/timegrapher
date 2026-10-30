@@ -72,6 +72,7 @@ series[].changes
 series[].cusum
 series[].cycle
 series[].headline
+series[].long_run_sd
 series[].median
 series[].outliers
 series[].period
