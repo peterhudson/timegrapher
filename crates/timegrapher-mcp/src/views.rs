@@ -162,25 +162,33 @@ impl Drop for TempFile {
 /// over time, and the file they go to.
 pub fn analyze_extras() -> (Vec<String>, TempFile) {
     let f = TempFile::new("csv");
-    (vec![format!("--windows={}", f.0.display())], f)
+    (vec![format!("--trend={}", f.0.display())], f)
 }
 
-/// The windows file written by `analyze --windows` (see [`analyze_extras`])
-/// as the three series of the strip.
+/// The readings over time written by `analyze --trend` (see
+/// [`analyze_extras`]), each averaged as the app's charts average them, as
+/// the three series of the strip, with the averaging time, the ppm the
+/// rates are corrected by (none on the sound card's clock) and each chart's
+/// scale ([`timegrapher_core::chart_scale::data_range`]).
 fn strip(csv: &str, duration_s: f64) -> Value {
     let mut lines = csv.lines();
     let header: Vec<&str> = lines.next().unwrap_or_default().split(',').collect();
     let col = |name: &str| header.iter().position(|h| *h == name);
-    let (Some(kind), Some(start), Some(end)) = (col("kind"), col("start_s"), col("end_s")) else {
+    let Some(t_col) = col("t_s") else {
         return Value::Null;
     };
-    let rate = col("rate_s_per_day");
-    let be = col("beat_error_ms");
-    let be_unlock = col("beat_error_unlock_ms");
-    let amp = [col("amplitude_even_deg"), col("amplitude_odd_deg")];
-    let mut rates = Vec::new();
-    let (mut amps, mut ticks, mut tocks) = (Vec::new(), Vec::new(), Vec::new());
-    let (mut unlocks, mut drops) = (Vec::new(), Vec::new());
+    let cols = [
+        "rate_s_per_day",
+        "amplitude_deg",
+        "amplitude_even_deg",
+        "amplitude_odd_deg",
+        "beat_error_unlock_ms",
+        "beat_error_ms",
+    ]
+    .map(col);
+    let mut series: [Vec<[f64; 2]>; 6] = Default::default();
+    let mut average_s = None;
+    let mut clock_ppm = None;
     for line in lines {
         let f: Vec<&str> = line.split(',').collect();
         let get = |i: Option<usize>| {
@@ -188,44 +196,31 @@ fn strip(csv: &str, duration_s: f64) -> Value {
                 .and_then(|s| s.parse::<f64>().ok())
                 .filter(|v| v.is_finite())
         };
-        let (Some(a), Some(b)) = (get(Some(start)), get(Some(end))) else {
+        let Some(t) = get(Some(t_col)) else {
             continue;
         };
-        let t = (a + b) / 2.0;
-        match f.get(kind).copied() {
-            Some("rate") => {
-                if let Some(v) = get(rate) {
-                    rates.push([t, v]);
+        average_s = average_s.or(get(col("average_s")));
+        clock_ppm = clock_ppm.or(get(col("clock_ppm")));
+        for (k, c) in cols.iter().enumerate() {
+            match get(*c) {
+                Some(v) => series[k].push([t, v]),
+                // No figure here (a cut, a mask, too few beats): the line
+                // lifts, as the app's does, with one gap for the run.
+                None if series[k].last().is_some_and(|p| p[1].is_finite()) => {
+                    series[k].push([t, f64::NAN]);
                 }
+                None => {}
             }
-            Some("amplitude") => {
-                // As the app's Amplitude chart: the average of the two sides,
-                // and each side's own (the Tick is the even beats).
-                let (tick, tock) = (get(amp[0]), get(amp[1]));
-                if let Some(v) = timegrapher_core::amplitude::mean_of_sides(tick, tock) {
-                    amps.push([t, v]);
-                }
-                if let Some(v) = tick {
-                    ticks.push([t, v]);
-                }
-                if let Some(v) = tock {
-                    tocks.push([t, v]);
-                }
-                // Signed, as the app draws them: the unlock's is the headline.
-                if let Some(v) = get(be_unlock) {
-                    unlocks.push([t, v]);
-                }
-                if let Some(v) = get(be) {
-                    drops.push([t, v]);
-                }
-            }
-            _ => {}
         }
     }
+    let [rates, amps, ticks, tocks, unlocks, drops] = series;
     // Each chart's scale, as the app's charts over time take it: every
     // point of its lines.
     let range = |lines: &[&Vec<[f64; 2]>]| {
-        let ys: Vec<f64> = lines.iter().flat_map(|l| l.iter().map(|p| p[1])).collect();
+        let ys: Vec<f64> = lines
+            .iter()
+            .flat_map(|l| l.iter().map(|p| p[1]).filter(|y| y.is_finite()))
+            .collect();
         timegrapher_core::chart_scale::data_range(&ys).map(|(lo, hi)| [lo, hi])
     };
     let ranges = json!({
@@ -235,6 +230,8 @@ fn strip(csv: &str, duration_s: f64) -> Value {
     });
     json!({
         "duration_s": duration_s,
+        "average_s": average_s,
+        "clock_ppm": clock_ppm,
         "y_range": ranges,
         "rate": thin(rates),
         "amplitude": thin(amps),
@@ -245,10 +242,17 @@ fn strip(csv: &str, duration_s: f64) -> Value {
     })
 }
 
-/// Every k-th point, so at most [`MAX_POINTS`] remain.
+/// Every k-th point, so at most [`MAX_POINTS`] remain, and every gap (a
+/// point with no value, null in the view's data), so a line still lifts
+/// where it did.
 fn thin(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
     let k = points.len().div_ceil(MAX_POINTS).max(1);
-    points.into_iter().step_by(k).collect()
+    points
+        .into_iter()
+        .enumerate()
+        .filter(|(i, p)| i % k == 0 || !p[1].is_finite())
+        .map(|(_, p)| p)
+        .collect()
 }
 
 /// Takes out of a `series --views` document what only the Steadiness and
@@ -401,7 +405,7 @@ pub fn profile_stretch(doc: &Value) -> Option<(f64, f64)> {
 }
 
 /// What the Recording view needs beyond `analyze`'s document: the strip
-/// from the windows file, and the Tick and Tock profiles over the stretch
+/// from the trend file, and the Tick and Tock profiles over the stretch
 /// core measures the beat shape on ([`profile_stretch`]).
 pub async fn analyze_charts(
     doc: &Value,
@@ -413,7 +417,7 @@ pub async fn analyze_charts(
     let mut warning = None;
     let mut out = Map::new();
     let duration = doc["duration_s"].as_f64().unwrap_or(0.0);
-    if let Some(path) = extras.first().and_then(|e| e.strip_prefix("--windows=")) {
+    if let Some(path) = extras.first().and_then(|e| e.strip_prefix("--trend=")) {
         if let Ok(csv) = std::fs::read_to_string(path) {
             out.insert("strip".into(), strip(&csv, duration));
         }
@@ -567,32 +571,64 @@ mod tests {
     }
 
     #[test]
-    fn strip_from_windows() {
-        let csv = "kind,start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_even_deg,amplitude_odd_deg\n\
-                   rate,0,10,4.5,-0.4,,,\n\
-                   amplitude,0,2,,-0.39,-0.38,270,268\n\
-                   amplitude,2,4,,-0.41,,272,\n";
+    fn strip_from_trend() {
+        let csv = "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard,clock_ppm\n\
+                   1,10,,,,,,,false,20.000\n\
+                   2,10,4.5,269,270,268,-0.38,-0.39,true,20.000\n\
+                   3,10,4.7,272,272,,,-0.41,true,20.000\n\
+                   4,10,,,,,,,false,20.000\n\
+                   5,10,,,,,,,false,20.000\n\
+                   6,10,4.9,271,271,271,-0.36,-0.40,true,20.000\n";
         let s = strip(csv, 30.0);
-        assert_eq!(s["rate"], json!([[5.0, 4.5]]));
-        assert_eq!(s["amplitude"], json!([[1.0, 269.0], [3.0, 272.0]]));
-        assert_eq!(s["amplitude_tick"], json!([[1.0, 270.0], [3.0, 272.0]]));
-        assert_eq!(s["amplitude_tock"], json!([[1.0, 268.0]]));
-        assert_eq!(s["beat_error_unlock"], json!([[1.0, -0.38]]));
-        assert_eq!(s["beat_error_drop"], json!([[1.0, -0.39], [3.0, -0.41]]));
+        assert_eq!(s["average_s"], json!(10.0));
+        assert_eq!(s["clock_ppm"], json!(20.0));
+        // Where a reading has no figure (here a cut from 4 to 5 s) the
+        // line lifts: one null for the run, none before the first figure.
+        assert_eq!(
+            s["rate"],
+            json!([[2.0, 4.5], [3.0, 4.7], [4.0, null], [6.0, 4.9]])
+        );
+        assert_eq!(
+            s["amplitude"],
+            json!([[2.0, 269.0], [3.0, 272.0], [4.0, null], [6.0, 271.0]])
+        );
+        assert_eq!(
+            s["amplitude_tick"],
+            json!([[2.0, 270.0], [3.0, 272.0], [4.0, null], [6.0, 271.0]])
+        );
+        assert_eq!(
+            s["amplitude_tock"],
+            json!([[2.0, 268.0], [3.0, null], [6.0, 271.0]])
+        );
+        assert_eq!(
+            s["beat_error_unlock"],
+            json!([[2.0, -0.38], [3.0, null], [6.0, -0.36]])
+        );
+        assert_eq!(
+            s["beat_error_drop"],
+            json!([[2.0, -0.39], [3.0, -0.41], [4.0, null], [6.0, -0.40]])
+        );
         // Each chart's scale is core's, over every point of its lines.
         let range = |ys: &[f64]| {
             let (lo, hi) = timegrapher_core::chart_scale::data_range(ys).unwrap();
             json!([lo, hi])
         };
-        assert_eq!(s["y_range"]["rate"], range(&[4.5]));
+        assert_eq!(s["y_range"]["rate"], range(&[4.5, 4.7, 4.9]));
         assert_eq!(s["y_range"]["amplitude"], range(&[268.0, 272.0]));
-        assert_eq!(s["y_range"]["beat_error"], range(&[-0.38, -0.39, -0.41]));
+        assert_eq!(
+            s["y_range"]["beat_error"],
+            range(&[-0.36, -0.38, -0.39, -0.40, -0.41])
+        );
     }
 
     #[test]
     fn thins_long_runs() {
         let pts: Vec<[f64; 2]> = (0..10_000).map(|i| [i as f64, 0.0]).collect();
         assert!(thin(pts).len() <= MAX_POINTS);
+        // A gap is kept wherever it falls, so the line still lifts there.
+        let mut pts: Vec<[f64; 2]> = (0..10_000).map(|i| [i as f64, 0.0]).collect();
+        pts[5001][1] = f64::NAN;
+        assert!(thin(pts).iter().any(|p| p[0] == 5001.0 && p[1].is_nan()));
     }
 
     #[test]

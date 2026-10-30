@@ -334,7 +334,7 @@ function lineChart(o) {
   charts.set(id, { o, sx, x0, x1, L, plotW, W, T, plotH });
   // Values off the scale are counted under the chart.
   let off = 0;
-  for (const s of o.series) for (const [, y] of s.points) if (y < y0 || y > y1) off++;
+  for (const s of o.series) for (const [, y] of s.points) if (Number.isFinite(y) && (y < y0 || y > y1)) off++;
   const offNote = off ? `<p class="sub off">${off} ${off === 1 ? "outlier" : "outliers"} off the scale</p>` : "";
   const legend = o.series.length > 1 || o.legend
     // Inside the plot, as in the app, where there is room; above it on a phone.
@@ -427,15 +427,20 @@ function stripCards(strip) {
   const has = (k) => strip[k] && strip[k].length;
   // Each chart's scale is core's (chart_scale::data_range), from the server.
   const range = (k) => (strip.y_range && strip.y_range[k]) || undefined;
+  // Each point is the reading over the seconds before it, as the app's
+  // Average Over (core live::LiveAnalyzer::trend).
+  const average = Number.isFinite(strip.average_s) ? `${num(strip.average_s, 0)} s average` : "";
+  const over = (hint) => average ? `${hint}, ${average}` : hint;
   const cards = [];
   if (has("rate")) {
-    cards.push(["Rate", "The rate over the whole recording, on the sound card's clock", lineChart({
+    const clock = Number.isFinite(strip.clock_ppm) ? `${signed(strip.clock_ppm, 1)} ppm` : "";
+    cards.push(["Rate", over(`The rate over the whole recording, ${rateBasis(!!clock, clock)}`), lineChart({
       title: "Rate", time: true, yRange: range("rate"), unit: " s/day", decimals: 1,
-      series: [{ name: "Rate in seconds per day, 10 s average", color: "--rate", points: strip.rate }],
+      series: [{ name: average ? `Rate in seconds per day, ${average}` : "Rate in seconds per day", color: "--rate", points: strip.rate }],
     })]);
   }
   if (has("amplitude")) {
-    cards.push(["Amplitude", "The amplitude over the whole recording, from the ticks and tocks", lineChart({
+    cards.push(["Amplitude", over("The amplitude over the whole recording, from the ticks and tocks"), lineChart({
       title: "Amplitude", time: true, legend: has("amplitude_tick") || has("amplitude_tock"), yRange: range("amplitude"), unit: "°", decimals: 0,
       series: [
         { name: "Average Amplitude", color: "--amplitude", points: strip.amplitude },
@@ -445,7 +450,7 @@ function stripCards(strip) {
     })]);
   }
   if (has("beat_error_unlock") || has("beat_error_drop")) {
-    cards.push(["Beat Error", "The beat error over the whole recording", lineChart({
+    cards.push(["Beat Error", over("The beat error over the whole recording"), lineChart({
       title: "Beat Error", time: true, legend: has("beat_error_unlock") && has("beat_error_drop"), yRange: range("beat_error"), unit: " ms", decimals: 2,
       series: [
         { name: "From the Unlock", color: "--beat-error", points: strip.beat_error_unlock || [] },
