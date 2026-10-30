@@ -26672,25 +26672,6 @@ mod tests {
         assert_eq!(back.average_s, 30.0);
     }
 
-    /// New Session while listening, when closing the kept sound fails:
-    /// the error stays shown and listening doesn't start again over it.
-    #[test]
-    fn new_session_keeps_a_close_error() {
-        let (mut app, base) = save_failure_fixture("new-session-close");
-        let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
-        std::fs::remove_file(scratch.join("session.json")).unwrap();
-        std::fs::create_dir(scratch.join("session.json")).unwrap();
-        let tx = queued_capture(&mut app, &base);
-        assert!(app.running() && app.session.mic());
-        app.new_session();
-        assert!(!app.running());
-        let (m, error) = app.message.clone().expect("the close error is shown");
-        assert!(error, "{m}");
-        assert!(m.contains("pause"), "{m}");
-        drop(tx);
-        let _ = std::fs::remove_dir_all(base);
-    }
-
     #[test]
     fn a_long_take_still_draws_over_a_short_strip() {
         // Opened whole, a take over 5 h 33 min keeps a reading only every

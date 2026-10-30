@@ -73,6 +73,25 @@ fn a_backlog_is_taken_in_slices() {
     let _ = std::fs::remove_dir_all(base);
 }
 
+/// New Session while listening, when closing the kept sound fails:
+/// the error stays shown and listening doesn't start again over it.
+#[test]
+fn new_session_keeps_a_close_error() {
+    let (mut app, base) = save_failure_fixture("new-session-close");
+    let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
+    std::fs::remove_file(scratch.join("session.json")).unwrap();
+    std::fs::create_dir(scratch.join("session.json")).unwrap();
+    let tx = queued_capture(&mut app, &base);
+    assert!(app.running() && app.session.mic());
+    app.new_session();
+    assert!(!app.running());
+    let (m, error) = app.message.clone().expect("the close error is shown");
+    assert!(error, "{m}");
+    assert!(m.contains("pause"), "{m}");
+    drop(tx);
+    let _ = std::fs::remove_dir_all(base);
+}
+
 /// A computer that slept mid-take carries on, with the gap a break.
 /// Core's gap rule holds the blocks after a jump until it has seen
 /// enough of them, so the sound runs on 10 s after waking (#689).
