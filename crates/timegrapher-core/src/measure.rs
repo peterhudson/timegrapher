@@ -12,11 +12,12 @@
 //!
 //! Whether the beats are regular is assessed on 10 s windows, so with
 //! less than [`SHORT_SPAN_S`] of sound their timing is not assessed. What
-//! is looked at instead is the beats' averaged sound: when neither the
-//! Tick's nor the Tock's shows an unlock or a drop, no regular beat is
-//! found (`no_watch`, reason `no_beat_sound`). Otherwise the readings are
-//! given, `watch_heard` stays true, and `short_span` says how short the
-//! stretch is (see [`no_watch_reason`]).
+//! is looked at instead, and on a longer stretch whose scatter is not far
+//! below noise's, is the beats' averaged sound: when neither the Tick's
+//! nor the Tock's shows an unlock or a drop, no regular beat is found
+//! (`no_watch`, reason `no_beat_sound`). Otherwise the readings are given,
+//! `watch_heard` stays true, and `short_span` says how short a stretch
+//! under 10 s is (see [`no_watch_reason`]).
 //!
 //! The beat error's sign: positive means Tick comes late. Each take starts
 //! positive: Tick is the beat that comes late over the take's first stretch
@@ -42,28 +43,72 @@ pub fn regularity_assessed(listened_s: f64) -> bool {
 /// False when a regular beat was looked for and not found: with at least
 /// [`SHORT_SPAN_S`] of sound, the beat timing scatter is at or above
 /// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat. With less sound,
-/// regularity is not assessed and this is true; [`no_watch_reason`] also
-/// looks at the beats' sound there.
+/// regularity is not assessed and this is true. [`no_watch_reason`] also
+/// looks at the beats' sound.
 pub fn watch_heard(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
     !regularity_assessed(listened_s) || crate::beats::watch_heard(jitter_us, bph)
 }
 
-/// Why no regular beat was found, or `None` when one was: with at least
-/// [`SHORT_SPAN_S`] of sound, the timing scatter ([`watch_heard`]); with
-/// less, the beats' averaged sound, when `beat_sound` (from
-/// [`beat_sound_found`]) says neither side shows an unlock or a drop. With
-/// less sound and no profile to look at, `None`, as before.
+/// Whether the beats' averaged sound has a say in [`no_watch_reason`]: on
+/// a stretch under [`SHORT_SPAN_S`], where the timing is not assessed, or
+/// on a longer one whose timing scatter is at or above
+/// [`crate::beats::NOISE_DOUBT_FRACTION`], where noise can still scatter as
+/// little as this (#675). Every reader asks this before working out the
+/// sound ([`stretch_beat_sound`]), so all of them judge a stretch alike.
+pub fn beat_sound_needed(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
+    !regularity_assessed(listened_s) || in_doubt(jitter_us, bph)
+}
+
+/// A timing scatter at or above [`crate::beats::NOISE_DOUBT_FRACTION`].
+fn in_doubt(jitter_us: Option<f64>, bph: u32) -> bool {
+    crate::beats::timing_scatter_fraction(jitter_us, bph)
+        .is_some_and(|f| f >= crate::beats::NOISE_DOUBT_FRACTION)
+}
+
+/// Why no regular beat was found, or `None` when one was, from the timing
+/// scatter and the beats' averaged sound (`beat_sound`, from
+/// [`stretch_beat_sound`]: whether either side shows an unlock or a drop):
+/// - under [`SHORT_SPAN_S`], the timing is not assessed, and the sound
+///   decides when it can be judged;
+/// - with more, a scatter at or above [`crate::beats::NO_WATCH_JITTER_FRACTION`]
+///   is no watch;
+/// - a scatter from [`crate::beats::NOISE_DOUBT_FRACTION`] up to it, where
+///   noise can still fall (#675) and so can a weak watch about to stop, is
+///   a watch unless the sound shows none.
 pub fn no_watch_reason(
     jitter_us: Option<f64>,
     bph: u32,
     listened_s: f64,
     beat_sound: Option<bool>,
 ) -> Option<NoWatchReason> {
-    if regularity_assessed(listened_s) {
-        (!crate::beats::watch_heard(jitter_us, bph)).then_some(NoWatchReason::Scatter)
+    if !crate::beats::watch_heard(jitter_us, bph) && regularity_assessed(listened_s) {
+        Some(NoWatchReason::Scatter)
+    } else if beat_sound_needed(jitter_us, bph, listened_s) && beat_sound == Some(false) {
+        Some(NoWatchReason::NoBeatSound)
     } else {
-        (beat_sound == Some(false)).then_some(NoWatchReason::NoBeatSound)
+        None
     }
+}
+
+/// [`beat_sound_found`] for a stretch whose beats run from `first_s` to
+/// `last_s`, from `snippets`: its clean beats whose envelope windows are
+/// kept, each at its time with whether it is a Tick. `None` when the kept
+/// ones span less than half the stretch (a long take keeps its first
+/// minute's windows alone, [`crate::stream::SNIPPETS_KEPT_S`]), so a
+/// stretch is not judged on a small part of it.
+pub fn stretch_beat_sound(
+    snippets: &[(f64, bool, &[f32])],
+    first_s: f64,
+    last_s: f64,
+    fs: f64,
+    osc_period_s: f64,
+    cfg: &crate::amplitude::AmplitudeConfig,
+) -> Option<bool> {
+    let kept = snippets.last()?.0 - snippets.first()?.0;
+    if kept < 0.5 * (last_s - first_s) {
+        return None;
+    }
+    beat_sound_found(snippets.iter().map(|s| (s.1, s.2)), fs, osc_period_s, cfg)
 }
 
 /// Whether the beats' averaged Tick and Tock sounds show a watch's sound:
@@ -159,11 +204,15 @@ pub enum Caveat {
     /// would correct them on its own, measures the card differently by
     /// more than its own scatter ([`crate::clock::ClockFit::sources_disagree`]):
     /// ppm the card runs
-    /// slow by each, and the log's standard error.
+    /// slow by each, and the log's standard error. With `against`
+    /// `correction`, on a take with no clock log, the other is the
+    /// correction known for the input, and `log_ppm` is its ppm.
     ClockSourcesDisagree {
         usb_ppm: f64,
         log_ppm: f64,
         log_ppm_sd: f64,
+        #[serde(default, skip_serializing_if = "crate::clock::Against::is_clock_log")]
+        against: crate::clock::Against,
     },
     /// The beats span less than [`SHORT_SPAN_S`].
     ShortSpan { span_s: f64 },
@@ -186,6 +235,9 @@ pub enum Caveat {
     /// Stretches of the take were masked out of the readings by hand;
     /// `seconds` is their total within the stretch.
     Masked { seconds: f64 },
+    /// The take's entries name `count` positions, so what goes with the
+    /// amplitude across it may go with the position instead (#651).
+    Positions { count: usize },
 }
 
 impl Caveat {
@@ -210,12 +262,7 @@ impl Caveat {
             }
             Caveat::LiftUnknown => format!("lift angle {lift_deg}°, the default"),
             Caveat::ClockUnknown => "input clock not corrected".to_string(),
-            Caveat::ClockSourcesDisagree {
-                usb_ppm, log_ppm, ..
-            } => format!(
-                "USB lines and clock log {:.0} ppm apart",
-                (usb_ppm - log_ppm).abs()
-            ),
+            Caveat::ClockSourcesDisagree { .. } => self.sources_disagree()?.short(),
             Caveat::Breaks { count } => format!("{count} break{}", plural(*count)),
             Caveat::BreaksUnlisted { .. } => "breaks from the clock log".to_string(),
             Caveat::SidesByCount { .. } => "sides named by count".to_string(),
@@ -223,6 +270,7 @@ impl Caveat {
                 "beat error given as a size: its sign differs either side of a cut".to_string()
             }
             Caveat::Masked { seconds } => format!("{} s masked", masked_seconds(*seconds)?),
+            Caveat::Positions { count } => format!("{count} positions"),
         })
     }
 
@@ -261,17 +309,8 @@ impl Caveat {
             Caveat::ClockUnknown => "This input's clock hasn't been measured, so the rate \
                                      includes the sound card's own clock error."
                 .to_string(),
-            Caveat::ClockSourcesDisagree {
-                usb_ppm,
-                log_ppm,
-                log_ppm_sd,
-            } => {
-                let note = crate::clock::SourcesDisagree {
-                    usb_ppm: *usb_ppm,
-                    log_ppm: *log_ppm,
-                    log_ppm_sd: *log_ppm_sd,
-                }
-                .note();
+            Caveat::ClockSourcesDisagree { .. } => {
+                let note = self.sources_disagree()?.note();
                 format!("{}{}.", note[..1].to_uppercase(), &note[1..])
             }
             Caveat::Breaks { count } => format!(
@@ -311,7 +350,30 @@ impl Caveat {
                 "{} s of this stretch were masked out and left out of the readings.",
                 masked_seconds(*seconds)?
             ),
+            Caveat::Positions { count } => format!(
+                "The take holds {count} positions, so a rate that changes with the \
+                 position can show as one that goes with the amplitude."
+            ),
         })
+    }
+
+    /// The two clocks of [`Caveat::ClockSourcesDisagree`]; `None` for any
+    /// other caveat.
+    fn sources_disagree(&self) -> Option<crate::clock::SourcesDisagree> {
+        match *self {
+            Caveat::ClockSourcesDisagree {
+                usb_ppm,
+                log_ppm,
+                log_ppm_sd,
+                against,
+            } => Some(crate::clock::SourcesDisagree {
+                usb_ppm,
+                log_ppm,
+                log_ppm_sd,
+                against,
+            }),
+            _ => None,
+        }
     }
 
     /// Where the caveat sits in a list.
@@ -330,6 +392,7 @@ impl Caveat {
             Caveat::SidesByCount { .. } => 10,
             Caveat::Masked { .. } => 11,
             Caveat::BeatErrorAsSize => 12,
+            Caveat::Positions { .. } => 13,
         }
     }
 }
@@ -340,6 +403,7 @@ impl From<crate::clock::SourcesDisagree> for Caveat {
             usb_ppm: d.usb_ppm,
             log_ppm: d.log_ppm,
             log_ppm_sd: d.log_ppm_sd,
+            against: d.against,
         }
     }
 }
@@ -406,7 +470,12 @@ pub struct Context {
 }
 
 /// The length of a rate window, s.
-const RATE_WINDOW_S: f64 = 10.0;
+pub const RATE_WINDOW_S: f64 = 10.0;
+
+/// The unbroken beats the rate's ± needs, s: the windows half overlap and
+/// [`confidence::rate_se`] takes every other one, so its
+/// [`confidence::MIN_VALUES`] need that many window lengths.
+pub const RATE_SE_MIN_S: f64 = confidence::MIN_VALUES as f64 * RATE_WINDOW_S;
 
 /// The rate's ± for a figure averaged over `average_s` within a run whose
 /// rate windows are given: the windows' scatter scaled to that time. Over
@@ -690,6 +759,26 @@ mod tests {
         assert!(a.confidence.is_some());
     }
 
+    /// Where noise can still scatter as little (#675), and so can a weak
+    /// watch about to stop, the timing says a watch unless the sound shows
+    /// none, as under 10 s.
+    #[test]
+    fn in_the_doubt_zone_only_a_silent_beat_sound_is_no_watch() {
+        // 1.5% of a beat at 28,800 bph.
+        let doubt = Some(0.015 * 125_000.0);
+        let reason = |s, sound| no_watch_reason(doubt, 28_800, s, sound);
+        for s in [5.0, 30.0] {
+            assert_eq!(reason(s, Some(true)), None);
+            assert_eq!(reason(s, None), None);
+            assert_eq!(reason(s, Some(false)), Some(NoWatchReason::NoBeatSound));
+        }
+        // Below the zone the timing alone says a watch, and at the limit
+        // no watch, whatever the sound.
+        let at = |f: f64, sound| no_watch_reason(Some(f * 125_000.0), 28_800, 30.0, sound);
+        assert_eq!(at(0.005, Some(false)), None);
+        assert_eq!(at(0.02, Some(true)), Some(NoWatchReason::Scatter));
+    }
+
     /// Beats too scattered to make 10 s of a run, in a minute of sound, as
     /// on an empty stand heard live: no watch, not too short to tell.
     #[test]
@@ -816,6 +905,7 @@ mod tests {
             usb_ppm: 120.0,
             log_ppm: 20.0,
             log_ppm_sd: 2.0,
+            against: Default::default(),
         };
         assert_eq!(
             d.short(52.0, 0).unwrap(),
@@ -826,6 +916,30 @@ mod tests {
             "The USB lines measure the sound card at +120.0 ppm and the clock log at +20 ± 2 \
              ppm; the rates are corrected by the USB lines."
         );
+        // Its JSON leaves the clock log unsaid, as before (#635).
+        let json = serde_json::to_value(d).unwrap();
+        assert!(json.get("against").is_none(), "{json}");
+        assert_eq!(serde_json::from_value::<Caveat>(json).unwrap(), d);
+        // On a take with no clock log, the USB lines over a known
+        // correction, named as such (#635).
+        let c = Caveat::ClockSourcesDisagree {
+            usb_ppm: 12.0,
+            log_ppm: 5.0,
+            log_ppm_sd: 0.0,
+            against: crate::clock::Against::Correction,
+        };
+        assert_eq!(
+            c.short(52.0, 0).unwrap(),
+            "USB lines and the known correction 7 ppm apart"
+        );
+        assert_eq!(
+            c.long(None).unwrap(),
+            "The USB lines measure the sound card at +12.0 ppm and the correction known for \
+             its input is +5.0 ppm; the rates are corrected by the USB lines."
+        );
+        let json = serde_json::to_value(c).unwrap();
+        assert_eq!(json["against"], "correction");
+        assert_eq!(serde_json::from_value::<Caveat>(json).unwrap(), c);
         // The JSON a caveat is written as reads back into the same words.
         let c: Caveat = serde_json::from_str(r#"{"code":"clipped","fraction":0.04}"#).unwrap();
         assert_eq!(c.short(52.0, 0).unwrap(), "4% clipped");

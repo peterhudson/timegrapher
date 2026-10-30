@@ -9,7 +9,7 @@
 
 use crate::breaks::{self, Break};
 use crate::dsp::{median, robust_sd};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// What a clock `ppm` slow (negative: fast) does to a rate, s/d: the
@@ -54,6 +54,11 @@ pub struct ClockFit {
     /// the log's breaks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub withheld: Option<Withheld>,
+    /// For a take with no clock log whose USB lines set the rate over a
+    /// correction known for its input ([`ClockFit::usb_over_correction`]):
+    /// that correction, ppm slow, left out of the rates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correction_set_aside_ppm: Option<f64>,
     /// For each of `breaks`, the audio seconds of the log's last entry
     /// before its step: a listed break must fall at or after it to be that
     /// break.
@@ -128,28 +133,68 @@ impl Withheld {
     }
 }
 
-/// The USB lines and a clock log that would correct on its own both
-/// measuring the sound card, more than [`DISAGREE_PPM`] apart
-/// ([`ClockFit::sources_disagree`]). The lines time the card against the
-/// computer's USB clock, the log against true time: on the stored takes
-/// those agree within about 1 ppm, but another computer's crystal can be
-/// tens of ppm off (30 ppm is 2.6 s/d).
+/// The USB lines and another measure of the sound card, a clock log that
+/// would correct on its own or a correction known for the input, more
+/// than [`DISAGREE_PPM`] apart ([`ClockFit::sources_disagree`]). The lines
+/// time the card against the computer's USB clock, the log against true
+/// time: on the stored takes those agree within about 1 ppm, but another
+/// computer's crystal can be tens of ppm off (30 ppm is 2.6 s/d).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SourcesDisagree {
     /// ppm the card runs slow by the USB lines: the rates are corrected by
     /// this.
     pub usb_ppm: f64,
-    /// ppm by the clock log, and its standard error.
+    /// ppm by the other measure, and its standard error (0 for a
+    /// correction, which carries none).
     pub log_ppm: f64,
     pub log_ppm_sd: f64,
+    /// What the other measure is.
+    pub against: Against,
+}
+
+/// What the USB lines disagree with ([`SourcesDisagree`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Against {
+    /// The take's clock log.
+    #[default]
+    ClockLog,
+    /// A correction known for the input, stored or given, on a take with
+    /// no clock log (#635).
+    Correction,
+}
+
+impl Against {
+    /// Whether it is the clock log, which JSON leaves unsaid.
+    pub fn is_clock_log(&self) -> bool {
+        *self == Against::ClockLog
+    }
 }
 
 impl SourcesDisagree {
     /// One line for a reader: both figures, and which one corrects.
     pub fn note(&self) -> String {
+        match self.against {
+            Against::ClockLog => format!(
+                "the USB lines measure the sound card at {:+.1} ppm and the clock log at {:+.0} ± {:.0} ppm; the rates are corrected by the USB lines",
+                self.usb_ppm, self.log_ppm, self.log_ppm_sd
+            ),
+            Against::Correction => format!(
+                "the USB lines measure the sound card at {:+.1} ppm and the correction known for its input is {:+.1} ppm; the rates are corrected by the USB lines",
+                self.usb_ppm, self.log_ppm
+            ),
+        }
+    }
+
+    /// The two in a few words: "USB lines and clock log 100 ppm apart".
+    pub fn short(&self) -> String {
+        let other = match self.against {
+            Against::ClockLog => "clock log",
+            Against::Correction => "the known correction",
+        };
         format!(
-            "the USB lines measure the sound card at {:+.1} ppm and the clock log at {:+.0} ± {:.0} ppm; the rates are corrected by the USB lines",
-            self.usb_ppm, self.log_ppm, self.log_ppm_sd
+            "USB lines and {other} {:.0} ppm apart",
+            (self.usb_ppm - self.log_ppm).abs()
         )
     }
 }
@@ -292,7 +337,19 @@ impl ClockFit {
     /// standard error: a half-hour log measures the card to about 13 ppm,
     /// so a gap of that size is the log's own scatter. The correction is
     /// the USB lines' either way.
+    ///
+    /// Over a correction set aside ([`ClockFit::usb_over_correction`]), the
+    /// two when they differ by more than [`DISAGREE_PPM`]: a correction
+    /// carries no scatter of its own to weigh the gap against.
     pub fn sources_disagree(&self) -> Option<SourcesDisagree> {
+        if let Some(c) = self.correction_set_aside_ppm {
+            return ((self.ppm - c).abs() > DISAGREE_PPM).then_some(SourcesDisagree {
+                usb_ppm: self.ppm,
+                log_ppm: c,
+                log_ppm_sd: 0.0,
+                against: Against::Correction,
+            });
+        }
         let w = self.withheld.filter(|w| w.reason == "usb_lines")?;
         let qualifies = w.points >= MIN_POINTS && w.ppm_sd <= MAX_SD_PPM;
         let gap = (self.ppm - w.ppm).abs();
@@ -301,6 +358,7 @@ impl ClockFit {
                 usb_ppm: self.ppm,
                 log_ppm: w.ppm,
                 log_ppm_sd: w.ppm_sd,
+                against: Against::ClockLog,
             },
         )
     }
@@ -372,6 +430,10 @@ impl ClockFit {
     /// [`ClockFit::new`], with a break also at the first entry after each of
     /// `at` (audio seconds; an entry at the same second is the last one
     /// before it), whatever the size of its step.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn fit_at(pairs: &[(f64, f64)], at: &[f64]) -> Result<ClockFit, ClockError> {
         let mut p: Vec<(f64, f64)> = pairs
             .iter()
@@ -512,6 +574,7 @@ impl ClockFit {
             tracks_drift,
             breaks: Vec::new(),
             withheld: None,
+            correction_set_aside_ppm: None,
             entry_before,
             entries: pairs.to_vec(),
             knots,
@@ -569,10 +632,24 @@ impl ClockFit {
             tracks_drift: false,
             breaks: Vec::new(),
             withheld: None,
+            correction_set_aside_ppm: None,
             entry_before: Vec::new(),
             entries: Vec::new(),
             knots: vec![(0.0, 0.0), (d, d * b)],
             origin: (0.0, 0.0),
+        }
+    }
+
+    /// The fit for a take with no clock log, `duration_s` long, whose USB
+    /// lines measure the card `usb_ppm` slow, where a correction
+    /// (`correction_ppm`) is also known for its input: the USB lines set
+    /// the rate ([`ClockFit::fixed`]), as they time the card on this take,
+    /// and the correction is kept beside it for
+    /// [`ClockFit::sources_disagree`] (#635).
+    pub fn usb_over_correction(usb_ppm: f64, correction_ppm: f64, duration_s: f64) -> ClockFit {
+        ClockFit {
+            correction_set_aside_ppm: Some(correction_ppm),
+            ..Self::fixed(usb_ppm, duration_s)
         }
     }
 
@@ -655,12 +732,15 @@ impl ClockFit {
                 .copied()
                 .unwrap_or(f64::NEG_INFINITY);
             let end = ends.get(i).copied().unwrap_or(b.audio_s);
+            // A short pause the refit above put in is moved back however
+            // far its step lands from it: no log line was near it, or the
+            // log would have shown the step (#688).
             if let Some(l) = listed
                 .iter()
                 .filter(|l| {
                     l.audio_s > after - 1e-6
                         && l.audio_s <= end
-                        && end - l.audio_s <= breaks::JUMP_MATCH_S
+                        && (end - l.audio_s <= breaks::JUMP_MATCH_S || missed.contains(&l.audio_s))
                 })
                 .max_by(|x, y| x.audio_s.total_cmp(&y.audio_s))
             {
@@ -831,6 +911,10 @@ pub fn usb_lines(
 /// is the one that makes it advance at one second per second. Only the
 /// slope of the mapping matters, so a constant offset in the audio count
 /// (a file header, a pipe buffer) does no harm.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn parse_log(
     text: &str,
     sample_rate: u32,
@@ -1625,6 +1709,32 @@ unix_s,frames
         let at: Vec<f64> = fit.breaks.iter().map(|b| b.audio_s).collect();
         assert_eq!(at, [150.0, 300.0], "{:?}", fit.breaks);
         assert!((fit.breaks[1].gap_s - 0.2).abs() < 1e-3, "{:?}", fit.breaks);
+        assert!((fit.ppm - 20.0).abs() < 0.1, "ppm {}", fit.ppm);
+    }
+
+    #[test]
+    fn a_short_listed_pause_far_from_a_log_line_is_one_break() {
+        // As above, but paused at 293 s, 7 s before the next line: the
+        // break the refit puts at that line is the listed one, at its own
+        // second, not a second break beside it (#688).
+        let k = 1.0 + 20e-6;
+        let line = |a: f64, off: f64| (a, 1.79e9 + a * k + off);
+        let mut pairs: Vec<(f64, f64)> = (0..=29).map(|i| line(i as f64 * 10.0, 0.0)).collect();
+        pairs.extend((0..30).map(|i| line(300.0 + i as f64 * 10.0, 0.2)));
+        let mut fit = ClockFit::new(&pairs).unwrap();
+        let listed = vec![Break {
+            audio_s: 293.0,
+            gap_s: 0.0,
+        }];
+        let out = breaks::on_clock(listed, Some(&mut fit));
+        let at: Vec<f64> = out.iter().map(|b| b.audio_s).collect();
+        assert_eq!(at, [293.0], "{out:?}");
+        assert_eq!(fit.breaks.len(), 1, "{:?}", fit.breaks);
+        assert!(
+            (fit.breaks[0].audio_s - 293.0).abs() < 1e-9,
+            "{:?}",
+            fit.breaks
+        );
         assert!((fit.ppm - 20.0).abs() < 0.1, "ppm {}", fit.ppm);
     }
 

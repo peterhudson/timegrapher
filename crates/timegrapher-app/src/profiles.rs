@@ -382,6 +382,10 @@ pub fn offsets(opt: Options, drop_beat_error_ms: Option<f64>) -> [f64; 2] {
 
 /// Draw both sides, tick above or beside tock, on one scale so their
 /// loudness compares. `drop_beat_error_ms` places them on the shared clock.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn draw(
     ui: &mut egui::Ui,
     profiles: &[Option<TickProfile>; 2],
@@ -873,6 +877,10 @@ fn time_axis(ui: &egui::Ui, t: &egui_plot::PlotTransform, foot: egui::Rect) {
 /// and a sound meet the trace together, the bar sits inside the ring. A
 /// name hides any other mark's line passing behind it.
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn label_marks(
     ui: &egui::Ui,
     t: &egui_plot::PlotTransform,

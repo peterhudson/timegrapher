@@ -55,6 +55,10 @@ fn sine(v: f64, ptp: f64, period: f64) -> Track {
 }
 
 /// The scenarios, in the order they are listed.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn all() -> Vec<Scenario> {
     vec![
         Scenario {
@@ -156,7 +160,7 @@ pub fn all() -> Vec<Scenario> {
         Scenario {
             name: "wander",
             summary: "The rate wanders slowly as a random walk, about 1 s/d over 10 min, with no cycle.",
-            expect: "Rate wanders with no cycle: the change finder splits the walk into several level shifts, the autocorrelation falls slowly and the Allan deviation rises above the white line at long averaging times.",
+            expect: "Rate wanders with no cycle: the change finder splits the walk into a level shift or two, the autocorrelation falls slowly and the Allan deviation rises above the white line at long averaging times.",
             finds: &[("rate", "Rate shifts level")],
             duration_s: HOURS_2,
             rate: walk(RATE, 1.0, 600.0, HOURS_2, 7),
@@ -456,6 +460,90 @@ mod tests {
                 shown.push(c.headline.clone());
             }
             eprintln!("{}: {}", s.name, shown.join(" | "));
+        }
+    }
+
+    /// The whole pane on a steady watch (#659): how many 2 h control
+    /// takes, of 200 seeds, name anything at all, a finding or a line the
+    /// headline adds. The target is 95 in 100 naming nothing (at most 10
+    /// of 200), which is not met yet: Holm's correction across the pane
+    /// leaves 17, nearly all the period search's own false alarms at
+    /// p well under its bar (#723). This count may only fall.
+    #[test]
+    fn a_steady_watch_names_nothing_on_the_whole_pane() {
+        use crate::longterm::LongConfig;
+        use crate::steadiness::{self, Config};
+        let wheels = crate::periodicity::standard_wheels(BPH, 20);
+        let s = find("control").unwrap();
+        let quiet = "no cycle, level change, trend or correlation between readings detected.";
+        let named = (1..=200)
+            .filter(|&seed| {
+                let log = beat_log(&s, seed);
+                let lc = LongConfig {
+                    wheels: wheels.clone(),
+                    ..Default::default()
+                };
+                let long = crate::longrun::analyse(&log, None, &lc);
+                let r = steadiness::check(&log, None, &long, &lc, &Config::default());
+                !r.findings.is_empty() || r.series.iter().any(|c| !c.headline.ends_with(quiet))
+            })
+            .count();
+        assert!(named <= 17, "{named} of 200 steady takes name something");
+    }
+
+    /// The cycles `long` and a session list are the ones the pane names
+    /// (#659). On control seed 150 the period search finds one amplitude
+    /// line that Holm's correction across the pane drops: with the family
+    /// held, no list names it. On takes with real cycles, each list keeps
+    /// what the pane names, no more and no less.
+    #[test]
+    fn every_list_of_cycles_names_what_the_pane_names() {
+        use crate::longterm::LongConfig;
+        use crate::steadiness::{self, Config, SeriesKind};
+        let lc = LongConfig {
+            wheels: crate::periodicity::standard_wheels(BPH, 20),
+            ..Default::default()
+        };
+        for (name, seed) in [
+            ("control", 150),
+            ("fourth-wheel", 1),
+            ("escape-wheel", 1),
+            ("slow-cycle", 1),
+        ] {
+            let log = beat_log(&find(name).unwrap(), seed);
+            let mut long = crate::longrun::analyse(&log, None, &lc);
+            let found = long.amplitude.components.len();
+            let r = steadiness::check(&log, None, &long, &lc, &Config::default());
+            steadiness::family_long(&log, None, &mut long, &lc);
+            let pane = |k: SeriesKind| -> Vec<f64> {
+                let p = r.series.iter().find(|c| c.series == k).unwrap();
+                p.period.as_ref().map_or(vec![], |q| {
+                    std::iter::once(q.period_s)
+                        .chain(q.other_periods_s.iter().copied())
+                        .collect()
+                })
+            };
+            let rate: Vec<f64> = long
+                .rate_components
+                .iter()
+                .map(|c| c.component.period_s)
+                .collect();
+            let amp: Vec<f64> = long
+                .amplitude
+                .components
+                .iter()
+                .map(|c| c.period_s)
+                .collect();
+            assert_eq!(rate, pane(SeriesKind::Rate), "{name} rate");
+            assert_eq!(amp, pane(SeriesKind::Amplitude), "{name} amplitude");
+            let cycles = crate::session::cycles(&long, &lc.wheels);
+            assert_eq!(cycles.len(), rate.len() + amp.len(), "{name}");
+            if name == "control" {
+                assert_eq!(found, 1, "the line Holm drops");
+                assert!(amp.is_empty());
+            } else {
+                assert!(!cycles.is_empty(), "{name} names its cycle");
+            }
         }
     }
 }

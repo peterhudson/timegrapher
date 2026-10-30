@@ -1807,4 +1807,83 @@ mod tests {
         assert_eq!(total, 7 * 8000);
         fs::remove_dir_all(&base).unwrap();
     }
+
+    /// A copy kept as its analysis alone holds every file of the recording
+    /// but its sound, session.json as a copy has it, and the required files,
+    /// which take the place of a file of the same name; it is named as the
+    /// copy is, ending `_analysis`.
+    #[test]
+    fn an_analysis_copy_holds_all_but_the_sound() {
+        let (mut r, base) = save_fixture("analysis-copy");
+        fs::write(r.dir().join("notes.txt"), b"kept").unwrap();
+        fs::write(r.dir().join("Report.txt"), b"old").unwrap();
+        let (name, files) = r
+            .analysis_copy_files("ETA 2824-2", None, &[("report.txt", b"new")])
+            .unwrap();
+        let name = name.to_string_lossy().into_owned();
+        assert!(name.ends_with("_ETA_2824-2_analysis"), "{name}");
+        assert!(name.contains("Save_test"), "{name}");
+        let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            [take::RECORD, take::CLOCK_LOG, "notes.txt", "report.txt"]
+        );
+        assert_eq!(files[2].1, b"kept");
+        assert_eq!(files[3].1, b"new");
+        let session: serde_json::Value = serde_json::from_slice(&files[0].1).unwrap();
+        assert_eq!(session["watch"], "Save test");
+        drop(r);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// A plain companion name is saved beside the recording, and one the
+    /// live folder already holds is refused.
+    #[test]
+    fn a_plain_companion_file_is_saved_with_the_copy() {
+        let (mut r, base) = save_fixture("companion");
+        let copy = r
+            .save_copy_with_files(&base.join("saved"), "", None, &[("session.toml", b"one")])
+            .unwrap();
+        assert_eq!(fs::read(copy.join("session.toml")).unwrap(), b"one");
+        fs::write(r.dir().join("extra.txt"), b"live").unwrap();
+        assert!(r
+            .save_copy_with_files(&base.join("saved"), "", None, &[("extra.txt", b"x")])
+            .is_err());
+        drop(r);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// The audio file still being written when a save begins is copied
+    /// with its header as it was then, so the copy's header gives the
+    /// length of the sound it holds, not the length the live file has
+    /// grown to by the time the copy is written.
+    #[test]
+    fn a_copy_keeps_the_open_files_header_from_when_the_save_began() {
+        let (mut r, base) = save_fixture("open-header");
+        append_second(&mut r, 2);
+        let pending = r.begin_save(&base.join("saved"), "", None, &[]).unwrap();
+        for second in 3..=5 {
+            append_second(&mut r, second);
+        }
+        r.flush().unwrap();
+        let copy = pending.write().unwrap();
+        let wav = hound::WavReader::open(copy.dir.join("audio-001.wav")).unwrap();
+        assert_eq!(wav.duration(), 2 * 8000);
+        drop(r);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// A save copies the other files the live folder holds beside the
+    /// sound and the clock log, and passes over a folder in it.
+    #[test]
+    fn a_save_copies_the_folders_other_files_and_passes_over_folders() {
+        let (mut r, base) = save_fixture("other-files");
+        fs::write(r.dir().join("notes.txt"), b"kept").unwrap();
+        fs::create_dir_all(r.dir().join("photos")).unwrap();
+        let copy = r.save_copy(&base.join("saved"), "", None).unwrap();
+        assert_eq!(fs::read(copy.join("notes.txt")).unwrap(), b"kept");
+        assert!(!copy.join("photos").exists());
+        drop(r);
+        fs::remove_dir_all(&base).unwrap();
+    }
 }

@@ -40,11 +40,26 @@ pub fn page() -> &'static str {
             .map(|&(pc, label)| (label, normal_quantile(pc / 100.0)))
             .collect();
         let marks = serde_json::to_string(&marks).expect("the probability marks as JSON");
+        let positions = serde_json::to_string(&positions()).expect("the positions as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*VIRIDIS*/null", &viridis)
             .replace("/*PERIOD_TICKS*/null", &period_ticks)
             .replace("/*PROBABILITY_MARKS*/null", &marks)
+            .replace("/*POSITIONS*/null", &positions)
     })
+}
+
+/// Each position's common code and name, as core gives them, under both its
+/// Witschi code and its common one, so the page names a reading whichever
+/// code it carries and writes no name of its own.
+fn positions() -> Map<String, Value> {
+    let mut map = Map::new();
+    for p in timegrapher_core::session::Position::ALL {
+        let entry = json!([p.common(), p.name()]);
+        map.insert(p.code().to_string(), entry.clone());
+        map.insert(p.common().to_string(), entry);
+    }
+    map
 }
 
 /// Shares labelled up the probability plot, percent, as on probability
@@ -147,25 +162,33 @@ impl Drop for TempFile {
 /// over time, and the file they go to.
 pub fn analyze_extras() -> (Vec<String>, TempFile) {
     let f = TempFile::new("csv");
-    (vec![format!("--windows={}", f.0.display())], f)
+    (vec![format!("--trend={}", f.0.display())], f)
 }
 
-/// The windows file written by `analyze --windows` (see [`analyze_extras`])
-/// as the three series of the strip.
+/// The readings over time written by `analyze --trend` (see
+/// [`analyze_extras`]), each averaged as the app's charts average them, as
+/// the three series of the strip, with the averaging time, the ppm the
+/// rates are corrected by (none on the sound card's clock) and each chart's
+/// scale ([`timegrapher_core::chart_scale::data_range`]).
 fn strip(csv: &str, duration_s: f64) -> Value {
     let mut lines = csv.lines();
     let header: Vec<&str> = lines.next().unwrap_or_default().split(',').collect();
     let col = |name: &str| header.iter().position(|h| *h == name);
-    let (Some(kind), Some(start), Some(end)) = (col("kind"), col("start_s"), col("end_s")) else {
+    let Some(t_col) = col("t_s") else {
         return Value::Null;
     };
-    let rate = col("rate_s_per_day");
-    let be = col("beat_error_ms");
-    let be_unlock = col("beat_error_unlock_ms");
-    let amp = [col("amplitude_even_deg"), col("amplitude_odd_deg")];
-    let mut rates = Vec::new();
-    let (mut amps, mut ticks, mut tocks) = (Vec::new(), Vec::new(), Vec::new());
-    let (mut unlocks, mut drops) = (Vec::new(), Vec::new());
+    let cols = [
+        "rate_s_per_day",
+        "amplitude_deg",
+        "amplitude_even_deg",
+        "amplitude_odd_deg",
+        "beat_error_unlock_ms",
+        "beat_error_ms",
+    ]
+    .map(col);
+    let mut series: [Vec<[f64; 2]>; 6] = Default::default();
+    let mut average_s = None;
+    let mut clock_ppm = None;
     for line in lines {
         let f: Vec<&str> = line.split(',').collect();
         let get = |i: Option<usize>| {
@@ -173,42 +196,43 @@ fn strip(csv: &str, duration_s: f64) -> Value {
                 .and_then(|s| s.parse::<f64>().ok())
                 .filter(|v| v.is_finite())
         };
-        let (Some(a), Some(b)) = (get(Some(start)), get(Some(end))) else {
+        let Some(t) = get(Some(t_col)) else {
             continue;
         };
-        let t = (a + b) / 2.0;
-        match f.get(kind).copied() {
-            Some("rate") => {
-                if let Some(v) = get(rate) {
-                    rates.push([t, v]);
+        average_s = average_s.or(get(col("average_s")));
+        clock_ppm = clock_ppm.or(get(col("clock_ppm")));
+        for (k, c) in cols.iter().enumerate() {
+            match get(*c) {
+                Some(v) => series[k].push([t, v]),
+                // No figure here (a cut, a mask, too few beats): the line
+                // lifts, as the app's does, with one gap for the run.
+                None if series[k].last().is_some_and(|p| p[1].is_finite()) => {
+                    series[k].push([t, f64::NAN]);
                 }
+                None => {}
             }
-            Some("amplitude") => {
-                // As the app's Amplitude chart: the average of the two sides,
-                // and each side's own (the Tick is the even beats).
-                let (tick, tock) = (get(amp[0]), get(amp[1]));
-                if let Some(v) = timegrapher_core::amplitude::mean_of_sides(tick, tock) {
-                    amps.push([t, v]);
-                }
-                if let Some(v) = tick {
-                    ticks.push([t, v]);
-                }
-                if let Some(v) = tock {
-                    tocks.push([t, v]);
-                }
-                // Signed, as the app draws them: the unlock's is the headline.
-                if let Some(v) = get(be_unlock) {
-                    unlocks.push([t, v]);
-                }
-                if let Some(v) = get(be) {
-                    drops.push([t, v]);
-                }
-            }
-            _ => {}
         }
     }
+    let [rates, amps, ticks, tocks, unlocks, drops] = series;
+    // Each chart's scale, as the app's charts over time take it: every
+    // point of its lines.
+    let range = |lines: &[&Vec<[f64; 2]>]| {
+        let ys: Vec<f64> = lines
+            .iter()
+            .flat_map(|l| l.iter().map(|p| p[1]).filter(|y| y.is_finite()))
+            .collect();
+        timegrapher_core::chart_scale::data_range(&ys).map(|(lo, hi)| [lo, hi])
+    };
+    let ranges = json!({
+        "rate": range(&[&rates]),
+        "amplitude": range(&[&amps, &ticks, &tocks]),
+        "beat_error": range(&[&unlocks, &drops]),
+    });
     json!({
         "duration_s": duration_s,
+        "average_s": average_s,
+        "clock_ppm": clock_ppm,
+        "y_range": ranges,
         "rate": thin(rates),
         "amplitude": thin(amps),
         "amplitude_tick": thin(ticks),
@@ -218,10 +242,17 @@ fn strip(csv: &str, duration_s: f64) -> Value {
     })
 }
 
-/// Every k-th point, so at most [`MAX_POINTS`] remain.
+/// Every k-th point, so at most [`MAX_POINTS`] remain, and every gap (a
+/// point with no value, null in the view's data), so a line still lifts
+/// where it did.
 fn thin(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
     let k = points.len().div_ceil(MAX_POINTS).max(1);
-    points.into_iter().step_by(k).collect()
+    points
+        .into_iter()
+        .enumerate()
+        .filter(|(i, p)| i % k == 0 || !p[1].is_finite())
+        .map(|(_, p)| p)
+        .collect()
 }
 
 /// Takes out of a `series --views` document what only the Steadiness and
@@ -346,21 +377,35 @@ fn map_outline(m: &Value) -> Value {
 }
 
 /// Where the Recording view's Tick and Tock profiles are read, as start and
-/// length in seconds: core's beat-shape stretch
-/// ([`analysis_take::shape_stretch`]), the first [`analysis_take::SHAPE_S`]
-/// once the watch has settled ([`take::measured`]). `analyze` reads one
-/// sound file, which has no masked stretches. None for an empty recording.
+/// length in seconds. For a file its take's session file lists, where
+/// `session` measured the beat shape of the first entry naming it (its
+/// `shape`'s `from_s` and `measured_s`, in `analyze`'s `take` block),
+/// none where it measured none. For a file alone, core's beat-shape
+/// stretch ([`analysis_take::shape_stretch`]): the first
+/// [`analysis_take::SHAPE_S`] once the watch has settled
+/// ([`take::measured`]), with nothing masked. None for an empty recording
+/// or one with no regular beat.
 ///
 /// [`analysis_take::shape_stretch`]: timegrapher_core::analysis_take::shape_stretch
 /// [`analysis_take::SHAPE_S`]: timegrapher_core::analysis_take::SHAPE_S
 /// [`take::measured`]: timegrapher_core::take::measured
-pub fn profile_stretch(duration_s: f64) -> Option<(f64, f64)> {
+pub fn profile_stretch(doc: &Value) -> Option<(f64, f64)> {
+    if let Some(readings) = doc["take"]["readings"].as_array() {
+        return readings.iter().find_map(|r| {
+            let shape = &r["shape"];
+            Some((shape["from_s"].as_f64()?, shape["measured_s"].as_f64()?))
+        });
+    }
+    if doc["watch_heard"] == json!(false) {
+        return None;
+    }
+    let duration_s = doc["duration_s"].as_f64().unwrap_or(0.0);
     let (from, to) = timegrapher_core::take::measured(0.0, duration_s, None, None);
     timegrapher_core::analysis_take::shape_stretch(&[], from, to)
 }
 
 /// What the Recording view needs beyond `analyze`'s document: the strip
-/// from the windows file, and the Tick and Tock profiles over the stretch
+/// from the trend file, and the Tick and Tock profiles over the stretch
 /// core measures the beat shape on ([`profile_stretch`]).
 pub async fn analyze_charts(
     doc: &Value,
@@ -372,12 +417,12 @@ pub async fn analyze_charts(
     let mut warning = None;
     let mut out = Map::new();
     let duration = doc["duration_s"].as_f64().unwrap_or(0.0);
-    if let Some(path) = extras.first().and_then(|e| e.strip_prefix("--windows=")) {
+    if let Some(path) = extras.first().and_then(|e| e.strip_prefix("--trend=")) {
         if let Ok(csv) = std::fs::read_to_string(path) {
             out.insert("strip".into(), strip(&csv, duration));
         }
     }
-    let stretch = profile_stretch(duration).filter(|_| doc["watch_heard"] != json!(false));
+    let stretch = profile_stretch(doc);
     if let Some((at, span)) = stretch {
         let mut line = vec![
             "profile".to_string(),
@@ -419,9 +464,30 @@ mod tests {
     fn the_profiles_are_read_where_core_reads_the_beat_shape() {
         // Settled for 20 s, then a minute; a short recording settles for
         // half its length and reads the rest.
-        assert_eq!(profile_stretch(300.0), Some((20.0, 60.0)));
-        assert_eq!(profile_stretch(30.0), Some((15.0, 15.0)));
-        assert_eq!(profile_stretch(0.0), None);
+        let file = |d: f64| profile_stretch(&json!({ "duration_s": d }));
+        assert_eq!(file(300.0), Some((20.0, 60.0)));
+        assert_eq!(file(30.0), Some((15.0, 15.0)));
+        assert_eq!(file(0.0), None);
+        assert_eq!(
+            profile_stretch(&json!({ "duration_s": 300.0, "watch_heard": false })),
+            None
+        );
+    }
+
+    /// A file its take lists is read where `session` measured the beat
+    /// shape, wherever the take's settling or masks put it.
+    #[test]
+    fn a_takes_file_has_its_profiles_read_where_session_read_its_shape() {
+        let take =
+            |readings: Value| json!({ "duration_s": 300.0, "take": { "readings": readings } });
+        assert_eq!(
+            profile_stretch(&take(json!([
+                { "measurement": { "watch_heard": false } },
+                { "shape": { "from_s": 95.0, "measured_s": 60.0 } },
+            ]))),
+            Some((95.0, 60.0))
+        );
+        assert_eq!(profile_stretch(&take(json!([{ "shape": null }]))), None);
     }
 
     #[test]
@@ -456,7 +522,11 @@ mod tests {
 
     #[test]
     fn fft_support_remains_model_visible_when_arrays_move_to_charts() {
-        for support in [Value::Null, json!({"finite_bins": 128, "total_bins": 256})] {
+        let description = "FFT input: 128 of 256 grid samples available. With samples missing, each size is a sine fitted to the samples present (Lomb–Scargle); nothing is filled in.";
+        for support in [
+            Value::Null,
+            json!({"finite_bins": 128, "total_bins": 256, "description": description}),
+        ] {
             let mut spectrum = json!({"series":"rate", "unit":"ms", "period_s":[64.0,32.0], "amplitude":[5.0,1.0]});
             if !support.is_null() {
                 spectrum["support"] = support.clone();
@@ -478,7 +548,7 @@ mod tests {
             } else {
                 "128 of 256 grid samples available"
             }));
-            assert_eq!(lead.contains("not corrected for gaps"), !support.is_null());
+            assert_eq!(lead.contains(description), !support.is_null());
         }
     }
 
@@ -501,24 +571,64 @@ mod tests {
     }
 
     #[test]
-    fn strip_from_windows() {
-        let csv = "kind,start_s,end_s,rate_s_per_day,beat_error_ms,beat_error_unlock_ms,amplitude_even_deg,amplitude_odd_deg\n\
-                   rate,0,10,4.5,-0.4,,,\n\
-                   amplitude,0,2,,-0.39,-0.38,270,268\n\
-                   amplitude,2,4,,-0.41,,272,\n";
+    fn strip_from_trend() {
+        let csv = "t_s,average_s,rate_s_per_day,amplitude_deg,amplitude_even_deg,amplitude_odd_deg,beat_error_unlock_ms,beat_error_ms,heard,clock_ppm\n\
+                   1,10,,,,,,,false,20.000\n\
+                   2,10,4.5,269,270,268,-0.38,-0.39,true,20.000\n\
+                   3,10,4.7,272,272,,,-0.41,true,20.000\n\
+                   4,10,,,,,,,false,20.000\n\
+                   5,10,,,,,,,false,20.000\n\
+                   6,10,4.9,271,271,271,-0.36,-0.40,true,20.000\n";
         let s = strip(csv, 30.0);
-        assert_eq!(s["rate"], json!([[5.0, 4.5]]));
-        assert_eq!(s["amplitude"], json!([[1.0, 269.0], [3.0, 272.0]]));
-        assert_eq!(s["amplitude_tick"], json!([[1.0, 270.0], [3.0, 272.0]]));
-        assert_eq!(s["amplitude_tock"], json!([[1.0, 268.0]]));
-        assert_eq!(s["beat_error_unlock"], json!([[1.0, -0.38]]));
-        assert_eq!(s["beat_error_drop"], json!([[1.0, -0.39], [3.0, -0.41]]));
+        assert_eq!(s["average_s"], json!(10.0));
+        assert_eq!(s["clock_ppm"], json!(20.0));
+        // Where a reading has no figure (here a cut from 4 to 5 s) the
+        // line lifts: one null for the run, none before the first figure.
+        assert_eq!(
+            s["rate"],
+            json!([[2.0, 4.5], [3.0, 4.7], [4.0, null], [6.0, 4.9]])
+        );
+        assert_eq!(
+            s["amplitude"],
+            json!([[2.0, 269.0], [3.0, 272.0], [4.0, null], [6.0, 271.0]])
+        );
+        assert_eq!(
+            s["amplitude_tick"],
+            json!([[2.0, 270.0], [3.0, 272.0], [4.0, null], [6.0, 271.0]])
+        );
+        assert_eq!(
+            s["amplitude_tock"],
+            json!([[2.0, 268.0], [3.0, null], [6.0, 271.0]])
+        );
+        assert_eq!(
+            s["beat_error_unlock"],
+            json!([[2.0, -0.38], [3.0, null], [6.0, -0.36]])
+        );
+        assert_eq!(
+            s["beat_error_drop"],
+            json!([[2.0, -0.39], [3.0, -0.41], [4.0, null], [6.0, -0.40]])
+        );
+        // Each chart's scale is core's, over every point of its lines.
+        let range = |ys: &[f64]| {
+            let (lo, hi) = timegrapher_core::chart_scale::data_range(ys).unwrap();
+            json!([lo, hi])
+        };
+        assert_eq!(s["y_range"]["rate"], range(&[4.5, 4.7, 4.9]));
+        assert_eq!(s["y_range"]["amplitude"], range(&[268.0, 272.0]));
+        assert_eq!(
+            s["y_range"]["beat_error"],
+            range(&[-0.36, -0.38, -0.39, -0.40, -0.41])
+        );
     }
 
     #[test]
     fn thins_long_runs() {
         let pts: Vec<[f64; 2]> = (0..10_000).map(|i| [i as f64, 0.0]).collect();
         assert!(thin(pts).len() <= MAX_POINTS);
+        // A gap is kept wherever it falls, so the line still lifts there.
+        let mut pts: Vec<[f64; 2]> = (0..10_000).map(|i| [i as f64, 0.0]).collect();
+        pts[5001][1] = f64::NAN;
+        assert!(thin(pts).iter().any(|p| p[0] == 5001.0 && p[1].is_nan()));
     }
 
     #[test]
@@ -584,6 +694,24 @@ mod tests {
         assert!(!page.contains("/*PERIOD_TICKS*/"));
         let ticks = serde_json::to_string(&timegrapher_core::period_ticks::TICKS).unwrap();
         assert!(page.contains(&format!("const PERIOD_TICKS = {ticks};")));
+    }
+
+    #[test]
+    fn the_view_names_positions_as_core_names_them() {
+        let page = page();
+        assert!(!page.contains("/*POSITIONS*/"));
+        assert!(
+            !HTML.contains("\"Dial Up\""),
+            "the page writes no name of its own"
+        );
+        let at = page.find("const POSITIONS = ").unwrap() + 18;
+        let end = at + page[at..].find(';').unwrap();
+        let names: Map<String, Value> = serde_json::from_str(&page[at..end]).unwrap();
+        assert_eq!(names.len(), 12);
+        assert_eq!(names["CH"], json!(["DU", "Dial Up"]));
+        assert_eq!(names["DU"], names["CH"]);
+        assert_eq!(names["3H"], json!(["CU", "Crown Up"]));
+        assert_eq!(names["CR"], names["12H"]);
     }
 
     #[test]

@@ -27,6 +27,8 @@ pub enum Kind {
     BeatRate,
     /// Finite positive lift angle; no empirical upper limit.
     LiftAngle,
+    /// One of the app's averaging times, seconds (core `live::AVERAGES`).
+    Average,
     Number,
     /// Finite, positive acquisition seconds, checked before child spawn.
     CaptureSeconds,
@@ -124,6 +126,15 @@ const LIFT_OR_CALIBRE: Param = p(
     "Lift angle of the calibre in degrees (the calibre's if one is given and the table \
      has its lift angle, else 52). Amplitude depends on it.",
 );
+/// The charts over time in the view, averaged as the app's Average Over.
+const AVERAGE: Param = p(
+    "average_s",
+    Kind::Average,
+    Arg::Flag("--trend-average"),
+    false,
+    "Seconds each point of the charts over time is averaged over, as the app's Average \
+     Over: 2, 4, 10, 20, 30 or 60 (10 if left out). Changes only the charts.",
+);
 const CALIBRE: Param = p(
     "calibre",
     Kind::Text,
@@ -162,7 +173,7 @@ pub const TOOLS: &[ToolSpec] = &[
             beats are, and whether a regular beat was found. When `watch_heard` is false \
             no regular beat was found, and the readings are null.",
         command: &["analyze"],
-        params: &[RECORDING, CALIBRE_READING, BPH, LIFT_OR_CALIBRE],
+        params: &[RECORDING, CALIBRE_READING, BPH, LIFT_OR_CALIBRE, AVERAGE],
         charts: true,
         read_only: true,
         idempotent: true,
@@ -673,6 +684,9 @@ pub fn definition(t: &ToolSpec) -> Value {
                 "minimum": timegrapher_core::input_domain::LIFT_RANGE_DEG.start(),
                 "maximum": timegrapher_core::input_domain::LIFT_RANGE_DEG.end(),
             }),
+            Kind::Average => {
+                json!({"type": "number", "enum": timegrapher_core::live::AVERAGES})
+            }
             Kind::Number => json!({"type": "number"}),
             Kind::CaptureSeconds => json!({"type": "number", "exclusiveMinimum": 0}),
             Kind::Switch => json!({"type": "boolean"}),
@@ -706,6 +720,14 @@ pub fn definition(t: &ToolSpec) -> Value {
         d["_meta"] = crate::views::tool_meta();
     }
     d
+}
+
+/// The averaging time `n` for `p`, refused by its own name when it is
+/// not one of the app's ([`timegrapher_core::input_domain::average_s`]).
+fn average_arg(t: &ToolSpec, p: &Param, n: &serde_json::Number) -> Result<Vec<String>, String> {
+    timegrapher_core::input_domain::average_s(n.as_f64().unwrap_or(f64::NAN))
+        .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
+    Ok(vec![n.to_string()])
 }
 
 /// The command line for a call, after the `timegrapher` program name.
@@ -768,6 +790,7 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                     .map_err(|e| format!("{}: {}: {e}", t.name, p.name))?;
                 vec![n.to_string()]
             }
+            (Kind::Average, Value::Number(n)) => average_arg(t, p, n)?,
             (Kind::Number, Value::Number(n)) if n.as_f64().is_some_and(f64::is_finite) => {
                 vec![n.to_string()]
             }
@@ -1111,7 +1134,21 @@ mod numeric_input_tests {
             .unwrap_err();
             assert!(error.contains("lift_deg"), "wrong rejection: {error}");
         }
+        // The averaging time is refused by its own name, before the CLI.
+        for value in [json!(15), json!(0), json!(-10)] {
+            let error = command_line(
+                t,
+                &args(json!({"recording":full("unused.wav"),"average_s":value})),
+            )
+            .unwrap_err();
+            assert!(error.contains("average_s"), "wrong rejection: {error}");
+            assert!(!error.contains("--trend-average"), "{error}");
+        }
         let schema = definition(t);
+        assert_eq!(
+            schema["inputSchema"]["properties"]["average_s"]["enum"],
+            json!(timegrapher_core::live::AVERAGES)
+        );
         assert_eq!(
             schema["inputSchema"]["properties"]["bph"]["maximum"],
             u32::MAX

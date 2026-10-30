@@ -28,6 +28,8 @@ pub const LIMIT_S: f64 = 80.0 * 3600.0;
 pub const PAUSE_S: f64 = 30.0;
 /// Good beats in a row for them to count as the watch.
 pub const RUN_BEATS: usize = 8;
+/// The beat rate a test reads its beats at before one is heard, bph.
+pub const UNHEARD_BPH: u32 = 18_000;
 
 /// How a run ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +109,12 @@ impl Heard {
     pub fn silent_s(&self, now_s: f64) -> Option<f64> {
         self.last_s.map(|l| (now_s - l).max(0.0))
     }
+}
+
+/// The length of one beat, seconds, at the beat rate heard (`bph`), or
+/// at [`UNHEARD_BPH`] before one is: what [`heard`] takes.
+pub fn beat_s(bph: Option<u32>) -> f64 {
+    3600.0 / f64::from(bph.unwrap_or(UNHEARD_BPH).max(1))
 }
 
 /// The beats heard in `beats` (in time order) at `beat_s` seconds a beat.
@@ -327,6 +335,15 @@ pub fn run_text(s: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One beat lasts 3600 / bph seconds, at the rate heard or, before
+    /// one is, at the unheard rate.
+    #[test]
+    fn a_beat_lasts_an_hour_over_the_beat_rate() {
+        assert_eq!(beat_s(Some(28_800)), 0.125);
+        assert_eq!(beat_s(None), 3600.0 / f64::from(UNHEARD_BPH));
+        assert!(beat_s(Some(0)).is_finite());
+    }
 
     #[test]
     fn an_ending_reads_the_same_everywhere() {

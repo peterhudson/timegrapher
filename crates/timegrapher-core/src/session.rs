@@ -261,6 +261,14 @@ pub struct Measurement {
     pub clean_fraction: f64,
     /// Whether rate is corrected for the sound card's clock.
     pub calibrated: bool,
+    /// The steady error the take's clock corrects, ppm, and where the
+    /// clock came from in words, as [`crate::take::OpenedEntry`] gives
+    /// them: set for a reading of a take opened by
+    /// [`crate::take::measure_entry`], none otherwise (#714).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clock_ppm: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clock_source: Option<String>,
     pub rate_s_per_day: Option<f64>,
     /// Signed beat error from the drop (the fitted beat times), ms (even
     /// beats late is positive).
@@ -511,6 +519,10 @@ pub fn measure_with_breaks(
 /// one; the masks' beats and amplitude windows are left out,
 /// the beats expected and the sound listened to leave out their time, and
 /// the caveats say how much was masked.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn measure_masked(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -631,6 +643,8 @@ pub fn measure_masked(
         beats: beats.len(),
         clean_fraction: (clean as f64 / expected.max(1.0)).min(1.0),
         calibrated: clock.is_some_and(ClockFit::corrects),
+        clock_ppm: None,
+        clock_source: None,
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms),
         beat_error_unlock_ms: figures.beat_error_unlock_ms,
@@ -833,6 +847,11 @@ pub struct ShapeSide {
 /// added later must be an `Option`, as for [`ShapeSide`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSummary {
+    /// Where in the recording the shape was measured from, seconds; with
+    /// `measured_s`, the stretch it was measured on. None in a take kept
+    /// as its analysis before it was stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_s: Option<f64>,
     /// Seconds of audio the shape was measured on.
     pub measured_s: f64,
     pub even: ShapeSide,
@@ -857,8 +876,10 @@ fn shape_side(s: &SideReport) -> ShapeSide {
     }
 }
 
-pub fn shape_summary(r: &ShapeReport, measured_s: f64) -> ShapeSummary {
+/// The beat shape `r`, measured on `measured_s` seconds from `from_s`.
+pub fn shape_summary(r: &ShapeReport, from_s: f64, measured_s: f64) -> ShapeSummary {
     ShapeSummary {
+        from_s: Some(from_s),
         measured_s,
         even: shape_side(&r.even),
         odd: shape_side(&r.odd),
@@ -1272,6 +1293,10 @@ pub fn no_regular_beat_in(m: &Measurement, bph: u32) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn findings(readings: &[Reading]) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut push = |code: &'static str, recording: usize, title: String, evidence: String| {

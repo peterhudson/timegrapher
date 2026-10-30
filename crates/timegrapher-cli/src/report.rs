@@ -121,6 +121,10 @@ struct VLine {
     label: String,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn chart(
     xa: &Axis,
     ya: &Axis,
@@ -562,6 +566,10 @@ fn capitalise(s: &str) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&str>) -> String {
     let mut body = String::new();
     let rate = r.overall.map_or("not enough clean beats".into(), |f| {
@@ -627,7 +635,7 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
     body.push_str(r#"<p class="note">Each trial period is scored together with its harmonics against the noise around it. A peak above the dashed line has less than a 1% chance of being noise anywhere in the search. Grey lines mark the wheels' turn periods.</p>"#);
     body.push_str(&search_chart(&r.timing.search, wheels));
     if r.rate_components.is_empty() {
-        body.push_str("<p>No periodic change in rate above the 1% false-alarm level.</p>");
+        body.push_str("<p>No periodic change in rate named (1% false-alarm level, held across the take's tests).</p>");
     }
     for c in &r.rate_components {
         // A cycle too short for a rate reading is drawn as timing, in ms.
@@ -663,7 +671,7 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
     body.push_str("<h2>Periodic changes in amplitude</h2>");
     body.push_str(&search_chart(&r.amplitude.search, wheels));
     if r.amplitude.components.is_empty() {
-        body.push_str("<p>No periodic change in amplitude above the 1% false-alarm level.</p>");
+        body.push_str("<p>No periodic change in amplitude named (1% false-alarm level, held across the take's tests).</p>");
     }
     for c in &r.amplitude.components {
         body.push_str(&component(

@@ -169,6 +169,10 @@ pub fn analyse_on_clock(
 
 /// [`analyse_with_breaks`], its times put on `map` and its report saying
 /// it was read on `read_on`.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn analyse_read(
     log: &BeatLog,
     map: Option<&ClockFit>,
@@ -395,6 +399,7 @@ mod tests {
                     usb_ppm,
                     log_ppm,
                     log_ppm_sd,
+                    ..
                 } => Some((usb_ppm, log_ppm, log_ppm_sd)),
                 _ => None,
             })
@@ -477,6 +482,51 @@ mod tests {
         }];
         let p = Cuts::new(None, &jump, &[]).holes()[0];
         assert_eq!(p.start_s, p.end_s);
+    }
+
+    /// Only good beats count as clean, and only they go in the timing
+    /// series: a bad beat 3 ms off moves neither.
+    #[test]
+    fn bad_beats_are_neither_clean_nor_timed() {
+        let duration = 600.0;
+        let beats: Vec<Beat> = (0..(duration * 8.0) as i64)
+            .map(|index| {
+                let bad = index % 3 != 0;
+                Beat {
+                    time: index as f64 / 8.0 + if bad { 0.003 } else { 0.0 },
+                    index,
+                    quality: if bad { 0.0 } else { 1.0 },
+                }
+            })
+            .collect();
+        let log = BeatLog {
+            sample_rate: 48000,
+            duration_s: duration,
+            bph: 28800,
+            lift_deg: 52.0,
+            beats,
+            amplitude_windows: vec![],
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: vec![],
+            by_count: vec![],
+            snippets: Vec::new(),
+        };
+        let r = analyse(&log, None, &LongConfig::default());
+        assert!(
+            (r.clean_fraction - 1.0 / 3.0).abs() < 0.01,
+            "{}",
+            r.clean_fraction
+        );
+        let worst = r
+            .timing
+            .grid
+            .y
+            .iter()
+            .filter(|v| v.is_finite())
+            .fold(0.0f64, |m, v| m.max(v.abs()));
+        assert!(worst < 1e-4, "{worst}");
     }
 
     #[test]

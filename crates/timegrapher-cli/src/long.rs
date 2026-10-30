@@ -307,6 +307,8 @@ pub(crate) struct Read {
     pub breaks: Vec<timegrapher_core::breaks::Break>,
     /// Why the breaks are not all the take's own list's, when they are not.
     pub unlisted: Option<timegrapher_core::breaks::Unlisted>,
+    /// [`joined::positions_caveat`] of the take's session file.
+    pub positions: Option<timegrapher_core::measure::Caveat>,
     /// The stretches masked by hand and left out, start and end.
     pub masked: Vec<(f64, f64)>,
     /// The take's stretches read, audio seconds, when it is read in
@@ -385,6 +387,7 @@ pub(crate) fn read(
         clock,
         breaks,
         unlisted,
+        positions: None,
         masked: Vec::new(),
         stretches: None,
     })
@@ -484,6 +487,7 @@ fn read_take(
         clock,
         breaks,
         unlisted: opened.unlisted,
+        positions: joined::positions_caveat(&m),
         masked: opened.masked,
         stretches,
     })
@@ -533,6 +537,10 @@ impl Progress {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(
     files: &[PathBuf],
     clock_args: ClockArgs,
@@ -561,6 +569,7 @@ pub fn run(
         clock: applied,
         breaks,
         unlisted,
+        positions,
         masked,
         stretches,
     } = read(files, clock_args, cfg, lift, train)?;
@@ -593,8 +602,13 @@ pub fn run(
             timegrapher_core::measure::Caveat::BreaksUnlisted { why },
         );
     }
+    if let Some(c) = positions {
+        timegrapher_core::measure::add(&mut rep.caveats, c);
+    }
     // A take read in stretches is on its clock already.
     let clock = clock.filter(|_| stretches.is_none());
+    // The cycles listed are the ones the Steadiness pane names (#659).
+    timegrapher_core::steadiness::family_long(&log, clock.as_ref(), &mut rep, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));
@@ -665,8 +679,8 @@ pub fn run(
     Ok(())
 }
 
-/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count` and
-/// `beat_error_as_size` caveats in core's short words
+/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count`,
+/// `beat_error_as_size` and `positions` caveats in core's short words
 /// ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
     caveats: &[timegrapher_core::measure::Caveat],
@@ -680,6 +694,7 @@ pub(crate) fn caveat_lines(
                 Caveat::BreaksUnlisted { .. } => "Breaks",
                 Caveat::SidesByCount { .. } => "Sides",
                 Caveat::BeatErrorAsSize => "Conditions",
+                Caveat::Positions { .. } => "Positions",
                 _ => return None,
             };
             // None of their words use the lift angle or the beats found.
@@ -907,7 +922,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     };
     println!("Periodic changes in rate (the rate itself, not 10 s readings):");
     if r.rate_components.is_empty() {
-        println!("  none above the 1% false-alarm level");
+        println!("  none named (1% false-alarm level, held across the take's tests)");
     }
     for c in &r.rate_components {
         let swing = match c.size() {
@@ -918,7 +933,7 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     }
     println!("Periodic changes in amplitude:");
     if r.amplitude.components.is_empty() {
-        println!("  none above the 1% false-alarm level");
+        println!("  none named (1% false-alarm level, held across the take's tests)");
     }
     for c in &r.amplitude.components {
         line(c, format!("swing {} deg p-p", size_number(c.peak_to_peak)));
@@ -1357,12 +1372,14 @@ mod caveat_tests {
                 usb_ppm: 120.0,
                 log_ppm: 20.0,
                 log_ppm_sd: 2.0,
+                against: Default::default(),
             },
             Caveat::LiftUnknown,
             Caveat::BreaksUnlisted {
                 why: timegrapher_core::breaks::Unlisted::Unreadable,
             },
             Caveat::BeatErrorAsSize,
+            Caveat::Positions { count: 3 },
         ]);
         assert_eq!(
             lines,
@@ -1373,6 +1390,7 @@ mod caveat_tests {
                     "Conditions",
                     "beat error given as a size: its sign differs either side of a cut".to_string()
                 ),
+                ("Positions", "3 positions".to_string()),
             ]
         );
     }

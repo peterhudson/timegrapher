@@ -344,8 +344,10 @@ Each reading is:
 - rate from one fit over every beat (Tick and Tock fitted together),
   corrected for the sound card's clock: by the clock log the session file
   names, with the recording's USB lines setting its rate when it has them;
-  without a log, by `card_ppm` or a correction stored for the input, else by
-  the USB lines, as `series` and `long` correct it. A reading with a mask or a restart in
+  without a log, by the USB lines, else by `card_ppm` or a correction
+  stored for the input, as `series` and `long` correct it; where the USB
+  lines and a known correction are more than 5 ppm apart, the caveat
+  `clock_sources_disagree` says so. A reading with a mask or a restart in
   listening is cut at both ends of each: each stretch between cuts is
   fitted on its own, a stretch whose beats span under 10 s is left out,
   and the rest are combined weighted by their beats;
@@ -481,7 +483,7 @@ the watchmaker skill, each with its source.
 | `unlock_unreliable` | Unlock found in 45% of windows | fewer than 60% of the 2 s amplitude windows find the unlock on both sides; amplitude and the beat error from the unlock rest on those windows |
 | `clipping` | Clipped on 3.2% of beats | over 1% of the measured beats have a clipped sample in their template window, as `analyze` counts them |
 | `measurement_short` | 25 s measured | under 40 s measured after settling (D40e's "≥40 s measurement time", about p. 34) |
-| `cycle_wheel` | Regular rate change once per turn of the fourth wheel | a periodic change above the 1% false-alarm level matches a wheel's turn |
+| `cycle_wheel` | Regular rate change once per turn of the fourth wheel | a periodic change named (1% false-alarm level, held across the recording's tests) matches a wheel's turn |
 | `cycle_wheel_fraction` | Regular rate change at 1/3 of the fourth wheel's turn | as above, the turn is a whole number (2 or more) of the period |
 | `cycle_other` | Regular amplitude change not tied to a listed wheel | as above, no wheel; the nearest is named |
 | `shape_unlock_loud` | Unlocking as loud as the drop on Tick | the level of sound 1 to sound 3 is 1 or more |
@@ -508,7 +510,13 @@ and its `evidence` as text. `watch_heard` in a measurement is false when
 no regular beat was found, and its readings are then null;
 `unlock_coverage` is the share of amplitude windows that found the unlock,
 `clipped_fraction` the share of clipped beats and `jitter_us` the median
-timing scatter. `amplitude_states` and `rate_states` in each measurement
+timing scatter. `calibrated` says whether the rate is corrected for the
+sound card's clock; `clock_ppm` is the steady error that clock corrects,
+in ppm, positive when the sound card runs slow (as every clock ppm is
+today; #657 plans to flip it), and `clock_source` says in words where the clock came from (the
+USB lines, a clock log, or a stored correction), as the app's clock line
+says it. Either is left out when the take has no clock, and `clock_ppm`
+is left out for a clock log, which has no single figure. `amplitude_states` and `rate_states` in each measurement
 hold the two-state finder's figures: `two_levels`, the `low` and `high`
 levels, `low_share`, `separation`, `delta_bic`, `switches`,
 `dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`

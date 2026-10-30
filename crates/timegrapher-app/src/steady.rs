@@ -28,8 +28,6 @@ pub use timegrapher_core::joined::{join, joined_duration, MIN_S};
 
 /// How much the session grows before the tests run again, seconds.
 pub const RERUN_S: f64 = 60.0;
-/// Most readings drawn on the Readings view per series.
-const MAX_DRAWN: usize = 3000;
 /// Shortest row, and narrowest column, in which a series' plot stays
 /// readable, points.
 const MIN_ROW: f32 = 120.0;
@@ -116,9 +114,11 @@ impl View {
                  cycle puts a bump near 0.37 of its period. Both axes are logarithmic"
             }
             View::Cusum => {
-                "The running sum of each reading's distance from the mean: independent \
-                 readings stay inside the dashed lines; a step in the level bends it into a \
-                 V or a tent, with the corner at the step"
+                "The running sum of each reading's distance from the mean, scaled by their \
+                 long-run spread: readings with no change of level, correlated or not, stay \
+                 inside the dashed lines about 95 times in 100; a step in the level bends it \
+                 into a V or a tent. The corner is marked only where the headline names \
+                 a level change"
             }
             View::Fft => {
                 "The plain amplitude spectrum of each series, like Witschi's FFT: the size \
@@ -851,6 +851,10 @@ fn state_levels(t: Option<&timegrapher_core::twostate::TwoState>) -> Option<[f64
 
 /// One series' title and plot. Its findings and statistics are in the
 /// Info panel.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View, opts: Opts) {
     let db = opts.periods_db;
     let pal = theme::pal(ui);
@@ -890,7 +894,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
         View::Readings => {
             let g = &s.grids[i];
             let n = g.y.len();
-            let stride = n.div_ceil(MAX_DRAWN).max(1);
+            let stride = n.div_ceil(steady_views::MAX_READINGS).max(1);
             let pts: Vec<[f64; 2]> = (0..n)
                 .step_by(stride)
                 .filter(|&j| g.y[j].is_finite())
@@ -1063,7 +1067,6 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                         .map(|(b, v)| [x(b), *v]),
                 );
             }
-            let dots: Vec<[f64; 2]> = by_time.iter().flatten().copied().collect();
             let boxes = steady_views::fold_columns(f);
             let box_w = 0.3 * f.period_s / bins as f64;
             let shape: Vec<[f64; 2]> = f
@@ -1073,7 +1076,7 @@ fn row(ui: &mut egui::Ui, s: &Steadiness, i: usize, c: &SeriesCheck, view: View,
                 .filter(|(_, v)| v.is_finite())
                 .map(|(b, v)| [x(b), *v])
                 .collect();
-            let range = spread(&dots);
+            let range = steady_views::fold_range(f);
             let mut plot = base
                 .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
                 .x_axis_formatter(clear_of_edge(plot_w, lag_text))
@@ -1787,31 +1790,11 @@ fn log_label(
 /// How many colours the Cycle view's dots take, first cycle to last.
 const TIME_BANDS: usize = 12;
 
-/// The 1st to 99th percentile of the points' values, padded a little,
-/// leaving out lone wild values (a knock, a dropped beat) so that two of
-/// them don't flatten the rest: those beyond three interquartile ranges
-/// of the middle half, unless they are more than 3% of the values (then
-/// they are part of what the watch does, as in the steadiness test).
+/// The points' value scale: core's ([`timegrapher_core::chart_scale::spread`]),
+/// which leaves out lone wild values and which the MCP view uses too.
 fn spread(pts: &[[f64; 2]]) -> Option<(f64, f64)> {
-    if pts.len() < 2 {
-        return None;
-    }
-    let mut v: Vec<f64> = pts.iter().map(|p| p[1]).collect();
-    v.sort_by(f64::total_cmp);
-    let q = |v: &[f64], f: f64| v[((v.len() - 1) as f64 * f).round() as usize];
-    let (q1, q3) = (q(&v, 0.25), q(&v, 0.75));
-    let fence = 3.0 * (q3 - q1);
-    let kept: Vec<f64> = v
-        .iter()
-        .copied()
-        .filter(|&x| x >= q1 - fence && x <= q3 + fence)
-        .collect();
-    if kept.len() >= 2 && (v.len() - kept.len()) as f64 <= 0.03 * v.len() as f64 {
-        v = kept;
-    }
-    let (lo, hi) = (q(&v, 0.01), q(&v, 0.99));
-    let pad = ((hi - lo) * 0.12).max(1e-3);
-    Some((lo - pad, hi + pad))
+    let ys: Vec<f64> = pts.iter().map(|p| p[1]).collect();
+    timegrapher_core::chart_scale::spread(&ys)
 }
 
 fn note(ui: &mut egui::Ui, text: &str) {

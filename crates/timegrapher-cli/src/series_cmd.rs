@@ -48,6 +48,7 @@ pub fn run(o: Options) -> Result<(), String> {
         clock: applied_clock,
         breaks,
         unlisted,
+        positions,
         masked,
         stretches,
         ..
@@ -78,6 +79,9 @@ pub fn run(o: Options) -> Result<(), String> {
             &mut long.caveats,
             timegrapher_core::measure::Caveat::BreaksUnlisted { why },
         );
+    }
+    if let Some(c) = positions {
+        timegrapher_core::measure::add(&mut long.caveats, c);
     }
     // A take read in stretches is on its clock already.
     let clock = clock.filter(|_| stretches.is_none());
@@ -237,12 +241,15 @@ fn print_text(r: &Report, calibrated: bool) {
         println!();
         println!("{}", x.headline);
         println!(
-            "  {:<14} r {:.2} over {} pairs (worth about {:.0} independent); {:+.3} s/d per degree; p {}",
+            "  {:<14} r {:.2} over {} pairs (worth about {:.0} independent); {}; p {}",
             "rate vs amp.",
             x.r,
             x.readings,
             x.effective_readings,
-            x.s_per_day_per_deg,
+            match (x.s_per_day_per_deg, x.s_per_day_per_deg_se) {
+                (Some(b), Some(se)) => format!("{b:+.3} ± {se:.3} s/d per degree"),
+                _ => "no slope".into(),
+            },
             p_text(x.p_value)
         );
     }
@@ -281,6 +288,10 @@ fn opt(v: Option<f64>, d: usize) -> String {
     v.map_or("-".into(), |x| format!("{x:.d$}"))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     let name = s.series.name();
     println!();
@@ -323,11 +334,15 @@ fn print_series(s: &SeriesCheck, outlier_sigma: f64) {
     }
     if let Some(c) = &s.cusum {
         println!(
-            "  {:<14} max {:.2} at {:.0} s (p {} if independent)",
+            "  {:<14} max {:.2} (p {} with no change of level){}",
             "CUSUM",
             c.max,
-            c.at_s,
-            p_text(c.p_value)
+            p_text(c.p_value),
+            if c.shift {
+                format!("; level changes near {:.0} s", c.at_s)
+            } else {
+                String::new()
+            }
         );
     }
     if let Some(c) = s.changes.as_ref().filter(|c| c.segments.len() > 1) {
@@ -470,6 +485,7 @@ mod tests {
             },
             spectra: vec![],
             findings: vec![],
+            named_lines: vec![],
         }
     }
 

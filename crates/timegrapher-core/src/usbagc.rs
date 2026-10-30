@@ -67,6 +67,10 @@ pub fn feature_request(c: &AgcControl, request: u8, selector: u8, length: u16) -
 /// descriptor (the whole of it, as GET_DESCRIPTOR returns it): each
 /// feature unit with an AGC control between an input terminal and a USB
 /// streaming output terminal, the one that carries sound to the computer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn capture_agc(config: &[u8]) -> Vec<AgcControl> {
     #[derive(Clone)]
     enum Entity {

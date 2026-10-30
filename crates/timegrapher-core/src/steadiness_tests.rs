@@ -608,6 +608,10 @@ fn a_half_turn_of_an_alias_counts_only_where_it_holds_the_line() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn a_summary_names_each_lead_in_a_few_words() {
     let check = |kind, y: Vec<f64>, step, two: Option<TwoState>| {
         check_series(
@@ -853,8 +857,20 @@ fn isochronism_curve_and_wind_down_follow_the_run_down() {
         .collect();
     let be = vec![0.3; n];
     let cfg = Config::default();
-    let c = isochronism_curve(&grid(rate.clone(), 10.0), &grid(amp.clone(), 10.0), &cfg).unwrap();
-    assert!((c.s_per_day_per_deg - 0.5).abs() < 0.05, "{}", c.headline);
+    // Each amplitude reading's noise: the 2° scattered on it.
+    let noise = vec![4.0; n];
+    let c = isochronism_curve(
+        &grid(rate.clone(), 10.0),
+        &grid(amp.clone(), 10.0),
+        &noise,
+        &cfg,
+    )
+    .unwrap();
+    assert!(
+        (c.s_per_day_per_deg.unwrap() - 0.5).abs() < 0.05,
+        "{}",
+        c.headline
+    );
     assert!(c.bins.len() >= 20);
     let w = wind_down(&grid(rate, 10.0), &grid(amp, 10.0), &grid(be, 10.0), &cfg).unwrap();
     assert!(w.at_24h, "{}", w.headline);
@@ -1099,4 +1115,283 @@ fn no_reading_is_taken_from_part_of_its_span() {
     assert!(!holes.clear(300.8, 310.8));
     assert!(holes.clear(290.0, 300.0));
     assert!(holes.clear(301.0, 311.0));
+}
+
+/// `n` readings 10 s apart of AR(1) noise with lag-one correlation
+/// `rho`, scatter 1, and `step` added from halfway.
+fn correlated(z: &mut Noise, n: usize, rho: f64, step: f64, gaps: Gaps) -> Grid {
+    let mut v = z.next();
+    let y = (0..n)
+        .map(|i| {
+            v = rho * v + (1.0 - rho * rho).sqrt() * z.next();
+            let missing = match gaps {
+                Gaps::None => false,
+                // Two blocks of a sixth and a ninth of the take, and a
+                // tenth of the rest dropped here and there.
+                Gaps::Blocks => {
+                    (n / 6..n / 3).contains(&i)
+                        || (n / 2..n / 2 + n / 9).contains(&i)
+                        || z.next() > 1.28
+                }
+                Gaps::Half => z.next() > 0.0,
+            };
+            if missing {
+                f64::NAN
+            } else {
+                v + if i >= n / 2 { step } else { 0.0 }
+            }
+        })
+        .collect();
+    grid(y, 10.0)
+}
+
+/// Readings missing from [`correlated`] ones.
+#[derive(Clone, Copy, Debug)]
+enum Gaps {
+    None,
+    Blocks,
+    /// Half of them, at random.
+    Half,
+}
+
+/// Of `runs` takes of `n` readings, how many the CUSUM and the change
+/// finder each flag.
+fn flagged(rho: f64, step: f64, n: usize, runs: usize, gaps: Gaps) -> (usize, usize) {
+    let mut z = Noise(647);
+    let (mut cusum, mut changes) = (0, 0);
+    for _ in 0..runs {
+        let s = check_series(
+            SeriesKind::Rate,
+            correlated(&mut z, n, rho, step, gaps),
+            None,
+            None,
+            None,
+            &[],
+            &Config::default(),
+        );
+        cusum += usize::from(s.cusum.unwrap().max > CUSUM_BAND);
+        changes += usize::from(s.changes.unwrap().segments.len() > 1);
+    }
+    (cusum, changes)
+}
+
+/// Correlated readings that never change level pass the CUSUM's 95% band
+/// about 95 times in 100, as independent ones do: scaled by the
+/// short-term σ alone it flagged 82% of these at ρ 0.5 and all at 0.9
+/// (#647). The change finder, judged against the same long-run σ, finds
+/// no change that is not there in 95 of 100 two-hour takes at ρ 0.9
+/// (#649).
+#[test]
+fn correlated_steady_readings_raise_few_false_alarms() {
+    // About 5% at ρ 0.5 and 6.5% at ρ 0.9, where 360 readings say least
+    // about ρ; 8% leaves room for the draw.
+    for (rho, runs) in [(0.5, 1000), (0.9, 2000)] {
+        let (cusum, _) = flagged(rho, 0.0, 360, runs, Gaps::None);
+        assert!(
+            cusum * 100 <= 8 * runs,
+            "CUSUM: {cusum} of {runs} at ρ {rho}"
+        );
+    }
+    // A gap must not join readings that were not neighbours: read across
+    // it, ρ came out low and the CUSUM flagged 20% with half missing and
+    // 8% with the blocks; now about 6% with half missing and 5% with the
+    // blocks.
+    for gaps in [Gaps::Blocks, Gaps::Half] {
+        let (cusum, _) = flagged(0.9, 0.0, 360, 2000, gaps);
+        assert!(cusum <= 160, "CUSUM: {cusum} of 2000 with {gaps:?} gaps");
+    }
+    let (_, changes) = flagged(0.9, 0.0, 720, 400, Gaps::None);
+    assert!(changes <= 20, "change finder: {changes} of 400");
+}
+
+/// A real step twice the readings' scatter is still found at ρ 0.9.
+#[test]
+fn a_step_in_correlated_readings_is_still_found() {
+    let (cusum, _) = flagged(0.9, 2.0, 360, 200, Gaps::None);
+    assert!(cusum >= 160, "CUSUM: {cusum} of 200");
+    let (_, changes) = flagged(0.9, 2.0, 720, 200, Gaps::None);
+    assert!(changes >= 160, "change finder: {changes} of 200");
+}
+
+/// Whether the headline names a level change: as its lead, or as the
+/// level also moving.
+fn headline_names_a_change(s: &SeriesCheck) -> bool {
+    s.headline.contains("shifts level") || s.headline.contains("level also moves")
+}
+
+/// One rule names a level change (#697): the CUSUM marks its corner only
+/// where the headline names one, at one of the change finder's cuts. A
+/// steady take whose CUSUM wanders past the band names none, and a real
+/// step twice the scatter is still named.
+#[test]
+fn the_cusum_names_a_change_only_where_the_headline_does() {
+    let mut z = Noise(697);
+    let mut past_band = 0;
+    for (step, runs) in [(0.0, 400), (2.0, 200)] {
+        let (mut named, mut moved) = (0, 0);
+        for _ in 0..runs {
+            let s = check_series(
+                SeriesKind::Rate,
+                correlated(&mut z, 720, 0.9, step, Gaps::None),
+                None,
+                None,
+                None,
+                &[],
+                &Config::default(),
+            );
+            let cu = s.cusum.as_ref().unwrap();
+            assert_eq!(cu.shift, headline_names_a_change(&s), "{}", s.headline);
+            if cu.shift {
+                let ch = s.changes.as_ref().unwrap();
+                assert!(ch.segments[1..].iter().any(|g| g.start_s == cu.at_s));
+            } else if step == 0.0 && cu.max > CUSUM_BAND {
+                past_band += 1;
+            }
+            named += usize::from(cu.shift);
+            moved += usize::from(cu.shift || s.lead == Lead::Drifting);
+        }
+        if step == 0.0 {
+            assert!(named <= 20, "steady: {named} of {runs} named a change");
+        } else {
+            // The headline tells a step from a slide by how much of it a
+            // line explains, and calls about two in five of these slides
+            // (111 named, 58 cut and called slides at this seed); either
+            // way it says the level moved.
+            assert!(named >= 100, "step: {named} of {runs} named a change");
+            assert!(moved >= 160, "step: {moved} of {runs} moved");
+        }
+    }
+    // The case #697 found: past the band, and no change named.
+    assert!(past_band > 0);
+}
+
+/// A step the change finder cuts but that explains under a fifth of the
+/// readings' variance is not named, by the headline or the CUSUM (as on
+/// an ETA 2824's beat error, #717); nor is a slide the finder cuts into
+/// steps, which the headline calls a slide (as on a Reverso's).
+#[test]
+fn a_small_share_cut_and_a_slide_name_no_change() {
+    let mut z = Noise(717);
+    let small = (0..20)
+        .map(|_| {
+            check_series(
+                SeriesKind::Rate,
+                correlated(&mut z, 720, 0.0, 0.5, Gaps::None),
+                None,
+                None,
+                None,
+                &[],
+                &Config::default(),
+            )
+        })
+        .find(|s| s.changes.as_ref().unwrap().segments.len() > 1)
+        .expect("a small step the finder cuts");
+    assert!(small.changes.as_ref().unwrap().explained < Config::default().min_explained);
+    assert!(!small.cusum.as_ref().unwrap().shift);
+    assert!(!headline_names_a_change(&small), "{}", small.headline);
+
+    let y: Vec<f64> = (0..720)
+        .map(|i| i as f64 / 180.0 + 0.3 * z.next())
+        .collect();
+    let slide = check_series(
+        SeriesKind::Rate,
+        grid(y, 10.0),
+        None,
+        None,
+        None,
+        &[],
+        &Config::default(),
+    );
+    assert_eq!(slide.lead, Lead::Drifting, "{}", slide.headline);
+    assert!(slide.changes.as_ref().unwrap().segments.len() > 1);
+    assert!(!slide.cusum.as_ref().unwrap().shift);
+    assert!(!headline_names_a_change(&slide), "{}", slide.headline);
+}
+
+/// Two hours of 2 s amplitude windows wandering a few degrees over
+/// minutes, each window `window_noise`° off, and 10 s rate readings
+/// following the true amplitude at −0.5 s/d per degree.
+fn noisy_amplitude(window_noise: f64, seed: u64) -> (Grid, Grid, Vec<f64>) {
+    let mut z = Noise(seed);
+    let true_amp = |t: f64| 250.0 + 3.0 * (t / 900.0).sin() + 2.0 * (t / 377.0).cos();
+    let fine = Grid {
+        t0: 0.0,
+        step: 2.0,
+        y: (0..3600)
+            .map(|i| true_amp(2.0 * i as f64 + 1.0) + window_noise * z.next())
+            .collect(),
+    };
+    let n = 720;
+    let amp = rebin(&fine, 0.0, 10.0, n);
+    let noise = reading_noise(&fine, 0.0, 10.0, n);
+    let rate = grid(
+        (0..n)
+            .map(|i| {
+                let t = 10.0 * i as f64;
+                let a = (0..5)
+                    .map(|k| true_amp(t + 2.0 * k as f64 + 1.0))
+                    .sum::<f64>()
+                    / 5.0;
+                -0.5 * (a - 250.0) + 0.5 * z.next()
+            })
+            .collect(),
+        10.0,
+    );
+    (rate, amp, noise)
+}
+
+/// Noise in the amplitude readings shrinks a least-squares slope towards
+/// 0; read off each reading's own windows, it is undone, and the slope
+/// carries a ± that covers the truth (#651). Here the readings' noise of
+/// about 1.5° shrinks the plain slope by about a fifth.
+#[test]
+fn the_isochronism_slope_is_read_off_the_amplitudes_noise() {
+    let (rate, amp, noise) = noisy_amplitude(3.35, 21);
+    // Each reading's noise is its five windows' over five.
+    let mean = noise.iter().sum::<f64>() / noise.len() as f64;
+    assert!((mean - 3.35f64.powi(2) / 5.0).abs() < 0.4, "{mean}");
+    let c = isochronism_curve(&rate, &amp, &noise, &Config::default()).unwrap();
+    let (slope, se) = (
+        c.s_per_day_per_deg.unwrap(),
+        c.s_per_day_per_deg_se.unwrap(),
+    );
+    assert!(
+        (slope + 0.5).abs() < 2.0 * se + 0.01,
+        "{slope} ± {se}: {}",
+        c.headline
+    );
+    assert!(se > 0.0 && se < 0.05, "{se}");
+    assert!(
+        c.reliability.unwrap() > 0.5 && c.reliability.unwrap() < 0.95,
+        "{:?}",
+        c.reliability
+    );
+    assert!(c.headline.contains(" ± "), "{}", c.headline);
+    // Taking the noise as nothing leaves the shrunken slope.
+    let plain = isochronism_curve(&rate, &amp, &vec![0.0; noise.len()], &Config::default())
+        .unwrap()
+        .s_per_day_per_deg
+        .unwrap();
+    assert!(plain > slope + 0.05, "{plain} against {slope}");
+    // The rate against the amplitude within half an hour reads the same
+    // noise: with the slow wander taken out, it is most of what is left,
+    // so no slope is given there.
+    let x = cross_correlation(&rate, &amp, &noise, &Config::default()).unwrap();
+    assert!(x.reliability.unwrap() < 0.5, "{}", x.headline);
+    assert_eq!(x.s_per_day_per_deg, None);
+}
+
+/// When the amplitude's noise is most of its spread, no slope is read.
+#[test]
+fn a_slope_is_withheld_when_the_amplitude_is_mostly_noise() {
+    let (rate, amp, noise) = noisy_amplitude(30.0, 22);
+    let c = isochronism_curve(&rate, &amp, &noise, &Config::default()).unwrap();
+    assert!(c.reliability.unwrap() < 0.5);
+    assert_eq!(c.s_per_day_per_deg, None);
+    assert_eq!(c.rate_change_s_per_day, None);
+    assert!(
+        c.headline.contains("too much of its spread"),
+        "{}",
+        c.headline
+    );
 }

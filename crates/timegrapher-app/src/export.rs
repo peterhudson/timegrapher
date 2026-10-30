@@ -183,6 +183,10 @@ fn points(pts: &[Pos2]) -> String {
         .join(" ")
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn shape(out: &mut String, s: &Shape) {
     match s {
         Shape::Noop | Shape::Callback(_) => {}
