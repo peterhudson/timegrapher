@@ -630,7 +630,7 @@ impl LiveAnalyzer {
                 continue;
             }
             let index = match self.candidates.back() {
-                Some(last) => last.index + ((t - last.time) / beat).round().max(1.0) as i64,
+                Some(last) => last.index + beats::beats_on(t - last.time, beat),
                 None => 0,
             };
             self.candidates.push_back(Beat {
@@ -884,10 +884,8 @@ impl LiveAnalyzer {
         peaks.sort_by(|a, b| a.time.total_cmp(&b.time));
         let beat = 3600.0 / self.bph.or(self.logged_bph).unwrap_or(1) as f64;
         for i in 1..peaks.len() {
-            let step = ((peaks[i].time - peaks[i - 1].time) / beat)
-                .round()
-                .max(1.0);
-            peaks[i].index = peaks[i - 1].index + step as i64;
+            peaks[i].index =
+                peaks[i - 1].index + beats::beats_on(peaks[i].time - peaks[i - 1].time, beat);
         }
         peaks
     }
