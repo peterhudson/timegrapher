@@ -247,7 +247,9 @@ fn print_text(r: &Report, calibrated: bool) {
             x.readings,
             x.effective_readings,
             match (x.s_per_day_per_deg, x.s_per_day_per_deg_se) {
-                (Some(b), Some(se)) => format!("{b:+.3} ± {se:.3} s/d per degree"),
+                (Some(b), Some(se)) => {
+                    timegrapher_core::amplitude_slope::slope_pm_text(b, se, 3)
+                }
                 _ => "no slope".into(),
             },
             p_text(x.p_value)

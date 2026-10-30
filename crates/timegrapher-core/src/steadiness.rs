@@ -2766,12 +2766,12 @@ fn isochronism_curve(
     // The end bins as a sentence of their own: two medians, not the
     // slope's own evidence.
     let headline = format!(
-        "Between {:.0}° and {:.0}° {goes}. The rate reads {:+.1} s/d at {:.0}° and {:+.1} s/d at {:.0}°{}. Temperature is not logged.",
+        "Between {:.0}° and {:.0}° {goes}. The rate reads {} s/d at {:.0}° and {} s/d at {:.0}°{}. Temperature is not logged.",
         b0,
         b1,
-        by[0],
+        crate::library::signed_text(by[0], 1),
         b0,
-        by[by.len() - 1],
+        crate::library::signed_text(by[by.len() - 1], 1),
         b1,
         turn.map_or(String::new(), |t| format!(
             "; it changes least near {t:.0}°"

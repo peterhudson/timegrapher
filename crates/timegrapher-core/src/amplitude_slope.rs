@@ -5,6 +5,7 @@
 //! slopes here.
 
 use crate::confidence::{self, Slow};
+use crate::library::signed_text;
 use crate::longterm::{self, Grid};
 use crate::steadiness::{chi2_tail, drop_outliers, finite_or_nan, p_text, Config};
 use serde::Serialize;
@@ -65,14 +66,19 @@ pub(crate) const MIN_RELIABILITY: f64 = 0.5;
 pub(crate) const TOO_NOISY: &str =
     "the amplitude readings' own noise is half or more of their spread, so no slope is read";
 
-/// A slope and its ± in s/d per degree, a slope that rounds to zero
-/// given no sign.
-pub(crate) fn slope_text(e: &EivSlope) -> String {
+/// A slope and its ± in s/d per degree to `digits` decimals, a slope
+/// that rounds to zero given no sign: the one text every surface prints
+/// for the slopes against the amplitude (#734).
+pub fn slope_pm_text(slope: f64, se: f64, digits: usize) -> String {
     format!(
-        "{} ± {:.2} s/d per degree",
-        crate::library::signed_text(e.slope, 2),
-        e.se
+        "{} ± {se:.digits$} s/d per degree",
+        signed_text(slope, digits)
     )
+}
+
+/// [`slope_pm_text`] of an [`EivSlope`], to two decimals.
+pub(crate) fn slope_text(e: &EivSlope) -> String {
+    slope_pm_text(e.slope, e.se, 2)
 }
 
 /// [`EivSlope`] of `(x, y, noise variance of x)`, one per reading in time
@@ -247,15 +253,15 @@ pub(crate) fn cross_correlation(
         (None, None) => "no slope (the amplitude's noise is not known)".into(),
     };
     let headline = format!(
-        "Rate against amplitude from one {:.0} s reading to the next: {}, r {:.2}, p {} over {} pairs (worth about {:.0} independent ones); over the whole take, {:+.2} s/d per degree (r {:.2}).",
+        "Rate against amplitude from one {:.0} s reading to the next: {}, r {}, p {} over {} pairs (worth about {:.0} independent ones); over the whole take, {} s/d per degree (r {}).",
         step,
         slope_text,
-        r,
+        signed_text(r, 2),
         p_text(p_value),
         p.len(),
         n_eff,
-        take_slope,
-        take_r
+        signed_text(take_slope, 2),
+        signed_text(take_r, 2)
     );
     Some(CrossCorrelation {
         step_s: step,
@@ -357,5 +363,30 @@ mod tests {
         assert_eq!(slope_text(&e(-0.004)), "0.00 ± 0.01 s/d per degree");
         assert_eq!(slope_text(&e(-0.02)), "-0.02 ± 0.01 s/d per degree");
         assert_eq!(slope_text(&e(0.5)), "+0.50 ± 0.01 s/d per degree");
+    }
+
+    /// A figure in the rate-against-amplitude headline that rounds to zero
+    /// reads without a sign (#734), the whole take's slope here.
+    #[test]
+    fn the_cross_correlations_figures_at_zero_read_without_a_sign() {
+        let mut z = Rng::new(734);
+        let n = 720;
+        let grid = |y: Vec<f64>| Grid {
+            t0: 0.0,
+            step: 10.0,
+            y,
+        };
+        // A rate that barely moves: both slopes round to 0.
+        let amp: Vec<f64> = (0..n).map(|_| 270.0 + 5.0 * z.normal()).collect();
+        let rate: Vec<f64> = (0..n).map(|_| 1e-4 * z.normal()).collect();
+        let x =
+            cross_correlation(&grid(rate), &grid(amp), &vec![0.01; n], &Config::default()).unwrap();
+        assert!(!x.headline.contains("-0.00"), "{}", x.headline);
+        assert!(
+            x.headline
+                .contains("over the whole take, 0.00 s/d per degree"),
+            "{}",
+            x.headline
+        );
     }
 }
