@@ -212,24 +212,69 @@ pub fn lomb_scargle(s: &Series, periods: &[f64]) -> Vec<f64> {
         .iter()
         .map(|&p| {
             let w = 2.0 * std::f64::consts::PI / p;
-            let (mut s2, mut c2) = (0.0, 0.0);
-            for &t in &s.t {
-                let (a, b) = (2.0 * w * t).sin_cos();
-                s2 += a;
-                c2 += b;
-            }
-            let tau = s2.atan2(c2) / (2.0 * w);
-            let (mut yc, mut ys, mut cc, mut sn) = (0.0, 0.0, 0.0, 0.0);
+            let mut sums = LsSums {
+                n: n as f64,
+                ..LsSums::default()
+            };
             for (&t, &v) in s.t.iter().zip(&y) {
-                let (a, b) = (w * (t - tau)).sin_cos();
-                yc += v * b;
-                ys += v * a;
-                cc += b * b;
-                sn += a * a;
+                let (a, b) = (w * t).sin_cos();
+                sums.yc += v * b;
+                sums.ys += v * a;
+                let (a2, b2) = (2.0 * w * t).sin_cos();
+                sums.c2 += b2;
+                sums.s2 += a2;
             }
-            (yc * yc / cc.max(1e-300) + ys * ys / sn.max(1e-300)) / ss
+            let f = sums.fit();
+            (f.yc * f.yc / f.cc.max(1e-300) + f.ys * f.ys / f.sn.max(1e-300)) / ss
         })
         .collect()
+}
+
+/// The sums over the readings (less their mean) at one angular frequency
+/// ω that a Lomb–Scargle fit is made from: Σ y·cos ωt, Σ y·sin ωt,
+/// Σ cos 2ωt and Σ sin 2ωt, and how many readings. [`lomb_scargle`] adds
+/// them up reading by reading; [`crate::spectrum`] reads them off two
+/// Fourier transforms of a grid with gaps.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LsSums {
+    pub yc: f64,
+    pub ys: f64,
+    pub c2: f64,
+    pub s2: f64,
+    pub n: f64,
+}
+
+/// [`LsSums`] turned about Scargle's τ (tan 2ωτ = Σ sin 2ωt / Σ cos 2ωt),
+/// where the cosine and sine terms are orthogonal: Σ y·cos ω(t − τ),
+/// Σ y·sin ω(t − τ), Σ cos² ω(t − τ) and Σ sin² ω(t − τ).
+#[derive(Debug, Clone, Copy)]
+pub struct LsFit {
+    pub yc: f64,
+    pub ys: f64,
+    pub cc: f64,
+    pub sn: f64,
+}
+
+impl LsSums {
+    pub fn fit(&self) -> LsFit {
+        let wt2 = self.s2.atan2(self.c2);
+        let (sin, cos) = (0.5 * wt2).sin_cos();
+        let c2t = self.c2 * wt2.cos() + self.s2 * wt2.sin();
+        LsFit {
+            yc: self.yc * cos + self.ys * sin,
+            ys: self.ys * cos - self.yc * sin,
+            cc: 0.5 * (self.n + c2t),
+            sn: 0.5 * (self.n - c2t),
+        }
+    }
+}
+
+impl LsFit {
+    /// The size (half the peak to peak) of the sine fitted by least
+    /// squares.
+    pub fn amplitude(&self) -> f64 {
+        ((self.yc / self.cc.max(1e-300)).powi(2) + (self.ys / self.sn.max(1e-300)).powi(2)).sqrt()
+    }
 }
 
 /// Log-spaced trial periods.

@@ -20,12 +20,17 @@ pub struct AmplitudeSpectrum {
     pub unit: &'static str,
     /// Spacing of the series the spectrum was taken of, seconds.
     pub step_s: f64,
-    /// Periods, seconds, longest first, and estimated sine-wave size at
-    /// each for complete regular inputs (half its peak to peak). Each point is the largest in its
+    /// Periods, seconds, longest first, and the size of the sine fitted
+    /// at each (half its peak to peak). Each point is the largest in its
     /// slice of a log-spaced period axis, so narrow lines survive the
     /// thinning.
     pub period_s: Vec<f64>,
     pub amplitude: Vec<f64>,
+    /// How the sizes were read: `hann_fft` on a grid with no reading
+    /// missing, `lomb_scargle` (a sine fitted to the readings present,
+    /// nothing filled in) on one with gaps (#652). The two agree on a
+    /// complete grid.
+    pub method: &'static str,
     /// Finite support of the actual FFT input grid, excluding zero-padding.
     pub support: SpectrumSupport,
     /// The same sizes averaged over segments that hold no missing
@@ -200,21 +205,23 @@ impl SpectrumSupport {
             self.finite_bins, self.total_bins
         );
         if self.finite_bins < self.total_bins {
-            text.push_str(" Missing samples affect peak heights and shapes; values are not corrected for gaps.");
+            text.push_str(" With samples missing, each size is a sine fitted to the samples present (Lomb–Scargle); nothing is filled in.");
         }
         text
     }
 }
 
 /// The amplitude spectrum of `g` between `4 × step` and half the span,
-/// with the series' mean taken off and empty readings set to it. A Hann
-/// window keeps a strong line from spreading over the whole axis; sizes
-/// are corrected for it, estimating sine-wave size for complete regular data.
-/// Nonfinite bins become zero after subtracting the finite-data mean. The
-/// denominator remains the full grid's Hann-weight sum, without a correction
-/// for missing data; gap patterns therefore affect heights and shapes.
-/// `scale` multiplies the values (1000 for seconds to ms). At most
-/// `max_points` points.
+/// with the series' mean taken off, as the size of the sine at each
+/// period (half its peak to peak). With every reading present this is a
+/// Hann-windowed FFT, the window keeping a strong line from spreading over
+/// the whole axis, its sizes corrected for it. With readings missing it is
+/// Lomb–Scargle at the same periods: the sine fitted by least squares to
+/// the readings present, nothing filled in, so a line keeps its size as
+/// readings go missing (#652); its sums are read off two Fourier
+/// transforms (the readings, zero where missing, and which are present),
+/// as Press and Rybicki (1989) do. `scale` multiplies the values (1000
+/// for seconds to ms). At most `max_points` points.
 pub fn amplitude_spectrum(
     g: &Grid,
     series: &'static str,
@@ -228,20 +235,53 @@ pub fn amplitude_spectrum(
         return None;
     }
     let mean = fin.iter().sum::<f64>() / fin.len() as f64;
+    let gaps = fin.len() < n;
     let l = n.next_power_of_two();
+    let mut planner = RealFftPlanner::<f64>::new();
+    let fwd = planner.plan_fft_forward(l);
+    let transform = |mut buf: Vec<f64>| {
+        let mut out = fwd.make_output_vec();
+        fwd.process(&mut buf, &mut out).ok().map(|_| out)
+    };
     let mut buf = vec![0.0; l];
+    let mut present = vec![0.0; l];
     let mut wsum = 0.0;
-    for (i, (b, &v)) in buf.iter_mut().zip(&g.y).enumerate() {
-        let w = 0.5 - 0.5 * (2.0 * std::f64::consts::PI * (i as f64 + 0.5) / n as f64).cos();
+    for (i, &v) in g.y.iter().enumerate() {
+        let w = if gaps {
+            1.0
+        } else {
+            0.5 - 0.5 * (2.0 * std::f64::consts::PI * (i as f64 + 0.5) / n as f64).cos()
+        };
         if v.is_finite() {
-            *b = (v - mean) * scale * w;
+            buf[i] = (v - mean) * scale * w;
+            present[i] = 1.0;
         }
         wsum += w;
     }
-    let mut planner = RealFftPlanner::<f64>::new();
-    let fwd = planner.plan_fft_forward(l);
-    let mut spec = fwd.make_output_vec();
-    fwd.process(&mut buf, &mut spec).ok()?;
+    let spec = transform(buf)?;
+    let mask = if gaps {
+        transform(present)?
+    } else {
+        Vec::new()
+    };
+    // The size at bin j: Lomb–Scargle from the sums at ω and 2ω (bin 2j)
+    // with gaps, else the windowed transform's.
+    let size = |j: usize| -> f64 {
+        if gaps {
+            let m = mask.get(2 * j).copied().unwrap_or_default();
+            crate::periodicity::LsSums {
+                yc: spec[j].re,
+                ys: -spec[j].im,
+                c2: m.re,
+                s2: -m.im,
+                n: fin.len() as f64,
+            }
+            .fit()
+            .amplitude()
+        } else {
+            2.0 * spec[j].norm() / wsum
+        }
+    };
     let df = 1.0 / (l as f64 * g.step);
     let (min_p, max_p) = (4.0 * g.step, g.span() / 2.0);
     let jmin = ((1.0 / max_p) / df).ceil().max(1.0) as usize;
@@ -256,9 +296,9 @@ pub fn amplitude_spectrum(
     );
     let slices = max_points.max(2);
     let mut best: Vec<Option<(f64, f64)>> = vec![None; slices];
-    for (j, c) in spec.iter().enumerate().take(jmax + 1).skip(jmin) {
+    for j in jmin..=jmax {
         let p = 1.0 / (j as f64 * df);
-        let a = 2.0 * c.norm() / wsum;
+        let a = size(j);
         let k = (((hi - p.ln()) / (hi - lo)) * (slices - 1) as f64).round() as usize;
         let k = k.min(slices - 1);
         if best[k].is_none_or(|(_, b)| a > b) {
@@ -272,6 +312,7 @@ pub fn amplitude_spectrum(
         step_s: g.step,
         period_s,
         amplitude,
+        method: if gaps { "lomb_scargle" } else { "hann_fft" },
         support: SpectrumSupport {
             finite_bins: fin.len(),
             total_bins: n,
@@ -400,9 +441,10 @@ mod tests {
                 .description()
                 .contains(&format!("{expected} of {n}")));
             assert_eq!(
-                s.support.description().contains("not corrected for gaps"),
+                s.support.description().contains("Lomb–Scargle"),
                 expected < n
             );
+            assert_eq!(s.method == "lomb_scargle", expected < n);
             assert_eq!(
                 serde_json::to_value(&s).unwrap()["support"]["finite_bins"],
                 expected
@@ -465,6 +507,61 @@ mod tests {
                 .collect(),
         };
         assert!(welch(&short, 1.0, 600).is_none());
+    }
+
+    /// 2 at 320 s on 10 s readings: the size at that period, largest
+    /// near it.
+    fn size_at_320(y: Vec<f64>) -> (f64, &'static str) {
+        let s = amplitude_spectrum(
+            &Grid {
+                t0: 0.0,
+                step: 10.0,
+                y,
+            },
+            "amplitude",
+            "deg",
+            1.0,
+            600,
+        )
+        .unwrap();
+        let a = s
+            .period_s
+            .iter()
+            .zip(&s.amplitude)
+            .filter(|(p, _)| (*p / 320.0 - 1.0).abs() < 0.03)
+            .map(|(_, a)| *a)
+            .fold(0.0, f64::max);
+        (a, s.method)
+    }
+
+    fn line_320(i: usize) -> f64 {
+        250.0 + 2.0 * (std::f64::consts::TAU * i as f64 * 10.0 / 320.0).sin()
+    }
+
+    /// A line keeps its size as readings go missing: with gaps the size is
+    /// a sine fitted to the readings present, where filling them with the
+    /// mean shrank it by the share missing (#652). With every reading
+    /// present the windowed FFT gives the same size.
+    #[test]
+    fn a_lines_size_holds_as_readings_go_missing() {
+        let whole = size_at_320((0..2048).map(line_320).collect());
+        assert_eq!(whole.1, "hann_fft");
+        assert!((whole.0 - 2.0).abs() < 0.02, "{}", whole.0);
+        for missing in [1, 3, 5] {
+            // `missing` of every ten minutes' readings gone, in a block.
+            let y = (0..2048)
+                .map(|i| {
+                    if i % 60 < 6 * missing {
+                        f64::NAN
+                    } else {
+                        line_320(i)
+                    }
+                })
+                .collect();
+            let (a, method) = size_at_320(y);
+            assert_eq!(method, "lomb_scargle");
+            assert!((a - 2.0).abs() < 0.1, "{missing}/10 missing: {a}");
+        }
     }
 
     #[test]

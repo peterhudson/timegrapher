@@ -168,11 +168,11 @@ or discredit any particular recorded cycle.
 
 The same source also records a separate raw-FFT control: a 10-unit, 64 s sine
 produced peak heights 10.000000000 with a full grid, 5.000000000 with every
-second bin missing, and 1.816707781 with the middle half missing. This illustrates
-the existing zero-filled, full-window normalization's dependence on support;
-it is not a test of the period-search significance model. Current spectrum
-support metadata and the [FFT guide](series.md) expose that limitation without
-changing the amplitude estimator.
+second bin missing, and 1.816707781 with the middle half missing. This illustrated
+the zero-filled, full-window normalization's dependence on support, which the
+spectrum used then; it is not a test of the period-search significance model.
+The spectrum now reads a grid with samples missing by Lomb–Scargle, nothing
+filled in (#652; [FFT guide](series.md)).
 
 These are historical model observations assessed against
 `009dcc6d54638ff4df51563941935ddc1c654a74`, retained with source and output hashes.
