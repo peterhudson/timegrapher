@@ -833,6 +833,11 @@ pub struct ShapeSide {
 /// added later must be an `Option`, as for [`ShapeSide`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeSummary {
+    /// Where in the recording the shape was measured from, seconds; with
+    /// `measured_s`, the stretch it was measured on. None in a take kept
+    /// as its analysis before it was stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_s: Option<f64>,
     /// Seconds of audio the shape was measured on.
     pub measured_s: f64,
     pub even: ShapeSide,
@@ -857,8 +862,10 @@ fn shape_side(s: &SideReport) -> ShapeSide {
     }
 }
 
-pub fn shape_summary(r: &ShapeReport, measured_s: f64) -> ShapeSummary {
+/// The beat shape `r`, measured on `measured_s` seconds from `from_s`.
+pub fn shape_summary(r: &ShapeReport, from_s: f64, measured_s: f64) -> ShapeSummary {
     ShapeSummary {
+        from_s: Some(from_s),
         measured_s,
         even: shape_side(&r.even),
         odd: shape_side(&r.odd),
