@@ -476,6 +476,10 @@ pub struct Report {
     /// 2 s windows.
     pub spectra: Vec<crate::spectrum::AmplitudeSpectrum>,
     pub findings: Vec<Finding>,
+    /// Which of each series' search lines (rate, amplitude, beat error, in
+    /// the long-run report's order) the family keeps ([`hold_to_family`]).
+    #[serde(skip)]
+    pub named_lines: Vec<Vec<bool>>,
 }
 
 // ---------------------------------------------------------------- statistics
@@ -2345,7 +2349,7 @@ pub fn check(
         .rate_components
         .iter()
         .map(|c| c.component.significance);
-    let mut series = family::check_all(
+    let (mut series, named_lines) = family::check_all(
         vec![
             (
                 SeriesKind::Rate,
@@ -2424,6 +2428,7 @@ pub fn check(
         distributions,
         spectra,
         findings,
+        named_lines,
     }
 }
 
@@ -2874,6 +2879,7 @@ mod tests;
 
 #[path = "steadiness_family.rs"]
 mod family;
+pub use family::{family_long, hold_to_family};
 
 #[cfg(test)]
 mod window_grid_tests {

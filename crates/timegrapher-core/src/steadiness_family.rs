@@ -7,6 +7,10 @@
 //! as they are: only what is named changes.
 
 use super::{check_series, Config, Grid, Period, SeriesCheck, SeriesKind, TwoState, Wheel};
+use crate::clock::ClockFit;
+use crate::longrun::LongReport;
+use crate::longterm::LongConfig;
+use crate::stream::BeatLog;
 
 /// The chance, over the whole pane, of naming anything on a steady
 /// watch.
@@ -40,9 +44,15 @@ pub fn holm(p: &[f64], alpha: f64) -> Vec<bool> {
 }
 
 /// Check each series, naming only what its own test and Holm's
-/// correction across all of them both keep. A series whose period search found nothing still counts
-/// as one test, with p 1.
-pub(super) fn check_all(inputs: Vec<Input>, wheels: &[Wheel], cfg: &Config) -> Vec<SeriesCheck> {
+/// correction across all of them both keep. A series whose period search
+/// found nothing still counts as one test, with p 1. With the checks,
+/// which of each series' search lines the pane names, in the inputs'
+/// order: the one kept set every list of cycles reads ([`hold_to_family`]).
+pub(super) fn check_all(
+    inputs: Vec<Input>,
+    wheels: &[Wheel],
+    cfg: &Config,
+) -> (Vec<SeriesCheck>, Vec<Vec<bool>>) {
     let first: Vec<SeriesCheck> = inputs
         .iter()
         .map(|(k, g, f, q, _, t)| {
@@ -67,17 +77,29 @@ pub(super) fn check_all(inputs: Vec<Input>, wheels: &[Wheel], cfg: &Config) -> V
     let kept = holm(&p, FAMILY_ALPHA);
     let keeps =
         |k: usize, line: Option<usize>| tests.iter().zip(&kept).any(|(t, &x)| *t == (k, line) && x);
-    inputs
+    // The strongest line gone, the search names none.
+    let named: Vec<Vec<bool>> = inputs
+        .iter()
+        .enumerate()
+        .map(|(k, i)| {
+            let lines: Vec<bool> = (0..i.4.len()).map(|j| keeps(k, Some(j))).collect();
+            let any = lines.first() == Some(&true);
+            lines.into_iter().map(|x| x && any).collect()
+        })
+        .collect();
+    let checks = inputs
         .into_iter()
         .zip(first)
         .enumerate()
         .map(|(k, ((kind, grid, fine, period, sig, two_state), s))| {
-            let lines: Vec<bool> = (0..sig.len()).map(|j| keeps(k, Some(j))).collect();
+            let lines = &named[k];
             let memory = keeps(k, None);
-            if lines.iter().all(|&x| x) && (memory || !named_memory(&s, cfg)) {
+            if lines.len() == sig.len()
+                && lines.iter().all(|&x| x)
+                && (memory || !named_memory(&s, cfg))
+            {
                 return s;
             }
-            // The strongest line gone, the search names none.
             let period = period
                 .filter(|_| lines.first() == Some(&true))
                 .map(|mut q| {
@@ -92,7 +114,38 @@ pub(super) fn check_all(inputs: Vec<Input>, wheels: &[Wheel], cfg: &Config) -> V
             };
             check_series(kind, grid, fine, period, two_state, wheels, &cfg)
         })
-        .collect()
+        .collect();
+    (checks, named)
+}
+
+/// Keep in `long` only the period-search lines `rep` names, so the CLI's
+/// `long` text, its report and summary, and a session's cycles list what
+/// the Steadiness pane names (#659): Holm's correction decides once, here.
+pub fn hold_to_family(long: &mut LongReport, rep: &super::Report) {
+    let keep = |i: usize| rep.named_lines.get(i).cloned().unwrap_or_default();
+    let (rate, amp) = (keep(0), keep(1));
+    let mut k = rate.iter();
+    long.rate_components.retain(|_| *k.next().unwrap_or(&false));
+    let mut k = rate.iter();
+    long.timing
+        .components
+        .retain(|_| *k.next().unwrap_or(&false));
+    let mut k = amp.iter();
+    long.amplitude
+        .components
+        .retain(|_| *k.next().unwrap_or(&false));
+}
+
+/// [`super::check`] `long` at the default settings and [`hold_to_family`]
+/// it: for a list of cycles read without the pane.
+pub fn family_long(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    long: &mut LongReport,
+    long_cfg: &LongConfig,
+) {
+    let rep = super::check(log, clock, long, long_cfg, &Config::default());
+    hold_to_family(long, &rep);
 }
 
 /// Whether the Ljung–Box test at the series' own α names memory.

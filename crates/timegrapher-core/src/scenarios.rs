@@ -490,4 +490,60 @@ mod tests {
             .count();
         assert!(named <= 17, "{named} of 200 steady takes name something");
     }
+
+    /// The cycles `long` and a session list are the ones the pane names
+    /// (#659). On control seed 150 the period search finds one amplitude
+    /// line that Holm's correction across the pane drops: with the family
+    /// held, no list names it. On takes with real cycles, each list keeps
+    /// what the pane names, no more and no less.
+    #[test]
+    fn every_list_of_cycles_names_what_the_pane_names() {
+        use crate::longterm::LongConfig;
+        use crate::steadiness::{self, Config, SeriesKind};
+        let lc = LongConfig {
+            wheels: crate::periodicity::standard_wheels(BPH, 20),
+            ..Default::default()
+        };
+        for (name, seed) in [
+            ("control", 150),
+            ("fourth-wheel", 1),
+            ("escape-wheel", 1),
+            ("slow-cycle", 1),
+        ] {
+            let log = beat_log(&find(name).unwrap(), seed);
+            let mut long = crate::longrun::analyse(&log, None, &lc);
+            let found = long.amplitude.components.len();
+            let r = steadiness::check(&log, None, &long, &lc, &Config::default());
+            steadiness::family_long(&log, None, &mut long, &lc);
+            let pane = |k: SeriesKind| -> Vec<f64> {
+                let p = r.series.iter().find(|c| c.series == k).unwrap();
+                p.period.as_ref().map_or(vec![], |q| {
+                    std::iter::once(q.period_s)
+                        .chain(q.other_periods_s.iter().copied())
+                        .collect()
+                })
+            };
+            let rate: Vec<f64> = long
+                .rate_components
+                .iter()
+                .map(|c| c.component.period_s)
+                .collect();
+            let amp: Vec<f64> = long
+                .amplitude
+                .components
+                .iter()
+                .map(|c| c.period_s)
+                .collect();
+            assert_eq!(rate, pane(SeriesKind::Rate), "{name} rate");
+            assert_eq!(amp, pane(SeriesKind::Amplitude), "{name} amplitude");
+            let cycles = crate::session::cycles(&long, &lc.wheels);
+            assert_eq!(cycles.len(), rate.len() + amp.len(), "{name}");
+            if name == "control" {
+                assert_eq!(found, 1, "the line Holm drops");
+                assert!(amp.is_empty());
+            } else {
+                assert!(!cycles.is_empty(), "{name} names its cycle");
+            }
+        }
+    }
 }

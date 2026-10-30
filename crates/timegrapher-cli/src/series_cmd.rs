@@ -485,6 +485,7 @@ mod tests {
             },
             spectra: vec![],
             findings: vec![],
+            named_lines: vec![],
         }
     }
 
