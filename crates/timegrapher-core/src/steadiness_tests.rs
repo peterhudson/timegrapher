@@ -1177,8 +1177,9 @@ fn correlated_steady_readings_raise_few_false_alarms() {
         );
     }
     // A gap must not join readings that were not neighbours: read across
-    // it, ρ came out low and the CUSUM flagged 20% with half missing
-    // (8% with the blocks); now about 6% and 5%.
+    // it, ρ came out low and the CUSUM flagged 20% with half missing and
+    // 8% with the blocks; now about 6% with half missing and 5% with the
+    // blocks.
     for gaps in [Gaps::Blocks, Gaps::Half] {
         let (cusum, _) = flagged(0.9, 0.0, 360, 2000, gaps);
         assert!(cusum <= 160, "CUSUM: {cusum} of 2000 with {gaps:?} gaps");
