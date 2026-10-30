@@ -344,8 +344,10 @@ Each reading is:
 - rate from one fit over every beat (Tick and Tock fitted together),
   corrected for the sound card's clock: by the clock log the session file
   names, with the recording's USB lines setting its rate when it has them;
-  without a log, by `card_ppm` or a correction stored for the input, else by
-  the USB lines, as `series` and `long` correct it. A reading with a mask or a restart in
+  without a log, by the USB lines, else by `card_ppm` or a correction
+  stored for the input, as `series` and `long` correct it; where the USB
+  lines and a known correction are more than 5 ppm apart, the caveat
+  `clock_sources_disagree` says so. A reading with a mask or a restart in
   listening is cut at both ends of each: each stretch between cuts is
   fitted on its own, a stretch whose beats span under 10 s is left out,
   and the rest are combined weighted by their beats;
@@ -508,7 +510,13 @@ and its `evidence` as text. `watch_heard` in a measurement is false when
 no regular beat was found, and its readings are then null;
 `unlock_coverage` is the share of amplitude windows that found the unlock,
 `clipped_fraction` the share of clipped beats and `jitter_us` the median
-timing scatter. `amplitude_states` and `rate_states` in each measurement
+timing scatter. `calibrated` says whether the rate is corrected for the
+sound card's clock; `clock_ppm` is the steady error that clock corrects,
+in ppm, positive when the sound card runs slow (as every clock ppm is
+today; #657 plans to flip it), and `clock_source` says in words where the clock came from (the
+USB lines, a clock log, or a stored correction), as the app's clock line
+says it. Either is left out when the take has no clock, and `clock_ppm`
+is left out for a clock log, which has no single figure. `amplitude_states` and `rate_states` in each measurement
 hold the two-state finder's figures: `two_levels`, the `low` and `high`
 levels, `low_share`, `separation`, `delta_bic`, `switches`,
 `dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`

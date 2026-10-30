@@ -91,6 +91,10 @@ const ALL: [Icon; 79] = [
 ];
 
 /// The drawing behind each icon, with the pun it makes.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn drawing(icon: Icon) -> &'static str {
     match icon {
         // A speedometer: The three big numbers you glance at, like a car's dials.
@@ -692,6 +696,10 @@ fn rounded(x: f32, y: f32, w: f32, h: f32, r: f32) -> Vec<Pos2> {
 }
 
 /// The runs of a path's `d`, each with whether it was closed.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn path(d: &str) -> Vec<(Vec<Pos2>, bool)> {
     // Split into commands and their numbers.
     let mut cmds: Vec<(char, Vec<f32>)> = Vec::new();
@@ -981,6 +989,10 @@ pub enum Lying {
 /// numbers and all, as the watch in the hand would be. Lying, it is
 /// squashed to 60% with a side wall below in `card`; dial down shows
 /// only the case back's fluted ring. Drawn on a 100 by 100 grid.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn watch(
     painter: &egui::Painter,
     r: Rect,

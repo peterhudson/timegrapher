@@ -561,6 +561,10 @@ fn explained_at(g: &Grid, period: f64, bins: usize) -> f64 {
         / total.max(1) as f64
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
     let detrended = detrend(g, cfg.detrend_s);
     let span = g.span();

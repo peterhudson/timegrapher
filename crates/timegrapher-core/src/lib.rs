@@ -7,6 +7,7 @@
 pub mod amplitude;
 pub mod analysis;
 pub mod analysis_take;
+pub mod analyze_doc;
 pub mod archive;
 pub mod audio;
 pub mod beats;
@@ -14,6 +15,7 @@ pub mod breaks;
 pub mod calibre_store;
 pub mod calibres;
 pub mod capture;
+pub mod chart_scale;
 pub mod clean;
 pub mod clock;
 pub mod clockstore;

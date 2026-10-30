@@ -329,6 +329,10 @@ fn analytic(
 /// readings to [`SST_MAX_PERIOD_S`] (or a quarter of the longest
 /// stretch), averaged into [`MAX_COLUMNS`] slices of time. `scale` as for
 /// [`stft`]. `None` when no stretch is long enough.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn sst(
     g: &Grid,
     series: &'static str,
@@ -639,6 +643,10 @@ fn coherence_stretch(
 /// periods as for [`sst`], averaged into [`MAX_COLUMNS`] slices of time,
 /// with the red-noise level each period's coherence is read against.
 /// `None` when no stretch is long enough.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn coherence(
     x: &Grid,
     y: &Grid,

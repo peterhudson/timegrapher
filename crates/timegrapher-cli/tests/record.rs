@@ -84,6 +84,11 @@ fn doc(out: &Output) -> serde_json::Value {
 }
 
 #[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn takes_build_up_a_session() {
     let d = scratch("session");
     let wav = synth(&d);

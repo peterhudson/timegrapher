@@ -31,6 +31,8 @@ fn numeric_inputs_reject_before_audio_and_output_creation() {
         "--lift=95",
         "--escape-teeth=0",
         "--card-ppm=-1000000",
+        "--trend-average=5",
+        "--trend-average=NaN",
     ] {
         let out = f
             .command()

@@ -533,6 +533,10 @@ impl Progress {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn run(
     files: &[PathBuf],
     clock_args: ClockArgs,
@@ -1357,6 +1361,7 @@ mod caveat_tests {
                 usb_ppm: 120.0,
                 log_ppm: 20.0,
                 log_ppm_sd: 2.0,
+                against: Default::default(),
             },
             Caveat::LiftUnknown,
             Caveat::BreaksUnlisted {

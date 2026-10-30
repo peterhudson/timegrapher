@@ -15,7 +15,7 @@ function definition(name) {
 }
 const context = vm.createContext({
   VIRIDIS, secs: (t) => `${t} s`, wheelTitle: String, linTicks: () => [], lagText: String, TIME_STEPS: [],
-  spreadRange: (v) => [Math.min(...v), Math.max(...v)], chartWidth: () => 600, CHAR_W: 6.6,
+  chartWidth: () => 600, CHAR_W: 6.6,
   plotArea: () => ({ id: "c", svg: "" }),
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const TIME_BANDS = .*$/m)[0] + "\n" +
@@ -28,7 +28,7 @@ const plain = (v) => JSON.parse(JSON.stringify(v));
 const fold = {
   period_s: 30, from: "own", wheel: null, profile: [1, 3, 2], cycles: 24,
   raster: Array.from({ length: 24 }, (_, r) => [1 + r / 100, 3, r % 2 ? 2 : null]),
-  columns: [[1.05, 1.115, 1.17], [3, 3, 3], null], swing: 2, middle_half: 0.06,
+  columns: [[1.05, 1.115, 1.17], [3, 3, 3], null], swing: 2, middle_half: 0.06, y_range: [0.7, 3.4],
 };
 
 test("the Cycle view colours the dots by when they came and boxes each phase's middle half", () => {
@@ -62,4 +62,12 @@ test("a chart draws outlined boxes and a note of two lines", () => {
   const ys = [...svg.matchAll(/<text [^>]*y="([\d.]+)"[^>]*>(first|second)</g)].map((m) => [m[2], +m[1]]);
   assert.equal(ys.length, 2);
   assert.ok(ys[0][1] < ys[1][1], "the second line under the first");
+});
+
+test("the Cycle view is drawn on core's scale, not one of its own", () => {
+  let chart;
+  context.xyChart = (c) => { chart = plain(c); return "<svg/>"; };
+  context.steadyPlot({ series: "rate", views: { fold } }, "cycle", {});
+  assert.deepEqual(chart.y, [0.7, 3.4]);
+  assert.ok(!/function spreadRange|function percentileRange/.test(html), "the page works out no scale");
 });

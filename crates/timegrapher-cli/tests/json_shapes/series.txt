@@ -72,6 +72,7 @@ series[].changes
 series[].cusum
 series[].cycle
 series[].headline
+series[].long_run_sd
 series[].median
 series[].outliers
 series[].period
@@ -122,6 +123,7 @@ software.os
 software.version
 spectra
 spectra[].amplitude
+spectra[].method
 spectra[].period_s
 spectra[].reading_swing
 spectra[].reading_swing.period_s
@@ -130,6 +132,7 @@ spectra[].reading_swing.swing_s_per_day
 spectra[].series
 spectra[].step_s
 spectra[].support
+spectra[].support.description
 spectra[].support.finite_bins
 spectra[].support.total_bins
 spectra[].unit

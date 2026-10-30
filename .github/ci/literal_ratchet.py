@@ -226,11 +226,26 @@ def scan(root=ROOT):
     return out
 
 
+# A function-limit mark (#[expect] for too_many_lines or cognitive_complexity
+# alone) is not code: it comes off when the function is split.
+LIMIT_MARK = re.compile(
+    r"^[ \t]*#\[expect\(\s*(?:clippy::(?:too_many_lines|cognitive_complexity)\s*,\s*)+"
+    r"reason\s*=\s*\x22[^\x22]*\x22\s*,?\s*\)\]\n",
+    re.M,
+)
+
+
+def file_lines(text):
+    """Lines in `text`, less those of its function-limit marks."""
+    return text.count("\n") - sum(m.group().count("\n") for m in LIMIT_MARK.finditer(text))
+
+
 def long_files(root=ROOT):
-    """{path: lines} for every Rust file in crates/ over MAX_FILE_LINES."""
+    """{path: lines} for every Rust file in crates/ over MAX_FILE_LINES,
+    its function-limit marks left out ([`file_lines`])."""
     out = {}
     for path in sorted((root / "crates").rglob("*.rs")):
-        n = path.read_text(encoding="utf-8").count("\n")
+        n = file_lines(path.read_text(encoding="utf-8"))
         if n > MAX_FILE_LINES:
             out[path.relative_to(root).as_posix()] = n
     return out

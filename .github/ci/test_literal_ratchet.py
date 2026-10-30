@@ -108,6 +108,22 @@ class FileLength(unittest.TestCase):
         self.assertIn("3001 lines, over 3000", bad[0])
 
 
+class LimitMarks(unittest.TestCase):
+    def test_function_limit_marks_are_not_counted(self):
+        src = ("fn a() {}\n"
+               '#[expect(clippy::too_many_lines, reason = "split it")]\n'
+               "fn b() {}\n"
+               "    #[expect(\n        clippy::cognitive_complexity,\n        clippy::too_many_lines,\n"
+               '        reason = "split it"\n    )]\n'
+               "    fn c() {}\n")
+        self.assertEqual(r.file_lines(src), 3)
+
+    def test_other_marks_are_counted(self):
+        src = ('#[expect(clippy::disallowed_methods, reason = "a fixture")]\nfn a() {}\n'
+               '#[expect(clippy::too_many_lines, clippy::disallowed_methods, reason = "x")]\nfn b() {}\n')
+        self.assertEqual(r.file_lines(src), 4)
+
+
 class Copies(unittest.TestCase):
     def test_a_block_counts_unless_both_sides_are_tests(self):
         side = lambda name, start: {"name": name, "start": start}

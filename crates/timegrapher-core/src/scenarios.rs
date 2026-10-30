@@ -55,6 +55,10 @@ fn sine(v: f64, ptp: f64, period: f64) -> Track {
 }
 
 /// The scenarios, in the order they are listed.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn all() -> Vec<Scenario> {
     vec![
         Scenario {
@@ -156,7 +160,7 @@ pub fn all() -> Vec<Scenario> {
         Scenario {
             name: "wander",
             summary: "The rate wanders slowly as a random walk, about 1 s/d over 10 min, with no cycle.",
-            expect: "Rate wanders with no cycle: the change finder splits the walk into several level shifts, the autocorrelation falls slowly and the Allan deviation rises above the white line at long averaging times.",
+            expect: "Rate wanders with no cycle: the change finder splits the walk into a level shift or two, the autocorrelation falls slowly and the Allan deviation rises above the white line at long averaging times.",
             finds: &[("rate", "Rate shifts level")],
             duration_s: HOURS_2,
             rate: walk(RATE, 1.0, 600.0, HOURS_2, 7),

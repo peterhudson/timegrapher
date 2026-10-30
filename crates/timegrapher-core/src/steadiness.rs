@@ -15,9 +15,10 @@
 //!   readings; wander and drift lift the curve at long τ, and a cycle
 //!   of period P puts a bump near 0.37 P.
 //! - **CUSUM**: the running sum of each reading's distance from the
-//!   mean, in units of σ√n. For independent readings it wanders inside
-//!   ±1.36 (95%); a shift of the mean bends it into a V or a tent with
-//!   the corner at the shift.
+//!   mean, in units of the long-run σ√n. With no change of level,
+//!   correlated or not, it wanders inside ±1.36 (95%); a shift of the
+//!   mean bends it into a V or a tent. The corner is marked only at a
+//!   level change the headline names, so one rule names it (#697).
 //! - **Change points**: binary segmentation of block medians into
 //!   stretches of constant mean, each change kept only when it is
 //!   strong evidence against one level.
@@ -28,6 +29,7 @@
 
 use crate::clean::Cuts;
 use crate::clock::ClockFit;
+use crate::confidence::{self, Slow};
 pub use crate::cusum::{kolmogorov_tail, Cusum, CUSUM_BAND};
 use crate::distribution::{self, Distributions};
 use crate::dsp::median;
@@ -221,6 +223,9 @@ pub struct Changes {
     pub block_s: f64,
     /// Noise of one block median, from the differences of neighbours.
     pub block_sigma: f64,
+    /// The same allowing for the medians' correlation
+    /// ([`confidence::long_run_sd`]): what a split is judged against.
+    pub long_run_sigma: f64,
     pub segments: Vec<Segment>,
     /// Share of the variance the segment means explain.
     pub explained: f64,
@@ -333,6 +338,10 @@ pub struct SeriesCheck {
     /// Scatter from one reading to the next, √(½·mean of squared
     /// differences): the noise without the slow changes.
     pub short_term_sd: Option<f64>,
+    /// What the mean of the readings scatters as, times √n: the short-term
+    /// σ allowing for their correlation once their largest step is out
+    /// ([`confidence::long_run_sd`]). The CUSUM is scaled by it.
+    pub long_run_sd: Option<f64>,
     /// Null, like the other tests, when there are too few readings to
     /// search (the headline says how many).
     pub autocorrelation: Option<Autocorrelation>,
@@ -886,6 +895,10 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
 /// headline is read from `g`, but cycles are looked for in `fine`, which
 /// keeps cycles too short for `g`'s readings.
 #[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn check_series(
     kind: SeriesKind,
     mut g: Grid,
@@ -918,6 +931,7 @@ pub fn check_series(
         },
         sd: mean_sd(y).map(|m| m.1),
         short_term_sd: short_term_sd(y),
+        long_run_sd: None,
         autocorrelation: None,
         allan: None,
         cusum: None,
@@ -988,10 +1002,15 @@ pub fn check_series(
         });
     }
 
-    // CUSUM against the mean, scaled by the short-term σ so that slow
-    // change cannot hide itself by inflating the scale.
-    if sst > 0.0 {
-        let scale = sst * nf.sqrt();
+    // CUSUM against the mean, scaled by the readings' long-run σ: the
+    // short-term σ, so slow change cannot hide itself by inflating the
+    // scale, allowing for their correlation once their largest step is
+    // out (#647).
+    let lr = confidence::long_run_sd(y, sst, Slow::Step);
+    out.long_run_sd = Some(lr);
+    let mut walk = None;
+    if lr > 0.0 {
+        let scale = lr * nf.sqrt();
         let mut s = 0.0;
         let mut ts = Vec::with_capacity(n);
         let mut ss = Vec::with_capacity(n);
@@ -1002,7 +1021,7 @@ pub fn check_series(
                 ss.push(s);
             }
         }
-        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points)));
+        walk = Some((ts, ss));
     }
 
     // Straight-line trend.
@@ -1051,10 +1070,13 @@ pub fn check_series(
         .collect();
     let bv: Vec<f64> = blocks.iter().map(|b| b.1).collect();
     if let Some(bs) = robust_diff_sigma(&bv).filter(|s| *s > 0.0) {
+        // Each split is judged against the medians' long-run σ, as the
+        // CUSUM is (#649).
+        let lr = confidence::long_run_sd(&bv, bs, Slow::Step);
         let min_len = ((cfg.change_min_segment_s / (per as f64 * g.step)).ceil() as usize).max(3);
         // Strong evidence: well past a BIC penalty for each extra mean.
         let penalty = (3.0 * (bv.len() as f64).ln()).max(15.0);
-        let cuts = segment(&bv, bs, min_len, penalty);
+        let cuts = segment(&bv, lr, min_len, penalty);
         let mut segs = Vec::new();
         let mut fitted = vec![f64::NAN; y.len()];
         for (j, &a) in cuts.iter().enumerate() {
@@ -1074,6 +1096,7 @@ pub fn check_series(
         out.changes = Some(Changes {
             block_s: per as f64 * g.step,
             block_sigma: bs,
+            long_run_sigma: lr,
             explained: explained(y, &fitted),
             segments: segs,
         });
@@ -1082,6 +1105,15 @@ pub fn check_series(
 
     out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
     out.lead = lead(&out, cfg);
+    if let Some((ts, ss)) = walk {
+        // The corner is marked only at a level change the headline
+        // names (#697).
+        let cuts: Vec<f64> = level_change(&out, cfg)
+            .iter()
+            .flat_map(|c| c.segments.iter().skip(1).map(|g| g.start_s))
+            .collect();
+        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points), &cuts));
+    }
     out.headline = lead_text(&out, mean);
     out.summary = lead_summary(&out);
     if let Some(more) = also(&out, cfg) {
@@ -1171,8 +1203,8 @@ fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
         ));
     }
     let moves = !matches!(s.lead, Lead::ShiftingMean | Lead::Drifting);
-    if let Some(ch) = s.changes.as_ref().filter(|_| moves) {
-        if ch.segments.len() >= 2 && ch.explained >= cfg.min_explained {
+    if let Some(ch) = level_change(s, cfg).filter(|_| moves) {
+        {
             let lo = ch
                 .segments
                 .iter()
@@ -1706,6 +1738,21 @@ fn refine(d: &Grid, p: f64, rel: f64) -> f64 {
     }
 }
 
+/// The change finder's stretches when they say the level moves: cut, and
+/// explaining at least `min_explained` of the variance.
+fn level_moves<'a>(s: &'a SeriesCheck, cfg: &Config) -> Option<&'a Changes> {
+    s.changes
+        .as_ref()
+        .filter(|c| c.segments.len() > 1 && c.explained >= cfg.min_explained)
+}
+
+/// The one rule that names a level change, read by the headline and the
+/// CUSUM's corner alike (#697): the level moves and the lead is not a
+/// slide, which a slide cut into steps is.
+fn level_change<'a>(s: &'a SeriesCheck, cfg: &Config) -> Option<&'a Changes> {
+    level_moves(s, cfg).filter(|_| s.lead != Lead::Drifting)
+}
+
 fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
     if let Some(t) = &s.two_state {
         if t.switching_levels() {
@@ -1722,15 +1769,13 @@ fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
         .trend
         .as_ref()
         .map_or(0.0, |t| t.explained.max(t.curve_explained));
-    if let Some(ch) = &s.changes {
-        if ch.segments.len() > 1 && ch.explained >= cfg.min_explained {
-            // A slide cut into steps is still a slide.
-            return if trend >= 0.8 * ch.explained {
-                Lead::Drifting
-            } else {
-                Lead::ShiftingMean
-            };
-        }
+    if let Some(ch) = level_moves(s, cfg) {
+        // A slide cut into steps is still a slide.
+        return if trend >= 0.8 * ch.explained {
+            Lead::Drifting
+        } else {
+            Lead::ShiftingMean
+        };
     }
     if trend >= cfg.min_explained {
         return Lead::Drifting;
@@ -1859,6 +1904,10 @@ fn lead_summary(s: &SeriesCheck) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn lead_text(s: &SeriesCheck, mean: f64) -> String {
     let k = s.series;
     let name = k.name();
@@ -2174,6 +2223,10 @@ pub fn p_text(p: f64) -> String {
 /// Check the rate, the amplitude and the beat error of a long-run
 /// analysis. `log` and `clock` are what `long` was run on, and `long`
 /// its report (whose period search is reused).
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn check(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -2634,10 +2687,11 @@ fn finite_or_nan(v: f64) -> f64 {
     }
 }
 
-/// Amplitude bin width for the isochronism curve, degrees, and the
-/// readings a bin needs.
-const ISO_BIN_DEG: f64 = 2.0;
-const ISO_MIN_READINGS: usize = 10;
+/// Amplitude bin width for the isochronism curve, degrees, the readings a
+/// bin needs, and the bins the curve needs.
+pub const ISO_BIN_DEG: f64 = 2.0;
+pub const ISO_MIN_READINGS: usize = 10;
+pub const ISO_MIN_BINS: usize = 3;
 
 fn quantile(sorted: &[f64], q: f64) -> f64 {
     let x = q * (sorted.len() - 1) as f64;
@@ -2681,7 +2735,7 @@ fn wquad(x: &[f64], y: &[f64], w: &[f64]) -> Option<[f64; 3]> {
 }
 
 /// The rate binned by amplitude, reading against the same reading. Needs
-/// at least three bins with enough readings.
+/// at least [`ISO_MIN_BINS`] bins with enough readings.
 fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<IsochronismCurve> {
     let (mut x, mut y) = (amp.clone(), rate.clone());
     drop_outliers(&mut x, cfg.outlier_sigma);
@@ -2690,7 +2744,7 @@ fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<Isochronis
         .filter(|&i| x.y[i].is_finite() && y.y[i].is_finite())
         .map(|i| (x.y[i], y.y[i], cfg.wind_h + y.time(i) / 3600.0))
         .collect();
-    if pairs.len() < 3 * ISO_MIN_READINGS {
+    if pairs.len() < ISO_MIN_BINS * ISO_MIN_READINGS {
         return None;
     }
     let mut amps: Vec<f64> = pairs.iter().map(|p| p.0).collect();
@@ -2718,7 +2772,7 @@ fn isochronism_curve(rate: &Grid, amp: &Grid, cfg: &Config) -> Option<Isochronis
             to_wind_h: hours.fold(f64::NEG_INFINITY, f64::max),
         });
     }
-    if bins.len() < 3 {
+    if bins.len() < ISO_MIN_BINS {
         return None;
     }
     let w: Vec<f64> = bins.iter().map(|b| b.readings as f64).collect();

@@ -46,8 +46,9 @@ pub enum ClockFrom {
 /// Where the clock comes from for a take with a clock log (`log`), USB
 /// lines (`usb_ppm`) and a known correction (`correction_ppm`), as
 /// [`clock`] picks it; `None` when the readings stay on the sound card's
-/// clock. USB lines set the rate whenever there is a log; without one, a
-/// known correction comes before them.
+/// clock. USB lines set the rate whenever the take has them, as they time
+/// its card on this take; without them, a log comes before a known
+/// correction (#635).
 pub fn clock_from(
     log: bool,
     usb_ppm: Option<f64>,
@@ -56,8 +57,8 @@ pub fn clock_from(
     match (log, usb_ppm, correction_ppm) {
         (true, Some(_), _) => Some(ClockFrom::LogRatedByUsb),
         (true, None, _) => Some(ClockFrom::Log),
-        (false, _, Some(_)) => Some(ClockFrom::Correction),
-        (false, Some(_), None) => Some(ClockFrom::Usb),
+        (false, Some(_), _) => Some(ClockFrom::Usb),
+        (false, None, Some(_)) => Some(ClockFrom::Correction),
         (false, None, None) => None,
     }
 }
@@ -70,7 +71,9 @@ pub fn clock_from(
 ///   the recording has USB lines (`usb_ppm`, slow positive), they set the
 ///   rate and the log keeps only its breaks ([`ClockFit::rate_from_usb`]).
 /// - A correction or the USB lines alone are one steady error over the
-///   take ([`ClockFit::fixed`]).
+///   take ([`ClockFit::fixed`]); USB lines over a correction keep the
+///   correction beside them, to say when the two disagree
+///   ([`ClockFit::usb_over_correction`]).
 pub fn clock(
     log_text: Option<&str>,
     sample_rate: u32,
@@ -97,7 +100,10 @@ pub fn clock(
             (Some(ClockFrom::Correction), _) => {
                 correction_ppm.map(|p| ClockFit::fixed(p, duration_s))
             }
-            (Some(ClockFrom::Usb), _) => usb_ppm.map(|p| ClockFit::fixed(p, duration_s)),
+            (Some(ClockFrom::Usb), _) => usb_ppm.map(|p| match correction_ppm {
+                Some(c) => ClockFit::usb_over_correction(p, c, duration_s),
+                None => ClockFit::fixed(p, duration_s),
+            }),
             _ => None,
         },
     )
@@ -373,6 +379,110 @@ pub fn reading_window(
         from_s,
         to_s,
     })
+}
+
+/// What is opened to read the recording at `path` (a recording or a
+/// take's folder) whole, as `analyze --trend` reads it: the folder its
+/// session file is read from, the session file (an empty one without)
+/// and one entry for the whole recording. With a session file `m`
+/// (holding only its entries for the recording), that entry is
+/// [`whole_take`]'s: one clock log, every entry's masks.
+pub fn whole_entry(
+    path: &Path,
+    manifest: Option<&Manifest>,
+) -> Result<(PathBuf, Manifest, RecordingEntry), String> {
+    let (base, file) = if path.is_dir() {
+        (path.to_path_buf(), ".".to_string())
+    } else {
+        (
+            path.parent().unwrap_or(Path::new(".")).to_path_buf(),
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        )
+    };
+    Ok(match manifest {
+        Some(m) if !m.recordings.is_empty() => (base, m.clone(), whole_take(m)?),
+        _ => (
+            base,
+            Manifest::default(),
+            RecordingEntry {
+                file,
+                ..Default::default()
+            },
+        ),
+    })
+}
+
+/// Each of `entries` of the take `m` that names a position: the
+/// stretch's start, the start of what is read once the watch has settled
+/// and the end of that ([`reading_window`], an entry that reads nothing
+/// settling to its end), and the position. `length_s` is the recording's
+/// length, infinite where it is not known.
+pub fn listed_positions(
+    m: &Manifest,
+    entries: &[RecordingEntry],
+    length_s: f64,
+) -> Vec<(f64, f64, Option<f64>, session::Position)> {
+    entries
+        .iter()
+        .filter_map(|e| {
+            let p = session::Position::parse(e.position.as_deref()?)?;
+            let start = e.start_s.unwrap_or(0.0);
+            let (from, to) = match reading_window(e, m, None, length_s) {
+                Ok(w) => (w.from_s, w.to_s),
+                Err(_) => {
+                    let end = e.end_s.unwrap_or(start);
+                    (end, end)
+                }
+            };
+            Some((start, from, to.is_finite().then_some(to), p))
+        })
+        .collect()
+}
+
+/// A take's changes of position (where each began, and the position)
+/// and the settling after each (start, end).
+pub type Positions<P> = (Vec<(f64, P)>, Vec<(f64, f64)>);
+
+/// The positions listed (start, start of what is read, end, position),
+/// as changes oldest first and the settling before each: from the end of
+/// the one before (or the take's start, for the first) to where its
+/// reading starts.
+pub fn positions_of<P: Copy>(
+    listed: impl Iterator<Item = (f64, f64, Option<f64>, P)>,
+) -> Positions<P> {
+    let mut listed: Vec<(f64, f64, Option<f64>, P)> = listed.collect();
+    listed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out = Vec::new();
+    let mut settles = Vec::new();
+    for (i, &(start, from, _, p)) in listed.iter().enumerate() {
+        // The position began where the one before it ended, the first at
+        // the take's start: the app saves each entry from the end of its
+        // settling, the first's too.
+        let began = match i.checked_sub(1).map(|j| listed[j].2) {
+            None => 0.0,
+            Some(Some(end)) if end < start => end,
+            Some(_) => start,
+        };
+        if from > began {
+            settles.push((began, from));
+        }
+        out.push((began, p));
+    }
+    (out, settles)
+}
+
+/// Where no reading over a take may reach across: its breaks, each change
+/// of position after the first (`changes`, oldest first) and the end of
+/// each settling, in order.
+pub fn reading_cuts(breaks: &[Break], changes: &[f64], settles: &[(f64, f64)]) -> Vec<f64> {
+    let mut cuts: Vec<f64> = breaks.iter().map(|b| b.audio_s).collect();
+    cuts.extend(changes.iter().skip(1).copied());
+    cuts.extend(settles.iter().map(|s| s.1));
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup();
+    cuts
 }
 
 /// Whether `p` is a sound file a take keeps: WAV or FLAC.
@@ -712,6 +822,10 @@ pub struct EntryRead {
 /// found: the seconds of sound read, and the seconds of sound there are
 /// in all (`done_s` reaches `total_s` at the end); a take kept as its
 /// analysis alone has no sound to go through.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 pub fn open_entry(
     base: &Path,
     m: &Manifest,
@@ -923,6 +1037,8 @@ pub fn measure_entry(
     if let Some(why) = unlisted {
         measurement.breaks_unlisted(why);
     }
+    measurement.clock_ppm = clock_ppm;
+    measurement.clock_source = clock_source.clone();
     Ok(EntryRead {
         files,
         kept,
@@ -1165,27 +1281,43 @@ mod tests {
     }
 
     #[test]
-    fn without_a_log_a_known_correction_comes_before_the_usb_lines() {
+    fn without_a_log_the_usb_lines_come_before_a_known_correction() {
         let fixed = |ppm| ClockFit::fixed(ppm, 600.0).map(300.0);
-        let at = |c: Option<ClockFit>| c.map(|c| c.map(300.0));
+        let at = |c: &Option<ClockFit>| c.as_ref().map(|c| c.map(300.0));
+        // The USB lines set the rate; the correction is kept beside them,
+        // and said when they are more than 5 ppm apart (#635).
+        let over = clock(None, 48_000, 2, Some(12.0), Some(5.0), 600.0).unwrap();
+        assert_eq!(at(&over), Some(fixed(12.0)));
+        let over = over.unwrap();
+        assert!(over.corrects() && over.withheld.is_none());
         assert_eq!(
-            at(clock(None, 48_000, 2, Some(12.0), Some(5.0), 600.0).unwrap()),
-            Some(fixed(5.0))
+            over.sources_disagree(),
+            Some(crate::clock::SourcesDisagree {
+                usb_ppm: 12.0,
+                log_ppm: 5.0,
+                log_ppm_sd: 0.0,
+                against: crate::clock::Against::Correction,
+            })
         );
-        assert_eq!(
-            at(clock(None, 48_000, 2, Some(12.0), None, 600.0).unwrap()),
-            Some(fixed(12.0))
-        );
+        let near = clock(None, 48_000, 2, Some(12.0), Some(8.0), 600.0).unwrap();
+        assert_eq!(at(&near), Some(fixed(12.0)));
+        assert_eq!(near.unwrap().sources_disagree(), None);
+        let alone = clock(None, 48_000, 2, Some(12.0), None, 600.0).unwrap();
+        assert_eq!(at(&alone), Some(fixed(12.0)));
+        assert_eq!(alone.unwrap().sources_disagree(), None);
+        let correction = clock(None, 48_000, 2, None, Some(5.0), 600.0).unwrap();
+        assert_eq!(at(&correction), Some(fixed(5.0)));
         assert!(clock(None, 48_000, 2, None, None, 600.0).unwrap().is_none());
     }
 
     #[test]
-    fn the_clock_comes_from_the_log_and_usb_lines_else_a_correction_else_usb() {
+    fn the_clock_comes_from_the_log_and_usb_lines_else_usb_else_a_correction() {
         use ClockFrom::*;
         assert_eq!(clock_from(true, Some(1.0), Some(2.0)), Some(LogRatedByUsb));
         assert_eq!(clock_from(true, None, Some(2.0)), Some(Log));
-        assert_eq!(clock_from(false, Some(1.0), Some(2.0)), Some(Correction));
+        assert_eq!(clock_from(false, Some(1.0), Some(2.0)), Some(Usb));
         assert_eq!(clock_from(false, Some(1.0), None), Some(Usb));
+        assert_eq!(clock_from(false, None, Some(2.0)), Some(Correction));
         assert_eq!(clock_from(false, None, None), None);
     }
 
@@ -1270,6 +1402,43 @@ mod tests {
         );
         assert_eq!(w(3, None, 600.0), Err(NoReading::Nothing));
         assert!(matches!(w(4, None, 600.0), Err(NoReading::Outside(_))));
+    }
+
+    /// A stretch that starts partway into its recording settles halfway
+    /// through its own length, not the recording's, and an unsettled
+    /// entry gives its stretch's length; each reason for no reading says
+    /// itself in words (#694).
+    #[test]
+    fn a_stretch_partway_in_is_measured_on_its_own_length() {
+        assert_eq!(measured(100.0, 110.0, None, None), (105.0, 110.0));
+        let m: Manifest =
+            toml::from_str("[[recording]]\nfile = \"a.flac\"\nstart_s = 100\nsettle_s = 50\n")
+                .unwrap();
+        let no = reading_window(&m.recordings[0], &m, None, 130.0).unwrap_err();
+        assert_eq!(
+            no,
+            NoReading::Unsettled {
+                file: "a.flac".into(),
+                settle_s: 50.0,
+                length_s: 30.0
+            }
+        );
+        assert_eq!(
+            no.to_string(),
+            "a.flac: a settle_s of 50 s leaves nothing of its 30 s stretch to read; \
+             give it a shorter settle_s"
+        );
+        assert_eq!(
+            NoReading::Nothing.to_string(),
+            "nothing to read: it settles right to its end"
+        );
+        assert_eq!(NoReading::Outside("out".into()).to_string(), "out");
+        assert_eq!(
+            EntryError::NoReading(NoReading::Nothing).to_string(),
+            NoReading::Nothing.to_string()
+        );
+        assert_eq!(EntryError::Failed("bad".into()).to_string(), "bad");
+        assert_eq!(String::from(EntryError::from("bad".to_string())), "bad");
     }
 
     #[test]
@@ -1424,5 +1593,47 @@ mod tests {
         assert_eq!(done, total);
         assert!((total - read.log.duration_s).abs() < 1e-6, "{told:?}");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The words for where a take's clock came from, for each source; a
+    /// clock log is named by its file name alone (#669).
+    #[test]
+    fn clock_source_text_words_each_source() {
+        let usb = Some("USB lines, +12.0 ppm");
+        let stored = Some("stored for 'USB', 2026-10-10T03:00:00Z");
+        let log = Some(Path::new("take/clock.csv"));
+        let text = |from| clock_source_text(from, usb, stored, log);
+        assert_eq!(
+            text(ClockFrom::LogRatedByUsb),
+            "USB lines, +12.0 ppm; clock log clock.csv for its breaks"
+        );
+        assert_eq!(text(ClockFrom::Log), "from clock log clock.csv");
+        assert_eq!(
+            text(ClockFrom::Correction),
+            "stored for 'USB', 2026-10-10T03:00:00Z"
+        );
+        assert_eq!(text(ClockFrom::Usb), "USB lines, +12.0 ppm");
+    }
+
+    /// A calibre named from the table keeps its figures and the table's
+    /// order of wheels; a name in neither the table nor the user's
+    /// calibres finds nothing.
+    #[test]
+    fn a_table_calibre_keeps_its_figures_and_wheel_order() {
+        let user = crate::calibre_store::UserCalibres::default();
+        let c = calibre_named("ETA 2824-2", &user).unwrap();
+        assert_eq!(c.name, "ETA 2824-2");
+        assert_eq!(
+            (c.bph, c.lift_angle_deg, c.escape_teeth),
+            (Some(28800), Some(50.0), Some(20))
+        );
+        let table = crate::calibres::find("ETA 2824-2").unwrap();
+        let named: Vec<&str> = c.wheels.iter().map(|w| w.name.as_str()).collect();
+        let listed: Vec<&str> = table.wheels.iter().map(|w| w.name.as_str()).collect();
+        assert!(listed.len() >= 2, "{listed:?}");
+        assert_eq!(&named[..listed.len()], &listed[..]);
+        assert_eq!(c.wheels[0].name, "barrel");
+        assert!((c.wheels[0].period_s - 21114.027).abs() < 0.01);
+        assert!(calibre_named("No Such Calibre 9999", &user).is_none());
     }
 }

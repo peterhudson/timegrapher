@@ -298,6 +298,10 @@ printf '%s\n' '{"schema":"timegrapher.test/1"}'
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn child_exit_status_controls_success_even_with_json() {
     let dir = Scratch(std::env::temp_dir().join(format!(
         "timegrapher-mcp-child-outcome-{}",

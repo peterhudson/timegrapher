@@ -76,6 +76,11 @@ fn library(name: &str) -> PathBuf {
 }
 
 #[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn watches_lists_and_shows_the_library_as_json() {
     let root = library("json");
     let lib = root.to_string_lossy().into_owned();

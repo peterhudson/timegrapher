@@ -27,7 +27,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
 use std::time::{Duration, Instant};
 use timegrapher_core::beats::STANDARD_BPH;
-use timegrapher_core::capture::{self, Block, Capture, Event, InputDevice, Level};
+use timegrapher_core::breaks::{GapWatch, Live};
+use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
 use timegrapher_core::clockstore;
 use timegrapher_core::library;
 use timegrapher_core::library::{length_text, size_text};
@@ -38,6 +39,8 @@ use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::power_reserve;
 use timegrapher_core::profile::TickProfile;
 use timegrapher_core::steadiness::SeriesKind;
+
+mod charts;
 
 /// The A and B sides' sounds.
 type Profiles = [Option<TickProfile>; 2];
@@ -1377,6 +1380,10 @@ const TAB_BAR_H: f32 = 24.0;
 /// taken from the panes with room to spare, so opening a pane never
 /// crushes the others into a sliver. Worked from the sizes of the last
 /// frame; a window too small for them all shares its room in proportion.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn keep_room(
     tiles: &mut Tiles<Pane>,
     need: impl Fn(Pane) -> Option<f32>,
@@ -1675,18 +1682,6 @@ const PROBABILITY_MARKS: [(f64, &str); 11] = [
     (99.0, "99%"),
     (99.9, "99.9%"),
 ];
-
-/// Silence between two of the microphone's blocks longer than this, by
-/// the system clock, is the computer having slept.
-const SLEPT_S: f64 = 5.0;
-
-/// The seconds the computer slept before block `b`, which came after a
-/// block that arrived at `before`; `None` if it didn't.
-fn slept(before: Option<std::time::SystemTime>, b: &Block, sample_rate: u32) -> Option<f64> {
-    let block_s = b.samples.len() as f64 / sample_rate.max(1) as f64;
-    let gap = b.at.duration_since(before?).ok()?.as_secs_f64() - block_s;
-    (gap > SLEPT_S).then_some(gap)
-}
 
 /// The longest a frame spends saving and reading sound that has come in;
 /// any more waits for the next frame.
@@ -2477,9 +2472,9 @@ pub struct TimegrapherApp {
     /// When the microphone was opened and when it last sent audio.
     opened_at: Instant,
     audio_at: Option<Instant>,
-    /// When the microphone's last block arrived, by the system clock, to
-    /// tell when the computer slept between two blocks.
-    block_at: Option<std::time::SystemTime>,
+    /// Core's gap rule over a live input's blocks: a break where the
+    /// computer slept or the input stalled.
+    gaps: Option<GapWatch>,
     /// When the sound was last taken in, to tell when nothing ran at all
     /// (the computer asleep, a dialog open) from an input gone quiet.
     polled_at: Instant,
@@ -2563,6 +2558,10 @@ impl TimegrapherApp {
     /// Put back the views and choices from the last time. A pane layout
     /// from another version of the app, missing a pane or holding one twice,
     /// is set aside for the starting one.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     pub fn apply_settings(&mut self, s: Settings) {
         let Settings {
             device,
@@ -2711,6 +2710,10 @@ impl TimegrapherApp {
 
     /// The app with a given device list. Tests pass an empty one: listing
     /// devices from several test threads at once crashes on Windows.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn with_devices(devices: Vec<InputDevice>, file: Option<PathBuf>) -> Self {
         let device = capture::choices(&devices).first().map(|c| c.id.clone());
         let home = std::env::var_os("HOME")
@@ -2913,7 +2916,7 @@ impl TimegrapherApp {
             all_inputs: false,
             opened_at: Instant::now(),
             audio_at: None,
-            block_at: None,
+            gaps: None,
             polled_at: Instant::now(),
         };
         if let Some(f) = file {
@@ -3101,7 +3104,7 @@ impl TimegrapherApp {
                 );
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                self.block_at = None;
+                self.gaps = None;
                 self.session.listen();
                 self.put_input_clock(clocks.get(&c.label).cloned());
                 self.clock_track = Some(ClockTrack {
@@ -3159,6 +3162,15 @@ impl TimegrapherApp {
     fn pause(&mut self) {
         if self.capture.is_none() {
             return;
+        }
+        // The sound core's gap rule still holds is the take's too.
+        let held = self.gaps.as_mut().map(GapWatch::finish);
+        if let Err(CaptureFailure::Recording(e)) = held
+            .into_iter()
+            .flatten()
+            .try_for_each(|l| self.take_live(l))
+        {
+            return self.recording_failed(e);
         }
         self.release_capture();
         if self.session.mic() {
@@ -3226,7 +3238,7 @@ impl TimegrapherApp {
                 }
                 self.opened_at = Instant::now();
                 self.audio_at = None;
-                self.block_at = None;
+                self.gaps = None;
                 self.strip_end = None;
                 self.message = None;
                 applog::info(&format!("microphone resumed at {} Hz", c.sample_rate));
@@ -4407,6 +4419,10 @@ impl TimegrapherApp {
 
     /// Analyse `path` whole. Without a session file it starts from
     /// `carried`, else from the defaults.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn analyse_whole(&mut self, path: &Path, carried: Option<WatchSetup>) {
         // Refused before anything on show is stopped.
         if let Some(why) = no_analysis_to_read(path).or_else(|| {
@@ -4700,9 +4716,111 @@ impl TimegrapherApp {
         self.poll_for(FRAME_BUDGET);
     }
 
+    /// One block of a capture, or a break core's gap rule found before the
+    /// next: saved and read.
+    fn take_live(&mut self, l: Live) -> Result<(), CaptureFailure> {
+        let (Some(cap), Some(live)) = (self.capture.as_ref(), self.live.as_mut()) else {
+            return Ok(());
+        };
+        let b = match l {
+            Live::Block(b) => b,
+            Live::Break(gap) => {
+                // The computer slept or the input stalled: carry on, as
+                // after a pause, with the time between out.
+                if let Ok(Err(e)) = self.session.pause(live.duration_s()) {
+                    return Err(CaptureFailure::Recording(e.to_string()));
+                }
+                if self.session.resume(&cap.label).is_ok() {
+                    if let Some(r) = self.session.recorder.as_mut() {
+                        r.sound_lost(gap);
+                    }
+                    live.skip(gap);
+                    self.session.resumed_at(live.duration_s());
+                }
+                if let Some(t) = self.clock_track.as_mut() {
+                    t.restart(live.sample_rate());
+                }
+                let m = format!(
+                    "The sound's timestamps jumped by {}, as they do when the \
+                     computer sleeps. The jump is left out of the take as a \
+                     break, and listening carries on.",
+                    fields::duration(gap.round())
+                );
+                applog::warn(&m);
+                self.message = Some((m, false));
+                return Ok(());
+            }
+        };
+        if let Some(r) = self.session.recorder.as_mut() {
+            // An error stops the queued sound being processed, and no
+            // later input error replaces it.
+            r.write(&b)
+                .map_err(|e| CaptureFailure::Recording(e.to_string()))?;
+        }
+        if let Some(t) = self.clock_track.as_mut() {
+            t.push(b.samples.len(), b.at);
+        }
+        let l = Level::of(&b.samples);
+        if self.level_at.elapsed().as_secs_f64() > 0.5 || l.peak_dbfs > self.level.peak_dbfs {
+            self.level = l;
+            self.level_at = Instant::now();
+        }
+        if l.clipped_fraction > 0.0 {
+            self.clipped_at = Some(Instant::now());
+        }
+        if live.push(&b.samples) {
+            // A jump the beats' timing shows is found a second
+            // or two after it: the points read since reached
+            // across it, so they go.
+            let jumps = live.jumps();
+            if jumps != self.jumps_seen.as_slice() {
+                let recent = live.duration_s() - 10.0;
+                let new = jumps
+                    .iter()
+                    .copied()
+                    .filter(|j| *j > recent && !self.jumps_seen.contains(j))
+                    .reduce(f64::min);
+                if let Some(j) = new {
+                    self.trend.retain(|p| p.t <= j);
+                    self.sound_history.retain(|h| h.0 <= j);
+                }
+                self.jumps_seen = jumps.to_vec();
+            }
+            // While the watch settles after a move nothing is
+            // read; then the readings start afresh.
+            match self.session.settling_now(live.duration_s()) {
+                Some(true) => return Ok(()),
+                Some(false) => {
+                    live.new_stretch();
+                    return Ok(());
+                }
+                None => {}
+            }
+            let r = live.reading(self.average_s);
+            if !self.session.replay_reading_allowed(r.time_s) {
+                return Ok(());
+            }
+            self.trend.push(TrendPoint::of(r.time_s, &r));
+            let p = live.tick_profiles();
+            let due = self
+                .sound_history
+                .last()
+                .is_none_or(|h| r.time_s - h.0 >= SOUND_EVERY_S);
+            if due && p.iter().any(Option::is_some) {
+                self.sound_history.push((r.time_s, p.clone()));
+            }
+        }
+        Ok(())
+    }
+
     /// Save and read the sound that has come in, for up to `budget`, so a
     /// backlog never holds up the window for long. Returns the blocks of
     /// sound taken.
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn poll_for(&mut self, budget: Duration) -> usize {
         let started = Instant::now();
         // After a while with nothing run, the input gets the usual grace
@@ -4715,128 +4833,56 @@ impl TimegrapherApp {
         let mut taken = 0;
         let mut ended = false;
         let mut failure = None;
-        if let (Some(cap), Some(live)) = (self.capture.as_ref(), self.live.as_mut()) {
-            loop {
-                if taken > 0 && started.elapsed() > budget {
-                    break;
-                }
-                let event = cap.rx.try_recv();
-                if matches!(event, Ok(Event::Audio(_))) {
+        while self.live.is_some() {
+            let Some(cap) = self.capture.as_ref() else {
+                break;
+            };
+            if taken > 0 && started.elapsed() > budget {
+                break;
+            }
+            let is_file = cap.is_file;
+            // A live input's blocks go through core's gap rule, which lets
+            // each through once no break before it is in doubt (#689).
+            let came = match cap.rx.try_recv() {
+                Ok(Event::Audio(b)) => {
                     taken += 1;
-                }
-                match event {
-                    Ok(Event::Audio(b)) => {
-                        if !cap.is_file {
-                            if let Some(gap) = slept(self.block_at, &b, live.sample_rate()) {
-                                // The computer slept: carry on, as after a
-                                // pause, with the time between out.
-                                if let Ok(Err(e)) = self.session.pause(live.duration_s()) {
-                                    failure = Some(CaptureFailure::Recording(e.to_string()));
-                                    break;
-                                }
-                                if self.session.resume(&cap.label).is_ok() {
-                                    live.skip(gap);
-                                    self.session.resumed_at(live.duration_s());
-                                }
-                                if let Some(t) = self.clock_track.as_mut() {
-                                    t.restart(live.sample_rate());
-                                }
-                                let m = format!(
-                                    "The sound's timestamps jumped by {}, as they do when the \
-                                     computer sleeps. The jump is left out of the take as a \
-                                     break, and listening carries on.",
-                                    fields::duration(gap.round())
-                                );
-                                applog::warn(&m);
-                                self.message = Some((m, false));
-                            }
-                            self.block_at = Some(b.at);
-                        }
-                        if let Some(r) = self.session.recorder.as_mut() {
-                            if let Err(e) = r.write(&b) {
-                                failure = Some(CaptureFailure::Recording(e.to_string()));
-                                // Do not process more queued sound or let a later
-                                // input error replace this primary recording error.
-                                break;
-                            }
-                        }
-                        self.audio_at = Some(Instant::now());
-                        if let Some(t) = self.clock_track.as_mut() {
-                            t.push(b.samples.len(), b.at);
-                        }
-                        let l = Level::of(&b.samples);
-                        if self.level_at.elapsed().as_secs_f64() > 0.5
-                            || l.peak_dbfs > self.level.peak_dbfs
-                        {
-                            self.level = l;
-                            self.level_at = Instant::now();
-                        }
-                        if l.clipped_fraction > 0.0 {
-                            self.clipped_at = Some(Instant::now());
-                        }
-                        if live.push(&b.samples) {
-                            // A jump the beats' timing shows is found a second
-                            // or two after it: the points read since reached
-                            // across it, so they go.
-                            let jumps = live.jumps();
-                            if jumps != self.jumps_seen.as_slice() {
-                                let recent = live.duration_s() - 10.0;
-                                let new = jumps
-                                    .iter()
-                                    .copied()
-                                    .filter(|j| *j > recent && !self.jumps_seen.contains(j))
-                                    .reduce(f64::min);
-                                if let Some(j) = new {
-                                    self.trend.retain(|p| p.t <= j);
-                                    self.sound_history.retain(|h| h.0 <= j);
-                                }
-                                self.jumps_seen = jumps.to_vec();
-                            }
-                            // While the watch settles after a move nothing is
-                            // read; then the readings start afresh.
-                            match self.session.settling_now(live.duration_s()) {
-                                Some(true) => continue,
-                                Some(false) => {
-                                    live.new_stretch();
-                                    continue;
-                                }
-                                None => {}
-                            }
-                            let r = live.reading(self.average_s);
-                            if !self.session.replay_reading_allowed(r.time_s) {
-                                continue;
-                            }
-                            self.trend.push(TrendPoint::of(r.time_s, &r));
-                            let p = live.tick_profiles();
-                            let due = self
-                                .sound_history
-                                .last()
-                                .is_none_or(|h| r.time_s - h.0 >= SOUND_EVERY_S);
-                            if due && p.iter().any(Option::is_some) {
-                                self.sound_history.push((r.time_s, p.clone()));
-                            }
-                        }
-                    }
-                    Ok(Event::End) => {
-                        ended = true;
-                        break;
-                    }
-                    Ok(Event::Error(e)) => {
-                        failure = Some(CaptureFailure::Input(format!(
-                            "Input stopped. {}",
-                            capture::explain_error(&e)
-                        )));
-                        if !cap.is_file {
-                            ended = true;
-                            break;
-                        }
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        ended = true;
-                        break;
+                    // Heard as it arrives, though core's gap rule may hold
+                    // it a while.
+                    self.audio_at = Some(Instant::now());
+                    if is_file {
+                        vec![Live::Block(b)]
+                    } else {
+                        let rate = self.live.as_ref().map_or(1, |l| l.sample_rate());
+                        self.gaps.get_or_insert_with(|| GapWatch::new(rate)).push(b)
                     }
                 }
+                Ok(Event::Error(e)) if is_file => {
+                    failure = Some(CaptureFailure::Input(format!(
+                        "Input stopped. {}",
+                        capture::explain_error(&e)
+                    )));
+                    continue;
+                }
+                Ok(Event::Error(e)) => {
+                    failure = Some(CaptureFailure::Input(format!(
+                        "Input stopped. {}",
+                        capture::explain_error(&e)
+                    )));
+                    ended = true;
+                    self.gaps.as_mut().map(GapWatch::finish).unwrap_or_default()
+                }
+                Ok(Event::End) | Err(TryRecvError::Disconnected) => {
+                    ended = true;
+                    self.gaps.as_mut().map(GapWatch::finish).unwrap_or_default()
+                }
+                Err(TryRecvError::Empty) => break,
+            };
+            if let Err(e) = came.into_iter().try_for_each(|l| self.take_live(l)) {
+                failure = Some(e);
+                break;
+            }
+            if ended {
+                break;
             }
         }
         // A microphone that opened but sends nothing.
@@ -5168,6 +5214,10 @@ impl TimegrapherApp {
     /// position's code on a teal swatch, and a menu of the six positions, then Stop
     /// Painting while it is on. In the toolbar's "…" menu, a menu of the
     /// same.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn brush_control(&mut self, ui: &mut egui::Ui, live: bool) {
         let pal = theme::pal(ui);
         let test = self.in_test();
@@ -5450,10 +5500,12 @@ impl TimegrapherApp {
             let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
             let mut log = steady::log_of(live)?;
             let clock = self.reading_clock(log.duration_s);
-            // The cuts the app adds (a settling's end, a move) where they
-            // bound the reading rather than fall within it change nothing
-            // it reads, and session has none there.
-            log.jumps.retain(|&j| from < j && j < to);
+            // The cuts the app adds (a settling's end, a move, a mask's ends)
+            // at the reading's or a mask's edges change nothing it reads, and
+            // session has none there (#682).
+            let edge =
+                |j: f64| j <= from || j >= to || self.masked.iter().any(|m| j == m.0 || j == m.1);
+            log.jumps.retain(|&j| !edge(j));
             let breaks = self.reading_breaks(&log);
             // The time between the stretches, another position or its
             // settling, is left out as a mask is.
@@ -5906,6 +5958,10 @@ impl TimegrapherApp {
     }
 
     /// The question before throwing away unsaved sound.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
         let Some(what) = self.confirm.clone() else {
             return;
@@ -6785,6 +6841,10 @@ impl TimegrapherApp {
     /// background, writing it beside the take; [`Self::poll_take_keep`]
     /// then puts it in the take's place. Only a take whose session file
     /// names the whole folder in each entry, as the app's own takes do.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn start_take_keep(&mut self, take: PathBuf) {
         if self.take_keep.is_some() {
             return;
@@ -7073,6 +7133,10 @@ impl TimegrapherApp {
 
     /// The Watches view's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn watches_tools(&mut self, ui: &mut egui::Ui) {
         // One at a time in a narrow window: the watch shown has only the
         // way back to the list.
@@ -7501,7 +7565,7 @@ impl TimegrapherApp {
                 });
                 self.steady_info = info;
             }
-            Pane::Isochronism => theme::pane_toolbar(ui, title, help::ISOCHRONISM, |ui| {
+            Pane::Isochronism => theme::pane_toolbar(ui, title, &help::ISOCHRONISM, |ui| {
                 self.export_button(ui, pane)
             }),
             Pane::PositionsTest => theme::pane_toolbar(ui, title, &help::POSITIONS_TEST, |ui| {
@@ -7515,7 +7579,7 @@ impl TimegrapherApp {
                     self.reserve_settings(ui);
                 })
             }
-            Pane::Distributions => theme::pane_toolbar(ui, title, help::HISTOGRAMS, |ui| {
+            Pane::Distributions => theme::pane_toolbar(ui, title, &help::HISTOGRAMS, |ui| {
                 steady::series_switches(ui, &mut self.dist_series);
                 theme::bar_gap(ui);
                 self.histogram_settings(ui);
@@ -8115,6 +8179,10 @@ impl TimegrapherApp {
     /// the six instead of the buttons. The buttons set the position in a
     /// free live take; on a take on show or during a test they only show
     /// it.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn position_card(&mut self, ui: &mut egui::Ui, compact: bool) {
         self.position_card_title = if compact {
             "Position"
@@ -8352,6 +8420,10 @@ impl TimegrapherApp {
     /// with the take's length and state beside them, then Average Over. On
     /// a compact card, the length goes in Listen's hover and Average Over
     /// loses its label to its hover.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn listen_buttons(&mut self, ui: &mut egui::Ui, compact: bool) {
         let pal = theme::pal(ui);
         let area = ui.max_rect();
@@ -8531,6 +8603,10 @@ impl TimegrapherApp {
         self.quick_listen && self.session.saved_to().is_none() && self.watch_takes_dir().is_some()
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn save_menu(&mut self, ui: &mut egui::Ui, size: f32) {
         let pal = theme::pal(ui);
         let can = self.session.allows(Action::Save) && self.saving.is_none();
@@ -8925,6 +9001,10 @@ impl TimegrapherApp {
     /// rate, each as text where the calibre sets it. Where the row is too
     /// narrow for both, the lift alone (nothing finds it, while Auto finds
     /// the beat rate), the beat rates heading the Calibre menu.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn rate_and_lift(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let heard = self.live.as_ref().and_then(|l| l.bph());
@@ -9538,6 +9618,10 @@ impl TimegrapherApp {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn strip_settings(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let overlays = &mut self.overlays;
@@ -9885,6 +9969,10 @@ impl TimegrapherApp {
         self.watch_search_focus = true;
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         let command = |key| egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key);
         if ui
@@ -10303,6 +10391,10 @@ impl TimegrapherApp {
     /// its level set against the watch on the stand, in three numbered
     /// steps, listening all the while so the meter moves. Done keeps
     /// listening; Not Now stops, and the sheet doesn't come back by itself.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn setup_sheet_dialog(&mut self, ctx: &egui::Context) {
         if !self.setup_sheet || self.open_ask.is_some() || self.confirm.is_some() {
             return;
@@ -10496,6 +10588,10 @@ impl TimegrapherApp {
 
     /// A test that ended with no watch picked: Keep in Unsorted, Keep in a
     /// Watch… or Throw Away.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn test_keep_dialog(&mut self, ctx: &egui::Context) {
         let Some(kind) = self.test_keep else {
             return;
@@ -10650,6 +10746,10 @@ impl TimegrapherApp {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn open_ask_dialog(&mut self, ctx: &egui::Context) {
         let Some(mut a) = self.open_ask.take() else {
             return;
@@ -11028,6 +11128,10 @@ impl TimegrapherApp {
         self.settings_gear(ui);
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn pane_icon_groups(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.x = 2.0;
         let pal = theme::pal(ui);
@@ -12202,6 +12306,10 @@ impl TimegrapherApp {
     /// three rows (title, figure, controls) and one height at every width;
     /// where the full controls don't fit, the compact form of every card.
     /// Returns what the cards asked for, and where their controls go.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn readouts(&self, ui: &mut egui::Ui) -> Readouts {
         let pal = theme::pal(ui);
         let r = self.reading();
@@ -12356,7 +12464,7 @@ impl TimegrapherApp {
         let unheard_hover = format!(
             "{}.\n\n{}",
             r.as_ref().map(no_regular_beat).unwrap_or_default(),
-            help::NO_REGULAR_BEAT
+            *help::NO_REGULAR_BEAT
         );
         let unheard = (!heard).then(|| (unheard_line.clone(), unheard_hover.clone()));
         let r = r.as_ref().filter(|_| heard);
@@ -12416,7 +12524,7 @@ impl TimegrapherApp {
         {
             let rate = r.and_then(|r| r.rate_s_per_day);
             let rate_facts = reading_limits("Rate", caveats, lift_now, beats);
-            title(ui, cards[2].title, "Rate", help::RATE, &rate_facts, None);
+            title(ui, cards[2].title, "Rate", &help::RATE, &rate_facts, None);
             let unit = match pm {
                 Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
                 _ => "s/d".to_string(),
@@ -12911,6 +13019,10 @@ impl TimegrapherApp {
     /// closed unexpectedly, sound kept from an earlier session, a newer
     /// release) and the take's USB lines and clock log disagreeing, each
     /// opening its whole message and buttons over the window. The bar keeps its height whatever it shows.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn status_notices(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         // A warning or a failure starts with its icon; the words are in the
@@ -13117,6 +13229,10 @@ impl TimegrapherApp {
     /// The status bar's facts after the take's name, none cut short: the
     /// analysis under way, unsaved changes, the recording's state and the
     /// signal.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn status_facts(&self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         if let Some(b) = &self.batch {
@@ -13222,7 +13338,7 @@ impl TimegrapherApp {
                         .small()
                         .color(pal.text_secondary),
                 )
-                .on_hover_text(help::SIGNAL);
+                .on_hover_text(*help::SIGNAL);
             }
         }
     }
@@ -13304,7 +13420,7 @@ impl TimegrapherApp {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         ui.spacing_mut().item_spacing.y = 8.0;
                         ui.label(RichText::new(&line).font(theme::semibold(17.0)))
-                            .on_hover_text(help::NO_REGULAR_BEAT);
+                            .on_hover_text(*help::NO_REGULAR_BEAT);
                         ui.add(
                             egui::Label::new(
                                 RichText::new(
@@ -13619,6 +13735,10 @@ impl TimegrapherApp {
     /// The Positions Test pane's toolbar: start the test, load the
     /// full-wind results for the 24 hour half, the times in each
     /// position, and saving or copying the results.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn positions_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.guided_running();
         // While it runs, the step panel and the Listen card carry its
@@ -13915,6 +14035,10 @@ impl TimegrapherApp {
 
     /// The Power Reserve pane's toolbar: the position it runs in (set on
     /// the Current Position card), the keeping, and Start Test.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn reserve_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.reserve_running();
         let pal = theme::pal(ui);
@@ -14716,6 +14840,10 @@ impl TimegrapherApp {
         (pts, step)
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn strip_pane(&mut self, ui: &mut egui::Ui) {
         // Before there is a take to show, or while nothing in it beats
         // regularly: where things stand, in the strip's place.
@@ -14973,6 +15101,10 @@ impl TimegrapherApp {
 
     /// The Scope pane: the latest beats' sound up to the time on show, from
     /// what the live engine still holds, else read from the recording.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn scope_pane(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let view = self.scope_view;
@@ -15346,6 +15478,10 @@ impl TimegrapherApp {
 
     /// How often each value of a reading came up, over the session or the
     /// strip's length: bars, or the cumulative share.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn histogram(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
         use timegrapher_core::histogram as hist;
         let pal = theme::pal(ui);
@@ -15574,14 +15710,6 @@ impl TimegrapherApp {
         });
     }
 
-    /// The Charts pane: a chart for each reading shown, one above the
-    /// other, sharing the pane's height and its time axis.
-    fn charts_pane(&mut self, ui: &mut egui::Ui) {
-        let shown = self.chart_series;
-        self.note_need(ui, Pane::Charts, STACKED_MIN_H);
-        self.charts_drawn = stacked(ui, shown, STACKED_MIN_H, |ui, k| self.chart(ui, k));
-    }
-
     /// Whether `pane`'s plot would be under [`SHORT_PLOT_H`] tall here
     /// (with a little give, so it doesn't flicker at the edge): then the
     /// pane says so in one line in its place.
@@ -15619,295 +15747,6 @@ impl TimegrapherApp {
         let above = ui.cursor().top() - self.pane_top;
         self.pane_need
             .insert(pane, above + least + STACKED_NOTE_H + 6.0);
-    }
-
-    fn chart(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
-        let pal = theme::pal(ui);
-        let weak = pal.text_tertiary;
-        let average = self.average_s;
-        let trend = &self.trend;
-        let pick = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
-            trend
-                .iter()
-                .filter_map(|p| f(p).map(|v| [p.t, v]))
-                .collect()
-        };
-        // Each line in its reading's colour, as on the strip and in the
-        // distributions. Tick's amplitude dashes violet over blue and Tock's
-        // violet over deep orange, the key drawn the same; beat error from the
-        // drop is a fainter dashed amber.
-        let solid = LineStyle::Solid;
-        let (series, unit, decimals): (Vec<ChartLine>, &'static str, usize) = match reading {
-            SeriesKind::Rate => (
-                vec![ChartLine {
-                    name: format!(
-                        "Rate in seconds per day, {} average",
-                        fields::duration(average)
-                    ),
-                    pts: pick(|p| p.rate),
-                    color: pal.trace_rate,
-                    style: solid,
-                    key: pal.trace_rate,
-                    under: None,
-                    main: true,
-                }],
-                " s/day",
-                1,
-            ),
-            SeriesKind::Amplitude => (
-                vec![
-                    ChartLine {
-                        name: "Average Amplitude".into(),
-                        pts: pick(|p| p.amplitude),
-                        color: pal.trace_amplitude,
-                        style: solid,
-                        key: pal.trace_amplitude,
-                        under: None,
-                        main: true,
-                    },
-                    ChartLine {
-                        name: "Amplitude from Tick".into(),
-                        pts: pick(|p| p.amplitude_a),
-                        color: pal.trace_amplitude,
-                        style: LineStyle::Dashed { length: 6.0 },
-                        key: pal.tick,
-                        under: Some(pal.tick),
-                        main: false,
-                    },
-                    ChartLine {
-                        name: "Amplitude from Tock".into(),
-                        pts: pick(|p| p.amplitude_b),
-                        color: pal.trace_amplitude,
-                        style: LineStyle::Dashed { length: 6.0 },
-                        key: pal.tock,
-                        under: Some(pal.tock),
-                        main: false,
-                    },
-                ],
-                "°",
-                0,
-            ),
-            SeriesKind::BeatError => (
-                vec![
-                    ChartLine {
-                        name: "From the Unlock".into(),
-                        pts: pick(|p| p.beat_error_unlock.map(f64::abs)),
-                        color: pal.trace_beat_error,
-                        style: solid,
-                        key: pal.trace_beat_error,
-                        under: None,
-                        main: true,
-                    },
-                    ChartLine {
-                        name: "From the Drop".into(),
-                        pts: pick(|p| p.beat_error_drop.map(f64::abs)),
-                        color: pal.trace_beat_error.gamma_multiply(0.6),
-                        style: LineStyle::dashed_dense(),
-                        key: pal.trace_beat_error.gamma_multiply(0.6),
-                        under: None,
-                        main: false,
-                    },
-                ],
-                " ms",
-                2,
-            ),
-        };
-        let mut plot = Plot::new(steady::title(reading))
-            // As short as its share of the pane, rather than spilling out.
-            .min_size(Vec2::new(64.0, 24.0))
-            .link_axis("trend", [true, false])
-            .link_cursor("trend", [true, false])
-            .allow_scroll(false)
-            .allow_zoom([false, true])
-            // The wheel zooms and a drag pans; the axes stay put.
-            .allow_axis_zoom_drag(false)
-            .allow_boxed_zoom(false)
-            .x_grid_spacer(|g| theme::even_grid(g, 80.0, &theme::TIME_STEPS))
-            .custom_x_axes(vec![egui_plot::AxisHints::new_x()
-                .formatter(|m, r| chart_time_label(m.value, m.step_size, r))])
-            // Short charts still get a label at the top and the bottom:
-            // the labels are painted below, in small text, so they fit
-            // closer than the plot's own.
-            .y_grid_spacer(theme::short_y_grid)
-            .y_axis_min_width(GUTTER)
-            .y_axis_formatter(|_, _| String::new())
-            // The values at the pointer are shown for every line at once
-            // (below), instead of only when the pointer is on a line.
-            .show_x(false)
-            .show_y(false);
-        // Scale to hold every point of the lines: the whole take.
-        let all: Vec<[f64; 2]> = series.iter().flat_map(|s| s.pts.iter().copied()).collect();
-        let y_range = data_range(&all);
-        if let Some((lo, hi)) = y_range {
-            plot = plot.default_y_bounds(lo, hi);
-        }
-        let marker = self.strip_end.is_some().then(|| self.strip_end_s());
-        let lookup = series.clone();
-        let colour = series.first().map_or(pal.text_secondary, |l| l.key);
-        let to_live = self.charts_to_live_now;
-        // A new averaging time spreads the values wider or narrower, so the
-        // scale follows it, keeping the time shown.
-        let rescale = self
-            .chart_average_drawn
-            .insert(steady::title(reading), average)
-            .is_some_and(|was| was != average);
-        let resp = plot.show(ui, |p| {
-            if to_live {
-                p.set_auto_bounds([true, true]);
-            }
-            if let (Some((lo, hi)), true) = (y_range, rescale) {
-                p.set_plot_bounds_y(lo..=hi);
-            }
-            if p.response().hovered() {
-                let s = p.ctx().input(|i| i.smooth_scroll_delta);
-                let wheel = s.x + s.y;
-                if wheel != 0.0 {
-                    p.zoom_bounds_around_hovered(Vec2::new((wheel * 0.003).exp(), 1.0));
-                }
-            }
-            for l in series {
-                let w = if l.main { 1.8_f32 } else { 1.2_f32 };
-                // Broken where there is no reading (a masked stretch, a
-                // pause, beats not found), not drawn straight across.
-                for seg in segments(&l.pts) {
-                    if let Some(c) = l.under {
-                        p.line(
-                            Line::new(format!("{} gaps", l.name), seg.clone())
-                                .color(c)
-                                .width(w),
-                        );
-                    }
-                    p.line(
-                        Line::new(l.name.clone(), seg)
-                            .color(l.color)
-                            .style(l.style)
-                            .width(w),
-                    );
-                }
-            }
-            let (hovered, clicked) = {
-                let r = p.response();
-                (r.hovered(), r.clicked() && !r.double_clicked())
-            };
-            let hover = p.pointer_coordinate().filter(|_| hovered);
-            let click = clicked.then(|| p.pointer_coordinate()).flatten();
-            // Panned or zoomed away from the whole session.
-            let moved = !to_live && !p.auto_bounds().x;
-            (click, hover.map(|h| h.x), moved)
-        });
-        let (click, hover, moved) = resp.inner;
-        // The moment shown and the pointer's time, painted over the plot
-        // rather than added to it: a plot line counts towards the automatic
-        // bounds, so one under the pointer near the edge widened the chart
-        // a little more every frame.
-        let frame = *resp.transform.frame();
-        let painter = ui.painter_at(frame);
-        let t = resp.transform;
-        paint_y_labels(ui, &t, unit);
-        // Which reading this chart is, in its colour, at its top left.
-        painter.text(
-            frame.left_top() + Vec2::new(6.0, 3.0),
-            egui::Align2::LEFT_TOP,
-            steady::title(reading),
-            egui::TextStyle::Small.resolve(ui.style()),
-            colour,
-        );
-        // Its lines' key at its top right, beside the lines it names.
-        let only = steady::SERIES.map(|k| k == reading);
-        paint_key(&painter, frame, &chart_key(only, pal), ui, pal);
-        let at = |x| egui::pos2(t.position_from_point_x(x), frame.top());
-        let test = self.in_test();
-        if test {
-            strip::paint_phases(
-                &painter,
-                frame,
-                &self.strip_settles(),
-                &self.guided_measured,
-                at,
-                true,
-                ui.visuals(),
-            );
-        }
-        strip::paint_bands(
-            &painter,
-            frame,
-            &self.position_bands(),
-            at,
-            true,
-            true,
-            !test,
-            ui.visuals(),
-        );
-        if hover.is_some() {
-            self.cursor_next = hover;
-        }
-        let cursor = hover.or(self.cursor_t);
-        for x in [marker, cursor].into_iter().flatten() {
-            let px = resp.transform.position_from_point_x(x);
-            if px >= frame.left() && px <= frame.right() {
-                painter.vline(px, frame.y_range(), egui::Stroke::new(1.0_f32, weak));
-            }
-        }
-        let running = self.running();
-        if moved {
-            // Say how to get back, on the chart itself.
-            let at = resp.response.rect.left_top() + Vec2::new(60.0, 4.0);
-            let label = if running {
-                "Follow Live"
-            } else {
-                "Show Whole Session"
-            };
-            let b = ui.put(
-                egui::Rect::from_min_size(at, Vec2::new(150.0, 24.0)),
-                theme::primary(ui, label).min_size(Vec2::new(0.0, 24.0)),
-            );
-            if b.on_hover_text(if running {
-                "Back to the whole session, following new beats as they come in. \
-                 Double-clicking a chart does the same."
-            } else {
-                "Back to the whole session. Double-clicking a chart does the same."
-            })
-            .clicked()
-            {
-                self.charts_to_live = true;
-                ui.ctx().request_repaint();
-            }
-        }
-        if let Some(x) = hover {
-            resp.response.on_hover_ui_at_pointer(|ui| {
-                ui.set_max_width(300.0);
-                ui.label(RichText::new(length_text(x)).strong());
-                for ChartLine { name, pts, key, .. } in &lookup {
-                    let v = value_at(pts, x);
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("■").color(*key));
-                        ui.label(match v {
-                            Some(v) => format!("{name}: {v:.decimals$}{unit}"),
-                            None => format!("{name}: none"),
-                        });
-                    });
-                }
-                ui.label(
-                    RichText::new(if running {
-                        "Wheel zooms time, Ctrl+wheel the scale, drag pans, \
-                         click shows that moment on the strip, \
-                         double-click follows live again."
-                    } else {
-                        "Wheel zooms time, Ctrl+wheel the scale, drag pans, \
-                         click shows that moment on the strip, \
-                         double-click shows the whole session."
-                    })
-                    .small()
-                    .weak(),
-                );
-            });
-        }
-        if let Some(at) = click {
-            if at.x > 0.0 {
-                self.strip_fit = false;
-                self.strip_end = Some(at.x);
-            }
-        }
     }
 }
 
@@ -16243,17 +16082,10 @@ fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
 }
 
 /// From the lowest value to the highest, padded a little, so every point
-/// drawn is inside the chart.
+/// drawn is inside the chart: core's scale, which the MCP view uses too.
 fn data_range(points: &[[f64; 2]]) -> Option<(f64, f64)> {
-    let (lo, hi) = points
-        .iter()
-        .map(|p| p[1])
-        .filter(|y| y.is_finite())
-        .fold(None, |r: Option<(f64, f64)>, y| {
-            Some(r.map_or((y, y), |(lo, hi)| (lo.min(y), hi.max(y))))
-        })?;
-    let pad = ((hi - lo) * 0.08).max(0.05);
-    Some((lo - pad, hi + pad))
+    let ys: Vec<f64> = points.iter().map(|p| p[1]).collect();
+    timegrapher_core::chart_scale::data_range(&ys)
 }
 
 /// A pane being saved as a picture: it's drawn with its name in place of
@@ -17082,6 +16914,10 @@ fn lists(dir: &Path, file: &str, path: &Path) -> bool {
 /// entry per stretch in place of those entries, each keeping what the
 /// first of them said besides. Positions are refused where the entries
 /// list more than one file.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
 fn save_marks_to_take(
     path: &Path,
     masked: &[[f64; 2]],
@@ -18085,26 +17921,6 @@ mod tests {
         assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
     }
 
-    /// The whole take's hover says the breaks it is read across and, where
-    /// Tick and Tock were named by the count across them, that too.
-    #[test]
-    fn the_whole_takes_hover_says_its_sides_were_named_by_count() {
-        let text = cut_caveats_text(&[
-            Caveat::Breaks { count: 1 },
-            Caveat::SidesByCount { count: 1 },
-            Caveat::ClockUnknown,
-        ]);
-        assert!(text.starts_with(" 1 break in this stretch: "), "{text}");
-        assert!(
-            text.ends_with(
-                " Tick and Tock are named by the beat count across 1 break in this \
-                 stretch, not told apart by their sound."
-            ),
-            "{text}"
-        );
-        assert_eq!(cut_caveats_text(&[Caveat::ClockUnknown]), "");
-    }
-
     use timegrapher_core::synth::{generate, SynthConfig};
 
     pub(super) fn synthetic(seconds: f64, rate: f64) -> TimegrapherApp {
@@ -18172,6 +17988,10 @@ mod tests {
     /// on the trace, the ring hollow; on a short plot, with the edges'
     /// names inside it, no bar or ring crosses a name.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn the_profiles_marks_keep_off_the_names() {
         let mut app = synthetic(30.0, 0.0);
         // Stopped, the profile is the one kept at the end.
@@ -18961,6 +18781,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn recording_failure_stops_capture_and_retains_scratch_with_or_without_input_error() {
         for input_error in [false, true] {
             let (mut app, base) = save_failure_fixture(if input_error {
@@ -19547,6 +19371,10 @@ mod tests {
     /// the library for the first), shows a watch's details and takes, and
     /// Save… then saves into that watch with no question.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn the_watches_pane_adds_a_watch_and_saves_its_takes_into_it() {
         let base = std::env::temp_dir().join(format!("tg-app-watches-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -19832,6 +19660,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn open_adds_a_recording_to_a_watch_asking_only_for_what_is_missing() {
         let base = std::env::temp_dir().join(format!("tg-app-open-into-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20273,6 +20105,11 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn quick_listen_keeps_its_take_in_unsorted_until_filed() {
         let base = std::env::temp_dir().join(format!("tg-app-quick-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20553,6 +20390,11 @@ mod tests {
     /// and deleted from the Watches view, and a take from outside is added
     /// to a watch; the recording opened follows a take that moves.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_watchs_takes_are_kept_moved_deleted_and_added() {
         let base = std::env::temp_dir().join(format!("tg-app-take-ops-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20800,6 +20642,11 @@ mod tests {
     /// with the same beats, readings and charts as the take with its sound,
     /// the Tick Tock profiles it kept, and no Replay or waveform.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_session_kept_as_its_analysis_opens_as_the_sound_does() {
         let base = std::env::temp_dir().join(format!("tg-app-analysis-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -20968,6 +20815,10 @@ mod tests {
     /// and reopen: sound after a save still counts as unsaved, Save Again
     /// keeps it, and the saved take keeps the position it started in.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_take_saved_twice_across_a_move_keeps_everything() {
         let base = std::env::temp_dir().join(format!("tg-app-twice-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -21165,6 +21016,10 @@ mod tests {
     /// marked in the take: each one's settled duration and readings, the
     /// positions never marked, and the largest rate difference.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn the_positions_table_reads_a_free_take() {
         let mut app = synthetic(40.0, 0.0);
         app.session.listen();
@@ -22944,6 +22799,11 @@ mod tests {
     /// A saved take carries a session file with the watch, its calibre,
     /// lift angle, beat rate and positions, and opening it takes them back.
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_saved_take_brings_back_its_calibre_and_positions() {
         let base = std::env::temp_dir().join(format!("tg-app-sidecar-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -25999,6 +25859,10 @@ mod tests {
     /// picked asks where it goes: Keep in Unsorted, Keep in a Watch… or
     /// Throw Away. Quick Listen's sound still goes without a question.
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn a_test_with_no_watch_asks_where_it_goes() {
         let base = std::env::temp_dir().join(format!("tg-app-test-keep-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -26347,6 +26211,10 @@ mod tests {
         clippy::disallowed_methods,
         reason = "a test's clock fixture, not a take being opened"
     )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
     fn settings_forgets_a_kept_clock() {
         const MARKER: &str = "TIMEGRAPHER_FORGET_TEST_CHILD";
         if std::env::var_os(MARKER).is_none() {
@@ -26667,93 +26535,6 @@ mod tests {
         assert_eq!(back.average_s, 30.0);
     }
 
-    /// New Session while listening, when closing the kept sound fails:
-    /// the error stays shown and listening doesn't start again over it.
-    #[test]
-    fn new_session_keeps_a_close_error() {
-        let (mut app, base) = save_failure_fixture("new-session-close");
-        let scratch = app.session.recorder.as_ref().unwrap().dir().to_path_buf();
-        std::fs::remove_file(scratch.join("session.json")).unwrap();
-        std::fs::create_dir(scratch.join("session.json")).unwrap();
-        let tx = queued_capture(&mut app, &base);
-        assert!(app.running() && app.session.mic());
-        app.new_session();
-        assert!(!app.running());
-        let (m, error) = app.message.clone().expect("the close error is shown");
-        assert!(error, "{m}");
-        assert!(m.contains("pause"), "{m}");
-        drop(tx);
-        let _ = std::fs::remove_dir_all(base);
-    }
-
-    /// With the window drawing no frames at all (a locked screen, a
-    /// minimised window), the sound is still saved and read as it comes in.
-    #[test]
-    fn listening_carries_on_without_frames() {
-        let (mut app, base) = save_failure_fixture("no-frames");
-        let tx = queued_capture(&mut app, &base);
-        let before = app.heard_s();
-        let saved_before = app.session.recorder.as_ref().unwrap().duration_s();
-        let shell = crate::pump::Shell::new(app);
-        // 10 s of sound in the 20 ms blocks a microphone sends: several
-        // passes of the listening thread, and quick enough in a debug build
-        // run alongside the other tests.
-        for k in 0..500u64 {
-            tx.send(Event::Audio(timegrapher_core::capture::Block {
-                samples: vec![0.0; 960],
-                at: std::time::UNIX_EPOCH + Duration::from_millis(2000 + 20 * k),
-            }))
-            .unwrap();
-        }
-        let deadline = Instant::now() + Duration::from_secs(30);
-        loop {
-            let (heard, saved) = {
-                let a = shell.app();
-                (
-                    a.heard_s(),
-                    a.session.recorder.as_ref().unwrap().duration_s(),
-                )
-            };
-            if heard - before >= 10.0 - 1e-6 && saved - saved_before >= 10.0 - 1e-6 {
-                break;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "heard {heard} s and saved {saved} s without frames"
-            );
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        drop(shell);
-        drop(tx);
-        let _ = std::fs::remove_dir_all(base);
-    }
-
-    /// A backlog is taken a frame's worth at a time, so the window never
-    /// freezes while it catches up.
-    #[test]
-    fn a_backlog_is_taken_in_slices() {
-        let (mut app, base) = save_failure_fixture("backlog");
-        let tx = queued_capture(&mut app, &base);
-        for k in 0..3000u64 {
-            tx.send(Event::Audio(timegrapher_core::capture::Block {
-                samples: vec![0.0; 960],
-                at: std::time::UNIX_EPOCH + Duration::from_millis(2000 + 20 * k),
-            }))
-            .unwrap();
-        }
-        let first = app.poll_for(Duration::from_millis(1));
-        assert!((1..3000).contains(&first), "took {first} blocks at once");
-        let mut taken = first;
-        while taken < 3000 {
-            let n = app.poll_for(Duration::from_millis(200));
-            assert!(n > 0);
-            taken += n;
-        }
-        assert!(app.running());
-        drop(tx);
-        let _ = std::fs::remove_dir_all(base);
-    }
-
     #[test]
     fn a_long_take_still_draws_over_a_short_strip() {
         // Opened whole, a take over 5 h 33 min keeps a reading only every
@@ -26888,46 +26669,6 @@ mod tests {
         assert_eq!(app.calibre, c.calibre);
         assert_eq!(app.cal.recent.first(), Some(&c.calibre));
     }
-
-    /// A computer that slept mid-take carries on, with the gap a break.
-    #[test]
-    fn a_sleep_becomes_a_break() {
-        let (mut app, base) = save_failure_fixture("slept");
-        let tx = queued_capture(&mut app, &base);
-        let block = |ms: u64| {
-            Event::Audio(timegrapher_core::capture::Block {
-                samples: vec![0.0; 960],
-                at: std::time::UNIX_EPOCH + Duration::from_millis(ms),
-            })
-        };
-        for k in 0..50 {
-            tx.send(block(2000 + 20 * k)).unwrap();
-        }
-        // Everything queued, however long it takes.
-        while app.poll_for(Duration::from_secs(60)) > 0 {}
-        let heard = app.heard_s();
-        assert!(app.session.recorder.as_ref().unwrap().breaks().is_empty());
-        // An hour asleep, then the sound runs on.
-        let woke = 2000 + 20 * 49 + 3_600_000;
-        for k in 0..50 {
-            tx.send(block(woke + 20 * k)).unwrap();
-        }
-        while app.poll_for(Duration::from_secs(60)) > 0 {}
-        assert!(app.running());
-        let breaks = app.session.recorder.as_ref().unwrap().breaks();
-        assert_eq!(breaks.len(), 1);
-        assert!(
-            (breaks[0].gap_s - 3600.0).abs() < 0.05,
-            "{}",
-            breaks[0].gap_s
-        );
-        assert!((app.heard_s() - heard - 3601.0).abs() < 0.05);
-        let (m, error) = app.message.clone().unwrap();
-        assert!(!error);
-        assert!(m.contains("timestamps jumped by"), "{m}");
-        drop(tx);
-        let _ = std::fs::remove_dir_all(base);
-    }
 }
 
 #[cfg(test)]
@@ -26969,3 +26710,7 @@ mod charts_tests;
 #[cfg(test)]
 #[path = "app_reserve_tests.rs"]
 mod reserve_tests;
+
+#[cfg(test)]
+#[path = "app_capture_tests.rs"]
+mod capture_tests;
