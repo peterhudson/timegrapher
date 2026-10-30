@@ -159,11 +159,15 @@ pub enum Caveat {
     /// would correct them on its own, measures the card differently by
     /// more than its own scatter ([`crate::clock::ClockFit::sources_disagree`]):
     /// ppm the card runs
-    /// slow by each, and the log's standard error.
+    /// slow by each, and the log's standard error. With `against`
+    /// `correction`, on a take with no clock log, the other is the
+    /// correction known for the input, and `log_ppm` is its ppm.
     ClockSourcesDisagree {
         usb_ppm: f64,
         log_ppm: f64,
         log_ppm_sd: f64,
+        #[serde(default, skip_serializing_if = "crate::clock::Against::is_clock_log")]
+        against: crate::clock::Against,
     },
     /// The beats span less than [`SHORT_SPAN_S`].
     ShortSpan { span_s: f64 },
@@ -210,12 +214,7 @@ impl Caveat {
             }
             Caveat::LiftUnknown => format!("lift angle {lift_deg}°, the default"),
             Caveat::ClockUnknown => "input clock not corrected".to_string(),
-            Caveat::ClockSourcesDisagree {
-                usb_ppm, log_ppm, ..
-            } => format!(
-                "USB lines and clock log {:.0} ppm apart",
-                (usb_ppm - log_ppm).abs()
-            ),
+            Caveat::ClockSourcesDisagree { .. } => self.sources_disagree()?.short(),
             Caveat::Breaks { count } => format!("{count} break{}", plural(*count)),
             Caveat::BreaksUnlisted { .. } => "breaks from the clock log".to_string(),
             Caveat::SidesByCount { .. } => "sides named by count".to_string(),
@@ -261,17 +260,8 @@ impl Caveat {
             Caveat::ClockUnknown => "This input's clock hasn't been measured, so the rate \
                                      includes the sound card's own clock error."
                 .to_string(),
-            Caveat::ClockSourcesDisagree {
-                usb_ppm,
-                log_ppm,
-                log_ppm_sd,
-            } => {
-                let note = crate::clock::SourcesDisagree {
-                    usb_ppm: *usb_ppm,
-                    log_ppm: *log_ppm,
-                    log_ppm_sd: *log_ppm_sd,
-                }
-                .note();
+            Caveat::ClockSourcesDisagree { .. } => {
+                let note = self.sources_disagree()?.note();
                 format!("{}{}.", note[..1].to_uppercase(), &note[1..])
             }
             Caveat::Breaks { count } => format!(
@@ -314,6 +304,25 @@ impl Caveat {
         })
     }
 
+    /// The two clocks of [`Caveat::ClockSourcesDisagree`]; `None` for any
+    /// other caveat.
+    fn sources_disagree(&self) -> Option<crate::clock::SourcesDisagree> {
+        match *self {
+            Caveat::ClockSourcesDisagree {
+                usb_ppm,
+                log_ppm,
+                log_ppm_sd,
+                against,
+            } => Some(crate::clock::SourcesDisagree {
+                usb_ppm,
+                log_ppm,
+                log_ppm_sd,
+                against,
+            }),
+            _ => None,
+        }
+    }
+
     /// Where the caveat sits in a list.
     fn rank(&self) -> u8 {
         match self {
@@ -340,6 +349,7 @@ impl From<crate::clock::SourcesDisagree> for Caveat {
             usb_ppm: d.usb_ppm,
             log_ppm: d.log_ppm,
             log_ppm_sd: d.log_ppm_sd,
+            against: d.against,
         }
     }
 }
@@ -816,6 +826,7 @@ mod tests {
             usb_ppm: 120.0,
             log_ppm: 20.0,
             log_ppm_sd: 2.0,
+            against: Default::default(),
         };
         assert_eq!(
             d.short(52.0, 0).unwrap(),
@@ -826,6 +837,30 @@ mod tests {
             "The USB lines measure the sound card at +120.0 ppm and the clock log at +20 ± 2 \
              ppm; the rates are corrected by the USB lines."
         );
+        // Its JSON leaves the clock log unsaid, as before (#635).
+        let json = serde_json::to_value(d).unwrap();
+        assert!(json.get("against").is_none(), "{json}");
+        assert_eq!(serde_json::from_value::<Caveat>(json).unwrap(), d);
+        // On a take with no clock log, the USB lines over a known
+        // correction, named as such (#635).
+        let c = Caveat::ClockSourcesDisagree {
+            usb_ppm: 12.0,
+            log_ppm: 5.0,
+            log_ppm_sd: 0.0,
+            against: crate::clock::Against::Correction,
+        };
+        assert_eq!(
+            c.short(52.0, 0).unwrap(),
+            "USB lines and the known correction 7 ppm apart"
+        );
+        assert_eq!(
+            c.long(None).unwrap(),
+            "The USB lines measure the sound card at +12.0 ppm and the correction known for \
+             its input is +5.0 ppm; the rates are corrected by the USB lines."
+        );
+        let json = serde_json::to_value(c).unwrap();
+        assert_eq!(json["against"], "correction");
+        assert_eq!(serde_json::from_value::<Caveat>(json).unwrap(), c);
         // The JSON a caveat is written as reads back into the same words.
         let c: Caveat = serde_json::from_str(r#"{"code":"clipped","fraction":0.04}"#).unwrap();
         assert_eq!(c.short(52.0, 0).unwrap(), "4% clipped");

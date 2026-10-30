@@ -344,8 +344,10 @@ Each reading is:
 - rate from one fit over every beat (Tick and Tock fitted together),
   corrected for the sound card's clock: by the clock log the session file
   names, with the recording's USB lines setting its rate when it has them;
-  without a log, by `card_ppm` or a correction stored for the input, else by
-  the USB lines, as `series` and `long` correct it. A reading with a mask or a restart in
+  without a log, by the USB lines, else by `card_ppm` or a correction
+  stored for the input, as `series` and `long` correct it; where the USB
+  lines and a known correction are more than 5 ppm apart, the caveat
+  `clock_sources_disagree` says so. A reading with a mask or a restart in
   listening is cut at both ends of each: each stretch between cuts is
   fitted on its own, a stretch whose beats span under 10 s is left out,
   and the rest are combined weighted by their beats;
