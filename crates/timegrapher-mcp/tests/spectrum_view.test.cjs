@@ -29,13 +29,13 @@ function render(support, timing = true) {
 }
 for (const timing of [true, false]) {
   test(`FFT availability qualification preserves plotted magnitudes (timing=${timing})`, () => {
-    const full = render({ finite_bins: 256, total_bins: 256 }, timing);
-    const missing = render({ finite_bins: 128, total_bins: 256 }, timing);
+    const full = render({ finite_bins: 256, total_bins: 256, description: "FFT input: 256 of 256 grid samples available." }, timing);
+    const missing = render({ finite_bins: 128, total_bins: 256, description: "FFT input: 128 of 256 grid samples available. With samples missing, each size is a sine fitted to the samples present (Lomb–Scargle); nothing is filled in." }, timing);
     const legacy = render(undefined, timing);
     assert.ok(full.markup.includes("256 of 256 grid samples available"));
-    assert.ok(!full.markup.includes("not corrected for gaps"));
+    assert.ok(!full.markup.includes("Lomb"));
     assert.ok(missing.markup.includes("128 of 256 grid samples available"));
-    assert.ok(missing.markup.includes("Missing samples affect peak heights and shapes; values are not corrected for gaps."));
+    assert.ok(missing.markup.includes("each size is a sine fitted to the samples present"));
     assert.ok(legacy.markup.includes("FFT input support was not recorded."));
     assert.deepEqual(missing.chart, full.chart);
     assert.deepEqual(legacy.chart, full.chart, "legacy numeric plot and peak are preserved");
@@ -46,6 +46,12 @@ for (const timing of [true, false]) {
 test("the rate's swing in readings is the document's, as core works it out", () => {
   const { chart } = render({ finite_bins: 256, total_bins: 256 }, false);
   assert.deepEqual(chart.lines[0].pts, [[128, 8], [64, 60], [32, 40]].map(([t, w]) => [Math.log10(t), Math.log10(w)]));
+});
+test("the note is core's description, escaped, with no words of the view's own", () => {
+  const { markup } = render({ finite_bins: 128, total_bins: 256, description: "Core's <b>own</b> words." });
+  assert.ok(markup.includes("Core&#39;s &lt;b&gt;own&lt;/b&gt; words.") || markup.includes("Core's &lt;b&gt;own&lt;/b&gt; words."), markup);
+  assert.ok(!markup.includes("grid samples available"));
+  assert.ok(!markup.includes("not corrected for gaps"));
 });
 test("malformed support cannot claim complete FFT input", () => {
   for (const support of [null, {}, { finite_bins: true, total_bins: 10 }, { finite_bins: 11, total_bins: 10 }, { finite_bins: 0, total_bins: 0 }]) {

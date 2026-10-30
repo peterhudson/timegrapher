@@ -456,7 +456,11 @@ mod tests {
 
     #[test]
     fn fft_support_remains_model_visible_when_arrays_move_to_charts() {
-        for support in [Value::Null, json!({"finite_bins": 128, "total_bins": 256})] {
+        let description = "FFT input: 128 of 256 grid samples available. With samples missing, each size is a sine fitted to the samples present (Lomb–Scargle); nothing is filled in.";
+        for support in [
+            Value::Null,
+            json!({"finite_bins": 128, "total_bins": 256, "description": description}),
+        ] {
             let mut spectrum = json!({"series":"rate", "unit":"ms", "period_s":[64.0,32.0], "amplitude":[5.0,1.0]});
             if !support.is_null() {
                 spectrum["support"] = support.clone();
@@ -478,7 +482,7 @@ mod tests {
             } else {
                 "128 of 256 grid samples available"
             }));
-            assert_eq!(lead.contains("not corrected for gaps"), !support.is_null());
+            assert_eq!(lead.contains(description), !support.is_null());
         }
     }
 

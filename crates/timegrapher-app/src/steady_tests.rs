@@ -498,7 +498,10 @@ fn fft_renderer_paints_input_availability_in_both_rate_displays() {
                 }),
                 "{text}"
             );
-            assert_eq!(text.contains("values are not corrected for gaps"), missing);
+            assert_eq!(
+                text.contains("each size is a sine fitted to the samples present"),
+                missing
+            );
         }
     }
 }
