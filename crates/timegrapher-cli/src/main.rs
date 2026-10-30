@@ -1145,14 +1145,23 @@ fn run_analyze(
     let wheels = train.analysis_wheels(a.summary.bph);
     calibres_cmd::rename(&mut a.summary.timing_periods, &wheels);
     calibres_cmd::rename(&mut a.summary.amplitude_periods, &wheels);
-    // A stored or given correction wins; otherwise the USB lines in the
-    // recording, when it has them.
-    let clock = match clock {
-        Some(c) => {
-            a.summary.clock_known();
-            Some(c)
-        }
-        None => a.summary.usb_clock.map(|c| c.correction()),
+    // The clock is core's pick for a take with no clock log
+    // (`take::clock_from`): the recording's USB lines when it has them,
+    // else a stored or given correction, said when the two disagree (#635).
+    if clock.is_some() {
+        a.summary.clock_known();
+    }
+    let usb = a.summary.usb_clock.map(|c| c.correction());
+    let ppm = |c: &Option<(f64, String)>| c.as_ref().map(|(p, _)| *p);
+    use timegrapher_core::take::{clock as take_clock, clock_from, ClockFrom};
+    let fit = take_clock(None, 0, 0, ppm(&usb), ppm(&clock), a.summary.duration_s)?;
+    if let Some(d) = fit.as_ref().and_then(|f| f.sources_disagree()) {
+        timegrapher_core::measure::add(&mut a.summary.caveats, d.into());
+    }
+    let clock = match clock_from(false, ppm(&usb), ppm(&clock)) {
+        Some(ClockFrom::Usb) => usb,
+        Some(_) => clock,
+        None => None,
     };
     if let Some(p) = beats {
         write_beats(&p, &a).map_err(|e| format!("{}: {e}", p.display()))?;

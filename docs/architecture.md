@@ -70,7 +70,7 @@ Every layer but the last is in core.
 
 ## 5. One clock everywhere
 
-- Core picks each take's clock once, by the rule in `take::clock_from`: a clock log with USB lines, then a known correction, then USB lines alone, else the sound card.
+- Core picks each take's clock once, by the rule in `take::clock_from`: a clock log, its rate set by the USB lines when the take has them; without one, the USB lines, then a known correction; else the sound card.
 - It lives in the context. Every pane and every surface shows it, live and reopened, the big live Rate included.
 - When a correction arrives partway through a listen, the live Rate steps onto it, and the card says which clock it is on. This is wanted: the figure moves onto the true clock. A stored correction applies from the first second.
 - No surface hands a clock to the live engine. Once the context carries the clock, `LiveAnalyzer::set_rate_clock` goes on the app's banned list.

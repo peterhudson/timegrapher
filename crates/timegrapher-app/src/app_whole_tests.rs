@@ -139,3 +139,42 @@ fn a_take_whose_breaks_are_not_its_own_lists_says_so() {
     let w = app.whole_take().expect("whole take");
     assert!(!whole_breaks_text(&w).contains("session.json"));
 }
+
+/// A hand mask across the end of the settle, core's edge take
+/// `edge_mask_across_settle`, reads as session reads it: masked, and no
+/// break where the mask's ends cut the beats (#682).
+#[test]
+fn a_mask_across_the_settle_is_no_break() {
+    let root = std::env::temp_dir().join(format!("tg-app-mask-settle-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let takes = timegrapher_core::edge_takes::write_all(&root).unwrap();
+    let take = takes
+        .iter()
+        .find(|t| t.id == "edge_mask_across_settle")
+        .expect("the edge take");
+    let app = super::tests::reopened(&root.join("takes").join(take.id));
+    let w = app.whole_take().expect("whole take");
+    let codes = timegrapher_core::edge_takes::caveat_codes(&w.m);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(codes, ["masked"], "{codes:?}");
+}
+
+/// The whole take's hover says the breaks it is read across and, where
+/// Tick and Tock were named by the count across them, that too.
+#[test]
+fn the_whole_takes_hover_says_its_sides_were_named_by_count() {
+    let text = cut_caveats_text(&[
+        Caveat::Breaks { count: 1 },
+        Caveat::SidesByCount { count: 1 },
+        Caveat::ClockUnknown,
+    ]);
+    assert!(text.starts_with(" 1 break in this stretch: "), "{text}");
+    assert!(
+        text.ends_with(
+            " Tick and Tock are named by the beat count across 1 break in this \
+             stretch, not told apart by their sound."
+        ),
+        "{text}"
+    );
+    assert_eq!(cut_caveats_text(&[Caveat::ClockUnknown]), "");
+}
