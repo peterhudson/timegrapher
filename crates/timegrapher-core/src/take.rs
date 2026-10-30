@@ -929,6 +929,8 @@ pub fn measure_entry(
     if let Some(why) = unlisted {
         measurement.breaks_unlisted(why);
     }
+    measurement.clock_ppm = clock_ppm;
+    measurement.clock_source = clock_source.clone();
     Ok(EntryRead {
         files,
         kept,

@@ -510,7 +510,12 @@ and its `evidence` as text. `watch_heard` in a measurement is false when
 no regular beat was found, and its readings are then null;
 `unlock_coverage` is the share of amplitude windows that found the unlock,
 `clipped_fraction` the share of clipped beats and `jitter_us` the median
-timing scatter. `amplitude_states` and `rate_states` in each measurement
+timing scatter. `calibrated` says whether the rate is corrected for the
+sound card's clock; `clock_ppm` is the steady error that clock corrects,
+in ppm, and `clock_source` says in words where the clock came from (the
+USB lines, a clock log, or a stored correction), as the app's clock line
+says it. Either is left out when the take has no clock, and `clock_ppm`
+is left out for a clock log, which has no single figure. `amplitude_states` and `rate_states` in each measurement
 hold the two-state finder's figures: `two_levels`, the `low` and `high`
 levels, `low_share`, `separation`, `delta_bic`, `switches`,
 `dwell_low_s`, `dwell_high_s`, `switch_every_s`, `spread`, `period_s`

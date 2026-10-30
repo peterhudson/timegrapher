@@ -261,6 +261,14 @@ pub struct Measurement {
     pub clean_fraction: f64,
     /// Whether rate is corrected for the sound card's clock.
     pub calibrated: bool,
+    /// The steady error the take's clock corrects, ppm, and where the
+    /// clock came from in words, as [`crate::take::OpenedEntry`] gives
+    /// them: set for a reading of a take opened by
+    /// [`crate::take::measure_entry`], none otherwise (#714).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clock_ppm: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clock_source: Option<String>,
     pub rate_s_per_day: Option<f64>,
     /// Signed beat error from the drop (the fitted beat times), ms (even
     /// beats late is positive).
@@ -631,6 +639,8 @@ pub fn measure_masked(
         beats: beats.len(),
         clean_fraction: (clean as f64 / expected.max(1.0)).min(1.0),
         calibrated: clock.is_some_and(ClockFit::corrects),
+        clock_ppm: None,
+        clock_source: None,
         rate_s_per_day: fit.map(|f| f.rate_s_per_day),
         beat_error_ms: fit.map(|f| f.beat_error_ms),
         beat_error_unlock_ms: figures.beat_error_unlock_ms,
