@@ -100,7 +100,7 @@ fn session_readings(cli: &Path, dir: &Path) -> Vec<serde_json::Value> {
 }
 
 /// Where the app's whole-take reading and the command line's differ, in
-/// words; none where they are the same.
+/// words, figures and caveats alike; none where they are the same.
 fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Vec<String> {
     let m = &cli["measurement"];
     let Some(w) = app else {
@@ -121,6 +121,21 @@ fn differences(id: &str, app: &Option<WholeTake>, cli: &serde_json::Value) -> Ve
     same("start", Some(w.m.start_s), "start_s");
     same("end", Some(w.m.end_s), "end_s");
     same("beats", Some(w.m.beats as f64), "beats");
+    // The caveats each names, in any order.
+    let mut app_codes = timegrapher_core::edge_takes::caveat_codes(&w.m);
+    let mut cli_codes: Vec<String> = m["caveats"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["code"].as_str().map(str::to_string))
+        .collect();
+    app_codes.sort();
+    cli_codes.sort();
+    if app_codes != cli_codes {
+        out.push(format!(
+            "{id}: caveats {app_codes:?} in the app, {cli_codes:?} from session"
+        ));
+    }
     out
 }
 
@@ -234,6 +249,11 @@ const EDGE_KNOWN: &[(&str, &str)] = &[
     (
         "edge_reads_nothing/. (0–90 s)",
         "a stretch of a file: the app opens a file whole, not a stretch of it",
+    ),
+    (
+        "edge_mask_across_settle/.",
+        "a mask across the end of the settling time: the app's whole take adds a breaks \
+         caveat that session does not give, with the same figures (#682)",
     ),
 ];
 
