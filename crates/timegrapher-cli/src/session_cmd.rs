@@ -1782,6 +1782,14 @@ mod tests {
             (on_card - corrected - 1.728).abs() < 0.1,
             "{on_card} on the card's clock, {corrected} on the USB lines'"
         );
+        // The JSON reading says what the clock corrects and where it came
+        // from, as the app's clock line does (#714).
+        let json = serde_json::to_value(&usb).unwrap();
+        let ppm = json["clock_ppm"].as_f64().unwrap();
+        // The card runs 20 ppm slow: positive, as every clock ppm is today.
+        assert!((ppm - 20.0).abs() < 0.5, "{json}");
+        let source = json["clock_source"].as_str().unwrap();
+        assert!(source.contains("USB lines"), "{source}");
         let _ = fs::remove_dir_all(&dir);
     }
 
