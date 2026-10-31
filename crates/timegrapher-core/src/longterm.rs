@@ -569,9 +569,8 @@ pub struct Component {
     /// The folded profile kept to the harmonics the search used.
     pub shape: Vec<f64>,
     pub fold: Fold,
-    /// A longer cycle the search also found whose period is this one's
-    /// times a whole number from 2 to 8, within both resolutions (or 1%),
-    /// when that leaves only one whole number.
+    /// A longer cycle the search also found whose frequency times a whole
+    /// number from 2 to 8 is within one resolution (1/span) of this one's.
     pub harmonic_of: Option<Harmonic>,
 }
 
@@ -583,25 +582,27 @@ pub struct Harmonic {
 }
 
 /// For each component, the found cycle it is a harmonic of: the smallest
-/// n (2 to 8) whose n times its period lands on a longer component within
-/// n of its resolutions plus the longer one's, or 1%. When that tolerance
-/// reaches half this period, n and n + 1 could both fit, so none is given.
+/// n (2 to 8) whose n times that cycle's frequency is within one
+/// resolution (1/span) of its own. Neighbouring n are 1/period apart in
+/// frequency, more than that, so at most one fits.
 fn label_harmonics(components: &mut [Component]) {
-    let found: Vec<(f64, f64)> = components
-        .iter()
-        .map(|c| (c.period_s, c.resolution_s))
-        .collect();
+    let found: Vec<f64> = components.iter().map(|c| c.period_s).collect();
     for c in components.iter_mut() {
+        // Within one resolution (1/span) in frequency of n times the
+        // fundamental's: the refined periods are read far finer than that,
+        // so no n-fold allowance. Before (n resolutions in period plus the
+        // fundamental's), 22.4 s amplitude lines on 10 min were marked the
+        // 60 s fourth wheel's 3rd, 3.3 resolutions off (#762).
+        let f = 1.0 / c.period_s;
+        let inv_span = c.resolution_s * f * f;
         c.harmonic_of = (2..=8u8).find_map(|n| {
-            let p = c.period_s * n as f64;
+            let off = |q: f64| (f - n as f64 / q).abs();
             found
                 .iter()
-                .filter(|&&(q, r)| {
-                    let tol = (n as f64 * c.resolution_s + r).max(0.01 * q);
-                    tol < c.period_s / 2.0 && (p - q).abs() <= tol
-                })
-                .min_by(|a, b| (p - a.0).abs().total_cmp(&(p - b.0).abs()))
-                .map(|&(q, _)| Harmonic { period_s: q, n })
+                .copied()
+                .filter(|&q| off(q) < inv_span)
+                .min_by(|&a, &b| off(a).total_cmp(&off(b)))
+                .map(|q| Harmonic { period_s: q, n })
         });
     }
 }
@@ -1047,6 +1048,33 @@ mod tests {
         assert_eq!(h.n, 4);
         assert!((h.period_s / 600.0 - 1.0).abs() < 0.01, "{}", h.period_s);
         assert!(near(600.0).harmonic_of.is_none());
+    }
+
+    /// A line 0.03% from the 3rd harmonic of a longer one is labelled so;
+    /// one 3.3 resolutions (3.3/span in frequency) from it is not (#762).
+    /// On 10 min: 56.60 s with 18.87 s (as ym42_CR entry 10), and 60 s
+    /// with 22.44 s, which the n-fold tolerance marked the 60 s line's 3rd.
+    #[test]
+    fn a_harmonic_is_labelled_only_within_one_resolution() {
+        let tau = std::f64::consts::TAU;
+        let g = series(600, 1.0, |t| (tau * t / 60.0).sin(), 0.1, 13);
+        let one = analyse(&g, &LongConfig::default()).components.remove(0);
+        let at = |p: f64| Component {
+            period_s: p,
+            resolution_s: p * p / 600.0,
+            harmonic_of: None,
+            ..one.clone()
+        };
+        for (p0, p1, n) in [(56.60, 18.87, Some(3)), (60.0, 22.44, None)] {
+            let mut cs = vec![at(p0), at(p1)];
+            label_harmonics(&mut cs);
+            assert_eq!(
+                cs[1].harmonic_of.as_ref().map(|h| h.n),
+                n,
+                "{p1} s against {p0} s"
+            );
+            assert!(cs[0].harmonic_of.is_none());
+        }
     }
 
     #[test]
