@@ -18,6 +18,12 @@ pub const STANDARD_BPH: [u32; 11] = [
     12000, 14400, 17280, 18000, 19800, 21600, 25200, 28800, 36000, 43200, 72000,
 ];
 
+/// How many beats on from a beat `dt_s` seconds after it, `beat_s` a beat:
+/// the nearest whole count, at least one. Peaks are numbered on by it.
+pub fn beats_on(dt_s: f64, beat_s: f64) -> i64 {
+    (dt_s / beat_s).round().max(1.0) as i64
+}
+
 /// Guess the beat rate from the envelope's autocorrelation.
 ///
 /// Every standard rate is scored by the autocorrelation at its beat
@@ -569,7 +575,7 @@ pub fn detect_after(
     let mut index = 0i64;
     for (k, &(t, v)) in peaks.iter().enumerate() {
         if k > 0 {
-            index += ((t - peaks[k - 1].0) / beat).round().max(1.0) as i64;
+            index += beats_on(t - peaks[k - 1].0, beat);
         }
         beats.push(Beat {
             index,
@@ -1613,6 +1619,236 @@ mod tests {
         // With no level, as at a take's start, the noise is followed.
         let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
         assert!(peaks.iter().any(|&(t, _)| t < 10.0));
+    }
+
+    /// `n` samples of digital silence at 8 kHz with a peak `h` high, and
+    /// 0.6 of that either side, at each `(i, h)`.
+    fn clicks(n: usize, at: impl IntoIterator<Item = (usize, f32)>) -> Vec<f32> {
+        let mut x = vec![0.0f32; n];
+        for (i, h) in at {
+            x[i - 1] = 0.6 * h;
+            x[i] = h;
+            x[i + 1] = 0.6 * h;
+        }
+        x
+    }
+
+    /// Beats `k` of a watch beating every 0.125 s at 8 kHz, 50 ms into each
+    /// beat, `h` high.
+    fn beats_at(k: impl IntoIterator<Item = usize>, h: f32) -> impl Iterator<Item = (usize, f32)> {
+        k.into_iter().map(move |k| (400 + 1000 * k, h))
+    }
+
+    /// A beat is looked for only where the whole span around where it is
+    /// due was heard, so a beat the sound ends on, heard only as its rising
+    /// flank, is not found there.
+    #[test]
+    fn a_beat_the_sound_ends_on_is_not_found() {
+        let mut x = clicks(10_400, beats_at(0..10, 1.0));
+        x[10_399] = 0.6;
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
+        assert_eq!(peaks.len(), 10, "{:?}", peaks.last());
+    }
+
+    /// A track lost in a silence looks over one beat around where the next
+    /// is due, not two, so the watch heard again out of step is found on
+    /// its beat rather than on a knock most of a beat after it.
+    #[test]
+    fn a_lost_track_finds_the_watch_not_a_knock_a_beat_away() {
+        let beat = 0.125;
+        // 5 s of watch, 5 s of silence, and the watch again 20 ms out of
+        // step, with a knock three times as loud 90 ms after its first beat.
+        let mut x = track_of(20.0, &[(0.0, 40, 0.05), (10.0, 80, 0.07)]);
+        x[((10.07 + 0.09) * 8000.0) as usize] = 3.0;
+        let (peaks, _) = track_peaks(&x, 8000.0, beat, None, Some(1.0));
+        let off = |t: f64| {
+            let phase = if t < 10.0 { 0.05 } else { 0.07 };
+            let k = ((t - phase) / beat).round();
+            (t - phase - k * beat).abs()
+        };
+        assert!(
+            peaks.iter().all(|&(t, _)| off(t) < 0.001),
+            "a beat off the watch's"
+        );
+        assert_eq!(peaks.len(), 120);
+    }
+
+    /// In a silence, a peak far weaker than the watch's typical beat is
+    /// not a beat however loud the watch: the floor is a share of the
+    /// watch's beat, not a fixed level.
+    #[test]
+    fn faint_clicks_in_a_silence_are_not_beats_however_loud_the_watch() {
+        // A watch four times as loud as a unit beat, silent from 5 s to
+        // 10 s but for a click now and then an eighth as loud as its beats.
+        let silence = (0..12).map(|j| (((5.2 + 0.37 * j as f64) * 8000.0) as usize, 0.5));
+        let watch = beats_at((0..40).chain(80..120), 4.0);
+        let x = clicks(124_000, watch.chain(silence));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(4.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(5.0..10.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 80);
+    }
+
+    /// A faint swell in a silence is not the watch heard again, though the
+    /// lost track finds its highest point a beat after the last on every
+    /// span it looks over: only a peak counts towards a run of faint beats,
+    /// not a span's edge on a slope. Nor where the sound ends on the swell.
+    #[test]
+    fn a_faint_swell_in_a_silence_is_not_the_watch() {
+        // 5 s of watch; a swell to a fifth of its beat from 6 s, highest
+        // at 9 s and gone at 12 s; the watch again from 15 s.
+        let mut x = clicks(160_000, beats_at((0..40).chain(120..159), 1.0));
+        for (i, v) in x.iter_mut().enumerate().take(96_000).skip(48_000) {
+            *v = 0.2 * (1.0 - (i as f32 - 72_000.0).abs() / 24_000.0);
+        }
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(5.0..15.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 79);
+        // The sound ends while the swell rises, on the span the lost track
+        // looks over for beat 70.
+        let (peaks, _) = track_peaks(&x[..70_800], 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 40);
+    }
+
+    /// The noise is measured halfway between beats, where a watch is
+    /// silent, from the first beat on, and followed as it changes: noise in
+    /// a silence that stands above the floor set by the watch's beat is
+    /// still not a beat, and a watch whose beats sound long is not taken
+    /// for noise.
+    #[test]
+    fn the_noise_is_measured_halfway_between_beats() {
+        // `n` samples of noise up to 0.3, a sixth of that before `quiet`,
+        // and beats `k` rising to 1 over 300 samples and falling as slowly,
+        // each between two samples.
+        let track = |n: usize, quiet: usize, k: &mut dyn Iterator<Item = usize>| {
+            let mut x: Vec<f32> = (0..n)
+                .map(|i| {
+                    let v = 0.3 * ((i as f32 * 0.37).sin() * (i as f32 * 0.011).cos()).abs();
+                    if i < quiet {
+                        v / 6.0
+                    } else {
+                        v
+                    }
+                })
+                .collect();
+            for (c, _) in beats_at(k, 1.0) {
+                for d in 0..300 {
+                    let v = 1.0 - d as f32 / 300.0;
+                    (x[c - d], x[c + 1 + d]) = (v, v);
+                }
+            }
+            x
+        };
+        // Quieter for the first 0.25 s: 5 s of watch, 5 s of silence and
+        // 5.5 s of watch.
+        let x = track(128_000, 2000, &mut (0..40).chain(80..124));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(5.0..10.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 84);
+        // Only a second of watch before 5 s of silence.
+        let x = track(90_000, 0, &mut (0..8).chain(48..88));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(1.0..6.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 48);
+    }
+
+    /// The level carried on is the typical beat of both sides, so sound
+    /// on which one side does not match at all carries none on.
+    #[test]
+    fn a_level_is_carried_on_only_from_both_sides() {
+        // Beats every 0.125 s on a floor of -1, the sides' alternating.
+        let track = |first: f32, second: f32| {
+            let mut x = vec![-1.0f32; 16_000];
+            for k in 0..15 {
+                let (i, h) = (600 + 1000 * k, if k % 2 == 0 { first } else { second });
+                (x[i - 1], x[i], x[i + 1]) = (h - 0.5, h, h - 0.5);
+            }
+            x
+        };
+        for (first, second) in [(0.0, 1.0), (1.0, 0.0)] {
+            let (peaks, level) = track_peaks(&track(first, second), 8000.0, 0.125, None, None);
+            assert_eq!(peaks.len(), 15);
+            assert_eq!(level, None, "sides {first} and {second}");
+        }
+        let (_, level) = track_peaks(&track(1.0, 1.0), 8000.0, 0.125, None, None);
+        assert!(level.is_some_and(|l| (l - 1.0).abs() < 1e-3), "{level:?}");
+    }
+
+    /// Faint peaks near where beats are due are kept between beats less
+    /// than a run missed apart, and dropped as a silence's noise across a
+    /// run missed.
+    #[test]
+    fn faint_peaks_are_kept_only_between_beats_less_than_a_run_missed_apart() {
+        // 60 beats, `quiet` of them from beat 20 heard only as a click a
+        // tenth as loud and 5 ms late.
+        let track = |quiet: usize| {
+            let faint = (20..20 + quiet).map(|k| (440 + 1000 * k, 0.1));
+            let loud = beats_at((0..20).chain(20 + quiet..60), 1.0);
+            clicks(60_500, loud.chain(faint))
+        };
+        let (peaks, _) = track_peaks(&track(MAX_MISSES - 1), 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 60);
+        let (peaks, _) = track_peaks(&track(MAX_MISSES), 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 60 - MAX_MISSES);
+    }
+
+    /// Faint peaks before the watch is first heard are not beats, however
+    /// soon it is heard.
+    #[test]
+    fn faint_peaks_before_the_watch_is_first_heard_are_not_beats() {
+        let faint = [(400, 0.1), (1440, 0.1)];
+        let x = clicks(12_000, faint.into_iter().chain(beats_at(2..11, 1.0)));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 9);
+        assert!((peaks[0].0 - 0.3).abs() < 1e-6, "{:?}", peaks[0]);
+    }
+
+    /// From ten good beats on, the template returned is rebuilt from the
+    /// beats the correlation found, which line up more closely than the
+    /// maxima it was first built on; with fewer it is left as it was.
+    #[test]
+    fn ten_good_beats_rebuild_the_template_from_the_beats() {
+        // `beats` beats every 0.125 s at 8 kHz, each a ramp down over 5 ms
+        // with a notch every 7 samples and a second sound halfway down,
+        // the odd ones 0.5 ms late, on noise a twentieth as high.
+        let track = |beats: usize| {
+            let mut x: Vec<f32> = (0..1000 * beats + 1500)
+                .map(|i| 0.05 * ((i as f32 * 0.37).sin() * (i as f32 * 0.011).cos()).abs())
+                .collect();
+            for k in 0..beats {
+                let c = 600 + 1000 * k + if k % 2 == 1 { 4 } else { 0 };
+                for d in 0..40 {
+                    let notch = if d % 7 == 3 { 0.6 } else { 1.0 };
+                    x[c + d] += (1.0 - d as f32 / 40.0) * notch;
+                }
+                x[c + 20] += 0.7;
+            }
+            x
+        };
+        let rebuilt = |beats: usize| {
+            let x = track(beats);
+            let (found, template, _) = detect_levelled(&x, 8000.0, 28800);
+            let good: Vec<f64> = found
+                .iter()
+                .filter(|b| b.is_good())
+                .map(|b| b.time)
+                .collect();
+            assert_eq!(good.len(), beats);
+            median_template(&x, 8000.0, &good) == template
+        };
+        assert!(rebuilt(10));
+        assert!(!rebuilt(9));
     }
 
     /// A side whose beats match the template at two sounds 6 ms apart, as

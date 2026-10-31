@@ -159,6 +159,34 @@ fn a_mask_across_the_settle_is_no_break() {
     assert_eq!(codes, ["masked"], "{codes:?}");
 }
 
+/// A take whose session file gives the default lift with no `lift_known`,
+/// as older files do, reads it as assumed, and the whole take says so as
+/// session's reading does; with the marker it says nothing of it (#685).
+#[test]
+fn an_older_takes_default_lift_is_named_assumed_on_the_whole_take() {
+    let root = std::env::temp_dir().join(format!("tg-app-bare-lift-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let takes = timegrapher_core::edge_takes::write_all(&root).unwrap();
+    let take = takes
+        .iter()
+        .find(|t| t.id == "edge_mask_across_settle")
+        .expect("the edge take");
+    let dir = root.join("takes").join(take.id);
+    let codes = || {
+        let app = super::tests::reopened(&dir);
+        timegrapher_core::edge_takes::caveat_codes(&app.whole_take().expect("whole take").m)
+    };
+    let marked = codes();
+    let file = dir.join("session.toml");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("lift = 52\nlift_known = true\n"), "{text}");
+    std::fs::write(&file, text.replace("lift_known = true\n", "")).unwrap();
+    let bare = codes();
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(!marked.iter().any(|c| c == "lift_unknown"), "{marked:?}");
+    assert!(bare.iter().any(|c| c == "lift_unknown"), "{bare:?}");
+}
+
 /// The whole take's hover says the breaks it is read across and, where
 /// Tick and Tock were named by the count across them, that too.
 #[test]

@@ -389,13 +389,9 @@ fn settings_with(
             return Err(differs("lift", format!("{a}"), format!("{b}")));
         }
     }
-    // A persisted numeric value wins, along with its context. Legacy session
-    // files treated any numeric lift as supplied; do not guess its history.
-    let lift_known = if m.lift.is_some() {
-        m.lift_known.unwrap_or(true)
-    } else {
-        lift.is_some()
-    };
+    // A persisted numeric value wins, along with its context, read as
+    // every reader reads it (#685).
+    let lift_known = take::file_lift_known(&m, table).unwrap_or(lift.is_some());
     if given_lift.is_some() && m.lift.is_some() && !lift_known {
         return Err(format!(
             "{} records an assumed lift, but this take supplies one; edit lift_known = true \
@@ -1345,8 +1341,14 @@ mod tests {
         fs::write(dir.join(MANIFEST), header(&supplied)).unwrap();
         o.lift = None;
         assert!(settings(&o).unwrap().lift_known);
+        // An older file's default lift, with no marker, was assumed (#685).
         fs::write(dir.join(MANIFEST), "lift = 52\n").unwrap();
-        assert!(settings(&o).unwrap().lift_known, "legacy CLI inference");
+        assert!(!settings(&o).unwrap().lift_known, "an older file's default");
+        fs::write(dir.join(MANIFEST), "lift = 49\n").unwrap();
+        assert!(
+            settings(&o).unwrap().lift_known,
+            "an older file's own value"
+        );
         fs::remove_file(dir.join(MANIFEST)).unwrap();
         o.calibre = Some("Unitas 6497-2".into());
         let calibre = settings(&o).unwrap();

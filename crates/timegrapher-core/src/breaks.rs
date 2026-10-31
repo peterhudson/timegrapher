@@ -636,6 +636,29 @@ mod tests {
         assert_eq!(held_step(1.0, &[7.0]), 6.0);
     }
 
+    /// A listed break is placed by its frame count when the sample rate is
+    /// known, and by its `audio_s` when it is not, since frames over no
+    /// rate place nothing.
+    #[test]
+    fn a_listed_break_is_placed_by_its_frame_when_the_rate_is_known() {
+        let json = serde_json::json!({ "breaks": [
+            { "frame": 96_000, "audio_s": 5.0, "gap_s": 1.5 },
+            { "audio_s": 1.0 },
+            { "frame": 48_000 },
+        ] });
+        let at = |audio_s, gap_s| Break { audio_s, gap_s };
+        assert_eq!(
+            from_session(&json, 48_000),
+            (vec![at(1.0, 0.0), at(1.0, 0.0), at(2.0, 1.5)], 0)
+        );
+        // With no rate the frames are no use: the first entry falls back
+        // on its `audio_s`, and the last, with nothing else, is skipped.
+        assert_eq!(
+            from_session(&json, 0),
+            (vec![at(1.0, 0.0), at(5.0, 1.5)], 1)
+        );
+    }
+
     #[test]
     fn a_clock_log_breaks_where_its_offset_steps_up_and_stays() {
         // Audio seconds against true seconds a long way on, as a clock

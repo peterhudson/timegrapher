@@ -533,9 +533,9 @@ mod tests {
             } else {
                 continue;
             };
-            let index = beats.last().map_or(0, |l| {
-                l.index + ((audio - l.time) / p).round().max(1.0) as i64
-            });
+            let index = beats
+                .last()
+                .map_or(0, |l| l.index + crate::beats::beats_on(audio - l.time, p));
             beats.push(Beat {
                 index,
                 time: audio,
