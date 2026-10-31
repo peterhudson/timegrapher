@@ -6,8 +6,19 @@ use timegrapher_core::library::{self, Library, Watch, CACHE_FILE, TAKES, UNSORTE
 
 /// The settings folder the commands keep the takes' readings in, apart
 /// from the user's own.
+/// This test's own settings folder: the tests run side by side in one
+/// process, and two sharing one `readings.json` could each drop the
+/// other's kept reading (#781). The test harness names each test's thread
+/// after the test.
 fn config_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("tg-cli-watches-config-{}", std::process::id()))
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("main")
+        .replace("::", "-");
+    std::env::temp_dir().join(format!(
+        "tg-cli-watches-config-{test}-{}",
+        std::process::id()
+    ))
 }
 
 fn run(args: &[&str]) -> Output {
