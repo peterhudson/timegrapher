@@ -581,27 +581,37 @@ pub struct Harmonic {
     pub n: u8,
 }
 
+/// How far a line of `period_s`, read at `resolution_s`, sits from the
+/// `n`th harmonic of a longer period `of_s`, in resolutions (1/span) in
+/// frequency. Under 1 means the line is that harmonic: the one test of a
+/// whole fraction, for a found cycle and a wheel's turn alike (#775).
+///
+/// Within one resolution in frequency of n times the longer period's: the
+/// refined periods are read far finer than that, so no n-fold allowance.
+/// Before (n resolutions in period plus the fundamental's), 22.4 s
+/// amplitude lines on 10 min were marked the 60 s fourth wheel's 3rd, 3.3
+/// resolutions off (#762).
+pub fn harmonic_offset(period_s: f64, resolution_s: f64, n: u8, of_s: f64) -> f64 {
+    let f = 1.0 / period_s;
+    (f - f64::from(n) / of_s).abs() / (resolution_s * f * f)
+}
+
 /// For each component, the found cycle it is a harmonic of: the smallest
 /// n (2 to 8) whose n times that cycle's frequency is within one
-/// resolution (1/span) of its own. Neighbouring n are 1/period apart in
-/// frequency, more than that, so at most one fits.
+/// resolution (1/span) of its own ([`harmonic_offset`] under 1).
+/// Neighbouring n are 1/q apart in frequency, more than the two
+/// resolutions (2/span) the test spans when q < span/2, so then at most
+/// one fits; a q nearer the span can fit two.
 fn label_harmonics(components: &mut [Component]) {
     let found: Vec<f64> = components.iter().map(|c| c.period_s).collect();
     for c in components.iter_mut() {
-        // Within one resolution (1/span) in frequency of n times the
-        // fundamental's: the refined periods are read far finer than that,
-        // so no n-fold allowance. Before (n resolutions in period plus the
-        // fundamental's), 22.4 s amplitude lines on 10 min were marked the
-        // 60 s fourth wheel's 3rd, 3.3 resolutions off (#762).
-        let f = 1.0 / c.period_s;
-        let inv_span = c.resolution_s * f * f;
+        let off = |n: u8, q: f64| harmonic_offset(c.period_s, c.resolution_s, n, q);
         c.harmonic_of = (2..=8u8).find_map(|n| {
-            let off = |q: f64| (f - n as f64 / q).abs();
             found
                 .iter()
                 .copied()
-                .filter(|&q| off(q) < inv_span)
-                .min_by(|&a, &b| off(a).total_cmp(&off(b)))
+                .filter(|&q| off(n, q) < 1.0)
+                .min_by(|&a, &b| off(n, a).total_cmp(&off(n, b)))
                 .map(|q| Harmonic { period_s: q, n })
         });
     }
@@ -1075,6 +1085,51 @@ mod tests {
             );
             assert!(cs[0].harmonic_of.is_none());
         }
+    }
+
+    /// A line is at a whole fraction of a wheel's turn by the same
+    /// one-resolution test as a harmonic of a found cycle, not by a 1%
+    /// rule of its own (#775). On 10 min, 30.6 s is half of 60 s (0.4
+    /// resolutions off, though 2% off in period); over 2 h, 20.1 s is not
+    /// a third of 60 s (1.8 resolutions off, though 0.5% off in period).
+    #[test]
+    fn a_wheel_fraction_uses_the_one_resolution_test() {
+        use crate::periodicity::Wheel;
+        let tau = std::f64::consts::TAU;
+        let g = series(600, 1.0, |t| (tau * t / 60.0).sin(), 0.1, 13);
+        let one = analyse(&g, &LongConfig::default()).components.remove(0);
+        let at = |p: f64, span: f64| Component {
+            period_s: p,
+            resolution_s: p * p / span,
+            wheel: None,
+            harmonic_of: None,
+            ..one.clone()
+        };
+        let wheels = [Wheel {
+            name: "fourth wheel".into(),
+            period_s: 60.0,
+        }];
+        let n = |c: &Component| crate::session::wheel_fraction(c, &wheels).map(|(_, n)| n);
+        assert_eq!(n(&at(30.6, 600.0)), Some(2));
+        assert_eq!(n(&at(20.1, 600.0)), Some(3));
+        assert_eq!(n(&at(20.1, 7200.0)), None);
+        assert_eq!(n(&at(22.44, 600.0)), None);
+        let tied = Component {
+            wheel: Some("third wheel".into()),
+            ..at(30.0, 600.0)
+        };
+        assert_eq!(n(&tied), None);
+        // Over 580 s, a 224.84 s line is within one resolution of both 2
+        // and 3 turns of a 540 s wheel (0.43 and 0.64 resolutions off, as
+        // on ym42_DD_30min), so no fraction is told (#787).
+        let third = [Wheel {
+            name: "third wheel".into(),
+            period_s: 540.0,
+        }];
+        let c = at(224.84, 580.0);
+        assert!(harmonic_offset(c.period_s, c.resolution_s, 2, 540.0) < 1.0);
+        assert!(harmonic_offset(c.period_s, c.resolution_s, 3, 540.0) < 1.0);
+        assert_eq!(crate::session::wheel_fraction(&c, &third), None);
     }
 
     #[test]
