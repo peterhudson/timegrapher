@@ -624,8 +624,8 @@ pub fn html(title: &str, r: &LongReport, wheels: &[Wheel], clock_note: Option<&s
         r.clean_fraction * 100.0,
         esc(&clock),
         slice_name(r.slice_s),
-        o(r.rate_p05, 1),
-        o(r.rate_p95, 1),
+        crate::session_cmd::signed(r.rate_p05, 1),
+        crate::session_cmd::signed(r.rate_p95, 1),
         r.overall
             .map_or("-".into(), |f| esc(&crate::beat_error_text(
                 r.beat_error_unlock_ms,
