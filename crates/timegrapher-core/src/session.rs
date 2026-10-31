@@ -803,6 +803,11 @@ pub struct Cycle {
     /// A wheel whose turn is a whole number of these periods, and the
     /// number: a short, sharp change once per turn also shows here.
     pub fraction_of: Option<(String, u32)>,
+    /// A longer cycle found in the same series whose period is this one's
+    /// times a whole number, as core's search marks it
+    /// ([`crate::longterm::Component::harmonic_of`]): this one is a
+    /// harmonic of that cycle, not a cycle of its own.
+    pub harmonic_of: Option<crate::longterm::Harmonic>,
 }
 
 impl Cycle {
@@ -843,6 +848,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
         wheel: c.component.wheel.clone(),
         nearest_wheel: c.component.nearest_wheel.clone(),
         fraction_of: fraction(c.component.period_s, &c.component.wheel),
+        harmonic_of: c.component.harmonic_of,
     });
     let amp = r.amplitude.components.iter().map(|c| Cycle {
         series: "amplitude",
@@ -854,6 +860,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
         wheel: c.wheel.clone(),
         nearest_wheel: c.nearest_wheel.clone(),
         fraction_of: fraction(c.period_s, &c.wheel),
+        harmonic_of: c.harmonic_of,
     });
     rate.chain(amp).collect()
 }
@@ -1406,37 +1413,55 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
                 format!("{measured:.0} s measured after settling in {}", at(r)),
             );
         }
-        // A sharp event once per turn also shows at whole fractions of
-        // the turn; those are reported with the wheel, not on their own.
+        // A sharp event once per period also shows at whole fractions of
+        // it; a cycle core marks as a harmonic of another listed one is
+        // reported with that one, not on its own, unless it is a wheel's
+        // own line or explains more of the variation than that one does:
+        // then it is reported in its own right, the mark a note.
         let harmonic_of = |c: &Cycle| {
-            r.cycles.iter().find(|w| {
-                let n = w.period_s / c.period_s;
-                w.wheel.is_some()
-                    && w.series == c.series
-                    && n > 1.5
-                    && (n - n.round()).abs() < 0.01 * n
-            })
+            let h = c.harmonic_of?;
+            r.cycles
+                .iter()
+                .find(|w| w.series == c.series && w.period_s == h.period_s)
         };
+        let folded =
+            |c: &Cycle| harmonic_of(c).filter(|w| c.wheel.is_none() && c.explained <= w.explained);
         for c in &r.cycles {
             let size = format!("{} peak to peak", c.size_text());
             let fa = 10f64.powf(-c.significance.min(300.0));
-            if c.wheel.is_none() && harmonic_of(c).is_some() {
+            if folded(c).is_some() {
                 continue;
             }
             let harmonics: Vec<String> = r
                 .cycles
                 .iter()
-                .filter(|h| h.wheel.is_none() && harmonic_of(h).is_some_and(|w| std::ptr::eq(w, c)))
+                .filter(|h| folded(h).is_some_and(|w| std::ptr::eq(w, c)))
                 .map(|h| format!("{:.2} s", h.period_s))
                 .collect();
-            let harmonics = if harmonics.is_empty() {
+            let of = if c.wheel.is_some() {
+                "the turn"
+            } else {
+                "its period"
+            };
+            let mut harmonics = if harmonics.is_empty() {
                 String::new()
             } else {
                 format!(
-                    "; also at whole fractions of the turn ({})",
+                    "; also at whole fractions of {of} ({})",
                     harmonics.join(", ")
                 )
             };
+            if let (Some(w), Some(h)) = (harmonic_of(c), c.harmonic_of) {
+                let than = if w.explained < c.explained {
+                    "weaker"
+                } else {
+                    "stronger"
+                };
+                harmonics += &format!(
+                    "; at 1/{} of the {:.2} s {} cycle, a {than} line",
+                    h.n, w.period_s, w.series
+                );
+            }
             match &c.wheel {
                 Some(w) => push(
                     "cycle_wheel",
@@ -1454,7 +1479,7 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
                         ri,
                         format!("Regular {} change at 1/{n} of the {w}'s turn", c.series),
                         format!(
-                            "{} repeats every {:.2} s ({size}) in {}; false-alarm chance {fa:.0e}",
+                            "{} repeats every {:.2} s ({size}) in {}; false-alarm chance {fa:.0e}{harmonics}",
                             c.series,
                             c.period_s,
                             at(r)
@@ -1466,7 +1491,7 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
                     ri,
                     format!("Regular {} change not tied to a listed wheel", c.series),
                     format!(
-                        "{} repeats every {:.2} s ({size}) in {}; false-alarm chance {fa:.0e}{}",
+                        "{} repeats every {:.2} s ({size}) in {}; false-alarm chance {fa:.0e}{}{harmonics}",
                         c.series,
                         c.period_s,
                         at(r),
