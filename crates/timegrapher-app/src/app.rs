@@ -5542,6 +5542,9 @@ impl TimegrapherApp {
                 from,
                 to,
             );
+            if !self.lift_known() {
+                m.lift_unknown();
+            }
             if let Some(why) = self.take_unlisted {
                 m.breaks_unlisted(why);
             }
