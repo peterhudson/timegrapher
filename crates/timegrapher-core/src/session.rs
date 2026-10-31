@@ -824,20 +824,30 @@ impl Cycle {
     }
 }
 
+/// The wheel whose turn a component not tied to a wheel sits at a whole
+/// fraction of (1/2 to 1/6), and the n: by core's one whole-fraction test,
+/// within one resolution (1/span) in frequency of n turns (#775).
+pub(crate) fn wheel_fraction(
+    c: &crate::longterm::Component,
+    wheels: &[Wheel],
+) -> Option<(String, u32)> {
+    if c.wheel.is_some() {
+        return None;
+    }
+    wheels.iter().find_map(|w| {
+        (2..=6u8)
+            .find(|&n| {
+                crate::longterm::harmonic_offset(c.period_s, c.resolution_s, n, w.period_s) < 1.0
+            })
+            .map(|n| (w.name.clone(), u32::from(n)))
+    })
+}
+
 /// The periodic changes `long` found, without their long arrays.
 /// `wheels` are the turn periods searched, used to mark a component at a
 /// whole fraction of a wheel's turn.
 pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
-    let fraction = |period: f64, wheel: &Option<String>| -> Option<(String, u32)> {
-        if wheel.is_some() {
-            return None;
-        }
-        wheels.iter().find_map(|w| {
-            let n = w.period_s / period;
-            (n > 1.5 && n < 6.5 && (n - n.round()).abs() < 0.01 * n)
-                .then(|| (w.name.clone(), n.round() as u32))
-        })
-    };
+    let fraction = |c: &crate::longterm::Component| wheel_fraction(c, wheels);
     let rate = r.rate_components.iter().map(|c| Cycle {
         series: "rate",
         period_s: c.component.period_s,
@@ -847,7 +857,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
         explained: c.component.explained,
         wheel: c.component.wheel.clone(),
         nearest_wheel: c.component.nearest_wheel.clone(),
-        fraction_of: fraction(c.component.period_s, &c.component.wheel),
+        fraction_of: fraction(&c.component),
         harmonic_of: c.component.harmonic_of,
     });
     let amp = r.amplitude.components.iter().map(|c| Cycle {
@@ -859,7 +869,7 @@ pub fn cycles(r: &LongReport, wheels: &[Wheel]) -> Vec<Cycle> {
         explained: c.explained,
         wheel: c.wheel.clone(),
         nearest_wheel: c.nearest_wheel.clone(),
-        fraction_of: fraction(c.period_s, &c.wheel),
+        fraction_of: fraction(c),
         harmonic_of: c.harmonic_of,
     });
     rate.chain(amp).collect()
