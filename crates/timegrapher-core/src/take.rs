@@ -1629,7 +1629,74 @@ mod tests {
         let (done, total) = *told.last().unwrap();
         assert_eq!(done, total);
         assert!((total - read.log.duration_s).abs() < 1e-6, "{told:?}");
+        // The whole length is known from the first word on.
+        assert!(
+            told.iter()
+                .all(|&(_, total)| (total - read.log.duration_s).abs() < 1e-6),
+            "{told:?}"
+        );
+        // Read on the sound card's own clock, the correction is not used.
+        let on_card = EntrySettings {
+            card_clock: true,
+            ..s
+        };
+        let card = open_entry(
+            &dir,
+            &m,
+            e,
+            &on_card,
+            |_| Ok(None),
+            |_| Ok(Some((20.0, "stored for 'test'".to_string()))),
+            |_, _| {},
+        )
+        .unwrap();
+        assert!(
+            card.clock.is_none() && card.clock_from.is_none(),
+            "{:?}",
+            card.clock_from
+        );
+        assert_eq!(card.clock_ppm, None);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A take kept as its analysis alone lists its breaks in its session
+    /// file; a step in its clock log that no listed break explains is a
+    /// break too, as it is for a take read from its sound.
+    #[test]
+    fn a_kept_takes_clock_step_is_a_break_beside_its_listed_ones() {
+        // A line every 10 s, true time 10 s ahead from 60 s of sound on.
+        let mut text = String::from("unix_s,frames\n");
+        for k in 0..=12 {
+            let audio_s = k as f64 * 10.0;
+            let unix_s = 1.7e9 + audio_s + if audio_s >= 60.0 { 10.0 } else { 0.0 };
+            text.push_str(&format!("{unix_s},{}\n", (audio_s * 48_000.0) as u64));
+        }
+        let mut fit = clock(Some(&text), 48_000, 4, None, None, 120.0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(fit.breaks.len(), 1, "{:?}", fit.breaks);
+        let json = serde_json::json!({ "breaks": [{ "audio_s": 30.0, "gap_s": 0.0 }] });
+        let mut log = BeatLog {
+            sample_rate: 48_000,
+            duration_s: 120.0,
+            bph: 28_800,
+            lift_deg: 52.0,
+            beats: Vec::new(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+            snippets: Vec::new(),
+        };
+        let found = breaks(&mut log, Listed::Session(Some(&json)), Some(&mut fit));
+        let at: Vec<f64> = found.breaks.iter().map(|b| b.audio_s).collect();
+        assert_eq!(at.len(), 2, "{at:?}");
+        assert!(
+            (at[0] - 30.0).abs() < 1e-9 && (at[1] - 60.0).abs() < 1e-9,
+            "{at:?}"
+        );
     }
 
     /// The words for where a take's clock came from, for each source; a
