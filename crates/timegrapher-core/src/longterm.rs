@@ -13,9 +13,9 @@
 //!    moving average off leaves (1 − sinc(πfW))² of each frequency, and a
 //!    median's extra scatter adds (π/2 − 1)·sinc² to the noise. It lifts
 //!    noise about 1.5 times near a period of 0.7W, where the search read
-//!    the detrend as cycles until #723. An AR(1) noise's shape, with ρ read
-//!    as everywhere else, goes on top; above a period of W the shape is
-//!    left flat. What is left is levelled by a median over ±50% in
+//!    the detrend as cycles until #723; above a period of W it is left
+//!    flat. An AR(1) noise's shape, with ρ read as everywhere else, goes
+//!    on top, on short takes too (#753). What is left is levelled by a median over ±50% in
 //!    frequency (±25% under the quadratic a short take is detrended with,
 //!    without its lowest three bins).
 //!    The score uses an exponential, mean-1 reference for
@@ -261,18 +261,19 @@ fn spectrum(g: &Grid, detrend_w: Option<f64>) -> Spectrum {
     let pad = l / g.y.len().max(1);
     let power: Vec<f64> = spec.iter().map(|c| c.norm_sqr()).collect();
     let m = power.len();
-    // The noise the search expects at each bin, up to a constant: the
-    // detrend's own shape (below), and under a running median an AR(1)
-    // noise's shape, ρ read as everywhere else (one noise model).
-    let shape: Vec<f64> = match detrend_w {
-        Some(w) => {
-            let rho = crate::confidence::long_run_rho(&g.y, crate::confidence::Slow::Line);
-            (0..m)
-                .map(|j| noise_pass(j as f64 * df, w) * ar1_shape(j as f64 * df * g.step, rho))
-                .collect()
-        }
-        None => vec![1.0; m],
-    };
+    // The noise the search expects at each bin, up to a constant: an AR(1)
+    // noise's shape, ρ read as everywhere else (one noise model), and
+    // under a running median the detrend's own shape (below). Short takes
+    // detrended with a quadratic take the AR(1) shape too: without it, 1
+    // min of red noise at ρ 0.9 named a cycle in a quarter to a third of
+    // takes (#753).
+    let rho = crate::confidence::long_run_rho(&g.y, crate::confidence::Slow::Line);
+    let shape: Vec<f64> = (0..m)
+        .map(|j| {
+            let f = j as f64 * df;
+            ar1_shape(f * g.step, rho) * detrend_w.map_or(1.0, |w| noise_pass(f, w))
+        })
+        .collect();
     let flat: Vec<f64> = power.iter().zip(&shape).map(|(p, s)| p / s).collect();
     // What the flattened spectrum still leaves, by its median on log-spaced
     // knots, interpolated. Under a running median: over +-50% in frequency
@@ -1041,22 +1042,26 @@ mod tests {
     /// search is set for a 1% chance of naming a cycle in noise, so about
     /// 3 in 100 takes across the three series. Each cell's cap is the count
     /// measured on the fix, the higher of two seed sets of 100 (from 9000
-    /// and from 9500). Across the ten cells the fix names one in 46 and 33
+    /// and from 9500). Across the first ten cells #723 names one in 46 and 33
     /// of those 1000 takes, main in 64 and 80 (up to 18 of 100 on half an
-    /// hour at ρ 0.9, most near 0.75 of the median's window).
+    /// hour at ρ 0.9, most near 0.75 of the median's window). Takes under
+    /// 20 min take the AR(1) shape too (#753): before, 1 min at ρ 0.9 named
+    /// one in 35 and 26 of 100, and 3 min at ρ 0.9 in 7 and 6.
     #[test]
     fn noise_with_no_cycle_rarely_names_one() {
         let cells = [
             (180.0, 1.0, 0.0, 5),
-            (180.0, 1.0, 0.9, 7),
+            (180.0, 1.0, 0.9, 2),
             (600.0, 1.0, 0.0, 4),
-            (600.0, 1.0, 0.9, 4),
+            (600.0, 1.0, 0.9, 3),
             (1800.0, 10.0, 0.0, 7),
             (1800.0, 10.0, 0.5, 5),
             (1800.0, 10.0, 0.9, 5),
             (7200.0, 10.0, 0.0, 3),
             (7200.0, 10.0, 0.5, 2),
             (7200.0, 10.0, 0.9, 11),
+            (60.0, 1.0, 0.5, 5),
+            (60.0, 1.0, 0.9, 2),
         ];
         let mut over = Vec::new();
         for (i, &(span, step, rho, cap)) in cells.iter().enumerate() {
