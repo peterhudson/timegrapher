@@ -274,6 +274,18 @@ mod tests {
         assert_eq!(joined.sided, [55.0]);
     }
 
+    /// The beats after a join are numbered on by the beats that would fit
+    /// across it: the 5 s join and the beat's step from the last beat
+    /// kept, 5.2 s at a beat every 0.2 s, hold 26.
+    #[test]
+    fn a_join_numbers_the_beats_on_by_the_beats_it_holds() {
+        let (joined, _) = join(&log(), &[(10.0, 40.0), (100.0, 190.0)], &[], None);
+        let k = joined.beats.partition_point(|b| b.time < 30.0);
+        let (last, next) = (&joined.beats[k - 1], &joined.beats[k]);
+        assert!((last.time - 29.8).abs() < 1e-9 && (next.time - 35.0).abs() < 1e-9);
+        assert_eq!(next.index - last.index, 26);
+    }
+
     /// On a card 100 ppm slow, the joined beats are on the take's clock:
     /// a second of sound is 1.0001 s, and the joined log runs as long as
     /// [`joined_duration`] says on that clock.
