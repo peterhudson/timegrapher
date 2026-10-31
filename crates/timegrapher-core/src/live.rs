@@ -1938,33 +1938,39 @@ mod tests {
     /// The stand's noise, then a few seconds of a watch, heard live: the
     /// noise before a regular beat was found counts by its peaks, as the
     /// saved reading of the same sound logs them, so the short run at the
-    /// end is no watch either way (#679, #680).
+    /// end is no watch either way (#679, #680). After 8 s of the watch no
+    /// whole window holds it; after 20 s two do, and only the noise's
+    /// peaks before them say no watch over a 60 s average, as saved does.
     #[test]
     fn a_watch_heard_briefly_after_the_stand_noise_is_no_watch_live_or_saved() {
         let rms = crate::synth::noise_rms(SynthConfig::default().snr_db) * crate::synth::SCALE;
-        let mut rng = crate::synth::Rng::new(5);
-        let mut x: Vec<f32> = (0..110 * 48_000)
-            .map(|_| (rms * rng.normal()) as f32)
-            .collect();
-        let watch = generate(
-            &SynthConfig {
-                duration_s: 8.0,
-                ..Default::default()
-            },
-            |_| 280.0,
-            |_| 0.0,
-        );
-        x.extend_from_slice(&watch.samples);
-        let mut a = LiveAnalyzer::new(48_000, LiveConfig::default());
-        feed(&mut a, &x);
-        let log =
-            crate::stream::analyze_samples(&x, 48_000, &crate::stream::StreamConfig::default());
-        let end = x.len() as f64 / 48_000.0;
-        for average_s in [10.0, 30.0, 60.0] {
-            let live = a.reading(average_s);
-            let saved = crate::session::measure_masked(&log, None, &[], &[], end - average_s, end);
-            assert!(!saved.watch_heard, "{average_s} s saved");
-            assert!(!live.watch_heard, "{average_s} s live: {live:?}");
+        for (watch_s, averages) in [(8.0, &[10.0, 30.0, 60.0][..]), (20.0, &[60.0][..])] {
+            let mut rng = crate::synth::Rng::new(5);
+            let mut x: Vec<f32> = (0..110 * 48_000)
+                .map(|_| (rms * rng.normal()) as f32)
+                .collect();
+            let watch = generate(
+                &SynthConfig {
+                    duration_s: watch_s,
+                    ..Default::default()
+                },
+                |_| 280.0,
+                |_| 0.0,
+            );
+            x.extend_from_slice(&watch.samples);
+            let mut a = LiveAnalyzer::new(48_000, LiveConfig::default());
+            feed(&mut a, &x);
+            let log =
+                crate::stream::analyze_samples(&x, 48_000, &crate::stream::StreamConfig::default());
+            let end = x.len() as f64 / 48_000.0;
+            for &average_s in averages {
+                let live = a.reading(average_s);
+                let saved =
+                    crate::session::measure_masked(&log, None, &[], &[], end - average_s, end);
+                let at = format!("{watch_s} s of watch, {average_s} s average");
+                assert!(!saved.watch_heard, "{at}, saved");
+                assert!(!live.watch_heard, "{at}, live: {live:?}");
+            }
         }
     }
 
