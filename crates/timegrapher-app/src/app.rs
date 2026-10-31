@@ -5543,12 +5543,7 @@ impl TimegrapherApp {
                 from,
                 to,
             );
-            if !self.lift_known() {
-                m.lift_unknown();
-            }
-            if let Some(why) = self.take_unlisted {
-                m.breaks_unlisted(why);
-            }
+            m.take_doubts(self.lift_known(), self.take_unlisted);
             Some(WholeTake { m, span })
         };
         let w = read();

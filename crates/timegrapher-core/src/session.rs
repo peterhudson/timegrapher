@@ -336,6 +336,19 @@ impl Measurement {
         );
     }
 
+    /// What a take's reading names beside its figures, as every reader of
+    /// the take names it: its lift, when that is not known
+    /// ([`Self::lift_unknown`]), and why its breaks are not all its own
+    /// list's, when they are not ([`Self::breaks_unlisted`]).
+    pub fn take_doubts(&mut self, lift_known: bool, unlisted: Option<crate::breaks::Unlisted>) {
+        if !lift_known {
+            self.lift_unknown();
+        }
+        if let Some(why) = unlisted {
+            self.breaks_unlisted(why);
+        }
+    }
+
     /// The beat error the report shows ([`beat_error_size`]). Unsigned, ms.
     pub fn beat_error(&self) -> Option<f64> {
         beat_error_size(self.beat_error_unlock_ms, self.beat_error_ms)

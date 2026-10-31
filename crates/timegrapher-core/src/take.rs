@@ -1044,12 +1044,7 @@ pub fn measure_entry(
     } = reading_window(e, m, s.settle_s, log.duration_s).map_err(EntryError::NoReading)?;
     let mut measurement =
         session::measure_masked(&log, fit.as_ref(), &breaks, &masked, settle_s, end_s);
-    if !cfg.analysis.lift_known {
-        measurement.lift_unknown();
-    }
-    if let Some(why) = unlisted {
-        measurement.breaks_unlisted(why);
-    }
+    measurement.take_doubts(cfg.analysis.lift_known, unlisted);
     measurement.clock_ppm = clock_ppm;
     measurement.clock_source = clock_source.clone();
     Ok(EntryRead {
