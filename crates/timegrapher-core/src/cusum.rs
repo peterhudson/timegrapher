@@ -113,4 +113,43 @@ mod tests {
         assert!(!c.shift);
         assert_eq!((c.at_s, c.at), (20.0, -1.6));
     }
+
+    /// The tail at points across its range, against the series summed to
+    /// convergence (2 Σ (−1)^(j−1) e^(−2j²x²)); under 0.2 it is 1.
+    #[test]
+    fn the_kolmogorov_tail_is_the_series_value() {
+        for (x, p) in [
+            (0.3, 0.999_990_694_198_665_5),
+            (0.4, 0.997_192_326_777_298_2),
+            (0.5, 0.963_945_243_664_875_1),
+            (0.8, 0.544_142_411_574_198_1),
+            (1.0, 0.269_999_671_677_354_56),
+            (2.0, 0.000_670_925_255_779_695_3),
+            (3.0, 3.045_995_948_942_526e-8),
+        ] {
+            let got = kolmogorov_tail(x);
+            assert!((got / p - 1.0).abs() < 1e-9, "{x}: {got} against {p}");
+        }
+        // From 0.2 up the series is read, which there is just under 1.
+        assert!(kolmogorov_tail(0.2) < 1.0);
+        assert_eq!(kolmogorov_tail(0.1), 1.0);
+        assert_eq!(kolmogorov_tail(0.0), 1.0);
+        assert_eq!(kolmogorov_tail(-1.0), 1.0);
+    }
+
+    /// The largest |s| is the first of two equal ones; its chance is the
+    /// tail of it; the cut nearest it wins whichever side it is on; and a
+    /// cut after the last reading marks the last reading.
+    #[test]
+    fn the_largest_and_the_nearest_cut_are_read_exactly() {
+        let t: Vec<f64> = (0..5).map(|i| i as f64 * 10.0).collect();
+        let c = Cusum::of(&t, &[0.1, 1.5, 0.3, -1.5, 0.2], 1, &[]);
+        assert_eq!((c.at_s, c.at, c.max), (10.0, 1.5, 1.5));
+        assert_eq!(c.p_value, kolmogorov_tail(1.5));
+        let s = [0.0, 0.4, 1.2, 0.5, 0.1];
+        assert_eq!(Cusum::of(&t, &s, 1, &[5.0, 30.0]).at_s, 30.0);
+        assert_eq!(Cusum::of(&t, &s, 1, &[5.0, 30.0]).at, 0.5);
+        let late = Cusum::of(&t, &s, 1, &[45.0]);
+        assert_eq!((late.at_s, late.at), (45.0, 0.1));
+    }
 }
