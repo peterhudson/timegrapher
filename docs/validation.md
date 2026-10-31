@@ -27,6 +27,12 @@ margins. This is a comparison with stored tg references and historical engine
 baselines, not a fresh execution of tg or proof of physical accuracy. Coverage,
 exclusions and baseline-update rules are in [regress](regress.md).
 
+The corpus watches named on this page are replicas with clone movements:
+the Yacht-Master 42 replica (Dandong 3235 movement), the Daytona replica
+(Dandong 4130), the Reverso Duo replica (21,600 bph movement) and the
+Patek 324 clone (Dandong). "Dandong 3235" on its own is a different watch
+with the same movement.
+
 The same job separately requires `analyze_and_session_agree_on_real_takes`.
 It authenticates `take_part01-001.flac` from exactly four public takes:
 `daytona4130_DU_30min`, `ym42_DD_30min`, `patek324_DU_30min` and
@@ -113,7 +119,7 @@ current CI coverage described above.
 
 ## Against tg on a real recording
 
-Recording: Rolex calibre 3235, dial up, 300 s, 48 kHz 16-bit mono, C-Media
+Recording: the Yacht-Master 42 replica (Dandong 3235 movement), dial up, 300 s, 48 kHz 16-bit mono, C-Media
 USB timegrapher microphone, no clipping (2026-10-08). tg here is
 jnarvaezp/tg-mod (tg 0.7 lineage) run offline over the same file, reading
 every 100 ms from its 16 s window.
@@ -138,8 +144,8 @@ rate is on the uncalibrated sound-card clock.
 | Recording | Amplitude tg | Amplitude timegrapher | Rate tg / timegrapher (s/d) |
 | --- | --- | --- | --- |
 | Dandong 3235, dial up, 30 min | 286° | 288° | +3.8 / +3.6 |
-| Rolex 3235, 2 h take, 30 min of it (segments 1, 2, 7) | 251° | 250° | +43.1 / +43.1 |
-| Rolex 3235, 5 min | 246° | 245° | +35.6 / +34.1 |
+| Yacht-Master, 2 h take, 30 min of it (segments 1, 2, 7) | 251° | 250° | +43.1 / +43.1 |
+| Yacht-Master, 5 min | 246° | 245° | +35.6 / +34.1 |
 
 The templates behind amplitude are now the mean of the middle half of the
 beats at each point rather than their median (stray clicks are still
@@ -172,10 +178,10 @@ does not enter.
 | Dandong 3235, 01 | 0.19 ms | 0.19 ms | 0.45 ms |
 | Dandong 3235, 02 | 0.12 ms | 0.24 ms | 0.35 ms |
 | Dandong 3235, 03 | 0.14 ms | 0.15 ms | 0.77 ms |
-| Rolex 3235 (2 h take), 01 | 0.29 ms | 0.30 ms | 0.08 ms |
-| Rolex 3235 (2 h take), 02 | 0.27 ms | 0.26 ms | 0.06 ms |
-| Rolex 3235 (2 h take), 07 | 0.36 ms | 0.31 ms | 0.08 ms |
-| Rolex 3235, 5 min | 0.17 ms | 0.24 ms | 0.09 ms |
+| Yacht-Master (2 h take), 01 | 0.29 ms | 0.30 ms | 0.08 ms |
+| Yacht-Master (2 h take), 02 | 0.27 ms | 0.26 ms | 0.06 ms |
+| Yacht-Master (2 h take), 07 | 0.36 ms | 0.31 ms | 0.08 ms |
+| Yacht-Master, 5 min | 0.17 ms | 0.24 ms | 0.09 ms |
 | Daytona (Dandong 4130), 01 | 0.86 ms | 0.36 ms | 0.05 ms |
 | Daytona (Dandong 4130), 02 | 0.88 ms | 0.28 ms | 0.07 ms |
 | Daytona (Dandong 4130), 03 | 0.87 ms | 0.28 ms | 0.06 ms |
@@ -183,8 +189,8 @@ does not enter.
 | Patek 324 (Dandong clone), 02 | 0.39 ms | 0.46 ms | 0.35 ms |
 | Patek 324 (Dandong clone), 03 | 0.43 ms | 0.45 ms | 0.34 ms |
 
-On the Rolex the unlock value agrees with tg to within 0.05 ms on the 2 h
-take and reads 0.07 ms high on the 5 min recording. On the Dandong
+On the Yacht-Master the unlock value agrees with tg to within 0.05 ms on the 2 h
+take and reads 0.07 ms high on the 5 min recording. On the Dandong 3235
 it is within 0.01 ms on segments 01 and 03 but 0.12 ms high on 02. On the
 Patek 324 clone it reads 0.02–0.08 ms high. The Daytona does not agree, and the reason is the landmark, not a
 missed sound. In tg's own trace the two sides' unlock-to-drop times differ
@@ -202,11 +208,11 @@ peak to peak on timegrapher's 2 s templates, the sides differ by about
 is not known here; the bench No. 1900 read 0.3 ms on this watch, close to
 timegrapher's value, but that is a single photo.
 
-Single windows are noisy on the Dandong-built watches. On the Dandong
-3235 the unlock value scatters by about 0.55 ms (robust SD) from window
+Single windows are noisy on the Dandong 3235, the Daytona and the Patek
+clone. On the Dandong 3235 the unlock value scatters by about 0.55 ms (robust SD) from window
 to window. On the Daytona and the Patek clone the scatter is 0.05–0.2 ms,
 but 3–7% of windows are more than 1 ms off, because one side's unlock
-edge is found several ms early. The Rolex scatters by 0.07 ms. Only the
+edge is found several ms early. The Yacht-Master scatters by 0.07 ms. Only the
 median is meaningful on these watches. `long` on a whole 30 min folder
 gives 0.19 ms on the Dandong 3235, 0.30 ms on the Daytona and 0.47 ms on
 the Patek clone (tg 0.41 ms).

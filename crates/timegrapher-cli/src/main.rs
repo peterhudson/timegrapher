@@ -304,7 +304,8 @@ enum Command {
         /// coherence of the rate with the amplitude and of Tick's
         /// amplitude with Tock's, the Lomb-Scargle periodogram of each
         /// series' readings and each series' kurtogram: about 4.1 MB on a
-        /// 2 h take (the Pepsi 3235 take's parts 6 and 7).
+        /// 2 h take (parts 6 and 7 of the Pepsi replica's take, Dandong
+        /// 3285).
         #[arg(long, requires = "json")]
         maps: bool,
     },
