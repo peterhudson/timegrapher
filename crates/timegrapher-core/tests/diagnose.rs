@@ -162,3 +162,79 @@ fn the_check_keeps_the_beats_every_reading_keeps() {
     );
     assert_eq!(c.beats_found, found.iter().filter(|b| b.is_good()).count());
 }
+
+/// A watch whose beats are found, half or more of them, but whose ticks
+/// barely stand over the noise is named `no_ticks` for its faint signal,
+/// the test that fired, and the title says so, not its timing scatter
+/// (#772).
+#[test]
+fn a_faint_watch_is_named_for_its_signal_not_its_timing() {
+    let a = generate(
+        &SynthConfig {
+            duration_s: 30.0,
+            snr_db: 0.0,
+            ..Default::default()
+        },
+        |_| 270.0,
+        |_| 0.0,
+    );
+    let c = check(&a, &DiagnoseConfig::default());
+    let x = c.signal_x.expect("a signal figure");
+    assert!(x < 3.0, "signal {x}");
+    assert!(c.beats_found * 2 >= c.beats_expected, "{c:?}");
+    let i = c
+        .issues
+        .iter()
+        .find(|i| i.code == IssueCode::NoTicks)
+        .expect("no_ticks");
+    assert_eq!(
+        i.title,
+        format!("Ticks too faint over the noise (signal {x:.1}×, under 3×)")
+    );
+    assert!(
+        i.evidence.ends_with(&format!("signal {x:.1}×")),
+        "{}",
+        i.evidence
+    );
+}
+
+/// A watch timed over the start of the take and then nearly lost, so under
+/// half the beats expected are found though they time, is named for its
+/// few beats, whether its signal stands over the noise or is faint too:
+/// the beat count is the test that fired first (#772).
+#[test]
+fn a_watch_with_few_beats_is_named_for_them_faint_or_not() {
+    for (keep_s, faint) in [(10.0, false), (4.0, true)] {
+        let mut a = generate(
+            &SynthConfig {
+                duration_s: 30.0,
+                snr_db: 0.0,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        let k = (keep_s * f64::from(a.sample_rate)) as usize;
+        for v in a.samples[k..].iter_mut() {
+            *v *= 0.02;
+        }
+        let c = check(&a, &DiagnoseConfig::default());
+        assert!(c.beats_found > 0, "{keep_s} s: {c:?}");
+        assert!(c.beats_found * 2 < c.beats_expected, "{keep_s} s: {c:?}");
+        let x = c.signal_x.expect("a signal figure");
+        assert_eq!(x < 3.0, faint, "{keep_s} s: signal {x}");
+        let i = c
+            .issues
+            .iter()
+            .find(|i| i.code == IssueCode::NoTicks)
+            .expect("no_ticks");
+        assert_eq!(
+            i.title,
+            format!(
+                "No regular beat found (only {} of about {} beats)",
+                c.beats_found, c.beats_expected
+            ),
+            "{keep_s} s"
+        );
+    }
+}
