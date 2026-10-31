@@ -1165,6 +1165,48 @@ mod tests {
         }
     }
 
+    /// A 60 s sine in AR(1) noise (ρ 0.8, 1.5 times its size) over 30 min,
+    /// 30 cycles, so the cap allows every harmonic the search sums (#761).
+    /// On the 27 of 400 seeds where the search sums more than one, the
+    /// harmonics past the fundamental are noise: the median rate swing is
+    /// the sine's own when only the harmonics that stand out are kept
+    /// (1.06 measured), against 1.39 when every one is.
+    #[test]
+    fn harmonics_that_are_noise_do_not_size_a_cycle() {
+        let tau = std::f64::consts::TAU;
+        let truth = 2.0 * tau / 60.0 * 86_400.0;
+        let mut ratios: Vec<f64> = (0..400u64)
+            .filter_map(|seed| {
+                let mut z = Rng::new(22_000 + seed);
+                let k = (1.0f64 - 0.64).sqrt();
+                let mut e = z.normal();
+                let y: Vec<f64> = (0..1800)
+                    .map(|i| {
+                        e = 0.8 * e + k * z.normal();
+                        (tau * i as f64 / 60.0).sin() + 1.5 * e
+                    })
+                    .collect();
+                let g = Grid {
+                    t0: 0.0,
+                    step: 1.0,
+                    y,
+                };
+                let r = analyse(&g, &LongConfig::default());
+                let c = r
+                    .components
+                    .into_iter()
+                    .find(|c| (c.period_s / 60.0 - 1.0).abs() < 0.02 && c.harmonics > 1)?;
+                let rate = rate_profile(&c.shape, c.period_s);
+                let hi = rate.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let lo = rate.iter().copied().fold(f64::INFINITY, f64::min);
+                Some((hi - lo) / truth)
+            })
+            .collect();
+        assert_eq!(ratios.len(), 27);
+        let mid = median(&mut ratios);
+        assert!((0.85..1.2).contains(&mid), "{mid}");
+    }
+
     /// A sinusoid in white noise of the same size, at two periods inside
     /// the band the search reads, near the running median's window where
     /// the fix matters (#723), is found on most takes.
