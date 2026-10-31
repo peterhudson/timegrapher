@@ -307,6 +307,14 @@ pub fn all() -> Vec<EdgeTake> {
             truth: Some(MADE),
             known: None,
         },
+        EdgeTake {
+            id: "edge_old_bare_lift",
+            summary: "2 min of the watch in a session file written before lift_known: \
+                      a bare lift of 52 with no marker, so the lift is assumed",
+            caveats: &[&["lift_unknown"]],
+            truth: Some(MADE),
+            known: None,
+        },
     ]
 }
 
@@ -430,6 +438,9 @@ struct Recipe {
     entries: &'static str,
     /// The lift angle the session file gives.
     lift: f64,
+    /// Whether the session file marks that lift as supplied; an older
+    /// file has no marker.
+    lift_known: bool,
     /// Kept as its analysis alone, made at this lift, with no sound.
     kept_at: Option<f64>,
 }
@@ -448,16 +459,19 @@ impl Recipe {
             extra: "",
             entries: WHOLE_TAKE,
             lift: LIFT,
+            lift_known: true,
             kept_at: None,
         }
     }
 }
 
 /// The take's session file. Its lift is the one the sound was made at, so
-/// supplied (#685).
-fn manifest(take: &EdgeTake, lift: f64, extra: &str, entries: &str) -> String {
+/// supplied (#685), unless the file is written as an older one without
+/// the marker.
+fn manifest(take: &EdgeTake, lift: f64, known: bool, extra: &str, entries: &str) -> String {
+    let marker = if known { "lift_known = true\n" } else { "" };
     format!(
-        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {lift}\nlift_known = true\nnotes = \"{}\"\n{extra}\n{entries}",
+        "watch = \"synthetic: {}\"\nbph = 28800\nlift = {lift}\n{marker}notes = \"{}\"\n{extra}\n{entries}",
         take.id, take.summary
     )
 }
@@ -635,6 +649,10 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
                 kept_at: Some(LIFT),
                 ..Recipe::of(watch(120.0, seed - 1))
             },
+            "edge_old_bare_lift" => Recipe {
+                lift_known: false,
+                ..Recipe::of(watch(120.0, seed))
+            },
             "edge_no_unlock" => {
                 let mut cfg = made(120.0, seed);
                 cfg.sounds[0].gain = 0.0;
@@ -650,6 +668,7 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
             extra,
             entries,
             lift,
+            lift_known,
             kept_at,
         } = r;
         let frames = samples.len();
@@ -664,11 +683,23 @@ pub fn write_all(root: &Path) -> Result<Vec<EdgeTake>, String> {
         .map_err(|e| format!("{}: {e}", dir.display()))?;
         match kept_at {
             Some(at) => {
-                keep_analysis(&dir, &manifest(take, at, extra, entries), frames)?;
+                keep_analysis(
+                    &dir,
+                    &manifest(take, at, lift_known, extra, entries),
+                    frames,
+                )?;
                 let kept = format!("audio = false\n{extra}");
-                write(&dir, "session.toml", &manifest(take, lift, &kept, entries))?;
+                write(
+                    &dir,
+                    "session.toml",
+                    &manifest(take, lift, lift_known, &kept, entries),
+                )?;
             }
-            None => write(&dir, "session.toml", &manifest(take, lift, extra, entries))?,
+            None => write(
+                &dir,
+                "session.toml",
+                &manifest(take, lift, lift_known, extra, entries),
+            )?,
         }
         write(&dir, "clock.csv", &clock_log(frames, ppm, &steps))?;
         let json = record(&breaks);
@@ -773,7 +804,12 @@ mod tests {
         let root = std::env::temp_dir().join(format!("tg-stand-noise-{}", std::process::id()));
         let dir = root.join("takes").join(take.id);
         std::fs::create_dir_all(&dir).unwrap();
-        write(&dir, "session.toml", &manifest(&take, LIFT, "", WHOLE_TAKE)).unwrap();
+        write(
+            &dir,
+            "session.toml",
+            &manifest(&take, LIFT, true, "", WHOLE_TAKE),
+        )
+        .unwrap();
         write(&dir, "session.json", &record(&[])).unwrap();
         let mut heard = Vec::new();
         let mut split = Vec::new();
