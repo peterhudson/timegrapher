@@ -1126,6 +1126,33 @@ fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
         "{}",
         other[1]
     );
+    // A marked line that explains more than the line it is a harmonic of
+    // is reported in its own right, the mark a note, never folded away.
+    let mut r = reading(Position::CH, 2.0, 3.0, 280.0, 0.3);
+    let strong = Cycle {
+        explained: 0.6,
+        harmonic_of: Some(Harmonic {
+            period_s: 240.2,
+            n: 8,
+        }),
+        ..cycle(30.0, None)
+    };
+    r.cycles = vec![strong, cycle(240.2, None)];
+    let rep = evaluate(&[r]);
+    let other: Vec<&str> = rep
+        .findings
+        .iter()
+        .filter(|f| f.code == "cycle_other")
+        .map(|f| f.evidence.as_str())
+        .collect();
+    assert_eq!(other.len(), 2, "{other:?}");
+    assert!(
+        other[0].contains("every 30.00 s")
+            && other[0].ends_with("at 1/8 of the 240.20 s rate cycle, a weaker line"),
+        "{}",
+        other[0]
+    );
+    assert!(!other[1].contains("whole fractions"), "{}", other[1]);
 }
 
 /// A reading's beat error is from the unlock where it was found, else from

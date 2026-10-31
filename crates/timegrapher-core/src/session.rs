@@ -1415,23 +1415,26 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
         }
         // A sharp event once per period also shows at whole fractions of
         // it; a cycle core marks as a harmonic of another listed one is
-        // reported with that one, not on its own.
+        // reported with that one, not on its own, unless it explains more
+        // of the variation than that one does: then it is reported in its
+        // own right, the mark a note.
         let harmonic_of = |c: &Cycle| {
             let h = c.harmonic_of?;
             r.cycles
                 .iter()
                 .find(|w| w.series == c.series && w.period_s == h.period_s)
         };
+        let folded = |c: &Cycle| harmonic_of(c).filter(|w| c.explained <= w.explained);
         for c in &r.cycles {
             let size = format!("{} peak to peak", c.size_text());
             let fa = 10f64.powf(-c.significance.min(300.0));
-            if harmonic_of(c).is_some() {
+            if folded(c).is_some() {
                 continue;
             }
             let harmonics: Vec<String> = r
                 .cycles
                 .iter()
-                .filter(|h| harmonic_of(h).is_some_and(|w| std::ptr::eq(w, c)))
+                .filter(|h| folded(h).is_some_and(|w| std::ptr::eq(w, c)))
                 .map(|h| format!("{:.2} s", h.period_s))
                 .collect();
             let of = if c.wheel.is_some() {
@@ -1439,7 +1442,7 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
             } else {
                 "its period"
             };
-            let harmonics = if harmonics.is_empty() {
+            let mut harmonics = if harmonics.is_empty() {
                 String::new()
             } else {
                 format!(
@@ -1447,6 +1450,12 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
                     harmonics.join(", ")
                 )
             };
+            if let (Some(w), Some(h)) = (harmonic_of(c), c.harmonic_of) {
+                harmonics += &format!(
+                    "; at 1/{} of the {:.2} s {} cycle, a weaker line",
+                    h.n, w.period_s, w.series
+                );
+            }
             match &c.wheel {
                 Some(w) => push(
                     "cycle_wheel",
