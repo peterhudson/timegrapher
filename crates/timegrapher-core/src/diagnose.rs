@@ -296,12 +296,25 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         );
     }
     let few_beats = good.len() < expected / 2 || fit.is_none();
-    let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.0}×"));
-    if !silent && (few_beats || !signal_x.is_some_and(|x| x >= NO_TICKS_SIGNAL_X)) {
-        let j = fit.as_ref().map(|f| f.jitter_us).filter(|j| j.is_finite());
+    let faint = !signal_x.is_some_and(|x| x >= NO_TICKS_SIGNAL_X);
+    let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.1}×"));
+    if !silent && (few_beats || faint) {
+        // The title names the test that fired: no timing fit, under half
+        // the beats expected, or ticks too faint over the noise however
+        // well they time (#772).
+        let title = if fit.is_none() {
+            beats::no_regular_beat_text(None, None)
+        } else if few_beats {
+            format!(
+                "No regular beat found (only {} of about {expected} beats)",
+                good.len()
+            )
+        } else {
+            format!("Ticks too faint over the noise ({signal}, under {NO_TICKS_SIGNAL_X:.0}×)")
+        };
         add(
             IssueCode::NoTicks,
-            beats::no_regular_beat_text(j, beats::timing_scatter_fraction(j, bph)),
+            title,
             format!("{} of about {expected} beats found, {signal}", good.len()),
         );
     }
