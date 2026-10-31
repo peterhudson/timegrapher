@@ -154,7 +154,7 @@ averages away better). Against the median, per-segment amplitudes moved by
 3° at most: Dandong 3235 288/288/295° → 285/287/294° (tg 286°), Daytona,
 Patek 324 and Peacock SL1258 by 1° or less. Rate is unaffected.
 
-On the Dandong 3235, sound 1 on one side is only 4–5% as loud as the drop.
+On the Dandong 3235 (`dd3235_DU_30min`), sound 1 on one side is only 4–5% as loud as the drop.
 A threshold of 5% of the drop's height missed it and timed the unlock from
 sound 2, reading 297°. The unlock is now the first sustained rise above the
 larger of 2% of the drop or 4 noise SDs, timed at half its own height.
