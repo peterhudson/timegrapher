@@ -487,7 +487,7 @@ the watchmaker skill, each with its source.
 | `clipping` | Clipped on 3.2% of beats | over 1% of the measured beats have a clipped sample in their template window, as `analyze` counts them |
 | `measurement_short` | 25 s measured | under 40 s measured after settling (D40e's "≥40 s measurement time", about p. 34) |
 | `cycle_wheel` | Regular rate change once per turn of the fourth wheel | a periodic change named (1% false-alarm level, held across the recording's tests) matches a wheel's turn |
-| `cycle_wheel_fraction` | Regular rate change at 1/3 of the fourth wheel's turn | as above, not tied to a wheel, and the turn is 2 to 6 times the period: n turns' frequency within one resolution (1 / the span) of the change's, the test `long` marks a harmonic by |
+| `cycle_wheel_fraction` | Regular rate change at 1/3 of the fourth wheel's turn | as above, not tied to a wheel, and the turn is 2 to 6 times the period: n turns' frequency within one resolution (1 / the span) of the change's, the test `long` marks a harmonic by, and no other wheel or n fits so |
 | `cycle_other` | Regular amplitude change not tied to a listed wheel | as above, no wheel; the nearest is named |
 | `shape_unlock_loud` | Unlocking as loud as the drop on Tick | the level of sound 1 to sound 3 is 1 or more |
 | `shape_extra_sounds` | Extra sounds around the beat on Tock | sounds before the unlock or after the drop |

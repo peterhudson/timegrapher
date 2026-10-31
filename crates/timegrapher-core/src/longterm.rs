@@ -599,8 +599,9 @@ pub fn harmonic_offset(period_s: f64, resolution_s: f64, n: u8, of_s: f64) -> f6
 /// For each component, the found cycle it is a harmonic of: the smallest
 /// n (2 to 8) whose n times that cycle's frequency is within one
 /// resolution (1/span) of its own ([`harmonic_offset`] under 1).
-/// Neighbouring n are 1/period apart in frequency, more than that, so at
-/// most one fits.
+/// Neighbouring n are 1/q apart in frequency, more than the two
+/// resolutions (2/span) the test spans when q < span/2, so then at most
+/// one fits; a q nearer the span can fit two.
 fn label_harmonics(components: &mut [Component]) {
     let found: Vec<f64> = components.iter().map(|c| c.period_s).collect();
     for c in components.iter_mut() {
@@ -1118,6 +1119,17 @@ mod tests {
             ..at(30.0, 600.0)
         };
         assert_eq!(n(&tied), None);
+        // Over 580 s, a 224.84 s line is within one resolution of both 2
+        // and 3 turns of a 540 s wheel (0.43 and 0.64 resolutions off, as
+        // on ym42_DD_30min), so no fraction is told (#787).
+        let third = [Wheel {
+            name: "third wheel".into(),
+            period_s: 540.0,
+        }];
+        let c = at(224.84, 580.0);
+        assert!(harmonic_offset(c.period_s, c.resolution_s, 2, 540.0) < 1.0);
+        assert!(harmonic_offset(c.period_s, c.resolution_s, 3, 540.0) < 1.0);
+        assert_eq!(crate::session::wheel_fraction(&c, &third), None);
     }
 
     #[test]

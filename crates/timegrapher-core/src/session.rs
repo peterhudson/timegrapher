@@ -826,7 +826,9 @@ impl Cycle {
 
 /// The wheel whose turn a component not tied to a wheel sits at a whole
 /// fraction of (1/2 to 1/6), and the n: by core's one whole-fraction test,
-/// within one resolution (1/span) in frequency of n turns (#775).
+/// within one resolution (1/span) in frequency of n turns (#775). Only
+/// when exactly one wheel and n fit: a turn about as long as the span
+/// lets neighbouring n both fit, and then the fraction is not told (#787).
 pub(crate) fn wheel_fraction(
     c: &crate::longterm::Component,
     wheels: &[Wheel],
@@ -834,13 +836,15 @@ pub(crate) fn wheel_fraction(
     if c.wheel.is_some() {
         return None;
     }
-    wheels.iter().find_map(|w| {
+    let mut fits = wheels.iter().flat_map(|w| {
         (2..=6u8)
-            .find(|&n| {
+            .filter(|&n| {
                 crate::longterm::harmonic_offset(c.period_s, c.resolution_s, n, w.period_s) < 1.0
             })
             .map(|n| (w.name.clone(), u32::from(n)))
-    })
+    });
+    let one = fits.next()?;
+    fits.next().is_none().then_some(one)
 }
 
 /// The periodic changes `long` found, without their long arrays.
