@@ -42,8 +42,8 @@ lines and its Ljung–Box test, are one family: a line or memory is named
 only when its own test and Holm's correction at 0.05 across the family
 both keep it (#659), so one take's several tests do not add up to a
 false alarm. Each test's own figures are given as they are. The target
-is a steady watch naming nothing on 95 takes in 100; the period search's
-own false alarms still keep it short of that (#723). `long` (its text,
+is a steady watch naming nothing on 95 takes in 100; on the seeded
+control scenario it names nothing on 192 takes in 200 (#723). `long` (its text,
 report and summary) and a session's cycles list the same lines: core
 decides the kept set once (`steadiness::hold_to_family`).
 
