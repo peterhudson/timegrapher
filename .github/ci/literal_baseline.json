@@ -5,7 +5,7 @@
    "files": {
     "crates/timegrapher-app/src/app.rs": {
      "bounds": 12,
-     "comparisons": 11,
+     "comparisons": 8,
      "constants": 20,
      "defaults": 0
     },
@@ -18,6 +18,12 @@
     "crates/timegrapher-app/src/app/listen_card.rs": {
      "bounds": 0,
      "comparisons": 2,
+     "constants": 0,
+     "defaults": 0
+    },
+    "crates/timegrapher-app/src/app/masks.rs": {
+     "bounds": 0,
+     "comparisons": 3,
      "constants": 0,
      "defaults": 0
     },
@@ -327,7 +333,7 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 15446,
+  "crates/timegrapher-app/src/app.rs": 15123,
   "crates/timegrapher-app/src/calibre_ui.rs": 3186
  }
 }
