@@ -321,7 +321,7 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 18714,
+  "crates/timegrapher-app/src/app.rs": 17577,
   "crates/timegrapher-app/src/calibre_ui.rs": 3186
  }
 }
