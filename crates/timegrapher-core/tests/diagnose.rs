@@ -163,9 +163,10 @@ fn the_check_keeps_the_beats_every_reading_keeps() {
     assert_eq!(c.beats_found, found.iter().filter(|b| b.is_good()).count());
 }
 
-/// A watch that times cleanly but whose ticks barely stand over the noise
-/// is named `no_ticks` for its faint signal, and the title says so, not a
-/// timing scatter it does not have (#772).
+/// A watch whose beats are found, half or more of them, but whose ticks
+/// barely stand over the noise is named `no_ticks` for its faint signal,
+/// the test that fired, and the title says so, not its timing scatter
+/// (#772).
 #[test]
 fn a_faint_watch_is_named_for_its_signal_not_its_timing() {
     let a = generate(
