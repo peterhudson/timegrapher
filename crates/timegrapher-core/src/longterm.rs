@@ -8,8 +8,17 @@
 //!
 //! 1. Bin the series on a uniform grid and remove the slow trend
 //!    (mainspring let-down, temperature) with a running median.
-//! 2. Take the power spectrum and divide it by a local-median estimate of
-//!    its noise level. The score uses an exponential, mean-1 reference for
+//! 2. Take the power spectrum and divide it by the noise it should hold.
+//!    Under the running median (window W) that is a known shape: taking a
+//!    moving average off leaves (1 − sinc(πfW))² of each frequency, and a
+//!    median's extra scatter adds (π/2 − 1)·sinc² to the noise. It lifts
+//!    noise about 1.5 times near a period of 0.7W, where the search read
+//!    the detrend as cycles until #723. An AR(1) noise's shape, with ρ read
+//!    as everywhere else, goes on top. What is left is levelled by a
+//!    median over ±50% in frequency, without the bins nearest the point
+//!    it is read at, so a line does not lift its own level (±25% under the quadratic a short take is detrended with,
+//!    without its lowest three bins).
+//!    The score uses an exponential, mean-1 reference for
 //!    normalized noise power; whitening does not guarantee that model for
 //!    arbitrary noise colour, gaps or nonstationarity.
 //! 3. For each trial fundamental, sum the whitened power at its first 1, 2,
@@ -166,6 +175,43 @@ pub fn detrend(g: &Grid, window_s: f64) -> Grid {
     Grid { y, ..g.clone() }
 }
 
+/// Median of the power over bins `a..b` that `keep` keeps, as a mean
+/// (an exponential's median is ln 2 of its mean); 1 if none is kept.
+/// The share of a noise's power at frequency `f` (Hz) left by a running
+/// median of `w` seconds. A moving average of `w` passes sinc(πfw) of each
+/// frequency, so taking it off leaves (1 − sinc)². A median of Gaussian
+/// noise also scatters more than a mean, by π/2 − 1 of the mean's variance
+/// (asymptotically), with the mean's low-pass shape: noise keeps that much
+/// of sinc² on top. At f → 0 that leaves 0.57; the least, 0.36, is near
+/// a period of 2w; near 0.7w it lifts noise about 1.5 times (#723).
+fn noise_pass(f: f64, w: f64) -> f64 {
+    if f <= 0.0 {
+        return std::f64::consts::FRAC_PI_2 - 1.0;
+    }
+    let x = std::f64::consts::PI * f * w;
+    let h = x.sin() / x;
+    (1.0 - h).powi(2) + (std::f64::consts::FRAC_PI_2 - 1.0) * h * h
+}
+
+/// An AR(1) noise's power at `cycles` per step, relative to white.
+fn ar1_shape(cycles: f64, rho: f64) -> f64 {
+    1.0 / (1.0 - 2.0 * rho * (std::f64::consts::TAU * cycles).cos() + rho * rho)
+}
+
+fn level(power: &[f64], a: usize, b: usize, keep: &dyn Fn(usize) -> bool) -> f64 {
+    let mut w: Vec<f64> = (a..b).filter(|&k| keep(k)).map(|k| power[k]).collect();
+    if w.is_empty() {
+        return 1.0;
+    }
+    median(&mut w) / std::f64::consts::LN_2
+}
+
+/// The running median's window [`detrend`] uses on a run of `span_s`,
+/// seconds; `None` where it fits a quadratic instead.
+fn detrend_window(span_s: f64, window_s: f64) -> Option<f64> {
+    (span_s >= 1200.0).then(|| window_s.min(span_s / 4.0))
+}
+
 /// log10 of the chance that a Gamma(k, 1) variable exceeds `x`:
 /// `P = exp(-x) * sum_{i<k} x^i / i!`.
 fn log10_gamma_tail(k: usize, x: f64) -> f64 {
@@ -195,7 +241,7 @@ struct Spectrum {
     white: Vec<f64>,
 }
 
-fn spectrum(g: &Grid) -> Spectrum {
+fn spectrum(g: &Grid, detrend_w: Option<f64>) -> Spectrum {
     let fin: Vec<f64> = g.y.iter().copied().filter(|v| v.is_finite()).collect();
     let mean = fin.iter().sum::<f64>() / fin.len().max(1) as f64;
     let pad = 4;
@@ -208,25 +254,50 @@ fn spectrum(g: &Grid) -> Spectrum {
     }
     let mut spec = fwd.make_output_vec();
     fwd.process(&mut buf, &mut spec).expect("fft");
+    let df = 1.0 / (l as f64 * g.step);
+    let pad = l / g.y.len().max(1);
     let power: Vec<f64> = spec.iter().map(|c| c.norm_sqr()).collect();
     let m = power.len();
-
-    // Local median over +-25% in frequency (at least 32 bins each side),
-    // on log-spaced knots, interpolated. Exp(1) has median ln 2.
+    // The noise the search expects at each bin, up to a constant: the
+    // detrend's own shape (below), and under a running median an AR(1)
+    // noise's shape, ρ read as everywhere else (one noise model).
+    let shape: Vec<f64> = match detrend_w {
+        Some(w) => {
+            let rho = crate::confidence::long_run_rho(&g.y, crate::confidence::Slow::Line);
+            (0..m)
+                .map(|j| noise_pass(j as f64 * df, w) * ar1_shape(j as f64 * df * g.step, rho))
+                .collect()
+        }
+        None => vec![1.0; m],
+    };
+    let flat: Vec<f64> = power.iter().zip(&shape).map(|(p, s)| p / s).collect();
+    // What the flattened spectrum still leaves, by its median on log-spaced
+    // knots, interpolated. Under a running median: over +-50% in frequency
+    // (at least LEVEL_MIN bins each side), without the 2 independent bins
+    // either side of the knot, so a line does not lift its own reference.
+    // Under a quadratic, which takes power out of the lowest 3 independent
+    // bins: over +-25% (at least SHORT_MIN bins), without those bins.
+    let (share, least, gap, floor) = match detrend_w {
+        Some(_) => (0.5, LEVEL_MIN, 2 * pad, 1),
+        None => (0.25, SHORT_MIN, 0, 3 * pad),
+    };
+    let level_at = |j: usize, a: usize, b: usize| {
+        level(&flat, a, b, &|k| {
+            k >= floor && (gap == 0 || k.abs_diff(j) > gap)
+        })
+    };
     let mut knots: Vec<(usize, f64)> = Vec::new();
     let mut j = 1usize;
     while j < m {
-        let half = ((j as f64 * 0.25) as usize).max(32);
-        let a = j.saturating_sub(half).max(1);
-        let b = (j + half + 1).min(m);
-        let mut w = power[a..b].to_vec();
-        knots.push((j, median(&mut w) / std::f64::consts::LN_2));
+        let half = ((j as f64 * share) as usize).max(least);
+        knots.push((
+            j,
+            level_at(j, j.saturating_sub(half).max(1), (j + half + 1).min(m)),
+        ));
         j = (j + 1).max((j as f64 * 1.05) as usize).max(j + 8);
     }
     if knots.last().map(|k| k.0) != Some(m - 1) && m > 1 {
-        let a = (m - 32).max(1);
-        let mut w = power[a..].to_vec();
-        knots.push((m - 1, median(&mut w) / std::f64::consts::LN_2));
+        knots.push((m - 1, level_at(m - 1, m.saturating_sub(least).max(1), m)));
     }
     let mut white = vec![0.0; m];
     let mut k = 0;
@@ -245,13 +316,9 @@ fn spectrum(g: &Grid) -> Spectrum {
                 y0 + (y1 - y0) * (j - j0) as f64 / (j1 - j0) as f64
             }
         };
-        *w = power[j] / level.max(1e-300);
+        *w = flat[j] / level.max(1e-300);
     }
-    Spectrum {
-        df: 1.0 / (l as f64 * g.step),
-        pad: l / g.y.len().max(1),
-        white,
-    }
+    Spectrum { df, pad, white }
 }
 
 /// The period search: false-alarm score of every trial period.
@@ -268,6 +335,9 @@ pub struct Search {
     /// Spectrum index of the first trial period.
     #[serde(skip)]
     first_j: usize,
+    /// Whitened power at each trial period itself.
+    #[serde(skip)]
+    line: Vec<f64>,
 }
 
 impl Search {
@@ -292,12 +362,23 @@ impl Search {
 }
 
 const HARMONICS: [usize; 4] = [1, 2, 4, 8];
+/// The fewest bins either side the noise level's median reads under a
+/// running median, and under a quadratic.
+const LEVEL_MIN: usize = 96;
+const SHORT_MIN: usize = 32;
 /// Whitened power the fundamental needs before its harmonics are summed
 /// (a mean-1 exponential reference exceeds it about 5% of the time).
 const FUNDAMENTAL_MIN: f64 = 3.0;
 
-fn search(g: &Grid, min_p: f64, max_p: f64, false_alarm: f64, exclude: &[f64]) -> Search {
-    let sp = spectrum(g);
+fn search(
+    g: &Grid,
+    min_p: f64,
+    max_p: f64,
+    false_alarm: f64,
+    exclude: &[f64],
+    detrend_w: Option<f64>,
+) -> Search {
+    let sp = spectrum(g, detrend_w);
     let jmin = ((1.0 / max_p) / sp.df).ceil().max(1.0) as usize;
     let jmax = ((1.0 / min_p) / sp.df).floor() as usize;
     let mut out = Search {
@@ -306,6 +387,7 @@ fn search(g: &Grid, min_p: f64, max_p: f64, false_alarm: f64, exclude: &[f64]) -
         harmonics: Vec::new(),
         threshold: 0.0,
         first_j: jmin,
+        line: Vec::new(),
     };
     for j in jmin..=jmax.min(sp.white.len() - 1) {
         let period = 1.0 / (j as f64 * sp.df);
@@ -337,6 +419,7 @@ fn search(g: &Grid, min_p: f64, max_p: f64, false_alarm: f64, exclude: &[f64]) -
         out.period_s.push(period);
         out.score.push(if excluded { 0.0 } else { best.0 });
         out.harmonics.push(best.1);
+        out.line.push(sp.white[j]);
     }
     // Independent frequencies tried, times the harmonic counts.
     let trials =
@@ -582,18 +665,28 @@ pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
     let mut found: Vec<f64> = Vec::new();
     if max_p > min_p && total_var > 0.0 {
         for _ in 0..cfg.max_components {
-            let s = search(&work, min_p, max_p, cfg.false_alarm, &found);
+            let s = search(
+                &work,
+                min_p,
+                max_p,
+                cfg.false_alarm,
+                &found,
+                detrend_window(span, cfg.detrend_s),
+            );
             let threshold = s.threshold;
             // A sinusoid at 60 s also lights up the harmonics of 120 s and
             // 180 s, which can sum to a higher score when another component
             // adds power at one of them. Take the shortest submultiple whose
-            // fold explains nearly as much as the strongest period's.
+            // fold explains nearly as much as the strongest period's, or
+            // whose own line is at least twice the strongest period's own:
+            // a strong 150 s line beside a weaker 600 s one is a line of its
+            // own, not the 600 s cycle's 4th harmonic, and is taken first.
             let pick = s.best().map(|(i, subs)| {
                 let var = |p: f64| explained_at(&work, p, fold_bins(p, g.step));
                 let top = var(s.period_s[i]);
                 let k = subs
                     .into_iter()
-                    .find(|&k| var(s.period_s[k]) >= 0.9 * top)
+                    .find(|&k| var(s.period_s[k]) >= 0.9 * top || s.line[k] >= 2.0 * s.line[i])
                     .unwrap_or(i);
                 (s.period_s[k], s.score[k], s.harmonics[k])
             });
@@ -677,6 +770,7 @@ pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
             harmonics: Vec::new(),
             threshold: 0.0,
             first_j: 0,
+            line: Vec::new(),
         }),
         components,
     }
@@ -950,5 +1044,89 @@ mod tests {
         let p: Vec<f64> = (0..10).map(|i| -(i as f64) * 1e-4).collect();
         let r = rate_profile(&p, 100.0);
         assert!((r[5] - 1e-4 / 10.0 * 86400.0).abs() < 1e-9);
+    }
+
+    /// Seeded AR(1) noise with no cycle in it (#723), cell by cell: the
+    /// search is set for a 1% chance of naming a cycle in noise, so about
+    /// 3 in 100 takes across the three series. Each cell's cap is the count
+    /// measured on the fix, the higher of two seed sets of 200; on main,
+    /// half an hour and two hours named one in 6 to 18% of takes, most near
+    /// 0.75 of the running median's window.
+    #[test]
+    fn noise_with_no_cycle_rarely_names_one() {
+        let cells = [
+            (180.0, 1.0, 0.0, 5),
+            (180.0, 1.0, 0.9, 7),
+            (600.0, 1.0, 0.0, 3),
+            (600.0, 1.0, 0.9, 4),
+            (1800.0, 10.0, 0.0, 6),
+            (1800.0, 10.0, 0.5, 6),
+            (1800.0, 10.0, 0.9, 5),
+            (7200.0, 10.0, 0.0, 3),
+            (7200.0, 10.0, 0.5, 3),
+            (7200.0, 10.0, 0.9, 8),
+        ];
+        let mut over = Vec::new();
+        for (i, &(span, step, rho, cap)) in cells.iter().enumerate() {
+            let n = (span / step) as usize;
+            let mut z = Rng::new(9_000 + i as u64);
+            let named = (0..100)
+                .filter(|_| {
+                    let mut e = z.normal();
+                    let k = (1.0f64 - rho * rho).sqrt();
+                    let y: Vec<f64> = (0..n)
+                        .map(|_| {
+                            e = rho * e + k * z.normal();
+                            e
+                        })
+                        .collect();
+                    let g = Grid { t0: 0.0, step, y };
+                    !analyse(&g, &LongConfig::default()).components.is_empty()
+                })
+                .count();
+            if named > cap {
+                over.push(format!("{span} s at ρ {rho}: {named} of 100 (cap {cap})"));
+            }
+        }
+        assert!(over.is_empty(), "{over:#?}");
+    }
+
+    /// A sinusoid in white noise of the same size, at two periods inside
+    /// the band the search reads, near the running median's window where
+    /// the fix matters (#723), is found on most takes.
+    #[test]
+    fn a_cycle_near_the_detrend_window_is_still_found() {
+        for (i, &(span, period, at_least)) in [(1800.0, 300.0, 75), (7200.0, 1400.0, 95)]
+            .iter()
+            .enumerate()
+        {
+            let n = (span / 10.0) as usize;
+            let mut z = Rng::new(7_700 + i as u64);
+            let found = (0..100)
+                .filter(|_| {
+                    let y: Vec<f64> = (0..n)
+                        .map(|k| {
+                            0.6 * (std::f64::consts::TAU * k as f64 * 10.0 / period).sin()
+                                + z.normal()
+                        })
+                        .collect();
+                    analyse(
+                        &Grid {
+                            t0: 0.0,
+                            step: 10.0,
+                            y,
+                        },
+                        &LongConfig::default(),
+                    )
+                    .components
+                    .iter()
+                    .any(|c| (c.period_s / period - 1.0).abs() < 0.1)
+                })
+                .count();
+            assert!(
+                found >= at_least,
+                "{period} s in {span} s: {found} of 100 (floor {at_least})"
+            );
+        }
     }
 }

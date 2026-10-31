@@ -488,11 +488,11 @@ mod tests {
                 !r.findings.is_empty() || r.series.iter().any(|c| !c.headline.ends_with(quiet))
             })
             .count();
-        assert!(named <= 17, "{named} of 200 steady takes name something");
+        assert!(named <= 9, "{named} of 200 steady takes name something");
     }
 
     /// The cycles `long` and a session list are the ones the pane names
-    /// (#659). On control seed 150 the period search finds one amplitude
+    /// (#659). On control seed 29 the period search finds one amplitude
     /// line that Holm's correction across the pane drops: with the family
     /// held, no list names it. On takes with real cycles, each list keeps
     /// what the pane names, no more and no less.
@@ -505,7 +505,7 @@ mod tests {
             ..Default::default()
         };
         for (name, seed) in [
-            ("control", 150),
+            ("control", 29),
             ("fourth-wheel", 1),
             ("escape-wheel", 1),
             ("slow-cycle", 1),
