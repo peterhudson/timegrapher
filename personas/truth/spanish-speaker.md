@@ -1,6 +1,6 @@
 # Truth: Lucía (six-position test)
 
-Stand: Rolex Yacht-Master 42, calibre 3235, 28,800 bph, lift 55°. The corpus
+Stand: Yacht-Master 42 replica, Dandong 3235 movement, 28,800 bph, lift 55°. The corpus
 watch field says this is the watch "before its service". Each position is
 the first file of its corpus take (recorded on different days).
 

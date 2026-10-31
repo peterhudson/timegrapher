@@ -262,7 +262,7 @@ seconds a period off by P²/T drifts a whole turn, so on a 16 h run a
 48 s cycle has to be found to a few thousandths of a second. The search
 narrows until its step is a twentieth of that. When the longer period
 still wins, the cycle inside it is named if it explains at least half
-as much on its own: on the Reverso's overnight run the rate repeats
+as much on its own: on the Reverso Duo replica's overnight run the rate repeats
 every 240 s as five turns of a 48 s cycle whose shape changes from turn
 to turn. With the 48 s shape taken out, folding at 240 s still explains
 6% of the rate's variance and 8% of the amplitude's, in both halves of
@@ -439,8 +439,8 @@ plain `--json` stays small for agents. The MCP server asks for them and
 keeps them out of what the model reads.
 
 `--maps` (with `--json`) adds `time_frequency`, `coherence`,
-`lomb_scargle`, `wheel_turns`, `kurtograms` and the `wheel_lines` windows, about 4.1 MB on a 2 h take (the Pepsi take's parts 6 and
-7, where `--views` adds about 0.7 MB).
+`lomb_scargle`, `wheel_turns`, `kurtograms` and the `wheel_lines` windows, about 4.1 MB on a 2 h take (parts 6 and 7 of the Pepsi replica's
+take, Dandong 3285, where `--views` adds about 0.7 MB).
 
 The JSON's top-level `clock` describes the correction actually applied to
 these readings: `ppm`, `rate_error_s_per_day`, `from` (the source), and
@@ -480,7 +480,10 @@ variation hidden in it, to check what each view shows; see
 ## On the stored takes
 
 Run on main plus this command, at the lift angles the takes' READMEs
-give, with the clock log where the take has one:
+give, with the clock log where the take has one. The watches are
+replicas with clone movements: the Yacht-Master 42 replica (Dandong 3235
+movement), the Daytona replica (Dandong 4130) and the Reverso Duo replica
+(21,600 bph movement); the Dandong 3235 is a different watch.
 
 | Take | Rate | Amplitude | Beat error |
 |---|---|---|---|

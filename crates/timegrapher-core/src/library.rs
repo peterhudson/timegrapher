@@ -4,7 +4,7 @@
 //! ```text
 //! Timegrapher Data/              the library
 //!   library.toml                 its format
-//!   Rolex Yacht-Master 42/       one folder per watch
+//!   Yacht-Master 42 replica/     one folder per watch
 //!     watch.toml                 its details
 //!     photos/
 //!     takes/
@@ -1897,8 +1897,8 @@ mod tests {
         let root = scratch("lists");
         let mut lib = Library::create(&root).unwrap();
         assert!(lib.watches.is_empty());
-        let mut w = Watch::new("Rolex Yacht-Master 42");
-        w.calibre = Some("Rolex 3235".into());
+        let mut w = Watch::new("Yacht-Master 42 replica");
+        w.calibre = Some("Dandong 3235".into());
         w.bph = Some(28800);
         w.fields.push(Field {
             label: "Serial Number".into(),
@@ -1906,7 +1906,7 @@ mod tests {
             value: "X123".into(),
         });
         let dir = lib.add(&w).unwrap();
-        assert_eq!(file_name(&dir), "Rolex Yacht-Master 42");
+        assert_eq!(file_name(&dir), "Yacht-Master 42 replica");
         let takes = dir.join(TAKES);
         take(
             &takes.join("2026-10-20 14.32 Dial Up"),

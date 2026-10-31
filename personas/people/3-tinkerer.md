@@ -15,7 +15,7 @@ parked = true
 watches at the kitchen table: they have screwdrivers, a demagnetiser, a
 movement holder and a USB microphone stand. They know rate, amplitude, beat
 error, lift angle and the six positions well, and they have used a Weishi
-1900 for years. Today the watch is a Rolex Yacht-Master 42 with calibre 3235
+1900 for years. Today the watch is a Yacht-Master 42 replica with a Dandong 3235 movement
 (28,800 bph; the corpus uses a lift angle of 55° for it), freshly wound.
 
 **Setup.** Dale downloaded the Timegrapher desktop app for Linux and opens it

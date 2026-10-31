@@ -1761,7 +1761,7 @@ Strip keeps room to read on a short window.
 
 Each saved recording is a folder named after the start time, then the
 watch's name and the calibre when they are set by the first save
-(`2026-10-08T21-30-00_Yacht-Master_Rolex_3235`, or just the time), so it
+(`2026-10-08T21-30-00_Yacht-Master_Dandong_3235`, or just the time), so it
 can be analysed again later with a newer engine. The positions aren't in
 the name: `session.json` and `session.toml` say where the watch was and
 when. It holds:
@@ -1788,8 +1788,8 @@ The folder reads straight into the long-run analysis, calibrated against
 the system clock:
 
 ```sh
-timegrapher long "2026-10-08T21-30-00_Yacht-Master_Rolex_3235/" \
-  --clock "2026-10-08T21-30-00_Yacht-Master_Rolex_3235/clock.csv"
+timegrapher long "2026-10-08T21-30-00_Yacht-Master_Dandong_3235/" \
+  --clock "2026-10-08T21-30-00_Yacht-Master_Dandong_3235/clock.csv"
 ```
 
 The WAV header is brought up to date every 10 s, so a recording survives

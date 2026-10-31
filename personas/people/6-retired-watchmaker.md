@@ -23,7 +23,7 @@ he sees what this project is building and wants it to match or exceed
 everything he had in a professional lab.
 
 **Setup.** Brunner opens the Timegrapher desktop app on Linux. On the stand
-is a Rolex Yacht-Master 42, calibre 3235 (28,800 bph; the corpus uses 55°).
+is a Yacht-Master 42 replica, Dandong 3235 movement (28,800 bph; the corpus uses 55°).
 In `~/Recordings/reverso_2h/` is a two-hour dial-up recording a friend made of
 a manual-wind Reverso-style watch (21,600 bph, movement unknown; the corpus
 uses 52°), in 13 files of 10 minutes.
