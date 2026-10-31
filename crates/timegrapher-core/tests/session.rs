@@ -5,7 +5,8 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use timegrapher_core::audio::write_wav;
-use timegrapher_core::session::{self, evaluate, Position, Reading};
+use timegrapher_core::longterm::Harmonic;
+use timegrapher_core::session::{self, evaluate, Cycle, Position, Reading};
 use timegrapher_core::stream::{analyze_file, StreamConfig};
 use timegrapher_core::synth::{generate, SynthConfig};
 
@@ -1043,14 +1044,10 @@ fn a_rate_switching_between_two_levels_is_found_in_its_samples() {
     assert!((r.high - 8.0).abs() < 1.5, "{r:?}");
 }
 
-/// A cycle tied to a wheel is reported with the wheel, a cycle core marks
-/// as a harmonic of it is folded into it, and a cycle tied to no wheel is
-/// reported on its own.
-#[test]
-fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
-    use timegrapher_core::longterm::Harmonic;
-    use timegrapher_core::session::Cycle;
-    let cycle = |period_s: f64, wheel: Option<&str>| Cycle {
+/// A rate cycle of the given period, tied to the given wheel, that explains
+/// 0.3 of the variation.
+fn cycle(period_s: f64, wheel: Option<&str>) -> Cycle {
+    Cycle {
         series: "rate",
         period_s,
         size: 2.0,
@@ -1061,7 +1058,14 @@ fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
         nearest_wheel: None,
         fraction_of: None,
         harmonic_of: None,
-    };
+    }
+}
+
+/// A cycle tied to a wheel is reported with the wheel, a cycle core marks
+/// as a harmonic of it is folded into it, and a cycle tied to no wheel is
+/// reported on its own.
+#[test]
+fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
     let mut r = reading(Position::CH, 2.0, 3.0, 280.0, 0.3);
     // Core marks 30.5 s as the second harmonic of 60.19 s, though their
     // ratio, 1.97, is more than 1% from 2 (#762).
@@ -1153,6 +1157,35 @@ fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
         other[0]
     );
     assert!(!other[1].contains("whole fractions"), "{}", other[1]);
+}
+
+/// A wheel's own line keeps its row though it is marked, weaker, as a
+/// harmonic of a longer line.
+#[test]
+fn a_wheels_own_line_is_never_folded_into_another() {
+    let mut r = reading(Position::CH, 2.0, 3.0, 280.0, 0.3);
+    let wheel = Cycle {
+        explained: 0.1,
+        harmonic_of: Some(Harmonic {
+            period_s: 240.0,
+            n: 4,
+        }),
+        ..cycle(60.0, Some("fourth wheel"))
+    };
+    r.cycles = vec![wheel, cycle(240.0, None)];
+    let rep = evaluate(&[r]);
+    let wheel: Vec<&str> = rep
+        .findings
+        .iter()
+        .filter(|f| f.code == "cycle_wheel")
+        .map(|f| f.evidence.as_str())
+        .collect();
+    assert_eq!(wheel.len(), 1, "{wheel:?}");
+    assert!(
+        wheel[0].contains("at 1/4 of the 240.00 s rate cycle, a stronger line"),
+        "{}",
+        wheel[0]
+    );
 }
 
 /// A reading's beat error is from the unlock where it was found, else from
