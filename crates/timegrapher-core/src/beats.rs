@@ -246,10 +246,9 @@ fn track_peaks(
                 // Update on the tick-to-tick interval so beat error doesn't pull the loop.
                 let meas = (t - t2) / 2.0;
                 if (meas - per).abs() < 0.05 * per {
-                    // Kept near the nominal beat whatever it is fed, so each
-                    // beat is looked for later than the last.
-                    let (lo, hi) = (PER_MIN * beat * fs, PER_MAX * beat * fs);
-                    per = (0.9 * per + 0.1 * meas).clamp(lo, hi);
+                    // Kept no shorter than PER_MIN of the beat whatever it is
+                    // fed, so each beat is looked for later than the last.
+                    per = (0.9 * per + 0.1 * meas).max(PER_MIN * beat * fs);
                 }
             }
             out.push((t, v, k, !rescued, false));
@@ -304,11 +303,10 @@ fn rms(x: &[f32]) -> f32 {
     (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
 }
 
-/// The range the tracked beat period is kept in, as fractions of the
-/// nominal beat. A watch 1 % off its beat gains or loses 864 s a day, so
-/// this allows ten times any watch's error.
+/// The shortest the tracked beat period may become, as a fraction of the
+/// nominal beat. A watch 1 % fast gains 864 s a day, so this allows ten
+/// times any watch's error.
 const PER_MIN: f64 = 0.9;
-const PER_MAX: f64 = 1.1;
 
 /// How far from where it is due a beat may be found once the track is
 /// running, as a fraction of the beat period. Beat-to-beat changes in
@@ -1705,6 +1703,28 @@ mod tests {
             "{}",
             coarse.len()
         );
+    }
+
+    /// The period stays near the beat's even where every pick is heard but
+    /// none is a beat: over a flat stretch every point ties, so pass 1's
+    /// gate picks its edge a little early every beat, as in digital
+    /// silence, but each pick is above zero. Only the period's lower bound
+    /// keeps the track moving there (#782).
+    #[test]
+    fn pass_1_moves_on_through_a_long_flat_stretch() {
+        let mut x = watch_with_digital_silence(400.0);
+        x[(10.0 * 8000.0) as usize..(410.0 * 8000.0) as usize].fill(0.01);
+        let (coarse, _) =
+            within_a_minute(move || track_peaks(&x, 8000.0, 0.125, Some(PASS1_GATE_S), None));
+        let after = coarse.iter().filter(|c| c.0 >= 410.0 && c.1 >= 0.5).count();
+        // At most 1.12 picks a beat over the flat 400 s (3200 beats): the
+        // period was kept at no less than 0.9 of the beat.
+        let flat = coarse
+            .iter()
+            .filter(|c| (10.0..410.0).contains(&c.0))
+            .count();
+        assert!(flat <= 3584, "{flat} picks over the flat stretch");
+        assert!(after >= 75, "{after} beats after the flat stretch");
     }
 
     /// A watch that falls digitally silent for most of the sound is still
