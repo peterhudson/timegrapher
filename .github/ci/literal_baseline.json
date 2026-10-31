@@ -4,8 +4,8 @@
   "timegrapher-app": {
    "files": {
     "crates/timegrapher-app/src/app.rs": {
-     "bounds": 19,
-     "comparisons": 24,
+     "bounds": 14,
+     "comparisons": 17,
      "constants": 20,
      "defaults": 0
     },
@@ -26,6 +26,12 @@
      "comparisons": 1,
      "constants": 0,
      "defaults": 1
+    },
+    "crates/timegrapher-app/src/app/readouts.rs": {
+     "bounds": 5,
+     "comparisons": 7,
+     "constants": 0,
+     "defaults": 0
     },
     "crates/timegrapher-app/src/app/scope_panes.rs": {
      "bounds": 1,
@@ -309,7 +315,7 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 21452,
+  "crates/timegrapher-app/src/app.rs": 20232,
   "crates/timegrapher-app/src/calibre_ui.rs": 3186
  }
 }
