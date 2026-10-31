@@ -466,9 +466,8 @@ mod tests {
     /// The whole pane on a steady watch (#659): how many 2 h control
     /// takes, of 200 seeds, name anything at all, a finding or a line the
     /// headline adds. The target is 95 in 100 naming nothing (at most 10
-    /// of 200), which is not met yet: Holm's correction across the pane
-    /// leaves 17, nearly all the period search's own false alarms at
-    /// p well under its bar (#723). This count may only fall.
+    /// of 200): with Holm's correction across the pane and the whitened
+    /// search (#723) it leaves 8. This count may only fall.
     #[test]
     fn a_steady_watch_names_nothing_on_the_whole_pane() {
         use crate::longterm::LongConfig;
@@ -488,11 +487,11 @@ mod tests {
                 !r.findings.is_empty() || r.series.iter().any(|c| !c.headline.ends_with(quiet))
             })
             .count();
-        assert!(named <= 9, "{named} of 200 steady takes name something");
+        assert!(named <= 8, "{named} of 200 steady takes name something");
     }
 
     /// The cycles `long` and a session list are the ones the pane names
-    /// (#659). On control seed 29 the period search finds one amplitude
+    /// (#659). On control seed 33 the period search finds one amplitude
     /// line that Holm's correction across the pane drops: with the family
     /// held, no list names it. On takes with real cycles, each list keeps
     /// what the pane names, no more and no less.
@@ -505,7 +504,7 @@ mod tests {
             ..Default::default()
         };
         for (name, seed) in [
-            ("control", 29),
+            ("control", 33),
             ("fourth-wheel", 1),
             ("escape-wheel", 1),
             ("slow-cycle", 1),

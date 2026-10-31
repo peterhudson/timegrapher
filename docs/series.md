@@ -43,7 +43,7 @@ only when its own test and Holm's correction at 0.05 across the family
 both keep it (#659), so one take's several tests do not add up to a
 false alarm. Each test's own figures are given as they are. The target
 is a steady watch naming nothing on 95 takes in 100; on the seeded
-control scenario it names nothing on 191 takes in 200 (#723). `long` (its text,
+control scenario it names nothing on 192 takes in 200 (#723). `long` (its text,
 report and summary) and a session's cycles list the same lines: core
 decides the kept set once (`steadiness::hold_to_family`).
 
@@ -134,15 +134,7 @@ For each series:
   rise followed by a fall.
 - **Period search**: the strongest component found by `long`'s search.
   It scores each period together with its harmonics against a
-  false-alarm chance (see [long-runs.md](long-runs.md)). When the best
-  score is a period whose harmonics include a shorter line, the shorter
-  one is taken first if its fold explains at least 90% as much, or if its
-  own line is at least twice the longer period's own: a strong 150 s line
-  beside a weaker 600 s one is named as its own line, and the 600 s cycle
-  is found next with the 150 s line marked as its 4th harmonic. A narrow
-  dip whose higher harmonic outshines its fundamental can be named at
-  that harmonic first; its fundamental is then searched for as a second
-  line.
+  false-alarm chance (see [long-runs.md](long-runs.md)).
 - **Two states**: the two-state finder over 10 s blocks (see
   [sessions.md](sessions.md)).
 - **Time and frequency** (with `--maps`): two maps of each series'
