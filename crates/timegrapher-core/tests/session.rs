@@ -1043,11 +1043,12 @@ fn a_rate_switching_between_two_levels_is_found_in_its_samples() {
     assert!((r.high - 8.0).abs() < 1.5, "{r:?}");
 }
 
-/// A cycle tied to a wheel is reported with the wheel, a cycle at a whole
-/// fraction of that wheel's turn is folded into it, and a cycle tied to
-/// no wheel is reported on its own.
+/// A cycle tied to a wheel is reported with the wheel, a cycle core marks
+/// as a harmonic of it is folded into it, and a cycle tied to no wheel is
+/// reported on its own.
 #[test]
 fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
+    use timegrapher_core::longterm::Harmonic;
     use timegrapher_core::session::Cycle;
     let cycle = |period_s: f64, wheel: Option<&str>| Cycle {
         series: "rate",
@@ -1059,13 +1060,19 @@ fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
         wheel: wheel.map(str::to_string),
         nearest_wheel: None,
         fraction_of: None,
+        harmonic_of: None,
     };
     let mut r = reading(Position::CH, 2.0, 3.0, 280.0, 0.3);
-    r.cycles = vec![
-        cycle(60.0, Some("fourth wheel")),
-        cycle(30.0, None),
-        cycle(7.3, None),
-    ];
+    // Core marks 30.5 s as the second harmonic of 60.19 s, though their
+    // ratio, 1.97, is more than 1% from 2 (#762).
+    let half = Cycle {
+        harmonic_of: Some(Harmonic {
+            period_s: 60.19,
+            n: 2,
+        }),
+        ..cycle(30.5, None)
+    };
+    r.cycles = vec![cycle(60.19, Some("fourth wheel")), half, cycle(7.3, None)];
     let rep = evaluate(&[r]);
     let of = |code: &str| -> Vec<&str> {
         rep.findings
@@ -1076,10 +1083,49 @@ fn cycles_are_reported_by_wheel_with_their_harmonics_folded_in() {
     };
     let wheel = of("cycle_wheel");
     assert_eq!(wheel.len(), 1, "{wheel:?}");
-    assert!(wheel[0].contains("(30.00 s)"), "{}", wheel[0]);
+    assert!(
+        wheel[0].contains("also at whole fractions of the turn (30.50 s)"),
+        "{}",
+        wheel[0]
+    );
     let other = of("cycle_other");
     assert_eq!(other.len(), 1, "{other:?}");
     assert!(other[0].contains("every 7.30 s"), "{}", other[0]);
+    // Only core's mark folds a cycle in: an unmarked one at half a
+    // wheel's turn is its own, and a marked one folds into a cycle tied
+    // to no wheel too.
+    let mut r = reading(Position::CH, 2.0, 3.0, 280.0, 0.3);
+    let third = Cycle {
+        harmonic_of: Some(Harmonic {
+            period_s: 21.9,
+            n: 3,
+        }),
+        ..cycle(7.3, None)
+    };
+    r.cycles = vec![
+        cycle(60.0, Some("fourth wheel")),
+        cycle(30.0, None),
+        cycle(21.9, None),
+        third,
+    ];
+    let rep = evaluate(&[r]);
+    let of = |code: &str| -> Vec<&str> {
+        rep.findings
+            .iter()
+            .filter(|f| f.code == code)
+            .map(|f| f.evidence.as_str())
+            .collect()
+    };
+    assert_eq!(of("cycle_wheel").len(), 1);
+    let other = of("cycle_other");
+    assert_eq!(other.len(), 2, "{other:?}");
+    assert!(other[0].contains("every 30.00 s"), "{}", other[0]);
+    assert!(
+        other[1].contains("every 21.90 s")
+            && other[1].ends_with("whole fractions of its period (7.30 s)"),
+        "{}",
+        other[1]
+    );
 }
 
 /// A reading's beat error is from the unlock where it was found, else from
