@@ -447,9 +447,13 @@ fn cycles_table(sn: &Session) -> String {
     }
     s.push_str(r#"<table class="data"><thead><tr><th>Position</th><th>In</th><th class="num">Period s</th><th class="num">Size p-p</th><th class="num">Share</th><th class="num">False alarm</th><th>Wheel</th><th>Recording</th></tr></thead><tbody>"#);
     for (r, c) in rows {
-        let wheel = match (&c.wheel, &c.nearest_wheel) {
-            (Some(w), _) => w.clone(),
-            (None, Some((w, off))) => format!("none; nearest {w} {off:+.1}%"),
+        let wheel = match (&c.harmonic_of, &c.wheel, &c.nearest_wheel) {
+            (Some(h), _, _) => format!(
+                "harmonic of the {:.2} s cycle (1/{} of its period)",
+                h.period_s, h.n
+            ),
+            (None, Some(w), _) => w.clone(),
+            (None, None, Some((w, off))) => format!("none; nearest {w} {off:+.1}%"),
             _ => String::new(),
         };
         let _ = write!(
@@ -846,6 +850,41 @@ mod tests {
             .split_once("<h3>Amplitude by position</h3>")
             .unwrap()
             .0
+    }
+
+    /// A cycle core marks as a harmonic says so in the table, beside the
+    /// cycle it is a harmonic of (#762).
+    #[test]
+    fn the_cycles_table_names_a_harmonic_by_its_cycle() {
+        let cycle = |period_s: f64, wheel: Option<&str>| session::Cycle {
+            series: "rate",
+            period_s,
+            size: 2.0,
+            size_unit: "s/d",
+            significance: 8.0,
+            explained: 0.3,
+            wheel: wheel.map(str::to_string),
+            nearest_wheel: None,
+            fraction_of: None,
+            harmonic_of: None,
+        };
+        let mut r = reading(None, Position::CH);
+        r.cycles = vec![
+            cycle(60.19, Some("fourth wheel")),
+            session::Cycle {
+                harmonic_of: Some(timegrapher_core::longterm::Harmonic {
+                    period_s: 60.19,
+                    n: 2,
+                }),
+                ..cycle(30.5, None)
+            },
+        ];
+        let html = render(vec![r]);
+        assert!(html.contains("<td>fourth wheel</td>"), "{html}");
+        assert!(
+            html.contains("<td>harmonic of the 60.19 s cycle (1/2 of its period)</td>"),
+            "{html}"
+        );
     }
 
     #[test]
