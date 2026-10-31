@@ -130,3 +130,35 @@ fn automatic_gain_is_suspected() {
     }
     assert!(codes(&a).contains(&IssueCode::AgcSuspected));
 }
+
+/// The check counts and times the beats every reading does, by core's one
+/// good-beat rule ([`timegrapher_core::beats::Beat::is_good`]), not a cut
+/// of its own (#506).
+#[test]
+fn the_check_keeps_the_beats_every_reading_keeps() {
+    use timegrapher_core::{beats, dsp};
+    // Noisy enough that some beats sit between the 0.4 cut and a 0.5 one.
+    let a = generate(
+        &SynthConfig {
+            duration_s: 30.0,
+            snr_db: 3.0,
+            ..Default::default()
+        },
+        |_| 270.0,
+        |_| 0.0,
+    );
+    let cfg = DiagnoseConfig::default();
+    let c = check(&a, &cfg);
+    let fs = a.sample_rate as f64;
+    let env = dsp::envelope(&a.samples, fs, &cfg.envelope);
+    let (found, _) = beats::detect(&env, fs, c.bph);
+    let between = found
+        .iter()
+        .filter(|b| b.is_good() && b.quality < 0.5)
+        .count();
+    assert!(
+        between > 0,
+        "no beat between the two cuts to tell them apart"
+    );
+    assert_eq!(c.beats_found, found.iter().filter(|b| b.is_good()).count());
+}

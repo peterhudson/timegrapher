@@ -197,7 +197,7 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     } else {
         (Vec::new(), Vec::new())
     };
-    let good: Vec<_> = found.iter().filter(|b| b.quality >= 0.5).copied().collect();
+    let good: Vec<_> = found.iter().filter(|b| b.is_good()).copied().collect();
     let fit = timing::fit(&good, bph);
 
     // Levels around each tick, from the envelope (high-passed, rectified):
