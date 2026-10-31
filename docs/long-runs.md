@@ -205,8 +205,10 @@ take with `long`, `series` or `session`.
    0.25 s bins for runs up to 12 h, 0.5 s up to 48 h, 4 s beyond) and amplitude (2 s
    windows). Slow drift is removed with a running median of 30 minutes (a
    quadratic for runs under 20 minutes).
-3. **Score.** The power spectrum is normalized using a local-median noise
-   estimate. The score assumes exponential normalized noise power and a
+3. **Score.** The power spectrum is divided by the shape of AR(1) noise,
+   with ρ read as everywhere else, and under the running median by the
+   median's own noise shape (#723, #753). What is left is normalized
+   using a local-median noise estimate. The score assumes exponential normalized noise power and a
    Gamma reference for sums of independent bins. Each trial period sums
    its first 1, 2, 4 or 8 harmonics, and the best sum is scored against that
    model, with an approximate allowance for searching many frequencies. A sinusoid

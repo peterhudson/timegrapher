@@ -13,9 +13,9 @@
 //!    moving average off leaves (1 − sinc(πfW))² of each frequency, and a
 //!    median's extra scatter adds (π/2 − 1)·sinc² to the noise. It lifts
 //!    noise about 1.5 times near a period of 0.7W, where the search read
-//!    the detrend as cycles until #723. An AR(1) noise's shape, with ρ read
-//!    as everywhere else, goes on top; above a period of W the shape is
-//!    left flat. What is left is levelled by a median over ±50% in
+//!    the detrend as cycles until #723; above a period of W it is left
+//!    flat. An AR(1) noise's shape, with ρ read as everywhere else, goes
+//!    on top, on short takes too (#753). What is left is levelled by a median over ±50% in
 //!    frequency (±25% under the quadratic a short take is detrended with,
 //!    without its lowest three bins).
 //!    The score uses an exponential, mean-1 reference for
@@ -261,18 +261,19 @@ fn spectrum(g: &Grid, detrend_w: Option<f64>) -> Spectrum {
     let pad = l / g.y.len().max(1);
     let power: Vec<f64> = spec.iter().map(|c| c.norm_sqr()).collect();
     let m = power.len();
-    // The noise the search expects at each bin, up to a constant: the
-    // detrend's own shape (below), and under a running median an AR(1)
-    // noise's shape, ρ read as everywhere else (one noise model).
-    let shape: Vec<f64> = match detrend_w {
-        Some(w) => {
-            let rho = crate::confidence::long_run_rho(&g.y, crate::confidence::Slow::Line);
-            (0..m)
-                .map(|j| noise_pass(j as f64 * df, w) * ar1_shape(j as f64 * df * g.step, rho))
-                .collect()
-        }
-        None => vec![1.0; m],
-    };
+    // The noise the search expects at each bin, up to a constant: an AR(1)
+    // noise's shape, ρ read as everywhere else (one noise model), and
+    // under a running median the detrend's own shape (below). Short takes
+    // detrended with a quadratic take the AR(1) shape too: without it, 1
+    // min of red noise at ρ 0.9 named a cycle in a quarter to a third of
+    // takes (#753).
+    let rho = crate::confidence::long_run_rho(&g.y, crate::confidence::Slow::Line);
+    let shape: Vec<f64> = (0..m)
+        .map(|j| {
+            let f = j as f64 * df;
+            ar1_shape(f * g.step, rho) * detrend_w.map_or(1.0, |w| noise_pass(f, w))
+        })
+        .collect();
     let flat: Vec<f64> = power.iter().zip(&shape).map(|(p, s)| p / s).collect();
     // What the flattened spectrum still leaves, by its median on log-spaced
     // knots, interpolated. Under a running median: over +-50% in frequency
@@ -476,6 +477,13 @@ pub fn fold(g: &Grid, period: f64, bins: usize) -> Fold {
 /// A folded profile kept to its first `harmonics` Fourier harmonics, which
 /// takes most of the noise out of a profile averaged over few cycles.
 pub fn smooth_shape(profile: &[f64], harmonics: usize) -> Vec<f64> {
+    sized_shape(profile, harmonics, &|_, _| true)
+}
+
+/// [`smooth_shape`], keeping beyond the fundamental only the harmonics
+/// `keep(h, power)` passes, `power` the sum of the squares of harmonic
+/// `h`'s two coefficients.
+fn sized_shape(profile: &[f64], harmonics: usize, keep: &dyn Fn(usize, f64) -> bool) -> Vec<f64> {
     let n = profile.len();
     let fin: Vec<(usize, f64)> = profile
         .iter()
@@ -497,12 +505,36 @@ pub fn smooth_shape(profile: &[f64], harmonics: usize) -> Vec<f64> {
             s += (v - mean) * a;
         }
         let scale = 2.0 / fin.len() as f64 / if 2 * h == n { 2.0 } else { 1.0 };
+        if h > 1 && !keep(h, scale * scale * (c * c + s * s)) {
+            continue;
+        }
         for (i, o) in out.iter_mut().enumerate() {
             let (a, b) = (w * h as f64 * i as f64).sin_cos();
             *o += scale * (c * b + s * a);
         }
     }
     out
+}
+
+/// Whether a harmonic of a fold at `period` stands out of the noise left
+/// in `resid` (the series with the fold taken off): its power must pass
+/// the 1% bar of the χ² with 2 degrees of freedom its two coefficients
+/// would make in noise alone. That noise is the AR(1) noise's power at the
+/// harmonic's frequency, ρ and σ read from `resid` (one noise model), each
+/// coefficient's share 2/n of it, times π/2 for the fold's medians. The
+/// search can sum 8 harmonics to find a period while the shape drawn from
+/// them is mostly noise: a 225 s rate cycle folded over 2.6 cycles swung
+/// 29 s/d with 8 harmonics against 11 with the fundamental alone (#761).
+/// [`analyse`] also keeps no more harmonics than whole cycles folded.
+fn harmonic_shows(resid: &Grid, period: f64) -> impl Fn(usize, f64) -> bool {
+    let rho = crate::confidence::long_run_rho(&resid.y, crate::confidence::Slow::Line);
+    let n = resid.y.iter().filter(|v| v.is_finite()).count().max(1) as f64;
+    let var = variance(&resid.y);
+    let step = resid.step;
+    move |h, power| {
+        let noise = var * (1.0 - rho * rho) * ar1_shape(h as f64 * step / period, rho);
+        power > 9.21 * 2.0 / n * std::f64::consts::FRAC_PI_2 * noise
+    }
 }
 
 /// Phase bins for a fold: one per grid step, between 8 and 240. Fine
@@ -713,7 +745,15 @@ pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
                 continue;
             }
             let explained = explained.min(1.0);
-            let shape = smooth_shape(&f.profile, harmonics as usize);
+            // No more harmonics than whole cycles folded: with fewer, a line
+            // near a harmonic (the fourth wheel's 60 s by a 225 s cycle's
+            // 4th, on 10 min) cannot be told from it.
+            let most = ((span / period) as usize).max(1);
+            let shape = sized_shape(
+                &f.profile,
+                (harmonics as usize).min(most),
+                &harmonic_shows(&work, period),
+            );
             let (lo, hi) = shape
                 .iter()
                 .filter(|v| v.is_finite())
@@ -1041,22 +1081,26 @@ mod tests {
     /// search is set for a 1% chance of naming a cycle in noise, so about
     /// 3 in 100 takes across the three series. Each cell's cap is the count
     /// measured on the fix, the higher of two seed sets of 100 (from 9000
-    /// and from 9500). Across the ten cells the fix names one in 46 and 33
+    /// and from 9500). Across the first ten cells #723 names one in 46 and 33
     /// of those 1000 takes, main in 64 and 80 (up to 18 of 100 on half an
-    /// hour at ρ 0.9, most near 0.75 of the median's window).
+    /// hour at ρ 0.9, most near 0.75 of the median's window). Takes under
+    /// 20 min take the AR(1) shape too (#753): before, 1 min at ρ 0.9 named
+    /// one in 35 and 26 of 100, and 3 min at ρ 0.9 in 7 and 6.
     #[test]
     fn noise_with_no_cycle_rarely_names_one() {
         let cells = [
             (180.0, 1.0, 0.0, 5),
-            (180.0, 1.0, 0.9, 7),
+            (180.0, 1.0, 0.9, 2),
             (600.0, 1.0, 0.0, 4),
-            (600.0, 1.0, 0.9, 4),
+            (600.0, 1.0, 0.9, 3),
             (1800.0, 10.0, 0.0, 7),
             (1800.0, 10.0, 0.5, 5),
             (1800.0, 10.0, 0.9, 5),
             (7200.0, 10.0, 0.0, 3),
             (7200.0, 10.0, 0.5, 2),
             (7200.0, 10.0, 0.9, 11),
+            (60.0, 1.0, 0.5, 5),
+            (60.0, 1.0, 0.9, 2),
         ];
         let mut over = Vec::new();
         for (i, &(span, step, rho, cap)) in cells.iter().enumerate() {
@@ -1081,6 +1125,86 @@ mod tests {
             }
         }
         assert!(over.is_empty(), "{over:#?}");
+    }
+
+    /// A 225 s cycle on 10 min (2.7 cycles) beside a 60 s line of the
+    /// same size, near its 4th harmonic, in white noise (#761): its swing
+    /// is the cycle's own on every seed, not the two lines' together. With
+    /// the search's 4 harmonics in the shape it read 1.55 to 2.07 times
+    /// the true swing on these 40 seeds; with the cap, 0.69 to 1.05.
+    #[test]
+    fn a_cycle_over_few_turns_is_sized_without_a_line_near_its_harmonic() {
+        let tau = std::f64::consts::TAU;
+        let cfg = LongConfig {
+            max_period_s: Some(300.0),
+            ..Default::default()
+        };
+        for seed in 0..40u64 {
+            let mut z = Rng::new(20_000 + seed);
+            let y: Vec<f64> = (0..600)
+                .map(|i| {
+                    let t = i as f64;
+                    (tau * t / 225.0).sin() + (tau * t / 60.0 + 1.0).sin() + z.normal()
+                })
+                .collect();
+            let r = analyse(
+                &Grid {
+                    t0: 0.0,
+                    step: 1.0,
+                    y,
+                },
+                &cfg,
+            );
+            let c = r
+                .components
+                .iter()
+                .find(|c| (c.period_s / 225.0 - 1.0).abs() < 0.15)
+                .expect("the 225 s cycle is found");
+            let size = c.peak_to_peak / 2.0;
+            assert!((0.6..1.2).contains(&size), "seed {seed}: {size}");
+        }
+    }
+
+    /// A 60 s sine in AR(1) noise (ρ 0.8, 1.5 times its size) over 30 min,
+    /// 30 cycles, so the cap allows every harmonic the search sums (#761).
+    /// On the 27 of 400 seeds where the search sums more than one, the
+    /// harmonics past the fundamental are noise: the median rate swing is
+    /// the sine's own when only the harmonics that stand out are kept
+    /// (1.06 measured), against 1.39 when every one is.
+    #[test]
+    fn harmonics_that_are_noise_do_not_size_a_cycle() {
+        let tau = std::f64::consts::TAU;
+        let truth = 2.0 * tau / 60.0 * 86_400.0;
+        let mut ratios: Vec<f64> = (0..400u64)
+            .filter_map(|seed| {
+                let mut z = Rng::new(22_000 + seed);
+                let k = (1.0f64 - 0.64).sqrt();
+                let mut e = z.normal();
+                let y: Vec<f64> = (0..1800)
+                    .map(|i| {
+                        e = 0.8 * e + k * z.normal();
+                        (tau * i as f64 / 60.0).sin() + 1.5 * e
+                    })
+                    .collect();
+                let g = Grid {
+                    t0: 0.0,
+                    step: 1.0,
+                    y,
+                };
+                let r = analyse(&g, &LongConfig::default());
+                let c = r
+                    .components
+                    .into_iter()
+                    .find(|c| (c.period_s / 60.0 - 1.0).abs() < 0.02 && c.harmonics > 1)?;
+                let rate = rate_profile(&c.shape, c.period_s);
+                let hi = rate.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let lo = rate.iter().copied().fold(f64::INFINITY, f64::min);
+                Some((hi - lo) / truth)
+            })
+            .collect();
+        assert_eq!(ratios.len(), 27);
+        let mid = median(&mut ratios);
+        assert!((0.85..1.2).contains(&mid), "{mid}");
     }
 
     /// A sinusoid in white noise of the same size, at two periods inside
