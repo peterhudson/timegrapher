@@ -25,6 +25,7 @@ readings[].bph
 readings[].cycles
 readings[].cycles[].explained
 readings[].cycles[].fraction_of
+readings[].cycles[].harmonic_of
 readings[].cycles[].nearest_wheel
 readings[].cycles[].period_s
 readings[].cycles[].series

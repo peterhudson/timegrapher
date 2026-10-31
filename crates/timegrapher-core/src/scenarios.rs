@@ -537,6 +537,15 @@ mod tests {
             assert_eq!(amp, pane(SeriesKind::Amplitude), "{name} amplitude");
             let cycles = crate::session::cycles(&long, &lc.wheels);
             assert_eq!(cycles.len(), rate.len() + amp.len(), "{name}");
+            // Each carries core's harmonic mark as it is (#762).
+            let marks = long
+                .rate_components
+                .iter()
+                .map(|c| c.component.harmonic_of)
+                .chain(long.amplitude.components.iter().map(|c| c.harmonic_of));
+            for (c, mark) in cycles.iter().zip(marks) {
+                assert_eq!(c.harmonic_of, mark, "{name} {}", c.period_s);
+            }
             if name == "control" {
                 assert_eq!(found, 1, "the line Holm drops");
                 assert!(amp.is_empty());
