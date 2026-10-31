@@ -569,9 +569,8 @@ pub struct Component {
     /// The folded profile kept to the harmonics the search used.
     pub shape: Vec<f64>,
     pub fold: Fold,
-    /// A longer cycle the search also found whose period is this one's
-    /// times a whole number from 2 to 8, within both resolutions (or 1%),
-    /// when that leaves only one whole number.
+    /// A longer cycle the search also found whose frequency times a whole
+    /// number from 2 to 8 is within one resolution (1/span) of this one's.
     pub harmonic_of: Option<Harmonic>,
 }
 
