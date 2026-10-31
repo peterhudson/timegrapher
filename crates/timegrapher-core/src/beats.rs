@@ -198,8 +198,10 @@ fn track_peaks(
         // beat is due is a knock or other noise, not the beat: count the
         // beat as missed rather than let it pull the track off by a beat.
         // After MAX_MISSES in a row the track takes the strongest beat it
-        // finds, to recover. Pass 1 (with a gate) only feeds a median
-        // template, so it takes every peak.
+        // finds, to recover, if it is a peak: in digital silence the best
+        // point is the span's edge, and taking those would count more beats
+        // than the silence holds (#782). Pass 1 (with a gate) only feeds a
+        // median template, so it takes every peak.
         // With a level to judge by, a peak far weaker than the side's
         // typical beat may be a faint beat or, in a silence, the noise: it
         // is kept, but neither steers the track nor ends a run missed (#609).
@@ -231,14 +233,22 @@ fn track_peaks(
         let take = gate.is_some()
             || out.len() < 4
             || (t - pred).abs() < MAX_OFFSET * per
-            || misses >= MAX_MISSES && !weak;
+            || misses >= MAX_MISSES && !weak && peaked;
         if take && !weak {
             let anchors = out.iter().rev().filter(|o| o.3).take(3);
-            if let Some(&(t2, ..)) = anchors.clone().find(|o| o.2 == k - 2 && !rescued) {
+            // Nothing heard times nothing: in digital silence the gate's
+            // pick is its edge, a little early every beat, and timing from
+            // those shrank the period beat by beat until the track stood
+            // still (#782).
+            let heard = v > 0.0;
+            let same_side = anchors.clone().find(|o| o.2 == k - 2 && !rescued && heard);
+            if let Some(&(t2, ..)) = same_side {
                 // Update on the tick-to-tick interval so beat error doesn't pull the loop.
                 let meas = (t - t2) / 2.0;
                 if (meas - per).abs() < 0.05 * per {
-                    per = 0.9 * per + 0.1 * meas;
+                    // Kept no shorter than PER_MIN of the beat whatever it is
+                    // fed, so each beat is looked for later than the last.
+                    per = (0.9 * per + 0.1 * meas).max(PER_MIN * beat * fs);
                 }
             }
             out.push((t, v, k, !rescued, false));
@@ -292,6 +302,11 @@ fn track_peaks(
 fn rms(x: &[f32]) -> f32 {
     (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
 }
+
+/// The shortest the tracked beat period may become, as a fraction of the
+/// nominal beat. A watch 1 % fast gains 864 s a day, so this allows ten
+/// times any watch's error.
+const PER_MIN: f64 = 0.9;
 
 /// How far from where it is due a beat may be found once the track is
 /// running, as a fraction of the beat period. Beat-to-beat changes in
@@ -478,8 +493,19 @@ pub fn detect_levelled(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>, 
     let (coarse, _) = track_peaks(env, fs, beat, Some(PASS1_GATE_S), None);
     let origin = (PRE_S * fs).round() as usize;
     let mut sample = Vec::new();
+    let heard_any = coarse.iter().any(|c| c.1 > 0.0);
     for side in 0..2 {
-        let times: Vec<f64> = coarse.iter().skip(side).step_by(2).map(|c| c.0).collect();
+        // A maximum of nothing is no beat: in digital silence pass 1 still
+        // follows the beat, and a template built on its picks there would
+        // be a template of silence (#782). Sound that is all silence keeps
+        // every pick, as there is nothing else to build one from.
+        let times: Vec<f64> = coarse
+            .iter()
+            .skip(side)
+            .step_by(2)
+            .filter(|c| c.1 > 0.0 || !heard_any)
+            .map(|c| c.0)
+            .collect();
         let step = (times.len() / 1000).max(1);
         let times: Vec<f64> = times.into_iter().step_by(step).collect();
         let drop = if times.len() >= 3 {
@@ -1637,6 +1663,91 @@ mod tests {
     /// beat, `h` high.
     fn beats_at(k: impl IntoIterator<Item = usize>, h: f32) -> impl Iterator<Item = (usize, f32)> {
         k.into_iter().map(move |k| (400 + 1000 * k, h))
+    }
+
+    /// 10 s of watch, `gap_s` of exact zeros, and 10 s of the same watch in
+    /// step, at 8 kHz with a beat every 0.125 s, 50 ms into each beat: the
+    /// watch over noise a twentieth as high, as [`track_of`] makes it.
+    fn watch_with_digital_silence(gap_s: f64) -> Vec<f32> {
+        let resumed = 10.0 + gap_s;
+        let mut x = track_of(20.0 + gap_s, &[(0.0, 80, 0.05), (resumed, 80, 0.05)]);
+        x[(10.0 * 8000.0) as usize..(resumed * 8000.0) as usize].fill(0.0);
+        x
+    }
+
+    /// Runs `f` on another thread, failing if it has not finished in a
+    /// minute, so a track that stands still fails rather than hangs.
+    fn within_a_minute<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(f()));
+        rx.recv_timeout(std::time::Duration::from_secs(60))
+            .expect("still running after a minute")
+    }
+
+    /// Pass 1 over a long digital silence keeps its period near the beat
+    /// and moves on, and follows the watch again after it. Its pick in the
+    /// silence is the edge of the gate, a little early every beat; timing
+    /// from those shrank the period until the track stood still (#782).
+    #[test]
+    fn pass_1_moves_on_through_a_long_digital_silence() {
+        let x = watch_with_digital_silence(400.0);
+        let (coarse, _) =
+            within_a_minute(move || track_peaks(&x, 8000.0, 0.125, Some(PASS1_GATE_S), None));
+        let on_beat = |t: f64| ((t - 0.05) / 0.125 - ((t - 0.05) / 0.125).round()).abs() < 0.01;
+        let heard: Vec<f64> = coarse.iter().filter(|c| c.1 > 0.0).map(|c| c.0).collect();
+        assert_eq!(heard.len(), 160);
+        assert!(heard.iter().all(|&t| on_beat(t)), "a pick off the beat");
+        // About one pick a beat: the period stayed the beat's.
+        assert!(
+            (coarse.len() as f64 / (420.0 / 0.125) - 1.0).abs() < 0.01,
+            "{}",
+            coarse.len()
+        );
+    }
+
+    /// The period stays near the beat's even where every pick is heard but
+    /// none is a beat: over a flat stretch every point ties, so pass 1's
+    /// gate picks its edge a little early every beat, as in digital
+    /// silence, but each pick is above zero. Only the period's lower bound
+    /// keeps the track moving there (#782).
+    #[test]
+    fn pass_1_moves_on_through_a_long_flat_stretch() {
+        let mut x = watch_with_digital_silence(400.0);
+        x[(10.0 * 8000.0) as usize..(410.0 * 8000.0) as usize].fill(0.01);
+        let (coarse, _) =
+            within_a_minute(move || track_peaks(&x, 8000.0, 0.125, Some(PASS1_GATE_S), None));
+        let after = coarse.iter().filter(|c| c.0 >= 410.0 && c.1 >= 0.5).count();
+        // At most 1.12 picks a beat over the flat 400 s (3200 beats): the
+        // period was kept at no less than 0.9 of the beat.
+        let flat = coarse
+            .iter()
+            .filter(|c| (10.0..410.0).contains(&c.0))
+            .count();
+        assert!(flat <= 3584, "{flat} picks over the flat stretch");
+        assert!(after >= 75, "{after} beats after the flat stretch");
+    }
+
+    /// A watch that falls digitally silent for most of the sound is still
+    /// found: pass 1's picks in the silence are maxima of nothing, and a
+    /// template built mostly on them was a template of silence, which
+    /// matched no beat (#782).
+    #[test]
+    fn a_template_is_not_built_on_digital_silence() {
+        let mut x = track_of(410.0, &[(0.0, 80, 0.05)]);
+        x[(10.0 * 8000.0) as usize..].fill(0.0);
+        let good = |x: &[f32]| -> Vec<f64> {
+            let (beats, _) = detect(x, 8000.0, 28_800);
+            beats
+                .iter()
+                .filter(|b| b.is_good())
+                .map(|b| b.time)
+                .collect()
+        };
+        // The same beats as from the watch's 10 s alone.
+        let alone = good(&x[..(10.0 * 8000.0) as usize]);
+        assert!(alone.len() >= 78, "{} good beats alone", alone.len());
+        let with = within_a_minute(move || good(&x));
+        assert_eq!(with, alone);
     }
 
     /// A beat is looked for only where the whole span around where it is
