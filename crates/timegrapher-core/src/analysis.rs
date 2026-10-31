@@ -274,9 +274,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let turned = timing::sign_turns(&beats, bph, &cuts);
     let residuals =
         timing::residuals_pieces(&beats, &cuts).unwrap_or_else(|| vec![f64::NAN; beats.len()]);
-    let part = amplitude_windows
-        .first()
-        .map_or(2.0, |w| w.end_s - w.start_s);
+    let part = crate::session::window_part_s(&amplitude_windows);
     let rate_windows = holes.windows(
         &beats,
         bph,
@@ -321,7 +319,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
         y: clear.iter().filter_map(|w| w.mean()).collect(),
     };
 
-    let jitter_us = median_of(rate_windows.iter().map(|w| w.fit.jitter_us));
+    let jitter_us = crate::session::scatter_jitter_us(&rate_windows);
     let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
         let v: Vec<f64> = clear.iter().filter_map(f).collect();
         crate::confidence::standard_error(&v)

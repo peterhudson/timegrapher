@@ -18,6 +18,12 @@ pub const STANDARD_BPH: [u32; 11] = [
     12000, 14400, 17280, 18000, 19800, 21600, 25200, 28800, 36000, 43200, 72000,
 ];
 
+/// How many beats on from a beat `dt_s` seconds after it, `beat_s` a beat:
+/// the nearest whole count, at least one. Peaks are numbered on by it.
+pub fn beats_on(dt_s: f64, beat_s: f64) -> i64 {
+    (dt_s / beat_s).round().max(1.0) as i64
+}
+
 /// Guess the beat rate from the envelope's autocorrelation.
 ///
 /// Every standard rate is scored by the autocorrelation at its beat
@@ -569,7 +575,7 @@ pub fn detect_after(
     let mut index = 0i64;
     for (k, &(t, v)) in peaks.iter().enumerate() {
         if k > 0 {
-            index += ((t - peaks[k - 1].0) / beat).round().max(1.0) as i64;
+            index += beats_on(t - peaks[k - 1].0, beat);
         }
         beats.push(Beat {
             index,

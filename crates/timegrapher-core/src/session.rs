@@ -23,7 +23,7 @@ use crate::longrun::LongReport;
 use crate::periodicity::Wheel;
 use crate::shape::{ShapeReport, SideReport};
 use crate::stream::BeatLog;
-use crate::timing;
+use crate::timing::{self, WindowFit};
 use crate::twostate::{self, TwoState};
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -473,6 +473,32 @@ pub fn window_figures(wins: &[&AmplitudeWindow], turned: bool) -> WindowFigures 
     }
 }
 
+/// The length of the parts a stretch's windows must be whole in, seconds:
+/// its amplitude windows' length, else 2 s.
+pub fn window_part_s(amp: &[AmplitudeWindow]) -> f64 {
+    amp.first().map_or(2.0, |w| w.end_s - w.start_s)
+}
+
+/// The 10 s windows, one every 5 s, that a stretch from `from_s` to
+/// `to_s` (true time) is read in for its rates and its timing scatter.
+pub fn scatter_windows(
+    holes: &Cuts,
+    beats: &[Beat],
+    bph: u32,
+    from_s: f64,
+    to_s: f64,
+    part_s: f64,
+) -> Vec<WindowFit> {
+    holes.windows(beats, bph, from_s, to_s, 10.0, 5.0, part_s)
+}
+
+/// The timing scatter a stretch is judged on for whether a watch is
+/// heard: the median jitter of its windows. Live and saved readings and
+/// `analyze` all decide on it (#680).
+pub fn scatter_jitter_us(windows: &[WindowFit]) -> Option<f64> {
+    median_of(windows.iter().map(|w| w.fit.jitter_us))
+}
+
 fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
     let mut w: Vec<f64> = v.filter(|x| x.is_finite()).collect();
     (!w.is_empty()).then(|| median(&mut w))
@@ -550,11 +576,8 @@ pub fn measure_masked(
     let fit = timing::fit_pieces(&beats, log.bph, &cuts);
     let turned = timing::sign_turns(&beats, log.bph, &cuts);
     let (from_t, to_t) = (map(from_s), map(to_s));
-    let part = log
-        .amplitude_windows
-        .first()
-        .map_or(2.0, |w| w.end_s - w.start_s);
-    let windows = holes.windows(&beats, log.bph, from_t, to_t, 10.0, 5.0, part);
+    let part = window_part_s(&log.amplitude_windows);
+    let windows = scatter_windows(&holes, &beats, log.bph, from_t, to_t, part);
     let rates: Vec<f64> = windows.iter().map(|w| w.fit.rate_s_per_day).collect();
     let rate_samples: Vec<twostate::Sample> = holes
         .windows(&beats, log.bph, from_t, to_t, 10.0, 10.0, part)
@@ -616,7 +639,7 @@ pub fn measure_masked(
         .filter(|&&t| t >= from_s && t < to_s && !in_mask(masked, t))
         .count();
     let listened_s = to_s - from_s - masked_s;
-    let jitter_us = median_of(windows.iter().map(|w| w.fit.jitter_us));
+    let jitter_us = scatter_jitter_us(&windows);
     // Under 10 s the beats' averaged sound (outside the masks) says
     // whether a watch is heard.
     let beat_sound = log.beat_sound(
