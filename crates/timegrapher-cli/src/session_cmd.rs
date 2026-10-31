@@ -1328,7 +1328,8 @@ mod tests {
             ("lift = 52\nlift_known = true", None, true),
             ("lift = 49\nlift_known = false", None, false),
             ("lift = 52\nlift_known = false", Some(52.0), true),
-            ("lift = 52", None, true),          // Legacy CLI semantics.
+            ("lift = 52", None, false), // An older file's default: assumed (#685).
+            ("lift = 49", None, true),  // Any other value was supplied.
             ("lift_known = true", None, false), // No accompanying value.
             (
                 "calibre = \"Unitas 6497-2\"\nlift_known = false",
