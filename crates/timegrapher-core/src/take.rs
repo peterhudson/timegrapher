@@ -681,8 +681,9 @@ pub fn stream_settings(m: &Manifest, cal: Option<&Calibre>, given: Given) -> Str
 /// Whether the lift a session file `m` gives was supplied, or `None`
 /// when it gives none: its `lift_known` where it says, else (an older
 /// file, which did not record it) supplied unless it is the default
-/// [`DEFAULT_LIFT_DEG`] and its calibre `cal` gives no lift (#685). Every
-/// reader of a session file, and every writer, takes it from here.
+/// [`DEFAULT_LIFT_DEG`] and its calibre `cal` gives no lift (#685). Core
+/// and the CLI take it from here; the desktop still holds two copies of
+/// its own until the app split ends.
 pub fn file_lift_known(m: &Manifest, cal: Option<&Calibre>) -> Option<bool> {
     let lift = m.lift?;
     Some(
