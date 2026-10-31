@@ -11,12 +11,12 @@ parked = true
 
 # Lucía, Spanish speaker doing a six-position test
 
-**Who.** Lucía lives in Valencia and collects Rolex sports watches. Her
+**Who.** Lucía lives in Valencia and collects sports watches. Her
 English is basic: she reads simple English slowly and writes in Spanish,
 sometimes with a few English words. She knows the words "rate", "amplitude"
 and the positions from Spanish watch forums ("marcha", "amplitud", "error de
-batido", "esfera arriba"...). Her watch is a Rolex Yacht-Master 42 with
-calibre 3235 (28,800 bph; lift angle 55° in the corpus), wound this morning.
+batido", "esfera arriba"...). Her watch is a Yacht-Master 42 replica with
+a Dandong 3235 movement (28,800 bph; lift angle 55° in the corpus), wound this morning.
 
 **Setup.** Lucía uses the Claude Desktop app with the Timegrapher extension.
 The stand is plugged in, empty.

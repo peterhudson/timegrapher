@@ -22,7 +22,7 @@ information should be shown so that it reads at a glance.
 
 **Setup.** Mika opens the Timegrapher desktop app on Linux for the first
 time and has set the afternoon aside to go through all of it. On the stand
-is a friend's Rolex Yacht-Master 42 with calibre 3235 (28,800 bph; 55° in
+is a friend's Yacht-Master 42 replica with a Dandong 3235 movement (28,800 bph; 55° in
 the corpus), which he can put in any of the six positions. In
 `~/Recordings/` are `eta_movement_DU.flac`, a recording he made last week of
 an uncased ETA 2824-2 clone movement in a plastic holder, dial up (28,800

@@ -25,7 +25,7 @@ watchmaker does.
 
 **Setup.** Owen has installed the `timegrapher` command line and its MCP
 server and wants to know whether an AI agent could use them well for a
-watch owner. On the stand is a Rolex Yacht-Master 42, calibre 3235 (28,800
+watch owner. On the stand is a Yacht-Master 42 replica, Dandong 3235 movement (28,800
 bph; 55° in the corpus), which he can put in any of the six positions. In
 `~/Recordings/` are `eta_movement_DU.flac` (an uncased ETA 2824-2 clone in a
 plastic holder, dial up, 28,800 bph, lift 50° in the corpus),

@@ -66,9 +66,9 @@ judged against tg alone.
   of 2.8°, 7.5° at the 90th percentile and 11.2° at the 95th; 93% are
   within 8°. The offset goes with the movement and its mount, not with the
   lift angle or the amplitude level: the ETA 2824 reads 7 to 21° above tg
-  in its holder and bare, the Daytona about 2° below, the Yacht-Master up to
-  8° above crown down. The two methods place the unlock differently on some
-  movements. At 4° about a third of holdout readings would fail for that
+  in its holder and bare, the Daytona replica about 2° below, the
+  Yacht-Master replica up to 8° above crown down. The two methods place the
+  unlock differently on some movements. At 4° about a third of holdout readings would fail for that
   known reason; at 8° a failure shows something new.
 - A `[[recording]]` entry may name a fault confirmed at the bench:
   `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`
