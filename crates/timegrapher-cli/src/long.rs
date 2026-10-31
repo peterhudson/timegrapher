@@ -1,5 +1,6 @@
 //! The `long` command: a long recording in, a report folder out.
 
+use crate::session_cmd::signed;
 use std::fs::{self, File};
 use std::io::{BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -885,11 +886,11 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     }
     match &r.overall {
         Some(f) => println!(
-            "Rate         {:+.2} s/d over the run; {} slices from {} to {} s/d (5th-95th pct)",
-            f.rate_s_per_day,
+            "Rate         {} s/d over the run; {} slices from {} to {} s/d (5th-95th pct)",
+            signed(Some(f.rate_s_per_day), 2),
             crate::report::slice_name(r.slice_s),
-            opt(r.rate_p05, 1),
-            opt(r.rate_p95, 1)
+            signed(r.rate_p05, 1),
+            signed(r.rate_p95, 1)
         ),
         None => println!("Rate         not enough clean beats to fit"),
     }
