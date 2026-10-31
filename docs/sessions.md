@@ -24,7 +24,7 @@ full wind.
 ## Session file
 
 ```toml
-watch = "Submariner case, Dandong 3235 clone"
+watch = "Dandong 3235"
 calibre = "3235"
 bph = 28800
 lift = 55             # 32xx: probably 55° (maybe 58°), project value

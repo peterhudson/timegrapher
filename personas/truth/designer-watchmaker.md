@@ -1,6 +1,6 @@
 # Truth: Mika (designer and watchmaker, deep all-feature pass)
 
-Stand: Rolex Yacht-Master 42, calibre 3235, 28,800 bph, lift 55°, the watch
+Stand: Yacht-Master 42 replica, Dandong 3235 movement, 28,800 bph, lift 55°, the watch
 "before its service" per the corpus; the same six positions as
 [tinkerer.md](tinkerer.md). Each position is the first file of its corpus
 take (recorded on different days).
@@ -29,7 +29,7 @@ bph, lift 50° in the corpus. tg on that file (lift 50°, card clock): rate
 fast.
 
 `~/Recordings/reverso_2h/` = corpus `reverso21600_DU_2h`, 13 files of 10 min.
-Reverso replica, manual wind, unknown movement, 21,600 bph, lift 52°. Dial up
+Reverso Duo replica, manual wind, unknown movement, 21,600 bph, lift 52°. Dial up
 but tilted toward crown down (the strap ran under the cradle). tg per file
 (lift 55° scaled to 52°, card clock): rate +20.5 to +23.6 s/d, amplitude
 238° to 258°, beat error 0.25 to 0.35 ms. Some clipping from file 02 on,
