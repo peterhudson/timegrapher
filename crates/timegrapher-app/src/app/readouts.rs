@@ -1248,3 +1248,210 @@ impl TimegrapherApp {
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
 }
+
+/// Where a galley's first line sits: its baseline, down from its top.
+fn baseline(g: &egui::Galley) -> f32 {
+    g.rows
+        .first()
+        .and_then(|r| Some(r.pos.y + r.row.glyphs.first()?.pos.y))
+        .unwrap_or(g.size().y * 0.8)
+}
+
+/// The least size, points, a card's figure is made to fit beside its ±
+/// and unit; past it the ± stacks, then leaves the card (#825).
+const FIGURE_LEAST_PT: f32 = 12.0;
+
+/// A readings card's figure row: the big figure ("—" while there is none),
+/// then its ± and unit on the figure's baseline, or what the reading waits
+/// on in their place. On a compact card the figure is smaller and the ±
+/// sits over the unit beside it. A figure too wide for the card (noise
+/// read as beats can give thousands of s/d) is made smaller to show whole.
+pub(super) fn figure_row(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    value: Option<&str>,
+    unit: &str,
+    status: Option<&(String, String)>,
+    hover: &str,
+    compact: bool,
+) {
+    let pal = theme::pal(ui);
+    let (text, colour) = match value {
+        // A true minus sign, as wide as the plus.
+        Some(v) => (v.replace('-', "−"), pal.text),
+        None => ("—".to_string(), pal.text_tertiary),
+    };
+    let side_text = status.map_or(unit, |s| s.0.as_str());
+    let mut lines = side_lines(side_text, status.is_some(), compact);
+    let mut side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
+    let lay_side = |font: &egui::FontId, lines: &[String]| -> Vec<_> {
+        lines
+            .iter()
+            .map(|l| {
+                ui.painter()
+                    .layout_no_wrap(l.clone(), font.clone(), pal.text_secondary)
+            })
+            .collect()
+    };
+    let mut side = lay_side(&side_font, &lines);
+    let mut side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    // Words in the figure's place ("No Regular Beat") show whole: with no
+    // figure, the dash gives them its room, and they are made smaller
+    // only when even that is too narrow.
+    let figure_w = ui
+        .painter()
+        .layout_no_wrap(
+            text.clone(),
+            theme::display(if compact {
+                theme::FIGURE_COMPACT_PT
+            } else {
+                theme::FIGURE_PT
+            }),
+            colour,
+        )
+        .size()
+        .x;
+    let no_dash = value.is_none() && status.is_some() && figure_w + 6.0 + side_w > rect.width();
+    if no_dash && side_w > rect.width() {
+        side_font.size = (side_font.size * rect.width() / side_w).floor().max(9.0);
+        side = lay_side(&side_font, &lines);
+        side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    }
+    // A ± too wide to sit beside the figure, even with the figure made as
+    // small as it is made, stacks over its unit, and, still too wide,
+    // leaves the card for the hover: never cut into a number that reads
+    // as zero (#825).
+    let mut moved = None;
+    if status.is_none() && value.is_some() && side_text.starts_with('±') {
+        let fits = |l: &[String]| {
+            let w = lay_side(&side_font, l)
+                .iter()
+                .map(|g| g.size().x)
+                .fold(0.0, f32::max);
+            let least = FIGURE_LEAST_PT
+                / if compact {
+                    theme::FIGURE_COMPACT_PT
+                } else {
+                    theme::FIGURE_PT
+                };
+            figure_w * least + 6.0 + w <= rect.width()
+        };
+        let (fitted, cut) = pm_fitted(side_text, lines, fits);
+        lines = fitted;
+        moved = cut.then_some(side_text);
+        side = lay_side(&side_font, &lines);
+        side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    }
+    let room = rect.width() - if side_w > 0.0 { side_w + 6.0 } else { 0.0 };
+    let full = if compact {
+        theme::FIGURE_COMPACT_PT
+    } else {
+        theme::FIGURE_PT
+    };
+    let lay = |size: f32| {
+        ui.painter()
+            .layout_no_wrap(text.clone(), theme::display(size), colour)
+    };
+    let mut big = lay(full);
+    if big.size().x > room && value.is_some() {
+        big = lay((full * room / big.size().x).floor().max(FIGURE_LEAST_PT));
+    }
+    let top = rect.center().y - big.size().y / 2.0;
+    let base = top + baseline(&big);
+    let painter = ui.painter().with_clip_rect(rect.expand(2.0));
+    let x = if no_dash {
+        rect.left()
+    } else {
+        rect.left() + big.size().x + 6.0
+    };
+    if !no_dash {
+        painter.galley(egui::pos2(rect.left(), top), big, colour);
+    }
+    let step = side_font.size * 1.2;
+    let n = side.len();
+    for (i, g) in side.into_iter().enumerate() {
+        let line_base = base - (n - 1 - i) as f32 * step;
+        let y = line_base - baseline(&g);
+        painter.galley(egui::pos2(x, y), g, pal.text_secondary);
+    }
+    let hover = figure_hover(status, hover, moved.map(|pm| format!("{text} {pm}")));
+    if !hover.is_empty() {
+        ui.interact(
+            rect,
+            ui.id().with(("figure", rect.left() as i32)),
+            egui::Sense::hover(),
+        )
+        .on_hover_text(hover);
+    }
+}
+
+/// The lines beside a card's figure: one line in Body, or on a compact
+/// card two small lines, the ± over the unit, or a status's words split
+/// as evenly as they allow.
+fn side_lines(side_text: &str, status: bool, compact: bool) -> Vec<String> {
+    // Beside the figure: one line in Body, or on a compact card two small
+    // lines, the ± over the unit.
+    if side_text.is_empty() {
+        Vec::new()
+    } else if !compact {
+        vec![side_text.to_string()]
+    } else if status {
+        // Two lines as even as the words allow: "Settling," over "12 s",
+        // "Waiting for" over "Beats".
+        let splits = side_text.match_indices(' ').map(|(i, _)| i);
+        match splits.min_by_key(|&i| i.abs_diff(side_text.len() - i)) {
+            Some(i) => vec![side_text[..i].to_string(), side_text[i + 1..].to_string()],
+            None => vec![side_text.to_string()],
+        }
+    } else {
+        // "± 8.6 s/d" stacks; "± 0.8°" and "bph" stay one line.
+        match side_text.rsplit_once(' ') {
+            Some((a, b)) if a.starts_with('±') && a.contains(' ') => {
+                vec![a.to_string(), b.to_string()]
+            }
+            _ => vec![side_text.to_string()],
+        }
+    }
+}
+
+/// The lines of a ± and its unit (`side_text`, laid out as `lines`) that
+/// `fits` beside the figure: as they are, else the ± stacked over the
+/// unit, else the unit alone; and whether the ± was left out.
+fn pm_fitted(
+    side_text: &str,
+    lines: Vec<String>,
+    fits: impl Fn(&[String]) -> bool,
+) -> (Vec<String>, bool) {
+    if fits(&lines) {
+        return (lines, false);
+    }
+    let (pm, unit) = match side_text.rsplit_once(' ') {
+        Some((a, b)) if a.contains(' ') => (a, b),
+        _ => (side_text, ""),
+    };
+    let stacked = vec![pm.to_string(), unit.to_string()];
+    if lines.len() == 1 && !unit.is_empty() && fits(&stacked) {
+        return (stacked, false);
+    }
+    let alone = if unit.is_empty() {
+        Vec::new()
+    } else {
+        vec![unit.to_string()]
+    };
+    (alone, true)
+}
+
+/// A card figure's hover: what the reading waits on, then `hover`, with
+/// the figure and the ± the card had no room for (`moved`) first.
+fn figure_hover(status: Option<&(String, String)>, hover: &str, moved: Option<String>) -> String {
+    let hover = match status {
+        Some((_, h)) if !h.is_empty() && !hover.is_empty() => format!("{h}\n\n{hover}"),
+        Some((_, h)) if !h.is_empty() => h.clone(),
+        _ => hover.to_string(),
+    };
+    match moved {
+        Some(m) if hover.is_empty() => m,
+        Some(m) => format!("{m}\n\n{hover}"),
+        None => hover,
+    }
+}
