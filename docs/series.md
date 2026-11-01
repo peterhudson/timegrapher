@@ -98,8 +98,12 @@ For each series:
 - **Autocorrelation**: how closely a reading matches the one a lag
   later, read with the slow trend (the period search's 30-minute running
   median) taken out first, so a rate drifting as the mainspring runs down
-  is not counted as memory. Independent readings stay inside ±1.96/√n at every lag. The
-  Ljung–Box test combines the first 10 lags into one p-value. `memory_s`
+  is not counted as memory. On a take under 20 minutes, where a
+  quadratic is taken out instead, each lag is given less the correlation
+  that taking it out leaves in independent readings (about −3/n at lag
+  one; `confidence::fit_lag_bias`, #828), so they read about 0. Independent readings stay inside ±1.96/√n at every lag. The
+  Ljung–Box test combines the first 10 lags into one p-value, each lag
+  weighed by the pairs it is read from. `memory_s`
   is the lag where the correlation falls below 1/e. `repeat_lag_s` is
   the first lag where the correlation rises back to a peak after falling,
   which means the readings repeat. Where gaps leave fewer pairs of
