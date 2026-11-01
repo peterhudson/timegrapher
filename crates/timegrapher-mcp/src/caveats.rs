@@ -120,11 +120,11 @@ pub fn limits(doc: &Value) -> Vec<Value> {
             .collect();
     }
     // A live reading carries no caveats; its clipping is said when core
-    // counts it (`Clipping::NOTED_FRACTION`), in core's words (#808).
+    // counts it (`Clipping::noted_fraction`), in core's words (#808).
     if schema.starts_with("timegrapher.live/") {
         return doc["reading"]["clipped_fraction"]
             .as_f64()
-            .filter(|&f| f > timegrapher_core::analysis::Clipping::NOTED_FRACTION)
+            .filter(|&f| timegrapher_core::analysis::Clipping::noted_fraction(f))
             .and_then(|fraction| timegrapher_core::measure::Caveat::Clipped { fraction }.long(None))
             .map(|text| json!({ "where": null, "text": text }))
             .into_iter()
