@@ -145,6 +145,10 @@ pub fn no_watch_reason_in(caveats: &[Caveat]) -> Option<NoWatchReason> {
     })
 }
 
+/// The heading every surface gives a reading with no regular beat, over
+/// [`no_watch_text`]'s sentence or in the figures' place (#510).
+pub const NO_WATCH_TITLE: &str = "No Regular Beat";
+
 /// The sentence for no regular beat found, as every surface states it:
 /// with the timing scatter, as [`crate::beats::no_regular_beat_text`]
 /// gives it, or that the beats' sound shows no unlock and no drop.

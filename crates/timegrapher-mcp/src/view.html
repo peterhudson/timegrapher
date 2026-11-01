@@ -178,6 +178,9 @@ const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
 // code and its common one: the server fills it in (null in the raw file,
 // so its readers fall back to the code).
 const POSITIONS = /*POSITIONS*/null;
+// The heading for a reading with no regular beat: core's measure::NO_WATCH_TITLE,
+// as the app writes it (#510).
+const NO_BEAT_TITLE = /*NO_BEAT_TITLE*/null;
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
@@ -551,7 +554,7 @@ function recordingView(doc, extra, limits, noBeat, pm) {
     return head + takeTiles(takeReadings, pm.readings) + recordingCards(doc, extra, limits, (shaped.measurement || {}).beat_error_ms);
   }
   if (doc.watch_heard === false) {
-    return head + `<div class="card notice"><b>No Regular Beat Found</b>${esc(noBeat || "")}</div>`;
+    return head + `<div class="card notice"><b>${esc(NO_BEAT_TITLE)}</b>${esc(noBeat || "")}</div>`;
   }
   const o = doc.overall || {};
   const rate = analyzeRate(doc);
@@ -606,7 +609,7 @@ function takeTiles(readings, pms) {
     const label = `${positionName(r.position)}${r.label && r.label !== "." ? ` · ${r.label}` : ""}`;
     const span = Number.isFinite(m.start_s) && Number.isFinite(m.end_s) ? `${timeLabel(m.start_s)} to ${timeLabel(m.end_s)}` : "";
     const head = `<p class="sub">${esc(label)}${span ? ` · ${esc(span)}` : ""} · as the take reads it</p>`;
-    if (m.watch_heard === false) return head + `<div class="card notice"><b>No Regular Beat Found</b></div>`;
+    if (m.watch_heard === false) return head + `<div class="card notice"><b>${esc(NO_BEAT_TITLE)}</b></div>`;
     return head + readingTiles({
       rate: m.rate_s_per_day, ratePm: pm.rate, rateNote: esc(rateBasis(m.calibrated === true)),
       amplitude: m.amplitude_deg, amplitudePm: pm.amplitude, even: m.amplitude_even_deg, odd: m.amplitude_odd_deg,
@@ -639,7 +642,7 @@ function sessionView(doc, limits) {
     html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
       (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
         cell(abs(Number.isFinite(m.beat_error_unlock_ms) ? m.beat_error_unlock_ms : m.beat_error_ms), 2)
-        : `<td colspan="3" style="text-align:center;color:var(--text2)">No regular beat found</td>`) +
+        : `<td colspan="3" style="text-align:center;color:var(--text2)">${esc(NO_BEAT_TITLE)}</td>`) +
       `<td>${esc(r.wind_h == null ? 0 : r.wind_h)}</td></tr>`;
   });
   html += `</tbody></table></div>`;
@@ -1941,7 +1944,7 @@ function recordView(doc, heard, noBeat) {
   }
   const clipped = c.clipping && c.clipping.beats > 0 ? `${num(c.clipping.beat_fraction * 100, 1)}% of beats were clipped.` : "";
   if (c.watch_heard === false) {
-    html += `<div class="card notice"><b>No Regular Beat</b>${esc(noBeat || "")}${clipped ? ` ${clipped}` : ""}</div>`;
+    html += `<div class="card notice"><b>${esc(NO_BEAT_TITLE)}</b>${esc(noBeat || "")}${clipped ? ` ${clipped}` : ""}</div>`;
     return html;
   }
   if (clipped) html += `<div class="card notice"><b>Clipping</b>${clipped}</div>`;

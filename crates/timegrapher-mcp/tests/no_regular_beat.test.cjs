@@ -11,7 +11,12 @@ function definition(name) {
   if (!match) throw new Error(`Missing ${name}`);
   return match[0];
 }
+// The no-beat heading the server puts in the page: core's
+// measure::NO_WATCH_TITLE, read from core so the test holds the view to it.
+const NO_BEAT_TITLE = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/measure.rs"), "utf8")
+  .match(/pub const NO_WATCH_TITLE: &str = "([^"]+)";/)[1];
 const context = vm.createContext({
+  NO_BEAT_TITLE,
   fileName: () => "take.flac", timeLabel: String, positionName: String,
   liveStrip: () => "", stripCards: () => "", trendStrip: () => "",
 });
@@ -21,12 +26,12 @@ const said = "No regular beat found (too few beats to time). There are no rate, 
 
 test("a recording with no regular beat says the server's sentence", () => {
   const markup = context.recordingView({ watch_heard: false, bph: 28800, lift_deg: 52, jitter_us: 8600 }, null, null, said);
-  assert.ok(markup.includes(`<b>No Regular Beat Found</b>${said}</div>`), markup);
+  assert.ok(markup.includes(`<b>${NO_BEAT_TITLE}</b>${said}</div>`), markup);
 });
 
 test("a take's check with no regular beat says the server's sentence", () => {
   const markup = context.recordView({ position: "DU", seconds: 60, check: { watch_heard: false, bph: 28800, timing_scatter_ms: 8.6 } }, null, said);
-  assert.ok(markup.includes(`<b>No Regular Beat</b>${said}</div>`), markup);
+  assert.ok(markup.includes(`<b>${NO_BEAT_TITLE}</b>${said}</div>`), markup);
 });
 
 test("the sentence is escaped", () => {
