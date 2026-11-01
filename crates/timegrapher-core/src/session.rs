@@ -756,6 +756,14 @@ pub fn measure_masked(
     if let Some(d) = clock.and_then(ClockFit::sources_disagree) {
         crate::measure::add(&mut m.caveats, d.into());
     }
+    // A listed pause in the stretch with no gap in the clock log adds no
+    // time, and is said (#646).
+    if let Some(count) = clock.map(|c| c.unseen(&m.breaks)).filter(|&n| n > 0) {
+        crate::measure::add(
+            &mut m.caveats,
+            crate::measure::Caveat::PausesUnseen { count },
+        );
+    }
     if !m.watch_heard {
         m.rate_s_per_day = None;
         m.beat_error_ms = None;

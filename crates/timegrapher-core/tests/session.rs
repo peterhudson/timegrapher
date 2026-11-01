@@ -1196,3 +1196,53 @@ fn a_readings_beat_error_is_the_unlocks_else_the_drops() {
     assert_eq!(session::beat_error_size(None, Some(-0.3)), Some(0.3));
     assert_eq!(session::beat_error_size(None, None), None);
 }
+
+#[test]
+fn a_listed_pause_the_clock_log_did_not_see_is_said() {
+    // A 30 s pause listed at 100 s that the clock log, a line every 10 s
+    // with no step, does not show: the reading names it, and the rate is
+    // read on through it as the log has it (#646).
+    let bph = 28_800;
+    let period = timegrapher_core::timing::period_s(3600.0 / bph as f64, 5.0);
+    let beats: Vec<timegrapher_core::beats::Beat> = (0..(240.0 / period) as i64)
+        .map(|k| timegrapher_core::beats::Beat {
+            index: k,
+            time: k as f64 * period,
+            quality: 1.0,
+        })
+        .collect();
+    let log = timegrapher_core::stream::BeatLog {
+        sample_rate: 44_100,
+        duration_s: 240.0,
+        bph,
+        lift_deg: 52.0,
+        beats,
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: 0,
+        jumps: Vec::new(),
+        sided: Vec::new(),
+        by_count: Vec::new(),
+        snippets: Vec::new(),
+    };
+    let lines: Vec<(f64, f64)> = (0..=24)
+        .map(|i| (i as f64 * 10.0, i as f64 * 10.0))
+        .collect();
+    let clock = timegrapher_core::clock::ClockFit::new(&lines).unwrap();
+    assert!(clock.breaks.is_empty());
+    let brk = [timegrapher_core::breaks::Break {
+        audio_s: 100.0,
+        gap_s: 30.0,
+    }];
+    let unseen = timegrapher_core::measure::Caveat::PausesUnseen { count: 1 };
+    let m = session::measure_masked(&log, Some(&clock), &brk, &[], 20.0, 230.0);
+    assert!(m.caveats.contains(&unseen), "{:?}", m.caveats);
+    let rate = m.rate_s_per_day.expect("rate");
+    assert!((rate - 5.0).abs() < 0.1, "rate {rate} s/d");
+    // With no clock log the listed gap is all there is to go on.
+    let m = session::measure_masked(&log, None, &brk, &[], 20.0, 230.0);
+    assert!(!m.caveats.contains(&unseen), "{:?}", m.caveats);
+    // Outside the stretch, it is not this reading's.
+    let m = session::measure_masked(&log, Some(&clock), &brk, &[], 120.0, 230.0);
+    assert!(!m.caveats.contains(&unseen), "{:?}", m.caveats);
+}

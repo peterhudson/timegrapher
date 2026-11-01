@@ -208,7 +208,8 @@ pub enum Listed<'a> {
 /// no listed break explains ([`breaks::on_clock`]); then each jump the
 /// beats show that none of those explains, as a break of unknown length
 /// ([`breaks::with_jumps`]). The beats after each break are numbered on
-/// by the beats its gap held, and `log.by_count` names the breaks whose
+/// by the beats its gap held, as true time keeps it ([`breaks::as_kept`]),
+/// and `log.by_count` names the breaks whose
 /// sides are kept by the count alone ([`breaks::renumber`]). In time order,
 /// with why they are not all the take's own list's, when they are not
 /// ([`breaks::Unlisted`]).
@@ -224,16 +225,17 @@ pub fn breaks(
         Listed::Session(json) => {
             let found = breaks::for_take(json, clock.as_deref(), log.sample_rate);
             breaks::Found {
-                breaks: breaks::on_clock(found.breaks, clock),
+                breaks: breaks::on_clock(found.breaks, clock.as_deref_mut()),
                 ..found
             }
         }
     };
     let all = breaks::with_jumps(found.breaks, &log.jumps);
+    // Numbered on by the gaps true time keeps (#646).
     log.by_count = breaks::renumber(
         &mut log.beats,
         &mut log.amplitude_windows,
-        &all,
+        &breaks::as_kept(&all, clock.as_deref()),
         &log.sided,
         log.bph,
     );
@@ -1696,6 +1698,63 @@ mod tests {
             (at[0] - 30.0).abs() < 1e-9 && (at[1] - 60.0).abs() < 1e-9,
             "{at:?}"
         );
+    }
+
+    /// A pause the take lists that its clock log spans and shows no gap
+    /// at does not number the beats on: on true time they run on along
+    /// one line, as the readings and the Paper Strip read them (#646).
+    #[test]
+    fn a_pause_the_clock_log_did_not_see_does_not_number_the_beats_on() {
+        let mut text = String::from("unix_s,frames\n");
+        for k in 0..=12 {
+            let audio_s = k as f64 * 10.0;
+            text.push_str(&format!(
+                "{},{}\n",
+                1.7e9 + audio_s,
+                (audio_s * 48_000.0) as u64
+            ));
+        }
+        let p = 0.125;
+        for (listed_on, gap_s) in [(true, 30.0), (false, 0.0)] {
+            let mut fit = clock(Some(&text), 48_000, 4, None, None, 120.0)
+                .unwrap()
+                .unwrap();
+            let json = serde_json::json!({ "breaks": [{ "audio_s": 60.0, "gap_s": gap_s }] });
+            let mut log = BeatLog {
+                sample_rate: 48_000,
+                duration_s: 120.0,
+                bph: 28_800,
+                lift_deg: 52.0,
+                beats: (0..960)
+                    .map(|index| crate::beats::Beat {
+                        index,
+                        time: index as f64 * p + 0.01,
+                        quality: 1.0,
+                    })
+                    .collect(),
+                amplitude_windows: Vec::new(),
+                clipped_beats: Vec::new(),
+                clipped_samples: 0,
+                jumps: Vec::new(),
+                sided: Vec::new(),
+                by_count: Vec::new(),
+                snippets: Vec::new(),
+            };
+            let found = breaks(&mut log, Listed::Session(Some(&json)), Some(&mut fit));
+            let lead = |b: &crate::beats::Beat| {
+                crate::clean::true_time(Some(&fit), &found.breaks, b.time) - b.index as f64 * p
+            };
+            let first = lead(&log.beats[0]);
+            for b in &log.beats {
+                assert!(
+                    (lead(b) - first).abs() < 1e-3,
+                    "listed {listed_on}: beat {} at {} leads {}",
+                    b.index,
+                    b.time,
+                    lead(b) - first
+                );
+            }
+        }
     }
 
     /// The words for where a take's clock came from, for each source; a

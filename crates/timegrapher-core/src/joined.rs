@@ -57,6 +57,24 @@ pub fn positions_caveat(m: &Manifest) -> Option<Caveat> {
     (seen.len() > 1).then_some(Caveat::Positions { count: seen.len() })
 }
 
+/// [`Caveat::PausesUnseen`] for a take read in `spans` on `clock`: the
+/// listed pauses inside them that the clock log witnesses but shows no gap
+/// at, so [`join`] counts no time for them (#646), as
+/// [`ClockFit::unseen`] counts them on a take read whole.
+pub fn pauses_unseen(
+    spans: &[(f64, f64)],
+    breaks: &[Break],
+    clock: Option<&ClockFit>,
+) -> Option<Caveat> {
+    let inside: Vec<Break> = breaks
+        .iter()
+        .filter(|c| spans.iter().any(|&(a, b)| c.audio_s > a && c.audio_s < b))
+        .copied()
+        .collect();
+    let count = clock?.unseen(&inside);
+    (count > 0).then_some(Caveat::PausesUnseen { count })
+}
+
 /// The stretches of a take that are read, audio seconds, in time order:
 /// each entry's from the end of its settling, as `timegrapher session`
 /// reads it ([`take::reading_window`]), on a take whose entries are all one
@@ -117,9 +135,10 @@ fn empty_like(log: &BeatLog) -> BeatLog {
 ///
 /// The joined times are on the take's `clock`: each beat is put on it
 /// before the time between stretches is taken out, so the joined log is
-/// read with no clock after. A clock that puts the pauses back itself
-/// ([`ClockFit::breaks`]) leaves the breaks no gap of their own, and each
-/// of its steps inside a span is a cut.
+/// read with no clock after. A clock log puts the pauses it witnesses back
+/// itself ([`ClockFit::breaks`]), so it leaves those breaks no gap of their
+/// own (one it saw no gap at adds none, #646), and each of its steps inside
+/// a span is a cut.
 pub fn join(
     log: &BeatLog,
     spans: &[(f64, f64)],
@@ -127,7 +146,9 @@ pub fn join(
     clock: Option<&ClockFit>,
 ) -> (BeatLog, Vec<Break>) {
     let time = |t: f64| on_clock(clock, t);
-    let pauses_back = clock.is_some_and(|c| !c.breaks.is_empty());
+    // Where the clock log witnesses a pause the gap is its own: a listed
+    // pause it saw no gap at adds none (#646, as `clean::true_time`).
+    let pauses_back = |at: f64| clock.is_some_and(|c| c.witnesses(at));
     let steps = clock.map_or(&[][..], |c| &c.breaks[..]);
     let mut cuts = Vec::new();
     let beat = 3600.0 / log.bph as f64;
@@ -174,7 +195,7 @@ pub fn join(
                 .filter(|c| c.audio_s > a && c.audio_s < b)
                 .map(|c| Break {
                     audio_s: time(c.audio_s) - shift_t,
-                    gap_s: if pauses_back { 0.0 } else { c.gap_s },
+                    gap_s: if pauses_back(c.audio_s) { 0.0 } else { c.gap_s },
                 }),
         );
         // Already among `breaks` when they came from core's take reader
@@ -487,6 +508,26 @@ mod tests {
         // The clock puts each pause back: 4 s before the second stretch
         // and 12 s at 150 s, so its times run on by them.
         assert_eq!(got, [(10.0, 0.0), (35.0, 0.0), (97.0, 0.0), (121.0, 0.0)]);
+    }
+
+    /// A clock log that ended at 120 s witnesses a pause listed at 20 s,
+    /// where it shows no gap, so that pause adds no time and is named; it
+    /// does not witness one listed at 150 s, whose gap counts (#646).
+    #[test]
+    fn a_join_counts_a_listed_gap_only_where_the_clock_log_saw_none() {
+        let pairs: Vec<(f64, f64)> = (0..=12)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0))
+            .collect();
+        let clock = ClockFit::new(&pairs).unwrap();
+        let breaks = [cut(20.0, 9.0), cut(150.0, 12.0)];
+        let (_, cuts) = join(&log(), &SPANS, &breaks, Some(&clock));
+        let gaps: Vec<f64> = cuts.iter().map(|c| c.gap_s).collect();
+        assert_eq!(gaps, [0.0, 0.0, 12.0], "{cuts:?}");
+        assert_eq!(
+            pauses_unseen(&SPANS, &breaks, Some(&clock)),
+            Some(Caveat::PausesUnseen { count: 1 })
+        );
+        assert_eq!(pauses_unseen(&SPANS, &breaks, None), None);
     }
 
     /// An amplitude window inside a stretch is kept on the joined times;

@@ -749,6 +749,46 @@ impl ClockFit {
         }
     }
 
+    /// Whether the clock log witnesses audio second `at`: it has an entry
+    /// at or before it and one after it, so a pause there would show as a
+    /// step. A correction alone ([`ClockFit::fixed`]) has no entries and
+    /// witnesses nothing, nor does a log before its first entry or after
+    /// its last (one that ended early, or started late).
+    pub fn witnesses(&self, at: f64) -> bool {
+        match (self.entries.first(), self.entries.last()) {
+            (Some(a), Some(z)) => a.0 <= at + 1e-9 && z.0 > at,
+            // No entries kept: a fit with breaks is from a log.
+            _ => !self.breaks.is_empty(),
+        }
+    }
+
+    /// Whether listed pause `b`'s gap counts on this clock. Where the log
+    /// does not witness it ([`witnesses`](Self::witnesses)), the listed gap
+    /// is all there is to go on, so it counts. Where it does, it counts
+    /// only if the log shows it: a break of the log's at `b`, or within
+    /// [`breaks::JUMP_MATCH_S`] after it (one
+    /// [`place_breaks`](Self::place_breaks) did not move), as
+    /// [`crate::clean::Cuts`] matches them. The log is the better witness
+    /// (#646).
+    pub fn keeps_gap(&self, b: &Break) -> bool {
+        !self.witnesses(b.audio_s)
+            || self.breaks.iter().any(|c| {
+                c.audio_s >= b.audio_s - 1e-9 && c.audio_s - b.audio_s <= breaks::JUMP_MATCH_S
+            })
+    }
+
+    /// How many of `listed` (a take's breaks, after
+    /// [`place_breaks`](Self::place_breaks)) have a gap this clock does not
+    /// keep ([`keeps_gap`](Self::keeps_gap)): pauses its log did not see.
+    /// Each is a break of no width ([`crate::clean::Cuts::new`]) and is
+    /// named ([`crate::measure::Caveat::PausesUnseen`]).
+    pub fn unseen(&self, listed: &[Break]) -> usize {
+        listed
+            .iter()
+            .filter(|l| l.gap_s > 0.0 && !self.keeps_gap(l))
+            .count()
+    }
+
     /// The audio seconds of the log's first entry after `e`, or `e` when
     /// there is none.
     fn entry_after(&self, e: f64) -> f64 {
