@@ -161,10 +161,6 @@ impl TimegrapherApp {
 
     /// The Scope pane: the latest beats' sound up to the time on show, from
     /// what the live engine still holds, else read from the recording.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn scope_pane(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let view = self.scope_view;
@@ -204,28 +200,15 @@ impl TimegrapherApp {
         let (before, after) = view.zoom.window(beat_s);
         // Each beat from the traces already drawn, else from the sound the
         // engine still holds; only the rest need reading from the recording.
-        let key = |b: &timegrapher_core::beats::Beat| {
-            (b.index, b.time.to_bits(), view.zoom, beat_s.to_bits())
-        };
-        let mut known: std::collections::HashMap<ScopeKey, Vec<f32>> = Default::default();
-        for b in picks.iter().flatten() {
-            let k = key(b);
-            if let Some((_, t)) = self.scope_traces.iter().find(|(c, _)| *c == k) {
-                known.insert(k, t.clone());
-                continue;
-            }
-            let (a, z) = (b.time - before - 0.015, b.time + after + 0.005);
-            if let Some(t) = live
-                .sound(a, z - a)
-                .and_then(|x| scope::trace(x, fs, a, b, view.zoom, beat_s))
-            {
-                self.scope_traces.push_back((k, t.clone()));
-                known.insert(k, t);
-            }
-        }
-        while self.scope_traces.len() > SCOPE_KEPT {
-            self.scope_traces.pop_front();
-        }
+        let key = |b: &timegrapher_core::beats::Beat| scope_key(b, view.zoom, beat_s);
+        let known = scope_known(
+            live,
+            &mut self.scope_traces,
+            &picks,
+            (view.zoom, beat_s),
+            fs,
+            (before, after),
+        );
         let missing: Vec<&timegrapher_core::beats::Beat> = picks
             .iter()
             .flatten()
@@ -235,48 +218,14 @@ impl TimegrapherApp {
         // A little either side, so rounding never cuts a trace short.
         let lo = (times.clone().fold(f64::INFINITY, f64::min) - before - 0.015).max(0.0);
         let hi = times.fold(f64::NEG_INFINITY, f64::max) + after + 0.005;
-        let mut note = None;
         let listening = self.running();
-        let audio: Option<(Vec<f32>, f64, f64)> = if lo >= hi || (listening && !known.is_empty()) {
+        let (audio, note) = if lo >= hi || (listening && !known.is_empty()) {
             // Nothing more to read, or while listening a beat whose sound
             // went before it was drawn: the others carry on without it.
-            None
+            (None, None)
         } else {
             self.poll_scope_job();
-            match &self.scope_audio {
-                // What was asked for covers these beats: use what was read,
-                // even when the recording ended before it, and never ask
-                // again for a stretch that couldn't be read.
-                Some((a, b, got)) if *a <= lo && *b >= hi => match got {
-                    Ok(sp) => {
-                        let i0 =
-                            (((lo - sp.t0) * sp.rate).floor().max(0.0) as usize).min(sp.mono.len());
-                        let i1 = (((hi - sp.t0) * sp.rate).ceil().max(0.0) as usize)
-                            .clamp(i0, sp.mono.len());
-                        Some((
-                            sp.mono[i0..i1].to_vec(),
-                            sp.t0 + i0 as f64 / sp.rate,
-                            sp.rate,
-                        ))
-                    }
-                    Err(e) => {
-                        note = Some(format!("Couldn't read the sound here: {e}."));
-                        None
-                    }
-                },
-                _ => {
-                    note = Some(
-                        if self.start_scope_job(lo, hi) {
-                            "Reading the sound from the recording…"
-                        } else {
-                            "The sound of these beats isn't kept: the Scope shows the last \
-                             few seconds while listening, and any moment of a recording."
-                        }
-                        .to_string(),
-                    );
-                    None
-                }
-            }
+            self.scope_cut(lo, hi)
         };
         let rows: Vec<scope::Row> = specs
             .iter()
@@ -291,25 +240,11 @@ impl TimegrapherApp {
                         })
                     })
                     .collect();
-                let mut marks = Vec::new();
-                if view.zoom.marks() {
-                    if let Some(p) = &profiles[usize::from(!even)] {
-                        if let Some(ms) = p.unlock_ms {
-                            marks.push(scope::Mark {
-                                ms,
-                                color: pal.unlock,
-                                name: "Unlock",
-                            });
-                        }
-                        if let Some(ms) = p.drop_ms {
-                            marks.push(scope::Mark {
-                                ms,
-                                color: pal.drop,
-                                name: "Drop",
-                            });
-                        }
-                    }
-                }
+                let marks = if view.zoom.marks() {
+                    scope_marks(profiles[usize::from(!even)].as_ref(), pal)
+                } else {
+                    Vec::new()
+                };
                 scope::Row {
                     label: if split { label } else { "" },
                     traces,
@@ -323,6 +258,44 @@ impl TimegrapherApp {
         }
         let rate = audio.as_ref().map_or(fs, |a| a.2);
         scope::draw(ui, &rows, view.zoom, beat_s, rate);
+    }
+
+    /// The sound from `lo` to `hi` s from the recording read in the
+    /// background, with the line to show over the Scope while it is read,
+    /// or when it can't be.
+    fn scope_cut(&mut self, lo: f64, hi: f64) -> ScopeSound {
+        match &self.scope_audio {
+            // What was asked for covers these beats: use what was read,
+            // even when the recording ended before it, and never ask
+            // again for a stretch that couldn't be read.
+            Some((a, b, got)) if *a <= lo && *b >= hi => match got {
+                Ok(sp) => {
+                    let i0 =
+                        (((lo - sp.t0) * sp.rate).floor().max(0.0) as usize).min(sp.mono.len());
+                    let i1 = (((hi - sp.t0) * sp.rate).ceil().max(0.0) as usize)
+                        .clamp(i0, sp.mono.len());
+                    let cut = (
+                        sp.mono[i0..i1].to_vec(),
+                        sp.t0 + i0 as f64 / sp.rate,
+                        sp.rate,
+                    );
+                    (Some(cut), None)
+                }
+                Err(e) => (None, Some(format!("Couldn't read the sound here: {e}."))),
+            },
+            _ => {
+                let note = Some(
+                    if self.start_scope_job(lo, hi) {
+                        "Reading the sound from the recording…"
+                    } else {
+                        "The sound of these beats isn't kept: the Scope shows the last \
+                         few seconds while listening, and any moment of a recording."
+                    }
+                    .to_string(),
+                );
+                (None, note)
+            }
+        }
     }
 
     fn poll_scope_job(&mut self) {
@@ -445,4 +418,70 @@ impl TimegrapherApp {
             }
         }
     }
+}
+
+/// Sound read for the Scope (samples, start s, rate) and the line to show
+/// over it.
+type ScopeSound = (Option<(Vec<f32>, f64, f64)>, Option<String>);
+
+/// Where a beat's trace is kept: its index and time at this zoom and beat.
+fn scope_key(b: &timegrapher_core::beats::Beat, zoom: scope::Zoom, beat_s: f64) -> ScopeKey {
+    (b.index, b.time.to_bits(), zoom, beat_s.to_bits())
+}
+
+/// Each beat's trace from the traces already drawn, else from the sound
+/// the engine still holds, keeping the newest `SCOPE_KEPT`. The rest need
+/// reading from the recording.
+fn scope_known(
+    live: &LiveAnalyzer,
+    kept: &mut std::collections::VecDeque<(ScopeKey, Vec<f32>)>,
+    picks: &[Vec<timegrapher_core::beats::Beat>],
+    (zoom, beat_s): (scope::Zoom, f64),
+    fs: f64,
+    (before, after): (f64, f64),
+) -> std::collections::HashMap<ScopeKey, Vec<f32>> {
+    let mut known: std::collections::HashMap<ScopeKey, Vec<f32>> = Default::default();
+    for b in picks.iter().flatten() {
+        let k = scope_key(b, zoom, beat_s);
+        if let Some((_, t)) = kept.iter().find(|(c, _)| *c == k) {
+            known.insert(k, t.clone());
+            continue;
+        }
+        let (a, z) = (b.time - before - 0.015, b.time + after + 0.005);
+        if let Some(t) = live
+            .sound(a, z - a)
+            .and_then(|x| scope::trace(x, fs, a, b, zoom, beat_s))
+        {
+            kept.push_back((k, t.clone()));
+            known.insert(k, t);
+        }
+    }
+    while kept.len() > SCOPE_KEPT {
+        kept.pop_front();
+    }
+    known
+}
+
+/// The Unlock and Drop marks from the Tick Tock Profile nearest the moment
+/// shown.
+fn scope_marks(profile: Option<&TickProfile>, pal: &theme::Palette) -> Vec<scope::Mark> {
+    let mut marks = Vec::new();
+    let Some(p) = profile else {
+        return marks;
+    };
+    if let Some(ms) = p.unlock_ms {
+        marks.push(scope::Mark {
+            ms,
+            color: pal.unlock,
+            name: "Unlock",
+        });
+    }
+    if let Some(ms) = p.drop_ms {
+        marks.push(scope::Mark {
+            ms,
+            color: pal.drop,
+            name: "Drop",
+        });
+    }
+    marks
 }
