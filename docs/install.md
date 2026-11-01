@@ -170,15 +170,16 @@ a personal computer.
 
 Before any tag or **Draft a release** build, the release workflow checks the
 newest CI run for that exact commit from this repository's main push or manual
-CI dispatch. All five jobs must be completed successfully: the three platform
-`test` jobs, `mcp-renderer`, and `regress`. The latter must also contain the
+CI dispatch. All seven jobs must be completed successfully: the three platform
+`test` jobs, `mcp-renderer`, and the three corpus checks `regress (engine)`,
+`regress (app)` and `regress (mcp)`. `regress (engine)` must also contain the
 successful **Required real-recording analyze/session equivalence** step; an older
 same-name regression job alone does not establish that coverage. The accepted
 run URL, SHA, attempt and job results appear in the release gate's log and summary.
 
 The gate waits up to 40 minutes for pending CI, so the build can be started
 straight after a merge; a failed, missing, cancelled or incomplete latest run stops the build rather than reusing an older green result.
-All five jobs must belong to the latest attempt: use **Re-run all jobs** after a
+All seven jobs must belong to the latest attempt: use **Re-run all jobs** after a
 partial rerun. Every push to main runs CI in full, Markdown-only commits
 included. Do not tag an untested branch or substitute
 PR-head results for the candidate's main CI.
