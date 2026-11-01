@@ -82,12 +82,8 @@ impl TimegrapherApp {
 
     /// How often each value of a reading came up, over the session or the
     /// strip's length: bars, or the cumulative share.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn histogram(&mut self, ui: &mut egui::Ui, reading: SeriesKind) {
-        use timegrapher_core::histogram as hist;
+        use timegrapher_core::distribution as dist;
         let pal = theme::pal(ui);
         let short = !self.hist_readings;
         if reading == SeriesKind::Rate && short {
@@ -96,80 +92,7 @@ impl TimegrapherApp {
                 None => self.rate_2s = RateTwoS::default(),
             }
         }
-        // Only the position the watch is in now: values from another
-        // position are a different measurement.
-        let inside = |t: f64| self.in_position(t);
-        let windows = self.unmasked_windows();
-        // One reading per averaging time: a new reading comes every half
-        // second, and the ones between share most of their beats, so counting
-        // them all would stack up repeats and look surer than it is.
-        let every = self.average_s;
-        let trend = &self.trend;
-        let readings = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<f64> {
-            let mut last = f64::NEG_INFINITY;
-            trend
-                .iter()
-                .filter(|p| inside(p.t))
-                .filter_map(|p| Some((p.t, f(p)?)))
-                .filter(|&(t, _)| {
-                    let keep = t >= last + every - 1e-6;
-                    if keep {
-                        last = t;
-                    }
-                    keep
-                })
-                .map(|(_, v)| v)
-                .collect()
-        };
-        use timegrapher_core::distribution::{self as dist, AMPLITUDE, BEAT_ERROR, RATE};
-        let (values, kind, color, label): (Vec<f64>, dist::Kind, _, &'static str) = match reading {
-            SeriesKind::Rate if short => (
-                self.rate_2s
-                    .values
-                    .iter()
-                    .filter(|&&(a, _)| inside(a + RateTwoS::STEP_S) && self.in_position(a + 1e-6))
-                    .map(|&(_, v)| v)
-                    .collect(),
-                RATE,
-                pal.trace_rate,
-                "2 s",
-            ),
-            SeriesKind::Rate => (readings(|p| p.rate), RATE, pal.trace_rate, "readings"),
-            SeriesKind::Amplitude if short => (
-                windows
-                    .iter()
-                    .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
-                    .filter_map(|w| w.mean())
-                    .collect(),
-                AMPLITUDE,
-                pal.trace_amplitude,
-                "2 s",
-            ),
-            SeriesKind::Amplitude => (
-                readings(|p| p.amplitude),
-                AMPLITUDE,
-                pal.trace_amplitude,
-                "readings",
-            ),
-            SeriesKind::BeatError if short => (
-                windows
-                    .iter()
-                    .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
-                    .filter_map(|w| {
-                        core_session::beat_error_signed(w.beat_error_unlock_ms, w.beat_error_ms)
-                    })
-                    .collect(),
-                BEAT_ERROR,
-                pal.trace_beat_error,
-                "2 s",
-            ),
-            SeriesKind::BeatError => (
-                readings(TrendPoint::beat_error),
-                BEAT_ERROR,
-                pal.trace_beat_error,
-                "readings",
-            ),
-        };
+        let (values, kind, color, label) = self.hist_values(reading, short, pal);
         let step = if label == "2 s" {
             dist::STRETCH_S
         } else {
@@ -216,89 +139,208 @@ impl TimegrapherApp {
             .y_axis_min_width(44.0)
             .default_x_bounds(x_lo, x_hi);
         if cumulative {
-            // The share of values at or below each value, as a step line.
-            let mut pts: Vec<[f64; 2]> = Vec::new();
-            for [x, q] in hist::ecdf(&values) {
-                if x < x_lo || x > x_hi {
-                    continue;
-                }
-                if let Some(&[_, prev]) = pts.last() {
-                    pts.push([x, prev]);
-                }
-                pts.push([x, q * 100.0]);
-            }
-            plot.y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
-                .y_axis_formatter(|m, _| {
-                    if m.value < -1e-9 || m.value > 100.0 + 1e-9 {
-                        String::new()
-                    } else {
-                        format!("{}%", m.value.abs())
-                    }
-                })
-                .default_y_bounds(0.0, 100.0)
-                .show(ui, |p| {
-                    p.line(
-                        Line::new("share at or below", pts)
-                            .color(color)
-                            .width(1.8_f32),
-                    );
-                });
-            return;
+            return cumulative_plot(ui, plot, &values, (x_lo, x_hi), color);
         }
-        // Probability paper: the share at or below each value on a scale of
-        // standard deviations, labelled in percent.
-        let pts: Vec<[f64; 2]> = hist::probability_plot(&values)
-            .into_iter()
-            .filter(|p| p[0] >= x_lo && p[0] <= x_hi)
-            .collect();
-        let z_top = hist::normal_quantile(1.0 - 0.5 / values.len().max(2) as f64).min(3.3) + 0.25;
-        let line = d.normal_line.map(|l| {
-            vec![
-                [l.centre - l.spread * z_top, -z_top],
-                [l.centre + l.spread * z_top, z_top],
-            ]
-        });
-        plot.y_grid_spacer(move |g| {
-            // From 50% outwards, leaving out a share whose label would crowd
-            // the one before it.
-            let px = 8.0 / g.base_step_size;
-            let mut kept: Vec<f64> = Vec::new();
-            for &(pc, _) in &PROBABILITY_MARKS[5..] {
-                let z = hist::normal_quantile(pc / 100.0);
-                if z <= z_top && kept.last().is_none_or(|&k| (z - k) * px >= 16.0) {
-                    kept.push(z);
-                }
-            }
-            kept.iter()
-                .flat_map(|&z| if z == 0.0 { vec![z] } else { vec![z, -z] })
-                .map(|value| GridMark {
-                    value,
-                    step_size: 1.0,
-                })
-                .collect()
-        })
-        .y_axis_formatter(|m, _| {
-            PROBABILITY_MARKS
+        probability_paper(ui, plot, &values, d.normal_line, (x_lo, x_hi), color);
+    }
+
+    /// The values of `reading` a distribution counts, in the position the
+    /// watch is in now: each 2 s stretch (`short`) or one reading per
+    /// averaging time. With them, the scale they are on, their colour and
+    /// what each value is.
+    fn hist_values(
+        &self,
+        reading: SeriesKind,
+        short: bool,
+        pal: &theme::Palette,
+    ) -> (
+        Vec<f64>,
+        timegrapher_core::distribution::Kind,
+        Color32,
+        &'static str,
+    ) {
+        // Only the position the watch is in now: values from another
+        // position are a different measurement.
+        let inside = |t: f64| self.in_position(t);
+        let windows = self.unmasked_windows();
+        // One reading per averaging time: a new reading comes every half
+        // second, and the ones between share most of their beats, so counting
+        // them all would stack up repeats and look surer than it is.
+        let every = self.average_s;
+        let trend = &self.trend;
+        let readings = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<f64> {
+            let mut last = f64::NEG_INFINITY;
+            trend
                 .iter()
-                .find(|&&(pc, _)| (hist::normal_quantile(pc / 100.0) - m.value).abs() < 1e-6)
-                .map_or(String::new(), |&(_, label)| label.to_string())
-        })
-        .default_y_bounds(-z_top, z_top)
-        .show(ui, |p| {
-            if let Some(l) = line {
-                p.line(
-                    Line::new("one steady state", l)
-                        .color(pal.text_tertiary)
-                        .style(LineStyle::dashed_loose())
-                        .width(1.0_f32),
-                );
+                .filter(|p| inside(p.t))
+                .filter_map(|p| Some((p.t, f(p)?)))
+                .filter(|&(t, _)| {
+                    let keep = t >= last + every - 1e-6;
+                    if keep {
+                        last = t;
+                    }
+                    keep
+                })
+                .map(|(_, v)| v)
+                .collect()
+        };
+        use timegrapher_core::distribution::{AMPLITUDE, BEAT_ERROR, RATE};
+        match reading {
+            SeriesKind::Rate if short => (
+                self.rate_2s
+                    .values
+                    .iter()
+                    .filter(|&&(a, _)| inside(a + RateTwoS::STEP_S) && self.in_position(a + 1e-6))
+                    .map(|&(_, v)| v)
+                    .collect(),
+                RATE,
+                pal.trace_rate,
+                "2 s",
+            ),
+            SeriesKind::Rate => (readings(|p| p.rate), RATE, pal.trace_rate, "readings"),
+            SeriesKind::Amplitude if short => (
+                windows
+                    .iter()
+                    .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
+                    .filter_map(|w| w.mean())
+                    .collect(),
+                AMPLITUDE,
+                pal.trace_amplitude,
+                "2 s",
+            ),
+            SeriesKind::Amplitude => (
+                readings(|p| p.amplitude),
+                AMPLITUDE,
+                pal.trace_amplitude,
+                "readings",
+            ),
+            SeriesKind::BeatError if short => (
+                windows
+                    .iter()
+                    .filter(|w| inside(w.end_s) && self.in_position(w.start_s + 1e-6))
+                    .filter_map(|w| {
+                        core_session::beat_error_signed(w.beat_error_unlock_ms, w.beat_error_ms)
+                    })
+                    .collect(),
+                BEAT_ERROR,
+                pal.trace_beat_error,
+                "2 s",
+            ),
+            SeriesKind::BeatError => (
+                readings(TrendPoint::beat_error),
+                BEAT_ERROR,
+                pal.trace_beat_error,
+                "readings",
+            ),
+        }
+    }
+}
+
+/// A distribution as the share of values at or below each value, as a step
+/// line between `x_lo` and `x_hi`.
+fn cumulative_plot(
+    ui: &mut egui::Ui,
+    plot: Plot<'_>,
+    values: &[f64],
+    (x_lo, x_hi): (f64, f64),
+    color: Color32,
+) {
+    use timegrapher_core::histogram as hist;
+    // The share of values at or below each value, as a step line.
+    let mut pts: Vec<[f64; 2]> = Vec::new();
+    for [x, q] in hist::ecdf(values) {
+        if x < x_lo || x > x_hi {
+            continue;
+        }
+        if let Some(&[_, prev]) = pts.last() {
+            pts.push([x, prev]);
+        }
+        pts.push([x, q * 100.0]);
+    }
+    plot.y_grid_spacer(|g| theme::even_grid(g, 30.0, &[]))
+        .y_axis_formatter(|m, _| {
+            if m.value < -1e-9 || m.value > 100.0 + 1e-9 {
+                String::new()
+            } else {
+                format!("{}%", m.value.abs())
             }
-            p.points(
-                Points::new("values", pts)
+        })
+        .default_y_bounds(0.0, 100.0)
+        .show(ui, |p| {
+            p.line(
+                Line::new("share at or below", pts)
                     .color(color)
-                    .radius(1.6_f32)
-                    .filled(true),
+                    .width(1.8_f32),
             );
         });
-    }
+}
+
+/// A distribution on probability paper: the share at or below each value
+/// on a scale of standard deviations, labelled in percent, with the line
+/// one steady state would follow.
+fn probability_paper(
+    ui: &mut egui::Ui,
+    plot: Plot<'_>,
+    values: &[f64],
+    normal_line: Option<timegrapher_core::distribution::NormalLine>,
+    (x_lo, x_hi): (f64, f64),
+    color: Color32,
+) {
+    use timegrapher_core::histogram as hist;
+    let pal = theme::pal(ui);
+    // Probability paper: the share at or below each value on a scale of
+    // standard deviations, labelled in percent.
+    let pts: Vec<[f64; 2]> = hist::probability_plot(values)
+        .into_iter()
+        .filter(|p| p[0] >= x_lo && p[0] <= x_hi)
+        .collect();
+    let z_top = hist::normal_quantile(1.0 - 0.5 / values.len().max(2) as f64).min(3.3) + 0.25;
+    let line = normal_line.map(|l| {
+        vec![
+            [l.centre - l.spread * z_top, -z_top],
+            [l.centre + l.spread * z_top, z_top],
+        ]
+    });
+    plot.y_grid_spacer(move |g| {
+        // From 50% outwards, leaving out a share whose label would crowd
+        // the one before it.
+        let px = 8.0 / g.base_step_size;
+        let mut kept: Vec<f64> = Vec::new();
+        for &(pc, _) in &PROBABILITY_MARKS[5..] {
+            let z = hist::normal_quantile(pc / 100.0);
+            if z <= z_top && kept.last().is_none_or(|&k| (z - k) * px >= 16.0) {
+                kept.push(z);
+            }
+        }
+        kept.iter()
+            .flat_map(|&z| if z == 0.0 { vec![z] } else { vec![z, -z] })
+            .map(|value| GridMark {
+                value,
+                step_size: 1.0,
+            })
+            .collect()
+    })
+    .y_axis_formatter(|m, _| {
+        PROBABILITY_MARKS
+            .iter()
+            .find(|&&(pc, _)| (hist::normal_quantile(pc / 100.0) - m.value).abs() < 1e-6)
+            .map_or(String::new(), |&(_, label)| label.to_string())
+    })
+    .default_y_bounds(-z_top, z_top)
+    .show(ui, |p| {
+        if let Some(l) = line {
+            p.line(
+                Line::new("one steady state", l)
+                    .color(pal.text_tertiary)
+                    .style(LineStyle::dashed_loose())
+                    .width(1.0_f32),
+            );
+        }
+        p.points(
+            Points::new("values", pts)
+                .color(color)
+                .radius(1.6_f32)
+                .filled(true),
+        );
+    });
 }
