@@ -580,7 +580,7 @@ fn heavy_clipping_still_reads_live() {
 const REAL_TAKES: [&str; 4] = [
     "daytona4130_DU_30min",
     "ym42_DD_30min",
-    "patek324_DU_30min",
+    "aquanaut324_DU_30min",
     "eta2824_holder_DU_30min",
 ];
 const REAL_FILE: &str = "take_part01-001.flac";

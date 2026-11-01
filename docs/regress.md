@@ -155,7 +155,7 @@ parsed is an error and is not replaced.
 
 The `regress (engine)` job in `.github/workflows/ci.yml` checks out the public
 corpus at the full commit in its `CORPUS_REVISION` setting, currently
-`be14fe979f071b4b3656fe825fae8698c120ce7c`. It verifies the checkout's actual
+`f85f586d55fba3ea3475c23b539f105df7b89490`. It verifies the checkout's actual
 commit and records that commit, the engine revision and `corpus.json`'s SHA-256
 in the job log and summary before fetching audio. New corpus commits therefore
 do not silently change an existing engine revision's CI inputs.
@@ -188,7 +188,7 @@ to with a calibre picked and Auto again) and the
 
 - `daytona4130_DU_30min`
 - `ym42_DD_30min`
-- `patek324_DU_30min`
+- `aquanaut324_DU_30min`
 - `eta2824_holder_DU_30min`
 
 This is the existing full-file `analyze` versus 47-second-chunk `session`
