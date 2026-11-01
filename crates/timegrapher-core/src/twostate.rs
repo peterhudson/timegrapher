@@ -696,6 +696,86 @@ mod tests {
         s - 6.0
     }
 
+    /// The fit before #804: both exponentials and the logarithm in every
+    /// round, kept here as the reference the faster E step must match.
+    fn reference_mixture(y: &[f64], mut mu: [f64; 2]) -> ([f64; 2], f64, f64, Vec<f64>) {
+        let n = y.len() as f64;
+        let mean = y.iter().sum::<f64>() / n;
+        let mut sd =
+            ((y.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n).sqrt() / 2.0).max(1e-6);
+        let mut w = [0.5, 0.5];
+        let mut r = vec![0.5; y.len()];
+        let mut ll = 0.0;
+        for _ in 0..300 {
+            ll = 0.0;
+            for (i, &v) in y.iter().enumerate() {
+                let a = w[0] * (-0.5 * ((v - mu[0]) / sd).powi(2)).exp();
+                let b = w[1] * (-0.5 * ((v - mu[1]) / sd).powi(2)).exp();
+                let t = (a + b).max(1e-300);
+                ll += (t / (sd * (2.0 * std::f64::consts::PI).sqrt())).ln();
+                r[i] = b / t;
+            }
+            let r1: f64 = r.iter().sum();
+            let r0 = n - r1;
+            if r0 < 1e-9 || r1 < 1e-9 {
+                break;
+            }
+            w = [r0 / n, r1 / n];
+            mu = [
+                y.iter().zip(&r).map(|(v, p)| v * (1.0 - p)).sum::<f64>() / r0,
+                y.iter().zip(&r).map(|(v, p)| v * p).sum::<f64>() / r1,
+            ];
+            let var = y
+                .iter()
+                .zip(&r)
+                .map(|(v, p)| (1.0 - p) * (v - mu[0]).powi(2) + p * (v - mu[1]).powi(2))
+                .sum::<f64>()
+                / n;
+            sd = var.sqrt().max(1e-6);
+        }
+        (mu, sd, ll, r)
+    }
+
+    /// The fit's one-exponential rounds (#804) give the levels, width,
+    /// likelihood and shares of the plain two-exponential fit: on a 70/30
+    /// split, on a 90/10 split with one reading far from both levels, and
+    /// from a start whose second level is empty at once, where the
+    /// likelihood must come from a full E step.
+    #[test]
+    fn the_fast_fit_matches_the_plain_fit() {
+        let mut seed = 11;
+        let split: Vec<f64> = (0..600)
+            .map(|i| if i % 10 < 7 { 0.0 } else { 4.0 } + noise(&mut seed))
+            .collect();
+        let mut far: Vec<f64> = (0..500)
+            .map(|i| if i % 10 < 9 { 10.0 } else { 15.0 } + 0.8 * noise(&mut seed))
+            .collect();
+        far[250] = 200.0;
+        let one: Vec<f64> = (0..300).map(|_| noise(&mut seed)).collect();
+        let close = |a: f64, b: f64, what: &str, case: &str| {
+            assert!(
+                (a - b).abs() <= 1e-9 * a.abs().max(1.0),
+                "{case}: {what} {a} against {b}"
+            );
+        };
+        for (case, y, start) in [
+            ("70/30", &split, [0.5, 3.5]),
+            ("90/10 with a far reading", &far, [10.5, 14.0]),
+            ("an empty second level", &one, [0.0, 1000.0]),
+        ] {
+            let (mu, sd, ll, r) = mixture_from(y, start);
+            let (mu0, sd0, ll0, r0) = reference_mixture(y, start);
+            close(mu[0], mu0[0], "low level", case);
+            close(mu[1], mu0[1], "high level", case);
+            close(sd, sd0, "width", case);
+            close(ll, ll0, "log likelihood", case);
+            for (a, b) in r.iter().zip(&r0) {
+                close(*a, *b, "share", case);
+            }
+            assert!(ll < 0.0, "{case}: {ll}");
+        }
+    }
+
     fn series(n: usize, f: impl Fn(usize, f64) -> f64) -> Vec<Sample> {
         let mut seed = 7;
         (0..n)
