@@ -237,32 +237,42 @@ async fn call(
     if let Some(charts) = series_charts {
         result["_meta"] = json!({ views::META_KEY: charts });
     }
-    // What limits the readings, in the same words as the notes, for the view.
-    let limits = caveats::limits(&doc);
-    if !limits.is_empty() {
-        if !result["_meta"].is_object() {
-            result["_meta"] = json!({});
-        }
-        result["_meta"][caveats::META_KEY] = json!(limits);
-    }
-    // The ± beside each figure, in core's words, for the view.
-    if let Some(pm) = views::pm_texts(&doc) {
-        if !result["_meta"].is_object() {
-            result["_meta"] = json!({});
-        }
-        result["_meta"][views::PM_KEY] = pm;
-    }
-    // No regular beat, in core's words, for the view.
-    if let Some(said) = caveats::no_beat(&doc) {
-        if !result["_meta"].is_object() {
-            result["_meta"] = json!({});
-        }
-        result["_meta"][caveats::NO_BEAT_KEY] = json!(said);
-    }
+    view_meta(&doc, &mut result);
     if let Some(k) = take {
         takes::remember(k, &result);
     }
     complete(result)
+}
+
+/// What the views say in core's words, put in the result's `_meta` beside
+/// the charts: what limits the readings (in the same words as the notes),
+/// a `profile` result's facts, the ± beside each figure, and the sentence
+/// for no regular beat.
+fn view_meta(doc: &Value, result: &mut Value) {
+    let profile = doc["schema"]
+        .as_str()
+        .is_some_and(|s| s.starts_with("timegrapher.profile/"));
+    let limits = caveats::limits(doc);
+    let entries = [
+        (
+            caveats::META_KEY,
+            (!limits.is_empty()).then(|| json!(limits)),
+        ),
+        (
+            views::PROFILE_FACTS_KEY,
+            profile.then(|| views::profile_facts(doc)).flatten(),
+        ),
+        (views::PM_KEY, views::pm_texts(doc)),
+        (caveats::NO_BEAT_KEY, caveats::no_beat(doc).map(Value::from)),
+    ];
+    for (key, value) in entries {
+        if let Some(value) = value {
+            if !result["_meta"].is_object() {
+                result["_meta"] = json!({});
+            }
+            result["_meta"][key] = value;
+        }
+    }
 }
 
 impl ServerHandler for Server {
