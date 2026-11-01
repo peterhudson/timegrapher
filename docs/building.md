@@ -38,9 +38,9 @@ The existing Linux platform CI job selects **1.90.0** for formatting, clippy's
 all-target checks and the workspace release-profile tests with locked
 dependencies/default features. This includes the app's source and test targets;
 it does not launch an interactive desktop. The Windows and macOS platform jobs
-continue using current stable Rust. Job names and the five-job release gate are
-unchanged. These checks establish the configurations they execute, not every
-optional feature, cross target or older compiler on every operating system.
+continue using current stable Rust. The floor check adds no CI job and does
+not change the seven-job release gate. These checks establish the
+configurations they execute, not every optional feature, cross target or older compiler on every operating system.
 Release packaging continues using current stable and records its build output;
 the supported-floor check is a separate part of the candidate's required CI.
 

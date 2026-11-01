@@ -5,9 +5,19 @@ use std::process::{Command, Output};
 use timegrapher_core::library::{self, Library, Watch, CACHE_FILE, TAKES, UNSORTED};
 
 /// The settings folder the commands keep the takes' readings in, apart
-/// from the user's own.
+/// from the user's own and this test's own: the tests run side by side in
+/// one process, and two sharing one `readings.json` could each drop the
+/// other's kept reading (#781). The test harness names each test's thread
+/// after the test.
 fn config_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("tg-cli-watches-config-{}", std::process::id()))
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("main")
+        .replace("::", "-");
+    std::env::temp_dir().join(format!(
+        "tg-cli-watches-config-{test}-{}",
+        std::process::id()
+    ))
 }
 
 fn run(args: &[&str]) -> Output {
@@ -208,6 +218,7 @@ fn watches_lists_and_shows_the_library_as_json() {
     }
     assert_eq!(doc["takes"][0]["name"], "2026-10-22 09.15");
     let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(config_dir());
 }
 
 #[test]
@@ -272,4 +283,5 @@ fn watches_prints_text_and_says_when_there_is_nothing_to_list() {
     assert!(err.contains("not a Timegrapher library"), "{err}");
     assert!(!empty.join("library.toml").exists());
     let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(config_dir());
 }

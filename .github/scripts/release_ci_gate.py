@@ -20,8 +20,12 @@ REQUIRED_JOBS = (
     "test (windows-latest)",
     "test (macos-latest)",
     "mcp-renderer",
-    "regress",
+    "regress (app)",
+    "regress (mcp)",
+    "regress (engine)",
 )
+# The job that runs the equivalence step: the last of REQUIRED_JOBS.
+EQUIVALENCE_JOB = "regress (engine)"
 EQUIVALENCE_STEP = "Required real-recording analyze/session equivalence"
 PENDING = {"queued", "in_progress", "waiting", "pending", "requested"}
 
@@ -114,14 +118,14 @@ def validate_jobs(run, jobs):
         if job.get("status") != "completed" or job.get("conclusion") != "success":
             raise GateError(f"{name}: requires completed/success, got "
                             f"{job.get('status')}/{job.get('conclusion')}")
-        if name == "regress":
+        if name == EQUIVALENCE_JOB:
             steps = job.get("steps")
             if not isinstance(steps, list):
-                raise GateError("regress: missing step inventory")
+                raise GateError(f"{name}: missing step inventory")
             equivalent = [step for step in steps if step.get("name") == EQUIVALENCE_STEP]
             if (len(equivalent) != 1 or equivalent[0].get("status") != "completed"
                     or equivalent[0].get("conclusion") != "success"):
-                raise GateError("regress: required real-recording equivalence step "
+                raise GateError(f"{name}: required real-recording equivalence step "
                                 "must be present and completed/success")
         accepted.append(name)
     return accepted
@@ -184,7 +188,7 @@ def main():
             summary.append(f"CI accepted: {run['html_url']} (head `{run['head_sha']}`, "
                            f"attempt {run['run_attempt']}).")
             summary.extend(f"- {name}: completed/success" for name in jobs)
-            summary.append(f"- regress / {EQUIVALENCE_STEP}: completed/success")
+            summary.append(f"- {EQUIVALENCE_JOB} / {EQUIVALENCE_STEP}: completed/success")
     except Exception as error:
         summary.append(f"Release CI gate FAILED: {error}")
         return_code = 1

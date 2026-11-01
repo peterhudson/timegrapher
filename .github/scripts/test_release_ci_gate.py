@@ -80,7 +80,20 @@ class GateTests(unittest.TestCase):
         # Every build waits for the gate, whatever else it needs.
         self.assertRegex(text, r"(?m)^  build:\n    needs: (ci-gate|\[([\w-]+, )*ci-gate(, [\w-]+)*\])\n")
 
-    def test_five_jobs_and_required_step_succeed(self):
+    def test_equivalence_job_is_the_last_required_job(self):
+        # successful_jobs() and the step tests below put the step on jobs[-1].
+        self.assertEqual(gate.REQUIRED_JOBS[-1], gate.EQUIVALENCE_JOB)
+
+    def test_required_jobs_are_the_ci_workflow_jobs(self):
+        workflow = pathlib.Path(__file__).parents[1] / "workflows/ci.yml"
+        text = workflow.read_text(encoding="utf-8")
+        self.assertIn("os: [ubuntu-24.04, windows-latest, macos-latest]", text)
+        self.assertIn("\n  mcp-renderer:\n", text)
+        self.assertIn("name: regress (${{ matrix.check }})", text)
+        self.assertIn("check: [engine, app, mcp]", text)
+        self.assertIn(f"- name: {gate.EQUIVALENCE_STEP}\n", text)
+
+    def test_seven_jobs_and_required_step_succeed(self):
         for event in ["push", "workflow_dispatch"]:
             api = FakeAPI()
             api.runs[0]["event"] = event

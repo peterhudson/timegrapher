@@ -1,11 +1,11 @@
 name: CI
 
-# Every push to main and every pull request runs all five jobs. A pull
+# Every push to main and every pull request runs all seven jobs. A pull
 # request that only edits or adds Markdown nothing compiles in or tests read
-# is a light run (.github/ci/changes.py): all five jobs still run and report,
-# the test jobs run only their offline Python tests, regress skips its corpus
-# and engine steps, and mcp-renderer runs as usual. The watchmaker skill and
-# the docs the MCP server compiles in always run in full. A pull request that
+# is a light run (.github/ci/changes.py): all seven jobs still run and report,
+# the test jobs run only their offline Python tests, the three regress jobs
+# skip their corpus and engine steps, and mcp-renderer runs as usual. The
+# watchmaker skill and the docs the MCP server compiles in always run in full. A pull request that
 # changes a page the downloads carry also runs Release's render and link
 # check of those pages, in the ubuntu test job.
 on:
@@ -48,7 +48,7 @@ jobs:
         id: changes
         shell: bash
         run: python3 .github/ci/changes.py "${{ github.event_name }}" HEAD^1 HEAD | tee -a "$GITHUB_OUTPUT"
-      # Offline tests of the publishing gate; keep its five-job/step contract
+      # Offline tests of the publishing gate; keep its seven-job/step contract
       # in .github/scripts/release_ci_gate.py synchronized with this workflow.
       - name: Release CI gate tests (offline)
         run: python3 -m unittest discover -s .github/scripts -p 'test_release_ci_gate.py' -v
@@ -89,8 +89,28 @@ jobs:
         if: steps.changes.outputs.full != 'false'
       - run: cargo clippy --locked --all-targets -- -D warnings
         if: steps.changes.outputs.full != 'false'
-      - run: cargo test --locked --release
+      # nextest runs the tests of every test program side by side, one to
+      # a core, where cargo test runs the programs one after another (about
+      # 7 of the job's 12 minutes on 1 Nov). Each test runs in a process
+      # of its own. It does not run doc tests, so cargo test runs those.
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         if: steps.changes.outputs.full != 'false'
+        with:
+          tool: cargo-nextest@0.9.148
+      - name: Tests
+        if: steps.changes.outputs.full != 'false'
+        # The MCP server's end-to-end tests run the `timegrapher` program
+        # this build makes, not each building it again with cargo in a
+        # folder of its own: nextest starts every test in a process of its
+        # own, so each of them ran that build, about 80 s apiece on Windows
+        # (#804). Not TIMEGRAPHER_CLI, which also turns on the corpus and
+        # edge-take comparisons the regress checks run.
+        env:
+          TIMEGRAPHER_MCP_TEST_CLI: ${{ github.workspace }}/target/release/timegrapher${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: cargo nextest run --locked --release --no-fail-fast
+      - name: Doc tests
+        if: steps.changes.outputs.full != 'false'
+        run: cargo test --locked --release --doc
       # Unused dependencies and libraries' licences (architecture guide,
       # section 12; deny.toml). Each takes seconds.
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
@@ -118,19 +138,35 @@ jobs:
       - name: Copied code
         run: python3 .github/ci/literal_ratchet.py copies
 
-  # The engine against tg on the public corpus's takes (docs/regress.md),
-  # plus its smoke takes. The audio is downloaded from the corpus's
-  # releases, checked by SHA-256 and cached between runs.
+  # The public corpus's takes (docs/regress.md), read three ways side by
+  # side, each in its own job so none waits for another:
+  #   engine: the engine against tg and the baseline, plus its smoke takes,
+  #           and the analyze/session equivalence on real takes.
+  #   app:    each take opened as the app opens it reads what
+  #           `timegrapher session` reads (#514).
+  #   mcp:    each sound file read through the MCP server's
+  #           analyze_recording reads what `timegrapher session` reads.
+  # The audio is downloaded from the corpus's releases, checked by SHA-256
+  # and cached between runs.
   regress:
+    name: regress (${{ matrix.check }})
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [engine, app, mcp]
     runs-on: ubuntu-24.04
-    # The app's corpus test adds a release build of the app and a second
-    # reading of every take; the MCP server's corpus test a third.
-    timeout-minutes: 75
+    # Well above each check's own steps in the single job they shared
+    # until November 2026 (engine 3 minutes, app 12, MCP 16, plus about 2
+    # of setup each), so a hung job fails within the hour.
+    timeout-minutes: 45
     env:
       # As in the test job: no debug info in CI's release builds.
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       # Reviewed with the engine baseline; update through docs/regress.md.
       CORPUS_REVISION: 692c7bcaa2c072d4075f4a85ce75564df962ab60
+      TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
+      TIMEGRAPHER_REQUIRE_CORPUS: "1"
+      TIMEGRAPHER_CLI: ${{ github.workspace }}/target/release/timegrapher
     steps:
       # Two commits: on a pull request, GitHub's merge commit and its base.
       - uses: actions/checkout@v7
@@ -168,6 +204,7 @@ jobs:
               summary.write(report)
           PY
       - name: Corpus audio cache
+        id: audio
         if: steps.changes.outputs.full != 'false'
         uses: actions/cache@v6
         with:
@@ -191,49 +228,62 @@ jobs:
           PY
       - uses: dtolnay/rust-toolchain@stable
         if: steps.changes.outputs.full != 'false'
+      # The three checks share one cache, the one the single regress job
+      # kept before they were split (the repository's caches are near
+      # GitHub's 10 GB limit with the corpus audio). Only the app check,
+      # which builds the most, saves it.
       - uses: Swatinem/rust-cache@v2
         if: steps.changes.outputs.full != 'false'
+        with:
+          shared-key: regress
+          save-if: ${{ matrix.check == 'app' }}
       - name: Build
         if: steps.changes.outputs.full != 'false'
         run: cargo build --locked --release -p timegrapher-cli --no-default-features
       - name: Engine against tg and the baseline
-        if: steps.changes.outputs.full != 'false'
+        if: matrix.check == 'engine' && steps.changes.outputs.full != 'false'
         run: |
           set -o pipefail
           ./target/release/timegrapher regress corpus --fetch --smoke --baseline regress/baseline.json --quiet | tee regress.txt
+      # The engine check fetches any audio the cache did not hold. On a cache
+      # miss (a new corpus revision) the app and MCP checks fetch it the same
+      # way, by running the engine check with its report discarded, so this
+      # step fails there too if the engine check does.
+      - name: Fetch the corpus audio
+        if: matrix.check != 'engine' && steps.changes.outputs.full != 'false' && steps.audio.outputs.cache-hit != 'true'
+        run: ./target/release/timegrapher regress corpus --fetch --smoke --baseline regress/baseline.json --quiet > /dev/null
+      # On a pull request the app and MCP checks read a cut of the corpus:
+      # each take's first three sound files and its last (about 8 h of
+      # audio in all, not 31). Every push to main reads every file, and the CI
+      # watchdog flags a failure there on an issue. The engine check always
+      # reads the whole corpus.
+      - name: Cut the corpus for a pull request
+        if: github.event_name == 'pull_request' && matrix.check != 'engine' && steps.changes.outputs.full != 'false'
+        run: |
+          python3 .github/ci/cut_corpus.py corpus "$RUNNER_TEMP/corpus-cut" --files 3
+          echo "TIMEGRAPHER_CORPUS=$RUNNER_TEMP/corpus-cut" >> "$GITHUB_ENV"
       - name: Required real-recording analyze/session equivalence
-        if: steps.changes.outputs.full != 'false'
+        if: matrix.check == 'engine' && steps.changes.outputs.full != 'false'
         timeout-minutes: 10
-        env:
-          TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
-          TIMEGRAPHER_REQUIRE_CORPUS: "1"
         run: |
           set -o pipefail
-          cargo test --locked --release -p timegrapher-core --test equivalence analyze_and_session_agree_on_real_takes -- --exact --nocapture 2>&1 | tee equivalence.txt
+          cargo test --locked --release -p timegrapher-core --test equivalence -- --nocapture 2>&1 | tee equivalence.txt
       # #514: each take opened as the app opens it reads what
       # `timegrapher session` reads, to the bit.
       - name: ALSA headers for the app
-        if: steps.changes.outputs.full != 'false'
+        if: matrix.check == 'app' && steps.changes.outputs.full != 'false'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - name: App against session on every corpus take
-        if: steps.changes.outputs.full != 'false'
+        if: matrix.check == 'app' && steps.changes.outputs.full != 'false'
         timeout-minutes: 25
-        env:
-          TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
-          TIMEGRAPHER_REQUIRE_CORPUS: "1"
-          TIMEGRAPHER_CLI: ${{ github.workspace }}/target/release/timegrapher
         run: |
           set -o pipefail
           cargo test --locked --release -p timegrapher-app corpus_tests -- --nocapture 2>&1 | tee app-corpus.txt
       # Each sound file a take lists, read through the MCP server's
       # analyze_recording, reads what `timegrapher session` reads.
       - name: MCP server against session on every corpus recording
-        if: steps.changes.outputs.full != 'false'
+        if: matrix.check == 'mcp' && steps.changes.outputs.full != 'false'
         timeout-minutes: 30
-        env:
-          TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
-          TIMEGRAPHER_REQUIRE_CORPUS: "1"
-          TIMEGRAPHER_CLI: ${{ github.workspace }}/target/release/timegrapher
         run: |
           set -o pipefail
           cargo test --locked --release -p timegrapher-mcp --bins corpus_tests -- --nocapture 2>&1 | tee mcp-corpus.txt

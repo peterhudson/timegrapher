@@ -30,6 +30,14 @@ pub const GAP_RISE_DB: f64 = 3.0;
 /// reads about 2× (see `docs/validation.md`).
 pub const NO_TICKS_SIGNAL_X: f64 = 3.0;
 
+/// Whether a signal figure shows the ticks too faint over the noise: under
+/// [`NO_TICKS_SIGNAL_X`]. With no figure (the envelope's median zero, as
+/// over digital silence) the ticks are not shown faint, and the beat tests
+/// decide (#784).
+fn faint(signal_x: Option<f64>) -> bool {
+    signal_x.is_some_and(|x| x < NO_TICKS_SIGNAL_X)
+}
+
 #[derive(Debug, Clone)]
 pub struct DiagnoseConfig {
     pub envelope: EnvelopeConfig,
@@ -104,8 +112,9 @@ pub struct SignalCheck {
     /// Tick peak over background, dB.
     pub tick_to_noise_db: Option<f64>,
     /// Median beat peak over the median of the envelope, as the desktop
-    /// app's "signal Nx" (None when no beat was found). Pure noise reads
-    /// about 2×.
+    /// app's "signal Nx" ([`crate::live::signal_figure`]); None when no
+    /// beat was found, or where the envelope's median is zero, as over
+    /// digital silence. Pure noise reads about 2×.
     pub signal_x: Option<f64>,
     /// Background late in the gap between ticks over early in it, dB.
     /// Near 0 for a fixed gain; several dB when automatic gain pumps.
@@ -252,7 +261,13 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         }
     });
     let tick_to_noise = tick.map(|t| db(t) - db(noise));
-    let signal_x = signal_ratio(&env, fs, &found);
+    // The readings' own signal figure (`live::signal_figure`), none with
+    // no beat found or where the envelope's median is zero, as over
+    // digital silence, which has no figure (#784).
+    let signal_x = (!found.is_empty())
+        .then(|| crate::live::signal_figure(&env, fs, &found))
+        .flatten()
+        .map(f64::from);
 
     let mut issues = Vec::new();
     let mut add = |code, title: String, evidence: String| {
@@ -296,7 +311,7 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         );
     }
     let few_beats = good.len() < expected / 2 || fit.is_none();
-    let faint = !signal_x.is_some_and(|x| x >= NO_TICKS_SIGNAL_X);
+    let faint = faint(signal_x);
     let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.1}×"));
     if !silent && (few_beats || faint) {
         // The title names the test that fired: no timing fit, under half
@@ -359,22 +374,17 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     }
 }
 
-/// Median beat peak (within 1 ms of each beat) over the median of the
-/// envelope: the desktop app's "signal Nx".
-fn signal_ratio(env: &[f32], fs: f64, beats: &[beats::Beat]) -> Option<f64> {
-    let w = (0.001 * fs) as usize;
-    let mut peaks: Vec<f64> = beats
-        .iter()
-        .filter_map(|b| {
-            let c = (b.time * fs).round().max(0.0) as usize;
-            let (a, z) = (c.saturating_sub(w), (c + w).min(env.len()));
-            (a < z).then(|| env[a..z].iter().fold(0f32, |m, &v| m.max(v)) as f64)
-        })
-        .collect();
-    if peaks.is_empty() {
-        return None;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A figure under 3× is faint and one at 3× or more is not; no figure
+    /// at all is not shown faint, so the beat tests decide (#784).
+    #[test]
+    fn only_a_figure_under_the_threshold_is_faint() {
+        assert!(faint(Some(2.9)));
+        assert!(!faint(Some(NO_TICKS_SIGNAL_X)));
+        assert!(!faint(Some(40.0)));
+        assert!(!faint(None));
     }
-    let mut all: Vec<f64> = env.iter().step_by(7).map(|&v| v as f64).collect();
-    let floor = median(&mut all).max(f64::MIN_POSITIVE);
-    Some(median(&mut peaks) / floor)
 }
