@@ -102,10 +102,6 @@ impl TimegrapherApp {
     /// position's code on a teal swatch, and a menu of the six positions, then Stop
     /// Painting while it is on. In the toolbar's "…" menu, a menu of the
     /// same.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn brush_control(&mut self, ui: &mut egui::Ui, live: bool) {
         let pal = theme::pal(ui);
         let test = self.in_test();
@@ -124,66 +120,9 @@ impl TimegrapherApp {
             self.brush = None;
         }
         let shown = self.brush.unwrap_or(self.position);
-        let items = |app: &mut Self, ui: &mut egui::Ui| {
-            let font = egui::FontId::proportional(13.0);
-            let widths = Position::ALL.map(|p| {
-                ui.painter()
-                    .layout_no_wrap(p.code().to_string(), font.clone(), pal.text)
-                    .size()
-                    .x
-            });
-            // The names in a column of their own after the codes.
-            let column = widths.iter().copied().fold(0.0, f32::max);
-            for (p, w) in Position::ALL.into_iter().zip(widths) {
-                let mut job = egui::text::LayoutJob::default();
-                // The code in dark text on a teal swatch, readable in both
-                // themes.
-                job.append(
-                    p.code(),
-                    0.0,
-                    egui::TextFormat {
-                        background: pal.positions,
-                        ..egui::TextFormat::simple(font.clone(), theme::ON_TEAL)
-                    },
-                );
-                job.append(
-                    p.name(),
-                    8.0 + column - w,
-                    egui::TextFormat::simple(font.clone(), pal.text),
-                );
-                // The one in use framed, its code still readable.
-                let picked = app.brush == Some(p);
-                if ui
-                    .add(egui::Button::new(job).frame_when_inactive(picked))
-                    .on_hover_text(format!(
-                        "Drag along the strip to mark a stretch {}",
-                        p.name()
-                    ))
-                    .clicked()
-                {
-                    app.brush = Some(p);
-                    app.masking = false;
-                    ui.close();
-                }
-            }
-            if app.brush.is_some() {
-                ui.separator();
-                if ui
-                    .add(
-                        egui::Button::new("Stop Painting")
-                            .shortcut_text("Esc")
-                            .wrap_mode(egui::TextWrapMode::Extend),
-                    )
-                    .clicked()
-                {
-                    app.brush = None;
-                    ui.close();
-                }
-            }
-        };
         ui.add_enabled_ui(why_not.is_none(), |ui| {
             if !theme::in_toolbar(ui) {
-                ui.menu_button("Position Brush", |ui| items(self, ui))
+                ui.menu_button("Position Brush", |ui| self.brush_items(ui, pal))
                     .response
                     .on_hover_text(BRUSH_HINT)
                     .on_disabled_hover_text(why_not.unwrap_or_default());
@@ -251,8 +190,68 @@ impl TimegrapherApp {
             let resp = resp
                 .on_hover_text(format!("Position Brush: {BRUSH_HINT}"))
                 .on_disabled_hover_text(format!("Position Brush: {}", why_not.unwrap_or_default()));
-            egui::Popup::menu(&resp).show(|ui| items(self, ui));
+            egui::Popup::menu(&resp).show(|ui| self.brush_items(ui, pal));
         });
+    }
+
+    /// The Position Brush menu: each position as its code on a teal swatch
+    /// and its name, and Stop Painting while one is in use.
+    fn brush_items(&mut self, ui: &mut egui::Ui, pal: &theme::Palette) {
+        let font = egui::FontId::proportional(13.0);
+        let widths = Position::ALL.map(|p| {
+            ui.painter()
+                .layout_no_wrap(p.code().to_string(), font.clone(), pal.text)
+                .size()
+                .x
+        });
+        // The names in a column of their own after the codes.
+        let column = widths.iter().copied().fold(0.0, f32::max);
+        for (p, w) in Position::ALL.into_iter().zip(widths) {
+            let mut job = egui::text::LayoutJob::default();
+            // The code in dark text on a teal swatch, readable in both
+            // themes.
+            job.append(
+                p.code(),
+                0.0,
+                egui::TextFormat {
+                    background: pal.positions,
+                    ..egui::TextFormat::simple(font.clone(), theme::ON_TEAL)
+                },
+            );
+            job.append(
+                p.name(),
+                8.0 + column - w,
+                egui::TextFormat::simple(font.clone(), pal.text),
+            );
+            // The one in use framed, its code still readable.
+            let picked = self.brush == Some(p);
+            if ui
+                .add(egui::Button::new(job).frame_when_inactive(picked))
+                .on_hover_text(format!(
+                    "Drag along the strip to mark a stretch {}",
+                    p.name()
+                ))
+                .clicked()
+            {
+                self.brush = Some(p);
+                self.masking = false;
+                ui.close();
+            }
+        }
+        if self.brush.is_some() {
+            ui.separator();
+            if ui
+                .add(
+                    egui::Button::new("Stop Painting")
+                        .shortcut_text("Esc")
+                        .wrap_mode(egui::TextWrapMode::Extend),
+                )
+                .clicked()
+            {
+                self.brush = None;
+                ui.close();
+            }
+        }
     }
 
     /// Set the stretch from `a` to `b` to the Position Brush's position;
