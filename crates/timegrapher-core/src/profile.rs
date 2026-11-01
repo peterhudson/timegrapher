@@ -216,7 +216,7 @@ pub fn from_snippets(
         median,
         p10,
         p90,
-        floor: crate::dsp::upper_median_f32(&mut floor_v),
+        floor: crate::dsp::median_f32(&mut floor_v),
         unlock_ms: e.map(|e| to_ms(e.unlock)),
         drop_ms: e.map(|e| to_ms(e.drop)),
         peak_ms: e.map(|e| to_ms(e.peak as f64)),

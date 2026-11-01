@@ -230,11 +230,12 @@ pub fn median_f32(v: &mut [f32]) -> f32 {
 
 /// The upper of the two middle values of `v` for an even count (the
 /// middle one for an odd count), NaN when empty: an order statistic,
-/// always one of the values, never the mean of two. Not the median: the
-/// envelope levels that beat finding, the knock gate ([`burst_gate`]),
-/// the amplitude edges, the sound's shape and the beat profile read
-/// internally take it, as a level one of the values actually reaches.
-/// Figures shown as a median (the signal figure) take [`median_f32`].
+/// always one of the values, never the mean of two. Not the median: two
+/// envelope levels take it, each for its own reason. The knock gate
+/// ([`burst_gate`]) gates on a level a block actually reaches, and the
+/// beats' median template ([`crate::beats::median_window`]) keeps it
+/// until #844 settles what moving it would trade. Every other level,
+/// and every figure shown as a median, takes [`median_f32`] (#839).
 /// Reorders `v`.
 pub fn upper_median_f32(v: &mut [f32]) -> f32 {
     middle(v, f32::total_cmp).map_or(f32::NAN, |(_, hi)| hi)
