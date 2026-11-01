@@ -267,6 +267,39 @@ class Sweep(unittest.TestCase):
         watchdog.sweep(api, self.NOW, log=quiet)
         self.assertEqual(api.posts, [("/actions/runs/50/rerun-failed-jobs", None)])
 
+    def test_a_real_failure_on_main_opens_an_issue_once(self):
+        run = ci_run(event="push", head_branch="main", pull_requests=[])
+        jobs = [job(1, "test (ubuntu-24.04)"), job(2, "regress (app)", "failure")]
+        api = FakeAPI(run, jobs, {2: []})
+        self.assertEqual(watchdog.completed(api, 50, log=quiet), "skip")
+        [(path, body)] = api.posts
+        self.assertEqual((path, body["title"]), ("/issues", "CI failed on main"))
+        self.assertIn(watchdog.MAIN_FAILED_ISSUE, body["body"])
+        self.assertNotIn(watchdog.MAIN_ISSUE, body["body"])
+        self.assertIn("`regress (app)` failed", body["body"])
+        self.assertNotIn("test (ubuntu-24.04)", body["body"])
+        # The sweep's re-check of the same run posts nothing more.
+        api.issues, api.posts = [dict(number=13, state="open", body=body["body"])], []
+        watchdog.completed(api, 50, log=quiet)
+        self.assertEqual(api.posts, [])
+        # A later failure comments on the open issue, not on a stall issue.
+        stall = dict(number=12, state="open", body=f"{watchdog.MAIN_ISSUE}\nstalled")
+        api.issues.append(stall)
+        api.run = dict(run, id=60)
+        watchdog.completed(api, 60, log=quiet)
+        self.assertEqual([path for path, _ in api.posts], ["/issues/13/comments"])
+
+    def test_a_main_run_the_runners_failed_is_rerun_not_flagged(self):
+        jobs, annotations = macos_stall()
+        api = FakeAPI(ci_run(event="push", head_branch="main", pull_requests=[]), jobs, annotations)
+        self.assertEqual(watchdog.completed(api, 50, log=quiet), "rerun")
+        self.assertEqual(api.posts, [("/actions/runs/50/rerun", None)])
+
+    def test_a_real_failure_on_a_pull_request_is_not_flagged(self):
+        api = FakeAPI(ci_run(), [job(1, "regress (app)", "failure")], {1: []})
+        watchdog.completed(api, 50, log=quiet)
+        self.assertEqual(api.posts, [])
+
     def test_the_sweep_leaves_real_failures_alone(self):
         jobs = [job(1, "regress", "failure")]
         api = FakeAPI(ci_run(), jobs, {1: []})

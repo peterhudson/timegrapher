@@ -2,7 +2,9 @@
 
 A failed or cancelled CI job is re-run only when GitHub's own annotation on it
 says the runner was never acquired or was lost; a job that ran and failed is
-never re-run. Runs from ci-watchdog.yml with main's copy of this file and the
+never re-run. A job on main that failed on its own is flagged on an open
+"CI failed on main" issue: main's CI, unlike a pull request's, has no one
+waiting on it, and pull requests read only a cut of the corpus (ci.yml). Runs from ci-watchdog.yml with main's copy of this file and the
 workflow token: it reads no pull-request code. Standard library only.
 
   ci_watchdog.py completed RUN_ID   a CI run just finished
@@ -38,6 +40,7 @@ INFRA_MESSAGES = (
     "hosted runner encountered an error",
 )
 MAIN_ISSUE = "<!-- ci-watchdog:main -->"
+MAIN_FAILED_ISSUE = "<!-- ci-watchdog:main-failed -->"
 
 
 class API:
@@ -132,6 +135,12 @@ def plan(run, jobs, annotations, newer):
     return "rerun", why
 
 
+def failed_on_its_own(jobs, annotations):
+    """The names of the failed jobs GitHub's runners did not fail."""
+    return [job["name"] for job in jobs if job.get("conclusion") in FAILED
+            and infra_message(annotations.get(job["id"], [])) is None]
+
+
 def stalled(jobs, now):
     """(job name, minutes) for each job still queued after STALL_MINUTES."""
     late = []
@@ -163,8 +172,10 @@ def pull_request(api, run):
     return None
 
 
-def flag(api, run, kind, text):
-    """Post text once per run, attempt and kind: on the PR, or main's issue.
+def flag(api, run, kind, text, title="CI stalled", main_issue=MAIN_ISSUE):
+    """Post text once per run, attempt and kind: on the PR, or main's issue
+    (the open issue the watchdog opened with main_issue in it, else a new one
+    titled title).
 
     The marker is looked for in every issue the watchdog opened and every
     comment updated since the run began, so closing the "CI stalled" issue
@@ -182,9 +193,9 @@ def flag(api, run, kind, text):
         # Not the since-filtered list: an open issue untouched since the run
         # began is still the one to comment on.
         issues = [issue for issue in pages(api, "/issues?state=open&creator=github-actions%5Bbot%5D")
-                  if MAIN_ISSUE in (issue.get("body") or "") and "pull_request" not in issue]
+                  if main_issue in (issue.get("body") or "") and "pull_request" not in issue]
         if not issues:
-            api.post("/issues", {"title": "CI stalled", "body": f"{MAIN_ISSUE}\n{body}"})
+            api.post("/issues", {"title": title, "body": f"{main_issue}\n{body}"})
             return "opened an issue"
         number = issues[0]["number"]
     api.post(f"/issues/{number}/comments", {"body": body})
@@ -212,7 +223,15 @@ def completed(api, run_id, log=print):
     if action == "rerun":
         # The Release gate wants every job from one attempt on main.
         api.post(f"/actions/runs/{run_id}/{'rerun' if on_main(run) else 'rerun-failed-jobs'}")
-    elif action == "give-up":
+    elif on_main(run) and run.get("conclusion") in FAILED:
+        names = failed_on_its_own(jobs, annotations)
+        if names:
+            jobs_text = ", ".join(f"`{name}`" for name in names)
+            log(flag(api, run, "failed",
+                     f"{run_link(run)}: {jobs_text} failed. Pull requests read only a cut "
+                     f"of the corpus, so main is where the whole corpus is read.",
+                     title="CI failed on main", main_issue=MAIN_FAILED_ISSUE))
+    if action == "give-up":
         log(flag(api, run, "give-up",
                  f"{run_link(run)}: GitHub's hosted runners failed it on all {MAX_ATTEMPTS} "
                  f"attempts ({why}). The CI watchdog re-runs it no further."))

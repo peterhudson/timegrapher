@@ -166,6 +166,16 @@ between runs and keyed on `corpus.json`, so a run downloads only what
 changed. A required baseline take with no `session.toml` fails the check.
 The `not_run` list also includes deliberately unselected takes; those do not fail.
 
+### The app and MCP corpus checks
+
+`regress (app)` and `regress (mcp)` read each corpus take as the app and the
+MCP server read it, and compare with `timegrapher session` to the bit. On a
+pull request they read a cut of the corpus made by `.github/ci/cut_corpus.py`:
+each take's first three sound files and its last, with its `session.toml` and
+`session.json` cut to match. Every push to main reads every file, and the CI
+watchdog flags a failure on main on a "CI failed on main" issue. The engine
+check reads the whole corpus on every run.
+
 ### Required real-recording equivalence
 
 After regression, the same CI job reuses the fetched corpus for the existing
