@@ -9,7 +9,7 @@
 //! the template as a whole. The second pass is run again with a template
 //! rebuilt from its own beats.
 
-use crate::dsp::{argmax, correlate, moving_average, parabolic, upper_median_f32};
+use crate::dsp::{argmax, correlate, median_f32, moving_average, parabolic, upper_median_f32};
 use realfft::RealFftPlanner;
 use serde::Serialize;
 
@@ -479,8 +479,16 @@ pub fn trimmed_template_from(env: &[f32], fs: f64, times: &[f64], pre_s: f64) ->
     })
 }
 
-/// Median of the windows from `pre_s` before to `post_s` after each time.
-/// Windows that run off either end of the envelope are left out.
+/// Median of the windows from `pre_s` before to `post_s` after each time,
+/// taken per sample as the upper of the two middle values
+/// ([`upper_median_f32`]). Windows that run off either end of the envelope
+/// are left out.
+///
+/// Not the mean of the two middle values (#839): on the seeded stand noise
+/// that would read all four known false watches as `no_watch`, but a brief
+/// watch after a stand noise would then read as a watch over the whole
+/// file, which `a_watch_heard_briefly_after_the_stand_noise_is_no_watch_live_or_saved`
+/// keeps as no watch. That trade-off is #844's to settle.
 pub fn median_window(env: &[f32], fs: f64, times: &[f64], pre_s: f64, post_s: f64) -> Vec<f32> {
     window_stat(env, fs, times, pre_s, post_s, upper_median_f32)
 }
@@ -593,7 +601,7 @@ fn drop_offset(template: &[f32], fs: f64, origin: usize) -> Option<f64> {
     let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
     let quiet = ((0.003 * fs) as usize).min(t.len());
     let mut floor_v = t[..quiet].to_vec();
-    let floor = upper_median_f32(&mut floor_v);
+    let floor = median_f32(&mut floor_v);
     let (top, top_v) = argmax(&t, quiet, t.len())?;
     let h_top = top_v - floor;
     if h_top <= 0.0 {
@@ -639,7 +647,7 @@ pub fn detect_after(
     let pre = PRE_S * fs;
     let (peaks, level) = track_peaks(&corr, fs, beat, None, level);
     let mut q: Vec<f32> = peaks.iter().map(|p| p.1).collect();
-    let typical = upper_median_f32(&mut q).max(f32::MIN_POSITIVE);
+    let typical = median_f32(&mut q).max(f32::MIN_POSITIVE);
 
     let mut beats = Vec::with_capacity(peaks.len());
     let mut index = 0i64;
@@ -808,7 +816,7 @@ impl SideSounds {
                 return None;
             }
             let mut w: Vec<f32> = (0..len)
-                .map(|i| upper_median_f32(&mut v.iter().map(|s| s[i]).collect::<Vec<_>>()))
+                .map(|i| median_f32(&mut v.iter().map(|s| s[i]).collect::<Vec<_>>()))
                 .collect();
             let top = w.iter().copied().fold(0.0f32, f32::max);
             if top <= 0.0 {

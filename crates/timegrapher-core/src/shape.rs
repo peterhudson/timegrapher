@@ -22,7 +22,7 @@
 
 use crate::amplitude::edges;
 use crate::beats::{median_window, Beat};
-use crate::dsp::{median, moving_average, parabolic, robust_sd, upper_median_f32};
+use crate::dsp::{median, median_f32, moving_average, parabolic, robust_sd};
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
@@ -364,7 +364,7 @@ fn stretch_level(env: &[f32], fs: f64, times: &[f64], a: f64, b: f64) -> Option<
                 return None;
             }
             let mut seg = env[i as usize..j as usize].to_vec();
-            Some(upper_median_f32(&mut seg) as f64)
+            Some(median_f32(&mut seg) as f64)
         })
         .collect();
     (!levels.is_empty()).then(|| median(&mut levels))
