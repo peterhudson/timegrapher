@@ -6,8 +6,12 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
+/// The `timegrapher` program, as the stdio suite finds it: TIMEGRAPHER_CLI,
+/// else TIMEGRAPHER_MCP_TEST_CLI (CI's test job, #804), else built.
 fn cli() -> PathBuf {
-    if let Some(path) = std::env::var_os("TIMEGRAPHER_CLI") {
+    if let Some(path) =
+        std::env::var_os("TIMEGRAPHER_CLI").or_else(|| std::env::var_os("TIMEGRAPHER_MCP_TEST_CLI"))
+    {
         return path.into();
     }
     // Follow the existing stdio suite's separate nested target (avoid outer lock).
