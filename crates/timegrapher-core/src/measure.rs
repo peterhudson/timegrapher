@@ -145,6 +145,10 @@ pub fn no_watch_reason_in(caveats: &[Caveat]) -> Option<NoWatchReason> {
     })
 }
 
+/// The heading every surface gives a reading with no regular beat, over
+/// [`no_watch_text`]'s sentence or in the figures' place (#510).
+pub const NO_WATCH_TITLE: &str = "No Regular Beat";
+
 /// The sentence for no regular beat found, as every surface states it:
 /// with the timing scatter, as [`crate::beats::no_regular_beat_text`]
 /// gives it, or that the beats' sound shows no unlock and no drop.
@@ -541,7 +545,7 @@ pub fn assess(
         1.0
     };
     let doubts = Doubts {
-        clipped: c.clipped_fraction > crate::analysis::Clipping::NOTED_FRACTION,
+        clipped: crate::analysis::Clipping::noted_fraction(c.clipped_fraction),
         beats_missing: found < confidence::MIN_BEAT_FRACTION,
         lift_unknown: !c.lift_known,
         clock_unknown: !c.clock_known,

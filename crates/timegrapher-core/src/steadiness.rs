@@ -802,20 +802,46 @@ fn band_at_lag(pairs: f64, lag: f64, n: f64) -> Option<f64> {
     (pairs >= MIN_PAIRS as f64 - 0.5).then(|| 1.96 / (pairs * n / (n - lag).max(1.0)).sqrt())
 }
 
+/// [`autocorrelation_less`] of `g` less its slow change, taken out as the
+/// period search takes it out, with each lag less what independent
+/// readings read once that is out ([`confidence::fit_lag_bias`]): about
+/// −3/n at lag one after the quadratic of a run under 20 minutes (#828).
+/// A running median's, about −1/window, is left in, well inside the band.
+fn detrended_autocorrelation(g: &Grid, cfg: &Config) -> Autocorrelation {
+    let d = longterm::detrend(g, longterm::DETREND_S);
+    let terms = longterm::detrend_fit_terms(g, longterm::DETREND_S);
+    autocorrelation_less(&d.y, g.step, terms.map(|p| p.max(1)), cfg)
+}
+
 /// Autocorrelation of readings on a uniform grid (gaps NaN), with the
-/// Ljung–Box test, the memory and a repeat.
-fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
+/// Ljung–Box test, the memory and a repeat, each lag less
+/// [`confidence::fit_lag_bias`] for a fit of `fit_terms` terms when given.
+fn autocorrelation_less(
+    y: &[f64],
+    step: f64,
+    fit_terms: Option<usize>,
+    cfg: &Config,
+) -> Autocorrelation {
     let n = y.iter().filter(|v| v.is_finite()).count();
     let max_lag = ((cfg.max_lag_s / step) as usize)
         .min(y.len() / 3)
         .max(cfg.ljung_box_lags.min(y.len() / 3));
-    let (r, pairs) = acf_pairs(y, max_lag);
+    let (mut r, pairs) = acf_pairs(y, max_lag);
+    if let Some(p) = fit_terms.filter(|_| r.len() > 1) {
+        let present: Vec<bool> = y.iter().map(|v| v.is_finite()).collect();
+        let bias = confidence::fit_lag_bias(&present, p, r.len() - 1);
+        r.iter_mut().zip(&bias).skip(1).for_each(|(v, b)| *v -= b);
+    }
     // Gaps leave fewer pairs at a lag than a full series would have, and a
     // correlation read from few pairs strays far: each lag is weighed by
-    // its pairs, and one read from under MIN_PAIRS counts for nothing.
-    // With every reading present this is the usual Ljung–Box Q and band.
+    // its pairs, and one read from under MIN_PAIRS counts for nothing. A
+    // lag read as the mean product over its pairs scatters about
+    // n/((n + 2) pairs) in square, so with every reading present this is
+    // the usual Ljung–Box Q; weighing it as the usual sum over all n
+    // read the Q up to n²/(n − k)² too high, a quarter at lag 10 of 90
+    // readings (#828).
     let ng = y.len() as f64;
-    let full = |k: usize| (ng - k as f64).max(1.0);
+    let np = n as f64;
     let supported = |k: usize| pairs.get(k).is_some_and(|&m| m >= MIN_PAIRS);
     let h_max = cfg.ljung_box_lags.min(r.len().saturating_sub(1)).max(1);
     let lags: Vec<usize> = (1..=h_max)
@@ -824,7 +850,7 @@ fn autocorrelation(y: &[f64], step: f64, cfg: &Config) -> Autocorrelation {
     let h = lags.len();
     let q: f64 = lags
         .iter()
-        .map(|&k| r[k] * r[k] * pairs[k] as f64 * ng * (ng + 2.0) / (full(k) * full(k)))
+        .map(|&k| r[k] * r[k] * pairs[k] as f64 * (np + 2.0) / np)
         .sum();
     let max_short = lags.iter().fold(0.0f64, |a, &k| a.max(r[k].abs()));
     let memory = r
@@ -952,8 +978,7 @@ pub fn check_series(
     let nf = n as f64;
     // The slow trend taken out first, as the period search does: a rate
     // drifting as the mainspring runs down would otherwise read as memory.
-    let slow_out = longterm::detrend(&g, longterm::DETREND_S);
-    out.autocorrelation = Some(autocorrelation(&slow_out.y, g.step, cfg));
+    out.autocorrelation = Some(detrended_autocorrelation(&g, cfg));
 
     // Allan deviation with the line independent readings would follow.
     let ad = allan(y, g.step);
@@ -1278,8 +1303,7 @@ fn cycle(
     wheels: &[Wheel],
     cfg: &Config,
 ) -> Option<Cycle> {
-    let fine_ac =
-        fine.map(|f| autocorrelation(&longterm::detrend(f, longterm::DETREND_S).y, f.step, cfg));
+    let fine_ac = fine.map(|f| detrended_autocorrelation(f, cfg));
     let ac = fine_ac.as_ref().or(s.autocorrelation.as_ref());
     let g = fine.unwrap_or(g);
     let d = longterm::detrend(g, longterm::DETREND_S);

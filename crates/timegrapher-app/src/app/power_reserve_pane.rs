@@ -40,10 +40,6 @@ impl TimegrapherApp {
 
     /// The Power Reserve pane's toolbar: the position it runs in (set on
     /// the Current Position card), the keeping, and Start Test.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn reserve_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.reserve_running();
         let pal = theme::pal(ui);
@@ -126,6 +122,12 @@ impl TimegrapherApp {
                 self.new_take(NewTake::PowerReserve, false);
             }
         }
+        self.reserve_results_buttons(ui);
+    }
+
+    /// The Power Reserve settings' Save as CSV… and Copy, for the run that
+    /// ended last.
+    fn reserve_results_buttons(&mut self, ui: &mut egui::Ui) {
         let done = self.reserve.as_ref().and_then(|t| t.results.clone());
         let nothing = done.is_none().then_some("No run ended yet");
         theme::bar_gap(ui);

@@ -192,7 +192,14 @@ impl Clipping {
 
     /// More than [`Self::NOTED_FRACTION`] of the beats clipped.
     pub fn noted(&self) -> bool {
-        self.beat_fraction > Self::NOTED_FRACTION
+        Self::noted_fraction(self.beat_fraction)
+    }
+
+    /// Whether `fraction` of the beats clipped is enough to name the
+    /// `clipped` caveat: more than [`Self::NOTED_FRACTION`]. The one rule
+    /// every surface asks, from a [`Clipping`] or from a stored fraction.
+    pub fn noted_fraction(fraction: f64) -> bool {
+        fraction > Self::NOTED_FRACTION
     }
 }
 
@@ -409,6 +416,24 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
 mod tests {
     use super::*;
     use crate::synth::{generate, SynthConfig};
+
+    /// One rule names the `clipped` caveat: strictly more than
+    /// `NOTED_FRACTION`, from a stored fraction or a [`Clipping`].
+    #[test]
+    fn clipping_noted_above_the_fraction_only() {
+        assert!(!Clipping::noted_fraction(0.0));
+        assert!(!Clipping::noted_fraction(Clipping::NOTED_FRACTION));
+        assert!(Clipping::noted_fraction(Clipping::NOTED_FRACTION + 1e-9));
+        for f in [0.0, 0.01, 0.0101, 0.3] {
+            let c = Clipping {
+                samples: 0,
+                beats: 0,
+                beat_fraction: f,
+                peak_dbfs: 0.0,
+            };
+            assert_eq!(c.noted(), Clipping::noted_fraction(f), "{f}");
+        }
+    }
 
     #[test]
     fn analyze_reads_the_same_amplitude_windows_as_session() {

@@ -163,7 +163,7 @@ impl TimegrapherApp {
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a word saying so where the unit goes.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
-        let unheard_line = "No Regular Beat".to_string();
+        let unheard_line = timegrapher_core::measure::NO_WATCH_TITLE.to_string();
         let unheard_hover = format!(
             "{}.\n\n{}",
             r.as_ref().map(no_regular_beat).unwrap_or_default(),
