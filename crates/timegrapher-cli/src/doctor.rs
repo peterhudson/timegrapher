@@ -138,8 +138,14 @@ fn save(p: &Path, a: &Audio, source: &Value, mixer: Option<&Mixer>) -> Result<()
     .map_err(|e| format!("{}: {e}", side.display()))
 }
 
+/// One decimal place, or "-" with no value. A value that rounds to zero
+/// prints as 0.0, not -0.0 (#810).
 fn opt(v: Option<f64>, unit: &str) -> String {
-    v.map_or("-".into(), |x| format!("{x:.1}{unit}"))
+    v.map_or("-".into(), |x| {
+        let text = format!("{x:.1}");
+        let text = if text == "-0.0" { "0.0".into() } else { text };
+        format!("{text}{unit}")
+    })
 }
 
 /// The text line for the signal figure. With no figure it says why
@@ -244,7 +250,16 @@ fn print_report(r: &Report, apply: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::signal_line;
+    use super::{opt, signal_line};
+
+    #[test]
+    fn a_value_that_rounds_to_zero_has_no_minus_sign() {
+        assert_eq!(opt(Some(-0.01), " dB"), "0.0 dB");
+        assert_eq!(opt(Some(-0.0), " dB"), "0.0 dB");
+        assert_eq!(opt(Some(-0.06), " dB"), "-0.1 dB");
+        assert_eq!(opt(Some(2.35), " dB"), "2.4 dB");
+        assert_eq!(opt(None, " dB"), "-");
+    }
 
     #[test]
     fn no_signal_figure_says_why_rather_than_a_dash() {
