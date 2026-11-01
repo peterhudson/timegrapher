@@ -147,7 +147,7 @@ fn a_narrow_cards_words_show_whole() {
         for _ in 0..2 {
             let out = ctx.run(egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    figure_row(ui, rect, None, "s/d", Some(&status), "", compact);
+                    readouts::figure_row(ui, rect, None, "s/d", Some(&status), "", compact);
                 });
             });
             texts = out
