@@ -232,11 +232,13 @@ function gridFor(lo, hi, px, minPx, ladder) {
   return { step, ticks };
 }
 
-// An axis value as the app writes it: decimals from the step, the unit, no "-0".
+// An axis value as the app writes it, core chart_scale::axis_number held to
+// the same fixture (axis_labels.test.cjs): decimals from the step, the unit,
+// no "-0".
 function axisLabel(v, step, unit) {
   const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
-  if (Math.abs(v) < step * 1e-6) v = 0;
-  return v.toFixed(d) + (unit || "");
+  const t = v.toFixed(d);
+  return (/^-[0.]+$/.test(t) ? t.slice(1) : t) + (unit || "");
 }
 
 // strip::fmt_time: m:ss, or h:mm:ss from an hour.
