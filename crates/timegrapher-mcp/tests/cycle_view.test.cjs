@@ -20,7 +20,7 @@ const context = vm.createContext({
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const TIME_BANDS = .*$/m)[0] + "\n" +
   html.match(/^const DASH = .*$/m)[0] + "\n" +
-  ["esc", "stepText", "viridisRgb", "steadyNote", "steadyPlot", "xyChart"].map(definition).join("\n") +
+  ["esc", "axisLabel", "stepText", "viridisRgb", "steadyNote", "steadyPlot", "xyChart"].map(definition).join("\n") +
   "\nthis.realChart = xyChart;", context);
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
