@@ -112,6 +112,45 @@ fn variables(p: &Palette) -> String {
 /// a day-long run's result small.
 const MAX_POINTS: usize = 1500;
 
+/// The `_meta` key the views read their ± texts from (#806).
+pub const PM_KEY: &str = "timegrapher/pm";
+
+fn pm_of(se: &Value, digits: usize) -> Value {
+    se.as_f64()
+        .and_then(|se| timegrapher_core::library::pm_text(se, digits))
+        .map_or(Value::Null, Value::from)
+}
+
+/// The ± beside each tile's figure, as core's `library::pm_text` writes it,
+/// so the view shows the app's and the CLI's text instead of rounding its
+/// own: for `analyze`, the whole file's rate and amplitude and each take
+/// reading's, in the take's order; for a live reading, its amplitude. A
+/// null where there is no standard error; `None` for other results.
+pub fn pm_texts(doc: &Value) -> Option<Value> {
+    let schema = doc["schema"].as_str().unwrap_or("");
+    let tiles = |rate: &Value, amplitude: &Value| json!({ "rate": pm_of(rate, 1), "amplitude": pm_of(amplitude, 0) });
+    if schema.starts_with("timegrapher.analyze/") {
+        let readings: Vec<Value> = doc["take"]["readings"]
+            .as_array()
+            .map(|rs| {
+                rs.iter()
+                    .map(|r| {
+                        let c = &r["measurement"]["confidence"];
+                        tiles(&c["rate"]["se"], &c["amplitude"]["se"])
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut pm = tiles(&doc["confidence"]["rate"]["se"], &doc["amplitude_se_deg"]);
+        pm["readings"] = json!(readings);
+        return Some(pm);
+    }
+    if schema.starts_with("timegrapher.live/") {
+        return Some(json!({ "amplitude": pm_of(&doc["reading"]["amplitude_error_deg"], 0) }));
+    }
+    None
+}
+
 /// The `_meta` that links a tool to the view.
 pub fn tool_meta() -> Value {
     json!({ "ui": { "resourceUri": URI } })
@@ -459,6 +498,33 @@ pub async fn analyze_charts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_view_gets_its_plus_or_minus_in_cores_words() {
+        // The view rounded 0.4° up to "± 1°" (#806); core keeps a figure.
+        let doc = json!({
+            "schema": "timegrapher.analyze/1", "amplitude_se_deg": 0.4,
+            "confidence": { "rate": { "se": 0.06 } },
+            "take": { "readings": [
+                { "measurement": { "confidence": { "rate": { "se": 1.24 }, "amplitude": { "se": 2.6 } } } },
+                { "measurement": { "watch_heard": false } },
+            ] },
+        });
+        assert_eq!(
+            pm_texts(&doc),
+            Some(json!({ "rate": "0.06", "amplitude": "0.4", "readings": [
+                { "rate": "1.2", "amplitude": "3" },
+                { "rate": null, "amplitude": null },
+            ] }))
+        );
+        let live =
+            json!({ "schema": "timegrapher.live/1", "reading": { "amplitude_error_deg": 0.4 } });
+        assert_eq!(pm_texts(&live), Some(json!({ "amplitude": "0.4" })));
+        assert_eq!(
+            pm_texts(&json!({ "schema": "timegrapher.session/1" })),
+            None
+        );
+    }
 
     #[test]
     fn the_profiles_are_read_where_core_reads_the_beat_shape() {
