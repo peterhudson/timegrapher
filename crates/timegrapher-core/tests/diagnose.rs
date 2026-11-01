@@ -238,3 +238,31 @@ fn a_watch_with_few_beats_is_named_for_them_faint_or_not() {
         );
     }
 }
+
+/// A watch heard for 12 s of a 30 s take, the rest exact zeros: the
+/// envelope's median is zero, so the signal has no figure, not one over a
+/// vanishing floor (it read 3e305, #784), and the evidence says so.
+#[test]
+fn digital_silence_gives_no_signal_figure() {
+    let mut a = generate(
+        &SynthConfig {
+            duration_s: 30.0,
+            snr_db: 30.0,
+            ..Default::default()
+        },
+        |_| 270.0,
+        |_| 0.0,
+    );
+    let k = (12.0 * f64::from(a.sample_rate)) as usize;
+    for v in a.samples[k..].iter_mut() {
+        *v = 0.0;
+    }
+    let c = check(&a, &DiagnoseConfig::default());
+    assert_eq!(c.signal_x, None, "{c:?}");
+    let i = c
+        .issues
+        .iter()
+        .find(|i| i.code == IssueCode::NoTicks)
+        .expect("no_ticks");
+    assert!(i.evidence.ends_with("beats found, -"), "{}", i.evidence);
+}
