@@ -30,6 +30,14 @@ pub const GAP_RISE_DB: f64 = 3.0;
 /// reads about 2× (see `docs/validation.md`).
 pub const NO_TICKS_SIGNAL_X: f64 = 3.0;
 
+/// Whether a signal figure shows the ticks too faint over the noise: under
+/// [`NO_TICKS_SIGNAL_X`]. With no figure (the envelope's median zero, as
+/// over digital silence) the ticks are not shown faint, and the beat tests
+/// decide (#784).
+fn faint(signal_x: Option<f64>) -> bool {
+    signal_x.is_some_and(|x| x < NO_TICKS_SIGNAL_X)
+}
+
 #[derive(Debug, Clone)]
 pub struct DiagnoseConfig {
     pub envelope: EnvelopeConfig,
@@ -303,7 +311,7 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         );
     }
     let few_beats = good.len() < expected / 2 || fit.is_none();
-    let faint = !signal_x.is_some_and(|x| x >= NO_TICKS_SIGNAL_X);
+    let faint = faint(signal_x);
     let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.1}×"));
     if !silent && (few_beats || faint) {
         // The title names the test that fired: no timing fit, under half
@@ -363,5 +371,20 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         beat_error_ms: fit.map(|f| f.beat_error_ms.abs()),
         suggested_gain_change_db: suggested,
         issues,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A figure under 3× is faint and one at 3× or more is not; no figure
+    /// at all is not shown faint, so the beat tests decide (#784).
+    #[test]
+    fn only_a_figure_under_the_threshold_is_faint() {
+        assert!(faint(Some(2.9)));
+        assert!(!faint(Some(NO_TICKS_SIGNAL_X)));
+        assert!(!faint(Some(40.0)));
+        assert!(!faint(None));
     }
 }
