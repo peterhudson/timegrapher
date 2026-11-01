@@ -21,6 +21,9 @@ const context = vm.createContext({
   liveStrip: () => "", stripCards: () => "", trendStrip: () => "",
 });
 vm.runInContext(["esc", "num", "recordingView", "recordView"].map(definition).join("\n"), context);
+// The session view's Positions table, with what it draws around the row stubbed.
+Object.assign(context, { ORDER: [], POSITIONS: null, tile: () => "", signed: String, abs: Math.abs, limitsCard: () => "", bars: () => "" });
+vm.runInContext(definition("sessionView"), context);
 
 const said = "No regular beat found (too few beats to time). There are no rate, amplitude or beat error readings.";
 
@@ -37,4 +40,16 @@ test("a take's check with no regular beat says the server's sentence", () => {
 test("the sentence is escaped", () => {
   const markup = context.recordingView({ watch_heard: false }, null, null, "<img src=x>");
   assert.ok(markup.includes("&lt;img") && !markup.includes("<img"), markup);
+});
+
+test("a session reading with no regular beat gets core's heading in its row", () => {
+  const markup = context.sessionView({ readings: [{ position: "DU", measurement: { watch_heard: false } }] }, null);
+  assert.ok(markup.includes(`>${NO_BEAT_TITLE}</td>`), markup);
+});
+
+// Every place the view heads a reading with no regular beat takes core's
+// heading: none of its own wording is left in the page.
+test("the view types no no-beat heading of its own", () => {
+  const typed = html.split("\n").filter((l) => !/^\s*\/\//.test(l) && /no regular beat/i.test(l));
+  assert.deepEqual(typed, []);
 });
