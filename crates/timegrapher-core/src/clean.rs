@@ -117,18 +117,12 @@ impl<'a> Cuts<'a> {
     /// pause its log does not show ([`ClockFit::keeps_gap`]): the log is the
     /// better witness (#646).
     pub fn new(clock: Option<&'a ClockFit>, breaks: &[Break], masked: &[(f64, f64)]) -> Self {
-        let mut breaks: Vec<Break> = breaks
+        let finite: Vec<Break> = breaks
             .iter()
             .filter(|b| b.audio_s.is_finite())
-            .map(|b| Break {
-                gap_s: if b.gap_s.is_finite() && clock.is_none_or(|c| c.keeps_gap(b)) {
-                    b.gap_s.max(0.0)
-                } else {
-                    0.0
-                },
-                ..*b
-            })
+            .copied()
             .collect();
+        let mut breaks = crate::breaks::as_kept(&finite, clock);
         breaks.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
         let pairs: Vec<[f64; 2]> = masked.iter().map(|&(a, b)| [a, b]).collect();
         let masked = crate::session::masked_spans(&pairs);
