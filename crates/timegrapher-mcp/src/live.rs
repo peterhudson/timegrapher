@@ -109,10 +109,15 @@ pub fn status() -> Value {
         }
     };
     let text = summary(&doc);
-    json!({
+    let mut result = json!({
         "content": [{ "type": "text", "text": text }],
         "structuredContent": doc,
-    })
+    });
+    // The amplitude's ±, in core's words, for the Live view.
+    if let Some(pm) = crate::views::pm_texts(&result["structuredContent"]) {
+        result["_meta"] = json!({ crate::views::PM_KEY: pm });
+    }
+    result
 }
 
 /// One line for the progress messages and the status text, e.g.
