@@ -7,6 +7,7 @@
 //! or 5 times a power of ten so the bin edges are round numbers, and never
 //! finer than the reading's own resolution.
 
+use crate::dsp::quantile;
 use serde::Serialize;
 
 /// Counts of values in bins of equal width.
@@ -94,14 +95,6 @@ impl Histogram {
         }
         peaks
     }
-}
-
-/// The value `q` (0 to 1) of the way through sorted values.
-fn quantile(sorted: &[f64], q: f64) -> f64 {
-    let x = q * (sorted.len() - 1) as f64;
-    let i = x.floor() as usize;
-    let j = (i + 1).min(sorted.len() - 1);
-    sorted[i] + (sorted[j] - sorted[i]) * (x - i as f64)
 }
 
 /// 1, 2 or 5 times a power of ten, at least `x`.
