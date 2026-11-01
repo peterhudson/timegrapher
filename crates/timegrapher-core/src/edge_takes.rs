@@ -786,9 +786,10 @@ mod tests {
     /// 60 of 90 s are still read as a watch.
     /// The draws of the test below still read as a watch, by length and
     /// seed: their scatter is in the doubt zone and their sound shows a
-    /// watch or can't be judged. The list only shrinks.
-    const NOISE_READ_AS_A_WATCH: &[(f64, u64)] =
-        &[(30.0, 1001), (30.0, 1014), (120.0, 1), (120.0, 6)];
+    /// watch or can't be judged. The list only shrinks: since #476, where
+    /// no regular beat is heard each chunk of the file is read with its
+    /// own template, and draws 1 and 6 of 120 s read `no_watch`.
+    const NOISE_READ_AS_A_WATCH: &[(f64, u64)] = &[(30.0, 1001), (30.0, 1014)];
 
     /// The draws of the test below the live card judges otherwise than
     /// session. None since the live card reads session's scatter and beat
