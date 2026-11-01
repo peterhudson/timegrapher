@@ -18,7 +18,7 @@ function definition(name, optional = false) {
 }
 const context = vm.createContext({
   fileName: () => "test.wav", timeLabel: String, positionName: (p) => `name of ${p}`,
-  stripCards: () => "", limitsCard: () => "",
+  stripCards: () => "", limitsCard: (l) => (l && l.length ? "<limits>" : ""),
   profileCard: (p, title, dropBeatError) => `<profile drop="${dropBeatError}">`,
 });
 vm.runInContext(["esc", "num", "signed", "abs", "tile", "rateBasis", "recordingView", "readingTiles", "recordingCards", "takeTiles"]
@@ -123,4 +123,14 @@ test("the tiles show the server's ± text, and none without it", () => {
   const take = context.recordingView(listed([reading("DU", 5), reading("DD", -3)]), null, null, null,
     { readings: [{ rate: "0.2", amplitude: null }, { rate: "1.5", amplitude: "3" }] });
   assert.ok(take.includes("± 0.2 seconds per day") && take.includes("± 1.5 seconds per day") && take.includes("± 3°"), take);
+});
+
+// Whether clipping is worth saying is core's call (Clipping::noted, the
+// `clipped` caveat the server turns into limits), not a threshold of the
+// view's own (#808).
+test("clipping is said only in the server's limits", () => {
+  const doc = { clipping: { beats: 30, beat_fraction: 0.3 } };
+  assert.ok(!context.recordingCards(doc, null, null).includes("Clipping"));
+  const said = context.recordingCards(doc, null, ["30% of the beats have a clipped sample."]);
+  assert.ok(said.includes("<limits>"), said);
 });
