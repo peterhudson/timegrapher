@@ -146,6 +146,7 @@ impl State {
         let fs = self.fs;
         let a = &self.cfg.analysis;
         let env = envelope(x, fs, &a.envelope);
+        let mut heard_first = false;
         let local = match &self.template {
             Some(t) => {
                 let (b, level) = beats::detect_after(&env, fs, self.bph, t, self.level);
@@ -153,10 +154,42 @@ impl State {
                 b
             }
             None => {
+                // Until a regular beat is heard, each chunk is looked at
+                // afresh from where its sound starts, and the template is
+                // kept only once its beats are a watch's (#476): silence or
+                // noise before the watch is placed sets neither the rate nor
+                // the beat's sound for the rest of the file.
+                let Some(from) = beats::sound_onset(&env, fs) else {
+                    return;
+                };
                 self.bph = a.bph.unwrap_or_else(|| beats::guess_bph(&env, fs));
-                let (b, t, level) = beats::detect_levelled(&env, fs, self.bph);
-                self.template = Some(t);
-                self.level = level;
+                let (b, t, level) = beats::detect_levelled(&env[from..], fs, self.bph);
+                let shift = from as f64 / fs;
+                let b: Vec<Beat> = b
+                    .into_iter()
+                    .map(|x| Beat {
+                        time: x.time + shift,
+                        ..x
+                    })
+                    .collect();
+                // Judged as every reading judges a stretch: the median
+                // timing scatter of its 10 s windows.
+                let windows = crate::session::scatter_windows(
+                    &crate::clean::Cuts::new(None, &[], &[]),
+                    &b,
+                    self.bph,
+                    0.0,
+                    env.len() as f64 / fs,
+                    a.amplitude_window_s,
+                );
+                let jitter_us = crate::session::scatter_jitter_us(&windows);
+                if beats::watch_heard(jitter_us, self.bph) {
+                    self.template = Some(t);
+                    self.level = level;
+                    // The beats found before the watch was heard are noise,
+                    // and no count of beats runs on from them.
+                    heard_first = !self.beats.is_empty();
+                }
                 b
             }
         };
@@ -200,8 +233,10 @@ impl State {
         for k in anchor..end {
             let b = numbered[k];
             let t = b.time + off;
-            // Seen again from the next chunk: the same jump.
-            if cuts.contains(&k) && !self.jumps.last().is_some_and(|&j| t - j <= 1.0) {
+            // Seen again from the next chunk: the same jump. Where the
+            // watch is first heard after noise, its first beat is one too.
+            let cut = cuts.contains(&k) || (heard_first && k == anchor);
+            if cut && !self.jumps.last().is_some_and(|&j| t - j <= 1.0) {
                 self.jumps.push(t);
                 self.sides.jump(t);
             }
@@ -243,7 +278,7 @@ impl State {
         }
 
         // Amplitude on a fixed grid of windows starting inside this chunk.
-        let w = a.amplitude_window_s;
+        let w = self.cfg.analysis.amplitude_window_s;
         let x_end = off + x.len() as f64 / fs;
         let mut to = self.next_amp_s;
         while to < core_b && to + w <= x_end {
@@ -258,7 +293,7 @@ impl State {
                 w,
                 self.next_amp_s - off,
                 to - off,
-                &a.amplitude,
+                &self.cfg.analysis.amplitude,
             );
             self.amp.extend(wins.into_iter().map(|mut win| {
                 win.start_s += off;
