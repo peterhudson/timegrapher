@@ -56,7 +56,7 @@ fn persisted_lift_context_roundtrips_without_guessing_legacy_history() {
         ("lift = 52\nlift_known = false", false),
         ("lift = 52\nlift_known = true", true),
         ("lift = 49\nlift_known = false", false),
-        ("lift = 52", false), // Legacy app inference, unlike legacy CLI.
+        ("lift = 52", false), // Assumed, as core reads it (#685).
         ("lift = 49", true),
         ("lift_known = true", false), // No accompanying value.
         ("calibre = \"Seagull ST36\"", false),
@@ -96,5 +96,52 @@ fn persisted_lift_context_roundtrips_without_guessing_legacy_history() {
             expected,
             "numeric revert retains context"
         );
+    }
+}
+
+/// An older session file's lift is read by core's one rule, from the
+/// take's own calibre: a calibre picked before the take was opened does
+/// not make its default 52 known (#685).
+#[test]
+fn an_older_takes_lift_is_read_by_core_rule_not_the_calibre_on_show() {
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.set_calibre("Unitas 6497-2".into());
+    assert!(app.lift_known());
+    let m: Manifest = toml::from_str("lift = 52").unwrap();
+    app.apply_manifest(&m, &[], None);
+    assert_eq!(app.calibre, "Unitas 6497-2");
+    assert!(!app.lift_known());
+    let cal = timegrapher_core::take::calibre_named(&app.calibre, &app.cal.user);
+    assert!(cal.as_ref().is_some_and(|c| c.lift_angle_deg.is_some()));
+    assert_eq!(
+        timegrapher_core::take::file_lift_known(&m, None),
+        Some(false)
+    );
+}
+
+/// Keep Analysis Only reads whether a take's lift was supplied as core
+/// does: an older file's default 52 is assumed unless its calibre gives
+/// a lift, any other value was supplied, and a marker wins (#685).
+#[test]
+fn keep_analysis_only_reads_the_lift_by_core_rule() {
+    let app = TimegrapherApp::with_devices(Vec::new(), None);
+    for (text, expected) in [
+        ("lift = 52", false),
+        ("lift = 49", true),
+        ("lift = 52\nlift_known = true", true),
+        ("lift = 49\nlift_known = false", false),
+        ("calibre = \"Unitas 6497-2\"\nlift = 52", true),
+        ("calibre = \"Seagull ST36\"\nlift = 52", false),
+        ("lift_known = true", false), // No accompanying value.
+    ] {
+        let m: Manifest = toml::from_str(text).unwrap();
+        let cfg = app.keep_config(&m);
+        let cal = m
+            .calibre
+            .as_deref()
+            .and_then(|n| timegrapher_core::take::calibre_named(n, &app.cal.user));
+        let core = timegrapher_core::take::file_lift_known(&m, cal.as_ref());
+        assert_eq!(cfg.analysis.lift_known, expected, "{text}");
+        assert_eq!(core.unwrap_or(false), expected, "{text}");
     }
 }

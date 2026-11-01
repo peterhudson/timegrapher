@@ -1249,10 +1249,14 @@ impl TimegrapherApp {
         }
         if let Some(l) = m.lift {
             self.set_lift(l);
-            // Old app manifests did not record provenance. Preserve their
-            // numeric/default inference, refined to actual calibre lift data.
-            let legacy = l != DEFAULT_LIFT_DEG || self.cal.lift(&self.calibre).is_some();
-            self.lift_context = (l, m.lift_known.unwrap_or(legacy));
+            // Whether that lift was supplied, by core's one rule for
+            // session files (#685): older ones did not record it.
+            let cal = m
+                .calibre
+                .as_deref()
+                .and_then(|n| timegrapher_core::take::calibre_named(n, &self.cal.user));
+            let known = timegrapher_core::take::file_lift_known(m, cal.as_ref());
+            self.lift_context = (l, known.unwrap_or(false));
         }
         if m.bph.is_some() {
             self.put_bph(m.bph);
