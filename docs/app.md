@@ -1246,8 +1246,8 @@ Witschi's: the size of the sine wave at each period, log-log, in the
 series' own units, the rate's as the swing peak to peak it makes in 10 s
 rate readings, in s/d, from 20 s up, worked out from the beat timing's
 spectrum (a timing sine of *a* ms at period *P* swings the rate by
-2·*a*·2π/*P*·86.4 s/d, of which a 10 s reading keeps sin *x*/*x*, *x* =
-π·10/*P*); **Timing** in its toolbar draws rate as the beat timing's own
+2·*a*·2π/*P*·86.4 s/d, of which a 10 s reading, a line fitted through
+its beats, keeps 3(sin *x* − *x* cos *x*)/*x*³, *x* = π·10/*P*); **Timing** in its toolbar draws rate as the beat timing's own
 spectrum, in ms, at every period; the wheels' periods are marked and the
 tallest peak labelled: the highest point above both its neighbours, so a
 spectrum still climbing at either end of its axis, as the rate's slow
