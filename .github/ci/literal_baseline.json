@@ -278,7 +278,7 @@
      "defaults": 0
     },
     "crates/timegrapher-cli/src/report.rs": {
-     "bounds": 5,
+     "bounds": 4,
      "comparisons": 5,
      "constants": 6,
      "defaults": 1
@@ -303,7 +303,7 @@
     }
    },
    "total": {
-    "bounds": 13,
+    "bounds": 12,
     "comparisons": 19,
     "constants": 20,
     "defaults": 28
