@@ -263,7 +263,7 @@ pub fn render(
                     acc[j] += v;
                 }
             });
-            t += nominal * (1.0 - (s.rate)(t) / 86400.0);
+            t += crate::synth::period(nominal, (s.rate)(t));
             k += 1;
         }
         let n = end - base;
@@ -295,7 +295,7 @@ pub fn beat_log(s: &Scenario, seed: u64) -> crate::stream::BeatLog {
             time: t + side * (s.beat_error)(t) / 1000.0 + TIMING_JITTER_MS / 1000.0 * rng.normal(),
             quality: 1.0,
         });
-        t += nominal * (1.0 - (s.rate)(t) / 86400.0);
+        t += crate::synth::period(nominal, (s.rate)(t));
         k += 1;
     }
     // A 2 s window averages 16 beats, 8 a side.
