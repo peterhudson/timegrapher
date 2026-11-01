@@ -2097,29 +2097,20 @@ impl TimegrapherApp {
         let mut live = LiveAnalyzer::from_log(log, self.live_config());
         self.session.load(&[], &[]);
         self.session.analysed();
-        // No reading fits across one of the take's breaks.
-        let mut breaks: Vec<f64> = self
-            .take_breaks
-            .iter()
-            .flatten()
-            .map(|b| b.audio_s)
-            .collect();
+        // No reading fits across one of the take's breaks, a move or a
+        // settling's end: core's cuts, as the CLI's trend reads them. A
+        // take of one position with no settling adds neither.
+        let changes: Vec<f64> = stretches.iter().map(|s| s.0).collect();
+        live.set_breaks(timegrapher_core::take::reading_cuts(
+            self.take_breaks.as_deref().unwrap_or_default(),
+            &changes,
+            &settles,
+        ));
         // A take of one position settles too, unless its session file
         // says it was read from its start.
         if stretches.len() > 1 || !settles.is_empty() {
-            // Nor across a move, nor across a settling's end.
-            breaks.extend(
-                stretches
-                    .iter()
-                    .skip(1)
-                    .map(|s| s.0)
-                    .chain(settles.iter().map(|s| s.1)),
-            );
             self.session.load(&stretches, &settles);
         }
-        breaks.sort_by(f64::total_cmp);
-        breaks.dedup();
-        live.set_breaks(breaks);
         if let Some(&(_, p)) = self.session.stretches().last() {
             self.position = p;
         }
