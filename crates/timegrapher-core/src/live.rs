@@ -1532,8 +1532,8 @@ mod tests {
 
     // Supplied beat times only: no waveform synthesis or detector involved.
     fn viewer_phase_log(before_rate: f64, after_rate: f64) -> BeatLog {
-        let before_period = 0.125 / (1.0 + before_rate / 86400.0);
-        let after_period = 0.125 / (1.0 + after_rate / 86400.0);
+        let before_period = crate::timing::period_s(0.125, before_rate);
+        let after_period = crate::timing::period_s(0.125, after_rate);
         BeatLog {
             sample_rate: 48000,
             duration_s: 120.0,

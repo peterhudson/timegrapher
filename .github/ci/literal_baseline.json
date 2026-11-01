@@ -49,7 +49,7 @@
      "bounds": 0,
      "comparisons": 1,
      "constants": 0,
-     "defaults": 1
+     "defaults": 0
     },
     "crates/timegrapher-app/src/app/readouts.rs": {
      "bounds": 5,
@@ -224,7 +224,7 @@
     "bounds": 109,
     "comparisons": 119,
     "constants": 56,
-    "defaults": 5
+    "defaults": 4
    }
   },
   "timegrapher-cli": {

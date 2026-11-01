@@ -2300,7 +2300,7 @@ mod tests {
     fn a_jump_inside_a_position_is_cut() {
         let each = SETTLE_S + MEASURE_S;
         let duration = each * 6.0 + 1.0;
-        let period = 0.125 / (1.0 + 3.0 / 86400.0);
+        let period = timegrapher_core::timing::period_s(0.125, 3.0);
         let log = BeatLog {
             sample_rate: 48000,
             duration_s: duration,
