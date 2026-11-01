@@ -5309,7 +5309,7 @@ fn cut_caveats_text(caveats: &[Caveat]) -> String {
     let picked = |keep: fn(&Caveat) -> bool| -> Vec<Caveat> {
         caveats.iter().filter(|c| keep(c)).cloned().collect()
     };
-    let breaks = picked(|c| matches!(c, Caveat::Breaks { .. } | Caveat::BreaksUnlisted { .. }));
+    let breaks = picked(Caveat::is_about_breaks);
     let sides = picked(|c| matches!(c, Caveat::SidesByCount { .. }));
     reading_limits("", &breaks, 0.0, 0)
         .into_iter()

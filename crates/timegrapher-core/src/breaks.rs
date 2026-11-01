@@ -464,6 +464,25 @@ pub fn renumber(
     by_count(breaks.iter().map(|b| b.audio_s), sided)
 }
 
+/// `breaks` with each gap the take's `clock` does not keep taken as none
+/// ([`crate::clock::ClockFit::keeps_gap`]): a listed pause its log spans
+/// and shows no gap at is a break of no width (#646). The one rule for
+/// the gaps true time ([`crate::clean::Cuts`]) and the beat numbers
+/// ([`renumber`]) run on across; a negative or non-finite gap is none.
+pub fn as_kept(breaks: &[Break], clock: Option<&crate::clock::ClockFit>) -> Vec<Break> {
+    breaks
+        .iter()
+        .map(|b| Break {
+            gap_s: if b.gap_s.is_finite() && clock.is_none_or(|c| c.keeps_gap(b)) {
+                b.gap_s.max(0.0)
+            } else {
+                0.0
+            },
+            ..*b
+        })
+        .collect()
+}
+
 /// How far [`renumber`] moves the beat numbers from each break on: the
 /// break's audio second, with the beats the gaps up to it held (none for
 /// a negative gap), each gap's rounded to keep the sides. A reader drawing
