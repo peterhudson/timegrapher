@@ -7,7 +7,10 @@ use crate::strip::side_colors;
 use crate::theme;
 use eframe::egui::{self, Color32};
 use egui_plot::{HLine, Line, LineStyle, Plot, Polygon};
-use timegrapher_core::profile::TickProfile;
+// The facts on each plot, a row each, top to bottom, and a time's words:
+// core's (#510).
+pub use timegrapher_core::profile::ms_text;
+use timegrapher_core::profile::{facts, TickProfile, FACT_NAMES};
 
 /// How the sound's level is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -45,9 +48,6 @@ fn level_label(value: f64, step: f64) -> String {
     format!("{:.*}", places, value + 0.0)
 }
 
-/// The facts on each plot, a row each, top to bottom.
-const FACT_NAMES: [&str; 5] = ["Beats", "Unlock", "Drop", "Unlock to Drop", "Amplitude"];
-
 /// Below this height a plot's facts keep only their last two rows, Unlock
 /// to Drop and Amplitude; the rest are in the hover. Its names go inside
 /// it below the same height.
@@ -57,27 +57,6 @@ const STACKED_MIN: f32 = 64.0;
 
 /// A side's facts before it has beats.
 const NO_FACTS: &str = "Not enough beats yet";
-
-/// A time from the reference point as the Profile words it: "−0.27 ms".
-pub fn ms_text(v: f64) -> String {
-    format!("{v:+.2} ms").replace('-', "−")
-}
-
-/// One side's facts with their units, in [`FACT_NAMES`]' order.
-pub fn facts(p: &TickProfile) -> [String; 5] {
-    let ms = |v: Option<f64>| v.map_or("–".to_string(), ms_text);
-    [
-        p.beats.to_string(),
-        ms(p.unlock_ms),
-        ms(p.drop_ms),
-        match (p.unlock_ms, p.drop_ms) {
-            (Some(u), Some(d)) => format!("{:.2} ms", d - u),
-            _ => "–".to_string(),
-        },
-        p.amplitude_deg
-            .map_or("out of range".to_string(), |a| format!("{a:.0}°")),
-    ]
-}
 
 /// Which of a side's five facts its box shows, top to bottom: on a plot
 /// `plot_h` tall with room for `fit_frame` rows inside it, all five, else
