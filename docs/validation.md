@@ -36,7 +36,7 @@ with the same movement.
 The same job runs every test in `equivalence.rs` with the corpus required, and
 so requires `analyze_and_session_agree_on_real_takes`.
 It authenticates `take_part01-001.flac` from exactly four public takes:
-`daytona4130_DU_30min`, `ym42_DD_30min`, `patek324_DU_30min` and
+`daytona4130_DU_30min`, `ym42_DD_30min`, `aquanaut324_DU_30min` and
 `eta2824_holder_DU_30min`. Missing, unreadable or unauthenticated inputs fail;
 the decoded recordings must be nonempty, both paths must hear the watch, and
 the compared rate, amplitude and both beat errors must be present and finite.
