@@ -2,8 +2,9 @@ name: CI Watchdog
 
 # Re-runs CI jobs that GitHub's hosted runners failed (never acquired, or
 # lost mid-job), at most twice per run, and flags CI jobs queued for 45
-# minutes or more. A job that ran and failed is never re-run. Logic and
-# offline tests: .github/watchdog/.
+# minutes or more. A job that ran and failed is never re-run; on main it is
+# flagged on an open "CI failed on main" issue, since pull requests read only
+# a cut of the corpus. Logic and offline tests: .github/watchdog/.
 #
 # Both triggers run main's copy of this workflow in this repository's context,
 # so pull requests from forks are watched too. It checks out only main's

@@ -202,6 +202,12 @@ fn track_peaks(
         // point is the span's edge, and taking those would count more beats
         // than the silence holds (#782). Pass 1 (with a gate) only feeds a
         // median template, so it takes every peak.
+        // A match below a thousandth of the side's typical beat
+        // ([`NOTHING`]) is the correlation's rounding error near a beat in
+        // digital silence. It is kept like a faint peak but never steers:
+        // a track with no level that timed itself from it as the watch fell
+        // silent, or took itself up on it before the watch was heard again,
+        // stayed off the beats after the silence (#786).
         // With a level to judge by, a peak far weaker than the side's
         // typical beat may be a faint beat or, in a silence, the noise: it
         // is kept, but neither steers the track nor ends a run missed (#609).
@@ -229,7 +235,10 @@ fn track_peaks(
             _ => None,
         };
         let regular = quiet_run >= QUIET_RUN || steady.is_some_and(|(_, run)| run >= QUIET_RUN);
-        let weak = faint && !regular;
+        // A match of nothing never steers the correlation track, with a
+        // level or without (#786).
+        let nothing = gate.is_none() && v < NOTHING * typical[side(k)];
+        let weak = faint && !regular || nothing;
         let take = gate.is_some()
             || out.len() < 4
             || (t - pred).abs() < MAX_OFFSET * per
@@ -307,6 +316,11 @@ fn rms(x: &[f32]) -> f32 {
 /// nominal beat. A watch 1 % fast gains 864 s a day, so this allows ten
 /// times any watch's error.
 const PER_MIN: f64 = 0.9;
+
+/// A match below this share of the side's typical beat is nothing heard:
+/// the correlation's rounding error near a beat in digital silence is a
+/// hundred-millionth of a beat, a silent stand's match a few percent.
+const NOTHING: f32 = 1e-3;
 
 /// How far from where it is due a beat may be found once the track is
 /// running, as a fraction of the beat period. Beat-to-beat changes in
@@ -1725,6 +1739,47 @@ mod tests {
             .count();
         assert!(flat <= 3584, "{flat} picks over the flat stretch");
         assert!(after >= 75, "{after} beats after the flat stretch");
+    }
+
+    /// The whole detection over a long digital silence finds the watch
+    /// either side of it, on its beats, and nothing in it. With no level
+    /// carried in, the track used to take up the correlation's rounding
+    /// noise just before the watch came back, then follow the noise most
+    /// of half a beat away from the beats (#786).
+    #[test]
+    fn a_long_digital_silence_is_detected_through() {
+        let x = watch_with_digital_silence(400.0);
+        let (beats, _) = within_a_minute(move || detect(&x, 8000.0, 28_800));
+        let good: Vec<f64> = beats
+            .iter()
+            .filter(|b| b.is_good())
+            .map(|b| b.time)
+            .collect();
+        let on_beat = |t: f64| ((t - 0.05) / 0.125 - ((t - 0.05) / 0.125).round()).abs() < 0.01;
+        assert!(good.iter().all(|&t| on_beat(t)), "a beat off the watch's");
+        assert!(
+            good.iter().all(|&t| !(10.0..410.0).contains(&t)),
+            "a good beat in the silence"
+        );
+        let after = good.iter().filter(|&&t| t >= 410.0).count();
+        assert!(after >= 78, "{after} good beats after the silence");
+    }
+
+    /// With no level, a watch heard again far more quietly, and out of
+    /// step, is still taken up after a run missed: only a match near
+    /// nothing is passed over (#786).
+    #[test]
+    fn a_quiet_watch_after_a_silence_is_taken_up_with_no_level() {
+        // 5 s at full height, 5 s of exact zeros, then 5 s a twentieth as
+        // high and 30 ms (a quarter of a beat) later.
+        let loud = beats_at(0..40, 1.0);
+        let quiet = beats_at(80..120, 0.05).map(|(i, h)| (i + 240, h));
+        let x = clicks(15 * 8000, loud.chain(quiet));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
+        let after: Vec<f64> = peaks.iter().map(|p| p.0).filter(|&t| t >= 10.0).collect();
+        let on_beat = |t: f64| ((t - 0.08) / 0.125 - ((t - 0.08) / 0.125).round()).abs() < 0.01;
+        assert!(after.len() >= 30, "{} beats after the silence", after.len());
+        assert!(after.iter().all(|&t| on_beat(t)), "a beat off the watch's");
     }
 
     /// A watch that falls digitally silent for most of the sound is still
