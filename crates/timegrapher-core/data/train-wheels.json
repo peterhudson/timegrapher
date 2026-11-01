@@ -2049,7 +2049,7 @@
       "Project bench measurement: 28,800 vph, does not hack",
       "https://forum.replica-watch.info/threads/guide-how-to-understand-the-timegrapher-video-during-qc.11019462/ (lift angles used for clone and genuine calibres)",
       "docs/dd324-train-wheel-counts.md — Peter Hudson, eight DD324 microscope photographs and confirmed SL1258 train applicability, 2026-10-21",
-      "Prior bench observation: 60 s rate and amplitude cycle in patek324_DU_30min; not sufficient alone to distinguish fourth wheel from indirect seconds pinion"
+      "Prior bench observation: 60 s rate and amplitude cycle in aquanaut324_DU_30min; not sufficient alone to distinguish fourth wheel from indirect seconds pinion"
     ],
     "confidence": "derived from tooth counts",
     "notes": "Full DD324 train counted from eight photographs: barrel 93, second 60/18, third 90 with 10 leaves on both faces, fourth 84/9, escape 20/7. The centre-wheel slot represents the second wheel; indirect seconds uses a separate 9-leaf pinion driven by the third-wheel rim. The 60-tooth cannon wheel is driven by the third wheel’s 10-leaf pinion; its own 28 leaves serve the motion works. Barrel drum period 18600 s (5 h 10 min), not power reserve. The photographed fourth wheel resolves the earlier underdetermined 28:3 ratio. Genuine Patek 324 entries are outside this contribution. Does not hack per existing bench notes. The retained 52° lift angle comes from the existing forum guide, not these tooth counts."
