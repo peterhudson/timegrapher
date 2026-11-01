@@ -204,10 +204,6 @@ impl TimegrapherApp {
     /// The Positions Test pane's toolbar: start the test, load the
     /// full-wind results for the 24 hour half, the times in each
     /// position, and saving or copying the results.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn positions_settings(&mut self, ui: &mut egui::Ui) {
         let running = self.guided_running();
         // While it runs, the step panel and the Listen card carry its
@@ -239,6 +235,15 @@ impl TimegrapherApp {
             }
             theme::bar_gap(ui);
         }
+        self.positions_wind(ui, running);
+        theme::bar_gap(ui);
+        self.positions_lengths(ui, running);
+        self.positions_results(ui);
+    }
+
+    /// The Positions Test settings' Wind choice (Full Wind or 24 Hours After)
+    /// with Compare With, or, with no watch open, Load Full-Wind Results….
+    fn positions_wind(&mut self, ui: &mut egui::Ui, running: bool) {
         if self.open_watch().is_some() {
             let was = self.guided_after;
             ui.add_enabled_ui(!running, |ui| {
@@ -295,7 +300,10 @@ impl TimegrapherApp {
                 self.load_earlier();
             }
         }
-        theme::bar_gap(ui);
+    }
+
+    /// The Positions Test settings' Settle and Each Position fields.
+    fn positions_lengths(&mut self, ui: &mut egui::Ui, running: bool) {
         theme::tool_field(
             ui,
             "Settle",
@@ -346,6 +354,11 @@ impl TimegrapherApp {
                 .on_disabled_hover_text(FIXED_IN_TEST);
             },
         );
+    }
+
+    /// The Positions Test settings' Save as CSV…, Copy and Save Results for 24
+    /// Hours….
+    fn positions_results(&mut self, ui: &mut egui::Ui) {
         let has = self
             .guided
             .as_ref()
