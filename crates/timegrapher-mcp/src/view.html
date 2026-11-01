@@ -575,14 +575,12 @@ function readingTiles(f) {
   </div>`;
 }
 
-// What follows the tiles: the caveats, which say what limits the readings,
-// clipping among them (a server without them still gets the clipping
-// notice), then the strips and the Tick and Tock profile.
+// What follows the tiles: the caveats, which say what limits the readings
+// in the server's (core's) words, clipping among them when core counts it
+// (#808), then the strips and the Tick and Tock profile.
 function recordingCards(doc, extra, limits, dropBeatError) {
-  const clipped = doc.clipping && doc.clipping.beat_fraction > 0.01;
   let html = "";
   if (limits && limits.length) html += limitsCard(limits);
-  else if (clipped) html += `<div class="card notice"><b>Clipping</b>${num(doc.clipping.beat_fraction * 100, 1)}% of beats were clipped.</div>`;
   html += stripCards(extra && extra.strip);
   html += profileCard(extra && extra.profile, "Tick and Tock", dropBeatError);
   return html;
@@ -1825,7 +1823,11 @@ function pollLive() {
     const d = r && r.structuredContent;
     mine.failures = 0;
     if (d && d.recording) {
-      if (d.schema && d.recorded_s != null) { mine.doc = d; mine.pm = r._meta && r._meta["timegrapher/pm"]; }
+      if (d.schema && d.recorded_s != null) {
+        mine.doc = d;
+        mine.pm = r._meta && r._meta["timegrapher/pm"];
+        mine.limits = r._meta && r._meta["timegrapher/limits"];
+      }
       mine.seen = true;
     }
     redraw();
@@ -1914,7 +1916,8 @@ function liveView(l) {
     ${tile("Beat Error", "--beat-error", heard ? num(abs(be), 2) : "–", "milliseconds", heard ? (Number.isFinite(r.beat_error_unlock_ms) ? "from the unlock" : "from the drop") : wait)}
     ${tile("Beats Heard", "", esc(d.beats_heard || 0), "", heard ? `${esc(r.beats_used)} in the last ${num(r.span_s, 0)} s` : wait)}
   </div>`;
-  if (r.clipped_fraction > 0.01) html += `<div class="card notice"><b>Clipping</b>${num(r.clipped_fraction * 100, 0)}% of beats are clipped.</div>`;
+  // Clipping, when core counts it, in the server's (core's) words (#808).
+  if (l.limits && l.limits.length) html += limitsCard(l.limits);
   html += liveStrip(d);
   html += stripCards(trendStrip(d.trend));
   return html;
