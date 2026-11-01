@@ -596,24 +596,27 @@ pub fn harmonic_offset(period_s: f64, resolution_s: f64, n: u8, of_s: f64) -> f6
     (f - f64::from(n) / of_s).abs() / (resolution_s * f * f)
 }
 
-/// For each component, the found cycle it is a harmonic of: the smallest
-/// n (2 to 8) whose n times that cycle's frequency is within one
+/// For each component, the found cycle it is a harmonic of: the one n (2
+/// to 8) and found cycle q for which n times q's frequency is within one
 /// resolution (1/span) of its own ([`harmonic_offset`] under 1).
 /// Neighbouring n are 1/q apart in frequency, more than the two
 /// resolutions (2/span) the test spans when q < span/2, so then at most
-/// one fits; a q nearer the span can fit two.
+/// one fits. A q nearer the span can fit two, and then no n is told, as
+/// for a wheel's fraction (#789): over 580 s, 224.84 s is 0.43
+/// resolutions from 2 turns of 540 s and 0.64 from 3.
 fn label_harmonics(components: &mut [Component]) {
     let found: Vec<f64> = components.iter().map(|c| c.period_s).collect();
     for c in components.iter_mut() {
-        let off = |n: u8, q: f64| harmonic_offset(c.period_s, c.resolution_s, n, q);
-        c.harmonic_of = (2..=8u8).find_map(|n| {
+        let (p, res) = (c.period_s, c.resolution_s);
+        let mut fits = (2..=8u8).flat_map(|n| {
             found
                 .iter()
                 .copied()
-                .filter(|&q| off(n, q) < 1.0)
-                .min_by(|&a, &b| off(n, a).total_cmp(&off(n, b)))
-                .map(|q| Harmonic { period_s: q, n })
+                .filter(move |&q| harmonic_offset(p, res, n, q) < 1.0)
+                .map(move |q| Harmonic { period_s: q, n })
         });
+        let first = fits.next();
+        c.harmonic_of = first.filter(|_| fits.next().is_none());
     }
 }
 
@@ -1085,6 +1088,33 @@ mod tests {
             );
             assert!(cs[0].harmonic_of.is_none());
         }
+    }
+
+    /// When the found cycle is near the span, two whole numbers can both
+    /// fit within one resolution, and then neither is told (#789): over
+    /// 580 s, 224.84 s is 0.43 resolutions from 2 turns of 540 s and 0.64
+    /// from 3. Taking the first fit would call it the 2nd.
+    #[test]
+    fn a_harmonic_that_two_whole_numbers_fit_is_not_labelled() {
+        let tau = std::f64::consts::TAU;
+        let g = series(600, 1.0, |t| (tau * t / 60.0).sin(), 0.1, 13);
+        let one = analyse(&g, &LongConfig::default()).components.remove(0);
+        let at = |p: f64| Component {
+            period_s: p,
+            resolution_s: p * p / 580.0,
+            harmonic_of: None,
+            ..one.clone()
+        };
+        let off = |n| harmonic_offset(224.84, 224.84 * 224.84 / 580.0, n, 540.0);
+        assert!(off(2) < 1.0 && off(3) < 1.0, "{} {}", off(2), off(3));
+        let mut cs = vec![at(540.0), at(224.84)];
+        label_harmonics(&mut cs);
+        assert!(cs[1].harmonic_of.is_none(), "{:?}", cs[1].harmonic_of);
+        // A single fit on the same span is still told: 270 s is 2 turns'
+        // exactly and 1.07 resolutions from 3.
+        let mut cs = vec![at(540.0), at(270.0)];
+        label_harmonics(&mut cs);
+        assert_eq!(cs[1].harmonic_of.map(|h| h.n), Some(2));
     }
 
     /// A line is at a whole fraction of a wheel's turn by the same
