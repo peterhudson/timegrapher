@@ -757,12 +757,9 @@ function sig(v) {
 }
 function pText(p) { return p < 1e-300 ? "<1e-300" : p < 0.001 ? p.toExponential(0).replace("e-", "e-") : p.toFixed(3); }
 function wheelTitle(name) { return String(name).split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "); }
-// steady::value_text and plain: decimals from the step, no "-0".
-function stepText(v, step, unit) {
-  const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
-  if (Math.abs(v) < step * 1e-6) v = 0;
-  return v.toFixed(d) + (unit || "");
-}
+// The app's steady.rs value_text: core's axis_number with the unit, which
+// is axisLabel (#815).
+function stepText(v, step, unit) { return axisLabel(v, step, unit); }
 // steady::log_grid and log_label: every decade, with 2 and 5 inside each,
 // drawn and labelled when fewer than three decades show.
 function logTicks(lo, hi, fmt) {
