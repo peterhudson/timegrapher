@@ -4,7 +4,7 @@
 //! deflated, so a bundle someone unpacked and zipped again still replays.
 //! What a bundle may hold and run is checked by its reader, not here.
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -12,8 +12,114 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 /// The most a bundle may unpack to, bytes. Real bundles are a few MB; the
-/// limit keeps a crafted one from filling memory.
+/// 1 GiB limit leaves ample room while keeping a crafted one from filling memory.
 const MAX_UNPACKED: u64 = 1 << 30;
+
+/// At most 10,000 files and directories in an unpacked bundle. Reports have
+/// only tens of entries; this also bounds work and storage for empty entries.
+const MAX_ENTRIES: usize = 10_000;
+/// At most 16 path components below the bundle root, including the file name.
+/// Reports use only a few levels; this bounds traversal of deeply nested input.
+const MAX_DEPTH: usize = 16;
+
+/// A decompressed byte limit in the report reader's MB/GB wording.
+/// These units retain the ZIP reader's binary sizes and existing labels.
+pub(crate) fn unpacked_size(bytes: u64) -> String {
+    const MB: u64 = 1 << 20;
+    const GB: u64 = 1 << 30;
+    if bytes >= GB {
+        format!("{} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{} MB", bytes as f64 / MB as f64)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
+/// Read no more than one byte past the remaining unpacked budget.
+pub(crate) fn read_limited(mut reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+    reader.by_ref().take(limit + 1).read_to_end(&mut data)?;
+    Ok(data)
+}
+
+/// The files of an unpacked report bundle, with names relative to `path`.
+/// Links and special files are errors: the bundle writer never makes them.
+pub fn read_folder(path: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+    read_folder_with_limits(path, MAX_UNPACKED, MAX_ENTRIES, MAX_DEPTH)
+}
+
+fn read_folder_with_limits(
+    path: &Path,
+    max_unpacked: u64,
+    max_entries: usize,
+    max_depth: usize,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let bad = |p: &Path, what: &dyn std::fmt::Display| format!("{}: {what}", p.display());
+    let metadata = std::fs::symlink_metadata(path).map_err(|e| bad(path, &e))?;
+    if metadata.file_type().is_symlink() {
+        return Err(bad(path, &"symlink; not a report bundle"));
+    }
+    let mut stack = vec![(std::fs::read_dir(path).map_err(|e| bad(path, &e))?, 0)];
+    let mut entries = Vec::new();
+    let mut count = 0;
+    let mut left = max_unpacked;
+    while let Some((dir, depth)) = stack.last_mut() {
+        let Some(entry) = dir.next() else {
+            stack.pop();
+            continue;
+        };
+        let entry = entry.map_err(|e| bad(path, &e))?;
+        let p = entry.path();
+        let depth = *depth + 1;
+        count += 1;
+        if count > max_entries {
+            return Err(bad(
+                &p,
+                &format!("more than {max_entries} entries; not a report bundle"),
+            ));
+        }
+        if depth > max_depth {
+            return Err(bad(
+                &p,
+                &format!("depth exceeds {max_depth}; not a report bundle"),
+            ));
+        }
+        let kind = entry.file_type().map_err(|e| bad(&p, &e))?;
+        if kind.is_symlink() {
+            return Err(bad(&p, &"symlink; not a report bundle"));
+        }
+        if kind.is_dir() {
+            stack.push((std::fs::read_dir(&p).map_err(|e| bad(&p, &e))?, depth));
+        } else if kind.is_file() {
+            let file = std::fs::File::open(&p).map_err(|e| bad(&p, &e))?;
+            let data = read_limited(file, left).map_err(|e| bad(&p, &e))?;
+            left = left.checked_sub(data.len() as u64).ok_or_else(|| {
+                bad(
+                    &p,
+                    &format!(
+                        "unpacks to more than {}; not a report bundle",
+                        unpacked_size(max_unpacked)
+                    ),
+                )
+            })?;
+            let name = p
+                .strip_prefix(path)
+                .map_err(|e| bad(&p, &e))?
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            entries.push((name, data));
+        } else {
+            return Err(bad(
+                &p,
+                &"not a regular file or directory; not a report bundle",
+            ));
+        }
+    }
+    Ok(entries)
+}
 
 /// Write `entries` (name, bytes) as a ZIP file with stored entries.
 pub fn write_zip(path: &Path, entries: &[(String, Vec<u8>)]) -> Result<(), String> {
@@ -41,25 +147,28 @@ pub fn write_zip(path: &Path, entries: &[(String, Vec<u8>)]) -> Result<(), Strin
 /// entries are left out. A damaged entry (a bad CRC, a truncated file) is
 /// an error.
 pub fn read_zip(path: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+    read_zip_with_limit(path, MAX_UNPACKED)
+}
+
+fn read_zip_with_limit(path: &Path, max_unpacked: u64) -> Result<Vec<(String, Vec<u8>)>, String> {
     let bad = |what: &dyn std::fmt::Display| format!("{}: {what}", path.display());
     let file = std::fs::File::open(path).map_err(|e| bad(&e))?;
     let mut zip = ZipArchive::new(std::io::BufReader::new(file)).map_err(|e| bad(&e))?;
     let mut entries = Vec::with_capacity(zip.len());
-    let mut left = MAX_UNPACKED;
+    let mut left = max_unpacked;
     for i in 0..zip.len() {
         let f = zip.by_index(i).map_err(|e| bad(&e))?;
         if f.is_dir() {
             continue;
         }
         let name = f.name().map_err(|e| bad(&e))?.into_owned();
-        let mut data = Vec::new();
-        // One byte past the limit tells a bundle at the limit from one over.
-        f.take(left + 1)
-            .read_to_end(&mut data)
-            .map_err(|e| bad(&format!("{name} is damaged ({e})")))?;
-        left = left
-            .checked_sub(data.len() as u64)
-            .ok_or_else(|| bad(&"unpacks to more than 1 GB; not a report bundle"))?;
+        let data = read_limited(f, left).map_err(|e| bad(&format!("{name} is damaged ({e})")))?;
+        left = left.checked_sub(data.len() as u64).ok_or_else(|| {
+            bad(&format!(
+                "unpacks to more than {}; not a report bundle",
+                unpacked_size(max_unpacked)
+            ))
+        })?;
         entries.push((name, data));
     }
     Ok(entries)
@@ -176,5 +285,152 @@ mod tests {
         try_bytes(&[0u8; 64]);
         std::fs::remove_file(&p).unwrap();
         std::fs::remove_file(&q).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod size_limit_tests {
+    use super::*;
+
+    fn folder(tag: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("tg-folder-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn folder_byte_limit_is_total_and_inclusive() {
+        let p = folder("bytes");
+        std::fs::write(p.join("a"), [0; 8]).unwrap();
+        std::fs::create_dir(p.join("nested")).unwrap();
+        std::fs::write(p.join("nested/b"), [0; 8]).unwrap();
+        assert_eq!(read_folder_with_limits(&p, 16, 3, 2).unwrap().len(), 2);
+        std::fs::write(p.join("nested/b"), [0; 9]).unwrap();
+        let err = read_folder_with_limits(&p, 16, 3, 2).unwrap_err();
+        assert!(err.contains("more than 16 bytes"), "{err}");
+        std::fs::remove_dir_all(p).unwrap();
+    }
+
+    #[test]
+    fn folder_entry_limit_counts_empty_directories() {
+        let p = folder("entries");
+        std::fs::create_dir_all(p.join("a/b")).unwrap();
+        assert!(read_folder_with_limits(&p, 0, 2, 3).unwrap().is_empty());
+        std::fs::create_dir(p.join("c")).unwrap();
+        let err = read_folder_with_limits(&p, 0, 2, 3).unwrap_err();
+        assert!(err.contains("more than 2 entries"), "{err}");
+        std::fs::remove_dir_all(p).unwrap();
+    }
+
+    #[test]
+    fn folder_depth_limit_counts_path_components() {
+        let p = folder("depth");
+        std::fs::create_dir_all(p.join("a/b")).unwrap();
+        assert!(read_folder_with_limits(&p, 0, 4, 2).unwrap().is_empty());
+        std::fs::write(p.join("a/b/c"), []).unwrap();
+        let err = read_folder_with_limits(&p, 0, 4, 2).unwrap_err();
+        assert!(err.contains("depth exceeds 2"), "{err}");
+        std::fs::remove_dir_all(p).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn folder_file_symlink_is_refused_by_path() {
+        let p = folder("file-link");
+        let target = p.join("target");
+        std::fs::write(&target, b"data").unwrap();
+        let link = p.join("link");
+        std::os::unix::fs::symlink(target, &link).unwrap();
+        let err = read_folder(&p).unwrap_err();
+        assert!(
+            err.contains("symlink") && err.contains(&link.display().to_string()),
+            "{err}"
+        );
+        std::fs::remove_dir_all(p).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn folder_directory_symlink_is_refused_by_path() {
+        let p = folder("dir-link");
+        let target = p.join("target");
+        std::fs::create_dir(&target).unwrap();
+        let link = p.join("link");
+        std::os::unix::fs::symlink(target, &link).unwrap();
+        let err = read_folder(&p).unwrap_err();
+        assert!(
+            err.contains("symlink") && err.contains(&link.display().to_string()),
+            "{err}"
+        );
+        // The supplied root must not be followed either.
+        let err = read_folder(&link).unwrap_err();
+        assert!(
+            err.contains("symlink") && err.contains(&link.display().to_string()),
+            "{err}"
+        );
+        std::fs::remove_dir_all(p).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod limit_wording_tests {
+    use super::*;
+
+    #[test]
+    fn folder_and_zip_limits_use_megabytes() {
+        let path = std::env::temp_dir().join(format!("tg-limit-words-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        let limit = 1 << 20;
+        let data = vec![0; limit + 1];
+        std::fs::write(path.join("data"), &data).unwrap();
+        let folder_err = read_folder_with_limits(&path, limit as u64, 1, 1).unwrap_err();
+        let zip = path.join("report.zip");
+        write_zip(&zip, &[("data".into(), data)]).unwrap();
+        let zip_err = read_zip_with_limit(&zip, limit as u64).unwrap_err();
+        for err in [folder_err, zip_err] {
+            assert!(
+                err.contains("unpacks to more than 1 MB; not a report bundle"),
+                "{err}"
+            );
+        }
+        assert_eq!(unpacked_size(MAX_UNPACKED), "1 GB");
+        std::fs::remove_dir_all(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod bounded_read_tests {
+    use super::*;
+    use std::io;
+
+    struct Counted {
+        bytes: usize,
+        allowed: usize,
+    }
+
+    impl Read for Counted {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            assert!(
+                buf.len() <= self.allowed - self.bytes,
+                "read exceeds limit plus one"
+            );
+            buf.fill(0);
+            self.bytes += buf.len();
+            Ok(buf.len())
+        }
+    }
+
+    #[test]
+    fn folder_read_stops_at_limit_plus_one() {
+        let limit = 16;
+        let mut reader = Counted {
+            bytes: 0,
+            allowed: limit + 1,
+        };
+        let data = read_limited(&mut reader, limit as u64).unwrap();
+        assert_eq!(data.len(), limit + 1);
+        assert_eq!(reader.bytes, limit + 1);
     }
 }

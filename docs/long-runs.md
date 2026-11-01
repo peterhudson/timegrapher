@@ -246,10 +246,12 @@ minus the slope of the average cycle, in s/d. A cycle shorter than 30 s
 peak to peak: an escape wheel's tooth pattern moves each beat by a fraction
 of a millisecond, which as a slope is hundreds of s/d that no rate reading
 would show. The swing in s/d is that of the rate itself, moment to
-moment through the cycle. A rate reading averages over its 10 s, so
-`series`' cycle (folded from the readings) and the FFT's swing in the
-readings (`spectra[].reading_swing`) show less of it: sin *x*/*x* of it,
-*x* = π·10/*P*, for a sine of period *P*. The JSON keeps `peak_to_peak` in s/d and adds
+moment through the cycle. A rate reading is the slope of a line fitted
+through its 10 s of beats, so `series`' cycle (folded from the readings)
+and the FFT's swing in the readings (`spectra[].reading_swing`) show
+less of it: 3(sin *x* − *x* cos *x*)/*x*³ of it, *x* = π·10/*P*, for a
+sine of period *P* (a plain average over the 10 s would keep sin *x*/*x*,
+which is 18% less at 20 s). The JSON keeps `peak_to_peak` in s/d and adds
 `timing_peak_to_peak_ms`, plus `size` and `size_unit` for the figure to
 show.
 

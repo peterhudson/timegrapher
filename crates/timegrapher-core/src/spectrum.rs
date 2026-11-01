@@ -56,13 +56,20 @@ pub struct ReadingSwing {
 }
 
 /// The peak-to-peak swing, s/d, that a beat-timing sine `amp_ms` in size
-/// with period `period_s` makes in rate readings each averaged over
+/// with period `period_s` makes in rate readings each fitted over
 /// `reading_s`: the timing's slope, `2π·amp/period` ms per second, is
-/// 86.4 s/d for each ms per second, and averaging over a reading keeps
-/// `sin(x)/x` of it, `x = π·reading/period`.
+/// 86.4 s/d for each ms per second, and a reading's rate, the slope of a
+/// least-squares line through its beat times, keeps `3(sin x − x cos x)/x³`
+/// of it, `x = π·reading/period` (#478). A plain average of the rate
+/// would keep `sin(x)/x`, which reads the swing up to 18% low at twice
+/// a reading.
 pub fn reading_swing(amp_ms: f64, period_s: f64, reading_s: f64) -> f64 {
     let x = std::f64::consts::PI * reading_s / period_s;
-    let kept = if x == 0.0 { 1.0 } else { (x.sin() / x).abs() };
+    let kept = if x < 1e-4 {
+        1.0 - x * x / 10.0
+    } else {
+        (3.0 * (x.sin() - x * x.cos()) / x.powi(3)).abs()
+    };
     2.0 * amp_ms * std::f64::consts::TAU / period_s * 86.4 * kept
 }
 
@@ -336,16 +343,44 @@ pub fn amplitude_spectrum(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beats::Beat;
 
     #[test]
     fn a_timing_wave_is_drawn_as_the_swing_in_rate_readings() {
-        // 0.157 ms of timing at 46 s is 3.7 s/d peak to peak in the rate
-        // itself; a 10 s reading keeps sin(x)/x of it, x = π·10/46.
-        let x = std::f64::consts::PI * 10.0 / 46.0;
-        let swing = reading_swing(0.157, 46.0, 10.0);
-        assert!((swing - 3.70 * x.sin() / x).abs() < 0.02, "{swing}");
-        // A wave as long as a reading averages away.
-        assert!(reading_swing(1.0, 10.0, 10.0) < 1e-9);
+        // A 0.157 ms timing sine at 28,800 bph, read as timing::fit reads a
+        // 10 s rate reading (80 beats), at 360 phases: the swing peak to
+        // peak in those readings is what reading_swing says, at 20 s
+        // (where a plain average said 17.8% less), 30, 46 and 60 s.
+        let beat = 0.125;
+        for period in [20.0, 30.0, 46.0, 60.0] {
+            let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+            for k in 0..360 {
+                let phase = std::f64::consts::TAU * k as f64 / 360.0;
+                let beats: Vec<Beat> = (0..80)
+                    .map(|i| {
+                        let t = i as f64 * beat;
+                        Beat {
+                            index: i,
+                            time: t + 0.157e-3 * (std::f64::consts::TAU * t / period + phase).sin(),
+                            quality: 1.0,
+                        }
+                    })
+                    .collect();
+                let r = crate::timing::fit(&beats, 28_800).unwrap().rate_s_per_day;
+                (lo, hi) = (lo.min(r), hi.max(r));
+            }
+            let swing = reading_swing(0.157, period, 10.0);
+            assert!(
+                ((hi - lo) / swing - 1.0).abs() < 0.02,
+                "{period} s: fitted {} against {swing}",
+                hi - lo
+            );
+        }
+        // Small x: the fit keeps all of a slow wave's slope.
+        assert!(
+            (reading_swing(1.0, 1e6, 10.0) / (2.0 * std::f64::consts::TAU * 86.4e-6) - 1.0).abs()
+                < 1e-9
+        );
     }
 
     #[test]

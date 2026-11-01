@@ -20,7 +20,9 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{self, Read, Write};
+#[cfg(test)]
+use std::io::Read;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 /// The folder the analysis is kept in, inside the take's folder.
@@ -40,6 +42,15 @@ pub const PROFILE_EVERY_S: f64 = 2.0;
 /// Seconds of sound the beat shape is measured on, as `timegrapher
 /// session` measures it.
 pub const SHAPE_S: f64 = 60.0;
+
+/// At most 512 MiB decompressed per analysis file. A 100-hour take at
+/// 36,000 bph has 3,600,000 beats: even 64 bytes per CSV row is 230.4 MB.
+/// Its 180,000 two-second profiles, with at most 141 points per curve
+/// (28 ms / 0.2 ms, rounded up), use about 168.5 MB:
+/// 28 + 180,000 * (12 + 2 * (39 + 3 * 141)). Even one 256-byte window row
+/// per second uses only 92.2 MB. 512 MiB leaves over twice these sizes
+/// while bounding a crafted gzip's allocation.
+const MAX_ANALYSIS_FILE: u64 = 512 << 20;
 
 /// Audio either side of a profile's stretch, for its beats' windows, as
 /// the app's profile pane reads it.
@@ -411,6 +422,10 @@ pub fn write(take: &Path, s: &Stored) -> io::Result<()> {
 
 /// Read `analysis/` from the take folder `take`.
 pub fn read(take: &Path) -> io::Result<Stored> {
+    read_with_limit(take, MAX_ANALYSIS_FILE)
+}
+
+fn read_with_limit(take: &Path, limit: u64) -> io::Result<Stored> {
     let dir = take.join(DIR);
     let text = fs::read_to_string(dir.join(HEADER))
         .map_err(|e| io::Error::new(e.kind(), format!("{DIR}/{HEADER}: {e}")))?;
@@ -431,12 +446,16 @@ pub fn read(take: &Path) -> io::Result<Stored> {
         serde_json::from_str(&text).map_err(|e| invalid(format!("{DIR}/{HEADER}: {e}")))?;
     check_header(&header).map_err(|e| invalid(format!("{DIR}/{HEADER}: {e}")))?;
     let gunzip = |name: &str| -> io::Result<Vec<u8>> {
-        let raw = fs::read(dir.join(name))
+        let file = fs::File::open(dir.join(name))
             .map_err(|e| io::Error::new(e.kind(), format!("{DIR}/{name}: {e}")))?;
-        let mut out = Vec::new();
-        GzDecoder::new(&raw[..])
-            .read_to_end(&mut out)
+        let out = crate::archive::read_limited(GzDecoder::new(io::BufReader::new(file)), limit)
             .map_err(|e| invalid(format!("{DIR}/{name}: {e}")))?;
+        if out.len() as u64 > limit {
+            return Err(invalid(format!(
+                "{DIR}/{name} unpacks to more than {}",
+                crate::archive::unpacked_size(limit)
+            )));
+        }
         Ok(out)
     };
     let text = |name: &str| -> io::Result<String> {
@@ -1246,5 +1265,151 @@ mod tests {
             ..m
         };
         assert_eq!(shape_stretches(&off, 300.0), vec![None, None]);
+    }
+}
+
+#[cfg(test)]
+mod size_limit_tests {
+    use super::*;
+
+    fn take(tag: &str) -> PathBuf {
+        let p =
+            std::env::temp_dir().join(format!("tg-analysis-limit-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&p);
+        let dir = p.join(DIR);
+        fs::create_dir_all(&dir).unwrap();
+        let header = serde_json::json!({
+            "format": FORMAT, "software": {}, "audio": false, "note": NO_SOUND,
+            "sample_rate": 48000, "bytes_per_frame": 2, "duration_s": 1.0,
+            "bph": 36000, "lift_deg": 52.0, "clipped_samples": 0,
+            "jumps": [], "sided": [], "settings": {}, "beats": 1,
+            "windows": 0, "profiles": 0, "shape": []
+        });
+        fs::write(dir.join(HEADER), header.to_string()).unwrap();
+        fs::write(
+            dir.join(BEATS),
+            gzip(format!("{BEATS_COLUMNS}\n1,0,1,0\n").as_bytes()).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            dir.join(WINDOWS),
+            gzip(format!("{WINDOWS_COLUMNS}\n").as_bytes()).unwrap(),
+        )
+        .unwrap();
+        fs::write(dir.join(PROFILES), gzip(&profiles_bin(&[])).unwrap()).unwrap();
+        p
+    }
+
+    #[test]
+    fn analysis_gzip_bombs_are_refused_by_file() {
+        for name in [BEATS, WINDOWS, PROFILES] {
+            let p = take(name);
+            let (field, rows, raw) = match name {
+                BEATS => (
+                    "beats",
+                    1,
+                    format!("{BEATS_COLUMNS}\n1,0,1,0,{}\n", "0".repeat(1 << 20)).into_bytes(),
+                ),
+                WINDOWS => (
+                    "windows",
+                    32_768,
+                    format!("{WINDOWS_COLUMNS}\n{}", "0,1,,,,,,,,\n".repeat(32_768)).into_bytes(),
+                ),
+                _ => {
+                    let profiles = vec![
+                        StretchProfiles {
+                            end_s: 2.0,
+                            signal: None,
+                            sides: [None, None]
+                        };
+                        32_768
+                    ];
+                    ("profiles", profiles.len(), profiles_bin(&profiles))
+                }
+            };
+            let header_path = p.join(DIR).join(HEADER);
+            let mut header: serde_json::Value =
+                serde_json::from_slice(&fs::read(&header_path).unwrap()).unwrap();
+            header[field] = serde_json::json!(rows);
+            fs::write(header_path, header.to_string()).unwrap();
+            let compressed = gzip(&raw).unwrap();
+            assert!(
+                compressed.len() < 4096,
+                "{name}: {} compressed bytes",
+                compressed.len()
+            );
+            fs::write(p.join(DIR).join(name), compressed).unwrap();
+            let result = std::panic::catch_unwind(|| read_with_limit(&p, 1024));
+            let err = result.expect("reader panicked").unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+            let message = err.to_string();
+            assert!(
+                message.contains(name) && message.contains("more than 1024 bytes"),
+                "{message}"
+            );
+            fs::remove_dir_all(p).unwrap();
+        }
+    }
+
+    #[test]
+    fn analysis_decompressed_limit_is_inclusive() {
+        let p = take("boundary");
+        let mut text = format!("{BEATS_COLUMNS}\n1,0,1,0,");
+        text.extend(std::iter::repeat_n('0', 1023 - text.len()));
+        text.push('\n');
+        assert_eq!(text.len(), 1024);
+        fs::write(p.join(DIR).join(BEATS), gzip(text.as_bytes()).unwrap()).unwrap();
+        assert_eq!(read_with_limit(&p, 1024).unwrap().log.beats.len(), 1);
+        // An extra CSV field is accepted by the existing parser, so size alone fails.
+        text.insert(text.len() - 1, '0');
+        fs::write(p.join(DIR).join(BEATS), gzip(text.as_bytes()).unwrap()).unwrap();
+        let err = read_with_limit(&p, 1024).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string().contains(BEATS) && err.to_string().contains("more than 1024 bytes"),
+            "{err}"
+        );
+        fs::remove_dir_all(p).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod limit_wording_tests {
+    use super::*;
+
+    #[test]
+    fn analysis_limit_error_uses_megabytes() {
+        let path = std::env::temp_dir().join(format!("tg-analysis-words-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(path.join(DIR)).unwrap();
+        let header = serde_json::json!({
+            "format": FORMAT, "software": {}, "audio": false, "note": NO_SOUND,
+            "sample_rate": 48000, "bytes_per_frame": 2, "duration_s": 1.0,
+            "bph": 36000, "lift_deg": 52.0, "clipped_samples": 0,
+            "jumps": [], "sided": [], "settings": {}, "beats": 1,
+            "windows": 0, "profiles": 0, "shape": []
+        });
+        fs::write(path.join(DIR).join(HEADER), header.to_string()).unwrap();
+        fs::write(
+            path.join(DIR).join(WINDOWS),
+            gzip(format!("{WINDOWS_COLUMNS}\n").as_bytes()).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            path.join(DIR).join(PROFILES),
+            gzip(&profiles_bin(&[])).unwrap(),
+        )
+        .unwrap();
+        let raw = format!("{BEATS_COLUMNS}\n1,0,1,0,{}\n", "0".repeat(1 << 20));
+        fs::write(path.join(DIR).join(BEATS), gzip(raw.as_bytes()).unwrap()).unwrap();
+        let err = read_with_limit(&path, 1 << 20).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string()
+                .contains("beats.csv.gz unpacks to more than 1 MB"),
+            "{err}"
+        );
+        assert_eq!(crate::archive::unpacked_size(MAX_ANALYSIS_FILE), "512 MB");
+        fs::remove_dir_all(path).unwrap();
     }
 }
