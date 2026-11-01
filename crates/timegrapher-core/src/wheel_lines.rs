@@ -293,7 +293,7 @@ pub fn line(
         }
         let wsum: f64 = inside.iter().map(|x| 1.0 / (x.se * x.se)).sum();
         let size = inside.iter().map(|x| x.size / (x.se * x.se)).sum::<f64>() / wsum;
-        let se = 1.0 / wsum.sqrt();
+        let se = weighted_mean_se(&inside, wsum);
         bins.push(LineBin {
             from_deg: from,
             windows: inside.len(),
@@ -312,6 +312,24 @@ pub fn line(
         bins,
         windows: keep_windows.then_some(windows),
     })
+}
+
+/// The standard error of the windows' weighted mean (weights one over
+/// their SE squared, summing to `wsum`). Windows that overlap share
+/// readings, so their errors move together: two windows sharing a
+/// fraction f of their length are taken to correlate at f, as a fit on
+/// noise that does not follow itself would, and that covariance is
+/// carried into the mean instead of treating the windows as independent.
+fn weighted_mean_se(inside: &[&LineWindow], wsum: f64) -> f64 {
+    let mut shared = 0.0;
+    for (i, a) in inside.iter().enumerate() {
+        for b in &inside[i + 1..] {
+            let len = (a.end_s - a.start_s).max(b.end_s - b.start_s);
+            let f = ((a.end_s.min(b.end_s) - a.start_s.max(b.start_s)) / len).max(0.0);
+            shared += 2.0 * f / (a.se * b.se);
+        }
+    }
+    (wsum + shared).sqrt() / wsum
 }
 
 /// The mean turn of `wheel` in `g`, over every whole turn read well
@@ -549,6 +567,67 @@ mod tests {
             (0.6..1.7).contains(&(scatter / se)),
             "scatter {scatter} against se {se}"
         );
+    }
+
+    /// Over 300 seeded takes of 2 h of 1 s readings, each a 10 ms line at
+    /// 60 s under white noise of 1 ms with every window in one bin: how
+    /// many bins hold the mean size within one SE, the bin's windows, and
+    /// the sizes' scatter over the mean SE. `hole` says which readings
+    /// are missing.
+    fn bin_coverage(hole: impl Fn(f64) -> bool) -> (usize, usize, f64) {
+        let a = grid(2.0, 3600, |_| 255.0);
+        let runs = 300;
+        let (mut bins, mut windows) = (Vec::new(), 0);
+        for seed in 0..runs {
+            let mut rng = Rng::new(1000 + seed);
+            let g = grid(1.0, 7200, |t| {
+                let y = 10.0 * (std::f64::consts::TAU * t / 60.0).sin() + rng.normal();
+                if hole(t) {
+                    f64::NAN
+                } else {
+                    y
+                }
+            });
+            let l = line(&g, &a, &fourth(), "rate", "ms", false).unwrap();
+            assert_eq!(l.bins.len(), 1);
+            windows = l.bins[0].windows;
+            bins.push((l.bins[0].size, l.bins[0].se));
+        }
+        let mean = bins.iter().map(|b| b.0).sum::<f64>() / runs as f64;
+        let within = bins.iter().filter(|b| (b.0 - mean).abs() <= b.1).count();
+        let sd =
+            (bins.iter().map(|b| (b.0 - mean).powi(2)).sum::<f64>() / (runs - 1) as f64).sqrt();
+        let se = bins.iter().map(|b| b.1).sum::<f64>() / runs as f64;
+        (within, windows, sd / se)
+    }
+
+    #[test]
+    fn a_bin_se_allows_for_windows_that_overlap() {
+        // All 11 half-overlapping windows in one bin. The bin's size should
+        // land within one SE of the mean size about 68% of the time;
+        // taking the windows as independent gives about 53%.
+        let (within, windows, ratio) = bin_coverage(|_| false);
+        assert_eq!(windows, 11);
+        assert!(
+            (180..234).contains(&within),
+            "{within} of 300 within one SE"
+        );
+        assert!((0.85..1.2).contains(&ratio), "scatter over SE {ratio}");
+    }
+
+    #[test]
+    fn a_bin_se_allows_for_overlap_on_a_gapped_take() {
+        // A 30 s hole at 3000 s leaves out the two windows across it, so
+        // the bin's windows come in two runs with no overlap between them;
+        // a 3 s hole at 5000 s stays inside its windows.
+        let (within, windows, ratio) =
+            bin_coverage(|t| (3000.0..3030.0).contains(&t) || (5000.0..5003.0).contains(&t));
+        assert_eq!(windows, 9);
+        assert!(
+            (180..234).contains(&within),
+            "{within} of 300 within one SE"
+        );
+        assert!((0.85..1.2).contains(&ratio), "scatter over SE {ratio}");
     }
 
     #[test]
