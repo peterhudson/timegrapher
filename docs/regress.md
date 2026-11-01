@@ -178,8 +178,12 @@ check reads the whole corpus on every run.
 
 ### Required real-recording equivalence
 
-After regression, the same CI job reuses the fetched corpus for the existing
-`analyze_and_session_agree_on_real_takes` test. It compares four full 600-second,
+After regression, the same CI job reuses the fetched corpus to run every test
+in `crates/timegrapher-core/tests/equivalence.rs` with the corpus required.
+Two of them read real takes: `a_calibre_then_auto_at_the_found_rate_keeps_every_reading`
+(the first two minutes of `dd3235_DU_30min`'s `take_part01-001.flac`, listened
+to with a calibre picked and Auto again) and the
+`analyze_and_session_agree_on_real_takes` test. The latter compares four full 600-second,
 48 kHz files, each named `take_part01-001.flac`, from these takes:
 
 - `daytona4130_DU_30min`
@@ -192,7 +196,9 @@ comparison: default analysis settings (including lift 52°), no clock correction
 and no settling interval. It checks rate, amplitude, signed unlock/drop beat
 error and watch presence using the existing equivalence margins. It does not
 compare against tg or the settled regression baseline. Live, replay and exact
-beat-time equivalence remain separate; the four ignored legacy cases stay ignored.
+beat-time equivalence remain separate; the four ignored legacy cases stay ignored,
+`live_matches_analyze_on_real_takes` and `a_replayed_real_take_matches_session`
+among them.
 
 CI sets `TIMEGRAPHER_REQUIRE_CORPUS=1` and `TIMEGRAPHER_CORPUS` to the pinned
 checkout. The test rejects an unset or invalid root, missing/ambiguous manifest
