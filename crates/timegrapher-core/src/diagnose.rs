@@ -312,7 +312,7 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
     }
     let few_beats = good.len() < expected / 2 || fit.is_none();
     let faint = faint(signal_x);
-    let signal = signal_x.map_or("-".into(), |x| format!("signal {x:.1}×"));
+    let signal = signal_x.map_or("no signal figure".into(), |x| format!("signal {x:.1}×"));
     if !silent && (few_beats || faint) {
         // The title names the test that fired: no timing fit, under half
         // the beats expected, or ticks too faint over the noise however
