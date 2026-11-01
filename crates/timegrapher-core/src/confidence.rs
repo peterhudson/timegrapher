@@ -174,12 +174,76 @@ pub fn long_run_rho(values: &[f64], slow: Slow) -> f64 {
     }
     let r = s1 / pairs as f64 / c0;
     let n = (pairs + 1) as f64;
-    let r = r + 2.0 * (1.0 + 3.0 * r) / n;
+    let r = r + line_lag_one_bias(r, n);
     if r.is_finite() {
         r.clamp(0.0, 0.99)
     } else {
         0.0
     }
+}
+
+/// How far a lag-one correlation `r` read from `n` values less their line
+/// falls short of the true one (Marriott and Pope 1954): 2(1 + 3r)/n. At
+/// r = 0 it is the size of [`fit_lag_bias`] for a two-term fit at lag one,
+/// to first order in 1/n.
+fn line_lag_one_bias(r: f64, n: f64) -> f64 {
+    2.0 * (1.0 + 3.0 * r) / n
+}
+
+/// The correlation that independent readings read on average at lags 0
+/// to `max_lag` once a least-squares polynomial with `params` terms
+/// (1, t, t², …) has been taken out of the readings present on a uniform
+/// grid (`present[i]`): each lag read as products of readings `k` apart,
+/// both present, over their count, over the mean square, as
+/// [`crate::steadiness`] reads its autocorrelation. Under noise of
+/// variance σ² the residuals' covariance is σ²(I − H), H the fit's hat
+/// matrix, so the mean square is about σ²(n − p)/n and a pair's product
+/// −σ²H_ij: the lag's correlation is −n/(n − p) times the mean H_ij over
+/// its pairs (to first order, the ratio's expectation). 0 at lag 0, and
+/// at a lag with no pairs. Subtracting it leaves a white series reading
+/// about 0 at every lag however much of its slow change was taken out.
+pub fn fit_lag_bias(present: &[bool], params: usize, max_lag: usize) -> Vec<f64> {
+    let at: Vec<usize> = (0..present.len()).filter(|&i| present[i]).collect();
+    let (n, len) = (at.len(), present.len());
+    let mut out = vec![0.0; max_lag + 1];
+    if params == 0 || n <= params {
+        return out;
+    }
+    // The fit's columns made orthonormal over the readings present
+    // (modified Gram–Schmidt), so H_ij is the sum over columns of q(i)q(j).
+    let t = |i: usize| 2.0 * i as f64 / (len.max(2) - 1) as f64 - 1.0;
+    let mut q: Vec<Vec<f64>> = Vec::with_capacity(params);
+    for d in 0..params {
+        let mut v: Vec<f64> = at.iter().map(|&i| t(i).powi(d as i32)).collect();
+        for u in &q {
+            let dot: f64 = v.iter().zip(u).map(|(a, b)| a * b).sum();
+            v.iter_mut().zip(u).for_each(|(a, b)| *a -= dot * b);
+        }
+        let norm = v.iter().map(|a| a * a).sum::<f64>().sqrt();
+        if norm < 1e-12 {
+            return out;
+        }
+        v.iter_mut().for_each(|a| *a /= norm);
+        q.push(v);
+    }
+    // Where each grid index sits among the readings present.
+    let mut slot = vec![usize::MAX; len];
+    at.iter().enumerate().for_each(|(s, &i)| slot[i] = s);
+    let scale = n as f64 / (n - params) as f64;
+    for (k, bias) in out.iter_mut().enumerate().skip(1) {
+        let (mut sum, mut pairs) = (0.0, 0usize);
+        for (a, &i) in at.iter().enumerate() {
+            let Some(&b) = slot.get(i + k).filter(|&&b| b != usize::MAX) else {
+                continue;
+            };
+            sum += q.iter().map(|u| u[a] * u[b]).sum::<f64>();
+            pairs += 1;
+        }
+        if pairs > 0 {
+            *bias = -scale * sum / pairs as f64;
+        }
+    }
+    out
 }
 
 /// Each side of the values' largest step less its own mean ([`Slow::Step`]).
@@ -250,6 +314,26 @@ pub fn beat_error_se<'a>(windows: impl IntoIterator<Item = &'a AmplitudeWindow>)
 mod tests {
     use super::*;
     use crate::synth::Rng;
+
+    #[test]
+    fn a_two_term_fit_lag_bias_is_long_run_rho_s_term() {
+        // One source of the bias a fit leaves: for a line and lag one it
+        // is the Marriott–Pope term long_run_rho adds back at r = 0, to
+        // within the 1/n² the latter leaves out.
+        for n in [60usize, 360, 2000] {
+            let b = fit_lag_bias(&vec![true; n], 2, 1)[1];
+            let mp = -line_lag_one_bias(0.0, n as f64);
+            let nf = n as f64;
+            assert!((b - mp).abs() < 4.0 / (nf * nf), "{n}: {b} against {mp}");
+        }
+        // A quadratic leaves about −3/n; the mean alone about −1/n.
+        let three = fit_lag_bias(&[true; 90], 3, 1)[1];
+        let one = fit_lag_bias(&[true; 90], 1, 1)[1];
+        assert!(
+            (three + 3.0 / 89.0).abs() < 0.001 && (one + 1.0 / 89.0).abs() < 0.001,
+            "{three} {one}"
+        );
+    }
 
     #[test]
     fn beat_error_se_reads_the_unlock_beat_errors() {
