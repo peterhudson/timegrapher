@@ -16,7 +16,12 @@ function definition(name, optional = false) {
   if (!source && !optional) throw new Error(`Missing renderer function: ${name}`);
   return source ? source[0] : "";
 }
+// The no-beat heading the server puts in the page: core's
+// measure::NO_WATCH_TITLE, read from core so the test holds the view to it.
+const NO_BEAT_TITLE = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/measure.rs"), "utf8")
+  .match(/pub const NO_WATCH_TITLE: &str = "([^"]+)";/)[1];
 const context = vm.createContext({
+  NO_BEAT_TITLE,
   fileName: () => "test.wav", timeLabel: String, positionName: (p) => `name of ${p}`,
   stripCards: () => "", limitsCard: (l) => (l && l.length ? "<limits>" : ""),
   profileCard: (p, title, dropBeatError) => `<profile drop="${dropBeatError}">`,
@@ -51,7 +56,7 @@ for (const invalid of [null, "7", Infinity, NaN]) {
 
 test("no-watch result never draws a rate even if an inconsistent document contains one", () => {
   const markup = render({ ...cases.find(c => c.name === "stored-before-USB").doc, watch_heard: false });
-  assert.ok(markup.includes("No Regular Beat Found"));
+  assert.ok(markup.includes(`<b>${NO_BEAT_TITLE}</b>`));
   assert.ok(!markup.includes('class="tile"'));
 });
 
@@ -100,7 +105,7 @@ test("each of a take's readings of the file gets its own tiles", () => {
 
 test("a take reading with no regular beat draws no figures", () => {
   const markup = render(listed([reading("DU", 5, { measurement: { watch_heard: false } })]));
-  assert.ok(markup.includes("No Regular Beat Found") && !markup.includes('class="tile"'), markup);
+  assert.ok(markup.includes(`<b>${NO_BEAT_TITLE}</b>`) && !markup.includes('class="tile"'), markup);
 });
 
 test("a take that couldn't be read leaves the whole file's figures", () => {
