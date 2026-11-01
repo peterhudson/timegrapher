@@ -222,6 +222,33 @@ pub fn median(v: &mut [f64]) -> f64 {
     middle(v, f64::total_cmp).map_or(f64::NAN, |(lo, hi)| if odd { hi } else { 0.5 * (lo + hi) })
 }
 
+/// The value `q` (0 to 1) of the way through `sorted` (ascending),
+/// interpolated linearly between the two values either side: the one
+/// percentile rule in core (math guide section 8, #512). Unlike the
+/// nearest rank it moves smoothly with the values, so a set with two
+/// clusters does not jump from one to the other on a tiny change (#846).
+/// NaN when empty.
+pub fn quantile(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return f64::NAN;
+    }
+    let x = q.clamp(0.0, 1.0) * (sorted.len() - 1) as f64;
+    let i = x.floor() as usize;
+    let j = (i + 1).min(sorted.len() - 1);
+    sorted[i] + (sorted[j] - sorted[i]) * (x - i as f64)
+}
+
+/// [`quantile`] `q` of the finite values in `v`, in any order; `None`
+/// when there are none.
+pub fn percentile(v: &[f64], q: f64) -> Option<f64> {
+    let mut w: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
+    if w.is_empty() {
+        return None;
+    }
+    w.sort_by(f64::total_cmp);
+    Some(quantile(&w, q))
+}
+
 /// [`median`] of `f32` values, by the same rule.
 pub fn median_f32(v: &mut [f32]) -> f32 {
     let odd = v.len() % 2 == 1;

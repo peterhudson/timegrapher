@@ -37,6 +37,7 @@ use crate::confidence::{self, Slow};
 pub use crate::cusum::{kolmogorov_tail, Cusum, CUSUM_BAND};
 use crate::distribution::{self, Distributions};
 use crate::dsp::median;
+use crate::dsp::quantile;
 use crate::longrun::LongReport;
 use crate::longterm::{self, Grid, LongConfig};
 use crate::periodicity::{polyfit2, Wheel};
@@ -2625,13 +2626,6 @@ pub(crate) fn finite_or_nan(v: f64) -> f64 {
 pub const ISO_BIN_DEG: f64 = 2.0;
 pub const ISO_MIN_READINGS: usize = 10;
 pub const ISO_MIN_BINS: usize = 3;
-
-fn quantile(sorted: &[f64], q: f64) -> f64 {
-    let x = q * (sorted.len() - 1) as f64;
-    let (i, f) = (x.floor() as usize, x - x.floor());
-    let j = (i + 1).min(sorted.len() - 1);
-    sorted[i] * (1.0 - f) + sorted[j] * f
-}
 
 /// Weighted least squares of y on 1, x, x²; returns the coefficients.
 #[allow(clippy::needless_range_loop)]

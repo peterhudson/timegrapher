@@ -4,6 +4,7 @@ use crate::amplitude::{AmplitudeConfig, AmplitudeWindow};
 use crate::audio::Audio;
 use crate::beats::{self, Beat};
 use crate::confidence::{Confidence, Doubts};
+use crate::dsp::percentile;
 use crate::dsp::{envelope, median, EnvelopeConfig};
 use crate::periodicity::{self, Component, Series};
 use crate::timing::{self, TimingFit, WindowFit};
@@ -206,15 +207,6 @@ pub struct Analysis {
     pub residuals: Vec<f64>,
     pub rate_windows: Vec<WindowFit>,
     pub amplitude_windows: Vec<AmplitudeWindow>,
-}
-
-fn percentile(v: &[f64], q: f64) -> Option<f64> {
-    let mut w: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
-    if w.is_empty() {
-        return None;
-    }
-    w.sort_by(|a, b| a.total_cmp(b));
-    Some(w[((w.len() - 1) as f64 * q).round() as usize])
 }
 
 fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
