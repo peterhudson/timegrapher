@@ -510,6 +510,26 @@ mod tests {
         assert_eq!(got, [(10.0, 0.0), (35.0, 0.0), (97.0, 0.0), (121.0, 0.0)]);
     }
 
+    /// A clock log that ended at 120 s witnesses a pause listed at 20 s,
+    /// where it shows no gap, so that pause adds no time and is named; it
+    /// does not witness one listed at 150 s, whose gap counts (#646).
+    #[test]
+    fn a_join_counts_a_listed_gap_only_where_the_clock_log_saw_none() {
+        let pairs: Vec<(f64, f64)> = (0..=12)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0))
+            .collect();
+        let clock = ClockFit::new(&pairs).unwrap();
+        let breaks = [cut(20.0, 9.0), cut(150.0, 12.0)];
+        let (_, cuts) = join(&log(), &SPANS, &breaks, Some(&clock));
+        let gaps: Vec<f64> = cuts.iter().map(|c| c.gap_s).collect();
+        assert_eq!(gaps, [0.0, 0.0, 12.0], "{cuts:?}");
+        assert_eq!(
+            pauses_unseen(&SPANS, &breaks, Some(&clock)),
+            Some(Caveat::PausesUnseen { count: 1 })
+        );
+        assert_eq!(pauses_unseen(&SPANS, &breaks, None), None);
+    }
+
     /// An amplitude window inside a stretch is kept on the joined times;
     /// where the stretch's beats were renumbered by an odd count its sides
     /// trade places and its signed beat errors turn over, so each figure
