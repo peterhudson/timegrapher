@@ -22,6 +22,9 @@ pub const HOT_PEAK_DBFS: f64 = -6.0;
 /// Peaks below this, dBFS, are the `too_quiet` condition.
 pub const QUIET_PEAK_DBFS: f64 = -30.0;
 
+/// A peak under this, linear (−80 dBFS), is no signal at all.
+const SILENT_PEAK: f64 = 1e-4;
+
 /// Background rising more than this between ticks, dB, is the
 /// `agc_suspected` condition.
 pub const GAP_RISE_DB: f64 = 3.0;
@@ -277,12 +280,15 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
             evidence,
         })
     };
-    let silent = peak < 1e-4;
+    let silent = peak < SILENT_PEAK;
     if silent {
         add(
             IssueCode::Silent,
             format!("No signal: peak {:.0} dBFS", db(peak)),
-            format!("peak {:.0} dBFS", db(peak)),
+            format!(
+                "under {:.0} dBFS, the level taken as no signal at all",
+                db(SILENT_PEAK)
+            ),
         );
     }
     let clipping = clipped >= 3;
@@ -338,7 +344,7 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         add(
             IssueCode::TooQuiet,
             format!("Peak {:.0} dBFS", db(peak)),
-            format!("peak {:.0} dBFS", db(peak)),
+            format!("under {QUIET_PEAK_DBFS:.0} dBFS, too quiet to time well"),
         );
     }
     let suggested = if silent {
