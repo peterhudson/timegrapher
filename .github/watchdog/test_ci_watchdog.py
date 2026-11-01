@@ -295,6 +295,19 @@ class Sweep(unittest.TestCase):
         self.assertEqual(watchdog.completed(api, 50, log=quiet), "rerun")
         self.assertEqual(api.posts, [("/actions/runs/50/rerun", None)])
 
+    def test_a_main_run_cancelled_by_hand_is_not_flagged(self):
+        run = ci_run(event="push", head_branch="main", pull_requests=[], conclusion="cancelled")
+        jobs = [job(1, "regress (mcp)", "cancelled")]
+        cancelled = {1: [dict(message="The run was canceled by @someone.")]}
+        api = FakeAPI(run, jobs, cancelled)
+        watchdog.completed(api, 50, log=quiet)
+        self.assertEqual(api.posts, [])
+        # A job that hit its time limit is flagged.
+        limit = {1: [dict(message="The job has exceeded the maximum execution time of 45m0s")]}
+        api = FakeAPI(run, jobs, limit)
+        watchdog.completed(api, 50, log=quiet)
+        self.assertEqual([path for path, _ in api.posts], ["/issues"])
+
     def test_a_real_failure_on_a_pull_request_is_not_flagged(self):
         api = FakeAPI(ci_run(), [job(1, "regress (app)", "failure")], {1: []})
         watchdog.completed(api, 50, log=quiet)

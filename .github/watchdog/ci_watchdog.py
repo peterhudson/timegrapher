@@ -41,6 +41,8 @@ INFRA_MESSAGES = (
 )
 MAIN_ISSUE = "<!-- ci-watchdog:main -->"
 MAIN_FAILED_ISSUE = "<!-- ci-watchdog:main-failed -->"
+# GitHub's annotation on a job someone cancelled by hand.
+HAND_CANCEL = "was canceled by"
 
 
 class API:
@@ -136,9 +138,14 @@ def plan(run, jobs, annotations, newer):
 
 
 def failed_on_its_own(jobs, annotations):
-    """The names of the failed jobs GitHub's runners did not fail."""
+    """The names of the failed jobs that neither GitHub's runners failed nor
+    someone cancelled by hand."""
+    def hand_cancelled(job):
+        return job.get("conclusion") == "cancelled" and any(
+            HAND_CANCEL in (a.get("message") or "") for a in annotations.get(job["id"], []))
     return [job["name"] for job in jobs if job.get("conclusion") in FAILED
-            and infra_message(annotations.get(job["id"], [])) is None]
+            and infra_message(annotations.get(job["id"], [])) is None
+            and not hand_cancelled(job)]
 
 
 def stalled(jobs, now):

@@ -121,6 +121,27 @@ class CutTests(unittest.TestCase):
             listed = json.loads((dest / "corpus.json").read_text())["takes"][0]["files"]
             self.assertEqual([f["name"] for f in listed], names(3))
 
+    def test_a_take_read_as_a_whole_folder_is_not_cut(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, dest = pathlib.Path(tmp, "corpus"), pathlib.Path(tmp, "cut")
+            take = src / "takes" / "whole"
+            take.mkdir(parents=True)
+            for name in names(6):
+                (take / name).write_bytes(b"audio")
+            manifest = 'bph = 28800\n\n[[recording]]\nfile = "."\nposition = "DU"\n'
+            (take / "session.toml").write_text(manifest)
+            session = {"segments": names(6), "duration_s": 3600, "breaks": [{"audio_s": 3000}]}
+            (take / "session.json").write_text(json.dumps(session))
+            corpus = {"takes": [{"id": "whole", "files": [{"name": n} for n in names(6)]}]}
+            (src / "corpus.json").write_text(json.dumps(corpus))
+            cut_corpus.cut(src, dest, 3)
+            out = dest / "takes" / "whole"
+            self.assertEqual(sorted(p.name for p in out.glob("*.flac")), names(6))
+            self.assertEqual((out / "session.toml").read_text(), manifest)
+            self.assertEqual(json.loads((out / "session.json").read_text()), session)
+            listed = json.loads((dest / "corpus.json").read_text())["takes"][0]["files"]
+            self.assertEqual([f["name"] for f in listed], names(6))
+
     def test_the_cut_folder_must_be_new(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = pathlib.Path(tmp, "corpus")

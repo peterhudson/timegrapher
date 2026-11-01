@@ -15,6 +15,10 @@ copied, except two files rewritten to match the kept sound files:
   kept, or that names the take's whole folder (".");
 - session.json's "segments" keeps only the kept files.
 
+A take with an entry for its whole folder (".") is not cut: that entry reads
+every file, against the breaks and duration session.json gives for the whole
+take, which a cut would no longer match.
+
 corpus.json lists only the kept files of each take, so a check that reads
 the takes it lists reads the cut. Pull requests' app and MCP corpus checks
 read a cut; main and the nightly run read the whole corpus (ci.yml).
@@ -58,17 +62,25 @@ def cut_session_json(text, kept):
     return json.dumps(doc, indent=2) + "\n"
 
 
+def reads_whole_folder(manifest):
+    """Whether a session.toml has an entry for its take's whole folder."""
+    return any(m.group(1) == WHOLE_FOLDER for m in FILE.finditer(manifest))
+
+
 def cut(source, dest, files):
     corpus = json.loads((source / "corpus.json").read_text(encoding="utf-8"))
     dest.mkdir(parents=False)
     (dest / "takes").mkdir()
     for take in corpus["takes"]:
         listed = {f["name"] for f in take["files"]}
-        take["files"] = take["files"][:files] + take["files"][files:][-1:]
-        kept = {f["name"] for f in take["files"]}
         src = source / "takes" / take["id"]
         if not src.is_dir():
+            take["files"] = take["files"][:files] + take["files"][files:][-1:]
             continue
+        manifest = src / "session.toml"
+        if not (manifest.is_file() and reads_whole_folder(manifest.read_text(encoding="utf-8"))):
+            take["files"] = take["files"][:files] + take["files"][files:][-1:]
+        kept = {f["name"] for f in take["files"]}
         out = dest / "takes" / take["id"]
         out.mkdir()
         for entry in sorted(src.iterdir()):
