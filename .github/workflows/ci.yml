@@ -203,6 +203,17 @@ jobs:
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
               summary.write(report)
           PY
+      # The audio cache is a 7.1 GB archive at f85f586 and is unpacked
+      # beside itself, which a runner's free disk (about 14 GB) no longer
+      # always holds: a regress job at 9d89326 failed restoring it with "No
+      # space left on device". The runner image's Android SDK, .NET and
+      # CodeQL bundle, which these jobs never use, make room.
+      - name: Make disk room for the corpus audio
+        if: steps.changes.outputs.full != 'false'
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
       - name: Corpus audio cache
         id: audio
         if: steps.changes.outputs.full != 'false'
