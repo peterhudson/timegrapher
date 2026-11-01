@@ -575,17 +575,13 @@ pub fn assess(
     }
     let confidence = c.watch_heard.then(|| {
         let amps: Vec<f64> = amplitude_windows.iter().filter_map(|w| w.mean()).collect();
-        let bes: Vec<f64> = amplitude_windows
-            .iter()
-            .filter_map(|w| w.beat_error_unlock_ms)
-            .collect();
         Confidence::new(
             match c.average_s {
                 Some(t) => rate_se_over(rate_windows, t),
                 None => confidence::rate_se(rate_windows),
             },
             confidence::standard_error(&amps),
-            confidence::standard_error(&bes),
+            confidence::beat_error_se(amplitude_windows.iter().copied()),
         )
     });
     Assessment {

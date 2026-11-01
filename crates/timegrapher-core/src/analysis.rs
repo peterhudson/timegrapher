@@ -356,7 +356,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
     let doubts = assessment.doubts;
     let confidence = assessment.confidence;
     let shape = watch_heard.then(|| {
-        let beat_s = overall.map_or(3600.0 / bph as f64, |f| f.period_s);
+        let beat_s = crate::timing::beat_period_s(overall.as_ref(), bph);
         let r = crate::shape::analyze(&env, fs, &beats, beat_s, &Default::default());
         crate::shape::Measures::of(&r, &clear)
     });

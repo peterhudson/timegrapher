@@ -171,6 +171,12 @@ fn fit_coef(beats: &[Beat]) -> Option<([f64; 3], Vec<&Beat>)> {
     Some((coef, sel))
 }
 
+/// The beat period to measure shape and profiles with: the fitted one, or
+/// the nominal 3600/bph when there is no fit (#807).
+pub fn beat_period_s(fit: Option<&TimingFit>, bph: u32) -> f64 {
+    fit.map_or(3600.0 / bph as f64, |f| f.period_s)
+}
+
 /// The beat period, s, of a watch whose nominal period is `nominal` s and
 /// which gains `rate_s_per_day`: the inverse of the rate the fit reads,
 /// `(nominal / period - 1) * 86400`. The one rule for it (#640).
