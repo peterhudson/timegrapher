@@ -1414,6 +1414,16 @@ fn pearson(a: &[f32], b: &[f32]) -> f64 {
 mod tests {
     use super::*;
 
+    /// Sound with no beat energy at any rate guesses no rate of its own:
+    /// every rate scores 0 in digital silence, and the fastest (72,000)
+    /// must not win on that (#476).
+    #[test]
+    fn digital_silence_guesses_the_default_rate() {
+        let fs = 48_000.0;
+        assert_eq!(guess_bph(&vec![0.0; (12.0 * fs) as usize], fs), 28_800);
+        assert_eq!(sound_onset(&vec![0.0; (12.0 * fs) as usize], fs), None);
+    }
+
     /// Beats of a watch with 0.5 ms beat error and 0.1 ms of scatter, with
     /// `shift(k, even)` added to beat `k`'s time.
     fn ticking(n: i64, shift: impl Fn(i64, bool) -> f64) -> Vec<Beat> {
