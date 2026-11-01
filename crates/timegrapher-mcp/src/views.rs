@@ -41,11 +41,14 @@ pub fn page() -> &'static str {
             .collect();
         let marks = serde_json::to_string(&marks).expect("the probability marks as JSON");
         let positions = serde_json::to_string(&positions()).expect("the positions as JSON");
+        let no_beat = serde_json::to_string(timegrapher_core::measure::NO_WATCH_TITLE)
+            .expect("the no-beat heading as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*VIRIDIS*/null", &viridis)
             .replace("/*PERIOD_TICKS*/null", &period_ticks)
             .replace("/*PROBABILITY_MARKS*/null", &marks)
             .replace("/*POSITIONS*/null", &positions)
+            .replace("/*NO_BEAT_TITLE*/null", &no_beat)
     })
 }
 
@@ -111,6 +114,31 @@ fn variables(p: &Palette) -> String {
 /// Most points drawn per series: plenty for a chat-sized chart, and it keeps
 /// a day-long run's result small.
 const MAX_POINTS: usize = 1500;
+
+/// The `_meta` key the Tick and Tock view reads a `profile` result's facts
+/// from (#510); `analyze`'s ride with its profile as `profile_facts`.
+pub const PROFILE_FACTS_KEY: &str = "timegrapher/profile_facts";
+
+/// Each side's facts as core words them (`profile::facts_of`), with their
+/// names, so the view writes the app's lines: `{names, a, b}`, or `None`
+/// for a document without both sides.
+pub fn profile_facts(profile: &Value) -> Option<Value> {
+    let side = |s: &Value| {
+        let s = s.as_object()?;
+        let f = |k: &str| s.get(k).and_then(Value::as_f64);
+        Some(json!(timegrapher_core::profile::facts_of(
+            s.get("beats").and_then(Value::as_u64).unwrap_or(0) as usize,
+            f("unlock_ms"),
+            f("drop_ms"),
+            f("amplitude_deg"),
+        )))
+    };
+    Some(json!({
+        "names": timegrapher_core::profile::FACT_NAMES,
+        "a": side(&profile["a"])?,
+        "b": side(&profile["b"])?,
+    }))
+}
 
 /// The `_meta` key the views read their ± texts from (#806).
 pub const PM_KEY: &str = "timegrapher/pm";
@@ -483,6 +511,9 @@ pub async fn analyze_charts(
         line.push(recording.into());
         match scope.run(&line, Some(profile_budget)).await {
             Ok(cli::Outcome { json: Some(profile), exit_code: Some(0), .. }) => {
+                if let Some(facts) = profile_facts(&profile) {
+                    out.insert("profile_facts".into(), facts);
+                }
                 out.insert("profile".into(), profile);
             }
             Ok(outcome) => {
@@ -498,6 +529,32 @@ pub async fn analyze_charts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_profiles_facts_are_cores() {
+        let p = json!({
+            "a": { "beats": 120, "unlock_ms": -0.27, "drop_ms": 1.2, "amplitude_deg": 281.4 },
+            "b": { "beats": 119, "unlock_ms": null, "drop_ms": 1.0, "amplitude_deg": null },
+        });
+        assert_eq!(
+            profile_facts(&p),
+            Some(json!({
+                "names": ["Beats", "Unlock", "Drop", "Unlock to Drop", "Amplitude"],
+                "a": ["120", "−0.27 ms", "+1.20 ms", "1.47 ms", "281°"],
+                "b": ["119", "–", "+1.00 ms", "–", "out of range"],
+            }))
+        );
+        assert_eq!(profile_facts(&json!({ "a": {} })), None);
+    }
+
+    #[test]
+    fn the_page_carries_cores_no_beat_heading() {
+        assert!(!page().contains("/*NO_BEAT_TITLE*/"));
+        assert!(page().contains(&format!(
+            "const NO_BEAT_TITLE = \"{}\";",
+            timegrapher_core::measure::NO_WATCH_TITLE
+        )));
+    }
 
     #[test]
     fn the_view_gets_its_plus_or_minus_in_cores_words() {

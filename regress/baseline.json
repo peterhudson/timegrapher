@@ -2,14 +2,405 @@
   "schema": "timegrapher.regress-baseline/1",
   "software": {
     "arch": "x86_64",
-    "build_date": "2026-10-29",
+    "build_date": "2026-11-01",
     "git_dirty": false,
-    "git_hash": "9bb2382",
+    "git_hash": "d65a24d",
     "name": "timegrapher",
     "os": "linux",
     "version": "0.4.2"
   },
   "takes": {
+    "aquanaut324_DU_20min_newstand/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": -19.59325457047676,
+        "amplitude_deg": 239.9346686359595,
+        "beat_error_unlock_ms": 0.4868631916513889,
+        "beat_error_ms": 0.32957093050440395,
+        "beats": 9438,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "f58fdcc",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "aquanaut324_DU_20min_newstand/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 240.0,
+                "beat_error_ms": 0.45,
+                "rate_s_per_day": -19.07,
+                "source": "tg, same file, lift 52° (scaled from 55°), card clock, median of its windows"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": 0.0
+            },
+            "recording_index_1based": 1,
+            "sha256": "c6b1a257139591368acb3ae05f08fd0ac2340981ff9cdba7fe9a46db6187b4b8"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 26703693,
+              "declared_corpus_identity": {
+                "bytes": 26703693,
+                "name": "take_part01-001.flac",
+                "release": "patek324_DU_20min_newstand",
+                "sha256": "e996583c399ad9be3299117992f8b25c5720df18e0b718e2917d36f132233847",
+                "take": "aquanaut324_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 26703693,
+                "sha256": "e996583c399ad9be3299117992f8b25c5720df18e0b718e2917d36f132233847",
+                "timing": "verified_at_fetch_this_run"
+              }
+            },
+            {
+              "bytes_observed_after_analysis": 26612537,
+              "declared_corpus_identity": {
+                "bytes": 26612537,
+                "name": "take_part01-002.flac",
+                "release": "patek324_DU_20min_newstand",
+                "sha256": "2e36f5bf8fb454e391ea96c5c022b40e16ab1e6ff0a28f9e7a9f35414036c3a8",
+                "take": "aquanaut324_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-002.flac",
+              "verified_identity": {
+                "bytes": 26612537,
+                "sha256": "2e36f5bf8fb454e391ea96c5c022b40e16ab1e6ff0a28f9e7a9f35414036c3a8",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": true,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 20,
+            "lift_deg": 52.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 28800
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 1200.0,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 28800,
+            "measured_end_s": 1200.0,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": true,
+            "sample_rate": 48000,
+            "selected_end_s": 1200.0,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 240.0,
+              "beat_error_ms": 0.45,
+              "rate_s_per_day": -19.07,
+              "source": "tg, same file, lift 52° (scaled from 55°), card clock, median of its windows"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
+    "aquanaut324_DU_30min/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": -5.92290289529096,
+        "amplitude_deg": 242.92241637125124,
+        "beat_error_unlock_ms": 0.4740410503896022,
+        "beat_error_ms": 0.32191932191665523,
+        "beats": 14237,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "f58fdcc",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "aquanaut324_DU_30min/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 242.0,
+                "beat_error_ms": 0.41,
+                "rate_s_per_day": -4.98,
+                "source": "tg, same file, lift 52°, card clock"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": 0.0
+            },
+            "recording_index_1based": 1,
+            "sha256": "24fd1e3145623f993e777d1c54dfb14e167213dae3e1b91dad280b740f8eed77"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 35008391,
+              "declared_corpus_identity": {
+                "bytes": 35008391,
+                "name": "take_part01-001.flac",
+                "release": "patek324_DU_30min",
+                "sha256": "56af558ccba1198a54efc8ba3abe5b8ee8bedbeb39de2dd901fec13e4f3cf660",
+                "take": "aquanaut324_DU_30min"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 35008391,
+                "sha256": "56af558ccba1198a54efc8ba3abe5b8ee8bedbeb39de2dd901fec13e4f3cf660",
+                "timing": "verified_at_fetch_this_run"
+              }
+            },
+            {
+              "bytes_observed_after_analysis": 35004799,
+              "declared_corpus_identity": {
+                "bytes": 35004799,
+                "name": "take_part01-002.flac",
+                "release": "patek324_DU_30min",
+                "sha256": "b90e13d4d106ac1f36fffad8884b3e515756c2a7972d8e7df01dce5d368eacbb",
+                "take": "aquanaut324_DU_30min"
+              },
+              "path_relative_to_session": "take_part01-002.flac",
+              "verified_identity": {
+                "bytes": 35004799,
+                "sha256": "b90e13d4d106ac1f36fffad8884b3e515756c2a7972d8e7df01dce5d368eacbb",
+                "timing": "verified_at_fetch_this_run"
+              }
+            },
+            {
+              "bytes_observed_after_analysis": 35003604,
+              "declared_corpus_identity": {
+                "bytes": 35003604,
+                "name": "take_part01-003.flac",
+                "release": "patek324_DU_30min",
+                "sha256": "fe0932f15ba2c9c28d75b73710916f929eff392d35df77983e61d278de55d248",
+                "take": "aquanaut324_DU_30min"
+              },
+              "path_relative_to_session": "take_part01-003.flac",
+              "verified_identity": {
+                "bytes": 35003604,
+                "sha256": "fe0932f15ba2c9c28d75b73710916f929eff392d35df77983e61d278de55d248",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": true,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 20,
+            "lift_deg": 52.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 28800
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 1800.0,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 28800,
+            "measured_end_s": 1800.0,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": true,
+            "sample_rate": 48000,
+            "selected_end_s": 1800.0,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 242.0,
+              "beat_error_ms": 0.41,
+              "rate_s_per_day": -4.98,
+              "source": "tg, same file, lift 52°, card clock"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
+    "blackdial_daytona_DU_20min_newstand/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": 3.494852054556219,
+        "amplitude_deg": 325.5614452106536,
+        "beat_error_unlock_ms": 0.1778854239634763,
+        "beat_error_ms": 0.21317565263861626,
+        "beats": 9429,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "647b401",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "blackdial_daytona_DU_20min_newstand/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 326.0,
+                "beat_error_ms": 0.31,
+                "rate_s_per_day": 3.52,
+                "source": "tg, same file, lift 55°, card clock, median of its windows"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": 0.0
+            },
+            "recording_index_1based": 1,
+            "sha256": "dd8ffad95e22f32bddc579047f6e3e9b899a2ad9212e9d86e5dd4d00008c9f76"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 28799237,
+              "declared_corpus_identity": {
+                "bytes": 28799237,
+                "name": "take_part01-001.flac",
+                "release": "blackdial_daytona_DU_20min_newstand",
+                "sha256": "50abcebba4660056025d607ef185b1c5c181819dc37646e53477545fc795e7b5",
+                "take": "blackdial_daytona_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 28799237,
+                "sha256": "50abcebba4660056025d607ef185b1c5c181819dc37646e53477545fc795e7b5",
+                "timing": "verified_at_fetch_this_run"
+              }
+            },
+            {
+              "bytes_observed_after_analysis": 28948945,
+              "declared_corpus_identity": {
+                "bytes": 28948945,
+                "name": "take_part01-002.flac",
+                "release": "blackdial_daytona_DU_20min_newstand",
+                "sha256": "e64e0590735c987e340dfca78f36bb5ace1e5414c08f280e919bfab518e0f5ad",
+                "take": "blackdial_daytona_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-002.flac",
+              "verified_identity": {
+                "bytes": 28948945,
+                "sha256": "e64e0590735c987e340dfca78f36bb5ace1e5414c08f280e919bfab518e0f5ad",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": true,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 15,
+            "lift_deg": 55.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 28800
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 1200.0,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 28800,
+            "measured_end_s": 1200.0,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": true,
+            "sample_rate": 48000,
+            "selected_end_s": 1200.0,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 326.0,
+              "beat_error_ms": 0.31,
+              "rate_s_per_day": 3.52,
+              "source": "tg, same file, lift 55°, card clock, median of its windows"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
     "daytona4130_DU_30min/lift52/session.toml": [
       {
         "label": "..",
@@ -236,7 +627,7 @@
       {
         "label": ".",
         "rate_s_per_day": 3.3561213366603226,
-        "amplitude_deg": 285.3922975244423,
+        "amplitude_deg": 286.0598436346811,
         "beat_error_unlock_ms": 0.2034149382625406,
         "beat_error_ms": 0.4167640223627916,
         "beats": 13895,
@@ -345,7 +736,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 0.9239854716931006,
-        "amplitude_deg": 280.29904007439745,
+        "amplitude_deg": 281.78269413346766,
         "beat_error_unlock_ms": 0.23807625896468212,
         "beat_error_ms": 0.4805681056533675,
         "beats": 4547,
@@ -440,11 +831,120 @@
         }
       }
     ],
+    "dd3285_explorer2_DU_43min_newstand/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": 1.9384986649292557,
+        "amplitude_deg": 215.62766515731374,
+        "beat_error_unlock_ms": 0.08544531399372657,
+        "beat_error_ms": 0.5113785340784138,
+        "beats": 20460,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "647b401",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "dd3285_explorer2_DU_43min_newstand/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 219.0,
+                "beat_error_ms": 0.23,
+                "rate_s_per_day": 1.88,
+                "source": "tg, same file, lift 55°, card clock, median of its windows"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": 0.0
+            },
+            "recording_index_1based": 1,
+            "sha256": "18ba0630a060214a6fadc4d00de7b112ad1a508dd09f145da371647ac6c8ea05"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 127170011,
+              "declared_corpus_identity": {
+                "bytes": 127170011,
+                "name": "take_part01-001.flac",
+                "release": "dd3285_explorer2_DU_43min_newstand",
+                "sha256": "cfc52f3009aa137d3b3ece16e5179e7fff127273a2cc596867c6282e73b0edd5",
+                "take": "dd3285_explorer2_DU_43min_newstand"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 127170011,
+                "sha256": "cfc52f3009aa137d3b3ece16e5179e7fff127273a2cc596867c6282e73b0edd5",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": true,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 15,
+            "lift_deg": 55.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 28800
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 2577.5007708333333,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 28800,
+            "measured_end_s": 2577.5007708333333,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": true,
+            "sample_rate": 48000,
+            "selected_end_s": 2577.5007708333333,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 219.0,
+              "beat_error_ms": 0.23,
+              "rate_s_per_day": 1.88,
+              "source": "tg, same file, lift 55°, card clock, median of its windows"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
     "eta2824_bare_DU_10min_g4/session.toml": [
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 10.542906340621272,
-        "amplitude_deg": 287.2347790195983,
+        "amplitude_deg": 287.25465183176937,
         "beat_error_unlock_ms": 0.15639258996789202,
         "beat_error_ms": 0.2651320677860188,
         "beats": 4640,
@@ -945,7 +1445,7 @@
       {
         "label": ".",
         "rate_s_per_day": 10.974330031818624,
-        "amplitude_deg": 308.8492453290245,
+        "amplitude_deg": 310.5541592646955,
         "beat_error_unlock_ms": -0.027515950130229616,
         "beat_error_ms": 0.2523140609745332,
         "beats": 14196,
@@ -1054,7 +1554,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 11.143634944493641,
-        "amplitude_deg": 309.17177943371735,
+        "amplitude_deg": 310.29212564980685,
         "beat_error_unlock_ms": 0.002252686389581926,
         "beat_error_ms": 0.15257857582730175,
         "beats": 4620,
@@ -1151,7 +1651,7 @@
       {
         "label": "take_part01-002.flac",
         "rate_s_per_day": 10.805384325178125,
-        "amplitude_deg": 320.17349712417126,
+        "amplitude_deg": 317.32183153779454,
         "beat_error_unlock_ms": -0.14868918144922888,
         "beat_error_ms": 0.3386520801387702,
         "beats": 4627,
@@ -1248,7 +1748,7 @@
       {
         "label": "take_part01-003.flac",
         "rate_s_per_day": 10.541243636905762,
-        "amplitude_deg": 313.63637925234576,
+        "amplitude_deg": 316.03791088841,
         "beat_error_unlock_ms": -0.042155929698789674,
         "beat_error_ms": 0.4534989206537829,
         "beats": 4629,
@@ -1343,27 +1843,27 @@
         }
       }
     ],
-    "patek324_DU_30min/session.toml": [
+    "eta2824clone2_holder_DU_20min_greycradle/session.toml": [
       {
         "label": ".",
-        "rate_s_per_day": -5.92290289529096,
-        "amplitude_deg": 242.92241637125124,
-        "beat_error_unlock_ms": 0.4740410503896022,
-        "beat_error_ms": 0.32191932191665523,
-        "beats": 14237,
+        "rate_s_per_day": 18.515077946179304,
+        "amplitude_deg": 291.54670290235595,
+        "beat_error_unlock_ms": 0.30992627149733676,
+        "beat_error_ms": 0.11641636625042821,
+        "beats": 9438,
         "provenance": {
           "schema": "timegrapher.regress-entry-provenance/1",
           "software": {
             "arch": "x86_64",
-            "build_date": "2026-10-29",
+            "build_date": "2026-11-01",
             "git_dirty": false,
-            "git_hash": "ba13c6a",
+            "git_hash": "d65a24d",
             "name": "timegrapher",
             "os": "linux",
             "version": "0.4.2"
           },
           "manifest": {
-            "path_relative_to_regression_root": "patek324_DU_30min/session.toml",
+            "path_relative_to_regression_root": "eta2824clone2_holder_DU_20min_greycradle/session.toml",
             "recording": {
               "clock": null,
               "date": null,
@@ -1374,42 +1874,290 @@
               "notes": null,
               "position": "DU",
               "reference": {
-                "amplitude_deg": 242.0,
-                "beat_error_ms": 0.41,
-                "rate_s_per_day": -4.98,
-                "source": "tg, same file, lift 52°, card clock"
+                "amplitude_deg": 298.0,
+                "beat_error_ms": 0.16,
+                "rate_s_per_day": 18.43,
+                "source": "tg, same file, lift 50° (scaled from 55°), card clock, median of its windows"
               },
               "settle_s": null,
               "start_s": null,
               "wind_h": 0.0
             },
             "recording_index_1based": 1,
-            "sha256": "26378761d02ef1ac48ca6aab5429162109a6e7c91ea1d3d3aa6adc4ec6fbb092"
+            "sha256": "56372719a2dabf1d4d1d425156e12db442e94ba79f0f8426084b831e613e2436"
           },
           "inputs": [
             {
-              "bytes_observed_after_analysis": 35008391,
-              "declared_corpus_identity": null,
+              "bytes_observed_after_analysis": 32501471,
+              "declared_corpus_identity": {
+                "bytes": 32501471,
+                "name": "take_part01-001.flac",
+                "release": "eta2824clone2_holder_DU_20min_greycradle",
+                "sha256": "b10c240146fcd568c76602a5f13b8b928c209e5c5a9cf46f19a7a33959e93b1a",
+                "take": "eta2824clone2_holder_DU_20min_greycradle"
+              },
               "path_relative_to_session": "take_part01-001.flac",
-              "verified_identity": null
+              "verified_identity": {
+                "bytes": 32501471,
+                "sha256": "b10c240146fcd568c76602a5f13b8b928c209e5c5a9cf46f19a7a33959e93b1a",
+                "timing": "verified_at_fetch_this_run"
+              }
             },
             {
-              "bytes_observed_after_analysis": 35004799,
-              "declared_corpus_identity": null,
+              "bytes_observed_after_analysis": 32454261,
+              "declared_corpus_identity": {
+                "bytes": 32454261,
+                "name": "take_part01-002.flac",
+                "release": "eta2824clone2_holder_DU_20min_greycradle",
+                "sha256": "39e1d8e665fd6473202e2095ffe227f257a0a632f78a17e79380c56462d9cbb7",
+                "take": "eta2824clone2_holder_DU_20min_greycradle"
+              },
               "path_relative_to_session": "take_part01-002.flac",
-              "verified_identity": null
-            },
-            {
-              "bytes_observed_after_analysis": 35003604,
-              "declared_corpus_identity": null,
-              "path_relative_to_session": "take_part01-003.flac",
-              "verified_identity": null
+              "verified_identity": {
+                "bytes": 32454261,
+                "sha256": "39e1d8e665fd6473202e2095ffe227f257a0a632f78a17e79380c56462d9cbb7",
+                "timing": "verified_at_fetch_this_run"
+              }
             }
           ],
           "settings": {
             "amplitude_window_s": 2.0,
             "chunk_s": 47.0,
             "configured_lift_known": true,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 20,
+            "lift_deg": 50.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 28800
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 1200.0,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 28800,
+            "measured_end_s": 1200.0,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": true,
+            "sample_rate": 48000,
+            "selected_end_s": 1200.0,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 298.0,
+              "beat_error_ms": 0.16,
+              "rate_s_per_day": 18.43,
+              "source": "tg, same file, lift 50° (scaled from 55°), card clock, median of its windows"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
+    "meteorite_daytona_DU_20min_newstand/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": 7.657096488994597,
+        "amplitude_deg": 306.73993508765443,
+        "beat_error_unlock_ms": 0.029326115641664596,
+        "beat_error_ms": 0.5239551782373698,
+        "beats": 9441,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "647b401",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "meteorite_daytona_DU_20min_newstand/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 302.0,
+                "beat_error_ms": 0.01,
+                "rate_s_per_day": 7.76,
+                "source": "tg, same file, lift 55°, card clock, median of its windows"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": 0.0
+            },
+            "recording_index_1based": 1,
+            "sha256": "a078eedbf60b1f0744fafc2a2ae74c7b1890aad28fec90af97bd0260e9f3a2ac"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 27591336,
+              "declared_corpus_identity": {
+                "bytes": 27591336,
+                "name": "take_part01-001.flac",
+                "release": "meteorite_daytona_DU_20min_newstand",
+                "sha256": "49a0396481f416f8d469818f9a12ba3c8d523a0549fbede6a22ac03b3fe6fbb6",
+                "take": "meteorite_daytona_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 27591336,
+                "sha256": "49a0396481f416f8d469818f9a12ba3c8d523a0549fbede6a22ac03b3fe6fbb6",
+                "timing": "verified_at_fetch_this_run"
+              }
+            },
+            {
+              "bytes_observed_after_analysis": 27458621,
+              "declared_corpus_identity": {
+                "bytes": 27458621,
+                "name": "take_part01-002.flac",
+                "release": "meteorite_daytona_DU_20min_newstand",
+                "sha256": "6fec9340c5ce14f9ee850ed56fcb154ac97e3799785fe44431a71f3ac1b82226",
+                "take": "meteorite_daytona_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-002.flac",
+              "verified_identity": {
+                "bytes": 27458621,
+                "sha256": "6fec9340c5ce14f9ee850ed56fcb154ac97e3799785fe44431a71f3ac1b82226",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": true,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 15,
+            "lift_deg": 55.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 28800
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 1200.0,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 28800,
+            "measured_end_s": 1200.0,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": true,
+            "sample_rate": 48000,
+            "selected_end_s": 1200.0,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 302.0,
+              "beat_error_ms": 0.01,
+              "rate_s_per_day": 7.76,
+              "source": "tg, same file, lift 55°, card clock, median of its windows"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
+    "peacock1258_DU_15min_lowwind_newstand/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": 12.721731062308095,
+        "amplitude_deg": 219.311580131043,
+        "beat_error_unlock_ms": 0.208502999383971,
+        "beat_error_ms": 0.3497126066398283,
+        "beats": 7040,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "647b401",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "peacock1258_DU_15min_lowwind_newstand/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 214.0,
+                "beat_error_ms": 0.21,
+                "rate_s_per_day": 12.91,
+                "source": "tg, same file, lift 52° (scaled from 55°), card clock, median of its windows"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": 0.0
+            },
+            "recording_index_1based": 1,
+            "sha256": "be6ae92d994f5ae2c064a8ead56b6249b99a1752bb9db84a873f5bd2c6a190a5"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 43603448,
+              "declared_corpus_identity": {
+                "bytes": 43603448,
+                "name": "take_part01-001.flac",
+                "release": "peacock1258_DU_15min_lowwind_newstand",
+                "sha256": "54ec88db08ccb7c7f0a8b9769b46bdfd27177095d6a506119cc7d50c64ff9021",
+                "take": "peacock1258_DU_15min_lowwind_newstand"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 43603448,
+                "sha256": "54ec88db08ccb7c7f0a8b9769b46bdfd27177095d6a506119cc7d50c64ff9021",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": false,
             "envelope": {
               "burst_gate": 2.0,
               "highpass_hz": 1500.0,
@@ -1425,28 +2173,28 @@
           },
           "measurement_context": {
             "applied_breaks": [],
-            "audio_duration_s": 1800.0,
+            "audio_duration_s": 900.0,
             "card_ppm": null,
             "clock_fit_reported_summary": null,
             "clock_input": null,
             "clock_input_sha256": null,
             "detected_bph": 28800,
-            "measured_end_s": 1800.0,
+            "measured_end_s": 900.0,
             "measured_start_s": 20.0,
             "no_cycles": true,
             "no_shape": true,
-            "resolved_lift_known": true,
+            "resolved_lift_known": false,
             "sample_rate": 48000,
-            "selected_end_s": 1800.0,
+            "selected_end_s": 900.0,
             "selected_start_s": 0.0
           },
           "comparator": {
             "executable": null,
             "reference_as_declared": {
-              "amplitude_deg": 242.0,
-              "beat_error_ms": 0.41,
-              "rate_s_per_day": -4.98,
-              "source": "tg, same file, lift 52°, card clock"
+              "amplitude_deg": 214.0,
+              "beat_error_ms": 0.21,
+              "rate_s_per_day": 12.91,
+              "source": "tg, same file, lift 52° (scaled from 55°), card clock, median of its windows"
             },
             "sha256": null,
             "version": null
@@ -1558,6 +2306,240 @@
               "beat_error_ms": 0.14,
               "rate_s_per_day": 16.97,
               "source": "tg, same file, lift 52° (scaled from 55°), card clock"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
+    "pepsi3285_DU_10min_newstand_firsttest/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": 6.501637303971819,
+        "amplitude_deg": 212.07416296500435,
+        "beat_error_unlock_ms": 0.23981406894889057,
+        "beat_error_ms": 0.8627522603476939,
+        "beats": 4737,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "f58fdcc",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "pepsi3285_DU_10min_newstand_firsttest/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 210.0,
+                "beat_error_ms": 0.22,
+                "rate_s_per_day": 6.45,
+                "source": "tg, same file, lift 55°, card clock, median of its windows"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": null
+            },
+            "recording_index_1based": 1,
+            "sha256": "c00b1f87a00e3ff9a5b206b0b3e94f13ffe88f2c42bd1baa52709a275dba7fc3"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 17419586,
+              "declared_corpus_identity": {
+                "bytes": 17419586,
+                "name": "take_part01-001.flac",
+                "release": "pepsi3235_DU_10min_newstand_firsttest",
+                "sha256": "d506121f79f27ee7df01f4ff69fc6362d974141515e20f4f9a5767c58a5e9e32",
+                "take": "pepsi3285_DU_10min_newstand_firsttest"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 17419586,
+                "sha256": "d506121f79f27ee7df01f4ff69fc6362d974141515e20f4f9a5767c58a5e9e32",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": true,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 15,
+            "lift_deg": 55.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 28800
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 612.0533333333333,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 28800,
+            "measured_end_s": 612.0533333333333,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": true,
+            "sample_rate": 48000,
+            "selected_end_s": 612.0533333333333,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 210.0,
+              "beat_error_ms": 0.22,
+              "rate_s_per_day": 6.45,
+              "source": "tg, same file, lift 55°, card clock, median of its windows"
+            },
+            "sha256": null,
+            "version": null
+          }
+        }
+      }
+    ],
+    "reverso21600_DU_20min_newstand/session.toml": [
+      {
+        "label": ".",
+        "rate_s_per_day": 3.108996170141154,
+        "amplitude_deg": 245.31452442301435,
+        "beat_error_unlock_ms": -0.010932171310022554,
+        "beat_error_ms": 0.8710426847842708,
+        "beats": 7080,
+        "provenance": {
+          "schema": "timegrapher.regress-entry-provenance/1",
+          "software": {
+            "arch": "x86_64",
+            "build_date": "2026-11-01",
+            "git_dirty": false,
+            "git_hash": "647b401",
+            "name": "timegrapher",
+            "os": "linux",
+            "version": "0.4.2"
+          },
+          "manifest": {
+            "path_relative_to_regression_root": "reverso21600_DU_20min_newstand/session.toml",
+            "recording": {
+              "clock": null,
+              "date": null,
+              "end_s": null,
+              "fault": null,
+              "file": ".",
+              "measure_s": null,
+              "notes": null,
+              "position": "DU",
+              "reference": {
+                "amplitude_deg": 244.0,
+                "beat_error_ms": 0.05,
+                "rate_s_per_day": 3.87,
+                "source": "tg, same file, lift 52° (scaled from 55°), card clock, median of its windows"
+              },
+              "settle_s": null,
+              "start_s": null,
+              "wind_h": 0.0
+            },
+            "recording_index_1based": 1,
+            "sha256": "34186bcb38bd1a766532caaad5f38418f2e72de8322ce75735cf058e4d906ce6"
+          },
+          "inputs": [
+            {
+              "bytes_observed_after_analysis": 27475813,
+              "declared_corpus_identity": {
+                "bytes": 27475813,
+                "name": "take_part01-001.flac",
+                "release": "reverso21600_DU_20min_newstand",
+                "sha256": "a1af896859542cc3411d6ca108d50c42cc25055d73fc21f872e3ad73566030b6",
+                "take": "reverso21600_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-001.flac",
+              "verified_identity": {
+                "bytes": 27475813,
+                "sha256": "a1af896859542cc3411d6ca108d50c42cc25055d73fc21f872e3ad73566030b6",
+                "timing": "verified_at_fetch_this_run"
+              }
+            },
+            {
+              "bytes_observed_after_analysis": 27476086,
+              "declared_corpus_identity": {
+                "bytes": 27476086,
+                "name": "take_part01-002.flac",
+                "release": "reverso21600_DU_20min_newstand",
+                "sha256": "2ce49a3c300ded18b5b46c8b901195add284c09ea010881c127559b5d78f9031",
+                "take": "reverso21600_DU_20min_newstand"
+              },
+              "path_relative_to_session": "take_part01-002.flac",
+              "verified_identity": {
+                "bytes": 27476086,
+                "sha256": "2ce49a3c300ded18b5b46c8b901195add284c09ea010881c127559b5d78f9031",
+                "timing": "verified_at_fetch_this_run"
+              }
+            }
+          ],
+          "settings": {
+            "amplitude_window_s": 2.0,
+            "chunk_s": 47.0,
+            "configured_lift_known": false,
+            "envelope": {
+              "burst_gate": 2.0,
+              "highpass_hz": 1500.0,
+              "notch_hz": [],
+              "smooth_s": 0.0002
+            },
+            "escape_teeth": 15,
+            "lift_deg": 52.0,
+            "margin_s": 1.0,
+            "onset_fraction": 0.019999999552965164,
+            "rate_window_s": 10.0,
+            "requested_bph": 21600
+          },
+          "measurement_context": {
+            "applied_breaks": [],
+            "audio_duration_s": 1200.0,
+            "card_ppm": null,
+            "clock_fit_reported_summary": null,
+            "clock_input": null,
+            "clock_input_sha256": null,
+            "detected_bph": 21600,
+            "measured_end_s": 1200.0,
+            "measured_start_s": 20.0,
+            "no_cycles": true,
+            "no_shape": true,
+            "resolved_lift_known": false,
+            "sample_rate": 48000,
+            "selected_end_s": 1200.0,
+            "selected_start_s": 0.0
+          },
+          "comparator": {
+            "executable": null,
+            "reference_as_declared": {
+              "amplitude_deg": 244.0,
+              "beat_error_ms": 0.05,
+              "rate_s_per_day": 3.87,
+              "source": "tg, same file, lift 52° (scaled from 55°), card clock, median of its windows"
             },
             "sha256": null,
             "version": null
@@ -14316,7 +15298,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": -15.758051332220191,
-        "amplitude_deg": 224.26257650306945,
+        "amplitude_deg": 224.1907069556077,
         "beat_error_unlock_ms": 0.29644807888775976,
         "beat_error_ms": 0.27049530679850253,
         "beats": 4639,
@@ -15092,7 +16074,7 @@
       {
         "label": "take_part01-009.flac",
         "rate_s_per_day": -10.884373013987059,
-        "amplitude_deg": 228.26903076041438,
+        "amplitude_deg": 228.28103202552097,
         "beat_error_unlock_ms": 0.22098514799086058,
         "beat_error_ms": 0.29892166151002714,
         "beats": 4639,
@@ -15189,7 +16171,7 @@
       {
         "label": "take_part01-010.flac",
         "rate_s_per_day": -11.489296224853973,
-        "amplitude_deg": 226.75152852023626,
+        "amplitude_deg": 226.7644719826049,
         "beat_error_unlock_ms": 0.2205895535689722,
         "beat_error_ms": 0.2942745488053537,
         "beats": 4639,
@@ -15676,7 +16658,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 43.62732012822477,
-        "amplitude_deg": 240.51000719946643,
+        "amplitude_deg": 240.57531246185235,
         "beat_error_unlock_ms": -0.05163385868614334,
         "beat_error_ms": 0.17732714263305174,
         "beats": 4621,
@@ -15773,7 +16755,7 @@
       {
         "label": "take_part01-002.flac",
         "rate_s_per_day": 46.65047539785334,
-        "amplitude_deg": 241.7777567007176,
+        "amplitude_deg": 241.61258830977914,
         "beat_error_unlock_ms": -0.0173131393845513,
         "beat_error_ms": 0.18242446618986816,
         "beats": 4642,
@@ -15870,7 +16852,7 @@
       {
         "label": "take_part01-003.flac",
         "rate_s_per_day": 28.537347888691755,
-        "amplitude_deg": 236.25435138597638,
+        "amplitude_deg": 236.3537562092692,
         "beat_error_unlock_ms": 0.0305172851250313,
         "beat_error_ms": 0.05740181491675405,
         "beats": 4641,
