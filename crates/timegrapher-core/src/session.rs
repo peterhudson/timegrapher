@@ -19,6 +19,7 @@ use crate::breaks::Break;
 use crate::clean::Cuts;
 use crate::clock::ClockFit;
 use crate::dsp::median;
+use crate::dsp::percentile;
 use crate::longrun::LongReport;
 use crate::periodicity::Wheel;
 use crate::shape::{ShapeReport, SideReport};
@@ -411,15 +412,6 @@ pub fn mask_log(log: &mut BeatLog, masked: &[(f64, f64)]) {
     log.amplitude_windows
         .retain(|w| !masked.iter().any(|&(a, b)| w.start_s < b && w.end_s > a));
     log.clipped_beats.retain(|&t| !in_mask(masked, t));
-}
-
-fn percentile(v: &[f64], q: f64) -> Option<f64> {
-    let mut w: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
-    if w.is_empty() {
-        return None;
-    }
-    w.sort_by(|a, b| a.total_cmp(b));
-    Some(w[((w.len() - 1) as f64 * q).round() as usize])
 }
 
 /// The beats a reading of the stretch from `from_s` to `to_s` (audio
