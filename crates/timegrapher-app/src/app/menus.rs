@@ -50,12 +50,7 @@ impl TimegrapherApp {
         self.watch_search_focus = true;
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     fn file_menu(&mut self, ui: &mut egui::Ui) {
-        let command = |key| egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key);
         if ui
             .add(
                 egui::Button::new("Open Recording…")
@@ -79,6 +74,40 @@ impl TimegrapherApp {
             self.open_from_menu(true);
         }
         ui.separator();
+        self.file_menu_save(ui);
+        // Anything shown, from the microphone or a recording, can be
+        // cleared, listening or not.
+        if ui
+            .add_enabled(self.live.is_some(), egui::Button::new("New Session"))
+            .on_hover_text(NEW_SESSION_HINT)
+            .on_disabled_hover_text(
+                "Nothing to clear yet: listen to a watch or open a recording first",
+            )
+            .clicked()
+        {
+            ui.close();
+            if self.needs_save_confirmation() {
+                self.confirm = Some(Confirm::NewSession);
+            } else {
+                self.new_session();
+            }
+        }
+        ui.separator();
+        if ui
+            .add(
+                egui::Button::new("Quit")
+                    .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::Q))),
+            )
+            .clicked()
+        {
+            ui.close();
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
+    /// The File menu's Save, Save Again, Save As and Save Analysis Only
+    /// items.
+    fn file_menu_save(&mut self, ui: &mut egui::Ui) {
         let saved = self.session.saved_to().is_some();
         let can_save = self.session.allows(Action::Save);
         let saving = self.saving.is_some();
@@ -145,34 +174,6 @@ impl TimegrapherApp {
         {
             ui.close();
             self.save_analysis_only();
-        }
-        // Anything shown, from the microphone or a recording, can be
-        // cleared, listening or not.
-        if ui
-            .add_enabled(self.live.is_some(), egui::Button::new("New Session"))
-            .on_hover_text(NEW_SESSION_HINT)
-            .on_disabled_hover_text(
-                "Nothing to clear yet: listen to a watch or open a recording first",
-            )
-            .clicked()
-        {
-            ui.close();
-            if self.needs_save_confirmation() {
-                self.confirm = Some(Confirm::NewSession);
-            } else {
-                self.new_session();
-            }
-        }
-        ui.separator();
-        if ui
-            .add(
-                egui::Button::new("Quit")
-                    .shortcut_text(ui.ctx().format_shortcut(&command(egui::Key::Q))),
-            )
-            .clicked()
-        {
-            ui.close();
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
 
@@ -454,4 +455,10 @@ impl TimegrapherApp {
             started: need.started,
         }
     }
+}
+
+/// A shortcut of the platform's command key (Ctrl, or ⌘ on a Mac) and
+/// `key`.
+fn command(key: egui::Key) -> egui::KeyboardShortcut {
+    egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, key)
 }
