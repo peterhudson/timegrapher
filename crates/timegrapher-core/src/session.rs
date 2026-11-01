@@ -1413,7 +1413,7 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
                 ),
             );
         }
-        if m.clipped_fraction > crate::analysis::Clipping::NOTED_FRACTION {
+        if crate::analysis::Clipping::noted_fraction(m.clipped_fraction) {
             push(
                 "clipping",
                 ri,
