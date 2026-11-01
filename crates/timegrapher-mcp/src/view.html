@@ -237,7 +237,16 @@ function gridFor(lo, hi, px, minPx, ladder) {
 // no "-0".
 function axisLabel(v, step, unit) {
   const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
-  const t = v.toFixed(d);
+  let t = v.toFixed(d);
+  // A value exactly halfway (0.125 to two places) rounds to the even
+  // figure in Rust's format!, where toFixed rounds away from zero; a
+  // double's exact decimal is in toFixed(100) when it is a tie.
+  const exact = Math.abs(v).toFixed(100);
+  const p = exact.indexOf(".");
+  if (/^50*$/.test(exact.slice(p + d + 1))) {
+    const kept = exact.slice(0, d ? p + d + 1 : p);
+    if (Number(kept.slice(-1)) % 2 === 0) t = (v < 0 ? "-" : "") + kept;
+  }
   return (/^-[0.]+$/.test(t) ? t.slice(1) : t) + (unit || "");
 }
 
