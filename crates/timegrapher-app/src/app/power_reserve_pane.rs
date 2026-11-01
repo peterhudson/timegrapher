@@ -259,7 +259,7 @@ impl TimegrapherApp {
             return;
         }
         self.reserve_read_s = now;
-        let beat_s = 3600.0 / f64::from(live.bph().unwrap_or(18_000).max(1));
+        let beat_s = power_reserve::beat_s(live.bph());
         let ended = self
             .reserve
             .as_mut()
