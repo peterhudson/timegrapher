@@ -4,7 +4,7 @@
 //! deflated, so a bundle someone unpacked and zipped again still replays.
 //! What a bundle may hold and run is checked by its reader, not here.
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -34,6 +34,13 @@ pub(crate) fn unpacked_size(bytes: u64) -> String {
     } else {
         format!("{bytes} bytes")
     }
+}
+
+/// Read no more than one byte past the remaining unpacked budget.
+fn read_limited(mut reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+    reader.by_ref().take(limit + 1).read_to_end(&mut data)?;
+    Ok(data)
 }
 
 /// The files of an unpacked report bundle, with names relative to `path`.
@@ -86,10 +93,7 @@ fn read_folder_with_limits(
             stack.push((std::fs::read_dir(&p).map_err(|e| bad(&p, &e))?, depth));
         } else if kind.is_file() {
             let file = std::fs::File::open(&p).map_err(|e| bad(&p, &e))?;
-            let mut data = Vec::new();
-            file.take(left + 1)
-                .read_to_end(&mut data)
-                .map_err(|e| bad(&p, &e))?;
+            let data = read_limited(file, left).map_err(|e| bad(&p, &e))?;
             left = left.checked_sub(data.len() as u64).ok_or_else(|| {
                 bad(
                     &p,
@@ -158,11 +162,7 @@ fn read_zip_with_limit(path: &Path, max_unpacked: u64) -> Result<Vec<(String, Ve
             continue;
         }
         let name = f.name().map_err(|e| bad(&e))?.into_owned();
-        let mut data = Vec::new();
-        // One byte past the limit tells a bundle at the limit from one over.
-        f.take(left + 1)
-            .read_to_end(&mut data)
-            .map_err(|e| bad(&format!("{name} is damaged ({e})")))?;
+        let data = read_limited(f, left).map_err(|e| bad(&format!("{name} is damaged ({e})")))?;
         left = left.checked_sub(data.len() as u64).ok_or_else(|| {
             bad(&format!(
                 "unpacks to more than {}; not a report bundle",
@@ -397,5 +397,40 @@ mod limit_wording_tests {
         }
         assert_eq!(unpacked_size(MAX_UNPACKED), "1 GB");
         std::fs::remove_dir_all(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod bounded_read_tests {
+    use super::*;
+    use std::io;
+
+    struct Counted {
+        bytes: usize,
+        allowed: usize,
+    }
+
+    impl Read for Counted {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            assert!(
+                buf.len() <= self.allowed - self.bytes,
+                "read exceeds limit plus one"
+            );
+            buf.fill(0);
+            self.bytes += buf.len();
+            Ok(buf.len())
+        }
+    }
+
+    #[test]
+    fn folder_read_stops_at_limit_plus_one() {
+        let limit = 16;
+        let mut reader = Counted {
+            bytes: 0,
+            allowed: limit + 1,
+        };
+        let data = read_limited(&mut reader, limit as u64).unwrap();
+        assert_eq!(data.len(), limit + 1);
+        assert_eq!(reader.bytes, limit + 1);
     }
 }
