@@ -360,7 +360,7 @@ Confirmed problems are filed as issues, and the fixes go to each file's owner. N
 | N3 | ± on a gapped take takes differences across gaps; ρ not pooled per stretch | `confidence.rs:144` | **#639** |
 | N4 | No core coverage rule; the 60% unlock share lives in `regress` | `regress_cmd.rs:32` | **#645** |
 | N5 | Synthetic rate is first-order: +0.12 s/d at +100 s/d | `synth.rs:171` | Fixed, #816 |
-| N6 | A window's amplitude falls back to one side with no caveat; tick and tock can differ by degrees | `amplitude.rs:224` | **#648** |
+| N6 | A window's amplitude fell back to one side with no caveat; tick and tock can differ by degrees | `amplitude.rs:227` | Fixed, #860 |
 | N7 | `confidence::beat_error_se` is used only by its test; `assess` repeats it inline | `confidence.rs:155` | Fixed, #822 |
 | N8 | CUSUM assumes independent readings | `steadiness.rs:991` | **#647** |
 | N9 | The paper strip places beats on wall time (no clock correction) and draws the Rate line at the corrected rate, so on a corrected take the two differ in slope by 0.0864 s/d per ppm (confirmed by building and running). One clock everywhere decides the fix: the dots move onto true time, in core. | `timing.rs:63`, app `strip.rs:200` | **#643** |
