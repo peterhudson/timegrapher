@@ -6,7 +6,7 @@
 //! Nothing here opens the sound input: a microphone check goes in only as
 //! the recording and sidecar `doctor --save` already wrote.
 
-use crate::archive::{read_zip, sha256_hex, write_zip};
+use crate::archive::{read_folder, read_zip, sha256_hex, write_zip};
 use crate::output;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -322,28 +322,11 @@ pub fn run(o: &Options) -> Result<(), String> {
 
 /// A bundle's files, from its zip or its unpacked folder.
 fn load_bundle(p: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
-    if p.is_dir() {
-        let mut out = Vec::new();
-        let mut stack = vec![p.to_path_buf()];
-        while let Some(d) = stack.pop() {
-            for e in std::fs::read_dir(&d).map_err(|e| format!("{}: {e}", d.display()))? {
-                let e = e.map_err(|e| e.to_string())?;
-                let path = e.path();
-                if path.is_dir() {
-                    stack.push(path);
-                } else {
-                    let rel = path
-                        .strip_prefix(p)
-                        .unwrap()
-                        .components()
-                        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                        .collect::<Vec<_>>()
-                        .join("/");
-                    out.push((rel, std::fs::read(&path).map_err(|e| e.to_string())?));
-                }
-            }
-        }
-        Ok(out)
+    let kind = std::fs::symlink_metadata(p)
+        .map_err(|e| format!("{}: {e}", p.display()))?
+        .file_type();
+    if kind.is_dir() || kind.is_symlink() {
+        read_folder(p)
     } else {
         read_zip(p)
     }
