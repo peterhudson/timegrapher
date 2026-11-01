@@ -313,7 +313,7 @@ What each figure needs before it is shown today, and what happens when data is m
 - **Rate:** (P_nominal / P − 1) × 86,400, exact, with P the fitted beat period (`timing.rs:163`).
 - **JSON is never rounded.** Only text is rounded, once.
 - **Today the decimals are typed in each surface**: six `opt` helpers, three `signed` helpers, and the app and MCP each pick when a ± shows (app.rs:12389, 12495, 12545; MCP summary.rs:12). The CSV writes more decimals than the text, which is right for data. Core giving each figure's decimals is #510.
-- **Synthetic takes:** the generator steps each beat by P/(1 + r/86400) (`synth::period`), the period the timing fit reads r from, so a take made at +100 s/d reads +100 s/d (#816; finding N5).
+- **Synthetic takes:** the generator steps each beat by P/(1 + r/86400) (`timing::period_s`, through `synth::period`), the period the timing fit reads r from, so a take made at +100 s/d reads +100 s/d (#816; finding N5).
 
 ---
 
