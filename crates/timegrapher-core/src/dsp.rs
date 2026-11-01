@@ -63,7 +63,11 @@ pub fn burst_gate(y: &mut [f32], fs: f64, factor: f64) -> f64 {
         .chunks_exact(blk)
         .map(|c| c.iter().copied().fold(0.0, f32::max))
         .collect();
-    let typical = median_f32(&mut peaks);
+    // The upper middle block, not the mean of two: where the watch is
+    // heard in half the blocks only, the mean of a tick's block and a
+    // silent one is no tick's level, and gating at a multiple of it takes
+    // the ticks themselves (the edge take of a watch that stops).
+    let typical = upper_median_f32(&mut peaks);
     if typical.is_nan() || typical <= 0.0 {
         return 0.0;
     }
@@ -212,28 +216,47 @@ pub fn parabolic(x: &[f32], i: usize) -> f64 {
 }
 
 /// Median of a slice (the slice is reordered). Returns NaN when empty.
+/// With an even count it is the mean of the two middle values.
 pub fn median(v: &mut [f64]) -> f64 {
-    if v.is_empty() {
-        return f64::NAN;
-    }
-    let mid = v.len() / 2;
-    v.select_nth_unstable_by(mid, |a, b| a.total_cmp(b));
-    let hi = v[mid];
-    if v.len() % 2 == 1 {
-        hi
-    } else {
-        let lo = v[..mid].iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        (lo + hi) / 2.0
-    }
+    let odd = v.len() % 2 == 1;
+    middle(v, f64::total_cmp).map_or(f64::NAN, |(lo, hi)| if odd { hi } else { 0.5 * (lo + hi) })
 }
 
+/// [`median`] of `f32` values, by the same rule.
 pub fn median_f32(v: &mut [f32]) -> f32 {
+    let odd = v.len() % 2 == 1;
+    middle(v, f32::total_cmp).map_or(f32::NAN, |(lo, hi)| if odd { hi } else { 0.5 * (lo + hi) })
+}
+
+/// The upper of the two middle values of `v` for an even count (the
+/// middle one for an odd count), NaN when empty: an order statistic,
+/// always one of the values, never the mean of two. Not the median: the
+/// envelope levels that beat finding, the knock gate ([`burst_gate`]),
+/// the amplitude edges, the sound's shape and the beat profile read
+/// internally take it, as a level one of the values actually reaches.
+/// Figures shown as a median (the signal figure) take [`median_f32`].
+/// Reorders `v`.
+pub fn upper_median_f32(v: &mut [f32]) -> f32 {
+    middle(v, f32::total_cmp).map_or(f32::NAN, |(_, hi)| hi)
+}
+
+/// The two middle values of `v` in the order `cmp` (the middle one twice
+/// for an odd count), or `None` when empty. Reorders `v`.
+fn middle<T: Copy>(v: &mut [T], cmp: impl Fn(&T, &T) -> std::cmp::Ordering) -> Option<(T, T)> {
     if v.is_empty() {
-        return f32::NAN;
+        return None;
     }
     let mid = v.len() / 2;
-    v.select_nth_unstable_by(mid, |a, b| a.total_cmp(b));
-    v[mid]
+    v.select_nth_unstable_by(mid, &cmp);
+    let hi = v[mid];
+    if v.len() % 2 == 1 {
+        return Some((hi, hi));
+    }
+    let lo = *v[..mid]
+        .iter()
+        .max_by(|a, b| cmp(a, b))
+        .expect("an even count has a lower half");
+    Some((lo, hi))
 }
 
 /// Mean of the middle of `v` after dropping `trim` of the values from each
@@ -277,6 +300,21 @@ pub fn detrend_line(y: &mut [f64]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn both_medians_take_one_rule_for_an_even_count() {
+        // The mean of the two middle values, in f64 and in f32 alike.
+        let mut a = [4.0, 1.0, 3.0, 2.0];
+        let mut b = [4.0f32, 1.0, 3.0, 2.0];
+        assert_eq!(median(&mut a), 2.5);
+        assert_eq!(median_f32(&mut b), 2.5);
+        let (mut a, mut b) = ([5.0, 1.0, 3.0], [5.0f32, 1.0, 3.0]);
+        assert_eq!((median(&mut a), median_f32(&mut b)), (3.0, 3.0));
+        assert!(median(&mut []).is_nan() && median_f32(&mut []).is_nan());
+        // The upper middle value is an order statistic of its own.
+        assert_eq!(upper_median_f32(&mut [4.0, 1.0, 3.0, 2.0]), 3.0);
+        assert_eq!(upper_median_f32(&mut [5.0, 1.0, 3.0]), 3.0);
+    }
 
     #[test]
     fn burst_gate_silences_a_knock_not_the_ticks() {
