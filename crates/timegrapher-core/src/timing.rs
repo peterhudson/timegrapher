@@ -364,7 +364,7 @@ mod tests {
     use super::*;
 
     /// The beat period of a watch 5 s/d fast, true seconds.
-    const PERIOD: f64 = 0.125 * (1.0 - 5.0 / 86_400.0);
+    const PERIOD: f64 = crate::synth::period(0.125, 5.0);
 
     /// An hour of a watch 5 s/d fast on true time, heard on a card 20 ppm
     /// slow, as audio seconds: with `gap_s` of true time unheard from

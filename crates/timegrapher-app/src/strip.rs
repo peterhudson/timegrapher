@@ -2311,7 +2311,7 @@ mod tests {
         let slow = 1.0 + 100.0 * 1e-6;
         // Beat k at its true second k periods in, gaining `rate`; the card
         // hears it at that over `slow`.
-        let true_s = |k: i64| k as f64 * p * (1.0 - rate / 86400.0);
+        let true_s = |k: i64| k as f64 * timegrapher_core::synth::period(p, rate);
         let beats: Vec<Beat> = (0..800).map(|k| beat(k, true_s(k) / slow)).collect();
         let line = RateLine {
             from_s: 0.0,

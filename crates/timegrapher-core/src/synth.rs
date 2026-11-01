@@ -136,6 +136,15 @@ impl Default for SynthConfig {
 pub const SCALE: f64 = 0.5;
 
 /// The RMS of the noise [`generate`] adds for `snr_db`, before [`SCALE`].
+/// The beat period of a watch whose nominal period is `nominal` and which
+/// gains `rate_s_per_day`: the period the timing fit reads that rate from
+/// (`timing::fit`), so a synthetic watch runs at exactly its set rate.
+/// Stepping by `nominal * (1 - rate / 86400)` instead ran a +100 s/d watch
+/// at about +100.12 s/d (#640).
+pub const fn period(nominal: f64, rate_s_per_day: f64) -> f64 {
+    nominal / (1.0 + rate_s_per_day / 86_400.0)
+}
+
 pub fn noise_rms(snr_db: f64) -> f64 {
     10f64.powf(-snr_db / 20.0)
 }
@@ -176,7 +185,7 @@ pub fn generate(
             }
         });
         let rate = cfg.rate_s_per_day + rate_fn(t);
-        t += nominal * (1.0 - rate / 86400.0);
+        t += period(nominal, rate);
         k += 1;
     }
     let noise_rms = noise_rms(cfg.snr_db);
@@ -266,6 +275,17 @@ mod tests {
             }
         }
         h
+    }
+
+    /// A synthetic watch's period gives back its set rate by the timing
+    /// fit's own reading, `(nominal / period - 1) * 86400`, so +100 s/d
+    /// is +100 s/d, not the +100.12 the linear step gave (#640).
+    #[test]
+    fn a_synthetic_watch_runs_at_its_set_rate() {
+        for rate in [-300.0, -5.0, 0.0, 5.0, 100.0, 1000.0] {
+            let read = (0.125 / period(0.125, rate) - 1.0) * 86_400.0;
+            assert!((read - rate).abs() < 1e-9, "{rate} reads {read}");
+        }
     }
 
     #[test]

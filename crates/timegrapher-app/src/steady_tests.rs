@@ -633,7 +633,7 @@ fn a_takes_clock_corrects_the_readings_drawn() {
     log.jumps.clear();
     log.clipped_beats.clear();
     // 2 s/d fast on the card's clock.
-    let beat = 0.125 * (1.0 - 2.0 / 86_400.0);
+    let beat = timegrapher_core::synth::period(0.125, 2.0);
     log.beats = (0..7200)
         .map(|index| timegrapher_core::beats::Beat {
             time: index as f64 * beat,

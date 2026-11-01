@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn two_second_rates_skip_breaks_and_masks_and_add_up_block_by_block() {
         // 28,800 bph running 10 s/day fast, for 20 s.
-        let period = 0.125 * (1.0 - 10.0 / 86_400.0);
+        let period = crate::synth::period(0.125, 10.0);
         let beats: Vec<crate::beats::Beat> = (0..160)
             .map(|k| crate::beats::Beat {
                 index: k,
