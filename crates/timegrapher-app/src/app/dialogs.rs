@@ -4,10 +4,6 @@ use super::*;
 
 impl TimegrapherApp {
     /// The question before throwing away unsaved sound.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn confirm_dialog(&mut self, ctx: &egui::Context) {
         let Some(what) = self.confirm.clone() else {
             return;
@@ -30,42 +26,14 @@ impl TimegrapherApp {
             return self.confirmed(what, ctx);
         }
         let mut choice = None;
-        let unsaved = length_text(self.unsaved_s());
         let metadata = self.metadata_unsaved();
         let masks = self.marks_unsaved();
         let fault = self.session.recording_fault().map(|f| f.description());
         egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
             ui.set_width(360.0);
-            ui.label(
-                RichText::new(match what {
-                    Confirm::NewSession => "Start a new session?",
-                    Confirm::NewTake(_) | Confirm::ReserveStart => {
-                        "Start a new take without saving?"
-                    }
-                    // A watch picked on the Watch line is the next take's.
-                    Confirm::PickWatch(_) => "Start a new take without saving?",
-                    Confirm::Quit => "Quit without saving?",
-                    Confirm::Open { .. } => "Open the recording without saving?",
-                    Confirm::Microphone | Confirm::QuickListen => {
-                        "Start listening without saving?"
-                    }
-                })
-                .font(theme::semibold(15.0)),
-            );
+            ui.label(RichText::new(confirm_title(&what)).font(theme::semibold(15.0)));
             ui.add_space(4.0);
-            ui.label(if let Some(fault) = &fault {
-                fault.clone()
-            } else if masks {
-                "Changes to the masked stretches or positions haven't been saved to the \
-                 recording's session file and will be thrown away."
-                    .to_string()
-            } else if metadata && self.unsaved_s() <= 0.0 {
-                "Changes to this session's settings or position history haven't been saved and will be thrown away.".to_string()
-            } else if metadata {
-                format!("This session's {unsaved} of sound and changes to its settings or position history haven't been saved and will be thrown away.")
-            } else {
-                format!("This session's {unsaved} of sound hasn't been saved and will be thrown away.")
-            });
+            ui.label(self.confirm_text(fault.as_deref(), masks, metadata));
             ui.add_space(8.0);
             {
                 let save = if masks { "Save" } else { "Save…" };
@@ -131,6 +99,25 @@ impl TimegrapherApp {
         self.confirmed(what, ctx);
     }
 
+    /// What the question before throwing away unsaved sound says will be
+    /// lost: the files' fault, the unsaved masks, or the sound and settings.
+    fn confirm_text(&self, fault: Option<&str>, masks: bool, metadata: bool) -> String {
+        let unsaved = length_text(self.unsaved_s());
+        if let Some(fault) = fault {
+            fault.to_string()
+        } else if masks {
+            "Changes to the masked stretches or positions haven't been saved to the \
+             recording's session file and will be thrown away."
+                .to_string()
+        } else if metadata && self.unsaved_s() <= 0.0 {
+            "Changes to this session's settings or position history haven't been saved and will be thrown away.".to_string()
+        } else if metadata {
+            format!("This session's {unsaved} of sound and changes to its settings or position history haven't been saved and will be thrown away.")
+        } else {
+            format!("This session's {unsaved} of sound hasn't been saved and will be thrown away.")
+        }
+    }
+
     /// The question before throwing away unsaved sound, while a save is
     /// written.
     fn confirm_saving_dialog(&mut self, ctx: &egui::Context) {
@@ -184,6 +171,38 @@ impl TimegrapherApp {
         }
     }
 
+    /// Set Up the Microphone's third step: the input level, automatic
+    /// gain where the input has it, and the peak meter against its band.
+    fn setup_sheet_level(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        sheet_indent(ui, |ui| {
+            sheet_field(ui, "Input Level", LEVEL_HINT, |ui| {
+                let w = ui.available_width();
+                self.level_control(ui, w);
+            });
+            if self.agc_read.is_some() {
+                sheet_field(ui, "Automatic Gain", AGC_HINT, |ui| {
+                    ui.horizontal_top(|ui| {
+                        self.agc_control(ui);
+                        // Always there, so the switch moves nothing.
+                        theme::alert_label(ui, theme::Alert::Warning, AGC_WARNING, true);
+                    });
+                });
+            }
+            sheet_field(ui, "Peak", PEAK_HINT, |ui| {
+                let w = ui.available_width();
+                self.peak_control(ui, w);
+            });
+            sheet_field(ui, "", PEAK_HINT, |ui| {
+                ui.label(
+                    RichText::new(BAND_WORDS)
+                        .size(12.0)
+                        .color(pal.text_secondary),
+                );
+            });
+        });
+    }
+
     /// Whether the window's go button can act: a recording just opened,
     /// or one going into a watch with everything `need` asks given.
     pub(super) fn open_ready(a: &OpenAsk, need: OpenNeed) -> bool {
@@ -201,10 +220,6 @@ impl TimegrapherApp {
     /// its level set against the watch on the stand, in three numbered
     /// steps, listening all the while so the meter moves. Done keeps
     /// listening; Not Now stops, and the sheet doesn't come back by itself.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn setup_sheet_dialog(&mut self, ctx: &egui::Context) {
         if !self.setup_sheet || self.open_ask.is_some() || self.confirm.is_some() {
             return;
@@ -246,73 +261,11 @@ impl TimegrapherApp {
                 3,
                 "Set the Input Level so the peaks sit in the shaded band",
             );
-            sheet_indent(ui, |ui| {
-                sheet_field(ui, "Input Level", LEVEL_HINT, |ui| {
-                    let w = ui.available_width();
-                    self.level_control(ui, w);
-                });
-                if self.agc_read.is_some() {
-                    sheet_field(ui, "Automatic Gain", AGC_HINT, |ui| {
-                        ui.horizontal_top(|ui| {
-                            self.agc_control(ui);
-                            // Always there, so the switch moves nothing.
-                            theme::alert_label(ui, theme::Alert::Warning, AGC_WARNING, true);
-                        });
-                    });
-                }
-                sheet_field(ui, "Peak", PEAK_HINT, |ui| {
-                    let w = ui.available_width();
-                    self.peak_control(ui, w);
-                });
-                sheet_field(ui, "", PEAK_HINT, |ui| {
-                    ui.label(
-                        RichText::new(BAND_WORDS)
-                            .size(12.0)
-                            .color(pal.text_secondary),
-                    );
-                });
-            });
+            self.setup_sheet_level(ui);
             ui.add_space(4.0);
             self.sheet_status(ui);
             ui.add_space(8.0);
-            let w = ui.available_width();
-            ui.allocate_ui_with_layout(
-                Vec2::new(w, 34.0),
-                egui::Layout::right_to_left(egui::Align::Center),
-                |ui| {
-                    // Narrower than a dialog's, so the notes beside them
-                    // keep to a line each.
-                    let narrow = Vec2::new(64.0, 26.0);
-                    done = ui
-                        .add(theme::primary(ui, "Done").min_size(narrow))
-                        .on_hover_text("Keep listening to this microphone, with no watch picked")
-                        .clicked();
-                    later = ui
-                        .add(theme::secondary(ui, "Not Now").min_size(narrow))
-                        .on_hover_text(
-                            "Stop listening and close this. Set up the microphone later in \
-                             Settings > Microphone.",
-                        )
-                        .clicked();
-                    // What follows, in what is left at the left.
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        ui.spacing_mut().item_spacing.y = 2.0;
-                        for line in [
-                            "From now on the app listens as soon as it opens.",
-                            "Change these in Settings > Microphone.",
-                        ] {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(format!("• {line}"))
-                                        .size(11.0)
-                                        .color(pal.text_secondary),
-                                )
-                                .wrap(),
-                            );
-                        }
-                    });
-                },
-            );
+            (done, later) = setup_sheet_buttons(ui);
         });
         // Return presses Done, the default; Esc presses Not Now.
         if ctx.input(|i| i.key_pressed(egui::Key::Enter)) && ctx.memory(|m| m.focused().is_none()) {
@@ -398,10 +351,6 @@ impl TimegrapherApp {
 
     /// A test that ended with no watch picked: Keep in Unsorted, Keep in a
     /// Watch… or Throw Away.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn test_keep_dialog(&mut self, ctx: &egui::Context) {
         let Some(kind) = self.test_keep else {
             return;
@@ -421,7 +370,7 @@ impl TimegrapherApp {
             TestKeep::Positions => "Positions Test",
             TestKeep::PowerReserve => "Power Reserve Test",
         };
-        let mut answer: Option<Option<Option<String>>> = None;
+        let mut answer: TestKeepAnswer = None;
         let mut new = false;
         // At the top or foot of the window, whichever is clear of the
         // test's pane, over a light backdrop, so its results stay in view
@@ -455,60 +404,7 @@ impl TimegrapherApp {
                     .color(pal.text_secondary),
                 );
                 ui.add_space(8.0);
-                // As a dialog's button row (see theme::dialog_buttons), with
-                // a menu on Keep in a Watch…: the default at the right,
-                // Throw Away at the far left.
-                let w = ui.available_width();
-                ui.allocate_ui_with_layout(
-                    Vec2::new(w, 26.0),
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        if ui
-                            .add(theme::primary(ui, "Keep in Unsorted"))
-                            .on_hover_text(
-                                "Keep the take in Unsorted, in the Watches view, to file under \
-                                 a watch later",
-                            )
-                            .clicked()
-                        {
-                            answer = Some(Some(None));
-                        }
-                        let keep = ui
-                            .add(theme::secondary(ui, "Keep in a Watch…"))
-                            .on_hover_text(
-                                "Keep the take in one of your watches. It keeps the settings it \
-                                 ran with; the watch's own apply to its next take.",
-                            );
-                        egui::Popup::menu(&keep).show(|ui| {
-                            for (id, name) in &watches {
-                                if ui.button(name).clicked() {
-                                    answer = Some(Some(Some(id.clone())));
-                                }
-                            }
-                            if !watches.is_empty() {
-                                ui.separator();
-                            }
-                            if ui
-                                .button("New Watch…")
-                                .on_hover_text(
-                                    "Add a watch, and keep the take in it when you add it",
-                                )
-                                .clicked()
-                            {
-                                new = true;
-                            }
-                        });
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            if ui
-                                .add(theme::destructive(ui, "Throw Away"))
-                                .on_hover_text("Delete the take: its sound and its readings")
-                                .clicked()
-                            {
-                                answer = Some(None);
-                            }
-                        });
-                    },
-                );
+                test_keep_buttons(ui, &watches, &mut answer, &mut new);
                 // Return keeps it in Unsorted, the default.
                 if answer.is_none()
                     && theme::dialog_keys(ui, &[DialogButton::new(Role::Default, "", "")]).is_some()
@@ -556,10 +452,6 @@ impl TimegrapherApp {
         }
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn open_ask_dialog(&mut self, ctx: &egui::Context) {
         let Some(mut a) = self.open_ask.take() else {
             return;
@@ -608,52 +500,7 @@ impl TimegrapherApp {
                 );
             }
             if a.add {
-                let shown = if a.new_watch {
-                    "New Watch…"
-                } else {
-                    a.watch
-                        .as_ref()
-                        .and_then(|id| watches.iter().find(|(w, _)| w == id))
-                        .map_or("Choose a Watch", |(_, n)| n.as_str())
-                };
-                theme::row(
-                    ui,
-                    "Watch",
-                    Some("The watch the recording is added to"),
-                    |ui| {
-                        egui::ComboBox::from_id_salt("open into watch")
-                            .width(ui.available_width())
-                            .selected_text(shown)
-                            .show_ui(ui, |ui| {
-                                for (id, name) in &watches {
-                                    let on = !a.new_watch && a.watch.as_ref() == Some(id);
-                                    if ui.selectable_label(on, name).clicked() {
-                                        a.watch = Some(id.clone());
-                                        a.new_watch = false;
-                                    }
-                                }
-                                if ui.selectable_label(a.new_watch, "New Watch…").clicked() {
-                                    a.new_watch = true;
-                                }
-                            });
-                    },
-                );
-                if a.new_watch {
-                    theme::row(
-                        ui,
-                        "Name",
-                        Some(
-                            "The new watch's name. Its other details can be added later \
-                             with Edit… in the Watches view.",
-                        ),
-                        |ui| {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut a.new_name)
-                                    .desired_width(f32::INFINITY),
-                            );
-                        },
-                    );
-                }
+                open_ask_watch(ui, &mut a, &watches);
                 if asks == OpenNeed::default() {
                     ui.label(
                         RichText::new("Its files and the watch say everything a take needs.")
@@ -668,94 +515,7 @@ impl TimegrapherApp {
                         .color(pal.text_secondary),
                     );
                 }
-                if asks.bph {
-                    theme::row(ui, "Beat Rate", Some("Beats per hour"), |ui| {
-                        egui::ComboBox::from_id_salt("open bph")
-                            .width(ui.available_width())
-                            .selected_text(match a.bph {
-                                Some(b) => format!("{b} bph"),
-                                None => "Choose a Beat Rate".into(),
-                            })
-                            .show_ui(ui, |ui| {
-                                for b in STANDARD_BPH {
-                                    ui.selectable_value(&mut a.bph, Some(b), format!("{b} bph"));
-                                }
-                            });
-                    });
-                }
-                if asks.lift {
-                    let changed = theme::row(
-                        ui,
-                        "Lift Angle",
-                        Some(
-                            "The calibre's lift angle in degrees: type it and press Enter, or \
-                             pick a common one from the menu. Amplitude depends on it.",
-                        ),
-                        |ui| {
-                            let x = fields::entry(
-                                ui,
-                                "open lift",
-                                &mut a.lift,
-                                timegrapher_core::input_domain::LIFT_RANGE_DEG,
-                                &MS,
-                                44.0,
-                            );
-                            ui.label("°");
-                            let y = fields::presets(
-                                ui,
-                                "open lift presets",
-                                &mut a.lift,
-                                &LIFTS,
-                                |v| format!("{}°", fields::plain(v)),
-                            );
-                            x || y
-                        },
-                    );
-                    a.lift_set |= changed;
-                }
-                if asks.position {
-                    theme::row(
-                        ui,
-                        "Position",
-                        Some("The position the watch was in"),
-                        |ui| {
-                            egui::ComboBox::from_id_salt("open position")
-                                .width(ui.available_width())
-                                .selected_text(
-                                    a.position.map_or("Choose a Position", |p| p.label()),
-                                )
-                                .show_ui(ui, |ui| {
-                                    for p in Position::ALL {
-                                        ui.selectable_value(&mut a.position, Some(p), p.label());
-                                    }
-                                });
-                        },
-                    );
-                }
-                if asks.started {
-                    theme::row(
-                        ui,
-                        "Started",
-                        Some(
-                            "When the recording started, in this computer's time, as \
-                             2026-10-22 14:30. Filled in from when its file was last written, \
-                             less its length: correct it if the file was copied since.",
-                        ),
-                        |ui| {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut a.started)
-                                    .desired_width(f32::INFINITY),
-                            );
-                        },
-                    );
-                    if started.is_none() {
-                        ui.label(
-                            RichText::new("Write it as 2026-10-22 14:30.")
-                                .small()
-                                .color(pal.text_secondary),
-                        );
-                    }
-                }
+                open_ask_fields(ui, &mut a, asks, started.is_some());
             }
             if let Some(e) = &a.error {
                 theme::alert_label(ui, theme::Alert::Bad, e, false);
@@ -1154,6 +914,263 @@ impl TimegrapherApp {
         });
         if dismiss {
             self.message = None;
+        }
+    }
+}
+
+/// The question before throwing away unsaved sound, for what was asked.
+fn confirm_title(what: &Confirm) -> &'static str {
+    match what {
+        Confirm::NewSession => "Start a new session?",
+        Confirm::NewTake(_) | Confirm::ReserveStart => "Start a new take without saving?",
+        // A watch picked on the Watch line is the next take's.
+        Confirm::PickWatch(_) => "Start a new take without saving?",
+        Confirm::Quit => "Quit without saving?",
+        Confirm::Open { .. } => "Open the recording without saving?",
+        Confirm::Microphone | Confirm::QuickListen => "Start listening without saving?",
+    }
+}
+
+/// Set Up the Microphone's Done and Not Now, with what follows beside
+/// them; whether each was pressed.
+fn setup_sheet_buttons(ui: &mut egui::Ui) -> (bool, bool) {
+    let pal = theme::pal(ui);
+    let (mut done, mut later) = (false, false);
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 34.0),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            // Narrower than a dialog's, so the notes beside them
+            // keep to a line each.
+            let narrow = Vec2::new(64.0, 26.0);
+            done = ui
+                .add(theme::primary(ui, "Done").min_size(narrow))
+                .on_hover_text("Keep listening to this microphone, with no watch picked")
+                .clicked();
+            later = ui
+                .add(theme::secondary(ui, "Not Now").min_size(narrow))
+                .on_hover_text(
+                    "Stop listening and close this. Set up the microphone later in \
+                     Settings > Microphone.",
+                )
+                .clicked();
+            // What follows, in what is left at the left.
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for line in [
+                    "From now on the app listens as soon as it opens.",
+                    "Change these in Settings > Microphone.",
+                ] {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(format!("• {line}"))
+                                .size(11.0)
+                                .color(pal.text_secondary),
+                        )
+                        .wrap(),
+                    );
+                }
+            });
+        },
+    );
+    (done, later)
+}
+
+/// The answer to Keep This Test?: `Some(Some(watch))` to keep it, in
+/// Unsorted when `watch` is `None`; `Some(None)` to throw it away.
+type TestKeepAnswer = Option<Option<Option<String>>>;
+
+/// Keep This Test?'s button row, as a dialog's (see
+/// theme::dialog_buttons), with a menu of `watches` on Keep in a Watch…:
+/// the default at the right, Throw Away at the far left. Sets `answer`,
+/// or `new` when New Watch… is picked.
+fn test_keep_buttons(
+    ui: &mut egui::Ui,
+    watches: &[(String, String)],
+    answer: &mut TestKeepAnswer,
+    new: &mut bool,
+) {
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 26.0),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            if ui
+                .add(theme::primary(ui, "Keep in Unsorted"))
+                .on_hover_text(
+                    "Keep the take in Unsorted, in the Watches view, to file under \
+                     a watch later",
+                )
+                .clicked()
+            {
+                *answer = Some(Some(None));
+            }
+            let keep = ui
+                .add(theme::secondary(ui, "Keep in a Watch…"))
+                .on_hover_text(
+                    "Keep the take in one of your watches. It keeps the settings it \
+                     ran with; the watch's own apply to its next take.",
+                );
+            egui::Popup::menu(&keep).show(|ui| {
+                for (id, name) in watches {
+                    if ui.button(name).clicked() {
+                        *answer = Some(Some(Some(id.clone())));
+                    }
+                }
+                if !watches.is_empty() {
+                    ui.separator();
+                }
+                if ui
+                    .button("New Watch…")
+                    .on_hover_text("Add a watch, and keep the take in it when you add it")
+                    .clicked()
+                {
+                    *new = true;
+                }
+            });
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                if ui
+                    .add(theme::destructive(ui, "Throw Away"))
+                    .on_hover_text("Delete the take: its sound and its readings")
+                    .clicked()
+                {
+                    *answer = Some(None);
+                }
+            });
+        },
+    );
+}
+
+/// What Open asks: the watch `a` is added to, from `watches`, or a new
+/// watch's name.
+fn open_ask_watch(ui: &mut egui::Ui, a: &mut OpenAsk, watches: &[(String, String)]) {
+    let shown = if a.new_watch {
+        "New Watch…"
+    } else {
+        a.watch
+            .as_ref()
+            .and_then(|id| watches.iter().find(|(w, _)| w == id))
+            .map_or("Choose a Watch", |(_, n)| n.as_str())
+    };
+    theme::row(
+        ui,
+        "Watch",
+        Some("The watch the recording is added to"),
+        |ui| {
+            egui::ComboBox::from_id_salt("open into watch")
+                .width(ui.available_width())
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    for (id, name) in watches {
+                        let on = !a.new_watch && a.watch.as_ref() == Some(id);
+                        if ui.selectable_label(on, name).clicked() {
+                            a.watch = Some(id.clone());
+                            a.new_watch = false;
+                        }
+                    }
+                    if ui.selectable_label(a.new_watch, "New Watch…").clicked() {
+                        a.new_watch = true;
+                    }
+                });
+        },
+    );
+    if a.new_watch {
+        theme::row(
+            ui,
+            "Name",
+            Some(
+                "The new watch's name. Its other details can be added later \
+                 with Edit… in the Watches view.",
+            ),
+            |ui| {
+                ui.add(egui::TextEdit::singleline(&mut a.new_name).desired_width(f32::INFINITY));
+            },
+        );
+    }
+}
+
+/// What Open asks: what neither the files nor the watch say (`asks`), for
+/// the take `a` makes; `started_ok` when its start time reads.
+fn open_ask_fields(ui: &mut egui::Ui, a: &mut OpenAsk, asks: OpenNeed, started_ok: bool) {
+    let pal = theme::pal(ui);
+    if asks.bph {
+        theme::row(ui, "Beat Rate", Some("Beats per hour"), |ui| {
+            egui::ComboBox::from_id_salt("open bph")
+                .width(ui.available_width())
+                .selected_text(match a.bph {
+                    Some(b) => format!("{b} bph"),
+                    None => "Choose a Beat Rate".into(),
+                })
+                .show_ui(ui, |ui| {
+                    for b in STANDARD_BPH {
+                        ui.selectable_value(&mut a.bph, Some(b), format!("{b} bph"));
+                    }
+                });
+        });
+    }
+    if asks.lift {
+        let changed = theme::row(
+            ui,
+            "Lift Angle",
+            Some(
+                "The calibre's lift angle in degrees: type it and press Enter, or \
+                 pick a common one from the menu. Amplitude depends on it.",
+            ),
+            |ui| {
+                let x = fields::entry(
+                    ui,
+                    "open lift",
+                    &mut a.lift,
+                    timegrapher_core::input_domain::LIFT_RANGE_DEG,
+                    &MS,
+                    44.0,
+                );
+                ui.label("°");
+                let y = fields::presets(ui, "open lift presets", &mut a.lift, &LIFTS, |v| {
+                    format!("{}°", fields::plain(v))
+                });
+                x || y
+            },
+        );
+        a.lift_set |= changed;
+    }
+    if asks.position {
+        theme::row(
+            ui,
+            "Position",
+            Some("The position the watch was in"),
+            |ui| {
+                egui::ComboBox::from_id_salt("open position")
+                    .width(ui.available_width())
+                    .selected_text(a.position.map_or("Choose a Position", |p| p.label()))
+                    .show_ui(ui, |ui| {
+                        for p in Position::ALL {
+                            ui.selectable_value(&mut a.position, Some(p), p.label());
+                        }
+                    });
+            },
+        );
+    }
+    if asks.started {
+        theme::row(
+            ui,
+            "Started",
+            Some(
+                "When the recording started, in this computer's time, as \
+                 2026-10-22 14:30. Filled in from when its file was last written, \
+                 less its length: correct it if the file was copied since.",
+            ),
+            |ui| {
+                ui.add(egui::TextEdit::singleline(&mut a.started).desired_width(f32::INFINITY));
+            },
+        );
+        if !started_ok {
+            ui.label(
+                RichText::new("Write it as 2026-10-22 14:30.")
+                    .small()
+                    .color(pal.text_secondary),
+            );
         }
     }
 }

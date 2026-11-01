@@ -159,24 +159,37 @@ fn signal_line(signal_x: Option<f64>) -> String {
     }
 }
 
+/// The text line for the gap rise. With too few gaps between ticks to
+/// measure it says so rather than printing "-" (#833).
+fn gap_rise_line(gap_rise_db: Option<f64>) -> String {
+    match gap_rise_db {
+        Some(_) => format!(
+            "Gap rise     background rises {} between ticks",
+            opt(gap_rise_db, " dB")
+        ),
+        None => "Gap rise     not measured: too few gaps between ticks".into(),
+    }
+}
+
 fn print_check(c: &SignalCheck) {
     println!(
         "Level        peak {:.1} dBFS, RMS {:.1} dBFS, {} clipped samples",
         c.peak_dbfs, c.rms_dbfs, c.clipped_samples
     );
     println!(
-        "Ticks        {} of about {} beats at {} bph; tick {}, background {:.1} dBFS",
+        "Ticks        {} of about {} beats at {} bph; {}, background {:.1} dBFS",
         c.beats_found,
         c.beats_expected,
         c.bph,
-        opt(c.tick_level_dbfs, " dBFS"),
+        c.tick_level_dbfs
+            .map_or("no tick to measure".into(), |t| format!(
+                "tick {}",
+                opt(Some(t), " dBFS")
+            )),
         c.noise_level_dbfs,
     );
     println!("{}", signal_line(c.signal_x));
-    println!(
-        "Gap rise     background rises {} between ticks",
-        opt(c.gap_rise_db, " dB")
-    );
+    println!("{}", gap_rise_line(c.gap_rise_db));
     if let (Some(r), Some(b)) = (c.rate_s_per_day, c.beat_error_ms) {
         println!("Quick look   rate {r:+.1} s/d, beat error {b:.1} ms (on the sound card's clock)");
     }
@@ -250,7 +263,18 @@ fn print_report(r: &Report, apply: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{opt, signal_line};
+    use super::{gap_rise_line, opt, signal_line};
+
+    #[test]
+    fn no_gap_rise_says_why_rather_than_a_dash() {
+        assert_eq!(
+            gap_rise_line(Some(-0.01)),
+            "Gap rise     background rises 0.0 dB between ticks"
+        );
+        let none = gap_rise_line(None);
+        assert!(none.contains("not measured"), "{none}");
+        assert!(!none.contains(" - "), "{none}");
+    }
 
     #[test]
     fn a_value_that_rounds_to_zero_has_no_minus_sign() {

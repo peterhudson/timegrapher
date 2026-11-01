@@ -101,7 +101,7 @@ fn the_band_widens_where_gaps_leave_fewer_pairs() {
         })
         .collect();
     let cfg = Config::default();
-    let a = autocorrelation(&y, 10.0, &cfg);
+    let a = autocorrelation_less(&y, 10.0, None, &cfg);
     assert_eq!(a.band_by_lag.len(), a.lag_s.len());
     let at = |lag: f64| {
         let k = a.lag_s.iter().position(|&l| l == lag).unwrap();
@@ -1411,4 +1411,53 @@ fn a_slope_is_withheld_when_the_amplitude_is_mostly_noise() {
         "{}",
         c.headline
     );
+}
+
+#[test]
+fn independent_readings_over_15_minutes_read_no_correlation_after_the_quadratic() {
+    // 1000 seeded grids of 90 independent readings 10 s apart (15 min,
+    // so the quadratic is taken out first), every reading present and
+    // with a 60 s gap. Taking out three terms pulled the lag-one r to
+    // about −0.038 on average, and with the Q weighed as a sum over all
+    // the readings the Ljung–Box p fell under the detector's level (0.01)
+    // in 47 of 1000 (#828). Less its bias the lag-one r reads about 0
+    // (−0.004), and p falls under 0.01 in 22 (16 with the gap): the
+    // chi-squared tail runs a little light on 90 readings, about 1.6% for
+    // white noise with nothing but the mean taken out.
+    for gap in [false, true] {
+        let mut rng = crate::synth::Rng::new(828);
+        let (mut r1, mut low_p) = (0.0, 0);
+        let runs = 1000;
+        for _ in 0..runs {
+            let y: Vec<f64> = (0..90)
+                .map(|i| {
+                    let v = rng.normal();
+                    if gap && (40..46).contains(&i) {
+                        f64::NAN
+                    } else {
+                        v
+                    }
+                })
+                .collect();
+            let out = check_series(
+                SeriesKind::Amplitude,
+                Grid {
+                    t0: 0.0,
+                    step: 10.0,
+                    y,
+                },
+                None,
+                None,
+                None,
+                &[],
+                &Config::default(),
+            );
+            let a = out.autocorrelation.as_ref().unwrap();
+            r1 += a.r[1];
+            low_p += usize::from(a.p_value < Config::default().alpha);
+        }
+        let mean = r1 / runs as f64;
+        assert!(mean.abs() < 0.01, "gap {gap}: mean lag-one r {mean}");
+        assert!(low_p <= 30, "gap {gap}: p under 0.01 in {low_p} of {runs}");
+    }
 }

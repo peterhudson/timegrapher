@@ -20,7 +20,7 @@
 //! two sides' unlock-to-drop times.
 
 use crate::beats::{trimmed_template, trimmed_template_from, Beat, PRE_S};
-use crate::dsp::{median_f32, moving_average};
+use crate::dsp::{moving_average, upper_median_f32};
 use crate::timing;
 use serde::Serialize;
 
@@ -86,7 +86,7 @@ fn edges_after(
     let (peak, peak_v) = crate::dsp::argmax(&t, origin.saturating_sub(w), origin + w)?;
     let quiet = (0.003 * fs) as usize;
     let mut floor_v = t[..quiet.min(t.len())].to_vec();
-    let floor = median_f32(&mut floor_v);
+    let floor = upper_median_f32(&mut floor_v);
     let height = peak_v - floor;
     if height <= 0.0 {
         return None;

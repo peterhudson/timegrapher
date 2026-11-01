@@ -98,8 +98,12 @@ For each series:
 - **Autocorrelation**: how closely a reading matches the one a lag
   later, read with the slow trend (the period search's 30-minute running
   median) taken out first, so a rate drifting as the mainspring runs down
-  is not counted as memory. Independent readings stay inside ±1.96/√n at every lag. The
-  Ljung–Box test combines the first 10 lags into one p-value. `memory_s`
+  is not counted as memory. On a take under 20 minutes, where a
+  quadratic is taken out instead, each lag is given less the correlation
+  that taking it out leaves in independent readings (about −3/n at lag
+  one; `confidence::fit_lag_bias`, #828), so they read about 0. Independent readings stay inside ±1.96/√n at every lag. The
+  Ljung–Box test combines the first 10 lags into one p-value, each lag
+  weighed by the pairs it is read from. `memory_s`
   is the lag where the correlation falls below 1/e. `repeat_lag_s` is
   the first lag where the correlation rises back to a peak after falling,
   which means the readings repeat. Where gaps leave fewer pairs of
@@ -207,7 +211,11 @@ For each series:
   independent), the amplitude it was read at, and the sine's phase at
   the take's start: a line locked to the wheel keeps one phase from
   window to window. The windows are combined in 10° bins of amplitude,
-  each weighted by one over its standard error squared. A line that only
+  each weighted by one over its standard error squared. The bin's
+  standard error allows for the windows' overlap: two windows sharing a
+  fraction of their length are taken to correlate by that fraction, so
+  half-overlapping neighbours count less than independent windows
+  (#480). A line that only
   shows at low torque reads near zero at high amplitude and rises below
   some amplitude; with no line in it, a window reads a size near 1.25
   standard errors. The timing and amplitude are on the watch's own time
@@ -409,7 +417,7 @@ headlines state facts. Everything else is as in version 1.
 | `coherence[]` | with `--maps`: the rate against the amplitude, then Tick's amplitude against Tock's, each `x` and `y` (the series: `rate` and `amplitude`, or `tick_amplitude` and `tock_amplitude`), `step_s` (10 s readings or 2 s windows, averaged down as for the SST), `period_s[]` (48 rows, longest first, as for the SST), `t_s[]` (the middle of each slice of time, at most 400), `coherence[][]` (one column per `t_s`, the mean coherence over the slice per `period_s`, 0 to 1; null where nothing was read), `phase_deg[][]` (the phase of `x` against `y`, −180 to 180: positive when `x` leads), `noise_95[]` (per period, the red-noise level above) and `noise_pairs`. A pair with no stretch long enough has no entry. |
 | `lomb_scargle[]` | with `--maps`: one per series (`rate` in s/d, `amplitude`, `beat_error`), each `series`, `unit`, `readings`, `span_s`, `period_s[]` (longest first, at most 600 on a log axis, keeping the strongest point in each slice), `power[]` (0 to 1), `window[]` (the spectral window, 0 to 1) and `peaks[]` (strongest first, at most 8: `period_s`, `power`, `false_alarm`, `window_power` (the window's highest within one resolution width), `on_window_line`, `wheel`). A series with fewer than 20 readings has none. |
 | `kurtograms[]` | with `--maps`: one per series (`rate` from the beat timing, `amplitude`, `beat_error`, read from the same series as `time_frequency`), each `series`, `step_s`, `window_s[]` (16, 32, 64 ... readings, at most 16,384, shortest first: one row each), `windows[]` (how many windows each row was read from, each with every reading present, stepped half a window; a row needs 8), `noise_sd[]` (how far a cell of the row strays under steady noise, 2/√`windows`), `period_s[]` (48, longest first, evenly spaced in log period, from 4 readings to a third of the longest window) and `values[][]`: the spectral kurtosis of each period at each window length, `mean |X|⁴ / (mean |X|²)² − 2` over the windows for the most powerful frequency in the period's band, null where the window holds under three turns. About 0 is noise, −1 a line of steady size, above 0 a line that comes in bursts: on windows no longer than a burst, the higher the less of the time it sounds, falling towards −1 on windows long enough to hold several bursts. A series with no row has none. |
-| `wheel_lines[]` | per named wheel and series (`rate`, the beat timing in ms; `amplitude`; `beat_error`): `wheel`, `period_s`, `series`, `unit`, `window_s`, `bins[]` (lowest amplitude first: `from_deg`, the bin running 10° up; `windows`; `size` and `se`, in `unit`, the windows' sizes combined weighted by 1/`se`²; a window's `se` is from its residuals about the fitted line and slow change, counted as fewer independent readings when neighbours follow one another, by the residuals' lag-one correlation and how strong such noise is at the wheel's own period (`confidence::effective_readings_at`); for the rate also `size_s_per_day` and `se_s_per_day`, 86.4 × 2π / `period_s` times the timing figures) and, with `--maps`, `windows[]` (`start_s`, `end_s`, `amplitude_deg`, `size`, `se`, `phase_deg`). A wheel with fewer than two windows in a series has no entry there. |
+| `wheel_lines[]` | per named wheel and series (`rate`, the beat timing in ms; `amplitude`; `beat_error`): `wheel`, `period_s`, `series`, `unit`, `window_s`, `bins[]` (lowest amplitude first: `from_deg`, the bin running 10° up; `windows`; `size` and `se`, in `unit`, the windows' sizes combined weighted by 1/`se`², the bin's `se` allowing for windows that overlap (two sharing a fraction *f* of their length correlate at *f*); a window's `se` is from its residuals about the fitted line and slow change, counted as fewer independent readings when neighbours follow one another, by the residuals' lag-one correlation and how strong such noise is at the wheel's own period (`confidence::effective_readings_at`); for the rate also `size_s_per_day` and `se_s_per_day`, 86.4 × 2π / `period_s` times the timing figures) and, with `--maps`, `windows[]` (`start_s`, `end_s`, `amplitude_deg`, `size`, `se`, `phase_deg`). A wheel with fewer than two windows in a series has no entry there. |
 | `wheel_turns[]` | with `--maps`: per named wheel and series (`rate`, the beat timing in ms; `amplitude`): `wheel`, `period_s`, `series`, `unit`, `bins`, `all` and `by_amplitude[]` (lowest first), each `from_deg` and `to_deg` (null for `all`), `turns`, `profile[]` (from the turn's start), `se[]`, `peak_to_peak`. A wheel with fewer than ten turns read has no entry. |
 | `period_span` | with `--views`: `[lo, hi]`, log10 seconds, the periods every series' search covers between them, so the Periods plots share one axis |
 | `findings[]` | one per series where a test detected structure: `code`, `series`, `title` (what was detected), `evidence` (the headline and the statistics). Codes: `periodic`, `two_states`, `measurement_split` (two levels that show on one side only, or in the beat error from the unlock but not from the drop), `shifting_mean` (level changes), `drifting` (a trend), `wandering` (correlation between readings). A series where none was detected has none. |
