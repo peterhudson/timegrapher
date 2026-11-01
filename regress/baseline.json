@@ -236,7 +236,7 @@
       {
         "label": ".",
         "rate_s_per_day": 3.3561213366603226,
-        "amplitude_deg": 285.3922975244423,
+        "amplitude_deg": 286.0598436346811,
         "beat_error_unlock_ms": 0.2034149382625406,
         "beat_error_ms": 0.4167640223627916,
         "beats": 13895,
@@ -345,7 +345,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 0.9239854716931006,
-        "amplitude_deg": 280.29904007439745,
+        "amplitude_deg": 281.78269413346766,
         "beat_error_unlock_ms": 0.23807625896468212,
         "beat_error_ms": 0.4805681056533675,
         "beats": 4547,
@@ -444,7 +444,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 10.542906340621272,
-        "amplitude_deg": 287.2347790195983,
+        "amplitude_deg": 287.25465183176937,
         "beat_error_unlock_ms": 0.15639258996789202,
         "beat_error_ms": 0.2651320677860188,
         "beats": 4640,
@@ -945,7 +945,7 @@
       {
         "label": ".",
         "rate_s_per_day": 10.974330031818624,
-        "amplitude_deg": 308.8492453290245,
+        "amplitude_deg": 310.5541592646955,
         "beat_error_unlock_ms": -0.027515950130229616,
         "beat_error_ms": 0.2523140609745332,
         "beats": 14196,
@@ -1054,7 +1054,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 11.143634944493641,
-        "amplitude_deg": 309.17177943371735,
+        "amplitude_deg": 310.29212564980685,
         "beat_error_unlock_ms": 0.002252686389581926,
         "beat_error_ms": 0.15257857582730175,
         "beats": 4620,
@@ -1151,7 +1151,7 @@
       {
         "label": "take_part01-002.flac",
         "rate_s_per_day": 10.805384325178125,
-        "amplitude_deg": 320.17349712417126,
+        "amplitude_deg": 317.32183153779454,
         "beat_error_unlock_ms": -0.14868918144922888,
         "beat_error_ms": 0.3386520801387702,
         "beats": 4627,
@@ -1248,7 +1248,7 @@
       {
         "label": "take_part01-003.flac",
         "rate_s_per_day": 10.541243636905762,
-        "amplitude_deg": 313.63637925234576,
+        "amplitude_deg": 316.03791088841,
         "beat_error_unlock_ms": -0.042155929698789674,
         "beat_error_ms": 0.4534989206537829,
         "beats": 4629,
@@ -14316,7 +14316,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": -15.758051332220191,
-        "amplitude_deg": 224.26257650306945,
+        "amplitude_deg": 224.1907069556077,
         "beat_error_unlock_ms": 0.29644807888775976,
         "beat_error_ms": 0.27049530679850253,
         "beats": 4639,
@@ -15092,7 +15092,7 @@
       {
         "label": "take_part01-009.flac",
         "rate_s_per_day": -10.884373013987059,
-        "amplitude_deg": 228.26903076041438,
+        "amplitude_deg": 228.28103202552097,
         "beat_error_unlock_ms": 0.22098514799086058,
         "beat_error_ms": 0.29892166151002714,
         "beats": 4639,
@@ -15189,7 +15189,7 @@
       {
         "label": "take_part01-010.flac",
         "rate_s_per_day": -11.489296224853973,
-        "amplitude_deg": 226.75152852023626,
+        "amplitude_deg": 226.7644719826049,
         "beat_error_unlock_ms": 0.2205895535689722,
         "beat_error_ms": 0.2942745488053537,
         "beats": 4639,
@@ -15676,7 +15676,7 @@
       {
         "label": "take_part01-001.flac",
         "rate_s_per_day": 43.62732012822477,
-        "amplitude_deg": 240.51000719946643,
+        "amplitude_deg": 240.57531246185235,
         "beat_error_unlock_ms": -0.05163385868614334,
         "beat_error_ms": 0.17732714263305174,
         "beats": 4621,
@@ -15773,7 +15773,7 @@
       {
         "label": "take_part01-002.flac",
         "rate_s_per_day": 46.65047539785334,
-        "amplitude_deg": 241.7777567007176,
+        "amplitude_deg": 241.61258830977914,
         "beat_error_unlock_ms": -0.0173131393845513,
         "beat_error_ms": 0.18242446618986816,
         "beats": 4642,
@@ -15870,7 +15870,7 @@
       {
         "label": "take_part01-003.flac",
         "rate_s_per_day": 28.537347888691755,
-        "amplitude_deg": 236.25435138597638,
+        "amplitude_deg": 236.3537562092692,
         "beat_error_unlock_ms": 0.0305172851250313,
         "beat_error_ms": 0.05740181491675405,
         "beats": 4641,
