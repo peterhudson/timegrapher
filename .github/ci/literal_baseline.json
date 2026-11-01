@@ -1,17 +1,17 @@
 {
- "copies": 23,
+ "copies": 20,
  "crates": {
   "timegrapher-app": {
    "files": {
     "crates/timegrapher-app/src/app.rs": {
      "bounds": 8,
-     "comparisons": 7,
+     "comparisons": 6,
      "constants": 19,
      "defaults": 0
     },
     "crates/timegrapher-app/src/app/distributions.rs": {
      "bounds": 2,
-     "comparisons": 5,
+     "comparisons": 4,
      "constants": 0,
      "defaults": 0
     },
@@ -52,8 +52,8 @@
      "defaults": 0
     },
     "crates/timegrapher-app/src/app/readouts.rs": {
-     "bounds": 7,
-     "comparisons": 7,
+     "bounds": 6,
+     "comparisons": 4,
      "constants": 0,
      "defaults": 0
     },
@@ -125,7 +125,7 @@
     },
     "crates/timegrapher-app/src/isochronism.rs": {
      "bounds": 4,
-     "comparisons": 1,
+     "comparisons": 0,
      "constants": 0,
      "defaults": 0
     },
@@ -191,7 +191,7 @@
     },
     "crates/timegrapher-app/src/steady.rs": {
      "bounds": 10,
-     "comparisons": 13,
+     "comparisons": 10,
      "constants": 2,
      "defaults": 0
     },
@@ -221,8 +221,8 @@
     }
    },
    "total": {
-    "bounds": 109,
-    "comparisons": 119,
+    "bounds": 108,
+    "comparisons": 110,
     "constants": 56,
     "defaults": 4
    }
@@ -323,12 +323,6 @@
      "constants": 1,
      "defaults": 1
     },
-    "crates/timegrapher-mcp/src/summary.rs": {
-     "bounds": 0,
-     "comparisons": 1,
-     "constants": 0,
-     "defaults": 0
-    },
     "crates/timegrapher-mcp/src/views.rs": {
      "bounds": 0,
      "comparisons": 0,
@@ -338,14 +332,14 @@
    },
    "total": {
     "bounds": 0,
-    "comparisons": 1,
+    "comparisons": 0,
     "constants": 5,
     "defaults": 1
    }
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 5463,
+  "crates/timegrapher-app/src/app.rs": 5451,
   "crates/timegrapher-app/src/calibre_ui.rs": 3186
  }
 }
