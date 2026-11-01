@@ -44,3 +44,5 @@ bc99edc826def16fb1a74ddfa33127dfcb8538bc
 f8d9887d2a663b3af389d3b39fc03dd2d3a74a6b
 # Watch line and settings tests, shared test helpers
 8a8f719ba7752fb3c01db202daea206a2eae81e8
+# Move the readings cards' figure row into readouts (#825)
+cf6723990434c0916c08882126646d749bc88157
