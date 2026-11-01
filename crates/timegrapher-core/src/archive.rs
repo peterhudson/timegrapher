@@ -37,7 +37,7 @@ pub(crate) fn unpacked_size(bytes: u64) -> String {
 }
 
 /// Read no more than one byte past the remaining unpacked budget.
-fn read_limited(mut reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
+pub(crate) fn read_limited(mut reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
     let mut data = Vec::new();
     reader.by_ref().take(limit + 1).read_to_end(&mut data)?;
     Ok(data)

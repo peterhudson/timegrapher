@@ -20,7 +20,9 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{self, Read, Write};
+#[cfg(test)]
+use std::io::Read;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 /// The folder the analysis is kept in, inside the take's folder.
@@ -418,13 +420,6 @@ pub fn write(take: &Path, s: &Stored) -> io::Result<()> {
     Ok(())
 }
 
-/// Read no more than one byte past the decompressed file limit.
-fn read_limited(mut reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
-    let mut out = Vec::new();
-    reader.by_ref().take(limit + 1).read_to_end(&mut out)?;
-    Ok(out)
-}
-
 /// Read `analysis/` from the take folder `take`.
 pub fn read(take: &Path) -> io::Result<Stored> {
     read_with_limit(take, MAX_ANALYSIS_FILE)
@@ -453,7 +448,7 @@ fn read_with_limit(take: &Path, limit: u64) -> io::Result<Stored> {
     let gunzip = |name: &str| -> io::Result<Vec<u8>> {
         let file = fs::File::open(dir.join(name))
             .map_err(|e| io::Error::new(e.kind(), format!("{DIR}/{name}: {e}")))?;
-        let out = read_limited(GzDecoder::new(io::BufReader::new(file)), limit)
+        let out = crate::archive::read_limited(GzDecoder::new(io::BufReader::new(file)), limit)
             .map_err(|e| invalid(format!("{DIR}/{name}: {e}")))?;
         if out.len() as u64 > limit {
             return Err(invalid(format!(
@@ -1416,40 +1411,5 @@ mod limit_wording_tests {
         );
         assert_eq!(crate::archive::unpacked_size(MAX_ANALYSIS_FILE), "512 MB");
         fs::remove_dir_all(path).unwrap();
-    }
-}
-
-#[cfg(test)]
-mod bounded_read_tests {
-    use super::*;
-    use std::io;
-
-    struct Counted {
-        bytes: usize,
-        allowed: usize,
-    }
-
-    impl Read for Counted {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            assert!(
-                buf.len() <= self.allowed - self.bytes,
-                "read exceeds limit plus one"
-            );
-            buf.fill(0);
-            self.bytes += buf.len();
-            Ok(buf.len())
-        }
-    }
-
-    #[test]
-    fn analysis_read_stops_at_limit_plus_one() {
-        let limit = 16;
-        let mut reader = Counted {
-            bytes: 0,
-            allowed: limit + 1,
-        };
-        let data = read_limited(&mut reader, limit as u64).unwrap();
-        assert_eq!(data.len(), limit + 1);
-        assert_eq!(reader.bytes, limit + 1);
     }
 }
