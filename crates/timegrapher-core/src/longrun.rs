@@ -6,6 +6,7 @@ use crate::breaks::Break;
 use crate::clean::Cuts;
 use crate::clock::ClockFit;
 use crate::dsp::median;
+use crate::dsp::percentile;
 use crate::longterm::{self, grid_median, Component, LongConfig, SeriesReport};
 use crate::stream::BeatLog;
 use crate::timing::{self, TimingFit};
@@ -92,15 +93,6 @@ pub struct LongReport {
     pub timing: SeriesReport,
     pub amplitude: SeriesReport,
     pub rate_components: Vec<RateComponent>,
-}
-
-fn percentile(v: &[f64], q: f64) -> Option<f64> {
-    let mut w: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
-    if w.is_empty() {
-        return None;
-    }
-    w.sort_by(|a, b| a.total_cmp(b));
-    Some(w[((w.len() - 1) as f64 * q).round() as usize])
 }
 
 /// Grid step for the timing series: fine enough to search the escape

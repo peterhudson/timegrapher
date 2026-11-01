@@ -8,6 +8,7 @@
 //! reading's resolution as the finest bin, and the outermost 0.5% at each
 //! end left off the scale as outliers.
 
+use crate::dsp::quantile;
 use crate::histogram::{self, Histogram, Options};
 use crate::longterm::Grid;
 use serde::Serialize;
@@ -113,14 +114,6 @@ pub struct Distribution {
     pub points: Vec<[f64; 2]>,
     /// The summary line the app shows beside the histogram.
     pub summary: String,
-}
-
-/// The value `q` (0 to 1) of the way through sorted values.
-fn quantile(sorted: &[f64], q: f64) -> f64 {
-    let x = q * (sorted.len() - 1) as f64;
-    let i = x.floor() as usize;
-    let j = (i + 1).min(sorted.len() - 1);
-    sorted[i] + (sorted[j] - sorted[i]) * (x - i as f64)
 }
 
 /// The distribution of `values` (non-finite ones are ignored); `None`
