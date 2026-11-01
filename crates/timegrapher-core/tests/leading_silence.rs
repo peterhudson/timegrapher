@@ -196,3 +196,24 @@ fn a_watch_rising_in_level_after_silence_reads_as_alone() {
         reads_as_alone(&alone, &led, None, &format!("ramp, {lead_s} s"));
     }
 }
+
+/// A low noise before the watch inside the first stretch read at once is
+/// passed over like silence: the beats are looked for from where the sound
+/// starts, so none is found in the noise and the whole recording reads as
+/// the watch alone.
+#[test]
+fn a_short_low_noise_before_the_watch_gives_no_beats() {
+    let alone = watch(21_600, 0.0);
+    let noise = 0.5 * floor(&alone);
+    let lead_s = 5.0;
+    let led = after_lead(&alone, lead_s, noise);
+    let log = analyze_samples(&led.samples, led.sample_rate, &StreamConfig::default());
+    let early: Vec<f64> = log
+        .beats
+        .iter()
+        .map(|b| b.time)
+        .filter(|&t| t < lead_s - 0.2)
+        .collect();
+    assert!(early.is_empty(), "beats in the noise: {early:?}");
+    reads_as_alone(&alone, &led, None, "short noise");
+}
