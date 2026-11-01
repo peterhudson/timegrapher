@@ -2123,7 +2123,7 @@ mod tests {
                         *s += v;
                     }
                 });
-                t += nominal * (1.0 - before.rate_s_per_day / 86400.0);
+                t += crate::synth::period(nominal, before.rate_s_per_day);
                 k += 1;
             }
             let noise = 10f64.powf(-before.snr_db / 20.0);
@@ -2192,7 +2192,7 @@ mod tests {
                             *s += v;
                         }
                     });
-                    t += nominal * (1.0 - c.rate_s_per_day / 86400.0);
+                    t += crate::synth::period(nominal, c.rate_s_per_day);
                     k += 1;
                 }
                 let noise = 10f64.powf(-c.snr_db / 20.0);
