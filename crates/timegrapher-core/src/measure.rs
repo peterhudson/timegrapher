@@ -545,7 +545,7 @@ pub fn assess(
         1.0
     };
     let doubts = Doubts {
-        clipped: c.clipped_fraction > crate::analysis::Clipping::NOTED_FRACTION,
+        clipped: crate::analysis::Clipping::noted_fraction(c.clipped_fraction),
         beats_missing: found < confidence::MIN_BEAT_FRACTION,
         lift_unknown: !c.lift_known,
         clock_unknown: !c.clock_known,
