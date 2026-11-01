@@ -237,7 +237,16 @@ function gridFor(lo, hi, px, minPx, ladder) {
 // no "-0".
 function axisLabel(v, step, unit) {
   const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
-  const t = v.toFixed(d);
+  let t = v.toFixed(d);
+  // A value exactly halfway (0.125 to two places) rounds to the even
+  // figure in Rust's format!, where toFixed rounds away from zero; a
+  // double's exact decimal is in toFixed(100) when it is a tie.
+  const exact = Math.abs(v).toFixed(100);
+  const p = exact.indexOf(".");
+  if (/^50*$/.test(exact.slice(p + d + 1))) {
+    const kept = exact.slice(0, d ? p + d + 1 : p);
+    if (Number(kept.slice(-1)) % 2 === 0) t = (v < 0 ? "-" : "") + kept;
+  }
   return (/^-[0.]+$/.test(t) ? t.slice(1) : t) + (unit || "");
 }
 
@@ -757,12 +766,9 @@ function sig(v) {
 }
 function pText(p) { return p < 1e-300 ? "<1e-300" : p < 0.001 ? p.toExponential(0).replace("e-", "e-") : p.toFixed(3); }
 function wheelTitle(name) { return String(name).split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "); }
-// steady::value_text and plain: decimals from the step, no "-0".
-function stepText(v, step, unit) {
-  const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
-  if (Math.abs(v) < step * 1e-6) v = 0;
-  return v.toFixed(d) + (unit || "");
-}
+// The app's steady.rs value_text: core's axis_number with the unit, which
+// is axisLabel (#815).
+function stepText(v, step, unit) { return axisLabel(v, step, unit); }
 // steady::log_grid and log_label: every decade, with 2 and 5 inside each,
 // drawn and labelled when fewer than three decades show.
 function logTicks(lo, hi, fmt) {
