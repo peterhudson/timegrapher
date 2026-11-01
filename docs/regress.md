@@ -153,7 +153,7 @@ parsed is an error and is not replaced.
 
 ## In CI
 
-The `regress` job in `.github/workflows/ci.yml` checks out the public
+The `regress (engine)` job in `.github/workflows/ci.yml` checks out the public
 corpus at the full commit in its `CORPUS_REVISION` setting, currently
 `692c7bcaa2c072d4075f4a85ce75564df962ab60`. It verifies the checkout's actual
 commit and records that commit, the engine revision and `corpus.json`'s SHA-256

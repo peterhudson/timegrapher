@@ -21,7 +21,7 @@ tests show the arithmetic is right, not that real recordings will be easy.
 
 ## Corpus regression and pipeline coverage
 
-CI's `regress` job checks out the reviewed corpus revision, authenticates its
+CI's `regress (engine)` job checks out the reviewed corpus revision, authenticates its
 inputs and compares eligible reference/baseline readings using the documented
 margins. This is a comparison with stored tg references and historical engine
 baselines, not a fresh execution of tg or proof of physical accuracy. Coverage,
