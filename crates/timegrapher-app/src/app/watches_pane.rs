@@ -702,6 +702,22 @@ impl TimegrapherApp {
         }
     }
 
+    /// How Keep Analysis Only reads a take with session file `m`: at its
+    /// beat rate and lift, and whether that lift was supplied by core's one
+    /// rule for session files, with the take's calibre (#685).
+    pub(super) fn keep_config(&self, m: &Manifest) -> StreamConfig {
+        use timegrapher_core::take;
+        let cal = m
+            .calibre
+            .as_deref()
+            .and_then(|n| take::calibre_named(n, &self.cal.user));
+        let mut cfg = StreamConfig::default();
+        cfg.analysis.bph = m.bph;
+        cfg.analysis.amplitude.lift_deg = m.lift.unwrap_or(DEFAULT_LIFT_DEG);
+        cfg.analysis.lift_known = take::file_lift_known(m, cal.as_ref()).unwrap_or(false);
+        cfg
+    }
+
     /// Read a saved take's sound again for its analysis, in the
     /// background, writing it beside the take; [`Self::poll_take_keep`]
     /// then puts it in the take's place. Only a take whose session file
@@ -759,10 +775,7 @@ impl TimegrapherApp {
                 let bytes = std::fs::read(e.path()).map_err(|err| format!("{name}: {err}"))?;
                 companions.push((name, bytes));
             }
-            let mut cfg = StreamConfig::default();
-            cfg.analysis.bph = m.bph;
-            cfg.analysis.amplitude.lift_deg = m.lift.unwrap_or(DEFAULT_LIFT_DEG);
-            cfg.analysis.lift_known = m.lift_known.unwrap_or(m.lift.is_some());
+            let cfg = self.keep_config(&m);
             let shapes = timegrapher_core::analysis_take::shape_stretches(&m, total_s);
             Ok((files, total_s, companions, cfg, shapes))
         })();
