@@ -104,8 +104,9 @@ pub struct SignalCheck {
     /// Tick peak over background, dB.
     pub tick_to_noise_db: Option<f64>,
     /// Median beat peak over the median of the envelope, as the desktop
-    /// app's "signal Nx" (None when no beat was found). Pure noise reads
-    /// about 2×.
+    /// app's "signal Nx" ([`crate::live::signal_figure`]); None when no
+    /// beat was found, or where the envelope's median is zero, as over
+    /// digital silence. Pure noise reads about 2×.
     pub signal_x: Option<f64>,
     /// Background late in the gap between ticks over early in it, dB.
     /// Near 0 for a fixed gain; several dB when automatic gain pumps.
@@ -252,7 +253,13 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         }
     });
     let tick_to_noise = tick.map(|t| db(t) - db(noise));
-    let signal_x = signal_ratio(&env, fs, &found);
+    // The readings' own signal figure (`live::signal_figure`), none with
+    // no beat found or where the envelope's median is zero, as over
+    // digital silence, which has no figure (#784).
+    let signal_x = (!found.is_empty())
+        .then(|| crate::live::signal_figure(&env, fs, &found))
+        .flatten()
+        .map(f64::from);
 
     let mut issues = Vec::new();
     let mut add = |code, title: String, evidence: String| {
@@ -357,24 +364,4 @@ pub fn check(audio: &Audio, cfg: &DiagnoseConfig) -> SignalCheck {
         suggested_gain_change_db: suggested,
         issues,
     }
-}
-
-/// Median beat peak (within 1 ms of each beat) over the median of the
-/// envelope: the desktop app's "signal Nx".
-fn signal_ratio(env: &[f32], fs: f64, beats: &[beats::Beat]) -> Option<f64> {
-    let w = (0.001 * fs) as usize;
-    let mut peaks: Vec<f64> = beats
-        .iter()
-        .filter_map(|b| {
-            let c = (b.time * fs).round().max(0.0) as usize;
-            let (a, z) = (c.saturating_sub(w), (c + w).min(env.len()));
-            (a < z).then(|| env[a..z].iter().fold(0f32, |m, &v| m.max(v)) as f64)
-        })
-        .collect();
-    if peaks.is_empty() {
-        return None;
-    }
-    let mut all: Vec<f64> = env.iter().step_by(7).map(|&v| v as f64).collect();
-    let floor = median(&mut all).max(f64::MIN_POSITIVE);
-    Some(median(&mut peaks) / floor)
 }
