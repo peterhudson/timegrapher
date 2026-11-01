@@ -328,6 +328,54 @@ pub fn detrend_line(y: &mut [f64]) {
 mod tests {
     use super::*;
 
+    /// The one percentile rule: linear between neighbours at q·(n − 1)
+    /// (Hyndman–Fan type 7), q clamped to 0 to 1, non-finite values left
+    /// out, nothing to read giving NaN or None (#846).
+    #[test]
+    fn quantile_is_linear_between_neighbours() {
+        let v = [10.0, 20.0, 30.0, 40.0, 50.0];
+        assert_eq!(quantile(&v, 0.0), 10.0);
+        assert!((quantile(&v, 0.05) - 12.0).abs() < 1e-12);
+        assert_eq!(quantile(&v, 0.5), 30.0);
+        assert!((quantile(&v, 0.95) - 48.0).abs() < 1e-12);
+        assert_eq!(quantile(&v, 1.0), 50.0);
+        assert_eq!(quantile(&v, -0.5), 10.0);
+        assert_eq!(quantile(&v, 1.5), 50.0);
+        assert_eq!(quantile(&[7.0], 0.3), 7.0);
+        assert!(quantile(&[], 0.5).is_nan());
+
+        let mixed = [50.0, f64::NAN, 10.0, 40.0, f64::INFINITY, 30.0, 20.0];
+        assert!((percentile(&mixed, 0.05).unwrap() - 12.0).abs() < 1e-12);
+        assert_eq!(percentile(&mixed, 0.5), Some(30.0));
+        assert_eq!(percentile(&[f64::NAN], 0.5), None);
+        assert_eq!(percentile(&[], 0.5), None);
+
+        let four = [1.0, 2.0, 3.0, 4.0];
+        assert!((quantile(&four, 0.5) - 2.5).abs() < 1e-12);
+        assert!((quantile(&four, 0.05) - 1.15).abs() < 1e-12);
+    }
+
+    /// #846: window amplitudes in two clusters, 10° apart, with p05 at
+    /// the boundary. One more window in the upper cluster moves p05 by
+    /// half a degree, not from one cluster to the other as a nearest
+    /// rank does (index round(1.45) = 1 against round(1.5) = 2).
+    #[test]
+    fn percentile_steps_smoothly_across_two_clusters() {
+        let set = |high: usize| {
+            let mut v = vec![265.0, 265.0];
+            v.extend(std::iter::repeat_n(275.0, high));
+            v
+        };
+        let (a, b) = (set(28), set(29));
+        let (pa, pb) = (percentile(&a, 0.05).unwrap(), percentile(&b, 0.05).unwrap());
+        assert!(
+            (pa - 269.5).abs() < 1e-9 && (pb - 270.0).abs() < 1e-9,
+            "{pa} {pb}"
+        );
+        let nearest = |v: &[f64]| v[((v.len() - 1) as f64 * 0.05).round() as usize];
+        assert_eq!((nearest(&a), nearest(&b)), (265.0, 275.0));
+    }
+
     #[test]
     fn both_medians_take_one_rule_for_an_even_count() {
         // The mean of the two middle values, in f64 and in f32 alike.
