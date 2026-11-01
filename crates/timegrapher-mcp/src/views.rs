@@ -41,11 +41,14 @@ pub fn page() -> &'static str {
             .collect();
         let marks = serde_json::to_string(&marks).expect("the probability marks as JSON");
         let positions = serde_json::to_string(&positions()).expect("the positions as JSON");
+        let no_beat = serde_json::to_string(timegrapher_core::measure::NO_WATCH_TITLE)
+            .expect("the no-beat heading as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*VIRIDIS*/null", &viridis)
             .replace("/*PERIOD_TICKS*/null", &period_ticks)
             .replace("/*PROBABILITY_MARKS*/null", &marks)
             .replace("/*POSITIONS*/null", &positions)
+            .replace("/*NO_BEAT_TITLE*/null", &no_beat)
     })
 }
 
@@ -498,6 +501,15 @@ pub async fn analyze_charts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_page_carries_cores_no_beat_heading() {
+        assert!(!page().contains("/*NO_BEAT_TITLE*/"));
+        assert!(page().contains(&format!(
+            "const NO_BEAT_TITLE = \"{}\";",
+            timegrapher_core::measure::NO_WATCH_TITLE
+        )));
+    }
 
     #[test]
     fn the_view_gets_its_plus_or_minus_in_cores_words() {
