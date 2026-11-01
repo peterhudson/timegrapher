@@ -221,11 +221,11 @@ fn a_cards_plus_minus_shows_whole_or_not_at_all() {
             vec!["+12.3", "± 0.04 s/d"]
         };
         assert_eq!(words, whole, "{compact}");
-        // Where the ± fits beside the figure made a little smaller, it
+        // Where the ± fits beside the figure made half its size, it
         // stays whole on its line, as before #825.
         if !compact {
             let (fig, side) = (texts[0].1.width(), texts[1].1.width());
-            let w = 0.85 * fig + 6.0 + side + 1.0;
+            let w = 0.5 * fig + 6.0 + side + 1.0;
             let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(w, 48.0));
             let near = figure_texts(rect, "+12.3", "± 0.04 s/d", compact);
             let words: Vec<&str> = near.iter().map(|t| t.0.as_str()).collect();

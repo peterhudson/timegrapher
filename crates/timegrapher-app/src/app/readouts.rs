@@ -1257,9 +1257,9 @@ fn baseline(g: &egui::Galley) -> f32 {
         .unwrap_or(g.size().y * 0.8)
 }
 
-/// The least a card's figure is made, as a share of its full size, to
-/// keep its ± whole beside it before the ± stacks or leaves (#825).
-const FIGURE_LEAST: f32 = 0.75;
+/// The least size, points, a card's figure is made to fit beside its ±
+/// and unit; past it the ± stacks, then leaves the card (#825).
+const FIGURE_LEAST_PT: f32 = 12.0;
 
 /// A readings card's figure row: the big figure ("—" while there is none),
 /// then its ± and unit on the figure's baseline, or what the reading waits
@@ -1317,10 +1317,10 @@ pub(super) fn figure_row(
         side = lay_side(&side_font, &lines);
         side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
     }
-    // A ± too wide to sit beside the figure, even with the figure made a
-    // little smaller, stacks over its unit, and, still too wide, leaves
-    // the card for the hover: never cut into a number that reads as zero
-    // (#825).
+    // A ± too wide to sit beside the figure, even with the figure made as
+    // small as it is made, stacks over its unit, and, still too wide,
+    // leaves the card for the hover: never cut into a number that reads
+    // as zero (#825).
     let mut moved = None;
     if status.is_none() && value.is_some() && side_text.starts_with('±') {
         let fits = |l: &[String]| {
@@ -1328,7 +1328,13 @@ pub(super) fn figure_row(
                 .iter()
                 .map(|g| g.size().x)
                 .fold(0.0, f32::max);
-            figure_w * FIGURE_LEAST + 6.0 + w <= rect.width()
+            let least = FIGURE_LEAST_PT
+                / if compact {
+                    theme::FIGURE_COMPACT_PT
+                } else {
+                    theme::FIGURE_PT
+                };
+            figure_w * least + 6.0 + w <= rect.width()
         };
         let (fitted, cut) = pm_fitted(side_text, lines, fits);
         lines = fitted;
@@ -1348,7 +1354,7 @@ pub(super) fn figure_row(
     };
     let mut big = lay(full);
     if big.size().x > room && value.is_some() {
-        big = lay((full * room / big.size().x).floor().max(12.0));
+        big = lay((full * room / big.size().x).floor().max(FIGURE_LEAST_PT));
     }
     let top = rect.center().y - big.size().y / 2.0;
     let base = top + baseline(&big);
