@@ -222,6 +222,22 @@ fn session_keeps_its_fields() {
         line.contains("rate ") && line.contains(" s/d, amplitude ") && line.contains(" ms"),
         "{line}"
     );
+    // Each figure carries its ± from the reading's standard error.
+    assert_eq!(line.matches(" ± ").count(), 3, "{line}");
+    let m = &take["readings"][0]["measurement"];
+    let pm = |k: &str, d: usize| {
+        timegrapher_core::library::pm_text(m["confidence"][k]["se"].as_f64().unwrap(), d).unwrap()
+    };
+    for (t, unit) in [
+        (pm("rate", 1), "s/d"),
+        (pm("amplitude", 0), "deg"),
+        (pm("beat_error", 2), "ms"),
+    ] {
+        assert!(
+            line.contains(&format!(" ± {t} {unit}")),
+            "{t} {unit}: {line}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 

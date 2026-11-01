@@ -1784,6 +1784,39 @@ fn write_windows(p: &Path, a: &Analysis) -> std::io::Result<()> {
 }
 
 #[cfg(test)]
+mod take_lines_tests {
+    use super::*;
+
+    /// A take entry with no regular beat says so, with no figures, and
+    /// one left out says why (#826).
+    #[test]
+    fn take_lines_say_no_regular_beat_and_left_out() {
+        let t = serde_json::json!({
+            "session_file": "session.toml",
+            "readings": [{
+                "position": "DU",
+                "measurement": { "watch_heard": false, "start_s": 10.0, "end_s": 30.0 }
+            }],
+            "left_out": [{ "position": "CD", "why": "nothing to read" }]
+        });
+        let lines = take_lines(&t);
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(lines[0].starts_with("Take         session.toml lists this file"));
+        assert!(
+            lines[1].ends_with("from 10 to 30 s: no regular beat found"),
+            "{}",
+            lines[1]
+        );
+        assert!(lines[1].contains("Dial Up (DU"), "{}", lines[1]);
+        assert!(
+            lines[2].contains("is left out: nothing to read"),
+            "{}",
+            lines[2]
+        );
+    }
+}
+
+#[cfg(test)]
 mod numeric_input_tests {
     use super::*;
 
