@@ -733,48 +733,7 @@ impl TimegrapherApp {
     /// closed unexpectedly, sound kept from an earlier session, a newer
     /// release) and the take's USB lines and clock log disagreeing, each
     /// opening its whole message and buttons over the window. The bar keeps its height whatever it shows.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     fn status_notices(&mut self, ui: &mut egui::Ui) {
-        let pal = theme::pal(ui);
-        // A warning or a failure starts with its icon; the words are in the
-        // text colour.
-        let item = |ui: &mut egui::Ui, text: &str, alert: Option<theme::Alert>, hint: &str| {
-            let color = if alert.is_some() {
-                pal.text
-            } else {
-                pal.accent
-            };
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                let icon = |ui: &mut egui::Ui| {
-                    if let Some(kind) = alert {
-                        let (icon, _) =
-                            ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
-                        theme::alert_icon(ui.painter(), icon, kind, pal);
-                    }
-                };
-                // The bar's right side runs right to left: the icon still
-                // reads first.
-                let rtl = ui.layout().prefer_right_to_left();
-                if !rtl {
-                    icon(ui);
-                }
-                let resp = ui
-                    .add(
-                        egui::Button::new(RichText::new(text).small().color(color))
-                            .frame_when_inactive(false),
-                    )
-                    .on_hover_text(hint);
-                if rtl {
-                    icon(ui);
-                }
-                resp
-            })
-            .inner
-        };
         let popover = |resp: &egui::Response, body: &mut dyn FnMut(&mut egui::Ui)| {
             egui::Popup::menu(resp)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -784,7 +743,7 @@ impl TimegrapherApp {
                 });
         };
         if let Some(r) = self.updates.notice.clone() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 &format!("Timegrapher {} Available…", r.version),
                 None,
@@ -793,7 +752,7 @@ impl TimegrapherApp {
             popover(&resp, &mut |ui| self.update_notice(ui));
         }
         if !self.kept.is_empty() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 "Unsaved Sound Found…",
                 Some(theme::Alert::Warning),
@@ -802,7 +761,7 @@ impl TimegrapherApp {
             popover(&resp, &mut |ui| self.kept_notice(ui));
         }
         if self.crash.is_some() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 "Closed Unexpectedly…",
                 Some(theme::Alert::Warning),
@@ -825,7 +784,7 @@ impl TimegrapherApp {
                 }
                 _ => String::new(),
             };
-            let resp = item(
+            let resp = status_item(
                 ui,
                 &short,
                 Some(theme::Alert::Bad),
@@ -835,7 +794,7 @@ impl TimegrapherApp {
         }
         // On the right, so a long take name never hides it.
         if let Some((short, long)) = self.clock_disagreement() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 &format!("{short}…"),
                 Some(theme::Alert::Warning),
@@ -940,13 +899,73 @@ impl TimegrapherApp {
         }
     }
 
+    /// The recording's state in the status bar, its colour and its hover:
+    /// stopped by a fault, saved (and what since isn't), its analysis
+    /// kept without the sound, or not saved.
+    fn recording_state(&self, r: &Recorder, pal: &theme::Palette) -> (String, Color32, String) {
+        let since = self.unsaved_s();
+        if let Some(fault) = self.session.recording_fault() {
+            (
+                "Recording stopped; recovery files retained".to_string(),
+                pal.text,
+                fault.description(),
+            )
+        } else {
+            match self.session.saved_to() {
+                Some(p) => (
+                    if since >= 1.0 {
+                        format!("The last {} not saved", length_text(since))
+                    } else if self.metadata_unsaved() {
+                        "Settings not saved".to_string()
+                    } else {
+                        "Saved".to_string()
+                    },
+                    pal.text_secondary,
+                    format!(
+                        "Saved in {}. Sound since then is kept too; Save Again adds it. \
+                     New Session and quitting ask first, and a quit that can't ask \
+                     keeps it when there is more than 5 s of it, \
+                     to offer back at the next start.",
+                        p.display()
+                    ),
+                ),
+                None if self.analysis_kept_to.is_some() => {
+                    let (dir, through_s) = self.analysis_kept_to.clone().unwrap_or_default();
+                    let kept = if r.duration_s() - through_s >= 1.0 {
+                        format!("the analysis of its first {} kept", length_text(through_s))
+                    } else {
+                        "its analysis kept".to_string()
+                    };
+                    (
+                        format!("Not saved; {kept}"),
+                        pal.text_secondary,
+                        format!(
+                            "The analysis of the first {} was kept without the sound in {}. \
+                             The sound itself isn't saved: Save keeps it. New Session and \
+                             quitting ask before throwing it away, and a quit that can't \
+                             ask keeps it when there is more than 5 s of it, \
+                             to offer back at the next start.",
+                            length_text(through_s),
+                            dir.display()
+                        ),
+                    )
+                }
+                None => (
+                    "Not saved".to_string(),
+                    pal.text_secondary,
+                    "The session's sound is kept as it goes, so Save can keep it at any \
+                 point. New Session and quitting ask before throwing it away, and a quit that \
+                 can't ask keeps it when there is more than 5 s of it, \
+                 to offer back at the next start."
+                        .to_string(),
+                ),
+            }
+        }
+    }
+
     /// The status bar's facts after the take's name, none cut short: the
     /// analysis under way, unsaved changes, the recording's state and the
     /// signal.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     fn status_facts(&self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         if let Some(b) = &self.batch {
@@ -966,64 +985,7 @@ impl TimegrapherApp {
                 .on_hover_text(SAVE_MARKS_HINT);
         }
         if let Some(r) = &self.session.recorder {
-            let since = self.unsaved_s();
-            let (text, color, hint) = if let Some(fault) = self.session.recording_fault() {
-                (
-                    "Recording stopped; recovery files retained".to_string(),
-                    pal.text,
-                    fault.description(),
-                )
-            } else {
-                match self.session.saved_to() {
-                    Some(p) => (
-                        if since >= 1.0 {
-                            format!("The last {} not saved", length_text(since))
-                        } else if self.metadata_unsaved() {
-                            "Settings not saved".to_string()
-                        } else {
-                            "Saved".to_string()
-                        },
-                        pal.text_secondary,
-                        format!(
-                            "Saved in {}. Sound since then is kept too; Save Again adds it. \
-                         New Session and quitting ask first, and a quit that can't ask \
-                         keeps it when there is more than 5 s of it, \
-                         to offer back at the next start.",
-                            p.display()
-                        ),
-                    ),
-                    None if self.analysis_kept_to.is_some() => {
-                        let (dir, through_s) = self.analysis_kept_to.clone().unwrap_or_default();
-                        let kept = if r.duration_s() - through_s >= 1.0 {
-                            format!("the analysis of its first {} kept", length_text(through_s))
-                        } else {
-                            "its analysis kept".to_string()
-                        };
-                        (
-                            format!("Not saved; {kept}"),
-                            pal.text_secondary,
-                            format!(
-                                "The analysis of the first {} was kept without the sound in {}. \
-                                 The sound itself isn't saved: Save keeps it. New Session and \
-                                 quitting ask before throwing it away, and a quit that can't \
-                                 ask keeps it when there is more than 5 s of it, \
-                                 to offer back at the next start.",
-                                length_text(through_s),
-                                dir.display()
-                            ),
-                        )
-                    }
-                    None => (
-                        "Not saved".to_string(),
-                        pal.text_secondary,
-                        "The session's sound is kept as it goes, so Save can keep it at any \
-                     point. New Session and quitting ask before throwing it away, and a quit that \
-                     can't ask keeps it when there is more than 5 s of it, \
-                     to offer back at the next start."
-                            .to_string(),
-                    ),
-                }
-            };
+            let (text, color, hint) = self.recording_state(r, pal);
             let failed = self.session.recording_fault().is_some();
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
@@ -1454,4 +1416,46 @@ fn figure_hover(status: Option<&(String, String)>, hover: &str, moved: Option<St
         Some(m) => format!("{m}\n\n{hover}"),
         None => hover,
     }
+}
+
+/// A notice in the status bar: a warning or a failure (`alert`) starts
+/// with its icon, the words in the text colour; `hint` in its hover.
+fn status_item(
+    ui: &mut egui::Ui,
+    text: &str,
+    alert: Option<theme::Alert>,
+    hint: &str,
+) -> egui::Response {
+    let pal = theme::pal(ui);
+    let color = if alert.is_some() {
+        pal.text
+    } else {
+        pal.accent
+    };
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        let icon = |ui: &mut egui::Ui| {
+            if let Some(kind) = alert {
+                let (icon, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
+                theme::alert_icon(ui.painter(), icon, kind, pal);
+            }
+        };
+        // The bar's right side runs right to left: the icon still
+        // reads first.
+        let rtl = ui.layout().prefer_right_to_left();
+        if !rtl {
+            icon(ui);
+        }
+        let resp = ui
+            .add(
+                egui::Button::new(RichText::new(text).small().color(color))
+                    .frame_when_inactive(false),
+            )
+            .on_hover_text(hint);
+        if rtl {
+            icon(ui);
+        }
+        resp
+    })
+    .inner
 }
