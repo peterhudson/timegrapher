@@ -234,6 +234,18 @@ fn a_cards_plus_minus_shows_whole_or_not_at_all() {
                 near.iter().all(|t| t.1.right() <= rect.right() + 0.5),
                 "{near:?}"
             );
+            // The floor is the figure's least size, 12 pt of 32: just
+            // above it the ± stays on its line; just below, it doesn't.
+            let at = |pt: f32, pad: f32| {
+                let w = pt / theme::FIGURE_PT * fig + 6.0 + side + pad;
+                let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(w, 48.0));
+                figure_texts(rect, "+12.3", "± 0.04 s/d", compact)
+                    .iter()
+                    .map(|t| t.0.clone())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(at(12.0, 1.0), whole, "at the floor");
+            assert_ne!(at(11.0, -1.0), whole, "below the floor");
         }
         for w in [150.0, 120.0, 96.0, 80.0] {
             let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(w, 48.0));
