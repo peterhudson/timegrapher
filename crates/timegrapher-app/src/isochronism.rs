@@ -53,17 +53,12 @@ fn curve_at(c: &IsochronismCurve, a: f64) -> f64 {
 
 /// A rate on the axis: as few decimals as the grid step needs, no "-0".
 fn rate_label(v: f64, step: f64) -> String {
-    let d = if step >= 1.0 {
-        0
-    } else if step >= 0.1 {
-        1
+    let v = timegrapher_core::chart_scale::axis_number(v, step);
+    if v.starts_with('-') {
+        format!("{v} s/d")
     } else {
-        2
-    };
-    // What rounds to zero prints as zero, not "-0".
-    let scale = 10f64.powi(d as i32);
-    let v = (v * scale).round() / scale + 0.0;
-    format!("{v:+.d$} s/d")
+        format!("+{v} s/d")
+    }
 }
 
 #[expect(
