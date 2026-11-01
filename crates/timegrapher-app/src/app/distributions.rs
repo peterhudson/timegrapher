@@ -210,20 +210,8 @@ impl TimegrapherApp {
             .show_y(false)
             .x_grid_spacer(|g| theme::even_grid(g, 80.0, &[]))
             .x_axis_formatter(move |m, _| {
-                let d = if m.step_size >= 1.0 {
-                    0
-                } else if m.step_size >= 0.1 {
-                    1
-                } else {
-                    2
-                };
-                // No "-0" from rounding.
-                let v = if m.value.abs() < m.step_size * 1e-6 {
-                    0.0
-                } else {
-                    m.value
-                };
-                format!("{:.*}{unit_owned}", d, v)
+                let v = timegrapher_core::chart_scale::axis_number(m.value, m.step_size);
+                format!("{v}{unit_owned}")
             })
             .y_axis_min_width(44.0)
             .default_x_bounds(x_lo, x_hi);
