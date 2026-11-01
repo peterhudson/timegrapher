@@ -9,7 +9,7 @@ Its peers are the [Architecture Guide](architecture.md) (where a rule lives) and
 ## Decisions (2026-10-29)
 
 - **Window membership:** a window belongs to the reading whose span holds its midpoint (option B).
-- **Percentile:** linear interpolation (Hyndman and Fan type 7, the default in R and NumPy), one core function.
+- **Percentile:** linear interpolation (Hyndman and Fan type 7, the default in R and NumPy), one core function: `dsp::quantile` on sorted values, `dsp::percentile` on any values (#866).
 - **Minimum data:** each reading carries "windows used of windows in the span" from core. Below 60% it gets a caveat ("Read from 4 of 15 windows"). With fewer than 3 windows it shows no ±. The figure is still shown, never filled in. This holds until R3 replaces the counts in section 7 with a gate on the ±.
 - **Partial windows:** a window short of some beats counts as one window in the median, as long as each side has its minimum of 3 good beats.
 - **A listed pause the clock log didn't see:** with a clock log, the log decides. The pause is still a break (beats are renumbered and nothing is fitted across it), but it adds no time, and a caveat says the two disagree. Without a log, the listed gap is added.
@@ -122,7 +122,7 @@ One idea, one word (decided 29 Oct, R7): every entry below is a **cut** of some 
 | Term | Meaning | Where |
 |---|---|---|
 | **Median** | The middle value, or the mean of the middle two. | `dsp::median` |
-| **Percentile** | Linear interpolation between the two nearest values (decided 29 Oct). Two definitions in the code until #512. | section 8 |
+| **Percentile** | Linear interpolation between the two nearest values (decided 29 Oct): `dsp::quantile` and `dsp::percentile`, one rule in core since #866. | section 8 |
 | **Robust SD** | 1.4826 × the median distance from the median. It equals the standard deviation for normal noise and ignores a few wild values. | `dsp::robust_sd` |
 | **±** | The standard error of a reading: how far it would likely move on a repeat under the same conditions. Not accuracy. | `confidence::standard_error` |
 | **Lag-one correlation, effective readings** | How much each value resembles the next. Correlated values count as fewer independent ones in the ±. | `confidence.rs:66` |
@@ -268,7 +268,7 @@ What each figure needs before it is shown today, and what happens when data is m
 
 - **One median.** `dsp::median` (dsp.rs:220): the middle value, or the mean of the middle two. `twostate.rs:166` keeps its own copy (same result), and `session`, `analysis` and `twostate` each wrap it again. (#512)
 - **The median and the upper middle value (#838).** A figure a user sees takes the median: `dsp::median`, or `dsp::median_f32` for f32 values (the Doctor's signal, since #838). An envelope level (a beat's floor, typical peak or template window, the burst gate, amplitude edges, shape and profile levels, and the per-sample side-sound medians) takes `upper_median_f32`: the upper of the two middle values, never an average of two, because a block half ticks and half silence has no level halfway between. These are two named statistics, not two copies of one. Moving a level to the median where that is right is #839.
-- **Two percentiles.** Nearest rank in `analysis.rs:211`, `session.rs:394`, `longrun.rs:97`. Interpolated in `histogram.rs:100`, `distribution.rs:116`, `steadiness.rs:2635`. (#512; linear interpolation decided)
+- **One percentile (#866).** The three nearest-rank copies (`analysis.rs`, `session.rs`, `longrun.rs`) and the three interpolated ones (`histogram.rs`, `distribution.rs`, `steadiness.rs`) now call `dsp::quantile` or `dsp::percentile`. Only p05 and p95 moved, by up to 2.01° of amplitude (an edge take with two clusters of windows, #846) and 1.53 s/d of rate (12 readings); no headline figure moved.
 
 ---
 
@@ -341,7 +341,7 @@ Each pane's method, the assumption it rests on, and whether that holds for a mec
 | Wavelet (SST) | Morlet transform on each unbroken stretch, edge zone (cone of influence) left empty | **Yes** Nothing filled in across a gap | Read |
 | Wavelet coherence | Read against the 95th percentile of red-noise pairs with each series' own ρ (Grinsted 2004), fixed seed | **Yes** Correlated noise is the reference | Read |
 | Kurtogram | Spectral kurtosis over half-overlapping Hann windows; noise band 2/√windows | **Yes** Noise reads −2/windows rather than 0 (−0.23 at 8 windows, −0.03 at 64), against −1 for a steady line; the stated band is wider than the real spread, so it errs safe. Same at ρ 0 and 0.9 | Run |
-| Long runs | Residuals of the whole-take fit, median per grid step on watch time (beat number × nominal period), then the period search | **Yes** On watch time a wheel's period is exact even as the rate drifts. Its own percentile is the nearest-rank copy (#512) | Read |
+| Long runs | Residuals of the whole-take fit, median per grid step on watch time (beat number × nominal period), then the period search | **Yes** On watch time a wheel's period is exact even as the rate drifts. Its percentile is core's `dsp::percentile` (#866) | Read |
 | Power Reserve | Ends after 600 s with no run of 8 good beats; each hour measured like a take | **Yes** It times the last beat heard, which near the end of the reserve may be a little before the last tick. Hours cut on sound-card seconds (#642) | Read |
 | Positions Test | Means per position, NIHS 93-10 indices | **Yes** The standard's own method | Read |
 
@@ -372,7 +372,7 @@ Confirmed problems are filed as issues, and the fixes go to each file's owner. N
 | R2 | Steadiness makes its own readings (mean of fine windows), not the core reading | `steadiness.rs:2515` | **#656** |
 | R5 | Clock sign is + when the card runs slow, against the usual convention | `clock.rs:29` | **#657** |
 | R6 | Beat error falls back from the unlock to the drop with nothing saying so | `session.rs:413` | **#658** |
-| K1 | Two percentiles; median copies | six files | **#512** |
+| K1 | Two percentiles; median copies | six files | Percentiles fixed, #866; #512 |
 | K2 | Five window rules; live plain median of beat error | see section 5 | **#632, #636** |
 | K3 | Decimals and ± thresholds typed in surfaces | app, CLI, MCP | **#510** |
 | K4 | Power Reserve hours on sound-card seconds | `power_reserve.rs:255` | **#642** |
