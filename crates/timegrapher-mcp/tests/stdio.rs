@@ -8,8 +8,11 @@ use std::sync::OnceLock;
 
 use serde_json::{json, Value};
 
-/// The `timegrapher` program: TIMEGRAPHER_CLI when set, else built for this
-/// test into its own target folder (a nested cargo on the outer test run's
+/// The `timegrapher` program: TIMEGRAPHER_CLI when set, else
+/// TIMEGRAPHER_MCP_TEST_CLI (CI's test job names the program its own build
+/// made, as nextest starts each test in a process of its own and each would
+/// otherwise run the cargo build below, #804), else built for this test
+/// into its own target folder (a nested cargo on the outer test run's
 /// folder could wait on its lock), without sound input so no ALSA is needed.
 /// Built once for all the tests here: a second cargo run, even with nothing
 /// to build, replaces the program, and a test starting it in that instant
@@ -20,7 +23,9 @@ fn cli() -> PathBuf {
 }
 
 fn build_cli() -> PathBuf {
-    if let Some(p) = std::env::var_os("TIMEGRAPHER_CLI") {
+    if let Some(p) =
+        std::env::var_os("TIMEGRAPHER_CLI").or_else(|| std::env::var_os("TIMEGRAPHER_MCP_TEST_CLI"))
+    {
         return PathBuf::from(p);
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

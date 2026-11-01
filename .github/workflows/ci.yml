@@ -99,6 +99,14 @@ jobs:
           tool: cargo-nextest@0.9.148
       - name: Tests
         if: steps.changes.outputs.full != 'false'
+        # The MCP server's end-to-end tests run the `timegrapher` program
+        # this build makes, not each building it again with cargo in a
+        # folder of its own: nextest starts every test in a process of its
+        # own, so each of them ran that build, about 80 s apiece on Windows
+        # (#804). Not TIMEGRAPHER_CLI, which also turns on the corpus and
+        # edge-take comparisons the regress checks run.
+        env:
+          TIMEGRAPHER_MCP_TEST_CLI: ${{ github.workspace }}/target/release/timegrapher${{ runner.os == 'Windows' && '.exe' || '' }}
         run: cargo nextest run --locked --release --no-fail-fast
       - name: Doc tests
         if: steps.changes.outputs.full != 'false'
@@ -244,12 +252,22 @@ jobs:
       - name: Fetch the corpus audio
         if: matrix.check != 'engine' && steps.changes.outputs.full != 'false' && steps.audio.outputs.cache-hit != 'true'
         run: ./target/release/timegrapher regress corpus --fetch --smoke --baseline regress/baseline.json --quiet > /dev/null
+      # On a pull request the app and MCP checks read a cut of the corpus:
+      # each take's first three sound files and its last (about 8 h of
+      # audio in all, not 31). Every push to main reads every file, and the CI
+      # watchdog flags a failure there on an issue. The engine check always
+      # reads the whole corpus.
+      - name: Cut the corpus for a pull request
+        if: github.event_name == 'pull_request' && matrix.check != 'engine' && steps.changes.outputs.full != 'false'
+        run: |
+          python3 .github/ci/cut_corpus.py corpus "$RUNNER_TEMP/corpus-cut" --files 3
+          echo "TIMEGRAPHER_CORPUS=$RUNNER_TEMP/corpus-cut" >> "$GITHUB_ENV"
       - name: Required real-recording analyze/session equivalence
         if: matrix.check == 'engine' && steps.changes.outputs.full != 'false'
         timeout-minutes: 10
         run: |
           set -o pipefail
-          cargo test --locked --release -p timegrapher-core --test equivalence analyze_and_session_agree_on_real_takes -- --exact --nocapture 2>&1 | tee equivalence.txt
+          cargo test --locked --release -p timegrapher-core --test equivalence -- --nocapture 2>&1 | tee equivalence.txt
       # #514: each take opened as the app opens it reads what
       # `timegrapher session` reads, to the bit.
       - name: ALSA headers for the app

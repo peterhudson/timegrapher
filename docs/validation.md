@@ -33,7 +33,8 @@ the Yacht-Master 42 replica (Dandong 3235 movement), the Daytona replica
 Patek 324 clone (Dandong). "Dandong 3235" on its own is a different watch
 with the same movement.
 
-The same job separately requires `analyze_and_session_agree_on_real_takes`.
+The same job runs every test in `equivalence.rs` with the corpus required, and
+so requires `analyze_and_session_agree_on_real_takes`.
 It authenticates `take_part01-001.flac` from exactly four public takes:
 `daytona4130_DU_30min`, `ym42_DD_30min`, `patek324_DU_30min` and
 `eta2824_holder_DU_30min`. Missing, unreadable or unauthenticated inputs fail;
