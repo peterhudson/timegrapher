@@ -108,3 +108,19 @@ test("a take that couldn't be read leaves the whole file's figures", () => {
   doc.take = { session_file: "session.toml", error: "unreadable" };
   assert.equal(rateValue(render(doc)), 9);
 });
+
+// The ± is core's text, handed over by the server (#806): the view no longer
+// rounds 0.4° up to "± 1°", and draws no ± of its own from a bare se.
+test("the tiles show the server's ± text, and none without it", () => {
+  const doc = listed(undefined);
+  doc.take = undefined;
+  doc.amplitude_se_deg = 0.4;
+  doc.confidence = { rate: { se: 0.2 } };
+  const bare = render(doc);
+  assert.ok(!bare.includes("±"), bare);
+  const markup = context.recordingView(doc, null, null, null, { rate: "0.2", amplitude: "0.4" });
+  assert.ok(markup.includes("± 0.4°") && markup.includes("± 0.2 seconds per day"), markup);
+  const take = context.recordingView(listed([reading("DU", 5), reading("DD", -3)]), null, null, null,
+    { readings: [{ rate: "0.2", amplitude: null }, { rate: "1.5", amplitude: "3" }] });
+  assert.ok(take.includes("± 0.2 seconds per day") && take.includes("± 1.5 seconds per day") && take.includes("± 3°"), take);
+});
