@@ -200,6 +200,28 @@ fn session_keeps_its_fields() {
         session["readings"][1]["measurement"]
     );
     assert_eq!(take["left_out"], session["left_out"]);
+    // Its text leads with that reading, with its figures and their ±, as
+    // the MCP lead does (#826); the whole file read alone follows.
+    let out = Command::new(env!("CARGO_BIN_EXE_timegrapher"))
+        .args(["analyze", cu.to_str().unwrap()])
+        .env("TIMEGRAPHER_CONFIG_DIR", dir.join("config"))
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    let at = |s: &str| {
+        text.find(s)
+            .unwrap_or_else(|| panic!("no {s:?} in\n{text}"))
+    };
+    let reading = at("Crown Up (CU, 3H) from ");
+    assert!(
+        at("Take ") < reading && reading < at("Whole file ") && at("Whole file ") < at("Duration ")
+    );
+    let line = text[reading..].lines().next().unwrap();
+    assert!(
+        line.contains("rate ") && line.contains(" s/d, amplitude ") && line.contains(" ms"),
+        "{line}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
