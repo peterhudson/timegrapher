@@ -63,7 +63,7 @@ pub fn colour_limit(values: &[f64]) -> f64 {
 
 /// Decimals for an axis label from its grid step: none from a step of
 /// 1, one from 0.1, two from 0.01, three below that (#815). The app's
-/// charts and the MCP view label their axes by it.
+/// charts label their axes by it; the MCP view still has its own copy.
 pub fn axis_decimals(step: f64) -> usize {
     if step >= 1.0 {
         0
