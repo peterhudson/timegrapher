@@ -724,7 +724,12 @@ fn read_one_inner(
             .filter(|b| b.audio_s > settle && b.audio_s < end)
             .map(|b| breaks::Break {
                 audio_s: b.audio_s - settle,
-                gap_s: b.gap_s,
+                // A pause the clock log did not see has no gap (#646).
+                gap_s: if clock.as_ref().is_some_and(|c| !c.keeps_gap(b)) {
+                    0.0
+                } else {
+                    b.gap_s
+                },
             })
             // A masked stretch is cut at both ends, with no time lost.
             .chain(
