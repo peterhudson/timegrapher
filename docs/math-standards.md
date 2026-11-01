@@ -184,7 +184,7 @@ Long runs: median per grid step
 - **Why 2 s windows:** one beat's sound is too faint to place its unlock and drop. Averaging each side's few beats makes the edges findable, while still following an amplitude that changes.
 - **Why a median of windows:** an edge marked on the wrong sound moves one window, not the reading. A window short of a beat counts as one window. On 9 corpus takes, weighting windows by their beats moved amplitude 0.05° at most.
 - **Beat error** is from the unlock (median of 2 s windows), else from the drop (the fit). `session::beat_error_signed` picks, and every surface shows that one. Decided (R6, #658): it says which it came from.
-- **A window's amplitude** is the mean of tick and tock. If one side is missing, the other side alone is used today (`amplitude::mean_of_sides`). Decided: such a window is left out of the amplitude reading (N6, #648).
+- **A window's amplitude** is the mean of tick and tock. If one side is missing, the window is left out of the amplitude reading and kept in that side's own figure (`amplitude::mean_of_sides`; N6, #648).
 
 ---
 
