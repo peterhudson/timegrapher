@@ -63,7 +63,8 @@ pub fn colour_limit(values: &[f64]) -> f64 {
 
 /// Decimals for an axis label from its grid step: none from a step of
 /// 1, one from 0.1, two from 0.01, three below that (#815). The app's
-/// charts label their axes by it; the MCP view still has its own copy.
+/// charts label their axes by it; the MCP view's `axisLabel`, which can't
+/// call Rust, is held to the same fixture as [`axis_number`].
 pub fn axis_decimals(step: f64) -> usize {
     if step >= 1.0 {
         0
@@ -91,15 +92,21 @@ pub fn axis_number(v: f64, step: f64) -> String {
 mod tests {
     use super::*;
 
+    /// The axis rule, held to the fixture the MCP view's copy is tested
+    /// against too.
     #[test]
     fn an_axis_label_takes_its_decimals_from_the_step_and_has_no_minus_zero() {
-        assert_eq!(axis_number(12.0, 5.0), "12");
-        assert_eq!(axis_number(1.5, 0.5), "1.5");
-        assert_eq!(axis_number(0.25, 0.05), "0.25");
-        assert_eq!(axis_number(0.005, 0.005), "0.005");
-        assert_eq!(axis_number(-0.0001, 0.5), "0.0");
-        assert_eq!(axis_number(-1e-12, 0.02), "0.00");
-        assert_eq!(axis_number(-0.2, 0.1), "-0.2");
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../tests/fixtures/axis_numbers.json")).unwrap();
+        assert!(!cases.is_empty());
+        for c in cases {
+            let (v, step) = (c["v"].as_f64().unwrap(), c["step"].as_f64().unwrap());
+            assert_eq!(
+                axis_number(v, step),
+                c["text"].as_str().unwrap(),
+                "{v} {step}"
+            );
+        }
     }
 
     #[test]
