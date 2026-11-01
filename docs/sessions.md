@@ -98,12 +98,11 @@ marker applies only to its accompanying numeric `lift`; an explicit CLI
 `--lift`, including 52, wins over both. A calibre name without a lift value
 does not make an assumed angle known.
 
-Older files have no marker. Core and the CLI read them by one rule
-(`take::file_lift_known`): a lift of 52°, the default, is assumed unless the
-file's calibre gives a lift; any other value was supplied. The desktop opens
-a take by the same rule, but its own copy; when it analyses a saved take in
-the background it still reads any numeric lift as supplied. Both move to the
-core rule after the app split. The desktop preserves newly restored context
+Older files have no marker. Core, the CLI and the desktop read them by one
+rule (`take::file_lift_known`): a lift of 52°, the default, is assumed unless
+the file's calibre gives a lift; any other value was supplied. The desktop
+uses it both when it opens a take and when it analyses a saved take in the
+background. The desktop preserves newly restored context
 when the value is edited and reverted. Entering or reselecting an unchanged
 52 in its existing controls still cannot distinguish a new explicit
 confirmation from the default.
