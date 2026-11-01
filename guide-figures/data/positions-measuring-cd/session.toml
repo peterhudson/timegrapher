@@ -1,0 +1,9 @@
+watch = "Rolex Yacht-Master 42"
+calibre = "3235"
+bph = 28800
+lift = 55
+notes = "32 s of take_part01-001.flac from 120 s, take ym42_CD_90min in peterhudson/timegrapher-corpus (CC0)."
+
+[[recording]]
+file = "take_part01-001.flac"
+position = "CD"

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The window manager for the guide's screenshots: the light title bar
+     (openbox-themerc), the title in Inter, the window where the app asks. -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <theme>
+    <name>GuideLight</name>
+    <titleLayout>LIMC</titleLayout>
+    <keepBorder>yes</keepBorder>
+    <animateIconify>no</animateIconify>
+    <font place="ActiveWindow"><name>Inter</name><size>10</size><weight>Medium</weight><slant>Normal</slant></font>
+    <font place="InactiveWindow"><name>Inter</name><size>10</size><weight>Medium</weight><slant>Normal</slant></font>
+  </theme>
+  <placement><policy>Smart</policy><center>yes</center></placement>
+  <desktops><number>1</number></desktops>
+  <applications>
+    <application class="*"><decor>yes</decor><maximized>no</maximized></application>
+  </applications>
+</openbox_config>

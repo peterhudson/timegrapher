@@ -1,0 +1,11 @@
+# Chapter 11, Calibres: a catalogue entry in Manage Calibres, with its
+# wheels, sources and notes.
+output = "manage-calibres.png"
+
+layout = ["row", [0.3, "Watch"], [0.7, "Strip"]]
+
+# Manage Calibres..., search, and pick Rolex 3235.
+actions = [["sleep", 8], ["click", 205, 477], ["sleep", 2], ["click", 364, 119], ["sleep", 1], ["type", "3235"], ["sleep", 1], ["click", 291, 173], ["sleep", 2]]
+
+[window]
+size = [1500, 900]

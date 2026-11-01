@@ -1,0 +1,24 @@
+# Chapter 16, Problems and Reports: the banner at the start after a crash.
+# The record is an example written for the guide, not a real crash.
+output = "crash-banner.png"
+
+layout = ["row", [0.3, "Watch"], [0.7, "Strip"]]
+
+[window]
+size = [1500, 800]
+
+[crash]
+at = "2026-10-18T09:12:44.318Z"
+record = """
+Timegrapher 0.4.2 on linux x86_64
+Crashed at 2026-10-18T09:12:44.318Z
+
+An example crash record, written for the user guide
+at (the place in the code)
+
+Backtrace:
+(an example: a real record has the backtrace here)
+
+The last log lines:
+2026-10-18T09:12:40.002Z info Timegrapher 0.4.2 on linux x86_64
+"""

@@ -1,0 +1,29 @@
+# Chapter 8, Over Time: the distributions of the same two hours.
+output = "distributions.png"
+
+layout = ["row", [0.34, "RateHistogram"], [0.33, "AmplitudeHistogram"], [0.33, "BeatErrorHistogram"]]
+
+[data]
+corpus = "pepsi3235_DU_7h"
+files = ["take_part01-006.flac", "take_part01-007.flac"]
+start = 0
+seconds = 7200
+folder = "Pepsi 3235 DU"
+
+[wait]
+at_least = 90
+at_most = 1200
+
+[window]
+size = [1800, 800]
+
+[settings]
+show_readings = false
+
+# The take has no session.toml; these are from its README.
+[data.session]
+watch = "Pepsi (Dandong 3235)"
+calibre = "Dandong 3235"
+bph = 28800
+lift = 55
+position = "DU"

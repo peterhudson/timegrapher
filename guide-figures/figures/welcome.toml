@@ -1,0 +1,11 @@
+# Chapter 2: the window before anything is open, with the Watch pane and
+# the three ways to begin.
+output = "welcome.png"
+
+layout = ["row", [0.22, "Watch"], [0.78, ["column",
+    [0.5, "Strip"],
+    [0.5, ["row", [0.5, "Sound"], [0.5, "Rate"]]],
+]]]
+
+[window]
+size = [1800, 1000]
