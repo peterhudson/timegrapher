@@ -23,11 +23,7 @@ pub fn run(file: &Path, o: &Options) -> Result<(), String> {
     let dur = audio.samples.len() as f64 / fs;
     let a = analyze(&audio, &o.cfg);
     let bph = a.summary.bph;
-    let beat = a
-        .summary
-        .overall
-        .as_ref()
-        .map_or(3600.0 / bph as f64, |f| f.period_s);
+    let beat = timegrapher_core::timing::beat_period_s(a.summary.overall.as_ref(), bph);
     let from = o.at_s.clamp(0.0, dur);
     let to = (from + o.span_s).min(dur);
     if to - from < 1.0 {

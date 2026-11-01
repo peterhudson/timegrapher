@@ -6,8 +6,7 @@ use std::path::Path;
 use timegrapher_core::beats;
 use timegrapher_core::dsp::{envelope, EnvelopeConfig};
 use timegrapher_core::load;
-use timegrapher_core::shape::{self, Shape, ShapeConfig, ShapeReport, SideReport};
-use timegrapher_core::timing;
+use timegrapher_core::shape::{self, Shape, ShapeReport, SideReport};
 
 pub struct Options<'a> {
     pub bph: Option<u32>,
@@ -22,9 +21,7 @@ pub fn run(file: &Path, o: &Options) -> Result<(), String> {
     let fs = audio.sample_rate as f64;
     let env = envelope(&audio.samples, fs, &o.envelope);
     let bph = o.bph.unwrap_or_else(|| beats::guess_bph(&env, fs));
-    let (found, _) = beats::detect(&env, fs, bph);
-    let beat_s = timing::fit(&found, bph).map_or(3600.0 / bph as f64, |f| f.period_s);
-    let r = shape::analyze(&env, fs, &found, beat_s, &ShapeConfig::default());
+    let (r, beat_s) = shape::of_envelope(&env, fs, bph);
     if let Some(p) = o.templates {
         write_templates(p, &r, fs).map_err(|e| format!("{}: {e}", p.display()))?;
     }
