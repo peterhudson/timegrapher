@@ -73,10 +73,6 @@ impl TimegrapherApp {
     /// the six instead of the buttons. The buttons set the position in a
     /// free live take; on a take on show or during a test they only show
     /// it.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn position_card(&mut self, ui: &mut egui::Ui, compact: bool) {
         self.position_card_title = if compact {
             "Position"
@@ -93,26 +89,6 @@ impl TimegrapherApp {
             fields::plain(self.guided_settle_s)
         );
         let codes = format!("{} · {}", here.code(), here.witschi());
-        // The caption and its "?" in a title row.
-        let caption_row = |ui: &mut egui::Ui, rect: egui::Rect, caption: &str| {
-            let mut child = ui.new_child(
-                egui::UiBuilder::new()
-                    .id_salt("position title")
-                    .max_rect(rect)
-                    .layout(egui::Layout::right_to_left(egui::Align::Center)),
-            );
-            theme::help(&mut child, caption, &help::POSITION);
-            child.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(caption)
-                            .font(theme::semibold(13.0))
-                            .color(pal.text_secondary),
-                    )
-                    .truncate(),
-                );
-            });
-        };
         let side = if compact {
             POSITION_PIC_COMPACT
         } else {
@@ -148,65 +124,11 @@ impl TimegrapherApp {
             });
         let painter = ui.painter().clone();
         if compact {
-            caption_row(ui, rows.title, self.position_card_title);
-            // The two-letter code beside the picture, the name in its
-            // hover: a name doesn't fit a compact card whole.
-            let x = pic.right() + 8.0;
-            let code = painter.with_clip_rect(rows.figure).text(
-                egui::pos2(x, rows.figure.center().y),
-                egui::Align2::LEFT_CENTER,
-                here.code(),
-                theme::semibold(20.0),
-                pal.text,
-            );
-            ui.interact(code, ui.id().with("position code"), egui::Sense::hover())
-                .on_hover_text(format!("{} ({codes})", here.name()));
-            // The six in one pop-up; keys 1 to 6 still pick them. Where
-            // the position can't be set (a take on show, a test running),
-            // no pop-up: the code beside the picture says it all.
-            if !editable {
-                return;
-            }
-            let mut picked = here;
-            let mut child = ui.new_child(
-                egui::UiBuilder::new()
-                    .id_salt("position menu")
-                    .max_rect(rows.controls)
-                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
-            child.spacing_mut().interact_size.y = theme::CONTROL_H;
-            child
-                .add_enabled_ui(editable, |ui| {
-                    // The code is beside the picture already: the pop-up
-                    // says what it does instead.
-                    egui::ComboBox::from_id_salt("position")
-                        .width(ui.available_width())
-                        .selected_text("Set")
-                        .show_ui(ui, |ui| {
-                            for (n, p) in Position::ALL.into_iter().enumerate() {
-                                ui.selectable_value(
-                                    &mut picked,
-                                    p,
-                                    format!("{} ({}) · key {}", p.name(), p.code(), n + 1),
-                                );
-                            }
-                        })
-                        .response
-                })
-                .inner
-                .on_hover_text(if editable {
-                    format!("{codes}. {POSITION_HINT} {settle}")
-                } else {
-                    format!("{codes}: {}", self.position_lock_words())
-                });
-            if picked != here && picked != self.position {
-                self.change_position(picked);
-            }
-            return;
+            return self.position_card_compact(ui, &rows, pic, &codes, &settle);
         }
         let x = pic.right() + theme::GAP;
         let beside = |r: egui::Rect| egui::Rect::from_min_max(egui::pos2(x, r.top()), r.max);
-        caption_row(ui, beside(rows.title), self.position_card_title);
+        position_caption(ui, beside(rows.title), self.position_card_title);
         // The name, and both its codes under it, inside the figure row.
         let fig = beside(rows.figure);
         let clip = painter.with_clip_rect(fig);
@@ -231,6 +153,98 @@ impl TimegrapherApp {
             egui::CornerRadius::same(theme::CONTROL_RADIUS),
             pal.control,
         );
+        let picked = self.position_buttons(ui, track, &settle);
+        if let Some(p) = picked {
+            if p != self.position {
+                self.change_position(p);
+            }
+        }
+    }
+
+    /// The Current Position card on a compact card: the two-letter code
+    /// beside the picture `pic`, and one pop-up of the six where the
+    /// position can be set.
+    fn position_card_compact(
+        &mut self,
+        ui: &mut egui::Ui,
+        rows: &CardRows,
+        pic: egui::Rect,
+        codes: &str,
+        settle: &str,
+    ) {
+        let pal = theme::pal(ui);
+        let here = self.shown_position();
+        let editable = self.position_editable();
+        let painter = ui.painter().clone();
+        position_caption(ui, rows.title, self.position_card_title);
+        // The two-letter code beside the picture, the name in its
+        // hover: a name doesn't fit a compact card whole.
+        let x = pic.right() + 8.0;
+        let code = painter.with_clip_rect(rows.figure).text(
+            egui::pos2(x, rows.figure.center().y),
+            egui::Align2::LEFT_CENTER,
+            here.code(),
+            theme::semibold(20.0),
+            pal.text,
+        );
+        ui.interact(code, ui.id().with("position code"), egui::Sense::hover())
+            .on_hover_text(format!("{} ({codes})", here.name()));
+        // The six in one pop-up; keys 1 to 6 still pick them. Where
+        // the position can't be set (a take on show, a test running),
+        // no pop-up: the code beside the picture says it all.
+        if !editable {
+            return;
+        }
+        let mut picked = here;
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("position menu")
+                .max_rect(rows.controls)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        child.spacing_mut().interact_size.y = theme::CONTROL_H;
+        child
+            .add_enabled_ui(editable, |ui| {
+                // The code is beside the picture already: the pop-up
+                // says what it does instead.
+                egui::ComboBox::from_id_salt("position")
+                    .width(ui.available_width())
+                    .selected_text("Set")
+                    .show_ui(ui, |ui| {
+                        for (n, p) in Position::ALL.into_iter().enumerate() {
+                            ui.selectable_value(
+                                &mut picked,
+                                p,
+                                format!("{} ({}) · key {}", p.name(), p.code(), n + 1),
+                            );
+                        }
+                    })
+                    .response
+            })
+            .inner
+            .on_hover_text(if editable {
+                format!("{codes}. {POSITION_HINT} {settle}")
+            } else {
+                format!("{codes}: {}", self.position_lock_words())
+            });
+        if picked != here && picked != self.position {
+            self.change_position(picked);
+        }
+    }
+
+    /// The six position buttons across the Current Position card's
+    /// `track`, each with a bar filling as that position is heard; the one
+    /// clicked, where the position can be set.
+    fn position_buttons(
+        &self,
+        ui: &mut egui::Ui,
+        track: egui::Rect,
+        settle: &str,
+    ) -> Option<Position> {
+        let pal = theme::pal(ui);
+        let here = self.shown_position();
+        let editable = self.position_editable();
+        let painter = ui.painter().clone();
         let w = (track.width() - 4.0) / 6.0;
         let mut picked = None;
         for (n, p) in Position::ALL.into_iter().enumerate() {
@@ -303,21 +317,13 @@ impl TimegrapherApp {
                 picked = Some(p);
             }
         }
-        if let Some(p) = picked {
-            if p != self.position {
-                self.change_position(p);
-            }
-        }
+        picked
     }
 
     /// The Listen card's rows under its caption: Listen or Stop and Save,
     /// with the take's length and state beside them, then Average Over. On
     /// a compact card, the length goes in Listen's hover and Average Over
     /// loses its label to its hover.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn listen_buttons(&mut self, ui: &mut egui::Ui, compact: bool) {
         let pal = theme::pal(ui);
         let area = ui.max_rect();
@@ -342,34 +348,7 @@ impl TimegrapherApp {
         };
         let was_listen = self.listen_tap.take();
         if let Some(kind) = self.ready_test() {
-            // The one place a take starts, test or not.
-            let name = if kind == NewTake::Positions {
-                "Positions Test"
-            } else {
-                "Power Reserve Test"
-            };
-            let why = self.start_test_why_not();
-            let mut hint = if kind == NewTake::Positions {
-                "Start the Positions Test, from Dial Up".to_string()
-            } else {
-                format!(
-                    "Start the {name} in the position on the {} card and run until the watch \
-                     stops, keeping the computer awake. A closed lid or Sleep from a menu still \
-                     stops the computer; a laptop is best left on mains power.",
-                    self.position_card_title
-                )
-            };
-            if compact {
-                hint += &length_hint;
-            }
-            let b = theme::primary(ui_b, "Start Test");
-            let r = ui_b.add_enabled_ui(why.is_none(), |ui| word(ui, b)).inner;
-            if r.on_hover_text(hint)
-                .on_disabled_hover_text(why.unwrap_or_default())
-                .clicked()
-            {
-                self.start_ready_test();
-            }
+            self.listen_start_test(ui_b, kind, compact.then_some(length_hint.as_str()));
         } else if self.test_listening() {
             let mut hint = "End the test now, keeping what it measured: asks first".to_string();
             if compact {
@@ -438,31 +417,53 @@ impl TimegrapherApp {
             self.save_menu(ui_b, LISTEN_BUTTON);
         }
         if !compact {
-            // The take's length, live while listening, and its state.
-            ui_b.add_space(4.0);
-            let at = ui_b.cursor().min.x;
-            let words = egui::Rect::from_min_max(egui::pos2(at, top.top()), top.max);
-            let clip = ui_b.painter().with_clip_rect(words);
-            clip.text(
-                egui::pos2(at, top.center().y + 1.0),
-                egui::Align2::LEFT_BOTTOM,
-                &length,
-                egui::FontId::proportional(15.0),
-                pal.text,
-            );
-            clip.text(
-                egui::pos2(at, top.center().y + 2.0),
-                egui::Align2::LEFT_TOP,
-                state,
-                egui::FontId::proportional(12.0),
-                pal.text_secondary,
-            );
-            ui_b.interact(words, ui_b.id().with("take length"), egui::Sense::hover())
-                .on_hover_text(
-                    "The take's length: the sound heard so far while listening, or the whole \
-                     take opened",
-                );
+            listen_length(ui_b, top, &length, state);
         }
+        self.listen_average(ui, foot, compact);
+    }
+
+    /// The Listen card's Start Test, for the test of `kind` ready to
+    /// start; `length_hint` adds the take's length to its hover on a
+    /// compact card.
+    fn listen_start_test(&mut self, ui_b: &mut egui::Ui, kind: NewTake, length_hint: Option<&str>) {
+        // The one place a take starts, test or not.
+        let name = if kind == NewTake::Positions {
+            "Positions Test"
+        } else {
+            "Power Reserve Test"
+        };
+        let why = self.start_test_why_not();
+        let mut hint = if kind == NewTake::Positions {
+            "Start the Positions Test, from Dial Up".to_string()
+        } else {
+            format!(
+                "Start the {name} in the position on the {} card and run until the watch \
+                 stops, keeping the computer awake. A closed lid or Sleep from a menu still \
+                 stops the computer; a laptop is best left on mains power.",
+                self.position_card_title
+            )
+        };
+        if let Some(h) = length_hint {
+            hint += h;
+        }
+        let b = theme::primary(ui_b, "Start Test");
+        let r = ui_b
+            .add_enabled_ui(why.is_none(), |ui| {
+                ui.add(b.min_size(Vec2::new(0.0, LISTEN_BUTTON)))
+            })
+            .inner;
+        if r.on_hover_text(hint)
+            .on_disabled_hover_text(why.unwrap_or_default())
+            .clicked()
+        {
+            self.start_ready_test();
+        }
+    }
+
+    /// The Listen card's Average Over, in its `foot` row; on a compact
+    /// card without its label.
+    fn listen_average(&mut self, ui: &mut egui::Ui, foot: egui::Rect, compact: bool) {
+        let pal = theme::pal(ui);
         let mut row = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt("listen average")
@@ -506,10 +507,6 @@ impl TimegrapherApp {
         self.quick_listen && self.session.saved_to().is_none() && self.watch_takes_dir().is_some()
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn save_menu(&mut self, ui: &mut egui::Ui, size: f32) {
         let pal = theme::pal(ui);
         let can = self.session.allows(Action::Save) && self.saving.is_none();
@@ -558,35 +555,7 @@ impl TimegrapherApp {
                         ui.separator();
                     }
                     if into_watch {
-                        ui.label(
-                            RichText::new("Keep in a Watch")
-                                .small()
-                                .color(pal.text_secondary),
-                        );
-                        // A take goes into a watch once it ends: greyed,
-                        // saying so, while it is heard.
-                        let keeps = !listening;
-                        for (id, name) in &watches {
-                            if ui
-                                .add_enabled(keeps, egui::Button::new(name))
-                                .on_disabled_hover_text(KEEP_AFTER_STOP)
-                                .clicked()
-                            {
-                                picked = Some(id.clone());
-                            }
-                        }
-                        if ui
-                            .add_enabled(keeps, egui::Button::new("New Watch…"))
-                            .on_hover_text("Add a watch, and keep this in it when you add it")
-                            .on_disabled_hover_text(KEEP_AFTER_STOP)
-                            .clicked()
-                        {
-                            new = true;
-                        }
-                        // Only above an item: the menu never ends on a line.
-                        if can {
-                            ui.separator();
-                        }
+                        save_menu_watches(ui, &watches, !listening, can, &mut picked, &mut new);
                     }
                     if can
                         && ui
@@ -900,34 +869,32 @@ impl TimegrapherApp {
         }
     }
 
+    /// The beat rate in the Calibre card's row, in words that say whether
+    /// it was found or set (`bph_set`, by the calibre); `heard` is the rate
+    /// heard.
+    fn bph_shown(&self, bph_set: bool, heard: Option<u32>) -> String {
+        if bph_set {
+            self.bph
+                .or_else(|| self.cal.bph(&self.calibre))
+                .or(heard)
+                .map_or_else(|| "Found When Heard".to_string(), |b| format!("{b} bph"))
+        } else {
+            match (self.bph, heard) {
+                (Some(b), _) => format!("{b} bph"),
+                (None, Some(h)) => format!("Auto {h}"),
+                _ => "Auto".to_string(),
+            }
+        }
+    }
+
     /// The Calibre card's controls row: the lift angle, then the beat
     /// rate, each as text where the calibre sets it. Where the row is too
     /// narrow for both, the lift alone (nothing finds it, while Auto finds
     /// the beat rate), the beat rates heading the Calibre menu.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn rate_and_lift(&mut self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         let heard = self.live.as_ref().and_then(|l| l.bph());
         let both = ui.available_width() >= TWO_FIELDS_W;
-        let fact = |ui: &mut egui::Ui, label: &str, value: String, why: &str, w: f32| {
-            ui.allocate_ui_with_layout(
-                Vec2::new(w, theme::CONTROL_H),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.set_min_width(w);
-                    if !label.is_empty() {
-                        ui.label(RichText::new(label).size(13.0).color(pal.text_secondary))
-                            .on_hover_text(why);
-                    }
-                    ui.add(egui::Label::new(RichText::new(value).size(13.0)).truncate())
-                        .on_hover_text(why);
-                },
-            );
-        };
         let watch_sets = !self.take_shows_rate_and_lift();
         let calibre = self.calibre.clone();
         let set_by = move |what: &str| {
@@ -953,18 +920,7 @@ impl TimegrapherApp {
         // The beat rate in words that say whether it was found or set, and
         // the room it takes at the end of the row: as wide as its words.
         let bph_set = self.bph_set_by_calibre();
-        let shown = if bph_set {
-            self.bph
-                .or_else(|| self.cal.bph(&self.calibre))
-                .or(heard)
-                .map_or_else(|| "Found When Heard".to_string(), |b| format!("{b} bph"))
-        } else {
-            match (self.bph, heard) {
-                (Some(b), _) => format!("{b} bph"),
-                (None, Some(h)) => format!("Auto {h}"),
-                _ => "Auto".to_string(),
-            }
-        };
+        let shown = self.bph_shown(bph_set, heard);
         let text_w = words_w(ui, &shown);
         let sp = ui.spacing();
         // ComboBox's width leaves out its padding and ▾.
@@ -1013,7 +969,7 @@ impl TimegrapherApp {
                 self.save_card_to_watch();
             }
         } else {
-            fact(
+            card_fact(
                 ui,
                 "Lift",
                 format!("{}°", fields::plain(self.lift_deg)),
@@ -1025,7 +981,7 @@ impl TimegrapherApp {
             return;
         }
         if bph_set {
-            fact(ui, "", shown, &set_by("beat rate"), ui.available_width());
+            card_fact(ui, "", shown, &set_by("beat rate"), ui.available_width());
             return;
         }
         let mut bph = self.bph;
@@ -1537,4 +1493,118 @@ impl TimegrapherApp {
             self.change_bph(bph);
         }
     }
+}
+
+/// The Current Position card's caption and its "?" in a title row.
+fn position_caption(ui: &mut egui::Ui, rect: egui::Rect, caption: &str) {
+    let pal = theme::pal(ui);
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt("position title")
+            .max_rect(rect)
+            .layout(egui::Layout::right_to_left(egui::Align::Center)),
+    );
+    theme::help(&mut child, caption, &help::POSITION);
+    child.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.add(
+            egui::Label::new(
+                RichText::new(caption)
+                    .font(theme::semibold(13.0))
+                    .color(pal.text_secondary),
+            )
+            .truncate(),
+        );
+    });
+}
+
+/// The Listen card's take length, live while listening, and its state,
+/// after the buttons in `top`.
+fn listen_length(ui_b: &mut egui::Ui, top: egui::Rect, length: &str, state: &str) {
+    let pal = theme::pal(ui_b);
+    // The take's length, live while listening, and its state.
+    ui_b.add_space(4.0);
+    let at = ui_b.cursor().min.x;
+    let words = egui::Rect::from_min_max(egui::pos2(at, top.top()), top.max);
+    let clip = ui_b.painter().with_clip_rect(words);
+    clip.text(
+        egui::pos2(at, top.center().y + 1.0),
+        egui::Align2::LEFT_BOTTOM,
+        length,
+        egui::FontId::proportional(15.0),
+        pal.text,
+    );
+    clip.text(
+        egui::pos2(at, top.center().y + 2.0),
+        egui::Align2::LEFT_TOP,
+        state,
+        egui::FontId::proportional(12.0),
+        pal.text_secondary,
+    );
+    ui_b.interact(words, ui_b.id().with("take length"), egui::Sense::hover())
+        .on_hover_text(
+            "The take's length: the sound heard so far while listening, or the whole \
+             take opened",
+        );
+}
+
+/// The Save menu's Keep in a Watch: each of `watches`, then New Watch…,
+/// greyed unless the take `keeps` (it has ended), and a line under them
+/// when Save in a Folder… follows (`can`). Sets `picked` or `new`.
+fn save_menu_watches(
+    ui: &mut egui::Ui,
+    watches: &[(String, String)],
+    keeps: bool,
+    can: bool,
+    picked: &mut Option<String>,
+    new: &mut bool,
+) {
+    let pal = theme::pal(ui);
+    ui.label(
+        RichText::new("Keep in a Watch")
+            .small()
+            .color(pal.text_secondary),
+    );
+    // A take goes into a watch once it ends: greyed,
+    // saying so, while it is heard.
+    for (id, name) in watches {
+        if ui
+            .add_enabled(keeps, egui::Button::new(name))
+            .on_disabled_hover_text(KEEP_AFTER_STOP)
+            .clicked()
+        {
+            *picked = Some(id.clone());
+        }
+    }
+    if ui
+        .add_enabled(keeps, egui::Button::new("New Watch…"))
+        .on_hover_text("Add a watch, and keep this in it when you add it")
+        .on_disabled_hover_text(KEEP_AFTER_STOP)
+        .clicked()
+    {
+        *new = true;
+    }
+    // Only above an item: the menu never ends on a line.
+    if can {
+        ui.separator();
+    }
+}
+
+/// A fact in the Calibre card's controls row, `w` wide: its `label`
+/// (none when empty) and `value`, both with `why` in their hover.
+fn card_fact(ui: &mut egui::Ui, label: &str, value: String, why: &str, w: f32) {
+    let pal = theme::pal(ui);
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, theme::CONTROL_H),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.set_min_width(w);
+            if !label.is_empty() {
+                ui.label(RichText::new(label).size(13.0).color(pal.text_secondary))
+                    .on_hover_text(why);
+            }
+            ui.add(egui::Label::new(RichText::new(value).size(13.0)).truncate())
+                .on_hover_text(why);
+        },
+    );
 }
