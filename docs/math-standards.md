@@ -266,7 +266,8 @@ What each figure needs before it is shown today, and what happens when data is m
 | Long-run grid | Median per step | Period search on a robust series |
 | Spread of residuals, jitter | 1.4826 × MAD | A robust standard deviation (`dsp.rs:253`) |
 
-- **One median.** `dsp::median` (dsp.rs:215): the middle value, or the mean of the middle two. `twostate.rs:166` keeps its own copy (same result), and `session`, `analysis` and `twostate` each wrap it again. (#512)
+- **One median.** `dsp::median` (dsp.rs:220): the middle value, or the mean of the middle two. `twostate.rs:166` keeps its own copy (same result), and `session`, `analysis` and `twostate` each wrap it again. (#512)
+- **The median and the upper middle value (#838).** A figure a user sees takes the median, `dsp::median`; the Doctor's signal since #838. An envelope level (a beat's floor, typical peak or template window, the burst gate, amplitude edges, shape and profile levels) takes `upper_median_f32`: the upper of the two middle values, never an average of two, because a block half ticks and half silence has no level halfway between. These are two named statistics, not two copies of one. Moving a level to the median where that is right is #839.
 - **Two percentiles.** Nearest rank in `analysis.rs:211`, `session.rs:394`, `longrun.rs:97`. Interpolated in `histogram.rs:100`, `distribution.rs:116`, `steadiness.rs:2635`. (#512; linear interpolation decided)
 
 ---
@@ -281,6 +282,7 @@ What each figure needs before it is shown today, and what happens when data is m
 - **Coverage test:** a seeded test holds coverage between 55% and 85% at ρ 0, 0.5 and 0.9 (`standard_error_allows_for_correlated_readings`).
 - **Breach:** where the beat error turns over, the figure is a median of sizes, but its ± is taken from the signed values, so the turn widens the ±. Finding N1, #637.
 - **Gapped takes:** the windows of all stretches are put end to end, so one difference spans each gap, and ρ is not pooled per stretch, though `confidence::pooled_lag_one` exists for this. Finding N3, #639.
+- **Wheel lines (#832):** a bin's size is its windows' sizes weighted by 1/se², and its ± allows for windows that overlap: two windows sharing a fraction f of their (equal) length are taken to correlate at f, as two fits on white noise do. Seeded, 300 takes: ±1 SE holds 67% (nominal 68%) with scatter over SE 1.01; with a 30 s hole through the bin's windows 67% and 1.00, against 54% with the windows taken as independent. With no line in the bin, the sizes correlate less than f, so the ± errs wide.
 - **Steadiness:** the CUSUM assumes independent readings (`steadiness.rs:991`, `cusum.rs:11`). Decided: the step-robust long-run σ (#647), and the same for the change finder (#649).
 
 ---
