@@ -575,6 +575,22 @@ pub fn signed_text(x: f64, digits: usize) -> String {
     }
 }
 
+/// A standard error as every surface writes it after "±": to at least
+/// `digits` decimals, and more, up to 3, until its first figure that
+/// isn't zero shows (#806). So with `digits` 0 an amplitude's 0.4° reads
+/// `0.4` and 1.4° reads `1`; with 1, a rate's 0.04 s/d reads `0.04`.
+/// `None` when it isn't a positive, finite number.
+pub fn pm_text(se: f64, digits: usize) -> Option<String> {
+    if !(se.is_finite() && se > 0.0) {
+        return None;
+    }
+    let mut d = digits;
+    while d < 3 && se * 10f64.powi(d as i32) < 0.95 {
+        d += 1;
+    }
+    Some(format!("{se:.d$}"))
+}
+
 /// A size on disk as the app shows it: `7.7 GB`, `58.3 MB`, `912 kB`,
 /// `40 bytes`.
 pub fn size_text(n: u64) -> String {
@@ -1599,6 +1615,23 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One rule for the ± on every surface (#806): the case the MCP view
+    /// got wrong is 0.4° of amplitude, which reads 0.4, not 0 or 1.
+    #[test]
+    fn a_standard_error_shows_its_first_figure() {
+        assert_eq!(pm_text(0.4, 0).as_deref(), Some("0.4"));
+        assert_eq!(pm_text(0.94, 0).as_deref(), Some("0.9"));
+        assert_eq!(pm_text(0.96, 0).as_deref(), Some("1"));
+        assert_eq!(pm_text(1.4, 0).as_deref(), Some("1"));
+        assert_eq!(pm_text(0.04, 1).as_deref(), Some("0.04"));
+        assert_eq!(pm_text(0.3, 1).as_deref(), Some("0.3"));
+        assert_eq!(pm_text(0.012, 2).as_deref(), Some("0.01"));
+        assert_eq!(pm_text(0.004, 2).as_deref(), Some("0.004"));
+        assert_eq!(pm_text(0.0001, 0).as_deref(), Some("0.000"));
+        assert_eq!(pm_text(0.0, 1), None);
+        assert_eq!(pm_text(f64::NAN, 1), None);
+    }
 
     /// A take's reading is kept until what it reads changes: a report
     /// written into the take's folder keeps it; a changed session file,

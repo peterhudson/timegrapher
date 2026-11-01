@@ -1,6 +1,7 @@
 //! The readouts and the status bar: the figures shown, the clocks behind them, the status line and notices, and what shows when nothing is open.
 
 use super::*;
+use timegrapher_core::library::pm_text;
 
 impl TimegrapherApp {
     /// The reading cards across the top: Current Position, Listen, then
@@ -227,9 +228,9 @@ impl TimegrapherApp {
             let rate = r.and_then(|r| r.rate_s_per_day);
             let rate_facts = reading_limits("Rate", caveats, lift_now, beats);
             title(ui, cards[2].title, "Rate", &help::RATE, &rate_facts, None);
-            let unit = match pm {
-                Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
-                _ => "s/d".to_string(),
+            let unit = match pm.and_then(|e| pm_text(e, 1)) {
+                Some(t) => format!("± {t} s/d"),
+                None => "s/d".to_string(),
             };
             // The beats behind the figure, in its hover.
             let mut behind = r.map_or_else(String::new, |r| {
@@ -261,7 +262,9 @@ impl TimegrapherApp {
             });
             if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.rate_s_per_day?))) {
                 let se = w.m.confidence.and_then(|c| c.rate.se);
-                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
+                let pm = se
+                    .and_then(|e| pm_text(e, 1))
+                    .map_or_else(String::new, |t| format!(" ± {t}"));
                 let spread =
                     w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
                         format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
@@ -333,11 +336,10 @@ impl TimegrapherApp {
             );
             // Whole degrees: a live reading's ± is about a degree, so a
             // decimal would claim more than the beats can say.
-            let unit = match r.and_then(|r| r.amplitude_error_deg) {
-                Some(e) if e < 0.95 => format!("± {e:.1}°"),
-                Some(e) => format!("± {e:.0}°"),
-                None => String::new(),
-            };
+            let unit = r
+                .and_then(|r| r.amplitude_error_deg)
+                .and_then(|e| pm_text(e, 0))
+                .map_or_else(String::new, |t| format!("± {t}°"));
             let mut behind = String::new();
             if let Some(&LiveReading {
                 amplitude_even_deg: Some(a),
@@ -349,7 +351,9 @@ impl TimegrapherApp {
             }
             if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.amplitude_deg?))) {
                 let se = w.m.confidence.and_then(|c| c.amplitude.se);
-                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.0}"));
+                let pm = se
+                    .and_then(|e| pm_text(e, 0))
+                    .map_or_else(String::new, |t| format!(" ± {t}"));
                 let spread =
                     w.m.amplitude_p05
                         .zip(w.m.amplitude_p95)
@@ -383,9 +387,12 @@ impl TimegrapherApp {
                 &reading_limits("Beat Error", caveats, lift_now, beats),
                 None,
             );
-            let unit = match be_pm.filter(|_| unlock.is_some()) {
-                Some(e) if e >= 0.005 => format!("± {e:.2} ms"),
-                _ => "ms".to_string(),
+            let unit = match be_pm
+                .filter(|_| unlock.is_some())
+                .and_then(|e| pm_text(e, 2))
+            {
+                Some(t) => format!("± {t} ms"),
+                None => "ms".to_string(),
             };
             // Which edge it is timed from, in the figure's hover.
             let mut from = match (unlock, drop) {
@@ -399,7 +406,9 @@ impl TimegrapherApp {
             };
             if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?))) {
                 let se = w.m.confidence.and_then(|c| c.beat_error.se);
-                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
+                let pm = se
+                    .and_then(|e| pm_text(e, 2))
+                    .map_or_else(String::new, |t| format!(" ± {t}"));
                 from += &whole_text(format!("{v:.2}{pm} ms"), None, w.span);
                 if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
                     from += &format!(
