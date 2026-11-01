@@ -57,6 +57,24 @@ pub fn positions_caveat(m: &Manifest) -> Option<Caveat> {
     (seen.len() > 1).then_some(Caveat::Positions { count: seen.len() })
 }
 
+/// [`Caveat::PausesUnseen`] for a take read in `spans` on `clock`: the
+/// listed pauses inside them that the clock log witnesses but shows no gap
+/// at, so [`join`] counts no time for them (#646), as
+/// [`ClockFit::unseen`] counts them on a take read whole.
+pub fn pauses_unseen(
+    spans: &[(f64, f64)],
+    breaks: &[Break],
+    clock: Option<&ClockFit>,
+) -> Option<Caveat> {
+    let inside: Vec<Break> = breaks
+        .iter()
+        .filter(|c| spans.iter().any(|&(a, b)| c.audio_s > a && c.audio_s < b))
+        .copied()
+        .collect();
+    let count = clock?.unseen(&inside);
+    (count > 0).then_some(Caveat::PausesUnseen { count })
+}
+
 /// The stretches of a take that are read, audio seconds, in time order:
 /// each entry's from the end of its settling, as `timegrapher session`
 /// reads it ([`take::reading_window`]), on a take whose entries are all one

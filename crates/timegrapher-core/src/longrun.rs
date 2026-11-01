@@ -180,6 +180,9 @@ fn analyse_read(
     breaks: &[Break],
     cfg: &LongConfig,
 ) -> LongReport {
+    // Counted on audio time: a log read in stretches has its pauses on the
+    // clock already, and its caller counts them ([`crate::joined::pauses_unseen`]).
+    let unseen = map.map_or(0, |c| c.unseen(breaks));
     let holes = Cuts::new(map, breaks, &[]);
     let map = |t: f64| holes.true_time(t);
     let cuts = holes.piece_cuts();
@@ -330,12 +333,7 @@ fn analyse_read(
             .into_iter()
             .chain((turned && overall.is_some()).then_some(crate::measure::Caveat::BeatErrorAsSize))
             .chain(read_on.and_then(ClockFit::sources_disagree).map(Into::into))
-            .chain(
-                read_on
-                    .map(|c| c.unseen(breaks))
-                    .filter(|&count| count > 0)
-                    .map(|count| crate::measure::Caveat::PausesUnseen { count }),
-            )
+            .chain((unseen > 0).then_some(crate::measure::Caveat::PausesUnseen { count: unseen }))
             .collect(),
         overall,
         beat_error_unlock_ms: timing::median_signed(uv.into_iter(), turned),
