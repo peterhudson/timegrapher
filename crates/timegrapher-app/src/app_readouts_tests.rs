@@ -175,6 +175,82 @@ fn a_narrow_cards_words_show_whole() {
     }
 }
 
+/// The texts a readings card's figure row paints in `rect`, and where.
+fn figure_texts(
+    rect: egui::Rect,
+    value: &str,
+    unit: &str,
+    compact: bool,
+) -> Vec<(String, egui::Rect)> {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut texts = Vec::new();
+    for _ in 0..2 {
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                readouts::figure_row(ui, rect, Some(value), unit, None, "", compact);
+            });
+        });
+        texts = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some((
+                    t.galley.text().to_string(),
+                    t.galley.rect.translate(t.pos.to_vec2()),
+                )),
+                _ => None,
+            })
+            .collect();
+    }
+    texts
+}
+
+/// A card's ± shows whole beside its figure where there is room; where
+/// there isn't, it stacks over its unit, then leaves the card, and is
+/// never cut into a number that reads as zero (#825).
+#[test]
+fn a_cards_plus_minus_shows_whole_or_not_at_all() {
+    for compact in [false, true] {
+        let wide = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(400.0, 48.0));
+        let texts = figure_texts(wide, "+12.3", "± 0.04 s/d", compact);
+        let words: Vec<&str> = texts.iter().map(|t| t.0.as_str()).collect();
+        let whole = if compact {
+            vec!["+12.3", "± 0.04", "s/d"]
+        } else {
+            vec!["+12.3", "± 0.04 s/d"]
+        };
+        assert_eq!(words, whole, "{compact}");
+        for w in [150.0, 120.0, 96.0, 80.0] {
+            let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(w, 48.0));
+            for (unit, rest) in [("± 0.04 s/d", "s/d"), ("± 0.4°", "")] {
+                let texts = figure_texts(rect, "+12.3", unit, compact);
+                for t in &texts {
+                    assert!(
+                        t.1.right() <= rect.right() + 0.5,
+                        "{w} {compact}: {t:?} is cut"
+                    );
+                }
+                let side: Vec<&str> = texts.iter().skip(1).map(|t| t.0.as_str()).collect();
+                let (pm, u) = unit
+                    .rsplit_once(' ')
+                    .filter(|(a, _)| a.contains(' '))
+                    .unwrap_or((unit, ""));
+                let allowed: [Vec<&str>; 3] = [vec![unit], vec![pm, u], rest_lines(rest)];
+                assert!(allowed.contains(&side), "{w} {compact}: {side:?}");
+            }
+        }
+    }
+}
+
+fn rest_lines(rest: &str) -> Vec<&str> {
+    if rest.is_empty() {
+        Vec::new()
+    } else {
+        vec![rest]
+    }
+}
+
 /// On the Tick Tock Profile an edge's bar and a sound's ring are drawn
 /// on the trace, the ring hollow; on a short plot, with the edges'
 /// names inside it, no bar or ring crosses a name.

@@ -1269,31 +1269,9 @@ pub(super) fn figure_row(
         None => ("—".to_string(), pal.text_tertiary),
     };
     let side_text = status.map_or(unit, |s| s.0.as_str());
-    // Beside the figure: one line in Body, or on a compact card two small
-    // lines, the ± over the unit.
-    let lines: Vec<String> = if side_text.is_empty() {
-        Vec::new()
-    } else if !compact {
-        vec![side_text.to_string()]
-    } else if status.is_some() {
-        // Two lines as even as the words allow: "Settling," over "12 s",
-        // "Waiting for" over "Beats".
-        let splits = side_text.match_indices(' ').map(|(i, _)| i);
-        match splits.min_by_key(|&i| i.abs_diff(side_text.len() - i)) {
-            Some(i) => vec![side_text[..i].to_string(), side_text[i + 1..].to_string()],
-            None => vec![side_text.to_string()],
-        }
-    } else {
-        // "± 8.6 s/d" stacks; "± 0.8°" and "bph" stay one line.
-        match side_text.rsplit_once(' ') {
-            Some((a, b)) if a.starts_with('±') && a.contains(' ') => {
-                vec![a.to_string(), b.to_string()]
-            }
-            _ => vec![side_text.to_string()],
-        }
-    };
+    let mut lines = side_lines(side_text, status.is_some(), compact);
     let mut side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
-    let lay_side = |font: &egui::FontId| -> Vec<_> {
+    let lay_side = |font: &egui::FontId, lines: &[String]| -> Vec<_> {
         lines
             .iter()
             .map(|l| {
@@ -1302,7 +1280,7 @@ pub(super) fn figure_row(
             })
             .collect()
     };
-    let mut side = lay_side(&side_font);
+    let mut side = lay_side(&side_font, &lines);
     let mut side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
     // Words in the figure's place ("No Regular Beat") show whole: with no
     // figure, the dash gives them its room, and they are made smaller
@@ -1323,7 +1301,25 @@ pub(super) fn figure_row(
     let no_dash = value.is_none() && status.is_some() && dash_w + 6.0 + side_w > rect.width();
     if no_dash && side_w > rect.width() {
         side_font.size = (side_font.size * rect.width() / side_w).floor().max(9.0);
-        side = lay_side(&side_font);
+        side = lay_side(&side_font, &lines);
+        side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    }
+    // A ± too wide to sit beside the whole figure stacks over its unit,
+    // and, still too wide, leaves the card for the hover: never cut into
+    // a number that reads as zero (#825).
+    let mut moved = None;
+    if status.is_none() && value.is_some() && side_text.starts_with('±') {
+        let fits = |l: &[String]| {
+            let w = lay_side(&side_font, l)
+                .iter()
+                .map(|g| g.size().x)
+                .fold(0.0, f32::max);
+            dash_w + 6.0 + w <= rect.width()
+        };
+        let (fitted, cut) = pm_fitted(side_text, lines, fits);
+        lines = fitted;
+        moved = cut.then_some(side_text);
+        side = lay_side(&side_font, &lines);
         side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
     }
     let room = rect.width() - if side_w > 0.0 { side_w + 6.0 } else { 0.0 };
@@ -1358,11 +1354,7 @@ pub(super) fn figure_row(
         let y = line_base - baseline(&g);
         painter.galley(egui::pos2(x, y), g, pal.text_secondary);
     }
-    let hover = match status {
-        Some((_, h)) if !h.is_empty() && !hover.is_empty() => format!("{h}\n\n{hover}"),
-        Some((_, h)) if !h.is_empty() => h.clone(),
-        _ => hover.to_string(),
-    };
+    let hover = figure_hover(status, hover, moved.map(|pm| format!("{text} {pm}")));
     if !hover.is_empty() {
         ui.interact(
             rect,
@@ -1370,5 +1362,76 @@ pub(super) fn figure_row(
             egui::Sense::hover(),
         )
         .on_hover_text(hover);
+    }
+}
+
+/// The lines beside a card's figure: one line in Body, or on a compact
+/// card two small lines, the ± over the unit, or a status's words split
+/// as evenly as they allow.
+fn side_lines(side_text: &str, status: bool, compact: bool) -> Vec<String> {
+    // Beside the figure: one line in Body, or on a compact card two small
+    // lines, the ± over the unit.
+    if side_text.is_empty() {
+        Vec::new()
+    } else if !compact {
+        vec![side_text.to_string()]
+    } else if status {
+        // Two lines as even as the words allow: "Settling," over "12 s",
+        // "Waiting for" over "Beats".
+        let splits = side_text.match_indices(' ').map(|(i, _)| i);
+        match splits.min_by_key(|&i| i.abs_diff(side_text.len() - i)) {
+            Some(i) => vec![side_text[..i].to_string(), side_text[i + 1..].to_string()],
+            None => vec![side_text.to_string()],
+        }
+    } else {
+        // "± 8.6 s/d" stacks; "± 0.8°" and "bph" stay one line.
+        match side_text.rsplit_once(' ') {
+            Some((a, b)) if a.starts_with('±') && a.contains(' ') => {
+                vec![a.to_string(), b.to_string()]
+            }
+            _ => vec![side_text.to_string()],
+        }
+    }
+}
+
+/// The lines of a ± and its unit (`side_text`, laid out as `lines`) that
+/// `fits` beside the figure: as they are, else the ± stacked over the
+/// unit, else the unit alone; and whether the ± was left out.
+fn pm_fitted(
+    side_text: &str,
+    lines: Vec<String>,
+    fits: impl Fn(&[String]) -> bool,
+) -> (Vec<String>, bool) {
+    if fits(&lines) {
+        return (lines, false);
+    }
+    let (pm, unit) = match side_text.rsplit_once(' ') {
+        Some((a, b)) if a.contains(' ') => (a, b),
+        _ => (side_text, ""),
+    };
+    let stacked = vec![pm.to_string(), unit.to_string()];
+    if lines.len() == 1 && !unit.is_empty() && fits(&stacked) {
+        return (stacked, false);
+    }
+    let alone = if unit.is_empty() {
+        Vec::new()
+    } else {
+        vec![unit.to_string()]
+    };
+    (alone, true)
+}
+
+/// A card figure's hover: what the reading waits on, then `hover`, with
+/// the figure and the ± the card had no room for (`moved`) first.
+fn figure_hover(status: Option<&(String, String)>, hover: &str, moved: Option<String>) -> String {
+    let hover = match status {
+        Some((_, h)) if !h.is_empty() && !hover.is_empty() => format!("{h}\n\n{hover}"),
+        Some((_, h)) if !h.is_empty() => h.clone(),
+        _ => hover.to_string(),
+    };
+    match moved {
+        Some(m) if hover.is_empty() => m,
+        Some(m) => format!("{m}\n\n{hover}"),
+        None => hover,
     }
 }
