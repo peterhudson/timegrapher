@@ -138,8 +138,37 @@ fn save(p: &Path, a: &Audio, source: &Value, mixer: Option<&Mixer>) -> Result<()
     .map_err(|e| format!("{}: {e}", side.display()))
 }
 
+/// One decimal place, or "-" with no value. A value that rounds to zero
+/// prints as 0.0, not -0.0 (#810).
 fn opt(v: Option<f64>, unit: &str) -> String {
-    v.map_or("-".into(), |x| format!("{x:.1}{unit}"))
+    v.map_or("-".into(), |x| {
+        let text = format!("{x:.1}");
+        let text = if text == "-0.0" { "0.0".into() } else { text };
+        format!("{text}{unit}")
+    })
+}
+
+/// The text line for the signal figure. With no figure it says why
+/// rather than printing "-" (#811).
+fn signal_line(signal_x: Option<f64>) -> String {
+    match signal_x {
+        Some(x) => format!("Signal       {x:.0}× above the background"),
+        None => {
+            "Signal       not measured: no beats, or the sound is mostly digital silence".into()
+        }
+    }
+}
+
+/// The text line for the gap rise. With too few gaps between ticks to
+/// measure it says so rather than printing "-" (#833).
+fn gap_rise_line(gap_rise_db: Option<f64>) -> String {
+    match gap_rise_db {
+        Some(_) => format!(
+            "Gap rise     background rises {} between ticks",
+            opt(gap_rise_db, " dB")
+        ),
+        None => "Gap rise     not measured: too few gaps between ticks".into(),
+    }
 }
 
 fn print_check(c: &SignalCheck) {
@@ -148,21 +177,19 @@ fn print_check(c: &SignalCheck) {
         c.peak_dbfs, c.rms_dbfs, c.clipped_samples
     );
     println!(
-        "Ticks        {} of about {} beats at {} bph; tick {}, background {:.1} dBFS",
+        "Ticks        {} of about {} beats at {} bph; {}, background {:.1} dBFS",
         c.beats_found,
         c.beats_expected,
         c.bph,
-        opt(c.tick_level_dbfs, " dBFS"),
+        c.tick_level_dbfs
+            .map_or("no tick to measure".into(), |t| format!(
+                "tick {}",
+                opt(Some(t), " dBFS")
+            )),
         c.noise_level_dbfs,
     );
-    println!(
-        "Signal       {} above the background",
-        c.signal_x.map_or("-".to_string(), |x| format!("{x:.0}×"))
-    );
-    println!(
-        "Gap rise     background rises {} between ticks",
-        opt(c.gap_rise_db, " dB")
-    );
+    println!("{}", signal_line(c.signal_x));
+    println!("{}", gap_rise_line(c.gap_rise_db));
     if let (Some(r), Some(b)) = (c.rate_s_per_day, c.beat_error_ms) {
         println!("Quick look   rate {r:+.1} s/d, beat error {b:.1} ms (on the sound card's clock)");
     }
@@ -231,5 +258,41 @@ fn print_report(r: &Report, apply: bool) {
     if let Some(a) = &r.after {
         println!("After the changes:");
         print_check(a);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{gap_rise_line, opt, signal_line};
+
+    #[test]
+    fn no_gap_rise_says_why_rather_than_a_dash() {
+        assert_eq!(
+            gap_rise_line(Some(-0.01)),
+            "Gap rise     background rises 0.0 dB between ticks"
+        );
+        let none = gap_rise_line(None);
+        assert!(none.contains("not measured"), "{none}");
+        assert!(!none.contains(" - "), "{none}");
+    }
+
+    #[test]
+    fn a_value_that_rounds_to_zero_has_no_minus_sign() {
+        assert_eq!(opt(Some(-0.01), " dB"), "0.0 dB");
+        assert_eq!(opt(Some(-0.0), " dB"), "0.0 dB");
+        assert_eq!(opt(Some(-0.06), " dB"), "-0.1 dB");
+        assert_eq!(opt(Some(2.35), " dB"), "2.4 dB");
+        assert_eq!(opt(None, " dB"), "-");
+    }
+
+    #[test]
+    fn no_signal_figure_says_why_rather_than_a_dash() {
+        assert_eq!(
+            signal_line(Some(17.87)),
+            "Signal       18× above the background"
+        );
+        let none = signal_line(None);
+        assert!(none.contains("not measured"), "{none}");
+        assert!(!none.contains(" - "), "{none}");
     }
 }

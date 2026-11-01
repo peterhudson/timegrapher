@@ -56,9 +56,10 @@ struct Axis {
 }
 
 impl Axis {
-    fn fit(values: impl Iterator<Item = f64>, log: bool, pad: f64) -> Axis {
+    /// A log axis over the values above zero.
+    fn log_of(values: impl Iterator<Item = f64>) -> Axis {
         let (mut lo, mut hi) = values
-            .filter(|v| v.is_finite() && (!log || *v > 0.0))
+            .filter(|v| v.is_finite() && *v > 0.0)
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| {
                 (a.min(v), b.max(v))
             });
@@ -69,12 +70,13 @@ impl Axis {
             lo -= 0.5;
             hi += 0.5;
         }
-        if !log {
-            let p = (hi - lo) * pad;
-            lo -= p;
-            hi += p;
-        }
-        Axis { lo, hi, log }
+        Axis { lo, hi, log: true }
+    }
+    /// A value axis on core's chart scale (`chart_scale::data_range`): every
+    /// point of the lines, padded as the app's charts over time are.
+    fn of_values(values: &[f64]) -> Axis {
+        let (lo, hi) = timegrapher_core::chart_scale::data_range(values).unwrap_or((0.0, 1.0));
+        Axis { lo, hi, log: false }
     }
     fn frac(&self, v: f64) -> f64 {
         if self.log {
@@ -277,7 +279,8 @@ fn over_time(r: &LongReport) -> String {
     };
     let slice = slice_name(r.slice_s);
     for (title, pts, unit) in [("Rate", rate, "s/d"), ("Amplitude", amp, "deg")] {
-        let ya = Axis::fit(pts.iter().map(|p| p.1), false, 0.08);
+        let ys: Vec<f64> = pts.iter().map(|p| p.1).collect();
+        let ya = Axis::of_values(&ys);
         let _ = write!(
             out,
             "<h3>{title} in {slice} slices</h3>{}",
@@ -336,7 +339,7 @@ fn search_chart(s: &Search, wheels: &[Wheel]) -> String {
         return "<p class=\"note\">The run is too short to search.</p>".into();
     }
     let pts = search_points(s);
-    let xa = Axis::fit(pts.iter().map(|p| p.0), true, 0.0);
+    let xa = Axis::log_of(pts.iter().map(|p| p.0));
     let ya = Axis {
         lo: 0.0,
         hi: pts.iter().map(|p| p.1).fold(s.threshold * 1.3, f64::max) * 1.05,
@@ -437,18 +440,9 @@ fn raster(c: &Component, kind: RasterKind, unit: &str) -> String {
         return String::new();
     }
     let (merged, group, cols) = raster_rows(c, kind);
-    let mut all: Vec<f64> = merged
-        .iter()
-        .flatten()
-        .map(|v| v.abs())
-        .filter(|v| v.is_finite())
-        .collect();
-    all.sort_by(f64::total_cmp);
-    let lim = all
-        .get(((all.len() as f64) * 0.95) as usize)
-        .copied()
-        .unwrap_or(1.0)
-        .max(1e-9);
+    // Full colour at core's limit for a colour map.
+    let cells: Vec<f64> = merged.iter().flatten().copied().collect();
+    let lim = timegrapher_core::chart_scale::colour_limit(&cells);
     let rh = (360.0 / merged.len() as f64).clamp(1.5, 12.0);
     let h = rh * merged.len() as f64;
     let cw = (W - ML - MR) / cols as f64;
@@ -538,7 +532,7 @@ fn component(
         dots: false,
         tip: Box::new(|_, _| String::new()),
     });
-    let ya = Axis::fit(vals.into_iter(), false, 0.1);
+    let ya = Axis::of_values(&vals);
     let rows = c.fold.raster.len();
     format!(
         r#"<div class="component"><h3>{kind}: {:.2} s cycle</h3>
@@ -848,6 +842,51 @@ mod tests {
             rows.iter().flatten().all(|v| (v - 8.64).abs() < 1e-6),
             "{:?}",
             rows[0]
+        );
+    }
+
+    /// A cycle's chart is scaled as the app's charts are, on core's
+    /// `chart_scale::data_range`: a flat cycle at 2 is drawn from 1.95 to
+    /// 2.05, not from 1.5 to 2.5.
+    #[test]
+    fn a_cycles_chart_takes_cores_scale() {
+        let bins = 10;
+        let c = Component {
+            period_s: 60.0,
+            resolution_s: 0.0,
+            significance: 0.0,
+            harmonics: 1,
+            explained: 0.0,
+            peak_to_peak: 0.0,
+            wheel: None,
+            nearest_wheel: None,
+            shape: vec![2.0; bins],
+            fold: Fold {
+                period_s: 60.0,
+                profile: vec![2.0; bins],
+                counts: vec![3; bins],
+                raster: Vec::new(),
+                t0: 0.0,
+            },
+            harmonic_of: None,
+        };
+        let page = component(
+            &c,
+            "Rate",
+            String::new(),
+            &c.shape,
+            None,
+            "s/d",
+            RasterKind::Rate,
+        );
+        let ticks: Vec<&str> = page
+            .split(r#"text-anchor="end">"#)
+            .skip(1)
+            .filter_map(|t| t.split('<').next())
+            .collect();
+        assert!(
+            ticks.contains(&"2.04") && !ticks.contains(&"2.4"),
+            "{ticks:?}"
         );
     }
 

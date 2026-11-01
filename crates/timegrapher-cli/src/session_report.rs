@@ -578,12 +578,12 @@ pub fn html(sn: &Session) -> String {
     let _ = write!(
         body,
         r#"<table class="facts">
-<tr><th>Movement</th><td>{} bph, lift angle {}°</td></tr>
+<tr><th>Movement</th><td>{} bph, {}</td></tr>
 <tr><th>Recordings</th><td>{} in {} position(s): {}</td></tr>
 <tr><th>Clock</th><td>{}</td></tr>
 {}{}</table>"#,
         sn.bph,
-        sn.lift_deg,
+        sn.lift_text(),
         sn.readings.len(),
         positions.len(),
         positions.join(", "),
@@ -797,8 +797,12 @@ mod tests {
     }
 
     fn render(readings: Vec<Reading>) -> String {
+        html(&session_of(readings))
+    }
+
+    fn session_of(readings: Vec<Reading>) -> Session<'static> {
         let report = session::evaluate(&readings);
-        html(&Session {
+        Session {
             schema: "timegrapher.session/2".into(),
             software: serde_json::json!({}),
             input: serde_json::json!({}),
@@ -808,11 +812,32 @@ mod tests {
             notes: None,
             bph: 28800,
             lift_deg: 52.0,
+            lift_known: true,
             readings,
             left_out: Vec::new(),
             report,
             power_reserve: None,
-        })
+        }
+    }
+
+    /// A lift angle that is only the default is said to be the default,
+    /// in core's caveat wording, in both the text and the HTML report
+    /// (issue #603); one set for the watch is shown plainly.
+    #[test]
+    fn default_lift_says_so() {
+        let known = session_of(vec![reading(Some(0.0), Position::CH)]);
+        assert_eq!(known.lift_text(), "lift angle 52°");
+        assert!(html(&known).contains("<td>28800 bph, lift angle 52°</td>"));
+        let unknown = Session {
+            lift_known: false,
+            ..known
+        };
+        let words = timegrapher_core::measure::Caveat::LiftUnknown
+            .short(52.0, 0)
+            .unwrap();
+        assert_eq!(words, "lift angle 52°, the default");
+        assert_eq!(unknown.lift_text(), words);
+        assert!(html(&unknown).contains(&format!("<td>28800 bph, {words}</td>")));
     }
 
     fn reference_cells(html: &str) -> Vec<Vec<&str>> {

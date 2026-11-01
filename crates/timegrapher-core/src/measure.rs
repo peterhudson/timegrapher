@@ -145,6 +145,10 @@ pub fn no_watch_reason_in(caveats: &[Caveat]) -> Option<NoWatchReason> {
     })
 }
 
+/// The heading every surface gives a reading with no regular beat, over
+/// [`no_watch_text`]'s sentence or in the figures' place (#510).
+pub const NO_WATCH_TITLE: &str = "No Regular Beat";
+
 /// The sentence for no regular beat found, as every surface states it:
 /// with the timing scatter, as [`crate::beats::no_regular_beat_text`]
 /// gives it, or that the beats' sound shows no unlock and no drop.
@@ -223,6 +227,11 @@ pub enum Caveat {
     /// ([`crate::breaks::Unlisted`]). A pause the clock log does not show
     /// is then not a break, and the rate may be fitted across it.
     BreaksUnlisted { why: crate::breaks::Unlisted },
+    /// `count` pauses the take's `session.json` lists show no gap in its
+    /// clock log ([`crate::clock::ClockFit::unseen`]). The log is the
+    /// better witness, so each is a break of no width: the time after it
+    /// is not moved on by the gap listed (#646).
+    PausesUnseen { count: usize },
     /// At `count` of those breaks Tick and Tock were not told apart by
     /// their sound or by the beat error's sign (too alike, too few good
     /// beats, or no jump in the beats for the side check to run at), so the
@@ -265,6 +274,12 @@ impl Caveat {
             Caveat::ClockSourcesDisagree { .. } => self.sources_disagree()?.short(),
             Caveat::Breaks { count } => format!("{count} break{}", plural(*count)),
             Caveat::BreaksUnlisted { .. } => "breaks from the clock log".to_string(),
+            Caveat::PausesUnseen { count } => {
+                format!(
+                    "{count} listed pause{} not in the clock log",
+                    plural(*count)
+                )
+            }
             Caveat::SidesByCount { .. } => "sides named by count".to_string(),
             Caveat::BeatErrorAsSize => {
                 "beat error given as a size: its sign differs either side of a cut".to_string()
@@ -340,6 +355,13 @@ impl Caveat {
                     crate::breaks::MIN_GAP_S
                 )
             }
+            Caveat::PausesUnseen { count } => format!(
+                "{count} pause{} this take's session.json lists show{} no gap in its clock \
+                 log, so no time is counted for {}.",
+                plural(*count),
+                if *count == 1 { "s" } else { "" },
+                if *count == 1 { "it" } else { "them" }
+            ),
             Caveat::SidesByCount { count } => format!(
                 "Tick and Tock are named by the beat count across {count} break{} in this \
                  stretch, not told apart by their sound.",
@@ -378,6 +400,16 @@ impl Caveat {
         }
     }
 
+    /// Whether the caveat is about the take's breaks: how many there are,
+    /// where they were read from, or a listed pause the clock log did not
+    /// see.
+    pub fn is_about_breaks(&self) -> bool {
+        matches!(
+            self,
+            Caveat::Breaks { .. } | Caveat::BreaksUnlisted { .. } | Caveat::PausesUnseen { .. }
+        )
+    }
+
     /// Where the caveat sits in a list.
     fn rank(&self) -> u8 {
         match self {
@@ -391,10 +423,11 @@ impl Caveat {
             Caveat::ClockSourcesDisagree { .. } => 7,
             Caveat::Breaks { .. } => 8,
             Caveat::BreaksUnlisted { .. } => 9,
-            Caveat::SidesByCount { .. } => 10,
-            Caveat::Masked { .. } => 11,
-            Caveat::BeatErrorAsSize => 12,
-            Caveat::Positions { .. } => 13,
+            Caveat::PausesUnseen { .. } => 10,
+            Caveat::SidesByCount { .. } => 11,
+            Caveat::Masked { .. } => 12,
+            Caveat::BeatErrorAsSize => 13,
+            Caveat::Positions { .. } => 14,
         }
     }
 }
@@ -512,7 +545,7 @@ pub fn assess(
         1.0
     };
     let doubts = Doubts {
-        clipped: c.clipped_fraction > crate::analysis::Clipping::NOTED_FRACTION,
+        clipped: crate::analysis::Clipping::noted_fraction(c.clipped_fraction),
         beats_missing: found < confidence::MIN_BEAT_FRACTION,
         lift_unknown: !c.lift_known,
         clock_unknown: !c.clock_known,
@@ -556,17 +589,13 @@ pub fn assess(
     }
     let confidence = c.watch_heard.then(|| {
         let amps: Vec<f64> = amplitude_windows.iter().filter_map(|w| w.mean()).collect();
-        let bes: Vec<f64> = amplitude_windows
-            .iter()
-            .filter_map(|w| w.beat_error_unlock_ms)
-            .collect();
         Confidence::new(
             match c.average_s {
                 Some(t) => rate_se_over(rate_windows, t),
                 None => confidence::rate_se(rate_windows),
             },
             confidence::standard_error(&amps),
-            confidence::standard_error(&bes),
+            confidence::beat_error_se(amplitude_windows.iter().copied()),
         )
     });
     Assessment {
@@ -840,6 +869,25 @@ mod tests {
                 "clock_unknown",
                 "breaks"
             ]
+        );
+    }
+
+    #[test]
+    fn a_pause_the_clock_log_did_not_see_is_worded() {
+        let unseen = |count| Caveat::PausesUnseen { count };
+        assert_eq!(
+            unseen(1).short(52.0, 0).unwrap(),
+            "1 listed pause not in the clock log"
+        );
+        assert_eq!(
+            unseen(1).long(None).unwrap(),
+            "1 pause this take's session.json lists shows no gap in its clock log, so no \
+             time is counted for it."
+        );
+        assert_eq!(
+            unseen(2).long(None).unwrap(),
+            "2 pauses this take's session.json lists show no gap in its clock log, so no \
+             time is counted for them."
         );
     }
 

@@ -171,6 +171,19 @@ fn fit_coef(beats: &[Beat]) -> Option<([f64; 3], Vec<&Beat>)> {
     Some((coef, sel))
 }
 
+/// The beat period to measure shape and profiles with: the fitted one, or
+/// the nominal 3600/bph when there is no fit (#807).
+pub fn beat_period_s(fit: Option<&TimingFit>, bph: u32) -> f64 {
+    fit.map_or(3600.0 / bph as f64, |f| f.period_s)
+}
+
+/// The beat period, s, of a watch whose nominal period is `nominal` s and
+/// which gains `rate_s_per_day`: the inverse of the rate the fit reads,
+/// `(nominal / period - 1) * 86400`. The one rule for it (#640).
+pub const fn period_s(nominal: f64, rate_s_per_day: f64) -> f64 {
+    nominal / (1.0 + rate_s_per_day / 86_400.0)
+}
+
 /// Fit rate and beat error to a run of beats.
 pub fn fit(beats: &[Beat], bph: u32) -> Option<TimingFit> {
     let nominal = 3600.0 / bph as f64;
@@ -264,7 +277,7 @@ pub fn fit_pieces(beats: &[Beat], bph: u32, cuts: &[f64]) -> Option<TimingFit> {
                 .map(|f| (f.beat_error_ms, f.beats_used as f64))
                 .collect::<Vec<_>>(),
         )?,
-        period_s: 3600.0 / bph as f64 / (1.0 + rate / 86400.0),
+        period_s: period_s(3600.0 / bph as f64, rate),
         jitter_us: mean(&|f| f.jitter_us),
         beats_used: n,
     })
@@ -364,7 +377,7 @@ mod tests {
     use super::*;
 
     /// The beat period of a watch 5 s/d fast, true seconds.
-    const PERIOD: f64 = 0.125 * (1.0 - 5.0 / 86_400.0);
+    const PERIOD: f64 = crate::synth::period(0.125, 5.0);
 
     /// An hour of a watch 5 s/d fast on true time, heard on a card 20 ppm
     /// slow, as audio seconds: with `gap_s` of true time unheard from
@@ -583,7 +596,7 @@ mod tests {
     /// Beats at `rate` s/d with 0.3 ms beat error and a little jitter, on
     /// the stretches given, numbered on one grid.
     fn take(rate: f64, spans: &[(f64, f64)]) -> Vec<Beat> {
-        let p = 0.125 / (1.0 + rate / 86400.0);
+        let p = period_s(0.125, rate);
         let mut seed = 7u64;
         let mut noise = || {
             seed = seed

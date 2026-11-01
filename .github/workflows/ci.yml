@@ -108,6 +108,14 @@ jobs:
           tool: cargo-nextest@0.9.148
       - name: Tests
         if: steps.changes.outputs.full != 'false'
+        # The MCP server's end-to-end tests run the `timegrapher` program
+        # this build makes, not each building it again with cargo in a
+        # folder of its own: nextest starts every test in a process of its
+        # own, so each of them ran that build, about 80 s apiece on Windows
+        # (#804). Not TIMEGRAPHER_CLI, which also turns on the corpus and
+        # edge-take comparisons the regress checks run.
+        env:
+          TIMEGRAPHER_MCP_TEST_CLI: ${{ github.workspace }}/target/release/timegrapher${{ runner.os == 'Windows' && '.exe' || '' }}
         run: cargo nextest run --locked --release --no-fail-fast
       - name: Doc tests
         if: steps.changes.outputs.full != 'false'

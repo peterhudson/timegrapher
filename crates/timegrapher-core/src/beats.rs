@@ -9,7 +9,7 @@
 //! the template as a whole. The second pass is run again with a template
 //! rebuilt from its own beats.
 
-use crate::dsp::{argmax, correlate, median_f32, moving_average, parabolic};
+use crate::dsp::{argmax, correlate, moving_average, parabolic, upper_median_f32};
 use realfft::RealFftPlanner;
 use serde::Serialize;
 
@@ -31,7 +31,13 @@ pub fn beats_on(dt_s: f64, beat_s: f64) -> i64 {
 /// (tick to toc), so half the true rate can score best. A rate faster than
 /// the true one lands its lag in the silence between beats and scores near
 /// zero or below, so the fastest rate scoring at least half the best wins.
+///
+/// The 10 s looked at start where sound does ([`sound_onset`]): silence
+/// before a watch is placed holds no beat, and a rate with no beat energy
+/// behind it (a score of 0 or below) is never picked (#476). With none
+/// scoring above 0, as in digital silence, the guess is 28,800 bph.
 pub fn guess_bph(env: &[f32], fs: f64) -> u32 {
+    let env = &env[sound_onset(env, fs).unwrap_or(0)..];
     let n = env.len().min((fs * 10.0) as usize);
     // Smooth over 2 ms so beat error and jitter don't split the peaks.
     let smooth = crate::dsp::moving_average(&env[..n], (0.002 * fs) as usize);
@@ -69,10 +75,34 @@ pub fn guess_bph(env: &[f32], fs: f64) -> u32 {
     let best = scores.iter().map(|s| s.1).fold(f64::NEG_INFINITY, f64::max);
     scores
         .iter()
-        .filter(|s| s.1 >= 0.5 * best)
+        .filter(|s| s.1 > 0.0 && s.1 >= 0.5 * best)
         .map(|s| s.0)
         .max()
         .unwrap_or(28800)
+}
+
+/// Length of the stretches [`sound_onset`] judges, seconds: longer than
+/// the slowest standard rate's beat, so a stretch of a watch holds a beat.
+const ONSET_BLOCK_S: f64 = 1.0;
+
+/// Where sound starts in `env`, samples: the start of the first
+/// [`ONSET_BLOCK_S`] stretch whose loudest point reaches a quarter of the
+/// loud stretches' (the 90th percentile of the stretches' loudest points).
+/// So digital silence or a low noise before a watch is placed is passed
+/// over. `None` when the envelope is all zero.
+pub fn sound_onset(env: &[f32], fs: f64) -> Option<usize> {
+    let w = ((ONSET_BLOCK_S * fs) as usize).max(1);
+    let tops: Vec<f32> = env
+        .chunks(w)
+        .map(|c| c.iter().copied().fold(0.0, f32::max))
+        .collect();
+    let mut sorted = tops.clone();
+    sorted.sort_by(f32::total_cmp);
+    let loud = *sorted.get((sorted.len() * 9 / 10).min(sorted.len().saturating_sub(1)))?;
+    if loud <= 0.0 {
+        return None;
+    }
+    tops.iter().position(|&t| t >= 0.25 * loud).map(|i| i * w)
 }
 
 /// One detected beat.
@@ -202,6 +232,12 @@ fn track_peaks(
         // point is the span's edge, and taking those would count more beats
         // than the silence holds (#782). Pass 1 (with a gate) only feeds a
         // median template, so it takes every peak.
+        // A match below a thousandth of the side's typical beat
+        // ([`NOTHING`]) is the correlation's rounding error near a beat in
+        // digital silence. It is kept like a faint peak but never steers:
+        // a track with no level that timed itself from it as the watch fell
+        // silent, or took itself up on it before the watch was heard again,
+        // stayed off the beats after the silence (#786).
         // With a level to judge by, a peak far weaker than the side's
         // typical beat may be a faint beat or, in a silence, the noise: it
         // is kept, but neither steers the track nor ends a run missed (#609).
@@ -229,7 +265,10 @@ fn track_peaks(
             _ => None,
         };
         let regular = quiet_run >= QUIET_RUN || steady.is_some_and(|(_, run)| run >= QUIET_RUN);
-        let weak = faint && !regular;
+        // A match of nothing never steers the correlation track, with a
+        // level or without (#786).
+        let nothing = gate.is_none() && v < NOTHING * typical[side(k)];
+        let weak = faint && !regular || nothing;
         let take = gate.is_some()
             || out.len() < 4
             || (t - pred).abs() < MAX_OFFSET * per
@@ -307,6 +346,11 @@ fn rms(x: &[f32]) -> f32 {
 /// nominal beat. A watch 1 % fast gains 864 s a day, so this allows ten
 /// times any watch's error.
 const PER_MIN: f64 = 0.9;
+
+/// A match below this share of the side's typical beat is nothing heard:
+/// the correlation's rounding error near a beat in digital silence is a
+/// hundred-millionth of a beat, a silent stand's match a few percent.
+const NOTHING: f32 = 1e-3;
 
 /// How far from where it is due a beat may be found once the track is
 /// running, as a fraction of the beat period. Beat-to-beat changes in
@@ -438,7 +482,7 @@ pub fn trimmed_template_from(env: &[f32], fs: f64, times: &[f64], pre_s: f64) ->
 /// Median of the windows from `pre_s` before to `post_s` after each time.
 /// Windows that run off either end of the envelope are left out.
 pub fn median_window(env: &[f32], fs: f64, times: &[f64], pre_s: f64, post_s: f64) -> Vec<f32> {
-    window_stat(env, fs, times, pre_s, post_s, median_f32)
+    window_stat(env, fs, times, pre_s, post_s, upper_median_f32)
 }
 
 fn window_stat(
@@ -549,7 +593,7 @@ fn drop_offset(template: &[f32], fs: f64, origin: usize) -> Option<f64> {
     let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
     let quiet = ((0.003 * fs) as usize).min(t.len());
     let mut floor_v = t[..quiet].to_vec();
-    let floor = median_f32(&mut floor_v);
+    let floor = upper_median_f32(&mut floor_v);
     let (top, top_v) = argmax(&t, quiet, t.len())?;
     let h_top = top_v - floor;
     if h_top <= 0.0 {
@@ -595,7 +639,7 @@ pub fn detect_after(
     let pre = PRE_S * fs;
     let (peaks, level) = track_peaks(&corr, fs, beat, None, level);
     let mut q: Vec<f32> = peaks.iter().map(|p| p.1).collect();
-    let typical = median_f32(&mut q).max(f32::MIN_POSITIVE);
+    let typical = upper_median_f32(&mut q).max(f32::MIN_POSITIVE);
 
     let mut beats = Vec::with_capacity(peaks.len());
     let mut index = 0i64;
@@ -764,7 +808,7 @@ impl SideSounds {
                 return None;
             }
             let mut w: Vec<f32> = (0..len)
-                .map(|i| median_f32(&mut v.iter().map(|s| s[i]).collect::<Vec<_>>()))
+                .map(|i| upper_median_f32(&mut v.iter().map(|s| s[i]).collect::<Vec<_>>()))
                 .collect();
             let top = w.iter().copied().fold(0.0f32, f32::max);
             if top <= 0.0 {
@@ -1370,6 +1414,16 @@ fn pearson(a: &[f32], b: &[f32]) -> f64 {
 mod tests {
     use super::*;
 
+    /// Sound with no beat energy at any rate guesses no rate of its own:
+    /// every rate scores 0 in digital silence, and the fastest (72,000)
+    /// must not win on that (#476).
+    #[test]
+    fn digital_silence_guesses_the_default_rate() {
+        let fs = 48_000.0;
+        assert_eq!(guess_bph(&vec![0.0; (12.0 * fs) as usize], fs), 28_800);
+        assert_eq!(sound_onset(&vec![0.0; (12.0 * fs) as usize], fs), None);
+    }
+
     /// Beats of a watch with 0.5 ms beat error and 0.1 ms of scatter, with
     /// `shift(k, even)` added to beat `k`'s time.
     fn ticking(n: i64, shift: impl Fn(i64, bool) -> f64) -> Vec<Beat> {
@@ -1727,6 +1781,47 @@ mod tests {
         assert!(after >= 75, "{after} beats after the flat stretch");
     }
 
+    /// The whole detection over a long digital silence finds the watch
+    /// either side of it, on its beats, and nothing in it. With no level
+    /// carried in, the track used to take up the correlation's rounding
+    /// noise just before the watch came back, then follow the noise most
+    /// of half a beat away from the beats (#786).
+    #[test]
+    fn a_long_digital_silence_is_detected_through() {
+        let x = watch_with_digital_silence(400.0);
+        let (beats, _) = within_a_minute(move || detect(&x, 8000.0, 28_800));
+        let good: Vec<f64> = beats
+            .iter()
+            .filter(|b| b.is_good())
+            .map(|b| b.time)
+            .collect();
+        let on_beat = |t: f64| ((t - 0.05) / 0.125 - ((t - 0.05) / 0.125).round()).abs() < 0.01;
+        assert!(good.iter().all(|&t| on_beat(t)), "a beat off the watch's");
+        assert!(
+            good.iter().all(|&t| !(10.0..410.0).contains(&t)),
+            "a good beat in the silence"
+        );
+        let after = good.iter().filter(|&&t| t >= 410.0).count();
+        assert!(after >= 78, "{after} good beats after the silence");
+    }
+
+    /// With no level, a watch heard again far more quietly, and out of
+    /// step, is still taken up after a run missed: only a match near
+    /// nothing is passed over (#786).
+    #[test]
+    fn a_quiet_watch_after_a_silence_is_taken_up_with_no_level() {
+        // 5 s at full height, 5 s of exact zeros, then 5 s a twentieth as
+        // high and 30 ms (a quarter of a beat) later.
+        let loud = beats_at(0..40, 1.0);
+        let quiet = beats_at(80..120, 0.05).map(|(i, h)| (i + 240, h));
+        let x = clicks(15 * 8000, loud.chain(quiet));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
+        let after: Vec<f64> = peaks.iter().map(|p| p.0).filter(|&t| t >= 10.0).collect();
+        let on_beat = |t: f64| ((t - 0.08) / 0.125 - ((t - 0.08) / 0.125).round()).abs() < 0.01;
+        assert!(after.len() >= 30, "{} beats after the silence", after.len());
+        assert!(after.iter().all(|&t| on_beat(t)), "a beat off the watch's");
+    }
+
     /// A watch that falls digitally silent for most of the sound is still
     /// found: pass 1's picks in the silence are maxima of nothing, and a
     /// template built mostly on them was a template of silence, which
@@ -2068,7 +2163,7 @@ mod tests {
                         *s += v;
                     }
                 });
-                t += nominal * (1.0 - before.rate_s_per_day / 86400.0);
+                t += crate::synth::period(nominal, before.rate_s_per_day);
                 k += 1;
             }
             let noise = 10f64.powf(-before.snr_db / 20.0);
@@ -2137,7 +2232,7 @@ mod tests {
                             *s += v;
                         }
                     });
-                    t += nominal * (1.0 - c.rate_s_per_day / 86400.0);
+                    t += crate::synth::period(nominal, c.rate_s_per_day);
                     k += 1;
                 }
                 let noise = 10f64.powf(-c.snr_db / 20.0);

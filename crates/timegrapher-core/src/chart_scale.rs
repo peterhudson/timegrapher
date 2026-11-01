@@ -1,5 +1,5 @@
-//! The value scale a chart is drawn on, so the app and the MCP view scale
-//! the same readings the same way (#513).
+//! The value scale a chart is drawn on, so the app, the MCP view and the
+//! command line's reports scale the same readings the same way (#513).
 
 /// From the lowest value to the highest, padded a little, so every point
 /// drawn is inside the chart: the app's charts over time. `None` with no
@@ -44,9 +44,70 @@ pub fn spread(values: &[f64]) -> Option<(f64, f64)> {
     Some((lo - pad, hi + pad))
 }
 
+/// The size a diverging colour map shows in full colour, either side of
+/// zero: the 95th percentile of the values' sizes, so a few wild cells
+/// don't wash out the rest; larger ones show in full colour too. 1 with
+/// no finite value, and never below 1e-9.
+pub fn colour_limit(values: &[f64]) -> f64 {
+    let mut v: Vec<f64> = values
+        .iter()
+        .map(|x| x.abs())
+        .filter(|x| x.is_finite())
+        .collect();
+    v.sort_by(f64::total_cmp);
+    v.get((v.len() as f64 * 0.95) as usize)
+        .copied()
+        .unwrap_or(1.0)
+        .max(1e-9)
+}
+
+/// Decimals for an axis label from its grid step: none from a step of
+/// 1, one from 0.1, two from 0.01, three below that (#815). The app's
+/// charts label their axes by it; the MCP view's `axisLabel`, which can't
+/// call Rust, is held to the same fixture as [`axis_number`].
+pub fn axis_decimals(step: f64) -> usize {
+    if step >= 1.0 {
+        0
+    } else if step >= 0.1 {
+        1
+    } else if step >= 0.01 {
+        2
+    } else {
+        3
+    }
+}
+
+/// An axis value as text, to [`axis_decimals`] of the step. A value that
+/// rounds to zero is written `0`, never `-0` (#815).
+pub fn axis_number(v: f64, step: f64) -> String {
+    let d = axis_decimals(step);
+    let text = format!("{v:.d$}");
+    match text.strip_prefix('-') {
+        Some(rest) if rest.bytes().all(|b| b == b'0' || b == b'.') => rest.to_string(),
+        _ => text,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The axis rule, held to the fixture the MCP view's copy is tested
+    /// against too.
+    #[test]
+    fn an_axis_label_takes_its_decimals_from_the_step_and_has_no_minus_zero() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../tests/fixtures/axis_numbers.json")).unwrap();
+        assert!(!cases.is_empty());
+        for c in cases {
+            let (v, step) = (c["v"].as_f64().unwrap(), c["step"].as_f64().unwrap());
+            assert_eq!(
+                axis_number(v, step),
+                c["text"].as_str().unwrap(),
+                "{v} {step}"
+            );
+        }
+    }
 
     #[test]
     fn a_charts_range_holds_every_point_padded() {
@@ -73,5 +134,15 @@ mod tests {
         }
         assert!(spread(&v).unwrap().1 > 40.0);
         assert_eq!(spread(&[1.0]), None);
+    }
+
+    #[test]
+    fn a_colour_map_is_full_at_the_95th_percentile_of_sizes() {
+        let v: Vec<f64> = (1..=100)
+            .map(|i| if i % 2 == 0 { i as f64 } else { -(i as f64) })
+            .collect();
+        assert_eq!(colour_limit(&v), 96.0);
+        assert_eq!(colour_limit(&[f64::NAN]), 1.0);
+        assert_eq!(colour_limit(&[0.0, 0.0]), 1e-9);
     }
 }

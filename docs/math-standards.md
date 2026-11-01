@@ -22,7 +22,7 @@ Its peers are the [Architecture Guide](architecture.md) (where a rule lives) and
 - **From the red team (R1 to R8):** one tiling of 2 s cells on true time, with a 10 s reading as five cells and the ± read from the tiling; Steadiness readings from the core reading function; figures gated by their ± rather than by counts; one core lag-one ρ (`confidence::long_run_rho`), with its bias correction and gap pairing, behind the ±, CUSUM, change finder, isochronism and cross-correlation: `confidence::long_run_sd` turns it into the long-run σ of a mean for the CUSUM and change finder, and a slope's ± uses Bartlett's factor, n_eff from ρx·ρres (with noise in x, on the true x's term only: see Isochronism); with what is taken out before ρ is read named by the caller (a line for the ±, the best single step for the CUSUM and change finder); the clock sign flipped before release so + ppm means the sound card runs fast; beat error says whether it came from the unlock or the drop; one word, cut, with a kind and a width; decimals follow the ±. Filed or noted: R1 on #636, R2 #656, R4 on #647 and #649, R5 #657, R6 #658, R8 on #510. R3 and R7 are this guide's: R7 is in section 2; R3 rewrites section 7 after the four method fixes.
 - **Is a watch heard (#675, #678):** over 10 s or more, a timing scatter of 2% of a beat or more (`beats::NO_WATCH_JITTER_FRACTION`) is no watch, whatever the sound. From 0.8% (`beats::NOISE_DOUBT_FRACTION`) up to it, where stand noise can still fall and so can a weak watch about to stop (up to 1.4% in a take's last 25 minutes), and on any stretch under 10 s, the timing says a watch unless the beats' averaged sound shows no unlock or drop on either side; a sound that can't be judged does not veto. Every reader asks `measure::beat_sound_needed` and decides with `measure::no_watch_reason`. Run: stand noise is read as a watch on about 1 in 70 seeded draws of 30 s and 2 in 60 of 90 s; the test names them and the list only shrinks. Decided 30 Oct: a dying watch keeps its readings at that cost.
 - **Size of a cycle (#761):** a cycle's peak to peak is read from its folded shape smoothed to its first harmonics: no more than the search summed, no more than the whole cycles in the take, and each one past the fundamental only if it stands out of the AR(1) noise at its own frequency (1% χ² with 2 degrees of freedom, ×π/2 for the fold's medians). On 2.6 cycles a 225 s line read 29.4 s/d with eight harmonics against 10.6 with the rule; on a seeded 60 s sine in ρ 0.8 noise the median swing is 1.06 of true against 1.39 with every harmonic kept. Decided 31 Oct.
-- **Whole fractions (#787, #789):** a line is n of a longer period (a wheel's turn, or a found cycle's harmonic) when its frequency is within one resolution (1/span) of n over that period (`longterm::harmonic_offset` under 1). Neighbouring n are one over the period apart, so when the period is longer than half the span two can fit; then no fraction is told. Wheel fractions follow this since #787; a found cycle's harmonic label still takes the smallest n that fits until #789. A wheel fraction is marked only when exactly one wheel and n from 2 to 6 fit. On a 580 s span, a 224.84 s line is 0.43 resolutions from half the 540 s third wheel's turn and 0.64 from a third, so it gets none. Decided 31 Oct.
+- **Whole fractions (#787, #789):** a line is n of a longer period (a wheel's turn, or a found cycle's harmonic) when its frequency is within one resolution (1/span) of n over that period (`longterm::harmonic_offset` under 1). Neighbouring n are one over the period apart, so when the period is longer than half the span two can fit; then no fraction is told. Wheel fractions follow this since #787, and a found cycle's harmonic label since #803. A wheel fraction is marked only when exactly one wheel and n from 2 to 6 fit. On a 580 s span, a 224.84 s line is 0.43 resolutions from half the 540 s third wheel's turn and 0.64 from a third, so it gets none. Decided 31 Oct.
 - **Many tests (R9):** after the CUSUM, change finder and autocorrelation fixes, a seeded run of the whole Steadiness pane on a few thousand steady simulated takes (ρ 0 to 0.9, 30 min to 24 h) counts how often any lead shows. Target: at least 95 in 100 steady takes say nothing stands out. If missed, a lead must clear Holm's bar across the pane; each test's own plot and p stay. The run stays as a seeded test.
 - **Home:** this file. A chapter for readers of the user docs follows later.
 
@@ -214,14 +214,14 @@ Today there are five rules (#636):
 
 | Kind of cut | What makes one | Where |
 |---|---|---|
-| Gap | A listed pause; its length is added on true time | `clean.rs:153` |
+| Gap | A listed pause; its length is added on true time, except where a clock log spans it and shows no gap at it (then none) | `clean.rs:153` |
 | Break | A clock step of 0.5 s or more, a jump in the beats, a new position | `breaks.rs:34` |
 | Clock step | A step in the clock log that no listed pause explains | `clean.rs:172` |
 | Mask | A stretch masked by hand | `session.rs:352` |
 | Pause between beats | More than 2 s with no beat (`clean::GAP_S`) | `clean.rs:38` |
 | Dropout inside a bin | A 2 s part of a 10 s bin with no beat; the bin is left out | `clean.rs:392` |
 
-- **Breach (decided 29 Oct):** a listed pause the clock log saw no step for still adds its gap today (`Cuts::true_time`). #646.
+- **A listed pause the clock log saw no step for** is a break of no width: it adds no time, and the caveat `pauses_unseen` says so (`ClockFit::keeps_gap`; #646). A pause the log has no entry before or none after (it ended early or started late) has no witness, so its listed gap is added, as with no log (`ClockFit::witnesses`).
 - **Short stretches are dropped.** A stretch between cuts whose beats span under 10 s (`timing::MIN_PIECE_S`) gives no rate. It is a ragged edge, and a few seconds of beats give a rate several s/d out.
 - **A beat error that turns over across a break** is combined as a size, not averaged to zero (`timing::signed_across`, `median_signed`), with a caveat.
 - **Breach:** the saved whole-stretch fit does not cut at a pause between beats over 2 s, though the live reading does (`Cuts::run_cut`) and `GAP_S`'s own comment says no reading fits across one. Finding N2, #638.
@@ -264,9 +264,10 @@ What each figure needs before it is shown today, and what happens when data is m
 | Positions Test per position, X | Mean | As NIHS 93-10 defines the positions values |
 | Steadiness bins | Mean of fine windows today | Decided (R2, #656): the core reading, so Steadiness and the charts agree |
 | Long-run grid | Median per step | Period search on a robust series |
-| Spread of residuals, jitter | 1.4826 × MAD | A robust standard deviation (`dsp.rs:253`) |
+| Spread of residuals, jitter | 1.4826 × MAD | A robust standard deviation (`dsp.rs:276`) |
 
-- **One median.** `dsp::median` (dsp.rs:215): the middle value, or the mean of the middle two. `twostate.rs:166` keeps its own copy (same result), and `session`, `analysis` and `twostate` each wrap it again. (#512)
+- **One median.** `dsp::median` (dsp.rs:220): the middle value, or the mean of the middle two. `twostate.rs:166` keeps its own copy (same result), and `session`, `analysis` and `twostate` each wrap it again. (#512)
+- **The median and the upper middle value (#838).** A figure a user sees takes the median: `dsp::median`, or `dsp::median_f32` for f32 values (the Doctor's signal, since #838). An envelope level (a beat's floor, typical peak or template window, the burst gate, amplitude edges, shape and profile levels, and the per-sample side-sound medians) takes `upper_median_f32`: the upper of the two middle values, never an average of two, because a block half ticks and half silence has no level halfway between. These are two named statistics, not two copies of one. Moving a level to the median where that is right is #839.
 - **Two percentiles.** Nearest rank in `analysis.rs:211`, `session.rs:394`, `longrun.rs:97`. Interpolated in `histogram.rs:100`, `distribution.rs:116`, `steadiness.rs:2635`. (#512; linear interpolation decided)
 
 ---
@@ -281,6 +282,7 @@ What each figure needs before it is shown today, and what happens when data is m
 - **Coverage test:** a seeded test holds coverage between 55% and 85% at ρ 0, 0.5 and 0.9 (`standard_error_allows_for_correlated_readings`).
 - **Breach:** where the beat error turns over, the figure is a median of sizes, but its ± is taken from the signed values, so the turn widens the ±. Finding N1, #637.
 - **Gapped takes:** the windows of all stretches are put end to end, so one difference spans each gap, and ρ is not pooled per stretch, though `confidence::pooled_lag_one` exists for this. Finding N3, #639.
+- **Wheel lines (#832):** a bin's size is its windows' sizes weighted by 1/se², and its ± allows for windows that overlap: two windows sharing a fraction f of their (equal) length are taken to correlate at f, as two fits on white noise do. Seeded, 300 takes: ±1 SE holds 67% (nominal 68%) with scatter over SE 1.01; with a 30 s hole through the bin's windows 67% and 1.00, against 54% with the windows taken as independent. With no line in the bin, the sizes are expected to correlate less than f, so the ± should err wide; this is reasoned, not tested.
 - **Steadiness:** the CUSUM assumes independent readings (`steadiness.rs:991`, `cusum.rs:11`). Decided: the step-robust long-run σ (#647), and the same for the change finder (#649).
 
 ---
@@ -313,7 +315,7 @@ What each figure needs before it is shown today, and what happens when data is m
 - **Rate:** (P_nominal / P − 1) × 86,400, exact, with P the fitted beat period (`timing.rs:163`).
 - **JSON is never rounded.** Only text is rounded, once.
 - **Today the decimals are typed in each surface**: six `opt` helpers, three `signed` helpers, and the app and MCP each pick when a ± shows (app.rs:12389, 12495, 12545; MCP summary.rs:12). The CSV writes more decimals than the text, which is right for data. Core giving each figure's decimals is #510.
-- **Synthetic takes:** the generator steps each beat by P(1 − r/86400), a first-order inverse of the rate. A take made at +100 s/d reads +100.12 s/d (worked out, not run). Finding N5, #640.
+- **Synthetic takes:** the generator steps each beat by P/(1 + r/86400) (`timing::period_s`, through `synth::period`), the period the timing fit reads r from, so a take made at +100 s/d reads +100 s/d (#816; finding N5).
 
 ---
 
@@ -357,12 +359,12 @@ Confirmed problems are filed as issues, and the fixes go to each file's owner. N
 | N2 | Saved fit does not cut at a pause over 2 s between beats; live does | `session.rs:478`, `clean.rs:38` | **#638** |
 | N3 | ± on a gapped take takes differences across gaps; ρ not pooled per stretch | `confidence.rs:144` | **#639** |
 | N4 | No core coverage rule; the 60% unlock share lives in `regress` | `regress_cmd.rs:32` | **#645** |
-| N5 | Synthetic rate is first-order: +0.12 s/d at +100 s/d | `synth.rs:171` | **#640** |
+| N5 | Synthetic rate is first-order: +0.12 s/d at +100 s/d | `synth.rs:171` | Fixed, #816 |
 | N6 | A window's amplitude falls back to one side with no caveat; tick and tock can differ by degrees | `amplitude.rs:224` | **#648** |
-| N7 | `confidence::beat_error_se` is used only by its test; `assess` repeats it inline | `confidence.rs:155` | **#641** |
+| N7 | `confidence::beat_error_se` is used only by its test; `assess` repeats it inline | `confidence.rs:155` | Fixed, #822 |
 | N8 | CUSUM assumes independent readings | `steadiness.rs:991` | **#647** |
 | N9 | The paper strip places beats on wall time (no clock correction) and draws the Rate line at the corrected rate, so on a corrected take the two differ in slope by 0.0864 s/d per ppm (confirmed by building and running). One clock everywhere decides the fix: the dots move onto true time, in core. | `timing.rs:63`, app `strip.rs:200` | **#643** |
-| N10 | A listed pause the clock log saw no step for still adds its gap to true time | `clean.rs` `Cuts::true_time` | **#646** |
+| N10 | A listed pause the clock log saw no step for still adds its gap to true time | `clean.rs` `Cuts::true_time` | Fixed, #829 |
 | M1 | Change finder assumes independent readings | `steadiness.rs:1040` | **#649** |
 | M2 | Autocorrelation and Ljung–Box take off the mean only, so a trend reads as memory | `steadiness.rs:946` | **#650** |
 | M3 | Isochronism slope shrinks with amplitude reading noise, is confounded with time, has no ± | `steadiness.rs:2678` | **#651** |

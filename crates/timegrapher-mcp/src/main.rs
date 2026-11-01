@@ -245,6 +245,13 @@ async fn call(
         }
         result["_meta"][caveats::META_KEY] = json!(limits);
     }
+    // The ± beside each figure, in core's words, for the view.
+    if let Some(pm) = views::pm_texts(&doc) {
+        if !result["_meta"].is_object() {
+            result["_meta"] = json!({});
+        }
+        result["_meta"][views::PM_KEY] = pm;
+    }
     // No regular beat, in core's words, for the view.
     if let Some(said) = caveats::no_beat(&doc) {
         if !result["_meta"].is_object() {

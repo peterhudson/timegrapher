@@ -16,9 +16,14 @@ function definition(name, optional = false) {
   if (!source && !optional) throw new Error(`Missing renderer function: ${name}`);
   return source ? source[0] : "";
 }
+// The no-beat heading the server puts in the page: core's
+// measure::NO_WATCH_TITLE, read from core so the test holds the view to it.
+const NO_BEAT_TITLE = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/measure.rs"), "utf8")
+  .match(/pub const NO_WATCH_TITLE: &str = "([^"]+)";/)[1];
 const context = vm.createContext({
+  NO_BEAT_TITLE,
   fileName: () => "test.wav", timeLabel: String, positionName: (p) => `name of ${p}`,
-  stripCards: () => "", limitsCard: () => "",
+  stripCards: () => "", limitsCard: (l) => (l && l.length ? "<limits>" : ""),
   profileCard: (p, title, dropBeatError) => `<profile drop="${dropBeatError}">`,
 });
 vm.runInContext(["esc", "num", "signed", "abs", "tile", "rateBasis", "recordingView", "readingTiles", "recordingCards", "takeTiles"]
@@ -51,7 +56,7 @@ for (const invalid of [null, "7", Infinity, NaN]) {
 
 test("no-watch result never draws a rate even if an inconsistent document contains one", () => {
   const markup = render({ ...cases.find(c => c.name === "stored-before-USB").doc, watch_heard: false });
-  assert.ok(markup.includes("No Regular Beat Found"));
+  assert.ok(markup.includes(`<b>${NO_BEAT_TITLE}</b>`));
   assert.ok(!markup.includes('class="tile"'));
 });
 
@@ -100,11 +105,37 @@ test("each of a take's readings of the file gets its own tiles", () => {
 
 test("a take reading with no regular beat draws no figures", () => {
   const markup = render(listed([reading("DU", 5, { measurement: { watch_heard: false } })]));
-  assert.ok(markup.includes("No Regular Beat Found") && !markup.includes('class="tile"'), markup);
+  assert.ok(markup.includes(`<b>${NO_BEAT_TITLE}</b>`) && !markup.includes('class="tile"'), markup);
 });
 
 test("a take that couldn't be read leaves the whole file's figures", () => {
   const doc = listed(undefined);
   doc.take = { session_file: "session.toml", error: "unreadable" };
   assert.equal(rateValue(render(doc)), 9);
+});
+
+// The ± is core's text, handed over by the server (#806): the view no longer
+// rounds 0.4° up to "± 1°", and draws no ± of its own from a bare se.
+test("the tiles show the server's ± text, and none without it", () => {
+  const doc = listed(undefined);
+  doc.take = undefined;
+  doc.amplitude_se_deg = 0.4;
+  doc.confidence = { rate: { se: 0.2 } };
+  const bare = render(doc);
+  assert.ok(!bare.includes("±"), bare);
+  const markup = context.recordingView(doc, null, null, null, { rate: "0.2", amplitude: "0.4" });
+  assert.ok(markup.includes("± 0.4°") && markup.includes("± 0.2 seconds per day"), markup);
+  const take = context.recordingView(listed([reading("DU", 5), reading("DD", -3)]), null, null, null,
+    { readings: [{ rate: "0.2", amplitude: null }, { rate: "1.5", amplitude: "3" }] });
+  assert.ok(take.includes("± 0.2 seconds per day") && take.includes("± 1.5 seconds per day") && take.includes("± 3°"), take);
+});
+
+// Whether clipping is worth saying is core's call (Clipping::noted, the
+// `clipped` caveat the server turns into limits), not a threshold of the
+// view's own (#808).
+test("clipping is said only in the server's limits", () => {
+  const doc = { clipping: { beats: 30, beat_fraction: 0.3 } };
+  assert.ok(!context.recordingCards(doc, null, null).includes("Clipping"));
+  const said = context.recordingCards(doc, null, ["30% of the beats have a clipped sample."]);
+  assert.ok(said.includes("<limits>"), said);
 });

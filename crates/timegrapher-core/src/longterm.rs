@@ -116,10 +116,11 @@ pub fn grid_median(times: &[f64], values: &[f64], t0: f64, step: f64, n: usize) 
 pub fn detrend(g: &Grid, window_s: f64) -> Grid {
     let n = g.y.len();
     let finite: Vec<usize> = (0..n).filter(|&i| g.y[i].is_finite()).collect();
-    if finite.len() < 4 {
+    let plan = slow_out(g, window_s);
+    if matches!(plan, SlowOut::Nothing) {
         return g.clone();
     }
-    let y = if let Some(w) = detrend_window(g, window_s) {
+    let y = if let SlowOut::Median(w) = plan {
         let half = w / 2;
         let stride = (w / 40).max(1);
         let mut knots: Vec<(f64, f64)> = Vec::new();
@@ -205,6 +206,35 @@ fn level(power: &[f64], a: usize, b: usize, keep: &dyn Fn(usize) -> bool) -> f64
         return 1.0;
     }
     median(&mut w) / std::f64::consts::LN_2
+}
+
+/// What [`detrend`] takes out of `g`: one rule for it and for
+/// [`detrend_fit_terms`].
+enum SlowOut {
+    /// Too few readings: nothing.
+    Nothing,
+    /// A least-squares quadratic, on a run under 20 minutes.
+    Quadratic,
+    /// A running median over this many steps.
+    Median(usize),
+}
+
+fn slow_out(g: &Grid, window_s: f64) -> SlowOut {
+    if g.y.iter().filter(|v| v.is_finite()).count() < 4 {
+        return SlowOut::Nothing;
+    }
+    detrend_window(g, window_s).map_or(SlowOut::Quadratic, SlowOut::Median)
+}
+
+/// The terms of the polynomial [`detrend`] takes out of `g`: 3 (a
+/// quadratic) on a run under 20 minutes, 0 with too few readings to take
+/// any out, `None` where it takes a running median instead.
+pub fn detrend_fit_terms(g: &Grid, window_s: f64) -> Option<usize> {
+    match slow_out(g, window_s) {
+        SlowOut::Nothing => Some(0),
+        SlowOut::Quadratic => Some(3),
+        SlowOut::Median(_) => None,
+    }
 }
 
 /// The running median's window [`detrend`] uses on `g`, in whole steps (at
@@ -596,24 +626,27 @@ pub fn harmonic_offset(period_s: f64, resolution_s: f64, n: u8, of_s: f64) -> f6
     (f - f64::from(n) / of_s).abs() / (resolution_s * f * f)
 }
 
-/// For each component, the found cycle it is a harmonic of: the smallest
-/// n (2 to 8) whose n times that cycle's frequency is within one
+/// For each component, the found cycle it is a harmonic of: the one n (2
+/// to 8) and found cycle q for which n times q's frequency is within one
 /// resolution (1/span) of its own ([`harmonic_offset`] under 1).
 /// Neighbouring n are 1/q apart in frequency, more than the two
 /// resolutions (2/span) the test spans when q < span/2, so then at most
-/// one fits; a q nearer the span can fit two.
+/// one fits. A q nearer the span can fit two, and then no n is told, as
+/// for a wheel's fraction (#789): over 580 s, 224.84 s is 0.43
+/// resolutions from 2 turns of 540 s and 0.64 from 3.
 fn label_harmonics(components: &mut [Component]) {
     let found: Vec<f64> = components.iter().map(|c| c.period_s).collect();
     for c in components.iter_mut() {
-        let off = |n: u8, q: f64| harmonic_offset(c.period_s, c.resolution_s, n, q);
-        c.harmonic_of = (2..=8u8).find_map(|n| {
+        let (p, res) = (c.period_s, c.resolution_s);
+        let mut fits = (2..=8u8).flat_map(|n| {
             found
                 .iter()
                 .copied()
-                .filter(|&q| off(n, q) < 1.0)
-                .min_by(|&a, &b| off(n, a).total_cmp(&off(n, b)))
-                .map(|q| Harmonic { period_s: q, n })
+                .filter(move |&q| harmonic_offset(p, res, n, q) < 1.0)
+                .map(move |q| Harmonic { period_s: q, n })
         });
+        let first = fits.next();
+        c.harmonic_of = first.filter(|_| fits.next().is_none());
     }
 }
 
@@ -1085,6 +1118,33 @@ mod tests {
             );
             assert!(cs[0].harmonic_of.is_none());
         }
+    }
+
+    /// When the found cycle is near the span, two whole numbers can both
+    /// fit within one resolution, and then neither is told (#789): over
+    /// 580 s, 224.84 s is 0.43 resolutions from 2 turns of 540 s and 0.64
+    /// from 3. Taking the first fit would call it the 2nd.
+    #[test]
+    fn a_harmonic_that_two_whole_numbers_fit_is_not_labelled() {
+        let tau = std::f64::consts::TAU;
+        let g = series(600, 1.0, |t| (tau * t / 60.0).sin(), 0.1, 13);
+        let one = analyse(&g, &LongConfig::default()).components.remove(0);
+        let at = |p: f64| Component {
+            period_s: p,
+            resolution_s: p * p / 580.0,
+            harmonic_of: None,
+            ..one.clone()
+        };
+        let off = |n| harmonic_offset(224.84, 224.84 * 224.84 / 580.0, n, 540.0);
+        assert!(off(2) < 1.0 && off(3) < 1.0, "{} {}", off(2), off(3));
+        let mut cs = vec![at(540.0), at(224.84)];
+        label_harmonics(&mut cs);
+        assert!(cs[1].harmonic_of.is_none(), "{:?}", cs[1].harmonic_of);
+        // A single fit on the same span is still told: 270 s is 2 turns'
+        // exactly and 1.07 resolutions from 3.
+        let mut cs = vec![at(540.0), at(270.0)];
+        label_harmonics(&mut cs);
+        assert_eq!(cs[1].harmonic_of.map(|h| h.n), Some(2));
     }
 
     /// A line is at a whole fraction of a wheel's turn by the same

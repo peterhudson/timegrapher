@@ -2,6 +2,17 @@
 
 use super::*;
 
+/// What Keep Analysis Only reads a take from: its sound files, their
+/// length in seconds, the companion files, the settings and the shape
+/// stretches.
+type KeepPrep = (
+    Vec<PathBuf>,
+    f64,
+    Vec<(String, Vec<u8>)>,
+    StreamConfig,
+    Vec<Option<(f64, f64)>>,
+);
+
 impl TimegrapherApp {
     /// The Watches view: where the sound comes from and what to do with it,
     /// then the watch itself. Before anything is open it stands beside
@@ -702,70 +713,84 @@ impl TimegrapherApp {
         }
     }
 
+    /// How Keep Analysis Only reads a take with session file `m`: at its
+    /// beat rate and lift, and whether that lift was supplied by core's one
+    /// rule for session files, with the take's calibre (#685).
+    pub(super) fn keep_config(&self, m: &Manifest) -> StreamConfig {
+        use timegrapher_core::take;
+        let cal = m
+            .calibre
+            .as_deref()
+            .and_then(|n| take::calibre_named(n, &self.cal.user));
+        let mut cfg = StreamConfig::default();
+        cfg.analysis.bph = m.bph;
+        cfg.analysis.amplitude.lift_deg = m.lift.unwrap_or(DEFAULT_LIFT_DEG);
+        cfg.analysis.lift_known = take::file_lift_known(m, cal.as_ref()).unwrap_or(false);
+        cfg
+    }
+
+    /// What Keep Analysis Only needs from saved take `take` before it
+    /// reads the sound: its sound files and their length, the companions
+    /// written beside the analysis (the session file marked `audio =
+    /// false`), how to read it and its shape stretches; or why it can't.
+    fn keep_prepare(&self, take: &Path) -> Result<KeepPrep, String> {
+        let file = take.join(MANIFEST);
+        let text =
+            std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+        if m.audio == Some(false) {
+            return Err("its sound has already been removed".into());
+        }
+        if m.recordings.is_empty() || m.recordings.iter().any(|r| r.file != ".") {
+            return Err(format!(
+                "its {MANIFEST} lists each sound file by name, and only takes whose \
+                 {MANIFEST} names the whole folder, as the app writes it, can have their \
+                 sound removed"
+            ));
+        }
+        let files = recordings_in(take)?;
+        let mut total_s = 0.0;
+        for f in &files {
+            let i =
+                timegrapher_core::audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let frames = i
+                .frames
+                .ok_or_else(|| format!("{} doesn't say how long it is", f.display()))?;
+            total_s += frames as f64 / f64::from(i.sample_rate.max(1));
+        }
+        let mut doc: toml_edit::DocumentMut = text
+            .parse()
+            .map_err(|e| format!("{}: {e}", file.display()))?;
+        doc.insert("audio", toml_edit::value(false));
+        let mut companions = vec![(MANIFEST.to_string(), doc.to_string().into_bytes())];
+        for e in std::fs::read_dir(take).map_err(|e| format!("{}: {e}", take.display()))? {
+            let e = e.map_err(|e| e.to_string())?;
+            let name = e.file_name().to_string_lossy().into_owned();
+            if !e.file_type().is_ok_and(|t| t.is_file())
+                || name == MANIFEST
+                || files
+                    .iter()
+                    .any(|f| f.file_name() == Some(e.file_name().as_os_str()))
+            {
+                continue;
+            }
+            let bytes = std::fs::read(e.path()).map_err(|err| format!("{name}: {err}"))?;
+            companions.push((name, bytes));
+        }
+        let cfg = self.keep_config(&m);
+        let shapes = timegrapher_core::analysis_take::shape_stretches(&m, total_s);
+        Ok((files, total_s, companions, cfg, shapes))
+    }
+
     /// Read a saved take's sound again for its analysis, in the
     /// background, writing it beside the take; [`Self::poll_take_keep`]
     /// then puts it in the take's place. Only a take whose session file
     /// names the whole folder in each entry, as the app's own takes do.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn start_take_keep(&mut self, take: PathBuf) {
         if self.take_keep.is_some() {
             return;
         }
-        let prepared = (|| -> Result<_, String> {
-            let file = take.join(MANIFEST);
-            let text =
-                std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-            let m: Manifest =
-                toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-            if m.audio == Some(false) {
-                return Err("its sound has already been removed".into());
-            }
-            if m.recordings.is_empty() || m.recordings.iter().any(|r| r.file != ".") {
-                return Err(format!(
-                    "its {MANIFEST} lists each sound file by name, and only takes whose \
-                     {MANIFEST} names the whole folder, as the app writes it, can have their \
-                     sound removed"
-                ));
-            }
-            let files = recordings_in(&take)?;
-            let mut total_s = 0.0;
-            for f in &files {
-                let i = timegrapher_core::audio::info(f)
-                    .map_err(|e| format!("{}: {e}", f.display()))?;
-                let frames = i
-                    .frames
-                    .ok_or_else(|| format!("{} doesn't say how long it is", f.display()))?;
-                total_s += frames as f64 / f64::from(i.sample_rate.max(1));
-            }
-            let mut doc: toml_edit::DocumentMut = text
-                .parse()
-                .map_err(|e| format!("{}: {e}", file.display()))?;
-            doc.insert("audio", toml_edit::value(false));
-            let mut companions = vec![(MANIFEST.to_string(), doc.to_string().into_bytes())];
-            for e in std::fs::read_dir(&take).map_err(|e| format!("{}: {e}", take.display()))? {
-                let e = e.map_err(|e| e.to_string())?;
-                let name = e.file_name().to_string_lossy().into_owned();
-                if !e.file_type().is_ok_and(|t| t.is_file())
-                    || name == MANIFEST
-                    || files
-                        .iter()
-                        .any(|f| f.file_name() == Some(e.file_name().as_os_str()))
-                {
-                    continue;
-                }
-                let bytes = std::fs::read(e.path()).map_err(|err| format!("{name}: {err}"))?;
-                companions.push((name, bytes));
-            }
-            let mut cfg = StreamConfig::default();
-            cfg.analysis.bph = m.bph;
-            cfg.analysis.amplitude.lift_deg = m.lift.unwrap_or(DEFAULT_LIFT_DEG);
-            cfg.analysis.lift_known = m.lift_known.unwrap_or(m.lift.is_some());
-            let shapes = timegrapher_core::analysis_take::shape_stretches(&m, total_s);
-            Ok((files, total_s, companions, cfg, shapes))
-        })();
+        let prepared = self.keep_prepare(&take);
         let (files, total_s, companions, cfg, shapes) = match prepared {
             Ok(p) => p,
             Err(e) => {
@@ -996,44 +1021,50 @@ impl TimegrapherApp {
         self.note_settings();
     }
 
+    /// In a narrow window, one at a time: a watch or Unsorted Takes shown
+    /// has only the way back to the list in its toolbar. Whether it did.
+    fn watches_back(&mut self, ui: &mut egui::Ui) -> bool {
+        if self.watches_wide || self.list_shown() {
+            return false;
+        }
+        if self.unsorted_open && self.watch_open.is_none() {
+            theme::keep_next(ui);
+            if theme::tool_word_button(
+                ui,
+                Icon::Back,
+                "All Watches",
+                "Back to the list of watches, Unsorted Takes marked",
+                false,
+                None,
+            ) {
+                self.list_for = Some((None, true));
+            }
+            return true;
+        } else if self.open_watch().is_some() {
+            theme::keep_next(ui);
+            if theme::tool_word_button(
+                ui,
+                Icon::Back,
+                "All Watches",
+                "Back to the list of watches, this one marked, the search kept: Listen \
+                 and the tests still take it until another row is picked",
+                false,
+                None,
+            ) {
+                self.list_for = Some((self.watch_open.clone(), false));
+            }
+            return true;
+        }
+        false
+    }
+
     /// The Watches view's toolbar: the list's search, order and New
     /// Watch…, or, with a watch picked, the way back and Edit….
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn watches_tools(&mut self, ui: &mut egui::Ui) {
         // One at a time in a narrow window: the watch shown has only the
         // way back to the list.
-        if !self.watches_wide && !self.list_shown() {
-            if self.unsorted_open && self.watch_open.is_none() {
-                theme::keep_next(ui);
-                if theme::tool_word_button(
-                    ui,
-                    Icon::Back,
-                    "All Watches",
-                    "Back to the list of watches, Unsorted Takes marked",
-                    false,
-                    None,
-                ) {
-                    self.list_for = Some((None, true));
-                }
-                return;
-            } else if self.open_watch().is_some() {
-                theme::keep_next(ui);
-                if theme::tool_word_button(
-                    ui,
-                    Icon::Back,
-                    "All Watches",
-                    "Back to the list of watches, this one marked, the search kept: Listen \
-                     and the tests still take it until another row is picked",
-                    false,
-                    None,
-                ) {
-                    self.list_for = Some((self.watch_open.clone(), false));
-                }
-                return;
-            }
+        if self.watches_back(ui) {
+            return;
         }
         // The pane's main action first, in words, and never folded: the
         // empty list names it.

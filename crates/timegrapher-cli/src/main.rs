@@ -1455,7 +1455,8 @@ fn print_summary(
     }
     let se = |r: Option<&timegrapher_core::confidence::Reading>, unit: &str, d: usize| {
         r.and_then(|r| r.se)
-            .map_or(String::new(), |e| format!(" ± {e:.d$}{unit}"))
+            .and_then(|e| timegrapher_core::library::pm_text(e, d))
+            .map_or(String::new(), |t| format!(" ± {t}{unit}"))
     };
     let c = s.confidence.as_ref();
     if let Some(f) = &s.overall {
@@ -1471,10 +1472,12 @@ fn print_summary(
             None => println!("Rate         {:+.1}{pm} s/d", f.rate_s_per_day),
         }
         // The ± is the unlock figure's.
-        let be_se = c.and_then(|c| c.beat_error.se);
+        let be_se = c
+            .and_then(|c| c.beat_error.se)
+            .and_then(|e| timegrapher_core::library::pm_text(e, 2));
         match (s.beat_error_unlock_ms, be_se) {
             (Some(u), Some(e)) => println!(
-                "Beat error   {:.2} ± {e:.2} ms (from the unlock; {:.2} ms from the drop)",
+                "Beat error   {:.2} ± {e} ms (from the unlock; {:.2} ms from the drop)",
                 u.abs(),
                 f.beat_error_ms.abs()
             ),
@@ -1498,11 +1501,9 @@ fn print_summary(
     println!(
         "Amplitude    {}{} deg (Tick {}, Tock {}; lift angle {} deg)",
         opt(s.amplitude_deg, 0),
-        s.amplitude_se_deg.map_or(String::new(), |e| if e < 1.0 {
-            format!(" ± {e:.1}")
-        } else {
-            format!(" ± {e:.0}")
-        }),
+        s.amplitude_se_deg
+            .and_then(|e| timegrapher_core::library::pm_text(e, 0))
+            .map_or(String::new(), |t| format!(" ± {t}")),
         opt(s.amplitude_even_deg, 0),
         opt(s.amplitude_odd_deg, 0),
         s.lift_deg

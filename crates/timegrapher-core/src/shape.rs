@@ -22,7 +22,7 @@
 
 use crate::amplitude::edges;
 use crate::beats::{median_window, Beat};
-use crate::dsp::{median, median_f32, moving_average, parabolic, robust_sd};
+use crate::dsp::{median, moving_average, parabolic, robust_sd, upper_median_f32};
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
@@ -364,7 +364,7 @@ fn stretch_level(env: &[f32], fs: f64, times: &[f64], a: f64, b: f64) -> Option<
                 return None;
             }
             let mut seg = env[i as usize..j as usize].to_vec();
-            Some(median_f32(&mut seg) as f64)
+            Some(upper_median_f32(&mut seg) as f64)
         })
         .collect();
     (!levels.is_empty()).then(|| median(&mut levels))
@@ -477,6 +477,20 @@ fn beat_offset(
         .collect();
     let (i, _) = crate::dsp::argmax(&score, 0, score.len())?;
     Some(parabolic(&score, i) - lag as f64)
+}
+
+/// The shape of the beats found on `env`, and the beat period it was
+/// measured with: beats found at `bph`, their timing fitted, and the
+/// fitted period (or 3600/bph with no fit) used for the shape (#807). It
+/// takes the envelope as given, so a caller's own envelope settings and
+/// bph win.
+pub fn of_envelope(env: &[f32], fs: f64, bph: u32) -> (ShapeReport, f64) {
+    let (found, _) = crate::beats::detect(env, fs, bph);
+    let beat_s = crate::timing::beat_period_s(crate::timing::fit(&found, bph).as_ref(), bph);
+    (
+        analyze(env, fs, &found, beat_s, &ShapeConfig::default()),
+        beat_s,
+    )
 }
 
 /// Shape of both sides in windows and over the whole recording.

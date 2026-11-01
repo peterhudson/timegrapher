@@ -1,6 +1,7 @@
 //! The readouts and the status bar: the figures shown, the clocks behind them, the status line and notices, and what shows when nothing is open.
 
 use super::*;
+use timegrapher_core::library::pm_text;
 
 impl TimegrapherApp {
     /// The reading cards across the top: Current Position, Listen, then
@@ -162,7 +163,7 @@ impl TimegrapherApp {
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a word saying so where the unit goes.
         let heard = r.as_ref().is_none_or(|r| r.watch_heard || r.bph.is_none());
-        let unheard_line = "No Regular Beat".to_string();
+        let unheard_line = timegrapher_core::measure::NO_WATCH_TITLE.to_string();
         let unheard_hover = format!(
             "{}.\n\n{}",
             r.as_ref().map(no_regular_beat).unwrap_or_default(),
@@ -227,9 +228,9 @@ impl TimegrapherApp {
             let rate = r.and_then(|r| r.rate_s_per_day);
             let rate_facts = reading_limits("Rate", caveats, lift_now, beats);
             title(ui, cards[2].title, "Rate", &help::RATE, &rate_facts, None);
-            let unit = match pm {
-                Some(e) if e >= 0.05 => format!("± {e:.1} s/d"),
-                _ => "s/d".to_string(),
+            let unit = match pm.and_then(|e| pm_text(e, 1)) {
+                Some(t) => format!("± {t} s/d"),
+                None => "s/d".to_string(),
             };
             // The beats behind the figure, in its hover.
             let mut behind = r.map_or_else(String::new, |r| {
@@ -261,7 +262,9 @@ impl TimegrapherApp {
             });
             if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.rate_s_per_day?))) {
                 let se = w.m.confidence.and_then(|c| c.rate.se);
-                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.1}"));
+                let pm = se
+                    .and_then(|e| pm_text(e, 1))
+                    .map_or_else(String::new, |t| format!(" ± {t}"));
                 let spread =
                     w.m.rate_p05.zip(w.m.rate_p95).map(|(a, b)| {
                         format!("10 s rates {a:+.1} to {b:+.1} s/d").replace('-', "−")
@@ -333,11 +336,10 @@ impl TimegrapherApp {
             );
             // Whole degrees: a live reading's ± is about a degree, so a
             // decimal would claim more than the beats can say.
-            let unit = match r.and_then(|r| r.amplitude_error_deg) {
-                Some(e) if e < 0.95 => format!("± {e:.1}°"),
-                Some(e) => format!("± {e:.0}°"),
-                None => String::new(),
-            };
+            let unit = r
+                .and_then(|r| r.amplitude_error_deg)
+                .and_then(|e| pm_text(e, 0))
+                .map_or_else(String::new, |t| format!("± {t}°"));
             let mut behind = String::new();
             if let Some(&LiveReading {
                 amplitude_even_deg: Some(a),
@@ -349,7 +351,9 @@ impl TimegrapherApp {
             }
             if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.amplitude_deg?))) {
                 let se = w.m.confidence.and_then(|c| c.amplitude.se);
-                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.0}"));
+                let pm = se
+                    .and_then(|e| pm_text(e, 0))
+                    .map_or_else(String::new, |t| format!(" ± {t}"));
                 let spread =
                     w.m.amplitude_p05
                         .zip(w.m.amplitude_p95)
@@ -383,9 +387,12 @@ impl TimegrapherApp {
                 &reading_limits("Beat Error", caveats, lift_now, beats),
                 None,
             );
-            let unit = match be_pm.filter(|_| unlock.is_some()) {
-                Some(e) if e >= 0.005 => format!("± {e:.2} ms"),
-                _ => "ms".to_string(),
+            let unit = match be_pm
+                .filter(|_| unlock.is_some())
+                .and_then(|e| pm_text(e, 2))
+            {
+                Some(t) => format!("± {t} ms"),
+                None => "ms".to_string(),
             };
             // Which edge it is timed from, in the figure's hover.
             let mut from = match (unlock, drop) {
@@ -399,7 +406,9 @@ impl TimegrapherApp {
             };
             if let Some((w, v)) = whole.as_ref().and_then(|w| Some((w, w.m.beat_error()?))) {
                 let se = w.m.confidence.and_then(|c| c.beat_error.se);
-                let pm = se.map_or_else(String::new, |e| format!(" ± {e:.2}"));
+                let pm = se
+                    .and_then(|e| pm_text(e, 2))
+                    .map_or_else(String::new, |t| format!(" ± {t}"));
                 from += &whole_text(format!("{v:.2}{pm} ms"), None, w.span);
                 if w.m.caveats.contains(&Caveat::BeatErrorAsSize) {
                     from += &format!(
@@ -724,48 +733,7 @@ impl TimegrapherApp {
     /// closed unexpectedly, sound kept from an earlier session, a newer
     /// release) and the take's USB lines and clock log disagreeing, each
     /// opening its whole message and buttons over the window. The bar keeps its height whatever it shows.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     fn status_notices(&mut self, ui: &mut egui::Ui) {
-        let pal = theme::pal(ui);
-        // A warning or a failure starts with its icon; the words are in the
-        // text colour.
-        let item = |ui: &mut egui::Ui, text: &str, alert: Option<theme::Alert>, hint: &str| {
-            let color = if alert.is_some() {
-                pal.text
-            } else {
-                pal.accent
-            };
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                let icon = |ui: &mut egui::Ui| {
-                    if let Some(kind) = alert {
-                        let (icon, _) =
-                            ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
-                        theme::alert_icon(ui.painter(), icon, kind, pal);
-                    }
-                };
-                // The bar's right side runs right to left: the icon still
-                // reads first.
-                let rtl = ui.layout().prefer_right_to_left();
-                if !rtl {
-                    icon(ui);
-                }
-                let resp = ui
-                    .add(
-                        egui::Button::new(RichText::new(text).small().color(color))
-                            .frame_when_inactive(false),
-                    )
-                    .on_hover_text(hint);
-                if rtl {
-                    icon(ui);
-                }
-                resp
-            })
-            .inner
-        };
         let popover = |resp: &egui::Response, body: &mut dyn FnMut(&mut egui::Ui)| {
             egui::Popup::menu(resp)
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -775,7 +743,7 @@ impl TimegrapherApp {
                 });
         };
         if let Some(r) = self.updates.notice.clone() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 &format!("Timegrapher {} Available…", r.version),
                 None,
@@ -784,7 +752,7 @@ impl TimegrapherApp {
             popover(&resp, &mut |ui| self.update_notice(ui));
         }
         if !self.kept.is_empty() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 "Unsaved Sound Found…",
                 Some(theme::Alert::Warning),
@@ -793,7 +761,7 @@ impl TimegrapherApp {
             popover(&resp, &mut |ui| self.kept_notice(ui));
         }
         if self.crash.is_some() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 "Closed Unexpectedly…",
                 Some(theme::Alert::Warning),
@@ -816,7 +784,7 @@ impl TimegrapherApp {
                 }
                 _ => String::new(),
             };
-            let resp = item(
+            let resp = status_item(
                 ui,
                 &short,
                 Some(theme::Alert::Bad),
@@ -826,7 +794,7 @@ impl TimegrapherApp {
         }
         // On the right, so a long take name never hides it.
         if let Some((short, long)) = self.clock_disagreement() {
-            let resp = item(
+            let resp = status_item(
                 ui,
                 &format!("{short}…"),
                 Some(theme::Alert::Warning),
@@ -931,13 +899,73 @@ impl TimegrapherApp {
         }
     }
 
+    /// The recording's state in the status bar, its colour and its hover:
+    /// stopped by a fault, saved (and what since isn't), its analysis
+    /// kept without the sound, or not saved.
+    fn recording_state(&self, r: &Recorder, pal: &theme::Palette) -> (String, Color32, String) {
+        let since = self.unsaved_s();
+        if let Some(fault) = self.session.recording_fault() {
+            (
+                "Recording stopped; recovery files retained".to_string(),
+                pal.text,
+                fault.description(),
+            )
+        } else {
+            match self.session.saved_to() {
+                Some(p) => (
+                    if since >= 1.0 {
+                        format!("The last {} not saved", length_text(since))
+                    } else if self.metadata_unsaved() {
+                        "Settings not saved".to_string()
+                    } else {
+                        "Saved".to_string()
+                    },
+                    pal.text_secondary,
+                    format!(
+                        "Saved in {}. Sound since then is kept too; Save Again adds it. \
+                     New Session and quitting ask first, and a quit that can't ask \
+                     keeps it when there is more than 5 s of it, \
+                     to offer back at the next start.",
+                        p.display()
+                    ),
+                ),
+                None if self.analysis_kept_to.is_some() => {
+                    let (dir, through_s) = self.analysis_kept_to.clone().unwrap_or_default();
+                    let kept = if r.duration_s() - through_s >= 1.0 {
+                        format!("the analysis of its first {} kept", length_text(through_s))
+                    } else {
+                        "its analysis kept".to_string()
+                    };
+                    (
+                        format!("Not saved; {kept}"),
+                        pal.text_secondary,
+                        format!(
+                            "The analysis of the first {} was kept without the sound in {}. \
+                             The sound itself isn't saved: Save keeps it. New Session and \
+                             quitting ask before throwing it away, and a quit that can't \
+                             ask keeps it when there is more than 5 s of it, \
+                             to offer back at the next start.",
+                            length_text(through_s),
+                            dir.display()
+                        ),
+                    )
+                }
+                None => (
+                    "Not saved".to_string(),
+                    pal.text_secondary,
+                    "The session's sound is kept as it goes, so Save can keep it at any \
+                 point. New Session and quitting ask before throwing it away, and a quit that \
+                 can't ask keeps it when there is more than 5 s of it, \
+                 to offer back at the next start."
+                        .to_string(),
+                ),
+            }
+        }
+    }
+
     /// The status bar's facts after the take's name, none cut short: the
     /// analysis under way, unsaved changes, the recording's state and the
     /// signal.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     fn status_facts(&self, ui: &mut egui::Ui) {
         let pal = theme::pal(ui);
         if let Some(b) = &self.batch {
@@ -957,64 +985,7 @@ impl TimegrapherApp {
                 .on_hover_text(SAVE_MARKS_HINT);
         }
         if let Some(r) = &self.session.recorder {
-            let since = self.unsaved_s();
-            let (text, color, hint) = if let Some(fault) = self.session.recording_fault() {
-                (
-                    "Recording stopped; recovery files retained".to_string(),
-                    pal.text,
-                    fault.description(),
-                )
-            } else {
-                match self.session.saved_to() {
-                    Some(p) => (
-                        if since >= 1.0 {
-                            format!("The last {} not saved", length_text(since))
-                        } else if self.metadata_unsaved() {
-                            "Settings not saved".to_string()
-                        } else {
-                            "Saved".to_string()
-                        },
-                        pal.text_secondary,
-                        format!(
-                            "Saved in {}. Sound since then is kept too; Save Again adds it. \
-                         New Session and quitting ask first, and a quit that can't ask \
-                         keeps it when there is more than 5 s of it, \
-                         to offer back at the next start.",
-                            p.display()
-                        ),
-                    ),
-                    None if self.analysis_kept_to.is_some() => {
-                        let (dir, through_s) = self.analysis_kept_to.clone().unwrap_or_default();
-                        let kept = if r.duration_s() - through_s >= 1.0 {
-                            format!("the analysis of its first {} kept", length_text(through_s))
-                        } else {
-                            "its analysis kept".to_string()
-                        };
-                        (
-                            format!("Not saved; {kept}"),
-                            pal.text_secondary,
-                            format!(
-                                "The analysis of the first {} was kept without the sound in {}. \
-                                 The sound itself isn't saved: Save keeps it. New Session and \
-                                 quitting ask before throwing it away, and a quit that can't \
-                                 ask keeps it when there is more than 5 s of it, \
-                                 to offer back at the next start.",
-                                length_text(through_s),
-                                dir.display()
-                            ),
-                        )
-                    }
-                    None => (
-                        "Not saved".to_string(),
-                        pal.text_secondary,
-                        "The session's sound is kept as it goes, so Save can keep it at any \
-                     point. New Session and quitting ask before throwing it away, and a quit that \
-                     can't ask keeps it when there is more than 5 s of it, \
-                     to offer back at the next start."
-                            .to_string(),
-                    ),
-                }
-            };
+            let (text, color, hint) = self.recording_state(r, pal);
             let failed = self.session.recording_fault().is_some();
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
@@ -1238,4 +1209,253 @@ impl TimegrapherApp {
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
+}
+
+/// Where a galley's first line sits: its baseline, down from its top.
+fn baseline(g: &egui::Galley) -> f32 {
+    g.rows
+        .first()
+        .and_then(|r| Some(r.pos.y + r.row.glyphs.first()?.pos.y))
+        .unwrap_or(g.size().y * 0.8)
+}
+
+/// The least size, points, a card's figure is made to fit beside its ±
+/// and unit; past it the ± stacks, then leaves the card (#825).
+const FIGURE_LEAST_PT: f32 = 12.0;
+
+/// A readings card's figure row: the big figure ("—" while there is none),
+/// then its ± and unit on the figure's baseline, or what the reading waits
+/// on in their place. On a compact card the figure is smaller and the ±
+/// sits over the unit beside it. A figure too wide for the card (noise
+/// read as beats can give thousands of s/d) is made smaller to show whole.
+pub(super) fn figure_row(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    value: Option<&str>,
+    unit: &str,
+    status: Option<&(String, String)>,
+    hover: &str,
+    compact: bool,
+) {
+    let pal = theme::pal(ui);
+    let (text, colour) = match value {
+        // A true minus sign, as wide as the plus.
+        Some(v) => (v.replace('-', "−"), pal.text),
+        None => ("—".to_string(), pal.text_tertiary),
+    };
+    let side_text = status.map_or(unit, |s| s.0.as_str());
+    let mut lines = side_lines(side_text, status.is_some(), compact);
+    let mut side_font = egui::FontId::proportional(if compact { 12.0 } else { 15.0 });
+    let lay_side = |font: &egui::FontId, lines: &[String]| -> Vec<_> {
+        lines
+            .iter()
+            .map(|l| {
+                ui.painter()
+                    .layout_no_wrap(l.clone(), font.clone(), pal.text_secondary)
+            })
+            .collect()
+    };
+    let mut side = lay_side(&side_font, &lines);
+    let mut side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    // Words in the figure's place ("No Regular Beat") show whole: with no
+    // figure, the dash gives them its room, and they are made smaller
+    // only when even that is too narrow.
+    let figure_w = ui
+        .painter()
+        .layout_no_wrap(
+            text.clone(),
+            theme::display(if compact {
+                theme::FIGURE_COMPACT_PT
+            } else {
+                theme::FIGURE_PT
+            }),
+            colour,
+        )
+        .size()
+        .x;
+    let no_dash = value.is_none() && status.is_some() && figure_w + 6.0 + side_w > rect.width();
+    if no_dash && side_w > rect.width() {
+        side_font.size = (side_font.size * rect.width() / side_w).floor().max(9.0);
+        side = lay_side(&side_font, &lines);
+        side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    }
+    // A ± too wide to sit beside the figure, even with the figure made as
+    // small as it is made, stacks over its unit, and, still too wide,
+    // leaves the card for the hover: never cut into a number that reads
+    // as zero (#825).
+    let mut moved = None;
+    if status.is_none() && value.is_some() && side_text.starts_with('±') {
+        let fits = |l: &[String]| {
+            let w = lay_side(&side_font, l)
+                .iter()
+                .map(|g| g.size().x)
+                .fold(0.0, f32::max);
+            let least = FIGURE_LEAST_PT
+                / if compact {
+                    theme::FIGURE_COMPACT_PT
+                } else {
+                    theme::FIGURE_PT
+                };
+            figure_w * least + 6.0 + w <= rect.width()
+        };
+        let (fitted, cut) = pm_fitted(side_text, lines, fits);
+        lines = fitted;
+        moved = cut.then_some(side_text);
+        side = lay_side(&side_font, &lines);
+        side_w = side.iter().map(|g| g.size().x).fold(0.0, f32::max);
+    }
+    let room = rect.width() - if side_w > 0.0 { side_w + 6.0 } else { 0.0 };
+    let full = if compact {
+        theme::FIGURE_COMPACT_PT
+    } else {
+        theme::FIGURE_PT
+    };
+    let lay = |size: f32| {
+        ui.painter()
+            .layout_no_wrap(text.clone(), theme::display(size), colour)
+    };
+    let mut big = lay(full);
+    if big.size().x > room && value.is_some() {
+        big = lay((full * room / big.size().x).floor().max(FIGURE_LEAST_PT));
+    }
+    let top = rect.center().y - big.size().y / 2.0;
+    let base = top + baseline(&big);
+    let painter = ui.painter().with_clip_rect(rect.expand(2.0));
+    let x = if no_dash {
+        rect.left()
+    } else {
+        rect.left() + big.size().x + 6.0
+    };
+    if !no_dash {
+        painter.galley(egui::pos2(rect.left(), top), big, colour);
+    }
+    let step = side_font.size * 1.2;
+    let n = side.len();
+    for (i, g) in side.into_iter().enumerate() {
+        let line_base = base - (n - 1 - i) as f32 * step;
+        let y = line_base - baseline(&g);
+        painter.galley(egui::pos2(x, y), g, pal.text_secondary);
+    }
+    let hover = figure_hover(status, hover, moved.map(|pm| format!("{text} {pm}")));
+    if !hover.is_empty() {
+        ui.interact(
+            rect,
+            ui.id().with(("figure", rect.left() as i32)),
+            egui::Sense::hover(),
+        )
+        .on_hover_text(hover);
+    }
+}
+
+/// The lines beside a card's figure: one line in Body, or on a compact
+/// card two small lines, the ± over the unit, or a status's words split
+/// as evenly as they allow.
+fn side_lines(side_text: &str, status: bool, compact: bool) -> Vec<String> {
+    // Beside the figure: one line in Body, or on a compact card two small
+    // lines, the ± over the unit.
+    if side_text.is_empty() {
+        Vec::new()
+    } else if !compact {
+        vec![side_text.to_string()]
+    } else if status {
+        // Two lines as even as the words allow: "Settling," over "12 s",
+        // "Waiting for" over "Beats".
+        let splits = side_text.match_indices(' ').map(|(i, _)| i);
+        match splits.min_by_key(|&i| i.abs_diff(side_text.len() - i)) {
+            Some(i) => vec![side_text[..i].to_string(), side_text[i + 1..].to_string()],
+            None => vec![side_text.to_string()],
+        }
+    } else {
+        // "± 8.6 s/d" stacks; "± 0.8°" and "bph" stay one line.
+        match side_text.rsplit_once(' ') {
+            Some((a, b)) if a.starts_with('±') && a.contains(' ') => {
+                vec![a.to_string(), b.to_string()]
+            }
+            _ => vec![side_text.to_string()],
+        }
+    }
+}
+
+/// The lines of a ± and its unit (`side_text`, laid out as `lines`) that
+/// `fits` beside the figure: as they are, else the ± stacked over the
+/// unit, else the unit alone; and whether the ± was left out.
+fn pm_fitted(
+    side_text: &str,
+    lines: Vec<String>,
+    fits: impl Fn(&[String]) -> bool,
+) -> (Vec<String>, bool) {
+    if fits(&lines) {
+        return (lines, false);
+    }
+    let (pm, unit) = match side_text.rsplit_once(' ') {
+        Some((a, b)) if a.contains(' ') => (a, b),
+        _ => (side_text, ""),
+    };
+    let stacked = vec![pm.to_string(), unit.to_string()];
+    if lines.len() == 1 && !unit.is_empty() && fits(&stacked) {
+        return (stacked, false);
+    }
+    let alone = if unit.is_empty() {
+        Vec::new()
+    } else {
+        vec![unit.to_string()]
+    };
+    (alone, true)
+}
+
+/// A card figure's hover: what the reading waits on, then `hover`, with
+/// the figure and the ± the card had no room for (`moved`) first.
+fn figure_hover(status: Option<&(String, String)>, hover: &str, moved: Option<String>) -> String {
+    let hover = match status {
+        Some((_, h)) if !h.is_empty() && !hover.is_empty() => format!("{h}\n\n{hover}"),
+        Some((_, h)) if !h.is_empty() => h.clone(),
+        _ => hover.to_string(),
+    };
+    match moved {
+        Some(m) if hover.is_empty() => m,
+        Some(m) => format!("{m}\n\n{hover}"),
+        None => hover,
+    }
+}
+
+/// A notice in the status bar: a warning or a failure (`alert`) starts
+/// with its icon, the words in the text colour; `hint` in its hover.
+fn status_item(
+    ui: &mut egui::Ui,
+    text: &str,
+    alert: Option<theme::Alert>,
+    hint: &str,
+) -> egui::Response {
+    let pal = theme::pal(ui);
+    let color = if alert.is_some() {
+        pal.text
+    } else {
+        pal.accent
+    };
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        let icon = |ui: &mut egui::Ui| {
+            if let Some(kind) = alert {
+                let (icon, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
+                theme::alert_icon(ui.painter(), icon, kind, pal);
+            }
+        };
+        // The bar's right side runs right to left: the icon still
+        // reads first.
+        let rtl = ui.layout().prefer_right_to_left();
+        if !rtl {
+            icon(ui);
+        }
+        let resp = ui
+            .add(
+                egui::Button::new(RichText::new(text).small().color(color))
+                    .frame_when_inactive(false),
+            )
+            .on_hover_text(hint);
+        if rtl {
+            icon(ui);
+        }
+        resp
+    })
+    .inner
 }
