@@ -259,7 +259,7 @@ jobs:
         timeout-minutes: 10
         run: |
           set -o pipefail
-          cargo test --locked --release -p timegrapher-core --test equivalence analyze_and_session_agree_on_real_takes -- --exact --nocapture 2>&1 | tee equivalence.txt
+          cargo test --locked --release -p timegrapher-core --test equivalence -- --nocapture 2>&1 | tee equivalence.txt
       # #514: each take opened as the app opens it reads what
       # `timegrapher session` reads, to the bit.
       - name: ALSA headers for the app
