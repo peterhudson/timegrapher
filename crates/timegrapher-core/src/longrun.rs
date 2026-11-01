@@ -312,7 +312,7 @@ fn analyse_read(
     }
     let rates: Vec<f64> = slices.iter().filter_map(|s| s.rate_s_per_day).collect();
     let amps: Vec<f64> = slices.iter().filter_map(|s| s.amplitude_deg).collect();
-    let listened = duration - breaks.iter().map(|b| b.gap_s.max(0.0)).sum::<f64>();
+    let listened = duration - holes.breaks().iter().map(|b| b.gap_s).sum::<f64>();
     let expected = crate::beats::expected_beats(listened, log.bph);
     LongReport {
         duration_s: duration,
@@ -330,6 +330,12 @@ fn analyse_read(
             .into_iter()
             .chain((turned && overall.is_some()).then_some(crate::measure::Caveat::BeatErrorAsSize))
             .chain(read_on.and_then(ClockFit::sources_disagree).map(Into::into))
+            .chain(
+                read_on
+                    .map(|c| c.unseen(breaks))
+                    .filter(|&count| count > 0)
+                    .map(|count| crate::measure::Caveat::PausesUnseen { count }),
+            )
             .collect(),
         overall,
         beat_error_unlock_ms: timing::median_signed(uv.into_iter(), turned),

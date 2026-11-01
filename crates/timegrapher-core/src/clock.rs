@@ -749,6 +749,37 @@ impl ClockFit {
         }
     }
 
+    /// Whether the fit is from a clock log, which shows the take's pauses
+    /// itself, rather than a correction alone ([`ClockFit::fixed`]).
+    pub fn has_log(&self) -> bool {
+        !self.entries.is_empty() || !self.breaks.is_empty()
+    }
+
+    /// Whether listed pause `b`'s gap counts on this clock: always on a
+    /// correction alone; on a log, only where the log shows it, by a break
+    /// of its own at it or within [`breaks::JUMP_MATCH_S`] after it (one
+    /// [`place_breaks`](Self::place_breaks) did not move), as
+    /// [`crate::clean::Cuts`] matches them. The log is the better witness
+    /// (#646).
+    pub fn keeps_gap(&self, b: &Break) -> bool {
+        !self.has_log()
+            || self.breaks.iter().any(|c| {
+                c.audio_s >= b.audio_s - 1e-9 && c.audio_s - b.audio_s <= breaks::JUMP_MATCH_S
+            })
+    }
+
+    /// How many of `listed` (a take's breaks, after
+    /// [`place_breaks`](Self::place_breaks)) have a gap this clock does not
+    /// keep ([`keeps_gap`](Self::keeps_gap)): pauses its log did not see.
+    /// Each is a break of no width ([`crate::clean::Cuts::new`]) and is
+    /// named ([`crate::measure::Caveat::PausesUnseen`]).
+    pub fn unseen(&self, listed: &[Break]) -> usize {
+        listed
+            .iter()
+            .filter(|l| l.gap_s > 0.0 && !self.keeps_gap(l))
+            .count()
+    }
+
     /// The audio seconds of the log's first entry after `e`, or `e` when
     /// there is none.
     fn entry_after(&self, e: f64) -> f64 {

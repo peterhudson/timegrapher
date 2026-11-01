@@ -214,14 +214,14 @@ Today there are five rules (#636):
 
 | Kind of cut | What makes one | Where |
 |---|---|---|
-| Gap | A listed pause; its length is added on true time | `clean.rs:153` |
+| Gap | A listed pause; its length is added on true time, except where a clock log shows no gap at it (then none) | `clean.rs:153` |
 | Break | A clock step of 0.5 s or more, a jump in the beats, a new position | `breaks.rs:34` |
 | Clock step | A step in the clock log that no listed pause explains | `clean.rs:172` |
 | Mask | A stretch masked by hand | `session.rs:352` |
 | Pause between beats | More than 2 s with no beat (`clean::GAP_S`) | `clean.rs:38` |
 | Dropout inside a bin | A 2 s part of a 10 s bin with no beat; the bin is left out | `clean.rs:392` |
 
-- **Breach (decided 29 Oct):** a listed pause the clock log saw no step for still adds its gap today (`Cuts::true_time`). #646.
+- **A listed pause the clock log saw no step for** is a break of no width: it adds no time, and the caveat `pauses_unseen` says so (`ClockFit::keeps_gap`; #646).
 - **Short stretches are dropped.** A stretch between cuts whose beats span under 10 s (`timing::MIN_PIECE_S`) gives no rate. It is a ragged edge, and a few seconds of beats give a rate several s/d out.
 - **A beat error that turns over across a break** is combined as a size, not averaged to zero (`timing::signed_across`, `median_signed`), with a caveat.
 - **Breach:** the saved whole-stretch fit does not cut at a pause between beats over 2 s, though the live reading does (`Cuts::run_cut`) and `GAP_S`'s own comment says no reading fits across one. Finding N2, #638.

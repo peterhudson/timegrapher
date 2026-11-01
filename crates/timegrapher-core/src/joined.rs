@@ -117,9 +117,10 @@ fn empty_like(log: &BeatLog) -> BeatLog {
 ///
 /// The joined times are on the take's `clock`: each beat is put on it
 /// before the time between stretches is taken out, so the joined log is
-/// read with no clock after. A clock that puts the pauses back itself
-/// ([`ClockFit::breaks`]) leaves the breaks no gap of their own, and each
-/// of its steps inside a span is a cut.
+/// read with no clock after. A clock log puts the pauses back itself
+/// ([`ClockFit::breaks`]), so it leaves the breaks no gap of their own
+/// (one it did not see adds none, #646), and each of its steps inside a
+/// span is a cut.
 pub fn join(
     log: &BeatLog,
     spans: &[(f64, f64)],
@@ -127,7 +128,9 @@ pub fn join(
     clock: Option<&ClockFit>,
 ) -> (BeatLog, Vec<Break>) {
     let time = |t: f64| on_clock(clock, t);
-    let pauses_back = clock.is_some_and(|c| !c.breaks.is_empty());
+    // On a clock log the gaps are its own: a listed pause it did not see adds
+    // none (#646, as `clean::true_time`).
+    let pauses_back = clock.is_some_and(ClockFit::has_log);
     let steps = clock.map_or(&[][..], |c| &c.breaks[..]);
     let mut cuts = Vec::new();
     let beat = 3600.0 / log.bph as f64;

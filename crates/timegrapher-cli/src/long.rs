@@ -680,7 +680,7 @@ pub fn run(
     Ok(())
 }
 
-/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count`,
+/// The `clock_sources_disagree`, `breaks_unlisted`, `pauses_unseen`, `sides_by_count`,
 /// `beat_error_as_size` and `positions` caveats in core's short words
 /// ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
@@ -693,6 +693,7 @@ pub(crate) fn caveat_lines(
             let label = match c {
                 Caveat::ClockSourcesDisagree { .. } => "Clock",
                 Caveat::BreaksUnlisted { .. } => "Breaks",
+                Caveat::PausesUnseen { .. } => "Breaks",
                 Caveat::SidesByCount { .. } => "Sides",
                 Caveat::BeatErrorAsSize => "Conditions",
                 Caveat::Positions { .. } => "Positions",
