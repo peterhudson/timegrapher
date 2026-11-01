@@ -553,16 +553,12 @@ fn clipping_is_named_in_every_pipeline() {
     let s = analyze(&a, &AnalysisConfig::default()).summary;
     assert!(s.doubts.clipped, "analyze: {:?}", s.clipping);
     let m = whole(&log);
-    assert!(
-        m.clipped_fraction > timegrapher_core::analysis::Clipping::NOTED_FRACTION,
-        "session"
-    );
+    assert!(Clipping::noted_fraction(m.clipped_fraction), "session");
     let named = |c: &[Caveat]| c.iter().any(|c| matches!(c, Caveat::Clipped { .. }));
     assert!(named(&s.caveats) && named(&m.caveats));
     let r = pushed(&a, 4800).reading(a.duration());
     assert!(
-        r.clipped_fraction
-            .is_some_and(|f| f > Clipping::NOTED_FRACTION),
+        r.clipped_fraction.is_some_and(Clipping::noted_fraction),
         "live: {:?}",
         r.clipped_fraction
     );
@@ -575,9 +571,7 @@ fn heavy_clipping_still_reads_live() {
     let r = pushed(&a, 4800).reading(a.duration());
     assert!(s.watch_heard && s.doubts.clipped);
     assert!(
-        r.beats_used > 0
-            && r.clipped_fraction
-                .is_some_and(|f| f > Clipping::NOTED_FRACTION),
+        r.beats_used > 0 && r.clipped_fraction.is_some_and(Clipping::noted_fraction),
         "live read {} beats",
         r.beats_used
     );
