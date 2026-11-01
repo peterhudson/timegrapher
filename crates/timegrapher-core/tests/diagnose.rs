@@ -264,5 +264,9 @@ fn digital_silence_gives_no_signal_figure() {
         .iter()
         .find(|i| i.code == IssueCode::NoTicks)
         .expect("no_ticks");
-    assert!(i.evidence.ends_with("beats found, -"), "{}", i.evidence);
+    assert!(
+        i.evidence.ends_with("beats found, no signal figure"),
+        "{}",
+        i.evidence
+    );
 }

@@ -113,9 +113,19 @@ pub fn status() -> Value {
         "content": [{ "type": "text", "text": text }],
         "structuredContent": doc,
     });
-    // The amplitude's ±, in core's words, for the Live view.
-    if let Some(pm) = crate::views::pm_texts(&result["structuredContent"]) {
-        result["_meta"] = json!({ crate::views::PM_KEY: pm });
+    // The amplitude's ±, and what limits the reading, in core's words, for
+    // the Live view.
+    let doc = &result["structuredContent"];
+    let mut meta = serde_json::Map::new();
+    if let Some(pm) = crate::views::pm_texts(doc) {
+        meta.insert(crate::views::PM_KEY.into(), pm);
+    }
+    let limits = crate::caveats::limits(doc);
+    if !limits.is_empty() {
+        meta.insert(crate::caveats::META_KEY.into(), json!(limits));
+    }
+    if !meta.is_empty() {
+        result["_meta"] = Value::Object(meta);
     }
     result
 }

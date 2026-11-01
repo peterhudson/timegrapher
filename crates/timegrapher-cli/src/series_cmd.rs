@@ -50,6 +50,7 @@ pub fn run(o: Options) -> Result<(), String> {
         breaks,
         unlisted,
         positions,
+        pauses_unseen,
         masked,
         stretches,
         ..
@@ -81,7 +82,7 @@ pub fn run(o: Options) -> Result<(), String> {
             timegrapher_core::measure::Caveat::BreaksUnlisted { why },
         );
     }
-    if let Some(c) = positions {
+    for c in positions.into_iter().chain(pauses_unseen) {
         timegrapher_core::measure::add(&mut long.caveats, c);
     }
     // A take read in stretches is on its clock already.

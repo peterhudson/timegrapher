@@ -724,7 +724,12 @@ fn read_one_inner(
             .filter(|b| b.audio_s > settle && b.audio_s < end)
             .map(|b| breaks::Break {
                 audio_s: b.audio_s - settle,
-                gap_s: b.gap_s,
+                // A pause the clock log did not see has no gap (#646).
+                gap_s: if clock.as_ref().is_some_and(|c| !c.keeps_gap(b)) {
+                    0.0
+                } else {
+                    b.gap_s
+                },
             })
             // A masked stretch is cut at both ends, with no time lost.
             .chain(
@@ -836,6 +841,11 @@ pub struct Session<'a> {
     pub notes: Option<&'a str>,
     pub bph: u32,
     pub lift_deg: f64,
+    /// Whether `lift_deg` came from `--lift`, the session file or the
+    /// calibre rather than the default; the text and the HTML report say
+    /// so when it did not (the readings carry the caveat too).
+    #[serde(skip)]
+    pub lift_known: bool,
     pub readings: Vec<Reading>,
     /// Entries with nothing to read, and why: they are not in `readings`.
     pub left_out: Vec<LeftOut>,
@@ -843,6 +853,21 @@ pub struct Session<'a> {
     /// A Power Reserve Test's run, from the folder's `power-reserve.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub power_reserve: Option<timegrapher_core::power_reserve::Results>,
+}
+
+impl Session<'_> {
+    /// The lift angle as the text and the HTML report show it: core's
+    /// caveat wording ("lift angle 52°, the default") when it is the
+    /// default rather than one set for the watch.
+    pub fn lift_text(&self) -> String {
+        if self.lift_known {
+            format!("lift angle {}°", self.lift_deg)
+        } else {
+            timegrapher_core::measure::Caveat::LiftUnknown
+                .short(self.lift_deg, 0)
+                .unwrap_or_default()
+        }
+    }
 }
 
 #[expect(
@@ -928,6 +953,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         notes: m.notes.as_deref(),
         bph,
         lift_deg: o.lift(&m, cal),
+        lift_known: lift_known(&ctx, cal),
         readings,
         left_out,
         report,
@@ -1074,14 +1100,14 @@ fn print_summary(s: &Session) {
         (None, None) => String::new(),
     };
     println!(
-        "Watch        {}{} bph, lift angle {} deg",
+        "Watch        {}{} bph, {}",
         if name.is_empty() {
             String::new()
         } else {
             format!("{name}; ")
         },
         s.bph,
-        s.lift_deg
+        s.lift_text()
     );
     if let Some(p) = &s.power_reserve {
         use timegrapher_core::power_reserve::run_text;
@@ -1959,6 +1985,7 @@ mod tests {
             notes: None,
             bph: 28800,
             lift_deg: 52.0,
+            lift_known: true,
             readings: Vec::new(),
             left_out: Vec::new(),
             report: session::evaluate(&[]),
@@ -2130,6 +2157,7 @@ mod tests {
             notes: None,
             bph: 28800,
             lift_deg: 52.0,
+            lift_known: true,
             readings: Vec::new(),
             left_out: Vec::new(),
             report: session::evaluate(&[]),
