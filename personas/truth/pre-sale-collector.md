@@ -1,6 +1,6 @@
 # Truth: Robin (pre-sale collector)
 
-`~/Recordings/aquanaut_DU_1.flac`, `_2`, `_3` = corpus `patek324_DU_30min`
+`~/Recordings/aquanaut_DU_1.flac`, `_2`, `_3` = corpus `aquanaut324_DU_30min`
 files take_part01-001, -002 and -003. Dandong clone of Patek 324, 28,800 bph. The corpus
 uses lift 52° and notes the lift angle for this movement is not settled.
 
