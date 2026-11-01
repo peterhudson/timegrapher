@@ -116,10 +116,11 @@ pub fn grid_median(times: &[f64], values: &[f64], t0: f64, step: f64, n: usize) 
 pub fn detrend(g: &Grid, window_s: f64) -> Grid {
     let n = g.y.len();
     let finite: Vec<usize> = (0..n).filter(|&i| g.y[i].is_finite()).collect();
-    if finite.len() < 4 {
+    let plan = slow_out(g, window_s);
+    if matches!(plan, SlowOut::Nothing) {
         return g.clone();
     }
-    let y = if let Some(w) = detrend_window(g, window_s) {
+    let y = if let SlowOut::Median(w) = plan {
         let half = w / 2;
         let stride = (w / 40).max(1);
         let mut knots: Vec<(f64, f64)> = Vec::new();
@@ -207,19 +208,38 @@ fn level(power: &[f64], a: usize, b: usize, keep: &dyn Fn(usize) -> bool) -> f64
     median(&mut w) / std::f64::consts::LN_2
 }
 
-/// The running median's window [`detrend`] uses on `g`, in whole steps (at
-/// least 3): `window_s` or a quarter of the run, whichever is shorter;
-/// `None` under 20 min, where it fits a quadratic instead.
+/// What [`detrend`] takes out of `g`: one rule for it and for
+/// [`detrend_fit_terms`].
+enum SlowOut {
+    /// Too few readings: nothing.
+    Nothing,
+    /// A least-squares quadratic, on a run under 20 minutes.
+    Quadratic,
+    /// A running median over this many steps.
+    Median(usize),
+}
+
+fn slow_out(g: &Grid, window_s: f64) -> SlowOut {
+    if g.y.iter().filter(|v| v.is_finite()).count() < 4 {
+        return SlowOut::Nothing;
+    }
+    detrend_window(g, window_s).map_or(SlowOut::Quadratic, SlowOut::Median)
+}
+
 /// The terms of the polynomial [`detrend`] takes out of `g`: 3 (a
 /// quadratic) on a run under 20 minutes, 0 with too few readings to take
 /// any out, `None` where it takes a running median instead.
 pub fn detrend_fit_terms(g: &Grid, window_s: f64) -> Option<usize> {
-    if g.y.iter().filter(|v| v.is_finite()).count() < 4 {
-        return Some(0);
+    match slow_out(g, window_s) {
+        SlowOut::Nothing => Some(0),
+        SlowOut::Quadratic => Some(3),
+        SlowOut::Median(_) => None,
     }
-    detrend_window(g, window_s).is_none().then_some(3)
 }
 
+/// The running median's window [`detrend`] uses on `g`, in whole steps (at
+/// least 3): `window_s` or a quarter of the run, whichever is shorter;
+/// `None` under 20 min, where it fits a quadratic instead.
 fn detrend_window(g: &Grid, window_s: f64) -> Option<usize> {
     let span = g.span();
     (span >= 1200.0).then(|| ((window_s.min(span / 4.0) / g.step).round() as usize).max(3))
