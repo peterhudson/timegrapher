@@ -293,7 +293,7 @@ pub fn line(
         }
         let wsum: f64 = inside.iter().map(|x| 1.0 / (x.se * x.se)).sum();
         let size = inside.iter().map(|x| x.size / (x.se * x.se)).sum::<f64>() / wsum;
-        let se = 1.0 / wsum.sqrt();
+        let se = weighted_mean_se(&inside, wsum);
         bins.push(LineBin {
             from_deg: from,
             windows: inside.len(),
@@ -312,6 +312,24 @@ pub fn line(
         bins,
         windows: keep_windows.then_some(windows),
     })
+}
+
+/// The standard error of the windows' weighted mean (weights one over
+/// their SE squared, summing to `wsum`). Windows that overlap share
+/// readings, so their errors move together: two windows sharing a
+/// fraction f of their length are taken to correlate at f, as a fit on
+/// noise that does not follow itself would, and that covariance is
+/// carried into the mean instead of treating the windows as independent.
+fn weighted_mean_se(inside: &[&LineWindow], wsum: f64) -> f64 {
+    let mut shared = 0.0;
+    for (i, a) in inside.iter().enumerate() {
+        for b in &inside[i + 1..] {
+            let len = (a.end_s - a.start_s).max(b.end_s - b.start_s);
+            let f = ((a.end_s.min(b.end_s) - a.start_s.max(b.start_s)) / len).max(0.0);
+            shared += 2.0 * f / (a.se * b.se);
+        }
+    }
+    (wsum + shared).sqrt() / wsum
 }
 
 /// The mean turn of `wheel` in `g`, over every whole turn read well
@@ -549,6 +567,41 @@ mod tests {
             (0.6..1.7).contains(&(scatter / se)),
             "scatter {scatter} against se {se}"
         );
+    }
+
+    #[test]
+    fn a_bin_se_allows_for_windows_that_overlap() {
+        // A 10 ms line at 60 s under white noise of 1 ms, 2 h of 1 s
+        // readings, so all 11 half-overlapping windows fall in one bin.
+        // Over 300 takes the bin's size should land within one SE of the
+        // mean size about 68% of the time; taking the windows as
+        // independent gives about 53%.
+        let a = grid(2.0, 3600, |_| 255.0);
+        let (mut within, mut sq, mut se_sum) = (0, 0.0, 0.0);
+        let runs = 300;
+        let mut bins = Vec::new();
+        for seed in 0..runs {
+            let mut rng = Rng::new(1000 + seed);
+            let g = grid(1.0, 7200, |t| {
+                10.0 * (std::f64::consts::TAU * t / 60.0).sin() + rng.normal()
+            });
+            let l = line(&g, &a, &fourth(), "rate", "ms", false).unwrap();
+            assert_eq!(l.bins.len(), 1);
+            assert_eq!(l.bins[0].windows, 11);
+            bins.push((l.bins[0].size, l.bins[0].se));
+        }
+        let mean = bins.iter().map(|b| b.0).sum::<f64>() / runs as f64;
+        for &(size, se) in &bins {
+            within += usize::from((size - mean).abs() <= se);
+            sq += (size - mean).powi(2);
+            se_sum += se;
+        }
+        let ratio = (sq / (runs - 1) as f64).sqrt() / (se_sum / runs as f64);
+        assert!(
+            (0.6..0.78).contains(&(within as f64 / runs as f64)),
+            "{within} of {runs} within one SE"
+        );
+        assert!((0.85..1.2).contains(&ratio), "scatter over SE {ratio}");
     }
 
     #[test]
