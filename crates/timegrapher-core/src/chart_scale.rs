@@ -1,5 +1,5 @@
-//! The value scale a chart is drawn on, so the app and the MCP view scale
-//! the same readings the same way (#513).
+//! The value scale a chart is drawn on, so the app, the MCP view and the
+//! command line's reports scale the same readings the same way (#513).
 
 /// From the lowest value to the highest, padded a little, so every point
 /// drawn is inside the chart: the app's charts over time. `None` with no
@@ -44,6 +44,23 @@ pub fn spread(values: &[f64]) -> Option<(f64, f64)> {
     Some((lo - pad, hi + pad))
 }
 
+/// The size a diverging colour map shows in full colour, either side of
+/// zero: the 95th percentile of the values' sizes, so a few wild cells
+/// don't wash out the rest; larger ones show in full colour too. 1 with
+/// no finite value, and never below 1e-9.
+pub fn colour_limit(values: &[f64]) -> f64 {
+    let mut v: Vec<f64> = values
+        .iter()
+        .map(|x| x.abs())
+        .filter(|x| x.is_finite())
+        .collect();
+    v.sort_by(f64::total_cmp);
+    v.get((v.len() as f64 * 0.95) as usize)
+        .copied()
+        .unwrap_or(1.0)
+        .max(1e-9)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +90,15 @@ mod tests {
         }
         assert!(spread(&v).unwrap().1 > 40.0);
         assert_eq!(spread(&[1.0]), None);
+    }
+
+    #[test]
+    fn a_colour_map_is_full_at_the_95th_percentile_of_sizes() {
+        let v: Vec<f64> = (1..=100)
+            .map(|i| if i % 2 == 0 { i as f64 } else { -(i as f64) })
+            .collect();
+        assert_eq!(colour_limit(&v), 96.0);
+        assert_eq!(colour_limit(&[f64::NAN]), 1.0);
+        assert_eq!(colour_limit(&[0.0, 0.0]), 1e-9);
     }
 }
