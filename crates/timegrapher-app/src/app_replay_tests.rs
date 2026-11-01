@@ -202,7 +202,10 @@ fn drain_replay_source(app: &TimegrapherApp) -> usize {
 
 #[test]
 fn whole_recording_viewer_keeps_known_jumps_with_or_without_position_cuts() {
-    for with_positions in [false, true] {
+    // No positions, three with settling, and one with none: a lone
+    // position read from its start adds no cut of its own.
+    for case in 0..3 {
+        let with_positions = case == 1;
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.average_s = 60.0;
         let log = BeatLog {
@@ -239,6 +242,8 @@ fn whole_recording_viewer_keeps_known_jumps_with_or_without_position_cuts() {
                 ],
                 vec![(30.0, 40.0), (90.0, 100.0)],
             )
+        } else if case == 2 {
+            (vec![(0.0, Position::DialUp)], vec![])
         } else {
             (vec![], vec![])
         };
