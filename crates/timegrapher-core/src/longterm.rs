@@ -210,6 +210,16 @@ fn level(power: &[f64], a: usize, b: usize, keep: &dyn Fn(usize) -> bool) -> f64
 /// The running median's window [`detrend`] uses on `g`, in whole steps (at
 /// least 3): `window_s` or a quarter of the run, whichever is shorter;
 /// `None` under 20 min, where it fits a quadratic instead.
+/// The terms of the polynomial [`detrend`] takes out of `g`: 3 (a
+/// quadratic) on a run under 20 minutes, 0 with too few readings to take
+/// any out, `None` where it takes a running median instead.
+pub fn detrend_fit_terms(g: &Grid, window_s: f64) -> Option<usize> {
+    if g.y.iter().filter(|v| v.is_finite()).count() < 4 {
+        return Some(0);
+    }
+    detrend_window(g, window_s).is_none().then_some(3)
+}
+
 fn detrend_window(g: &Grid, window_s: f64) -> Option<usize> {
     let span = g.span();
     (span >= 1200.0).then(|| ((window_s.min(span / 4.0) / g.step).round() as usize).max(3))
