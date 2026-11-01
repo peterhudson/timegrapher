@@ -219,13 +219,13 @@ impl AmplitudeWindow {
     }
 }
 
-/// A window's amplitude from its two sides': their mean, or the one side
-/// read when the other is not.
+/// A window's amplitude from its two sides': their mean, and none when
+/// only one side was read. Tick and Tock can differ, so one side alone
+/// would pull the reading towards it, as if the missing side were filled
+/// with the other; that side's own Tick or Tock figure still keeps it
+/// (#648).
 pub fn mean_of_sides(even_deg: Option<f64>, odd_deg: Option<f64>) -> Option<f64> {
-    match (even_deg, odd_deg) {
-        (Some(a), Some(b)) => Some((a + b) / 2.0),
-        (a, b) => a.or(b),
-    }
+    Some((even_deg? + odd_deg?) / 2.0)
 }
 
 /// Seconds of neighbouring windows each side's amplitude is checked against.
@@ -408,6 +408,17 @@ pub fn windows_between(
 
 #[cfg(test)]
 mod tests {
+    /// Only a window with both sides read has an amplitude; a one-sided
+    /// window is left out of it, not read as its one side (#648).
+    #[test]
+    fn a_one_sided_window_has_no_amplitude() {
+        use super::mean_of_sides;
+        assert_eq!(mean_of_sides(Some(270.0), Some(280.0)), Some(275.0));
+        assert_eq!(mean_of_sides(Some(270.0), None), None);
+        assert_eq!(mean_of_sides(None, Some(280.0)), None);
+        assert_eq!(mean_of_sides(None, None), None);
+    }
+
     #[test]
     fn side_outliers_drop_one_side_only() {
         let mut wins: Vec<super::AmplitudeWindow> = (0..60)
