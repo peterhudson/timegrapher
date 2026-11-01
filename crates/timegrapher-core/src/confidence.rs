@@ -236,10 +236,11 @@ pub fn rate_se(windows: &[WindowFit]) -> Option<f64> {
     standard_error(&v)
 }
 
-/// Standard error of the beat error from the unlock, ms.
-pub fn beat_error_se(windows: &[AmplitudeWindow]) -> Option<f64> {
+/// Standard error of the beat error from the unlock, ms: the one rule for
+/// it, which the assessment reads (#641).
+pub fn beat_error_se<'a>(windows: impl IntoIterator<Item = &'a AmplitudeWindow>) -> Option<f64> {
     let v: Vec<f64> = windows
-        .iter()
+        .into_iter()
         .filter_map(|w| w.beat_error_unlock_ms)
         .collect();
     standard_error(&v)
