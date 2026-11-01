@@ -1502,10 +1502,6 @@ impl TimegrapherApp {
 
     /// Analyse `path` whole. Without a session file it starts from
     /// `carried`, else from the defaults.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn analyse_whole(&mut self, path: &Path, carried: Option<WatchSetup>) {
         // Refused before anything on show is stopped.
         if let Some(why) = no_analysis_to_read(path).or_else(|| {
@@ -1515,31 +1511,11 @@ impl TimegrapherApp {
         }) {
             return self.open_failed(why);
         }
-        self.stop();
-        if self.reread_with.is_none() {
-            self.carried_positions = None;
-        }
-        self.pending_recorded = None;
-        // Masks carried with the settings stay; anything else opened
-        // starts with what its session file masks.
-        let carried_masks = carried.is_some().then(|| self.masked.clone());
-        self.put_masked(Vec::new());
-        if carried_masks.is_none() {
-            self.masking = false;
-            self.brush = None;
-        }
-        // A folder a take was saved into holds the take's own folder.
-        let inner = match take_folder(path) {
+        let carried_masks = self.clear_for_open(carried.is_some());
+        let inner = match self.take_inside(path) {
             Ok(p) => p,
             Err(e) => return self.open_failed(e),
         };
-        if inner != path {
-            self.info_msg(format!(
-                "Opened the take saved inside {}: {}",
-                capture_label(path),
-                capture_label(&inner)
-            ));
-        }
         let path = inner.as_path();
         // Reject a relevant invalid manifest before opening audio or a worker.
         let manifest = match read_manifest(path) {
@@ -1555,38 +1531,15 @@ impl TimegrapherApp {
         if let Some(why) = no_analysis_to_read(path) {
             return self.open_failed(why);
         }
-        let files = match recordings_in(path) {
+        let (files, info) = match recordings_info(path) {
             Ok(f) => f,
             Err(e) => return self.open_failed(e),
         };
         let order_note = order_warning(&files);
-        let mut info = match timegrapher_core::audio::info(&files[0]) {
-            Ok(i) => i,
-            Err(e) => return self.open_failed(format!("Can't read {}: {e}", files[0].display())),
-        };
-        for f in &files[1..] {
-            match timegrapher_core::audio::info(f) {
-                Ok(i) => info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b),
-                Err(e) => return self.open_failed(format!("Can't read {}: {e}", f.display())),
-            }
-        }
         // What the take's session file says: the watch, calibre, lift
         // angle, beat rate and positions, before the analysis uses them.
         // Nothing carries over from the take before.
-        if manifest.is_none() {
-            match carried {
-                Some(s) => {
-                    self.keep_mic_setup();
-                    self.set_watch_setup(s);
-                    self.open_note = None;
-                }
-                None => self.fresh_setup(path, &files),
-            }
-        } else {
-            self.keep_mic_setup();
-            self.set_watch_setup(WatchSetup::default());
-            self.open_note = None;
-        }
+        self.open_setup(manifest.is_some(), carried, path, &files);
         // What core opens: the whole recording, on the clock log the
         // take's first entry names, as the app has always read it.
         let opening = take_entry(path, manifest.as_ref());
@@ -1608,19 +1561,9 @@ impl TimegrapherApp {
             self.put_masked(m);
         }
         if let Some(n) = &order_note {
-            self.open_note = Some(match self.open_note.take() {
-                Some(o) => format!("{o} {n}"),
-                None => n.clone(),
-            });
+            self.add_open_note(n);
         }
-        let label = if path.is_dir() {
-            match files.len() {
-                1 => format!("{} (1 file)", capture_label(path)),
-                n => format!("{} ({n} files)", capture_label(path)),
-            }
-        } else {
-            capture_label(path)
-        };
+        let label = take_label(path, files.len());
         let settings = self.entry_settings(&opening.1);
         let (tx, rx) = std::sync::mpsc::channel();
         let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -1657,6 +1600,74 @@ impl TimegrapherApp {
             stretches,
             settles,
             order_note,
+        });
+    }
+
+    /// Stop what is on show and clear what the take before marked, before
+    /// opening another. Masks carried with the settings (`carried`) come
+    /// back once it opens; they are returned.
+    fn clear_for_open(&mut self, carried: bool) -> Option<Vec<(f64, f64)>> {
+        self.stop();
+        if self.reread_with.is_none() {
+            self.carried_positions = None;
+        }
+        self.pending_recorded = None;
+        // Masks carried with the settings stay; anything else opened
+        // starts with what its session file masks.
+        let carried_masks = carried.then(|| self.masked.clone());
+        self.put_masked(Vec::new());
+        if carried_masks.is_none() {
+            self.masking = false;
+            self.brush = None;
+        }
+        carried_masks
+    }
+
+    /// The take to open at `path`: the take's own folder when `path` is a
+    /// folder a take was saved into, saying so.
+    fn take_inside(&mut self, path: &Path) -> Result<PathBuf, String> {
+        // A folder a take was saved into holds the take's own folder.
+        let inner = take_folder(path)?;
+        if inner != path {
+            self.info_msg(format!(
+                "Opened the take saved inside {}: {}",
+                capture_label(path),
+                capture_label(&inner)
+            ));
+        }
+        Ok(inner)
+    }
+
+    /// The watch setup an opened take starts from: what its session file
+    /// says (applied after this), else `carried`, else fresh defaults.
+    fn open_setup(
+        &mut self,
+        has_manifest: bool,
+        carried: Option<WatchSetup>,
+        path: &Path,
+        files: &[PathBuf],
+    ) {
+        if !has_manifest {
+            match carried {
+                Some(s) => {
+                    self.keep_mic_setup();
+                    self.set_watch_setup(s);
+                    self.open_note = None;
+                }
+                None => self.fresh_setup(path, files),
+            }
+        } else {
+            self.keep_mic_setup();
+            self.set_watch_setup(WatchSetup::default());
+            self.open_note = None;
+        }
+    }
+
+    /// Add `n` to the note shown about the take just opened.
+    fn add_open_note(&mut self, n: &str) {
+        self.open_note = Some(match self.open_note.take() {
+            Some(o) => format!("{o} {n}"),
+            None => n.to_string(),
         });
     }
 
@@ -1899,11 +1910,6 @@ impl TimegrapherApp {
     /// Save and read the sound that has come in, for up to `budget`, so a
     /// backlog never holds up the window for long. Returns the blocks of
     /// sound taken.
-    #[expect(
-        clippy::cognitive_complexity,
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn poll_for(&mut self, budget: Duration) -> usize {
         let started = Instant::now();
         // After a while with nothing run, the input gets the usual grace
@@ -1913,6 +1919,27 @@ impl TimegrapherApp {
         }
         self.polled_at = started;
         self.refresh_trend();
+        let (taken, ended, failure) = self.take_blocks(started, budget);
+        self.capture_outcome(ended, failure);
+
+        self.note_lock();
+
+        self.poll_analysis_save();
+        self.poll_saving();
+        self.poll_batch();
+
+        self.hold_anchor();
+        taken
+    }
+
+    /// Take the blocks the input has sent, for up to `budget` once one is
+    /// taken, through core's gap rule for a live input. Returns how many were
+    /// taken, whether the input ended and why it failed, if it did.
+    fn take_blocks(
+        &mut self,
+        started: Instant,
+        budget: Duration,
+    ) -> (usize, bool, Option<CaptureFailure>) {
         let mut taken = 0;
         let mut ended = false;
         let mut failure = None;
@@ -1978,6 +2005,11 @@ impl TimegrapherApp {
                 ended = true;
             }
         }
+        (taken, ended, failure)
+    }
+
+    /// Stop when the input ended and say why it failed, if it did.
+    fn capture_outcome(&mut self, ended: bool, failure: Option<CaptureFailure>) {
         if let Some(CaptureFailure::Recording(error)) = failure {
             self.recording_failed(error);
         } else {
@@ -2000,8 +2032,10 @@ impl TimegrapherApp {
                 self.error(message);
             }
         }
+    }
 
-        // Beat lock gained or lost, for the log.
+    /// Beat lock gained or lost, for the log.
+    fn note_lock(&mut self) {
         let bph = self.live.as_ref().and_then(|l| l.bph());
         if bph != self.locked_bph && self.capture.is_some() {
             match bph {
@@ -2010,9 +2044,10 @@ impl TimegrapherApp {
             }
         }
         self.locked_bph = bph;
+    }
 
-        self.poll_analysis_save();
-        self.poll_saving();
+    /// Show a recording opened whole once its analysis is done.
+    fn poll_batch(&mut self) {
         let mut done = None;
         if let Some(b) = &self.batch {
             match b.rx.try_recv() {
@@ -2066,8 +2101,10 @@ impl TimegrapherApp {
                 }
             }
         }
+    }
 
-        // Keep the strip anchored: centre on the first beats, then hold.
+    /// Keep the strip anchored: centre on the first beats, then hold.
+    fn hold_anchor(&mut self) {
         if self.anchor.is_none() {
             if let Some(live) = &self.live {
                 if let Some(bph) = live.bph() {
@@ -2084,7 +2121,6 @@ impl TimegrapherApp {
                 }
             }
         }
-        taken
     }
 
     pub(super) fn show_log(
@@ -2151,5 +2187,36 @@ impl TimegrapherApp {
             None => done.to_string(),
         };
         self.info_msg(m);
+    }
+}
+
+/// The recordings in `path` in the order they are read, and their sound's
+/// format with the frames of all of them together.
+fn recordings_info(
+    path: &Path,
+) -> Result<(Vec<PathBuf>, timegrapher_core::audio::AudioInfo), String> {
+    let files = recordings_in(path)?;
+    let mut info = match timegrapher_core::audio::info(&files[0]) {
+        Ok(i) => i,
+        Err(e) => return Err(format!("Can't read {}: {e}", files[0].display())),
+    };
+    for f in &files[1..] {
+        match timegrapher_core::audio::info(f) {
+            Ok(i) => info.frames = info.frames.zip(i.frames).map(|(a, b)| a + b),
+            Err(e) => return Err(format!("Can't read {}: {e}", f.display())),
+        }
+    }
+    Ok((files, info))
+}
+
+/// The name an opened take shows with: a folder says how many files.
+fn take_label(path: &Path, count: usize) -> String {
+    if path.is_dir() {
+        match count {
+            1 => format!("{} (1 file)", capture_label(path)),
+            n => format!("{} ({n} files)", capture_label(path)),
+        }
+    } else {
+        capture_label(path)
     }
 }
