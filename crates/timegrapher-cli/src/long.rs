@@ -310,6 +310,9 @@ pub(crate) struct Read {
     pub unlisted: Option<timegrapher_core::breaks::Unlisted>,
     /// [`joined::positions_caveat`] of the take's session file.
     pub positions: Option<timegrapher_core::measure::Caveat>,
+    /// [`joined::pauses_unseen`] of a take read in stretches: read whole,
+    /// the reading counts them itself.
+    pub pauses_unseen: Option<timegrapher_core::measure::Caveat>,
     /// The stretches masked by hand and left out, start and end.
     pub masked: Vec<(f64, f64)>,
     /// The take's stretches read, audio seconds, when it is read in
@@ -389,6 +392,7 @@ pub(crate) fn read(
         breaks,
         unlisted,
         positions: None,
+        pauses_unseen: None,
         masked: Vec::new(),
         stretches: None,
     })
@@ -452,6 +456,9 @@ fn read_take(
     // Each entry from the end of its settling, as `session` and the app
     // read it.
     let stretches = joined::take_spans(&m, opened.log.duration_s);
+    let pauses_unseen = stretches.as_deref().and_then(|spans| {
+        joined::pauses_unseen(spans, &opened.breaks, clock.as_ref().map(|c| &c.fit))
+    });
     let (log, breaks) = match &stretches {
         Some(spans) => joined::join(
             &opened.log,
@@ -489,6 +496,7 @@ fn read_take(
         breaks,
         unlisted: opened.unlisted,
         positions: joined::positions_caveat(&m),
+        pauses_unseen,
         masked: opened.masked,
         stretches,
     })
@@ -571,6 +579,7 @@ pub fn run(
         breaks,
         unlisted,
         positions,
+        pauses_unseen,
         masked,
         stretches,
     } = read(files, clock_args, cfg, lift, train)?;
@@ -603,7 +612,7 @@ pub fn run(
             timegrapher_core::measure::Caveat::BreaksUnlisted { why },
         );
     }
-    if let Some(c) = positions {
+    for c in positions.into_iter().chain(pauses_unseen) {
         timegrapher_core::measure::add(&mut rep.caveats, c);
     }
     // A take read in stretches is on its clock already.
@@ -680,7 +689,7 @@ pub fn run(
     Ok(())
 }
 
-/// The `clock_sources_disagree`, `breaks_unlisted`, `sides_by_count`,
+/// The `clock_sources_disagree`, `breaks_unlisted`, `pauses_unseen`, `sides_by_count`,
 /// `beat_error_as_size` and `positions` caveats in core's short words
 /// ([`timegrapher_core::measure::Caveat::short`]), each with its label.
 pub(crate) fn caveat_lines(
@@ -693,6 +702,7 @@ pub(crate) fn caveat_lines(
             let label = match c {
                 Caveat::ClockSourcesDisagree { .. } => "Clock",
                 Caveat::BreaksUnlisted { .. } => "Breaks",
+                Caveat::PausesUnseen { .. } => "Breaks",
                 Caveat::SidesByCount { .. } => "Sides",
                 Caveat::BeatErrorAsSize => "Conditions",
                 Caveat::Positions { .. } => "Positions",
@@ -1519,6 +1529,32 @@ mod take_tests {
         assert!(r.log.beats[0].time < 1.0, "{:?}", r.log.beats[0]);
         assert!((r.log.duration_s - (120.0 - take::SETTLE_S)).abs() < 0.01);
         assert!(!r.cfg.analysis.lift_known);
+        assert_eq!(r.pauses_unseen, None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A pause the take lists but its clock log shows no gap at adds no
+    /// time read in stretches, and is said there as it is read whole
+    /// (#646): its caveat goes where its figure goes.
+    #[test]
+    fn a_take_folder_says_a_pause_its_clock_log_did_not_see() {
+        let dir = take(
+            "unseen",
+            "[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\nclock = \"clock.csv\"\n",
+        );
+        fs::write(
+            dir.join(take::RECORD),
+            r#"{"breaks": [{"audio_s": 70.0, "gap_s": 30.0}]}"#,
+        )
+        .unwrap();
+        let r = read_take(&dir);
+        assert_eq!(r.stretches, Some(vec![(take::SETTLE_S, 120.0)]));
+        assert_eq!(
+            r.pauses_unseen,
+            Some(timegrapher_core::measure::Caveat::PausesUnseen { count: 1 })
+        );
+        // No time counted for it: the stretch reads its 100 s.
+        assert!((r.log.duration_s - (120.0 - take::SETTLE_S)).abs() < 0.01);
         let _ = fs::remove_dir_all(&dir);
     }
 }
