@@ -135,16 +135,14 @@ impl Default for SynthConfig {
 /// What [`generate`] scales its sound by on writing it.
 pub const SCALE: f64 = 0.5;
 
-/// The RMS of the noise [`generate`] adds for `snr_db`, before [`SCALE`].
-/// The beat period of a watch whose nominal period is `nominal` and which
-/// gains `rate_s_per_day`: the period the timing fit reads that rate from
-/// (`timing::fit`), so a synthetic watch runs at exactly its set rate.
-/// Stepping by `nominal * (1 - rate / 86400)` instead ran a +100 s/d watch
-/// at about +100.12 s/d (#640).
+/// The beat period of a synthetic watch: [`crate::timing::period_s`], so
+/// it runs at exactly its set rate. Stepping by `nominal * (1 - rate /
+/// 86400)` instead ran a +100 s/d watch at about +100.12 s/d (#640).
 pub const fn period(nominal: f64, rate_s_per_day: f64) -> f64 {
-    nominal / (1.0 + rate_s_per_day / 86_400.0)
+    crate::timing::period_s(nominal, rate_s_per_day)
 }
 
+/// The RMS of the noise [`generate`] adds for `snr_db`, before [`SCALE`].
 pub fn noise_rms(snr_db: f64) -> f64 {
     10f64.powf(-snr_db / 20.0)
 }

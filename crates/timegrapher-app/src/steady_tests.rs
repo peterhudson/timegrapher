@@ -910,7 +910,7 @@ fn derived_join_keeps_amplitude_sides_on_the_renumbered_beats() {
 /// the views, as the tests leave it out.
 #[test]
 fn views_leave_out_a_rate_reading_over_a_dropout() {
-    let period = 0.125 / (1.0 + 10.0 / 86400.0);
+    let period = timegrapher_core::timing::period_s(0.125, 10.0);
     let beats: Vec<Beat> = (0..1600)
         .map(|index| Beat {
             index,
@@ -955,8 +955,8 @@ fn derived_compute_uses_existing_piecewise_analysis() {
         } else {
             b.index - 480
         };
-        b.time =
-            if b.index < 480 { 0.0 } else { 60.03 } + local as f64 * 0.125 / (1.0 + rate / 86400.0);
+        b.time = if b.index < 480 { 0.0 } else { 60.03 }
+            + local as f64 * timegrapher_core::timing::period_s(0.125, rate);
     }
     let lc = LongConfig {
         wheels: default_wheels(log.bph),
