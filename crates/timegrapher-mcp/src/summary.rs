@@ -7,17 +7,12 @@
 
 use serde_json::{Map, Value};
 
-/// " ± se" from a confidence entry, to at least `digits` decimals and
-/// enough to show a figure that is not zero.
+/// " ± se" from a confidence entry, as `library::pm_text` writes it.
 fn pm(c: &Value, digits: usize) -> String {
-    let Some(se) = c["se"].as_f64().filter(|v| v.is_finite() && *v > 0.0) else {
-        return String::new();
-    };
-    let mut d = digits;
-    while d < 3 && (se * 10f64.powi(d as i32)).round() == 0.0 {
-        d += 1;
-    }
-    format!(" ± {se:.d$}")
+    c["se"]
+        .as_f64()
+        .and_then(|se| timegrapher_core::library::pm_text(se, digits))
+        .map_or_else(String::new, |t| format!(" ± {t}"))
 }
 
 fn signed(v: f64, digits: usize) -> String {
