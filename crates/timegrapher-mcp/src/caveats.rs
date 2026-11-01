@@ -119,6 +119,17 @@ pub fn limits(doc: &Value) -> Vec<Value> {
             .map(|text| json!({ "where": null, "text": text }))
             .collect();
     }
+    // A live reading carries no caveats; its clipping is said when core
+    // counts it (`Clipping::noted_fraction`), in core's words (#808).
+    if schema.starts_with("timegrapher.live/") {
+        return doc["reading"]["clipped_fraction"]
+            .as_f64()
+            .filter(|&f| timegrapher_core::analysis::Clipping::noted_fraction(f))
+            .and_then(|fraction| timegrapher_core::measure::Caveat::Clipped { fraction }.long(None))
+            .map(|text| json!({ "where": null, "text": text }))
+            .into_iter()
+            .collect();
+    }
     if !schema.starts_with("timegrapher.session/") {
         return Vec::new();
     }
@@ -368,6 +379,23 @@ mod tests {
         assert_eq!(
             no_beat(&json!({ "schema": "timegrapher.record/2", "check": { "watch_heard": true } })),
             None
+        );
+    }
+
+    #[test]
+    fn a_live_reading_says_its_clipping_when_core_counts_it() {
+        let live = |f: f64| {
+            limits(&json!({ "schema": "timegrapher.live/1", "reading": { "clipped_fraction": f } }))
+        };
+        assert!(live(0.01).is_empty());
+        let said = live(0.3);
+        assert_eq!(said.len(), 1);
+        assert!(
+            said[0]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("30% of the beats have a clipped sample"),
+            "{said:?}"
         );
     }
 

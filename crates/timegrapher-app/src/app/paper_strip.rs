@@ -106,12 +106,9 @@ impl TimegrapherApp {
         out
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
-    pub(super) fn strip_settings(&mut self, ui: &mut egui::Ui) {
-        let pal = theme::pal(ui);
+    /// The strip settings' Draw Over the Strip switches: Rate, Amplitude,
+    /// Beat Error.
+    fn strip_overlays(&mut self, ui: &mut egui::Ui, pal: &theme::Palette) {
         let overlays = &mut self.overlays;
         for (icon, name) in [
             (Icon::Rate, "Rate"),
@@ -169,7 +166,10 @@ impl TimegrapherApp {
                 }
             }
         });
-        theme::bar_gap(ui);
+    }
+
+    /// The strip settings' Width and Length fields and the Fit switch.
+    fn strip_span_fields(&mut self, ui: &mut egui::Ui, pal: &theme::Palette) {
         theme::tool_field(
             ui,
             "Width",
@@ -234,6 +234,77 @@ impl TimegrapherApp {
                 self.strip_fit = false;
             }
         }
+    }
+
+    /// The strip settings' Mask tool and Position Brush, which exclude each
+    /// other.
+    fn strip_mask_brush(&mut self, ui: &mut egui::Ui, pal: &theme::Palette) {
+        let live = self.live.is_some();
+        theme::note_icon(ui, Icon::Masks, "Mask");
+        theme::bar_item(ui, "Mask", |ui| {
+            ui.add_enabled_ui(live, |ui| {
+                if theme::in_toolbar(ui) {
+                    let r = theme::icon_toggle(ui, Icon::Masks, self.masking, pal.accent);
+                    if r.clicked() {
+                        self.masking = !self.masking;
+                    }
+                    r.on_hover_text(format!("Mask: {MASK_HINT}{}", self.masked_words()))
+                        .on_disabled_hover_text(
+                            "Mask: Nothing to mask yet. Listen, or open a recording.",
+                        );
+                } else {
+                    theme::switch_row(ui, "Mask", &mut self.masking, MASK_HINT);
+                }
+            });
+        });
+        // The Mask tool and the Position Brush exclude each other.
+        if self.masking {
+            self.brush = None;
+        }
+        theme::note_icon(ui, Icon::Highlighter, "Position Brush");
+        theme::bar_item(ui, "Position Brush", |ui| self.brush_control(ui, live));
+        if self.brush.is_some() {
+            self.masking = false;
+        }
+    }
+
+    /// The strip settings' Direction: Down or Across.
+    fn strip_direction(&mut self, ui: &mut egui::Ui) {
+        let mut h = self.strip.horizontal;
+        theme::tool_field(
+            ui,
+            "Direction",
+            "Which way time runs along the strip",
+            |ui| {
+                theme::segmented(
+                    ui,
+                    &mut h,
+                    &[
+                        (
+                            false,
+                            "Down",
+                            "Down: newest beats at the top, the strip beside the charts",
+                        ),
+                        (
+                            true,
+                            "Across",
+                            "Across: newest beats at the right, the strip above the charts",
+                        ),
+                    ],
+                )
+            },
+        );
+        if h != self.strip.horizontal {
+            self.strip.horizontal = h;
+            self.relayout(h);
+        }
+    }
+
+    pub(super) fn strip_settings(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::pal(ui);
+        self.strip_overlays(ui, pal);
+        theme::bar_gap(ui);
+        self.strip_span_fields(ui, pal);
         theme::bar_gap(ui);
         if theme::tool_button(
             ui,
@@ -273,62 +344,9 @@ impl TimegrapherApp {
              Line.",
         );
         theme::bar_gap(ui);
-        let live = self.live.is_some();
-        theme::note_icon(ui, Icon::Masks, "Mask");
-        theme::bar_item(ui, "Mask", |ui| {
-            ui.add_enabled_ui(live, |ui| {
-                if theme::in_toolbar(ui) {
-                    let r = theme::icon_toggle(ui, Icon::Masks, self.masking, pal.accent);
-                    if r.clicked() {
-                        self.masking = !self.masking;
-                    }
-                    r.on_hover_text(format!("Mask: {MASK_HINT}{}", self.masked_words()))
-                        .on_disabled_hover_text(
-                            "Mask: Nothing to mask yet. Listen, or open a recording.",
-                        );
-                } else {
-                    theme::switch_row(ui, "Mask", &mut self.masking, MASK_HINT);
-                }
-            });
-        });
-        // The Mask tool and the Position Brush exclude each other.
-        if self.masking {
-            self.brush = None;
-        }
-        theme::note_icon(ui, Icon::Highlighter, "Position Brush");
-        theme::bar_item(ui, "Position Brush", |ui| self.brush_control(ui, live));
-        if self.brush.is_some() {
-            self.masking = false;
-        }
+        self.strip_mask_brush(ui, pal);
         theme::bar_gap(ui);
-        let mut h = self.strip.horizontal;
-        theme::tool_field(
-            ui,
-            "Direction",
-            "Which way time runs along the strip",
-            |ui| {
-                theme::segmented(
-                    ui,
-                    &mut h,
-                    &[
-                        (
-                            false,
-                            "Down",
-                            "Down: newest beats at the top, the strip beside the charts",
-                        ),
-                        (
-                            true,
-                            "Across",
-                            "Across: newest beats at the right, the strip above the charts",
-                        ),
-                    ],
-                )
-            },
-        );
-        if h != self.strip.horizontal {
-            self.strip.horizontal = h;
-            self.relayout(h);
-        }
+        self.strip_direction(ui);
         theme::bar_gap(ui);
         self.export_button(ui, Pane::Strip);
     }
@@ -387,10 +405,6 @@ impl TimegrapherApp {
         (pts, step)
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "over the limit before it was set; split it (architecture guide, section 12)"
-    )]
     pub(super) fn strip_pane(&mut self, ui: &mut egui::Ui) {
         // Before there is a take to show, or while nothing in it beats
         // regularly: where things stand, in the strip's place.
@@ -418,84 +432,15 @@ impl TimegrapherApp {
         }
         let end = self.strip_end_s();
         let looking_back = self.strip_end.is_some() && end < self.latest_s() - 0.5;
-        let note = if guessing {
-            Some(
-                "No regular beat found yet. The faint dots are sounds that might be beats."
-                    .to_string(),
-            )
-        } else {
-            looking_back
-                .then(|| format!("at {}, double-click for the newest beats", length_text(end)))
-        };
+        let note = strip_note(guessing, looking_back, end);
         let from = end - self.strip.span_s - 5.0;
         let (trend, _) = self.strip_trend(from, end, self.average_s);
         let Some(live) = &self.live else { return };
         let period = live.bph().map_or(0.125, |b| 3600.0 / b as f64);
-        // The guides follow the rate line's slope, so it is worked out for
-        // either.
-        let rate_line = (self.rate_line || self.rate_guides)
-            .then(|| self.reading_over(self.average_s))
-            .flatten()
-            .and_then(|r| {
-                Some(strip::RateLine {
-                    from_s: r.time_s - r.span_s,
-                    to_s: r.time_s,
-                    rate_s_per_day: r.rate_s_per_day?,
-                })
-            });
-        let pal = theme::pal(ui);
-        let series = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
-            trend
-                .iter()
-                .filter(|p| p.t >= from && p.t <= end)
-                .filter_map(|p| f(p).map(|v| [p.t, v]))
-                .collect()
-        };
-        let mut overlays = Vec::new();
-        // Rate, Amplitude, Beat Error, as the toolbar orders them.
-        if self.overlays[1] {
-            overlays.push(strip::Overlay {
-                name: "Rate",
-                unit: " s/d",
-                decimals: 1,
-                color: pal.trace_rate,
-                min_span: 4.0,
-                points: series(|p| p.rate),
-            });
-        }
-        if self.overlays[0] {
-            overlays.push(strip::Overlay {
-                name: "Amplitude",
-                unit: "°",
-                decimals: 0,
-                color: pal.trace_amplitude,
-                min_span: 10.0,
-                points: series(|p| p.amplitude),
-            });
-        }
-        if self.overlays[2] {
-            overlays.push(strip::Overlay {
-                name: "Beat Error",
-                unit: " ms",
-                decimals: 2,
-                color: pal.trace_beat_error,
-                min_span: 0.2,
-                points: series(TrendPoint::beat_error),
-            });
-        }
+        let rate_line = self.strip_rate_line();
+        let mut overlays = strip_overlays_drawn(self.overlays, &trend, from, end, theme::pal(ui));
         let bands = self.position_bands();
-        let track: Vec<(f64, f64, &str, &str)> = self
-            .session
-            .position_spans(self.position)
-            .into_iter()
-            .map(|(a, b, p)| (a.max(0.0), b, p.label(), p.code()))
-            .collect();
-        let painted: Vec<(f64, f64)> = self
-            .session
-            .painted_spans(self.position)
-            .into_iter()
-            .map(|(a, b, _)| (a, b))
-            .collect();
+        let (track, painted) = self.strip_tracks();
         let mut settles = self.strip_settles();
         if guessing {
             // Drawn faintly, as the beats the readings leave out are.
@@ -528,21 +473,7 @@ impl TimegrapherApp {
             clock: self.take_rate_clock(),
         };
         let Some(live) = &self.live else { return };
-        // The possible beats numbered at the strip's beat period from the
-        // first, so each lands on the strip, wrapped as the beats are.
-        let candidates: Vec<timegrapher_core::beats::Beat> = candidates
-            .first()
-            .map(|first| {
-                candidates
-                    .iter()
-                    .map(|b| timegrapher_core::beats::Beat {
-                        index: first.index + ((b.time - first.time) / period).round() as i64,
-                        time: b.time,
-                        quality: 1.0,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let candidates = numbered_candidates(&candidates, period);
         let anchor = if guessing {
             candidates.first().map(|b| strip::Anchor {
                 index: b.index,
@@ -565,6 +496,39 @@ impl TimegrapherApp {
             self.cursor_next = input.hover_t;
         }
         self.apply_strip_input(input, end);
+    }
+
+    /// The rate line the strip draws, when Rate Line or Parallel Guides
+    /// is on: the guides follow its slope, so it is worked out for either.
+    fn strip_rate_line(&self) -> Option<strip::RateLine> {
+        (self.rate_line || self.rate_guides)
+            .then(|| self.reading_over(self.average_s))
+            .flatten()
+            .and_then(|r| {
+                Some(strip::RateLine {
+                    from_s: r.time_s - r.span_s,
+                    to_s: r.time_s,
+                    rate_s_per_day: r.rate_s_per_day?,
+                })
+            })
+    }
+
+    /// The position track along the strip and the stretches painted with
+    /// the Position Brush.
+    fn strip_tracks(&self) -> (StripTrack, Vec<(f64, f64)>) {
+        let track: StripTrack = self
+            .session
+            .position_spans(self.position)
+            .into_iter()
+            .map(|(a, b, p)| (a.max(0.0), b, p.label(), p.code()))
+            .collect();
+        let painted: Vec<(f64, f64)> = self
+            .session
+            .painted_spans(self.position)
+            .into_iter()
+            .map(|(a, b, _)| (a, b))
+            .collect();
+        (track, painted)
     }
 
     pub(super) fn apply_strip_input(&mut self, input: StripInput, end: f64) {
@@ -629,4 +593,92 @@ impl TimegrapherApp {
             self.centre();
         }
     }
+}
+
+/// The position track along the strip: (from s, to s, label, code).
+type StripTrack = Vec<(f64, f64, &'static str, &'static str)>;
+
+/// The line over the strip: what the faint dots are while no regular beat
+/// is found, or where the view is when looking back.
+fn strip_note(guessing: bool, looking_back: bool, end: f64) -> Option<String> {
+    if guessing {
+        Some(
+            "No regular beat found yet. The faint dots are sounds that might be beats.".to_string(),
+        )
+    } else {
+        looking_back.then(|| format!("at {}, double-click for the newest beats", length_text(end)))
+    }
+}
+
+/// The readings drawn over the strip, in the toolbar's order: Rate,
+/// Amplitude, Beat Error. `on` keeps the settings' order (amplitude, rate,
+/// beat error).
+fn strip_overlays_drawn(
+    on: [bool; 3],
+    trend: &[TrendPoint],
+    from: f64,
+    end: f64,
+    pal: &theme::Palette,
+) -> Vec<strip::Overlay> {
+    let series = |f: fn(&TrendPoint) -> Option<f64>| -> Vec<[f64; 2]> {
+        trend
+            .iter()
+            .filter(|p| p.t >= from && p.t <= end)
+            .filter_map(|p| f(p).map(|v| [p.t, v]))
+            .collect()
+    };
+    let mut overlays = Vec::new();
+    // Rate, Amplitude, Beat Error, as the toolbar orders them.
+    if on[1] {
+        overlays.push(strip::Overlay {
+            name: "Rate",
+            unit: " s/d",
+            decimals: 1,
+            color: pal.trace_rate,
+            min_span: 4.0,
+            points: series(|p| p.rate),
+        });
+    }
+    if on[0] {
+        overlays.push(strip::Overlay {
+            name: "Amplitude",
+            unit: "°",
+            decimals: 0,
+            color: pal.trace_amplitude,
+            min_span: 10.0,
+            points: series(|p| p.amplitude),
+        });
+    }
+    if on[2] {
+        overlays.push(strip::Overlay {
+            name: "Beat Error",
+            unit: " ms",
+            decimals: 2,
+            color: pal.trace_beat_error,
+            min_span: 0.2,
+            points: series(TrendPoint::beat_error),
+        });
+    }
+    overlays
+}
+
+/// The possible beats numbered at the strip's beat period from the
+/// first, so each lands on the strip, wrapped as the beats are.
+fn numbered_candidates(
+    candidates: &[timegrapher_core::beats::Beat],
+    period: f64,
+) -> Vec<timegrapher_core::beats::Beat> {
+    candidates
+        .first()
+        .map(|first| {
+            candidates
+                .iter()
+                .map(|b| timegrapher_core::beats::Beat {
+                    index: first.index + ((b.time - first.time) / period).round() as i64,
+                    time: b.time,
+                    quality: 1.0,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }

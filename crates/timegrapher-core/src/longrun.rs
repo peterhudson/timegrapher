@@ -180,6 +180,9 @@ fn analyse_read(
     breaks: &[Break],
     cfg: &LongConfig,
 ) -> LongReport {
+    // Counted on audio time: a log read in stretches has its pauses on the
+    // clock already, and its caller counts them ([`crate::joined::pauses_unseen`]).
+    let unseen = map.map_or(0, |c| c.unseen(breaks));
     let holes = Cuts::new(map, breaks, &[]);
     let map = |t: f64| holes.true_time(t);
     let cuts = holes.piece_cuts();
@@ -312,7 +315,7 @@ fn analyse_read(
     }
     let rates: Vec<f64> = slices.iter().filter_map(|s| s.rate_s_per_day).collect();
     let amps: Vec<f64> = slices.iter().filter_map(|s| s.amplitude_deg).collect();
-    let listened = duration - breaks.iter().map(|b| b.gap_s.max(0.0)).sum::<f64>();
+    let listened = duration - holes.breaks().iter().map(|b| b.gap_s).sum::<f64>();
     let expected = crate::beats::expected_beats(listened, log.bph);
     LongReport {
         duration_s: duration,
@@ -330,6 +333,7 @@ fn analyse_read(
             .into_iter()
             .chain((turned && overall.is_some()).then_some(crate::measure::Caveat::BeatErrorAsSize))
             .chain(read_on.and_then(ClockFit::sources_disagree).map(Into::into))
+            .chain((unseen > 0).then_some(crate::measure::Caveat::PausesUnseen { count: unseen }))
             .collect(),
         overall,
         beat_error_unlock_ms: timing::median_signed(uv.into_iter(), turned),
