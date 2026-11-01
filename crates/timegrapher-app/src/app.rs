@@ -4317,24 +4317,12 @@ fn paint_y_labels(ui: &egui::Ui, t: &egui_plot::PlotTransform, unit: &str) {
     let color = theme::pal(ui).text_secondary;
     let font = egui::TextStyle::Small.resolve(ui.style());
     for m in marks {
-        let d = if m.step_size >= 1.0 {
-            0
-        } else if m.step_size >= 0.1 {
-            1
-        } else {
-            2
-        };
-        // No "-0.0" from rounding.
-        let v = if m.value.abs() < m.step_size * 1e-6 {
-            0.0
-        } else {
-            m.value
-        };
+        let v = timegrapher_core::chart_scale::axis_number(m.value, m.step_size);
         let y = t.position_from_point_y(m.value);
         painter.text(
             egui::pos2(frame.left() - 6.0, y),
             egui::Align2::RIGHT_CENTER,
-            format!("{v:.d$}{unit}"),
+            format!("{v}{unit}"),
             font.clone(),
             color,
         );

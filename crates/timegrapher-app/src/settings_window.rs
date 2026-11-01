@@ -350,10 +350,7 @@ pub fn ppm_words(ppm: f64) -> String {
 /// A rate error in s/d with its sign, "+1.06" or "−0.42", and "0.00" for
 /// one too small to show.
 pub fn sd_words(s_per_day: f64) -> String {
-    match format!("{s_per_day:+.2}").as_str() {
-        "+0.00" | "-0.00" => "0.00".to_string(),
-        s => s.replace('-', "−"),
-    }
+    timegrapher_core::library::signed_text(s_per_day, 2).replace('-', "−")
 }
 
 /// One kept clock's error in words: "12.3 ppm slow, +1.06 s/d on every rate".

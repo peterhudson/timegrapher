@@ -61,9 +61,46 @@ pub fn colour_limit(values: &[f64]) -> f64 {
         .max(1e-9)
 }
 
+/// Decimals for an axis label from its grid step: none from a step of
+/// 1, one from 0.1, two from 0.01, three below that (#815). The app's
+/// charts and the MCP view label their axes by it.
+pub fn axis_decimals(step: f64) -> usize {
+    if step >= 1.0 {
+        0
+    } else if step >= 0.1 {
+        1
+    } else if step >= 0.01 {
+        2
+    } else {
+        3
+    }
+}
+
+/// An axis value as text, to [`axis_decimals`] of the step. A value that
+/// rounds to zero is written `0`, never `-0` (#815).
+pub fn axis_number(v: f64, step: f64) -> String {
+    let d = axis_decimals(step);
+    let text = format!("{v:.d$}");
+    match text.strip_prefix('-') {
+        Some(rest) if rest.bytes().all(|b| b == b'0' || b == b'.') => rest.to_string(),
+        _ => text,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_axis_label_takes_its_decimals_from_the_step_and_has_no_minus_zero() {
+        assert_eq!(axis_number(12.0, 5.0), "12");
+        assert_eq!(axis_number(1.5, 0.5), "1.5");
+        assert_eq!(axis_number(0.25, 0.05), "0.25");
+        assert_eq!(axis_number(0.005, 0.005), "0.005");
+        assert_eq!(axis_number(-0.0001, 0.5), "0.0");
+        assert_eq!(axis_number(-1e-12, 0.02), "0.00");
+        assert_eq!(axis_number(-0.2, 0.1), "-0.2");
+    }
 
     #[test]
     fn a_charts_range_holds_every_point_padded() {
