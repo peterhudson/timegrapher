@@ -142,6 +142,17 @@ fn opt(v: Option<f64>, unit: &str) -> String {
     v.map_or("-".into(), |x| format!("{x:.1}{unit}"))
 }
 
+/// The text line for the signal figure. With no figure it says why
+/// rather than printing "-" (#811).
+fn signal_line(signal_x: Option<f64>) -> String {
+    match signal_x {
+        Some(x) => format!("Signal       {x:.0}× above the background"),
+        None => {
+            "Signal       not measured: no beats, or the sound is mostly digital silence".into()
+        }
+    }
+}
+
 fn print_check(c: &SignalCheck) {
     println!(
         "Level        peak {:.1} dBFS, RMS {:.1} dBFS, {} clipped samples",
@@ -155,10 +166,7 @@ fn print_check(c: &SignalCheck) {
         opt(c.tick_level_dbfs, " dBFS"),
         c.noise_level_dbfs,
     );
-    println!(
-        "Signal       {} above the background",
-        c.signal_x.map_or("-".to_string(), |x| format!("{x:.0}×"))
-    );
+    println!("{}", signal_line(c.signal_x));
     println!(
         "Gap rise     background rises {} between ticks",
         opt(c.gap_rise_db, " dB")
@@ -231,5 +239,21 @@ fn print_report(r: &Report, apply: bool) {
     if let Some(a) = &r.after {
         println!("After the changes:");
         print_check(a);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signal_line;
+
+    #[test]
+    fn no_signal_figure_says_why_rather_than_a_dash() {
+        assert_eq!(
+            signal_line(Some(17.87)),
+            "Signal       18× above the background"
+        );
+        let none = signal_line(None);
+        assert!(none.contains("not measured"), "{none}");
+        assert!(!none.contains(" - "), "{none}");
     }
 }
