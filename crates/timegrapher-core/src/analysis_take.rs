@@ -13,9 +13,9 @@ use crate::beats::{self, Beat};
 use crate::dsp::envelope;
 use crate::profile::{self, Side, TickProfile};
 use crate::session::{self, Manifest, ShapeSummary};
-use crate::shape::{self, ShapeConfig};
+use crate::shape;
 use crate::stream::{self, BeatLog, StreamConfig};
-use crate::{timing, usbclock};
+use crate::usbclock;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
@@ -354,9 +354,7 @@ fn measure_shape(x: &[f32], fs: f64, bph: u32, from_s: f64) -> Option<ShapeSumma
     // `session` measures the shape on the default envelope, whatever the
     // beats were found with.
     let env = envelope(x, fs, &crate::dsp::EnvelopeConfig::default());
-    let (found, _) = beats::detect(&env, fs, bph);
-    let beat_s = timing::fit(&found, bph).map_or(3600.0 / bph as f64, |f| f.period_s);
-    let r = shape::analyze(&env, fs, &found, beat_s, &ShapeConfig::default());
+    let (r, _) = shape::of_envelope(&env, fs, bph);
     Some(session::shape_summary(&r, from_s, x.len() as f64 / fs))
 }
 
@@ -934,6 +932,7 @@ pub fn save(dest: &Path, companions: &[(String, Vec<u8>)], stored: &Stored) -> i
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::timing;
 
     #[test]
     fn the_shape_is_measured_clear_of_masked_stretches() {
