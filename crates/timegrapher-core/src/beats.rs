@@ -200,12 +200,14 @@ fn track_peaks(
         // After MAX_MISSES in a row the track takes the strongest beat it
         // finds, to recover, if it is a peak: in digital silence the best
         // point is the span's edge, and taking those would count more beats
-        // than the silence holds (#782). Nor on a peak of nothing: a match
-        // below a thousandth of the side's typical beat ([`NOTHING`]) is the
-        // correlation's rounding error near a beat, and a track with no
-        // level, taken up on it before the watch was heard again, stayed off
-        // the beats (#786). Pass 1 (with a gate) only feeds a median
-        // template, so it takes every peak.
+        // than the silence holds (#782). Pass 1 (with a gate) only feeds a
+        // median template, so it takes every peak.
+        // A match below a thousandth of the side's typical beat
+        // ([`NOTHING`]) is the correlation's rounding error near a beat in
+        // digital silence. It is kept like a faint peak but never steers:
+        // a track with no level that timed itself from it as the watch fell
+        // silent, or took itself up on it before the watch was heard again,
+        // stayed off the beats after the silence (#786).
         // With a level to judge by, a peak far weaker than the side's
         // typical beat may be a faint beat or, in a silence, the noise: it
         // is kept, but neither steers the track nor ends a run missed (#609).
@@ -233,11 +235,14 @@ fn track_peaks(
             _ => None,
         };
         let regular = quiet_run >= QUIET_RUN || steady.is_some_and(|(_, run)| run >= QUIET_RUN);
-        let weak = faint && !regular;
+        // A match of nothing never steers the correlation track, with a
+        // level or without (#786).
+        let nothing = gate.is_none() && v < NOTHING * typical[side(k)];
+        let weak = faint && !regular || nothing;
         let take = gate.is_some()
             || out.len() < 4
             || (t - pred).abs() < MAX_OFFSET * per
-            || misses >= MAX_MISSES && !weak && peaked && v >= NOTHING * typical[side(k)];
+            || misses >= MAX_MISSES && !weak && peaked;
         if take && !weak {
             let anchors = out.iter().rev().filter(|o| o.3).take(3);
             // Nothing heard times nothing: in digital silence the gate's
