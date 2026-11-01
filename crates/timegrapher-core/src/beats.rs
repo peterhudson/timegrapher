@@ -31,7 +31,13 @@ pub fn beats_on(dt_s: f64, beat_s: f64) -> i64 {
 /// (tick to toc), so half the true rate can score best. A rate faster than
 /// the true one lands its lag in the silence between beats and scores near
 /// zero or below, so the fastest rate scoring at least half the best wins.
+///
+/// The 10 s looked at start where sound does ([`sound_onset`]): silence
+/// before a watch is placed holds no beat, and a rate with no beat energy
+/// behind it (a score of 0 or below) is never picked (#476). With none
+/// scoring above 0, as in digital silence, the guess is 28,800 bph.
 pub fn guess_bph(env: &[f32], fs: f64) -> u32 {
+    let env = &env[sound_onset(env, fs).unwrap_or(0)..];
     let n = env.len().min((fs * 10.0) as usize);
     // Smooth over 2 ms so beat error and jitter don't split the peaks.
     let smooth = crate::dsp::moving_average(&env[..n], (0.002 * fs) as usize);
@@ -69,10 +75,34 @@ pub fn guess_bph(env: &[f32], fs: f64) -> u32 {
     let best = scores.iter().map(|s| s.1).fold(f64::NEG_INFINITY, f64::max);
     scores
         .iter()
-        .filter(|s| s.1 >= 0.5 * best)
+        .filter(|s| s.1 > 0.0 && s.1 >= 0.5 * best)
         .map(|s| s.0)
         .max()
         .unwrap_or(28800)
+}
+
+/// Length of the stretches [`sound_onset`] judges, seconds: longer than
+/// the slowest standard rate's beat, so a stretch of a watch holds a beat.
+const ONSET_BLOCK_S: f64 = 1.0;
+
+/// Where sound starts in `env`, samples: the start of the first
+/// [`ONSET_BLOCK_S`] stretch whose loudest point reaches a quarter of the
+/// loud stretches' (the 90th percentile of the stretches' loudest points).
+/// So digital silence or a low noise before a watch is placed is passed
+/// over. `None` when the envelope is all zero.
+pub fn sound_onset(env: &[f32], fs: f64) -> Option<usize> {
+    let w = ((ONSET_BLOCK_S * fs) as usize).max(1);
+    let tops: Vec<f32> = env
+        .chunks(w)
+        .map(|c| c.iter().copied().fold(0.0, f32::max))
+        .collect();
+    let mut sorted = tops.clone();
+    sorted.sort_by(f32::total_cmp);
+    let loud = *sorted.get((sorted.len() * 9 / 10).min(sorted.len().saturating_sub(1)))?;
+    if loud <= 0.0 {
+        return None;
+    }
+    tops.iter().position(|&t| t >= 0.25 * loud).map(|i| i * w)
 }
 
 /// One detected beat.
