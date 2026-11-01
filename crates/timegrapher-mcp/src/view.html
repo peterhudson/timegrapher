@@ -528,7 +528,8 @@ function rateBasis(corrected, from) {
   return `corrected for the sound card's clock${from ? ` (${from})` : ""}`;
 }
 
-function recordingView(doc, extra, limits, noBeat) {
+function recordingView(doc, extra, limits, noBeat, pm) {
+  pm = pm || {};
   const name = fileName(doc);
   const head = `<h1>Recording</h1><p class="sub">${esc(name)}${name ? " · " : ""}${timeLabel(doc.duration_s)} · ${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   const takeReadings = doc.take && Array.isArray(doc.take.readings) && doc.take.readings.length ? doc.take.readings : null;
@@ -536,7 +537,7 @@ function recordingView(doc, extra, limits, noBeat) {
     // The profile is the first reading's stretch with a shape (views.rs
     // profile_stretch), so its drop beat error places Tick and Tock.
     const shaped = takeReadings.find((r) => r.shape && Number.isFinite(r.shape.from_s)) || {};
-    return head + takeTiles(takeReadings) + recordingCards(doc, extra, limits, (shaped.measurement || {}).beat_error_ms);
+    return head + takeTiles(takeReadings, pm.readings) + recordingCards(doc, extra, limits, (shaped.measurement || {}).beat_error_ms);
   }
   if (doc.watch_heard === false) {
     return head + `<div class="card notice"><b>No Regular Beat Found</b>${esc(noBeat || "")}</div>`;
@@ -545,10 +546,9 @@ function recordingView(doc, extra, limits, noBeat) {
   const rate = analyzeRate(doc);
   const rateNote = [esc(rate.basis)];
   if (Number.isFinite(doc.rate_p05)) rateNote.push(`Card-clock 90% of windows ${signed(doc.rate_p05, 1)} to ${signed(doc.rate_p95, 1)}`);
-  const conf = doc.confidence || {};
   const html = head + readingTiles({
-    rate: rate.value, rateSe: conf.rate && conf.rate.se, rateNote: rateNote.join("<br>"),
-    amplitude: doc.amplitude_deg, amplitudeSe: doc.amplitude_se_deg, even: doc.amplitude_even_deg, odd: doc.amplitude_odd_deg,
+    rate: rate.value, ratePm: pm.rate, rateNote: rateNote.join("<br>"),
+    amplitude: doc.amplitude_deg, amplitudePm: pm.amplitude, even: doc.amplitude_even_deg, odd: doc.amplitude_odd_deg,
     unlock: doc.beat_error_unlock_ms, drop: o.beat_error_ms,
     beats: doc.beats_found, jitter: Number.isFinite(doc.jitter_us) ? doc.jitter_us : o.jitter_us,
   });
@@ -566,8 +566,8 @@ function readingTiles(f) {
   const sides = Number.isFinite(f.even) && Number.isFinite(f.odd)
     ? `<span class="swatch dot" style="display:inline-block;background:var(--tick)"></span> Tick ${num(f.even, 0)}° · <span class="swatch dot" style="display:inline-block;background:var(--tock)"></span> Tock ${num(f.odd, 0)}°` : "";
   return `<div class="tiles">
-    ${tile("Rate", "--rate", signed(f.rate, 1), Number.isFinite(f.rateSe) ? `± ${num(f.rateSe, 1)} seconds per day` : "seconds per day", f.rateNote)}
-    ${tile("Amplitude", "--amplitude", num(f.amplitude, 0), Number.isFinite(f.amplitudeSe) ? `± ${Math.max(1, Math.round(f.amplitudeSe))}°` : "", sides, "°")}
+    ${tile("Rate", "--rate", signed(f.rate, 1), typeof f.ratePm === "string" ? `± ${esc(f.ratePm)} seconds per day` : "seconds per day", f.rateNote)}
+    ${tile("Amplitude", "--amplitude", num(f.amplitude, 0), typeof f.amplitudePm === "string" ? `± ${esc(f.amplitudePm)}°` : "", sides, "°")}
     ${tile("Beat Error", "--beat-error", num(abs(be), 2), "milliseconds", beNote)}
     ${tile("Beats", "", esc(f.beats), "", Number.isFinite(f.jitter) ? `jitter ${num(f.jitter, 0)} µs` : "")}
   </div>`;
@@ -590,17 +590,17 @@ function recordingCards(doc, extra, limits, dropBeatError) {
 // the app and `session` show it: each reading's settled stretch at the
 // take's settings, not the whole file read alone. Several readings (a file
 // listed twice, or in parts) each get their own row of tiles.
-function takeTiles(readings) {
-  return readings.map((r) => {
+function takeTiles(readings, pms) {
+  return readings.map((r, i) => {
+    const pm = (pms && pms[i]) || {};
     const m = r.measurement || {};
     const label = `${positionName(r.position)}${r.label && r.label !== "." ? ` · ${r.label}` : ""}`;
     const span = Number.isFinite(m.start_s) && Number.isFinite(m.end_s) ? `${timeLabel(m.start_s)} to ${timeLabel(m.end_s)}` : "";
     const head = `<p class="sub">${esc(label)}${span ? ` · ${esc(span)}` : ""} · as the take reads it</p>`;
     if (m.watch_heard === false) return head + `<div class="card notice"><b>No Regular Beat Found</b></div>`;
-    const conf = m.confidence || {};
     return head + readingTiles({
-      rate: m.rate_s_per_day, rateSe: conf.rate && conf.rate.se, rateNote: esc(rateBasis(m.calibrated === true)),
-      amplitude: m.amplitude_deg, amplitudeSe: conf.amplitude && conf.amplitude.se, even: m.amplitude_even_deg, odd: m.amplitude_odd_deg,
+      rate: m.rate_s_per_day, ratePm: pm.rate, rateNote: esc(rateBasis(m.calibrated === true)),
+      amplitude: m.amplitude_deg, amplitudePm: pm.amplitude, even: m.amplitude_even_deg, odd: m.amplitude_odd_deg,
       unlock: m.beat_error_unlock_ms, drop: m.beat_error_ms, beats: m.beats, jitter: m.jitter_us,
     });
   }).join("");
@@ -1822,7 +1822,10 @@ function pollLive() {
     if (live !== mine || last) return;
     const d = r && r.structuredContent;
     mine.failures = 0;
-    if (d && d.recording) { mine.doc = d.schema && d.recorded_s != null ? d : mine.doc; mine.seen = true; }
+    if (d && d.recording) {
+      if (d.schema && d.recorded_s != null) { mine.doc = d; mine.pm = r._meta && r._meta["timegrapher/pm"]; }
+      mine.seen = true;
+    }
     redraw();
     // Until the take has ended; before it starts, the call may still be on its way.
     if (!(d && d.recording === false && mine.seen)) mine.timer = setTimeout(pollLive, 1000);
@@ -1905,7 +1908,7 @@ function liveView(l) {
   const be = Number.isFinite(r.beat_error_unlock_ms) ? r.beat_error_unlock_ms : r.beat_error_ms;
   html += `<div class="tiles">
     ${tile("Rate", "--rate", heard ? signed(r.rate_s_per_day, 1) : "–", "seconds per day", heard ? `${num(d.average_s, 0)} s average` : wait)}
-    ${tile("Amplitude", "--amplitude", heard ? num(r.amplitude_deg, 0) : "–", heard && Number.isFinite(r.amplitude_error_deg) ? `± ${Math.max(1, Math.round(r.amplitude_error_deg))}°` : "", heard ? "" : wait, "°")}
+    ${tile("Amplitude", "--amplitude", heard ? num(r.amplitude_deg, 0) : "–", heard && typeof (l.pm || {}).amplitude === "string" ? `± ${esc(l.pm.amplitude)}°` : "", heard ? "" : wait, "°")}
     ${tile("Beat Error", "--beat-error", heard ? num(abs(be), 2) : "–", "milliseconds", heard ? (Number.isFinite(r.beat_error_unlock_ms) ? "from the unlock" : "from the drop") : wait)}
     ${tile("Beats Heard", "", esc(d.beats_heard || 0), "", heard ? `${esc(r.beats_used)} in the last ${num(r.span_s, 0)} s` : wait)}
   </div>`;
@@ -1972,7 +1975,7 @@ function redraw() {
     const text = (last.content || []).map((c) => c.text || "").join("\n");
     html = `<div class="card notice"><b>No Reading</b>${esc(text || "The tool returned nothing to draw.")}</div>`;
   } else if (doc.schema.startsWith("timegrapher.analyze/")) {
-    html = recordingView(doc, extra, limits, noBeat);
+    html = recordingView(doc, extra, limits, noBeat, last._meta && last._meta["timegrapher/pm"]);
   } else if (doc.schema.startsWith("timegrapher.session/")) {
     html = sessionView(doc, limits);
   } else if (doc.schema.startsWith("timegrapher.profile/")) {
