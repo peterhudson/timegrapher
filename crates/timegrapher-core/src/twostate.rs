@@ -285,19 +285,53 @@ fn mixture_from(y: &[f64], mut mu: [f64; 2]) -> ([f64; 2], f64, f64, Vec<f64>) {
     let mut sd = ((y.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n).sqrt() / 2.0).max(1e-6);
     let mut w = [0.5, 0.5];
     let mut r = vec![0.5; y.len()];
-    let mut ll = 0.0;
-    for _ in 0..300 {
-        ll = 0.0;
-        for (i, &v) in y.iter().enumerate() {
+    // Each point's share of the second level. Every round but the last
+    // takes it from one exponential, the two levels' ratio, and skips the
+    // log likelihood, which only the last round's E step returns; that
+    // last round, and a point far from both levels, take both
+    // exponentials as before. The two exponentials and the
+    // logarithm of every round were 61% of the steady-watch test (#804);
+    // on 400 scenario takes the pane's every finding, headline and level
+    // is the same, and only `separation` and `delta_bic` move, by under
+    // 1e-10 of their size.
+    let e_step = |mu: [f64; 2], sd: f64, w: [f64; 2], r: &mut [f64], last: bool| {
+        let both = |v: f64| {
             let a = w[0] * (-0.5 * ((v - mu[0]) / sd).powi(2)).exp();
             let b = w[1] * (-0.5 * ((v - mu[1]) / sd).powi(2)).exp();
             let t = (a + b).max(1e-300);
-            ll += (t / (sd * (2.0 * std::f64::consts::PI).sqrt())).ln();
-            r[i] = b / t;
+            (b / t, t)
+        };
+        if !last {
+            let k = w[0] / w[1];
+            for (ri, &v) in r.iter_mut().zip(y) {
+                let (z0, z1) = ((v - mu[0]) / sd, (v - mu[1]) / sd);
+                // Near both levels' floor (exp(-300) is 5e-131) the two
+                // exponentials are kept, so the floor acts as before.
+                *ri = if z0 * z0 < 600.0 || z1 * z1 < 600.0 {
+                    1.0 / (1.0 + k * (0.5 * (z1 * z1 - z0 * z0)).exp())
+                } else {
+                    both(v).0
+                };
+            }
+            return 0.0;
         }
+        let mut ll = 0.0;
+        for (ri, &v) in r.iter_mut().zip(y) {
+            let (share, t) = both(v);
+            ll += (t / (sd * (2.0 * std::f64::consts::PI).sqrt())).ln();
+            *ri = share;
+        }
+        ll
+    };
+    let mut ll = 0.0;
+    for round in 0..300 {
+        ll = e_step(mu, sd, w, &mut r, round == 299);
         let r1: f64 = r.iter().sum();
         let r0 = n - r1;
         if r0 < 1e-9 || r1 < 1e-9 {
+            if round < 299 {
+                ll = e_step(mu, sd, w, &mut r, true);
+            }
             break;
         }
         w = [r0 / n, r1 / n];
@@ -660,6 +694,89 @@ mod tests {
             s += (*seed >> 11) as f64 / (1u64 << 53) as f64;
         }
         s - 6.0
+    }
+
+    /// The fit before #804, written out plainly: each round's shares and
+    /// likelihood from both levels' densities, kept as the reference the
+    /// faster E step must match.
+    fn reference_mixture(y: &[f64], start: [f64; 2]) -> ([f64; 2], f64, f64, Vec<f64>) {
+        let count = y.len() as f64;
+        let avg = y.iter().sum::<f64>() / count;
+        let spread = y.iter().map(|v| (v - avg) * (v - avg)).sum::<f64>() / count;
+        let (mut lv, mut width, mut wt) = (start, (spread.sqrt() / 2.0).max(1e-6), [0.5, 0.5]);
+        let density = |x: f64, m: f64, s: f64| (-0.5 * ((x - m) / s).powi(2)).exp();
+        let root = (2.0 * std::f64::consts::PI).sqrt();
+        let mut shares = vec![0.5; y.len()];
+        let mut like = 0.0;
+        for _ in 0..300 {
+            let mut sum_ll = 0.0;
+            for (k, x) in y.iter().enumerate() {
+                let lo = wt[0] * density(*x, lv[0], width);
+                let hi = wt[1] * density(*x, lv[1], width);
+                let tot = (lo + hi).max(1e-300);
+                sum_ll += (tot / (width * root)).ln();
+                shares[k] = hi / tot;
+            }
+            like = sum_ll;
+            let high: f64 = shares.iter().sum();
+            let low = count - high;
+            if low.min(high) < 1e-9 {
+                break;
+            }
+            wt = [low / count, high / count];
+            let (mut m0, mut m1) = (0.0, 0.0);
+            for (x, p) in y.iter().zip(&shares) {
+                m0 += x * (1.0 - p);
+                m1 += x * p;
+            }
+            lv = [m0 / low, m1 / high];
+            let mut v = 0.0;
+            for (x, p) in y.iter().zip(&shares) {
+                v += (1.0 - p) * (x - lv[0]).powi(2) + p * (x - lv[1]).powi(2);
+            }
+            width = (v / count).sqrt().max(1e-6);
+        }
+        (lv, width, like, shares)
+    }
+
+    /// The fit's one-exponential rounds (#804) give the levels, width,
+    /// likelihood and shares of the plain two-exponential fit: on a 70/30
+    /// split, on a 90/10 split with one reading far from both levels, and
+    /// from a start whose second level is empty at once, where the
+    /// likelihood must come from a full E step.
+    #[test]
+    fn the_fast_fit_matches_the_plain_fit() {
+        let mut seed = 11;
+        let split: Vec<f64> = (0..600)
+            .map(|i| if i % 10 < 7 { 0.0 } else { 4.0 } + noise(&mut seed))
+            .collect();
+        let mut far: Vec<f64> = (0..500)
+            .map(|i| if i % 10 < 9 { 10.0 } else { 15.0 } + 0.8 * noise(&mut seed))
+            .collect();
+        far[250] = 200.0;
+        let one: Vec<f64> = (0..300).map(|_| noise(&mut seed)).collect();
+        let close = |a: f64, b: f64, what: &str, case: &str| {
+            assert!(
+                (a - b).abs() <= 1e-9 * a.abs().max(1.0),
+                "{case}: {what} {a} against {b}"
+            );
+        };
+        for (case, y, start) in [
+            ("70/30", &split, [0.5, 3.5]),
+            ("90/10 with a far reading", &far, [10.5, 14.0]),
+            ("an empty second level", &one, [0.0, 1000.0]),
+        ] {
+            let (mu, sd, ll, r) = mixture_from(y, start);
+            let (mu0, sd0, ll0, r0) = reference_mixture(y, start);
+            close(mu[0], mu0[0], "low level", case);
+            close(mu[1], mu0[1], "high level", case);
+            close(sd, sd0, "width", case);
+            close(ll, ll0, "log likelihood", case);
+            for (a, b) in r.iter().zip(&r0) {
+                close(*a, *b, "share", case);
+            }
+            assert!(ll < 0.0, "{case}: {ll}");
+        }
     }
 
     fn series(n: usize, f: impl Fn(usize, f64) -> f64) -> Vec<Sample> {
