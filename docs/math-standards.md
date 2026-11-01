@@ -362,7 +362,7 @@ Confirmed problems are filed as issues, and the fixes go to each file's owner. N
 | N7 | `confidence::beat_error_se` is used only by its test; `assess` repeats it inline | `confidence.rs:155` | Fixed, #822 |
 | N8 | CUSUM assumes independent readings | `steadiness.rs:991` | **#647** |
 | N9 | The paper strip places beats on wall time (no clock correction) and draws the Rate line at the corrected rate, so on a corrected take the two differ in slope by 0.0864 s/d per ppm (confirmed by building and running). One clock everywhere decides the fix: the dots move onto true time, in core. | `timing.rs:63`, app `strip.rs:200` | **#643** |
-| N10 | A listed pause the clock log saw no step for still adds its gap to true time | `clean.rs` `Cuts::true_time` | **#646** |
+| N10 | A listed pause the clock log saw no step for still adds its gap to true time | `clean.rs` `Cuts::true_time` | Fixed, #829 |
 | M1 | Change finder assumes independent readings | `steadiness.rs:1040` | **#649** |
 | M2 | Autocorrelation and Ljung–Box take off the mean only, so a trend reads as memory | `steadiness.rs:946` | **#650** |
 | M3 | Isochronism slope shrinks with amplitude reading noise, is confounded with time, has no ± | `steadiness.rs:2678` | **#651** |
