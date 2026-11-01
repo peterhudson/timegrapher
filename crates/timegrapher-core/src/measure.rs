@@ -396,6 +396,16 @@ impl Caveat {
         }
     }
 
+    /// Whether the caveat is about the take's breaks: how many there are,
+    /// where they were read from, or a listed pause the clock log did not
+    /// see.
+    pub fn is_about_breaks(&self) -> bool {
+        matches!(
+            self,
+            Caveat::Breaks { .. } | Caveat::BreaksUnlisted { .. } | Caveat::PausesUnseen { .. }
+        )
+    }
+
     /// Where the caveat sits in a list.
     fn rank(&self) -> u8 {
         match self {

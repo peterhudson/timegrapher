@@ -70,22 +70,19 @@ pub struct Bin {
 }
 
 /// True seconds from the start of the take for audio second `t`, as the
-/// readings are measured: the clock fit's map, with the gaps in. On a
-/// clock log ([`ClockFit::has_log`]) the gaps are the ones the log shows,
-/// so a listed pause it did not see adds nothing (#646). Without one,
-/// each of `breaks`' gaps is added after it (a negative gap counts as
+/// readings are measured: the clock fit's map, with the gaps in. Where
+/// the clock log witnesses a pause ([`ClockFit::witnesses`]) its map holds
+/// the gap the log shows, so a listed pause it saw no gap at adds nothing
+/// (#646). Each of `breaks`' gaps the clock does not witness (with no
+/// clock log, all of them) is added after it (a negative gap counts as
 /// none).
 pub fn true_time(clock: Option<&ClockFit>, breaks: &[Break], t: f64) -> f64 {
-    let base = clock.map_or(t, |c| c.map(t));
-    if clock.is_some_and(ClockFit::has_log) {
-        base
-    } else {
-        base + breaks
+    clock.map_or(t, |c| c.map(t))
+        + breaks
             .iter()
-            .filter(|b| b.audio_s <= t)
+            .filter(|b| b.audio_s <= t && clock.is_none_or(|c| !c.witnesses(b.audio_s)))
             .map(|b| b.gap_s.max(0.0))
             .sum::<f64>()
-    }
 }
 
 /// Every cut in a take, and the answers that follow from them.
@@ -697,7 +694,7 @@ mod tests {
             .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0 * k))
             .collect();
         let log = ClockFit::new(&pairs).unwrap();
-        assert!(log.has_log() && log.breaks.is_empty());
+        assert!(log.witnesses(300.0) && log.breaks.is_empty());
         let listed = [Break {
             audio_s: 300.0,
             gap_s: 30.0,
@@ -708,7 +705,7 @@ mod tests {
         assert_eq!(log.unseen(&listed), 1);
         // A correction alone has no log to see it: the listed gap counts.
         let fixed = ClockFit::fixed(20.0, 600.0);
-        assert!(!fixed.has_log());
+        assert!(!fixed.witnesses(300.0));
         let cuts = Cuts::new(Some(&fixed), &listed, &[]);
         assert!((cuts.true_time(400.0) - fixed.map(400.0) - 30.0).abs() < 1e-9);
         assert_eq!(fixed.unseen(&listed), 0);
@@ -732,6 +729,46 @@ mod tests {
         assert!((cuts.true_time(550.0) - cuts.true_time(250.0) - 330.0).abs() < 0.01);
         let gaps: Vec<f64> = cuts.breaks().iter().map(|b| b.gap_s).collect();
         assert_eq!(gaps, [30.0, 0.0]);
+    }
+
+    #[test]
+    fn a_listed_pause_outside_the_clock_log_keeps_its_gap() {
+        // A log that ended at 200 s, or started at 400 s, has no witness to
+        // a pause at 300 s: its listed 30 s counts, as with no log (#646).
+        let k = 1.0 + 20e-6;
+        let line = |a: f64| (a, 1.79e9 + a * k);
+        let listed = [Break {
+            audio_s: 300.0,
+            gap_s: 30.0,
+        }];
+        for (name, pairs) in [
+            (
+                "ended",
+                (0..=20).map(|i| line(i as f64 * 10.0)).collect::<Vec<_>>(),
+            ),
+            (
+                "started",
+                (40..=60).map(|i| line(i as f64 * 10.0)).collect(),
+            ),
+        ] {
+            let log = ClockFit::new(&pairs).unwrap();
+            assert!(!log.witnesses(300.0), "{name}");
+            assert!(
+                log.witnesses(if name == "ended" { 100.0 } else { 500.0 }),
+                "{name}"
+            );
+            assert_eq!(log.unseen(&listed), 0, "{name}");
+            let cuts = Cuts::new(Some(&log), &listed, &[]);
+            assert!(
+                (cuts.true_time(350.0) - log.map(350.0) - 30.0).abs() < 1e-9,
+                "{name}"
+            );
+            assert!(
+                (cuts.true_time(250.0) - log.map(250.0)).abs() < 1e-9,
+                "{name}"
+            );
+            assert_eq!(cuts.breaks()[0].gap_s, 30.0, "{name}");
+        }
     }
 
     #[test]

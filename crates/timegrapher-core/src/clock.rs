@@ -749,20 +749,29 @@ impl ClockFit {
         }
     }
 
-    /// Whether the fit is from a clock log, which shows the take's pauses
-    /// itself, rather than a correction alone ([`ClockFit::fixed`]).
-    pub fn has_log(&self) -> bool {
-        !self.entries.is_empty() || !self.breaks.is_empty()
+    /// Whether the clock log witnesses audio second `at`: it has an entry
+    /// at or before it and one after it, so a pause there would show as a
+    /// step. A correction alone ([`ClockFit::fixed`]) has no entries and
+    /// witnesses nothing, nor does a log before its first entry or after
+    /// its last (one that ended early, or started late).
+    pub fn witnesses(&self, at: f64) -> bool {
+        match (self.entries.first(), self.entries.last()) {
+            (Some(a), Some(z)) => a.0 <= at + 1e-9 && z.0 > at,
+            // No entries kept: a fit with breaks is from a log.
+            _ => !self.breaks.is_empty(),
+        }
     }
 
-    /// Whether listed pause `b`'s gap counts on this clock: always on a
-    /// correction alone; on a log, only where the log shows it, by a break
-    /// of its own at it or within [`breaks::JUMP_MATCH_S`] after it (one
+    /// Whether listed pause `b`'s gap counts on this clock. Where the log
+    /// does not witness it ([`witnesses`](Self::witnesses)), the listed gap
+    /// is all there is to go on, so it counts. Where it does, it counts
+    /// only if the log shows it: a break of the log's at `b`, or within
+    /// [`breaks::JUMP_MATCH_S`] after it (one
     /// [`place_breaks`](Self::place_breaks) did not move), as
     /// [`crate::clean::Cuts`] matches them. The log is the better witness
     /// (#646).
     pub fn keeps_gap(&self, b: &Break) -> bool {
-        !self.has_log()
+        !self.witnesses(b.audio_s)
             || self.breaks.iter().any(|c| {
                 c.audio_s >= b.audio_s - 1e-9 && c.audio_s - b.audio_s <= breaks::JUMP_MATCH_S
             })

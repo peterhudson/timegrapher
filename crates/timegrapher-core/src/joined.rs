@@ -117,10 +117,10 @@ fn empty_like(log: &BeatLog) -> BeatLog {
 ///
 /// The joined times are on the take's `clock`: each beat is put on it
 /// before the time between stretches is taken out, so the joined log is
-/// read with no clock after. A clock log puts the pauses back itself
-/// ([`ClockFit::breaks`]), so it leaves the breaks no gap of their own
-/// (one it did not see adds none, #646), and each of its steps inside a
-/// span is a cut.
+/// read with no clock after. A clock log puts the pauses it witnesses back
+/// itself ([`ClockFit::breaks`]), so it leaves those breaks no gap of their
+/// own (one it saw no gap at adds none, #646), and each of its steps inside
+/// a span is a cut.
 pub fn join(
     log: &BeatLog,
     spans: &[(f64, f64)],
@@ -128,9 +128,9 @@ pub fn join(
     clock: Option<&ClockFit>,
 ) -> (BeatLog, Vec<Break>) {
     let time = |t: f64| on_clock(clock, t);
-    // On a clock log the gaps are its own: a listed pause it did not see adds
-    // none (#646, as `clean::true_time`).
-    let pauses_back = clock.is_some_and(ClockFit::has_log);
+    // Where the clock log witnesses a pause the gap is its own: a listed
+    // pause it saw no gap at adds none (#646, as `clean::true_time`).
+    let pauses_back = |at: f64| clock.is_some_and(|c| c.witnesses(at));
     let steps = clock.map_or(&[][..], |c| &c.breaks[..]);
     let mut cuts = Vec::new();
     let beat = 3600.0 / log.bph as f64;
@@ -177,7 +177,7 @@ pub fn join(
                 .filter(|c| c.audio_s > a && c.audio_s < b)
                 .map(|c| Break {
                     audio_s: time(c.audio_s) - shift_t,
-                    gap_s: if pauses_back { 0.0 } else { c.gap_s },
+                    gap_s: if pauses_back(c.audio_s) { 0.0 } else { c.gap_s },
                 }),
         );
         // Already among `breaks` when they came from core's take reader
