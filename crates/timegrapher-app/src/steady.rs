@@ -386,20 +386,11 @@ pub fn title(k: SeriesKind) -> &'static str {
 
 /// A value in a series' units for an axis or a note.
 fn value_text(k: SeriesKind, v: f64, step: f64) -> String {
-    let d = if step >= 1.0 {
-        0
-    } else if step >= 0.1 {
-        1
-    } else if step >= 0.01 {
-        2
-    } else {
-        3
-    };
-    let v = if v.abs() < step * 1e-6 { 0.0 } else { v };
+    let v = timegrapher_core::chart_scale::axis_number(v, step);
     match k {
-        SeriesKind::Rate => format!("{v:.d$} s/d"),
-        SeriesKind::Amplitude => format!("{v:.d$}°"),
-        SeriesKind::BeatError => format!("{v:.d$} ms"),
+        SeriesKind::Rate => format!("{v} s/d"),
+        SeriesKind::Amplitude => format!("{v}°"),
+        SeriesKind::BeatError => format!("{v} ms"),
     }
 }
 
@@ -1752,15 +1743,7 @@ fn mark_label(
 
 /// A plain number for a linear axis, with no "-0.0".
 fn plain(v: f64, step: f64) -> String {
-    let d = if step >= 1.0 {
-        0
-    } else if step >= 0.1 {
-        1
-    } else {
-        2
-    };
-    let v = if v.abs() < step * 1e-6 { 0.0 } else { v };
-    format!("{v:.d$}")
+    timegrapher_core::chart_scale::axis_number(v, step)
 }
 
 /// A number in a series' units to about three figures.
