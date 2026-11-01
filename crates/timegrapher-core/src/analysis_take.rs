@@ -453,7 +453,8 @@ fn read_with_limit(take: &Path, limit: u64) -> io::Result<Stored> {
             .map_err(|e| invalid(format!("{DIR}/{name}: {e}")))?;
         if out.len() as u64 > limit {
             return Err(invalid(format!(
-                "{DIR}/{name} unpacks to more than {limit} bytes"
+                "{DIR}/{name} unpacks to more than {}",
+                crate::archive::unpacked_size(limit)
             )));
         }
         Ok(out)
@@ -1370,5 +1371,46 @@ mod size_limit_tests {
             "{err}"
         );
         fs::remove_dir_all(p).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod limit_wording_tests {
+    use super::*;
+
+    #[test]
+    fn analysis_limit_error_uses_megabytes() {
+        let path = std::env::temp_dir().join(format!("tg-analysis-words-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(path.join(DIR)).unwrap();
+        let header = serde_json::json!({
+            "format": FORMAT, "software": {}, "audio": false, "note": NO_SOUND,
+            "sample_rate": 48000, "bytes_per_frame": 2, "duration_s": 1.0,
+            "bph": 36000, "lift_deg": 52.0, "clipped_samples": 0,
+            "jumps": [], "sided": [], "settings": {}, "beats": 1,
+            "windows": 0, "profiles": 0, "shape": []
+        });
+        fs::write(path.join(DIR).join(HEADER), header.to_string()).unwrap();
+        fs::write(
+            path.join(DIR).join(WINDOWS),
+            gzip(format!("{WINDOWS_COLUMNS}\n").as_bytes()).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            path.join(DIR).join(PROFILES),
+            gzip(&profiles_bin(&[])).unwrap(),
+        )
+        .unwrap();
+        let raw = format!("{BEATS_COLUMNS}\n1,0,1,0,{}\n", "0".repeat(1 << 20));
+        fs::write(path.join(DIR).join(BEATS), gzip(raw.as_bytes()).unwrap()).unwrap();
+        let err = read_with_limit(&path, 1 << 20).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string()
+                .contains("beats.csv.gz unpacks to more than 1 MB"),
+            "{err}"
+        );
+        assert_eq!(crate::archive::unpacked_size(MAX_ANALYSIS_FILE), "512 MB");
+        fs::remove_dir_all(path).unwrap();
     }
 }

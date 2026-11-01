@@ -22,6 +22,20 @@ const MAX_ENTRIES: usize = 10_000;
 /// Reports use only a few levels; this bounds traversal of deeply nested input.
 const MAX_DEPTH: usize = 16;
 
+/// A decompressed byte limit in the report reader's MB/GB wording.
+/// These units retain the ZIP reader's binary sizes and existing labels.
+pub(crate) fn unpacked_size(bytes: u64) -> String {
+    const MB: u64 = 1 << 20;
+    const GB: u64 = 1 << 30;
+    if bytes >= GB {
+        format!("{} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{} MB", bytes as f64 / MB as f64)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
 /// The files of an unpacked report bundle, with names relative to `path`.
 /// Links and special files are errors: the bundle writer never makes them.
 pub fn read_folder(path: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
@@ -79,7 +93,10 @@ fn read_folder_with_limits(
             left = left.checked_sub(data.len() as u64).ok_or_else(|| {
                 bad(
                     &p,
-                    &format!("unpacks to more than {max_unpacked} bytes; not a report bundle"),
+                    &format!(
+                        "unpacks to more than {}; not a report bundle",
+                        unpacked_size(max_unpacked)
+                    ),
                 )
             })?;
             let name = p
@@ -146,9 +163,12 @@ fn read_zip_with_limit(path: &Path, max_unpacked: u64) -> Result<Vec<(String, Ve
         f.take(left + 1)
             .read_to_end(&mut data)
             .map_err(|e| bad(&format!("{name} is damaged ({e})")))?;
-        left = left
-            .checked_sub(data.len() as u64)
-            .ok_or_else(|| bad(&"unpacks to more than 1 GB; not a report bundle"))?;
+        left = left.checked_sub(data.len() as u64).ok_or_else(|| {
+            bad(&format!(
+                "unpacks to more than {}; not a report bundle",
+                unpacked_size(max_unpacked)
+            ))
+        })?;
         entries.push((name, data));
     }
     Ok(entries)
@@ -350,5 +370,32 @@ mod size_limit_tests {
             "{err}"
         );
         std::fs::remove_dir_all(p).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod limit_wording_tests {
+    use super::*;
+
+    #[test]
+    fn folder_and_zip_limits_use_megabytes() {
+        let path = std::env::temp_dir().join(format!("tg-limit-words-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        let limit = 1 << 20;
+        let data = vec![0; limit + 1];
+        std::fs::write(path.join("data"), &data).unwrap();
+        let folder_err = read_folder_with_limits(&path, limit as u64, 1, 1).unwrap_err();
+        let zip = path.join("report.zip");
+        write_zip(&zip, &[("data".into(), data)]).unwrap();
+        let zip_err = read_zip_with_limit(&zip, limit as u64).unwrap_err();
+        for err in [folder_err, zip_err] {
+            assert!(
+                err.contains("unpacks to more than 1 MB; not a report bundle"),
+                "{err}"
+            );
+        }
+        assert_eq!(unpacked_size(MAX_UNPACKED), "1 GB");
+        std::fs::remove_dir_all(path).unwrap();
     }
 }

@@ -325,7 +325,7 @@ fn load_bundle(p: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
     let kind = std::fs::symlink_metadata(p)
         .map_err(|e| format!("{}: {e}", p.display()))?
         .file_type();
-    if kind.is_dir() || kind.is_symlink() {
+    if kind.is_dir() || (kind.is_symlink() && !p.is_file()) {
         read_folder(p)
     } else {
         read_zip(p)
@@ -613,5 +613,24 @@ mod tests {
         let paths: Vec<_> = d.iter().map(|m| m.path.as_str()).collect();
         assert_eq!(paths, ["rate", "new"]);
         assert!(diff(&a, &a).is_empty());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod zip_symlink_tests {
+    use super::*;
+
+    #[test]
+    fn bundle_zip_symlink_opens() {
+        let path = std::env::temp_dir().join(format!("tg-bundle-zip-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        let zip = path.join("report.zip");
+        let entries = vec![("manifest.json".into(), b"{}".to_vec())];
+        write_zip(&zip, &entries).unwrap();
+        let link = path.join("link.zip");
+        std::os::unix::fs::symlink(&zip, &link).unwrap();
+        assert_eq!(load_bundle(&link).unwrap(), entries);
+        std::fs::remove_dir_all(path).unwrap();
     }
 }
