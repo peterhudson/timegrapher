@@ -362,7 +362,7 @@ pub fn compute_with(
 /// (each with why the headline leaves it out, if it does), and the
 /// period when found.
 fn stats_line(c: &SeriesCheck) -> String {
-    let u = c.unit;
+    let (sp, u) = unit_after(c.unit);
     // A true minus sign, as in the readings.
     let n = |v: f64| true_minus(&format!("{v:.2}"));
     let signed = |v: f64| true_minus(&format!("{v:+.2}"));
@@ -374,13 +374,13 @@ fn stats_line(c: &SeriesCheck) -> String {
         ));
     }
     if let Some(m) = c.median {
-        parts.push(format!("median {} {u}", n(m)));
+        parts.push(format!("median {}{sp}{u}", n(m)));
     }
     if let Some(sd) = c.sd {
-        parts.push(format!("SD {} {u}", n(sd)));
+        parts.push(format!("SD {}{sp}{u}", n(sd)));
     }
     if let Some(st) = c.short_term_sd {
-        parts.push(format!("±{} {u} reading to reading", n(st)));
+        parts.push(format!("±{}{sp}{u} reading to reading", n(st)));
     }
     if let Some(a) = &c.autocorrelation {
         let lag1 = a.lag_s.iter().zip(&a.r).find(|(l, _)| **l > 0.0);
@@ -395,7 +395,7 @@ fn stats_line(c: &SeriesCheck) -> String {
     let why = |n: &Option<String>| n.as_ref().map_or(String::new(), |n| format!(", {n}"));
     if let Some(t) = &c.trend {
         parts.push(format!(
-            "trend {} {u}/h{}",
+            "trend {}{sp}{u}/h{}",
             signed(t.per_hour),
             why(&t.note)
         ));
@@ -411,6 +411,16 @@ fn stats_line(c: &SeriesCheck) -> String {
         parts.push(format!("period {:.0} s", p.period_s));
     }
     parts.join(" · ")
+}
+
+/// A Steadiness unit as it follows a number, as the space before it and
+/// the unit: degrees as the sentences write them, "272.10°", any other
+/// unit after a space, "0.20 ms". Core names degrees "deg".
+pub(crate) fn unit_after(unit: &'static str) -> (&'static str, &'static str) {
+    match unit {
+        "deg" => ("", "°"),
+        u => (" ", u),
+    }
 }
 
 /// What a count of readings `step_s` long counts: "179 10 s readings";
@@ -1708,12 +1718,12 @@ fn fft_plot(ui: &mut egui::Ui, r: Row<'_>) {
     );
     let ((x_lo, x_hi), (y_lo, y_hi)) = (span(&pts, 0), span(&pts, 1));
     let top = y_hi + (y_hi - y_lo).max(0.5) * 0.05;
-    let unit = match sp.unit {
-        _ if as_rate => " s/d",
-        "deg" => "°",
-        _ => " ms",
+    let (gap, unit) = if as_rate {
+        (" ", "s/d")
+    } else {
+        unit_after(sp.unit)
     };
-    let size = move |v: f64| format!("{}{unit}", timegrapher_core::timefreq::size_number(v));
+    let size = move |v: f64| format!("{}{gap}{unit}", timegrapher_core::timefreq::size_number(v));
     let peak = tallest_peak(&pts);
     let lines = wheel_lines(marked(s, opts), (x_lo, x_hi));
     let names = WheelNames::reserve(ui, (i, view), opts.wheels);

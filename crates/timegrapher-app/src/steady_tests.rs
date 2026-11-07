@@ -1359,6 +1359,30 @@ fn the_stats_line_says_why_a_trend_or_split_is_left_out() {
     assert!(!line.contains("stretches"), "{line}");
 }
 
+/// The amplitude's statistics say degrees as its sentence does, "°", not
+/// core's unit name "deg".
+#[test]
+fn the_amplitude_stats_line_says_degrees() {
+    let c = steadiness::check_series(
+        SeriesKind::Amplitude,
+        Grid {
+            t0: 0.0,
+            step: 10.0,
+            y: (0..40).map(|i| 270.0 + (i as f64).sin()).collect(),
+        },
+        None,
+        None,
+        None,
+        &[],
+        &Config::default(),
+    );
+    let line = stats_line(&c);
+    assert!(line.contains("median 270."), "{line}");
+    assert!(line.contains("° ·"), "{line}");
+    assert!(!line.contains("deg"), "{line}");
+    assert!(!line.contains(" °"), "{line}");
+}
+
 /// The readings plot draws level lines only where the words name the
 /// levels; stretches the level test turns down draw none (#1112).
 #[test]

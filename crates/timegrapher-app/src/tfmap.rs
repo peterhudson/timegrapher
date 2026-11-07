@@ -5,7 +5,7 @@
 //! cone at a stretch's ends) is left empty: the card shows through.
 
 use crate::marks::{self, Rank};
-use crate::steady::{wheel_lines, Turn, WheelLine};
+use crate::steady::{unit_after, wheel_lines, Turn, WheelLine};
 use crate::strength;
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
@@ -112,11 +112,8 @@ fn row_half(m: &TimeFrequency) -> Option<f64> {
 
 /// A size in the map's unit: "0.12 ms", "3.1°".
 pub fn size_text(m: &TimeFrequency, v: f64) -> String {
-    let n = size_number(v);
-    match m.unit {
-        "deg" => format!("{n}°"),
-        u => format!("{n} {u}"),
-    }
+    let (gap, unit) = unit_after(m.unit);
+    format!("{}{gap}{unit}", size_number(v))
 }
 
 /// What the map's colour measures: the swing of the series at each
@@ -134,11 +131,7 @@ fn measure_name(m: &TimeFrequency) -> &'static str {
 /// or "(dB)" on the dB scale, whose top end then gives its size with its
 /// unit (Walter's walk of #1152).
 pub fn key_title(m: &TimeFrequency, log: bool) -> String {
-    let unit = match (log, m.unit) {
-        (true, _) => "dB",
-        (false, "deg") => "°",
-        (false, u) => u,
-    };
+    let unit = if log { "dB" } else { unit_after(m.unit).1 };
     format!("{} ({unit})", measure_name(m))
 }
 
