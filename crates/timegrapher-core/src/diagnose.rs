@@ -437,4 +437,118 @@ mod tests {
         assert!(!faint(Some(40.0)));
         assert!(!faint(None));
     }
+
+    /// One or two clipped samples are a stray, not clipping: only three or
+    /// more name Clipping and step the gain down 6 dB. Below that a peak
+    /// near full scale is only Hot.
+    #[test]
+    fn three_clipped_samples_make_clipping_and_two_do_not() {
+        for clipped in [0, 1, 2] {
+            let mut issues = Vec::new();
+            assert_eq!(
+                level_issues(&mut issues, 1.0, clipped, None),
+                (false, false)
+            );
+            let codes: Vec<_> = issues.iter().map(|i| i.code).collect();
+            assert_eq!(codes, [IssueCode::Hot], "{clipped}");
+        }
+        let mut issues = Vec::new();
+        assert_eq!(level_issues(&mut issues, 1.0, 3, None), (false, true));
+        assert_eq!(issues[0].code, IssueCode::Clipping);
+        assert_eq!(issues[0].title, "Clipping: 3 samples");
+        assert_eq!(suggested_gain(1.0, false, true, false), Some(-6.0));
+    }
+
+    /// The gain suggested sets the peak to the target, to the nearest half
+    /// dB: a peak 7.3 dB under it is told +7.5, one 7.2 dB under +7.0,
+    /// and a hot peak of −3 dBFS −7.0.
+    #[test]
+    fn the_gain_suggested_is_to_the_nearest_half_db() {
+        let peak = |dbfs: f64| 10f64.powf(dbfs / 20.0);
+        let quiet = |dbfs: f64| suggested_gain(peak(dbfs), false, false, true);
+        assert_eq!(quiet(TARGET_PEAK_DBFS - 7.3), Some(7.5));
+        assert_eq!(quiet(TARGET_PEAK_DBFS - 7.2), Some(7.0));
+        assert_eq!(quiet(TARGET_PEAK_DBFS - 30.6), Some(30.5));
+        assert_eq!(suggested_gain(peak(-3.0), false, false, false), Some(-7.0));
+        // A good level, or silence, is told nothing.
+        assert_eq!(suggested_gain(peak(-10.0), false, false, false), None);
+        assert_eq!(suggested_gain(0.0, true, false, true), None);
+    }
+
+    /// A flat top is found wherever it is, also in the recording's last
+    /// samples, where no smaller sample follows to end it.
+    #[test]
+    fn a_flat_top_at_the_recordings_end_is_found() {
+        let mut x: Vec<f32> = (0..100).map(|i| 0.3 * (i as f32 * 0.37).sin()).collect();
+        x.extend([0.6, 0.6, 0.6, 0.6]);
+        assert_eq!(clipped_indices(&x, 0.99), [100, 101, 102, 103]);
+        // Three equal samples are not a flat top, at the end or not.
+        x.pop();
+        assert!(clipped_indices(&x, 0.99).is_empty());
+    }
+
+    /// Gaussian noise of standard deviation `sigma`, rectified: the
+    /// envelope of pure noise. Seeded, so the test is the same each run.
+    fn rectified_noise(n: usize, sigma: f64) -> Vec<f32> {
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let mut uniform = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 11) as f64 / (1u64 << 53) as f64
+        };
+        (0..n)
+            .map(|_| {
+                let (u, v) = (uniform().max(1e-300), uniform());
+                let g = (-2.0 * u.ln()).sqrt() * (2.0 * std::f64::consts::PI * v).cos();
+                (sigma * g).abs() as f32
+            })
+            .collect()
+    }
+
+    fn beats_every(beat_s: f64, from: f64, to: f64) -> Vec<beats::Beat> {
+        (0..)
+            .map(|k| beats::Beat {
+                index: k,
+                time: from + k as f64 * beat_s,
+                quality: 1.0,
+            })
+            .take_while(|b| b.time < to)
+            .collect()
+    }
+
+    /// Between the ticks, noise of a known RMS reads as that RMS: the
+    /// envelope's rectified mean, √(2/π) of it, is scaled back.
+    #[test]
+    fn the_background_reads_as_the_noises_rms() {
+        let fs = 48_000.0;
+        let sigma = 0.01;
+        let env = rectified_noise(10 * 48_000, sigma);
+        let good = beats_every(0.2, 0.1, 9.5);
+        let levels = tick_levels(&env, fs, &good, 0.2);
+        assert!(
+            (levels.noise / sigma - 1.0).abs() < 0.02,
+            "{}",
+            levels.noise
+        );
+        // Fixed gain: the background is as high late in the gap as early.
+        assert!(levels.gap_rise.unwrap().abs() < 0.2);
+    }
+
+    /// A tick is measured at its peak anywhere from 15 ms before its beat
+    /// time to 5 ms after, as its unlock comes before the drop it is timed
+    /// by; a louder sound further from it is not the tick.
+    #[test]
+    fn a_ticks_peak_is_looked_for_from_15_ms_before_its_beat() {
+        let fs = 48_000.0;
+        let mut env = vec![0.001f32; 10 * 48_000];
+        let good = beats_every(0.2, 0.1, 9.5);
+        let at = |t: f64| (t * fs).round() as usize;
+        for b in &good {
+            env[at(b.time - 0.010)] = 0.5;
+            env[at(b.time - 0.020)] = 0.9;
+            env[at(b.time + 0.008)] = 0.9;
+        }
+        assert_eq!(tick_levels(&env, fs, &good, 0.2).tick, Some(0.5));
+    }
 }
