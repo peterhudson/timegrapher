@@ -163,7 +163,7 @@ impl View {
                 "The plain amplitude spectrum of each series, like Witschi's FFT: the size \
                  estimated at each period for complete data, the rate's as the swing peak to peak it \
                  makes in 10 s rate readings (or the beat timing's, in ms, with Timing), \
-                 with the wheels' periods marked and twice a turn dashed. Both axes are \
+                 with the wheels' periods marked and twice a turn more loosely dotted. Both axes are \
                  logarithmic"
             }
             View::Stft => {
