@@ -212,6 +212,9 @@ fn the_info_panel_holds_the_findings_and_the_plots_say_what_a_dot_is(s: &Steadin
 /// pointer on a Readings Over Time row, no readout text ends past Info's
 /// left edge, and the value is still shown; with Info shut the same
 /// readout reaches past that edge, so the check bites (Trevor on #1582).
+/// The pane is 432 wide, so Info starts about 120 from its left: past
+/// the hovered row's value alone (about 100) and short of its time and
+/// value together (about 137).
 fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
     // Each text drawn, with where it starts and ends, and Info's left
     // edge as the pane works it out: in a fresh context each time, as a
@@ -225,7 +228,7 @@ fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    Vec2::new(540.0, 700.0),
+                    Vec2::new(432.0, 700.0),
                 )),
                 events: at.map(egui::Event::PointerMoved).into_iter().collect(),
                 ..Default::default()
@@ -255,7 +258,7 @@ fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
         }
         (
             all,
-            left.expect("540 is too narrow for Info beside the rows"),
+            left.expect("432 is too narrow for Info beside the rows"),
         )
     };
     // The readout: what the pointer on a row adds to the pane.
@@ -268,10 +271,10 @@ fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
     };
     // Left of where Info would start, past the rows' value axis.
     let at = (2..28)
-        .flat_map(|i| [120.0, 180.0].map(|x| egui::pos2(x, i as f32 * 25.0)))
+        .flat_map(|i| [70.0, 85.0, 100.0].map(|x| egui::pos2(x, i as f32 * 25.0)))
         .find(|&at| !readout(at, false).0.is_empty())
         .unwrap_or_else(|| {
-            let (all, left) = drawn(Some(egui::pos2(180.0, 200.0)), false);
+            let (all, left) = drawn(Some(egui::pos2(100.0, 200.0)), false);
             panic!("no point on a Readings row (Info from {left}): {all:?}")
         });
     let (shut, left) = readout(at, false);
