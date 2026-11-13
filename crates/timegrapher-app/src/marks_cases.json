@@ -60,8 +60,8 @@
     { "case": "nowhere clear: none, the dot's hover", "clear": [false, false, false, false], "was": 1, "at": null }
   ],
   "room_above": [
-    { "case": "the room above the highest point", "lo": 0, "y": 10, "top": 10.3, "h": 200, "at": 11.560693641618498 },
+    { "case": "the room above the highest point", "lo": 0, "y": 10, "top": 10.3, "h": 200, "at": 11.976047904191617 },
     { "case": "a higher top stays", "lo": 0, "y": 10, "top": 20, "h": 200, "at": 20 },
-    { "case": "from a low bottom, on a plot 126 tall", "lo": -30, "y": 0, "top": 0.5, "h": 126, "at": 8.181818181818182 }
+    { "case": "from a low bottom, on a plot 126 tall", "lo": -30, "y": 0, "top": 0.5, "h": 126, "at": 10.64516129032258 }
   ]
 }
