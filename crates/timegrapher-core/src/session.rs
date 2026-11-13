@@ -250,6 +250,38 @@ impl Position {
             .map(|(p, _)| *p)
     }
 
+    /// The same names as [`Position::accepted_names`], one by one, for a
+    /// list a caller picks from (the MCP `record_position` choices).
+    pub fn names() -> Vec<&'static str> {
+        let (mut common, witschi) = Position::name_groups();
+        common.extend(witschi);
+        common
+    }
+
+    fn name_groups() -> (Vec<&'static str>, Vec<&'static str>) {
+        let common = Position::TEN.iter().map(|p| p.common()).collect();
+        let witschi = Position::TEN
+            .iter()
+            .filter(|p| p.code() != p.common())
+            .map(|p| p.code())
+            .collect();
+        (common, witschi)
+    }
+
+    /// The names every surface lists as accepted, from [`Position::TEN`]:
+    /// the common ones first, then Witschi's where they differ, "DU, DD,
+    /// CD, CL, CU, CR, 1H30, 4H30, 7H30 or 10H30 (or CH, CB, 9H, 6H, 3H or
+    /// 12H)". [`Position::parse`] takes these and more (#1492).
+    pub fn accepted_names() -> String {
+        let (common, witschi) = Position::name_groups();
+        let or_list = |names: &[&str]| match names.split_last() {
+            Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+            Some((last, _)) => (*last).to_string(),
+            None => String::new(),
+        };
+        format!("{} (or {})", or_list(&common), or_list(&witschi))
+    }
+
     /// The position named in a file name such as `ym42_DU_48000-01.flac`.
     /// The letter names match in any case; 3H, 6H, 9H, 12H and the 45°
     /// stops (1H30 …) only in capitals, so that a duration like `2h` or

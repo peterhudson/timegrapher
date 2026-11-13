@@ -450,8 +450,8 @@ enum Command {
         /// Timegrapher Data in the home folder).
         #[arg(long)]
         library: Option<PathBuf>,
-        /// Position: DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H).
-        #[arg(long)]
+        /// Position (core `Position::accepted_names`).
+        #[arg(long, help = format!("Position: {}", timegrapher_core::session::Position::accepted_names()))]
         position: String,
         /// Seconds to record.
         #[arg(long, default_value_t = 120.0)]
@@ -509,10 +509,13 @@ enum Command {
     /// Read a watch measured in several positions (and states of wind)
     /// into one multi-position report, Witschi style.
     Session {
-        /// A session file (session.toml), a folder holding one, or the
-        /// recordings themselves with the position in each file name
-        /// (DU, DD, CU, CD, CL, CR or CH, CB, 3H, 6H, 9H, 12H).
-        #[arg(required = true)]
+        /// A session file, a folder holding one, or recordings named by
+        /// position (core `Position::accepted_names`).
+        #[arg(required = true, help = format!(
+            "A session file (session.toml), a folder holding one, or the recordings \
+             themselves with the position in each file name: {}",
+            timegrapher_core::session::Position::accepted_names()
+        ))]
         paths: Vec<PathBuf>,
         /// Write a session.toml for this folder of recordings to edit, and stop.
         #[arg(long)]
