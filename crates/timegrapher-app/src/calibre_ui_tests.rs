@@ -452,6 +452,86 @@ fn counted_teeth_caption_the_wheels() {
     assert!(seen.iter().any(|t| t == "Teeth give 55.556 s"), "{seen:?}");
 }
 
+/// Every period box at 800 wide shows its value with no digit under its
+/// right edge: whole up to six figures, a longer one with decimals
+/// dropped (#1586). The Add a Wheel box too.
+#[test]
+fn a_period_box_shows_its_whole_value() {
+    let mut c = Calibres::in_memory();
+    c.user
+        .set_wheel("ETA 2824-2", "third wheel", 999_999.999, None);
+    c.user
+        .set_wheel("ETA 2824-2", "fourth wheel", 9_999_999.999, None);
+    c.selected = Some("ETA 2824-2".into());
+    c.adding = Some(("moon wheel".into(), "21114.027".into()));
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            Vec2::new(800.0, 2000.0),
+        )),
+        ..Default::default()
+    };
+    // A group row's control grows to its width over a few frames, each
+    // one laid in the width the last one took, as the app repaints it.
+    let mut out = None;
+    for _ in 0..12 {
+        out = Some(ctx.run(input.clone(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                c.contents(ui, "", "test");
+            });
+        }));
+    }
+    // A text box clips its text 1 px outside its inner edge; nothing else
+    // here is clipped that narrow.
+    let in_boxes: Vec<(String, f32)> = out
+        .unwrap()
+        .shapes
+        .iter()
+        .filter(|s| s.clip_rect.width() < 200.0)
+        .filter_map(|s| match &s.shape {
+            egui::Shape::Text(t) => Some((
+                t.galley.text().to_string(),
+                s.clip_rect.max.x - 1.0 - (t.pos.x + t.galley.rect.right()),
+            )),
+            _ => None,
+        })
+        .collect();
+    // The barrel's box and the Add a Wheel box.
+    let barrels = in_boxes.iter().filter(|(t, _)| t == "21114.027").count();
+    assert!(barrels >= 2, "{in_boxes:?}");
+    for want in ["999999.999", "10000000"] {
+        assert!(
+            in_boxes.iter().any(|(t, _)| t == want),
+            "no box shows {want}: {in_boxes:?}"
+        );
+    }
+    for (t, gap) in &in_boxes {
+        assert!(*gap >= 0.0, "{t} cut by {} px", -gap);
+    }
+}
+
+/// A period cut to fit its box gives the full value in its hover; one
+/// shown whole keeps the hover as it was (#1586).
+#[test]
+fn a_cut_period_gives_its_full_value_in_the_hover() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut got = Vec::new();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            for v in [Some(9_999_999.999), Some(21114.027), None] {
+                got.push(super::period_shown(ui, v, "The barrel's turn."));
+            }
+        });
+    });
+    let full = "The barrel's turn.\n\nIn full: 9999999.999 s";
+    assert_eq!(got[0], ("10000000".into(), full.into()));
+    assert_eq!(got[1], ("21114.027".into(), "The barrel's turn.".into()));
+    assert_eq!(got[2], (String::new(), "The barrel's turn.".into()));
+}
+
 #[test]
 fn wheels_typed_for_a_listed_calibre_name_its_cycles() {
     let mut c = Calibres::in_memory();
