@@ -134,7 +134,13 @@ opened, and its state under it (Listening, Stopped, Opened, or 0:00 and
 Not Started). The status bar no longer gives the length. Under them
 **Average Over** and its pop-up ("10 s"), the time the readings are
 fitted over. **Rate**, **Amplitude** and **Beat Error** have no
-controls: each is its figure.
+controls: each is its figure. The Beat Error figure's hover starts with its **BE
+Angle** (#1576): "0.46 ± 0.05 ms is a BE Angle of 1.7 ± 0.2° of the
+balance's swing, at 302° amplitude", then that degrees stay the same as
+the amplitude falls while ms grow, and that they rest on the lift angle
+through the amplitude (core `be_angle::card_words`). The angle is shown
+beside the ms only there and in the Power Reserve table, never instead
+of it.
 
 **Compact Readings** (View > Compact Readings, or the pin at the right
 end of the readings) folds the six cards into a strip 44 points tall
@@ -883,8 +889,15 @@ measures a stretch (core `session::measure_masked`), and how much of it
 its whole 10 s readings cover (core `clean`). The table starts at the
 charts' plot edge, their value labels alone in the margin to its left, is
 no wider than the plots (scrolling sideways when it would be), and gives
-the units in its titles: Rate (s/d), Amplitude (°), Beat Error (ms) and
-Read (%), the figures right-aligned and written by core `figure_text`.
+the units in its titles: Rate (s/d), Amplitude (°), Beat Error (ms),
+**BE Angle** (°) and Read (%), the figures right-aligned and written by
+core `figure_text`. BE Angle (#1576) is the hour's beat error as an angle
+of the balance's swing, amplitude × π × bph/7200 × beat error (core
+`be_angle`, `Hour::be_angle`): it stays the same as the amplitude falls,
+where the ms grow, and rests on the lift angle through the amplitude. It
+keeps as many significant figures as the fewest of its beat error and
+amplitude (0.46 ms at 302° is 1.7°, 0.47 ms at 129° is 0.76°), is grey
+where either is, and a dash where there is no amplitude.
 Scrolled down, the titles stay at the pane's top. A beat error from the
 drop, or with no source recorded, is drawn dimmed, with the key "Grey
 beat errors: from the drop, or source not recorded." over the table (and in the Beat Error title's hover), and
@@ -892,7 +905,7 @@ every beat error's hover names its source (core
 `session::beat_error_source_label`).
 **Save as CSV…** and **Copy** give the watch, the run and the table, with
 a "Beat error from" column (unlock or drop; empty when not recorded, as
-for a figure not measured). The take
+for a figure not measured) and a "BE Angle (deg)" column. The take
 is kept in the picked watch's history, named by its local start time and
 "Power Reserve", with
 `power-reserve.json` beside the standard files; with Analysis Only it is

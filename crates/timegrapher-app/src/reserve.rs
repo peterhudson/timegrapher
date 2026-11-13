@@ -14,6 +14,7 @@ use crate::strength::{self, Grid};
 use crate::theme;
 use eframe::egui::{self, RichText};
 use std::path::PathBuf;
+use timegrapher_core::be_angle;
 use timegrapher_core::beats::Beat;
 use timegrapher_core::chart_scale::axis_number;
 use timegrapher_core::confidence::Figure;
@@ -508,6 +509,7 @@ pub fn finished_run(hours: u32) -> Test {
                 beat_error_source: None,
                 caveats: Vec::new(),
                 read_s: 3500.0,
+                bph: Some(28_800),
             })
             .collect();
     }
@@ -655,6 +657,12 @@ fn beat_error_hover(h: &power_reserve::Hour) -> (String, bool) {
     (words.join(". "), grey)
 }
 
+/// Whether an hour's BE Angle is grey: its beat error or its amplitude
+/// is ([`beat_error_hover`], [`thin`]).
+fn angle_grey(h: &power_reserve::Hour) -> bool {
+    h.be_angle().is_some() && (beat_error_hover(h).1 || thin(h, Figure::Amplitude).is_some())
+}
+
 /// Whether any of the hour's amplitude or beat error is thin ([`thin`]).
 fn any_thin(h: &power_reserve::Hour) -> bool {
     [Figure::Amplitude, Figure::BeatError]
@@ -689,7 +697,7 @@ pub fn beat_error_hint(lead: &str) -> String {
 
 /// The table's titles: each name, its unit under it (none for Hours),
 /// and what the column holds (Hugh's ruling on #1086).
-pub(crate) const HOUR_COLUMNS: [(&str, &str, &str); 5] = [
+pub(crate) const HOUR_COLUMNS: [(&str, &str, &str); 6] = [
     ("Hours", "", "Hours since the first beat heard"),
     (
         "Rate",
@@ -706,6 +714,7 @@ pub(crate) const HOUR_COLUMNS: [(&str, &str, &str); 5] = [
             dim_key!()
         ),
     ),
+    (be_angle::NAME, "°", be_angle::COLUMN_HINT),
     (
         "Read",
         "%",
@@ -739,7 +748,7 @@ fn hour_grid(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
     // Each cell: its text, and the words of its source with whether it is
     // dimmed, for a beat error not from the unlock.
     let plain = |t: String| (t, None);
-    let rows: Vec<[Cell; 5]> = hours
+    let rows: Vec<[Cell; 6]> = hours
         .iter()
         .map(|h| {
             [
@@ -761,6 +770,11 @@ fn hour_grid(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
                     // where it is, and its coverage caveat when thin
                     // (#1439).
                     Some(beat_error_hover(h)),
+                ),
+                // Grey when its beat error or amplitude is (Hugh's spec).
+                (
+                    h.be_angle().map_or_else(|| "–".to_string(), |a| a.number()),
+                    angle_grey(h).then(|| (be_angle::COLUMN_HINT.to_string(), true)),
                 ),
                 // A dash says why in its hover (Walter's walk of #1084).
                 (
@@ -1171,6 +1185,7 @@ pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
         "Amplitude (deg)".into(),
         "Beat error (ms)".into(),
         "Beat error from".into(),
+        format!("{} (deg)", be_angle::NAME),
         "Read (s)".into(),
     ]);
     // Core's figure rule, plain: no plus, an ASCII minus, never "-0".
@@ -1185,6 +1200,7 @@ pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
             // Empty when none is recorded, as for a figure not measured.
             h.beat_error_source
                 .map_or_else(String::new, |s| s.to_string()),
+            h.be_angle().map_or_else(String::new, |a| a.number()),
             fixed_text(h.read_s, 0),
         ]);
     }
@@ -1268,6 +1284,7 @@ mod tests {
             beat_error_source: None,
             caveats: Vec::new(),
             read_s: 90.0,
+            bph: Some(28_800),
         }];
         let text = results_text(&r, "Pepsi, 1972", ',');
         assert!(text.starts_with("Watch,\"Pepsi, 1972\"\n"), "{text}");
@@ -1277,9 +1294,11 @@ mod tests {
         );
         assert!(
             // Beat error as its size, as every text gives it, and where it
-            // came from: empty, as none is recorded for this hour.
-            text.ends_with("0,100,4.2,281,0.40,,90\n")
-                || text.ends_with("0,100,4.3,281,0.40,,90\n"),
+            // came from: empty, as none is recorded for this hour; then
+            // its BE Angle, 0.40 ms at 281° on 28,800 bph, to two
+            // significant figures.
+            text.ends_with("0,100,4.2,281,0.40,,1.4,90\n")
+                || text.ends_with("0,100,4.3,281,0.40,,1.4,90\n"),
             "{text}"
         );
         // Whole seconds, as the run's own words count them: 99.8 s is
@@ -1348,8 +1367,8 @@ mod tests {
             .filter(|l| l.starts_with(|c: char| c.is_ascii_digit()))
             .collect();
         assert_eq!(rows.len(), 3, "{csv}");
-        assert!(rows[0].ends_with(",0.0,281,0.40,unlock,3500"), "{csv}");
-        assert!(rows[1].ends_with(",0.0,281,0.47,drop,3500"), "{csv}");
+        assert!(rows[0].ends_with(",0.0,281,0.40,unlock,1.4,3500"), "{csv}");
+        assert!(rows[1].ends_with(",0.0,281,0.47,drop,1.7,3500"), "{csv}");
         assert!(!csv.contains("-0.0"), "{csv}");
         let ctx = egui::Context::default();
         theme::install(&ctx);
@@ -1740,6 +1759,7 @@ mod tests {
                     beat_error_source: None,
                     caveats: Vec::new(),
                     read_s: 3500.0,
+                    bph: Some(28_800),
                 })
                 .collect();
         }
@@ -1823,6 +1843,7 @@ mod tests {
                         beat_error_source: None,
                         caveats: Vec::new(),
                         read_s: 3500.0,
+                        bph: Some(28_800),
                     })
                     .collect();
             }
@@ -2001,6 +2022,7 @@ mod tests {
             beat_error_source: None,
             caveats: Vec::new(),
             read_s: span_s - 100.0,
+            bph: Some(28_800),
         };
         let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
         t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
@@ -2067,6 +2089,7 @@ mod tests {
             beat_error_source: None,
             caveats: Vec::new(),
             read_s: 30.0,
+            bph: Some(28_800),
         }];
         let ctx = egui::Context::default();
         theme::install(&ctx);
@@ -2111,6 +2134,7 @@ mod tests {
                 beat_error_source: None,
                 caveats: Vec::new(),
                 read_s: 3500.0,
+                bph: Some(28_800),
             })
             .collect();
         let ctx = egui::Context::default();

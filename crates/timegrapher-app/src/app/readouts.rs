@@ -216,6 +216,22 @@ pub(super) fn beat_error_figure(r: &LiveReading) -> Option<String> {
     Some(figure(v, pm, base::BEAT_ERROR, false))
 }
 
+/// The Beat Error card's words on its BE Angle: the card's figure and ±,
+/// the angle core works from them and the amplitude's, at `lift_deg`.
+pub(super) fn be_angle_words(r: &LiveReading, lift_deg: f64) -> Option<String> {
+    let be = core_session::beat_error_size(r.beat_error_unlock_ms, r.beat_error_ms)?;
+    let be_pm = r
+        .beat_error_unlock_error_ms
+        .filter(|_| r.beat_error_unlock_ms.is_some());
+    let amp = r.amplitude_deg?;
+    let angle =
+        timegrapher_core::be_angle::Angle::of((amp, r.amplitude_error_deg), (be, be_pm), r.bph?)?;
+    let figure = timegrapher_core::figure_text::figure_with_pm(be, be_pm, base::BEAT_ERROR, false);
+    Some(timegrapher_core::be_angle::card_words(
+        &figure, &angle, amp, lift_deg,
+    ))
+}
+
 /// A row of a card, laid out left to right and kept inside it.
 fn card_row(ui: &mut egui::Ui, rect: egui::Rect, salt: &str) -> egui::Ui {
     let mut child = ui.new_child(
@@ -774,6 +790,14 @@ impl TimegrapherApp {
                      rather than the signed values, as the command line does."
                 );
             }
+        }
+        // Its BE Angle first, where the amplitude and beat rate are known
+        // (Hugh's spec, #1576).
+        if let Some(words) = r
+            .filter(|_| c.heard)
+            .and_then(|r| be_angle_words(r, lift_now))
+        {
+            from = format!("{words}\n\n{from}");
         }
         let (fig, spark, place) = sparkline::lay(rows.inner, rows.figure, rows.controls);
         let colour = theme::pal(ui).trace_beat_error;

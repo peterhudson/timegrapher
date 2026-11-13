@@ -144,6 +144,35 @@ pub fn figure_with_pm(v: f64, se: Option<f64>, base: usize, signed: bool) -> Str
     format!("{}{pm}", figure(v, se, base, signed))
 }
 
+/// How many significant figures `x` has as written to `digits` decimals
+/// ([`fixed_text`]): 302 at 0 decimals has 3, 0.46 at 2 has 2, 0.40 at 2
+/// has 2 (a written trailing zero counts). A figure that writes as zero
+/// has none.
+pub fn significant_figures(x: f64, digits: usize) -> usize {
+    let text = fixed_text(x, digits);
+    let figures: String = text.chars().filter(char::is_ascii_digit).collect();
+    figures.trim_start_matches('0').len()
+}
+
+/// The decimals that write `x` to `sig` significant figures, never under
+/// one: 1.746 to 2 is 1 ("1.7"), 0.7634 to 2 is 2 ("0.76"), 302.4 to 2 is
+/// 0 ("302": a place left of the point is never blanked). The place is
+/// read again after rounding, so 0.996 to 2 is "1.0", not "1.00". Math
+/// guide section 11: a value worked out from figures keeps as many
+/// significant figures as the fewest among them (Peter, 13 Nov, #1576).
+pub fn derived_digits(x: f64, sig: usize) -> usize {
+    let sig = sig.max(1) as i32;
+    let at = |v: f64| {
+        if !(v.is_finite() && v != 0.0) {
+            return 0;
+        }
+        (sig - 1 - v.abs().log10().floor() as i32).max(0) as usize
+    };
+    let d = at(x);
+    let rounded: f64 = fixed_text(x, d).parse().unwrap_or(x);
+    at(rounded).min(d)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +282,21 @@ mod tests {
             figure_with_pm(3.0, Some(f64::NAN), base::RATE, true),
             "+3.0"
         );
+    }
+
+    /// A worked-out value keeps its inputs' fewest significant figures
+    /// (math guide section 11, #1576).
+    #[test]
+    fn significant_figures_flow_through() {
+        assert_eq!(significant_figures(302.0, 0), 3);
+        assert_eq!(significant_figures(0.46, 2), 2);
+        assert_eq!(significant_figures(0.4, 2), 2);
+        assert_eq!(significant_figures(0.04, 2), 1);
+        assert_eq!(significant_figures(0.0, 2), 0);
+        assert_eq!(fixed_text(1.746, derived_digits(1.746, 2)), "1.7");
+        assert_eq!(fixed_text(0.7634, derived_digits(0.7634, 2)), "0.76");
+        assert_eq!(fixed_text(302.4, derived_digits(302.4, 2)), "302");
+        assert_eq!(fixed_text(0.996, derived_digits(0.996, 2)), "1.0");
+        assert_eq!(fixed_text(1.0, derived_digits(1.0, 2)), "1.0");
     }
 }

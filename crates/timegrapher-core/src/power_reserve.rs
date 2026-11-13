@@ -266,6 +266,23 @@ pub struct Hour {
     pub caveats: Vec<crate::measure::Caveat>,
     /// Seconds of it read, out of `span_s`.
     pub read_s: f64,
+    /// The beat rate it was read at, for its BE Angle; absent in older
+    /// saved results.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bph: Option<u32>,
+}
+
+impl Hour {
+    /// Its beat error as an angle ([`crate::be_angle`]), from its own
+    /// amplitude and beat error at its beat rate, as the table writes
+    /// them (no ±). None without an amplitude, a beat error or a rate.
+    pub fn be_angle(&self) -> Option<crate::be_angle::Angle> {
+        crate::be_angle::Angle::of(
+            (self.amplitude_deg?, None),
+            (self.beat_error_ms?, None),
+            self.bph?,
+        )
+    }
 }
 
 impl Hour {
@@ -433,6 +450,7 @@ pub fn hours_from(
             beat_error_source: m.as_ref().and_then(|m| m.beat_error_source),
             caveats: m.as_ref().map(|m| m.caveats.clone()).unwrap_or_default(),
             read_s,
+            bph: Some(log.bph),
         });
         hour += 1;
     }
@@ -1132,6 +1150,7 @@ mod tests {
             beat_error_source: None,
             caveats: Vec::new(),
             read_s: 0.0,
+            bph: Some(28_800),
         };
         assert!(hour(3600.0).whole());
         assert!(hour(3599.4).whole());
@@ -1151,6 +1170,7 @@ mod tests {
             beat_error_source: None,
             caveats: Vec::new(),
             read_s,
+            bph: Some(28_800),
         };
         assert_eq!(hour(3600.0, 3500.0).read_share(), Some(3500.0 / 3600.0));
         // Within a second of the hour: the whole of it.
