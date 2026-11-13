@@ -689,6 +689,13 @@ pub fn group<R>(
             help(ui, title, h);
         }
     });
+    group_panel(ui, add)
+}
+
+/// A [`group`]'s rounded panel and rows, for a group whose title line is
+/// drawn by its caller (one that opens and closes, say).
+pub fn group_panel<R>(ui: &mut Ui, add: impl FnOnce(&mut Group<'_>) -> R) -> R {
+    let p = pal(ui);
     let w = ui.available_width().min(GROUP_W);
     // A step off the window it sits on: lighter in the dark theme, the
     // window's grey on a white one in the light.

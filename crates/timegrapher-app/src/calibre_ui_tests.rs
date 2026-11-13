@@ -401,6 +401,57 @@ fn settings_calibres_move_to_the_user_file_once() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Teeth and Leaves (#399): a period the teeth give fills a blank wheel
+/// and is captioned From Teeth; one they disagree with keeps the typed
+/// figure and says what the teeth give.
+#[test]
+fn counted_teeth_caption_the_wheels() {
+    let mut c = Calibres::in_memory();
+    c.user
+        .set_count("ETA 2892-A2", "escape wheel", Some(21), None);
+    c.user
+        .set_count("ETA 2824-2", "fourth wheel", Some(100), None);
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let draw = |c: &mut Calibres, name: &str| {
+        c.selected = Some(name.into());
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(1440.0, 2000.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = None;
+        for _ in 0..2 {
+            out = Some(ctx.run(input.clone(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    c.contents(ui, "", "test");
+                });
+            }));
+        }
+        out.unwrap()
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let seen = draw(&mut c, "ETA 2892-A2");
+    assert!(seen.iter().any(|t| t == "From Teeth"), "{seen:?}");
+    assert!(
+        seen.iter().any(|t| t.ends_with("Teeth and Leaves")),
+        "{seen:?}"
+    );
+    let slots = Catalog::new(&c.user).slots(c.find("ETA 2892-A2").unwrap());
+    let esc = slots.iter().find(|s| s.name == "escape wheel").unwrap();
+    assert_eq!(esc.period_s, Some(5.25));
+    let seen = draw(&mut c, "ETA 2824-2");
+    assert!(seen.iter().any(|t| t == "Teeth give 55.556 s"), "{seen:?}");
+}
+
 #[test]
 fn wheels_typed_for_a_listed_calibre_name_its_cycles() {
     let mut c = Calibres::in_memory();

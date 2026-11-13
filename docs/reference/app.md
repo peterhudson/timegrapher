@@ -1903,6 +1903,28 @@ folder can't be moved while another copy has it open. The Watches view adds watc
       - **Add a Wheel…**, the group's last row, opens a row to type
         another wheel's name and period, with **Add** (or Return) to add
         it once both are filled in, and **Cancel** to forget the row.
+      - **Teeth and Leaves**, under the Wheels group and closed until its
+        title is clicked: a row for each of the escape, fourth, third and
+        centre wheels and the barrel, with a **Teeth** box for the wheel's
+        teeth and a **Leaves** box for the leaves of the pinion on the same
+        arbor (the barrel has no pinion). The beat rate is the calibre's.
+        From the counts each wheel's period follows (core `train::solve`):
+        the escape wheel turns in its teeth × two beats, and each wheel out
+        in the next one in's period × its teeth ÷ that one's pinion leaves,
+        starting from the beat rate or from a period given, whichever is
+        nearer. A period the counts give fills a blank in Wheels, captioned
+        "From Teeth", its hint giving the arithmetic; **Clear** does not
+        apply to it, so change a count instead. Where a period given and
+        the counts read otherwise, the given one stays and the caption says
+        what the teeth give ("Teeth give 55.556 s"). A wheel the counts
+        can't reach stays "Not Known", its hint naming the count missing.
+        A wheel left blank whose two sides give it different periods (a
+        count or a typed period is wrong), or whose one side starts at a
+        typed period its own teeth disagree with, stays "Not Known" too,
+        captioned "Neighbours disagree", its hint giving what each side
+        gives.
+        The counts are kept for the calibre and go with **Share with the
+        Project…**.
       - Then the **Sources** group, its title saying how the figures are
         known ("Sources · Published List"): a row for each source, its
         name the link (the address only on hover) and under it what the
@@ -1926,7 +1948,7 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     wheels. If the watch beats at another rate than the calibre, a line
     under the menu says so. With none picked and the lift angle left at
     52°, a line says the amplitude is worked out from that default.
-  - **Your additions.** Wheel periods and custom calibres are kept in
+  - **Your additions.** Wheel periods, tooth and leaf counts and custom calibres are kept in
     `calibres.json` in the settings folder (core `calibre_store`), which
     the command line and the MCP server read too. Calibres typed in under
     earlier versions move there the first time the app starts; their original
@@ -1941,7 +1963,8 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     until a later save succeeds. These protections do not add numerical
     validation or concurrent-edit/crash-recovery guarantees to the catalogue.
   - **Share with the Project….** It opens a GitHub issue in the browser,
-    filled in with what you added to the calibre, to look over and send.
+    filled in with what you added to the calibre (periods and tooth and
+    leaf counts), to look over and send.
     Nothing is sent from the app.
   - **A custom calibre.** It starts with no wheels: a custom calibre is
     often obscure or vintage, so nothing is assumed. Typing its beat rate
