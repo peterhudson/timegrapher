@@ -7,7 +7,7 @@
 //! [`crate::amplitude`], so the marks are exactly the ones behind the
 //! numbers on screen.
 
-use crate::amplitude::{amplitude_deg, edges_guided, AmplitudeConfig};
+use crate::amplitude::{edges_guided, side_deg, AmplitudeConfig};
 use crate::beats::{Beat, POST_S, PRE_S, TEMPLATE_TRIM};
 use crate::dsp::envelope;
 use crate::shape::{self, ShapeConfig};
@@ -276,9 +276,8 @@ fn mark(
     p.unlock_ms = e.map(|e| to_ms(e.unlock));
     p.drop_ms = e.map(|e| to_ms(e.drop));
     p.peak_ms = e.map(|e| to_ms(e.peak as f64));
-    p.amplitude_deg = e
-        .map(|e| amplitude_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg))
-        .filter(|a| (100.0..=380.0).contains(a));
+    p.amplitude_deg =
+        e.and_then(|e| side_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg));
     p.sound1_ms = from_unlock(sh.as_ref().and_then(|s| s.t1_ms));
     p.sound2_ms = from_unlock(sh.as_ref().and_then(|s| s.t2_ms));
     p.sound3_ms = from_unlock(sh.as_ref().map(|s| s.t3_ms));
