@@ -171,6 +171,13 @@ the settings used are in `input.settings` (`calibre`, `bph`, `lift_deg`,
 `escape_teeth`). A watch whose rate differs from its calibre's (a
 modified movement) needs `--bph`.
 
+A sound file inside a take, one its folder's `session.toml` lists, is read
+with the take's settings by `analyze`, `profile`, `shape`, `long` and
+`series`, as the app opens it: a flag, then the session file's beat rate and
+lift angle, then its calibre's, then the default (`take::stream_settings`,
+the file found by `take_path::take_of`). A session file that can't be read
+leaves `analyze`, `profile` and `shape` on the file's own settings.
+
 Direct `analyze`, `long` and `series` read the same custom names, aliases and
 wheel overrides as `calibres` from `calibres.json`. A custom entry takes
 precedence over a matching shipped name, following the existing catalogue.

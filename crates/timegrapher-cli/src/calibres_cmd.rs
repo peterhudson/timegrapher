@@ -18,7 +18,8 @@ pub use timegrapher_core::take::DEFAULT_LIFT_DEG;
 /// a count.
 pub use timegrapher_core::take::ESCAPE_TEETH as DEFAULT_ESCAPE_TEETH;
 
-/// The settings `analyze` runs with: an explicit flag wins, then the
+/// The settings `analyze`, `profile` and `shape` run with: an explicit
+/// flag wins, then the take's session file ([`resolve_for`]), then the
 /// calibre's figure, then the default.
 pub struct Resolved {
     pub bph: Option<u32>,
@@ -41,6 +42,45 @@ pub fn resolve(
     }
     .resolve()?;
     Ok(resolve_train(train, bph, lift_deg, escape_teeth))
+}
+
+/// The settings a recording `file` is read with: for a sound file its
+/// folder's session file lists ([`timegrapher_core::take_path::take_of`]),
+/// the take's, as `series`, `long` and the app read it
+/// ([`timegrapher_core::take::stream_settings`]: a flag, then the session
+/// file, then its calibre, then the default); for any other, or one
+/// beside a session file that can't be read, [`resolve`]'s (#1573).
+pub fn resolve_for(
+    file: &std::path::Path,
+    calibre: Option<&str>,
+    bph: Option<u32>,
+    lift_deg: Option<f64>,
+    escape_teeth: Option<u32>,
+) -> Result<Resolved, String> {
+    // A session file that can't be read leaves the file's own reading
+    // standing, as `analyze` says beside it (`session_cmd::take_of`).
+    let listed = if file.is_dir() {
+        None
+    } else {
+        timegrapher_core::take_path::take_of(file).ok().flatten()
+    };
+    let Some((m, _)) = listed else {
+        return resolve(calibre, bph, lift_deg, escape_teeth);
+    };
+    let train = Train {
+        calibre,
+        escape_teeth,
+    }
+    .resolve_for_take(&m)?;
+    let given = timegrapher_core::take::Given { bph, lift_deg };
+    let set = timegrapher_core::take::stream_settings(&m, train.calibre.as_ref(), given).analysis;
+    Ok(Resolved {
+        bph: set.bph,
+        lift_deg: set.amplitude.lift_deg,
+        lift_known: set.lift_known,
+        escape_teeth: escape_teeth.unwrap_or(set.escape_teeth),
+        train,
+    })
 }
 
 fn resolve_train(
@@ -288,6 +328,36 @@ fn print_one(cat: &Catalog, e: Entry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A sound file its folder's session file lists is read with the
+    /// take's beat rate and lift angle, as `series` and the app read it; a
+    /// flag still wins, and a file the session file doesn't list is read
+    /// on its own (#1573).
+    #[test]
+    fn a_sound_file_in_a_take_is_resolved_with_its_session_file() {
+        let dir = std::env::temp_dir().join(format!("tg-resolve-for-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["take.wav", "other.wav"] {
+            std::fs::write(dir.join(name), []).unwrap();
+        }
+        std::fs::write(
+            dir.join(timegrapher_core::take::MANIFEST),
+            "bph = 28800\nlift = 55\n\n[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\n",
+        )
+        .unwrap();
+        let take = dir.join("take.wav");
+        let r = resolve_for(&take, None, None, None, None).unwrap();
+        assert_eq!((r.bph, r.lift_deg, r.lift_known), (Some(28800), 55.0, true));
+        let r = resolve_for(&take, None, Some(21600), Some(49.0), None).unwrap();
+        assert_eq!((r.bph, r.lift_deg), (Some(21600), 49.0));
+        let r = resolve_for(&dir.join("other.wav"), None, None, None, None).unwrap();
+        assert_eq!(
+            (r.bph, r.lift_deg, r.lift_known),
+            (None, DEFAULT_LIFT_DEG, false)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn flags_win_over_the_calibre_and_the_calibre_over_defaults() {

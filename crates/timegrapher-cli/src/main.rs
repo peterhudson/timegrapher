@@ -90,10 +90,13 @@ enum Command {
         /// --bph, --lift and --escape-teeth still win.
         #[arg(long)]
         calibre: Option<String>,
-        /// Beat rate in beats per hour (default: the calibre's, or guessed).
+        /// Beat rate in beats per hour (default: the take's, for a sound
+        /// file its folder's session.toml lists; else the calibre's, or
+        /// guessed).
         #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
-        /// Lift angle in degrees (default: the calibre's, or 52, named as
+        /// Lift angle in degrees (default: the take's, for a sound file its
+        /// folder's session.toml lists; else the calibre's, or 52, named as
         /// the default).
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
@@ -138,12 +141,14 @@ enum Command {
     /// Measure the three sounds of each side's beat.
     Shape {
         file: PathBuf,
-        /// Beat rate in beats per hour (guessed if omitted).
+        /// Beat rate in beats per hour (default: the take's, for a sound
+        /// file its folder's session.toml lists; else guessed).
         #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
-        /// Lift angle in degrees.
-        #[arg(long, default_value_t = timegrapher_core::take::DEFAULT_LIFT_DEG, value_parser = parse_lift)]
-        lift: f64,
+        /// Lift angle in degrees (default: the take's, for a sound file its
+        /// folder's session.toml lists; else 52).
+        #[arg(long, value_parser = parse_lift)]
+        lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
         notch: Vec<f64>,
@@ -169,12 +174,14 @@ enum Command {
         /// Length of the stretch, seconds.
         #[arg(long, default_value_t = 10.0)]
         span: f64,
-        /// Beat rate in beats per hour (guessed if omitted).
+        /// Beat rate in beats per hour (default: the take's, for a sound
+        /// file its folder's session.toml lists; else guessed).
         #[arg(long, value_parser = parse_bph)]
         bph: Option<u32>,
-        /// Lift angle in degrees.
-        #[arg(long, default_value_t = timegrapher_core::take::DEFAULT_LIFT_DEG, value_parser = parse_lift)]
-        lift: f64,
+        /// Lift angle in degrees (default: the take's, for a sound file its
+        /// folder's session.toml lists; else 52).
+        #[arg(long, value_parser = parse_lift)]
+        lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
         #[arg(long, value_delimiter = ',')]
         notch: Vec<f64>,
@@ -919,38 +926,39 @@ fn measure_command(c: Command) -> Result<(), String> {
             device,
             card_ppm,
             json,
-        } => calibres_cmd::resolve(calibre.as_deref(), bph, lift, escape_teeth).and_then(|r| {
-            let mut cfg = AnalysisConfig {
-                bph: r.bph,
-                escape_teeth: r.escape_teeth,
-                lift_known: r.lift_known,
-                ..Default::default()
-            };
-            cfg.amplitude.lift_deg = r.lift_deg;
-            cfg.envelope.notch_hz = notch;
-            cfg.envelope.highpass_hz = highpass;
-            let take = session_cmd::take_of(&file, bph, lift, calibre.clone());
-            clock_cmd::correction(&file, device.as_deref(), card_ppm).and_then(|c| {
-                run_analyze(
-                    &file,
-                    &cfg,
-                    &r.train,
-                    (
-                        beats,
-                        windows,
-                        trend.map(|path| TrendOut {
-                            path,
-                            average_s: trend_average,
-                            card_ppm,
-                            device: device.clone(),
-                        }),
-                    ),
-                    c,
-                    take,
-                    json,
-                )
-            })
-        }),
+        } => calibres_cmd::resolve_for(&file, calibre.as_deref(), bph, lift, escape_teeth)
+            .and_then(|r| {
+                let mut cfg = AnalysisConfig {
+                    bph: r.bph,
+                    escape_teeth: r.escape_teeth,
+                    lift_known: r.lift_known,
+                    ..Default::default()
+                };
+                cfg.amplitude.lift_deg = r.lift_deg;
+                cfg.envelope.notch_hz = notch;
+                cfg.envelope.highpass_hz = highpass;
+                let take = session_cmd::take_of(&file, bph, lift, calibre.clone());
+                clock_cmd::correction(&file, device.as_deref(), card_ppm).and_then(|c| {
+                    run_analyze(
+                        &file,
+                        &cfg,
+                        &r.train,
+                        (
+                            beats,
+                            windows,
+                            trend.map(|path| TrendOut {
+                                path,
+                                average_s: trend_average,
+                                card_ppm,
+                                device: device.clone(),
+                            }),
+                        ),
+                        c,
+                        take,
+                        json,
+                    )
+                })
+            }),
         Command::Shape {
             file,
             bph,
@@ -960,49 +968,58 @@ fn measure_command(c: Command) -> Result<(), String> {
             json,
             templates,
         } => {
+            let r = calibres_cmd::resolve_for(&file, None, bph, lift, None)?;
             let envelope = timegrapher_core::dsp::EnvelopeConfig {
                 notch_hz: notch,
                 highpass_hz: highpass,
                 ..Default::default()
             };
             let o = shape_cmd::Options {
-                bph,
+                bph: r.bph,
                 envelope,
-                lift_deg: lift,
+                lift_deg: r.lift_deg,
                 json,
                 templates: templates.as_deref(),
             };
             shape_cmd::run(&file, &o)
         }
-        Command::Profile {
-            file,
-            at,
-            span,
-            bph,
-            lift,
-            notch,
-            highpass,
-            json,
-            svg,
-        } => {
-            let mut cfg = AnalysisConfig {
-                bph,
-                ..Default::default()
-            };
-            cfg.amplitude.lift_deg = lift;
-            cfg.envelope.notch_hz = notch;
-            cfg.envelope.highpass_hz = highpass;
-            let o = profile_cmd::Options {
-                cfg,
-                at_s: at,
-                span_s: span,
-                json,
-                svg: svg.as_deref(),
-            };
-            profile_cmd::run(&file, &o)
-        }
+        c @ Command::Profile { .. } => profile_command(c),
         _ => unreachable!("run passes measure_command only Analyze, Shape, Profile"),
     }
+}
+
+/// Profile: the sound of the Tick and of the Tock over a stretch.
+fn profile_command(c: Command) -> Result<(), String> {
+    let Command::Profile {
+        file,
+        at,
+        span,
+        bph,
+        lift,
+        notch,
+        highpass,
+        json,
+        svg,
+    } = c
+    else {
+        unreachable!("measure_command passes profile_command only Profile")
+    };
+    let r = calibres_cmd::resolve_for(&file, None, bph, lift, None)?;
+    let mut cfg = AnalysisConfig {
+        bph: r.bph,
+        ..Default::default()
+    };
+    cfg.amplitude.lift_deg = r.lift_deg;
+    cfg.envelope.notch_hz = notch;
+    cfg.envelope.highpass_hz = highpass;
+    let o = profile_cmd::Options {
+        cfg,
+        at_s: at,
+        span_s: span,
+        json,
+        svg: svg.as_deref(),
+    };
+    profile_cmd::run(&file, &o)
 }
 
 /// Long and series: the commands that read a long run.
@@ -2101,7 +2118,7 @@ mod numeric_input_tests {
             }
         ));
         let parsed = Cli::try_parse_from(args("shape")).unwrap();
-        assert!(matches!(parsed.command, Command::Shape { lift: 52.0, .. }));
+        assert!(matches!(parsed.command, Command::Shape { lift: None, .. }));
         for ppm in ["0", "-12.5", "-999999.9999999999", "12.5"] {
             assert!(Cli::try_parse_from([
                 "timegrapher",

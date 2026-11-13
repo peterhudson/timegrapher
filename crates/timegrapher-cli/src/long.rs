@@ -116,7 +116,7 @@ impl Train<'_> {
     /// The train of the take `m`: a calibre given is looked up; the
     /// session file's may be a label of the owner's own, as `session`
     /// reads it.
-    fn resolve_for_take(
+    pub(crate) fn resolve_for_take(
         &self,
         m: &timegrapher_core::session::Manifest,
     ) -> Result<ResolvedTrain, String> {
