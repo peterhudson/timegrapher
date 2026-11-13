@@ -16,7 +16,7 @@ use egui_plot::{
     Text, VLine,
 };
 use serde::{Deserialize, Serialize};
-use timegrapher_core::figure_text::true_minus;
+use timegrapher_core::figure_text::{figure_minus, true_minus};
 use timegrapher_core::library::length_text;
 use timegrapher_core::live::LiveAnalyzer;
 use timegrapher_core::longrun;
@@ -367,71 +367,12 @@ pub fn compute_with(
     }
 }
 
-/// The statistics behind a series' headline, on one line: readings,
-/// median, spread, scatter from one reading to the next, lag-1
-/// correlation and Ljung–Box p, the trend and the stretches of one level
-/// (each with why the headline leaves it out, if it does), and the
-/// period when found.
+/// The statistics behind a series' headline, on one line, as core writes
+/// it for every screen ([`SeriesCheck::stats_line`], with a true minus).
+/// Read fresh, not from `screen_stats`, so a check changed after it was
+/// made (as tests do) says what it holds.
 fn stats_line(c: &SeriesCheck) -> String {
-    let (sp, u) = steadiness::unit_after(c.unit);
-    // At the series' own place, as its readings are written (#1470); a
-    // true minus sign, as in the readings.
-    let places = c.series.digits();
-    let at = |v: f64| true_minus(&format!("{v:.places$}"));
-    let n = |v: f64| true_minus(&format!("{v:.2}"));
-    let mut parts = vec![format!("Tested on {}", counted(c.readings, c.step_s))];
-    if c.outliers > 0 {
-        parts.push(format!(
-            "{} left out as more than 6 σ from their 5-minute level",
-            c.outliers
-        ));
-    }
-    if let Some(m) = c.median {
-        parts.push(format!("median {}{sp}{u}", at(m)));
-    }
-    if let Some(sd) = c.sd {
-        parts.push(format!("SD {}{sp}{u}", at(sd)));
-    }
-    if let Some(st) = c.short_term_sd {
-        // A spread after a ± reads as one: rounded up, as core's
-        // headline writes it (Norm, #1470).
-        parts.push(format!("±{} reading to reading", c.series.fmt_pm(st)));
-    }
-    if let Some(a) = &c.autocorrelation {
-        let lag1 = a.lag_s.iter().zip(&a.r).find(|(l, _)| **l > 0.0);
-        if let Some((_, r1)) = lag1 {
-            parts.push(format!("lag-1 r {}", n(*r1)));
-        }
-        parts.push(format!("Ljung–Box p {}", steadiness::p_text(a.p_value)));
-    }
-    // A trend or a split of levels the headline leaves out says why, in
-    // core's words (Trend::note, Changes::note), as `series` and the MCP
-    // view say it.
-    let why = |n: &Option<String>| n.as_ref().map_or(String::new(), |n| format!(", {n}"));
-    if let Some(t) = &c.trend {
-        parts.push(format!(
-            "trend {}/h{}",
-            true_minus(&c.series.fmt_per_hour(t.per_hour)),
-            why(&t.note)
-        ));
-    }
-    if let Some(ch) = c.changes.as_ref().filter(|ch| ch.segments.len() > 1) {
-        parts.push(format!(
-            "{} stretches of one level{}",
-            ch.segments.len(),
-            why(&ch.note)
-        ));
-    }
-    if let Some(p) = &c.period {
-        parts.push(format!("period {:.0} s", p.period_s));
-    }
-    parts.join(" · ")
-}
-
-/// What a count of readings `step_s` long counts: "179 10 s readings";
-/// readings shorter than 10 s are windows, "880 2 s windows".
-fn counted(n: usize, step_s: f64) -> String {
-    format!("{n} {}", steady_views::readings_kind(step_s))
+    figure_minus(&c.stats_line())
 }
 
 fn series_colour(k: SeriesKind, pal: &theme::Palette) -> Color32 {

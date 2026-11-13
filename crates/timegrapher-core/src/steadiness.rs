@@ -421,6 +421,10 @@ pub struct SeriesCheck {
     /// view show these; files, pipes and the model keep the ASCII minus.
     pub screen_headline: String,
     pub screen_summary: String,
+    /// [`SeriesCheck::stats_line`], the statistics behind the headline on
+    /// one line, as a screen shows it (true minus): the app's Steadiness
+    /// Info and the MCP view show this one text.
+    pub screen_stats: String,
     /// Length of each reading, seconds; readings used; readings left out
     /// as outliers.
     pub step_s: f64,
@@ -1058,6 +1062,7 @@ pub fn check_series(
         summary: String::new(),
         screen_headline: String::new(),
         screen_summary: String::new(),
+        screen_stats: String::new(),
         step_s: g.step,
         cycle_step_s: fine.as_ref().map_or(g.step, |f| f.step),
         readings: n,
@@ -2021,6 +2026,7 @@ impl SeriesCheck {
     fn set_screen_text(&mut self) {
         self.screen_headline = crate::figure_text::figure_minus(&self.headline);
         self.screen_summary = crate::figure_text::figure_minus(&self.summary);
+        self.screen_stats = crate::figure_text::figure_minus(&self.stats_line());
     }
 
     /// The period search's line when it turns in under three of the
@@ -2782,6 +2788,9 @@ mod cycle_search;
 
 #[path = "steadiness_white.rs"]
 mod white;
+
+#[path = "steadiness_stats.rs"]
+mod stats;
 use cycle_search::cycle;
 #[cfg(test)]
 use cycle_search::{refined_candidates, same_peaks_once, strongest_cycle};

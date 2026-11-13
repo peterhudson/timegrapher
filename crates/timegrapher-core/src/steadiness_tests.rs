@@ -2453,3 +2453,44 @@ fn spreads_and_differences_take_their_places() {
     assert_eq!(Rate.fmt_per_hour(1.27), "+1.27 s/d");
     assert_eq!(BeatError.fmt_per_hour(-0.0004), "0.000 ms");
 }
+
+/// The stats line is core's one text for every screen: `screen_stats` is
+/// `stats_line` with a true minus on each figure, and its figures sit at
+/// the headline's places (#1470; Max, the app and the MCP view alike).
+#[test]
+fn the_stats_line_is_one_text_with_a_screen_copy() {
+    let y: Vec<f64> = (0..60)
+        .map(|i| -5.0 + 0.3 * (i as f64 * 1.7).sin())
+        .collect();
+    let s = check_series(
+        SeriesKind::Rate,
+        Grid {
+            t0: 0.0,
+            step: 10.0,
+            y,
+        },
+        None,
+        None,
+        None,
+        &[],
+        &Config::default(),
+    );
+    let line = s.stats_line();
+    assert!(
+        line.starts_with("Tested on 60 10 s readings · median -5.0 s/d"),
+        "{line}"
+    );
+    let pm = s.series.fmt_pm(s.short_term_sd.expect("a short-term SD"));
+    assert!(
+        line.contains(&format!("±{pm} reading to reading")),
+        "{line}"
+    );
+    assert!(line.contains("lag-1 r "), "{line}");
+    assert_eq!(s.screen_stats, crate::figure_text::figure_minus(&line));
+    assert!(
+        s.screen_stats.contains("median \u{2212}5.0 s/d"),
+        "{}",
+        s.screen_stats
+    );
+    assert!(s.screen_stats.contains("lag-1 r"), "{}", s.screen_stats);
+}
