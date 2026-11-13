@@ -639,6 +639,16 @@ pub(crate) const ENGINE: &str = concat!(
     env!("TIMEGRAPHER_ENGINE_SOURCE")
 );
 
+/// The engine a kept reading was read by, as the Watches list names it
+/// (#1521): this build's version as it is (a suffix such as `-dev`
+/// kept) and the first 8 hex digits of core's source hash, which tell
+/// two builds of one version apart. Every reading [`reading`] gives is
+/// this engine's: one kept by another is read again.
+pub fn engine() -> (&'static str, &'static str) {
+    let (version, source) = ENGINE.split_once('+').unwrap_or((ENGINE, ""));
+    (version, source.get(..8).unwrap_or(source))
+}
+
 fn readings_path() -> Option<PathBuf> {
     crate::clockstore::config_dir().map(|d| d.join(READINGS_FILE))
 }
