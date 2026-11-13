@@ -525,6 +525,9 @@ pub(crate) struct Seen<'a> {
     /// The jump whose sides are still to be checked, seconds: a swap may
     /// still come at it.
     pub pending: Option<f64>,
+    /// Whether the watch has been heard: until it is, the beat rate is
+    /// guessed again from each chunk, so `bph` may change.
+    pub heard: bool,
 }
 
 /// [`analyze_fed`], with `seen` shown each chunk once it is analysed, in
@@ -671,6 +674,7 @@ fn in_order(
                 bph: st.bph,
                 swaps: &st.swaps,
                 pending: st.sides.pending_since(),
+                heard: st.template.is_some(),
             });
             // The last chunk's end is reported once, by the caller.
             if c.core_b.is_finite() {

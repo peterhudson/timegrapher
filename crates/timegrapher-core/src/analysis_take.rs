@@ -400,7 +400,7 @@ pub fn measure_from(
     for path in files {
         audio::stream(path, 1 << 16, |block| {
             second.audio(block);
-            second.profile_until(&log.beats, log.bph, cfg, usize::MAX);
+            second.profile_until(&log.beats, log.bph, cfg, (usize::MAX, None));
             progress(first + second.read() as f64 / fs);
         })?;
     }
