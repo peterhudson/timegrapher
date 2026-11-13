@@ -1499,7 +1499,7 @@ impl Frame<'_> {
             };
             let labelled = k % every == 0;
             if labelled && room > if horizontal { 14.0 } else { 34.0 } {
-                painter.text(at, align, axis_ms(ms), font.clone(), text);
+                painter.text(at, align, axis_ms(ms, step), font.clone(), text);
             }
             k += 1;
         }
