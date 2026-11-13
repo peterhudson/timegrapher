@@ -43,6 +43,20 @@ pub const RATE_RUN_S: f64 = 300.0;
 /// 10 s average.
 pub const SCATTER_LOOKBACK_S: f64 = 15.0;
 
+/// The rate windows' length and step, as every reading lays them
+/// ([`measure::RATE_WINDOW_S`], [`measure::RATE_WINDOW_STEP_S`]).
+const RATE_W: f64 = measure::RATE_WINDOW_S;
+const RATE_STEP: f64 = measure::RATE_WINDOW_STEP_S;
+
+/// How far back the take's rate windows are first looked for when a run
+/// holds too few for the rate's ±, s: 120 s, shorter than a saved
+/// reading's [`crate::session::RATE_FIRST_REACH_S`] because the run's own
+/// windows are counted with the borrowed ones and most often hold nearly
+/// all of them; the reach doubles from there (`session::nearest_windows`).
+const RATE_FIRST_REACH_S: f64 = measure::RATE_SE_MIN_S * RATE_FIRST_REACH_SHARE;
+/// [`RATE_FIRST_REACH_S`] as a share of the beats the rate's ± needs.
+const RATE_FIRST_REACH_SHARE: f64 = 0.4;
+
 use crate::stream::BeatLog;
 use serde::Serialize;
 
@@ -1102,9 +1116,7 @@ impl LiveAnalyzer {
             clipped_fraction,
             watch_heard,
             rate_error_s_per_day: assessment.confidence.and_then(|c| c.rate.se),
-            rate_noise_values: take_rate
-                .len()
-                .div_ceil(2)
+            rate_noise_values: crate::confidence::rate_value_count(take_rate.len())
                 .min(crate::confidence::MIN_NOISE_VALUES),
             amplitude_values: wins.iter().filter(|w| w.mean().is_some()).count(),
             amplitude_noise_values: take_amp
@@ -1265,8 +1277,15 @@ impl LiveAnalyzer {
         let floor = st.from.min(end_s - RATE_RUN_S);
         let from = floor.max(st.holes.run_cut(&self.beats, floor, end_s));
         let windows = bph.map_or_else(Vec::new, |b| {
-            st.holes
-                .windows(self.beats_from(st, from), b, from, end_s, 10.0, 5.0, GAP_S)
+            st.holes.windows(
+                self.beats_from(st, from),
+                b,
+                from,
+                end_s,
+                RATE_W,
+                RATE_STEP,
+                GAP_S,
+            )
         });
         (from, windows)
     }
@@ -1286,12 +1305,12 @@ impl LiveAnalyzer {
         bph.map_or_else(Vec::new, |b| {
             crate::session::nearest_windows(
                 (run_from, run_from, run_from),
-                // A short reach first: the run most often holds nearly
-                // all of the values.
-                measure::RATE_SE_MIN_S / 2.5,
+                RATE_FIRST_REACH_S,
                 |a, _| {
                     let beats = self.beats_from(st, a);
-                    let mut w = st.holes.windows(beats, b, a, run_from, 10.0, 5.0, GAP_S);
+                    let mut w = st
+                        .holes
+                        .windows(beats, b, a, run_from, RATE_W, RATE_STEP, GAP_S);
                     w.extend_from_slice(run);
                     w
                 },
@@ -1305,7 +1324,7 @@ impl LiveAnalyzer {
     fn take_amplitude_windows(&self, st: &Stretch, end_s: f64) -> Vec<&AmplitudeWindow> {
         crate::session::nearest_windows(
             (end_s, end_s, end_s),
-            2.0 * measure::RATE_SE_MIN_S,
+            crate::session::AMPLITUDE_FIRST_REACH_S,
             |a, _| crate::session::stretch_windows(&st.holes, self.amp_within(a, end_s), a, end_s),
             |w: &[&AmplitudeWindow]| crate::session::noise_enough(w),
         )

@@ -102,7 +102,7 @@ The window has one row at the top, then the cards, the panes and the status bar 
   - the first line answers "what is this?" in one sentence (hovering shows only this line);
   - then short headed groups, such as **What It Shows**, **Controls** and **Reading It**, each a few bullets;
   - then the toolbar's icon key, where there is one.
-  - Today's help (`help.rs`) is paragraphs only, so the help pop-up needs to draw headings and bullets.
+  - Each help text is a list of strings in `help.rs`, and a line's start sets how it is drawn: the first is the answer, `## ` a group heading, `- ` a bullet and `1. ` a step (both hanging from their mark), anything else a short paragraph. The test `every_help_text_has_its_shape` holds the rules: a one-sentence answer, a heading whenever there are more than two lines, at most two sentences and 220 characters a line, and at most six bullets a group.
 - **Hints:** start with the control's name, then what it does, in one or two sentences: "Rescan: Look for microphones again, after plugging one in."
 - **Facts only:** "Keep this off. It raises the level between ticks…" states a setting's effect. "Your watch is running well" judges, so it never appears.
 - **Say what a number counts:** "179 10 s readings", "2 s windows (897)". Never a bare count above a plot that draws something else.

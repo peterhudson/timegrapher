@@ -1408,10 +1408,9 @@ pub fn pane(
     free: Option<&FreeTable>,
     live: Option<&FreeCell>,
     settle_s: f64,
-    measure_s: f64,
     watch: bool,
     note: Option<&str>,
-    card: &str,
+    (card, info): (&str, bool),
 ) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
@@ -1425,61 +1424,72 @@ pub fn pane(
     if changed {
         area = area.vertical_scroll_offset(0.0);
     }
-    area.show(ui, |ui| {
-        ui.spacing_mut().item_spacing.y = 6.0;
-        if let Some(n) = note {
-            ui.label(RichText::new(n).color(pal.text_secondary));
-        }
-        if let (Some(t), Some(ph)) = (test, phase) {
-            if ph != Phase::Finished {
-                action = banner(ui, t, ph, None);
-                ui.add_space(6.0);
+    let lines = info_lines(settle_s);
+    let panel = |ui: &mut egui::Ui, h: f32| {
+        theme::info_text(
+            ui,
+            egui::Id::new("positions info panel"),
+            ("Table", &lines),
+            h,
+        );
+    };
+    theme::with_info(ui, info, egui::Id::new("positions info"), panel, |ui| {
+        area.show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
+            if let Some(n) = note {
+                ui.label(RichText::new(n).color(pal.text_secondary));
             }
-        }
-        if let Some(t) = test {
-            this_test(ui, t, phase, live);
-        }
-        // An opened 24 hour half shows the run as saved, not read again.
-        match (test, saved) {
-            (None, Some(s)) => saved_test(ui, s),
-            (None, None) => {
-                if let Some(f) = free {
-                    this_take(ui, f, card, settle_s);
+            if let (Some(t), Some(ph)) = (test, phase) {
+                if ph != Phase::Finished {
+                    action = banner(ui, t, ph, None);
+                    ui.add_space(6.0);
                 }
             }
-            _ => {}
-        }
-        let c = match test {
-            Some(t) => t
-                .full
-                .as_ref()
-                .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
-            None => saved.and_then(saved_comparison),
-        };
-        if let Some(c) = &c {
-            ui.add_space(10.0);
-            heading(
-                ui,
-                &format!("Full Wind Against {:.1} Hours", c.hours),
-                "The full-wind test loaded at the start, against this one, run without \
-                     winding or wearing the watch in between",
-            );
-            comparison_grid(ui, c);
-        }
-        if let Some(full) = earlier {
-            ui.add_space(10.0);
-            if earlier_section(ui, full, phase) {
-                action = Some(Action::ClearEarlier);
+            if let Some(t) = test {
+                this_test(ui, t, phase, live);
             }
-        }
-        ui.add_space(10.0);
-        let about = about_text(test, earlier, settle_s, measure_s, watch);
-        if !about.is_empty() {
-            ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
-        }
-        if let Some(t) = test {
-            test_footer(ui, t);
-        }
+            // An opened 24 hour half shows the run as saved, not read again.
+            match (test, saved) {
+                (None, Some(s)) => saved_test(ui, s),
+                (None, None) => {
+                    if let Some(f) = free {
+                        this_take(ui, f, card);
+                    }
+                }
+                _ => {}
+            }
+            let c = match test {
+                Some(t) => t
+                    .full
+                    .as_ref()
+                    .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
+                None => saved.and_then(saved_comparison),
+            };
+            if let Some(c) = &c {
+                ui.add_space(10.0);
+                heading(
+                    ui,
+                    &format!("Full Wind Against {:.1} Hours", c.hours),
+                    "The full-wind test loaded at the start, against this one, run without \
+                     winding or wearing the watch in between",
+                );
+                comparison_grid(ui, c);
+            }
+            if let Some(full) = earlier {
+                ui.add_space(10.0);
+                if earlier_section(ui, full, phase) {
+                    action = Some(Action::ClearEarlier);
+                }
+            }
+            ui.add_space(10.0);
+            let about = about_text(test, earlier, (watch, saved.is_some()));
+            if !about.is_empty() {
+                ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
+            }
+            if let Some(t) = test {
+                test_footer(ui, t);
+            }
+        });
     });
     action
 }
@@ -1550,8 +1560,7 @@ pub(crate) fn test_table(
 
 /// This take's positions, as marked on the card, with what the table
 /// leaves out.
-fn this_take(ui: &mut egui::Ui, f: &FreeTable, card: &str, settle_s: f64) {
-    let pal = theme::pal(ui);
+fn this_take(ui: &mut egui::Ui, f: &FreeTable, card: &str) {
     heading(
         ui,
         "This Take",
@@ -1561,22 +1570,18 @@ fn this_take(ui: &mut egui::Ui, f: &FreeTable, card: &str, settle_s: f64) {
         ),
     );
     free_grid(ui, f);
-    ui.add_space(4.0);
-    for line in [
+}
+
+/// The Info panel's lines (#1528): how the table for a take is read.
+fn info_lines(settle_s: f64) -> Vec<String> {
+    vec![
         format!(
-            "Duration leaves out the first {} after each change of position \
-                 (Settle) and masked time.",
+            "Duration leaves out the first {} after each change of position (Settle) and \
+             masked time.",
             table_duration(settle_s)
         ),
         "A position shows readings once it has 10 s.".to_string(),
-        "Each Position applies only to the guided test.".to_string(),
-    ] {
-        ui.label(
-            RichText::new(format!("• {line}"))
-                .small()
-                .color(pal.text_tertiary),
-        );
-    }
+    ]
 }
 
 /// The full-wind results loaded from earlier, with Remove while no test
@@ -1615,45 +1620,31 @@ fn earlier_section(ui: &mut egui::Ui, full: &FullWind, phase: Option<Phase>) -> 
     removed
 }
 
-/// What the pane says under its tables: how the test runs, or what to do
-/// for the test 24 hours after winding.
+/// What the pane says under its tables, in one line: the next thing to
+/// do. With nothing yet, where the test starts; with full-wind results
+/// loaded, what the next test does with them; after a full-wind test, the
+/// test 24 hours after winding. The steps are in its "?" (Hugh, #1528).
+/// None over an opened 24 hour half (`saved`), whose tables have rows.
 fn about_text(
     test: Option<&Test>,
     earlier: Option<&FullWind>,
-    settle_s: f64,
-    measure_s: f64,
-    watch: bool,
-) -> String {
+    (watch, saved): (bool, bool),
+) -> &'static str {
     match (test, earlier) {
-        (None, None) => format!(
-            "Start Test, on the Listen card, leads you through the six positions:\n\
-                 1. It says which position to turn the watch to.\n\
-                 2. It lets the watch settle {settle_s:.0} s.\n\
-                 3. It measures it for {measure_s:.0} s and fills in its row.\n\
-                 After the sixth it ends by itself and keeps the take. {}",
-            if watch {
-                "For the test 24 hours after winding, leave the watch unwound and off the \
-                 wrist, then set Wind to 24 Hours After."
-            } else {
-                "For the test 24 hours after winding, save the results, leave the watch \
-                 unwound and off the wrist, then load them with Load Full-Wind Results… before Start Test."
-            }
-        ),
-        (None, Some(_)) => "Start Test runs the six positions again and sets them \
-                 against these results."
-            .to_string(),
+        (None, None) if saved => "",
+        (None, None) => "New Test leads you through the six positions.",
+        (None, Some(_)) => {
+            "Start Test runs the six positions again and sets them against these results."
+        }
         (Some(t), _) if t.readings.is_some() && t.full.is_none() && watch => {
             "For the same test 24 hours after winding, leave the watch unwound and off \
                  the wrist, then set Wind to 24 Hours After and press New Test."
-                .to_string()
         }
         (Some(t), _) if t.readings.is_some() && t.full.is_none() => {
-            "For the same test 24 hours after winding, save these results with Save \
-                 Results for 24 Hours… (or save the session, which keeps them), leave the \
-                 watch unwound and off the wrist, then load them and start the test again."
-                .to_string()
+            "For the same test 24 hours after winding, first keep these results with Save \
+                 Results for 24 Hours\u{2026}. \"?\" has the steps."
         }
-        _ => String::new(),
+        _ => "",
     }
 }
 

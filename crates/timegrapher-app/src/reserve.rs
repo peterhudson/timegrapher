@@ -332,22 +332,11 @@ fn pause_hint() -> String {
     )
 }
 
-/// The Info panel: its paragraphs, scrolling, no taller than `max_h`,
-/// their words selectable, opening at the top each time it is shown.
+/// The Info panel: its paragraphs under "Run", as [`theme::info_text`]
+/// draws them.
 fn info_panel(ui: &mut egui::Ui, lines: &[String], max_h: f32) {
-    let pal = theme::pal(ui);
-    theme::info_scroll(ui, egui::Id::new("reserve info panel"), max_h, |ui| {
-        ui.spacing_mut().item_spacing.y = 8.0;
-        ui.label(theme::caption("Run").color(pal.text_secondary));
-        for (i, l) in lines.iter().enumerate() {
-            let colour = if i == 0 { pal.text } else { pal.text_secondary };
-            ui.add(
-                egui::Label::new(RichText::new(l).small().color(colour))
-                    .wrap()
-                    .selectable(true),
-            );
-        }
-    });
+    let id = egui::Id::new("reserve info panel");
+    theme::info_text(ui, id, ("Run", lines), max_h);
 }
 
 /// Before a run: one line of what to do, with a warning when the disk

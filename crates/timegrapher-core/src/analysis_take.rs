@@ -701,6 +701,10 @@ fn report_entries(
     })
 }
 
+/// The report's `left_out` line for a take kept as its analysis alone,
+/// which has no sound to carry.
+pub const REPORT_NO_SOUND: &str = "the sound: the take was kept as its analysis alone";
+
 /// The report's `left_out` line when [`report_analysis`] fails with `e`.
 pub fn report_analysis_failed(e: &str) -> String {
     format!("the take's analysis, which couldn't be read: {e}")

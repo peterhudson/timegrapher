@@ -33,6 +33,7 @@ menu.
 | 3 | **Save as CSV…** (comma-separated values, which any spreadsheet opens) | Saves the watch, its calibre, beat rate and lift angle, when the test began, its settling and measuring times, and the tables. | For a spreadsheet or a service record. |
 | 4 | **Copy** | The same, on the clipboard, with tabs between the columns. | To paste elsewhere. |
 | | **Save Results for 24 Hours…** | After a test at full wind: saves its results for the test 24 hours later. Saving the session keeps them too. | To compare later. |
+| | **Info** (the "i", at the right) | Opens a panel with how a take's table is read: what Duration leaves out, and when a position shows figures. | To check why a position's time or figures look short. |
 
 Settle and Each Position are kept between runs.
 
@@ -106,6 +107,8 @@ less the Settle at the start of each stretch and any masked time. A
 position needs 10 s before it shows figures ("Under 10 s"), and one never
 marked reads "Not marked". The Average and Largest Difference rows follow
 once two positions have figures.
+Under the tables, one line says what to do next, such as "New Test leads
+you through the six positions."; the steps are in the pane's **?**.
 
 ## Full Wind against 24 Hours
 

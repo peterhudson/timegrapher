@@ -2112,8 +2112,10 @@ pub struct TimegrapherApp {
     pane_top: f32,
     /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
-    /// The Power Reserve pane's Info panel open (#1528).
+    /// The Power Reserve and Positions Test panes' Info panels open
+    /// (#1528).
     reserve_info: bool,
+    positions_info: bool,
     /// The histograms count the readings rather than each 2 seconds of
     /// beats.
     hist_readings: bool,
@@ -2346,6 +2348,7 @@ impl TimegrapherApp {
             dist_series: self.dist_series,
             hist_cumulative: self.hist_cumulative,
             reserve_info: self.reserve_info,
+            positions_info: self.positions_info,
             hist_readings: self.hist_readings,
             iso_view: self.iso_view,
             sound: self.sound_opts,
@@ -2406,6 +2409,7 @@ impl TimegrapherApp {
             dist_series,
             hist_cumulative,
             reserve_info,
+            positions_info,
             hist_readings,
             iso_view,
             sound,
@@ -2449,8 +2453,7 @@ impl TimegrapherApp {
         } = s;
         (self.watch_list_shows, self.after_save_command) = (watch_list_shows, after_save_command);
         self.settings_last = Tab::from_key(&settings_section);
-        self.listen_at_open = listen_at_open;
-        self.ten_positions = ten_positions;
+        (self.listen_at_open, self.ten_positions) = (listen_at_open, ten_positions);
         (self.poise_view, self.poise_info) = (poise_view, poise_info);
         (self.mic_set_up, self.setup_declined) = (mic_set_up, setup_declined);
         self.agc_on = agc_on;
@@ -2479,12 +2482,12 @@ impl TimegrapherApp {
         self.chart_series = some(chart_series);
         self.dist_series = some(dist_series);
         (self.hist_cumulative, self.reserve_info) = (hist_cumulative, reserve_info);
+        self.positions_info = positions_info;
         (self.hist_readings, self.iso_view) = (hist_readings, iso_view);
         self.sound_opts = sound;
         self.folded = folded.into_iter().collect();
         self.theme = theme;
-        self.periods_db = periods_db;
-        self.fft_timing = fft_timing;
+        (self.periods_db, self.fft_timing) = (periods_db, fft_timing);
         self.maps_db = steady::PerPane::new(maps_db_set, maps_db);
         self.show_wheels = steady::PerPane::new(show_wheels_set, show_wheels);
         self.steady_info = steady::PerPane::new(steady_info_set, steady_info);
@@ -2665,6 +2668,7 @@ impl TimegrapherApp {
             pane_top: 0.0,
             hist_cumulative: false,
             reserve_info: false,
+            positions_info: false,
             steady_series: Default::default(),
             periods_db: false,
             fft_timing: false,
@@ -3118,10 +3122,7 @@ impl TimegrapherApp {
                 isochronism::view_choice(ui, &mut self.iso_view);
                 self.export_button(ui, pane)
             }),
-            Pane::PositionsTest => theme::pane_toolbar(ui, title, &help::POSITIONS_TEST, |ui| {
-                self.positions_settings(ui);
-                self.export_button(ui, pane);
-            }),
+            Pane::PositionsTest => self.positions_tools(ui, title),
             Pane::DynamicPoise => self.poise_tools(ui, title),
             Pane::PowerReserve => self.reserve_toolbar(ui, title),
             Pane::Distributions => theme::pane_toolbar(ui, title, &help::HISTOGRAMS, |ui| {

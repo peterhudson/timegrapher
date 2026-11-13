@@ -13,16 +13,7 @@ impl TimegrapherApp {
         let help = help::power_reserve(self.position_card_title);
         let help: Vec<&str> = help.iter().map(String::as_str).collect();
         let mut info = self.reserve_info;
-        let mut pin = |ui: &mut egui::Ui| {
-            let accent = theme::pal(ui).accent;
-            if theme::icon_toggle(ui, Icon::Info, info, accent)
-                .on_hover_text(RESERVE_INFO_HINT)
-                .clicked()
-            {
-                info = !info;
-            }
-        };
-        theme::pane_toolbar_pinned(ui, title, &help, Some(&mut pin), |ui| {
+        theme::pane_toolbar_info(ui, title, &help, (&mut info, RESERVE_INFO_HINT), |ui| {
             self.reserve_settings(ui);
         });
         self.reserve_info = info;

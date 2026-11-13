@@ -169,27 +169,41 @@ const MANAGE_HINT: &str = "Every calibre in a table to search, sort and filter, 
 
 pub const MANAGE_HELP: &[&str] = &[
     "Every calibre the app knows, in a table, with the ones you added under the maker Custom, \
-     always at the top. The search over the table finds a calibre by its maker and name \
-     together, with the count beside it. Click a column's heading to sort on it, and again to \
-     reverse. The ▾ beside each heading sorts on that column, clears its filter, and picks which \
-     of its values show, ticked and applied with OK; the filters combine, a column filtered \
-     shows a funnel for its ▾, and its Clear Filter shows that column's values again. A dim \
-     \"—\" is a figure the list doesn't give.",
-    "A column filter's search lists the values holding what you type; in Maker and Calibre it also \
-     finds a calibre by one of its other names, or its maker under any of the maker's names. \
-     With a search typed, (Select All Search Results) picks just the values it lists. The star \
-     column's funnel shows just your short list (Starred).",
-    "Click the star in a calibre's row to put it on your short list, which the Calibre menu \
-     offers; a filled star is on it. The list starts as the common and modern calibres; Reset \
-     the Short List, in the star column's funnel, goes back to them.",
-    "The calibre selected shows in full: maker, beat rate, lift angle and escape wheel, each \
-     wheel's time for one turn with where it comes from, the list's sources and notes. Type a \
-     wheel's period you know into a blank and it is kept for this calibre, marked Custom; add \
-     another wheel by name and period with Add a Wheel… at the foot of the wheels, then Add. Share with the Project \
-     opens a GitHub issue with what you added, to send from your browser.",
-    "New Custom Calibre…, at the right of the search, adds one the list doesn't have, with \
-     no wheels assumed; its name, maker, beat rate and lift angle are edited here, its \
-     balance's period follows the beat rate typed, and Delete Calibre is at the foot.",
+     always at the top.",
+    "## The Table",
+    "- The search over the table finds a calibre by its maker and name together, with the \
+     count beside it.",
+    "- Click a column's heading to sort on it, and again to reverse.",
+    "- The ▾ beside each heading sorts on that column, clears its filter, and picks which of \
+     its values show, ticked and applied with OK.",
+    "- The filters combine. A column filtered shows a funnel for its ▾, and its Clear Filter \
+     shows that column's values again.",
+    "- A dim \"—\" is a figure the list doesn't give.",
+    "## Filters",
+    "- A column filter's search lists the values holding what you type.",
+    "- In Maker and Calibre it also finds a calibre by one of its other names, or its maker \
+     under any of the maker's names.",
+    "- With a search typed, (Select All Search Results) picks just the values it lists.",
+    "- The star column's funnel shows just your short list (Starred).",
+    "## Short List",
+    "- Click the star in a calibre's row to put it on your short list, which the Calibre menu \
+     offers; a filled star is on it.",
+    "- The list starts as the common and modern calibres. Reset the Short List, in the star \
+     column's funnel, goes back to them.",
+    "## The Calibre Selected",
+    "- It shows in full: maker, beat rate, lift angle and escape wheel, each wheel's time for \
+     one turn with where it comes from, the list's sources and notes.",
+    "- Type a wheel's period you know into a blank and it is kept for this calibre, marked \
+     Custom.",
+    "- Add another wheel by name and period with Add a Wheel… at the foot of the wheels, then \
+     Add.",
+    "- Share with the Project opens a GitHub issue with what you added, to send from your \
+     browser.",
+    "## Custom Calibres",
+    "- New Custom Calibre…, at the right of the search, adds one the list doesn't have, with \
+     no wheels assumed.",
+    "- Its name, maker, beat rate and lift angle are edited here, and its balance's period \
+     follows the beat rate typed. Delete Calibre is at the foot.",
 ];
 
 /// What the panel changed that the app acts on.

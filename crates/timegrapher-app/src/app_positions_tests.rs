@@ -417,17 +417,21 @@ fn the_positions_table_reads_a_free_take() {
         let u = at(unit).unwrap_or_else(|| panic!("{unit} drawn"));
         assert!(u.bottom() <= stripe.top(), "{unit} {u:?} under {stripe:?}");
     }
-    for want in [
+    let missing: Vec<&str> = [
         "This Take",
         "Duration",
         "Not marked",
         "Average",
         "Largest Difference",
         "2 of 6",
-        "Each Position applies only to the guided test.",
-    ] {
-        assert!(drawn.contains(want), "{want}: {drawn}");
-    }
+    ]
+    .into_iter()
+    .filter(|want| !drawn.contains(want))
+    .collect();
+    // Each Position's scope is its field's hover alone, not a note on the
+    // pane (Hugh, #1528).
+    let moved_out = drawn.contains("Each Position applies only");
+    assert!(missing.is_empty() && !moved_out, "{missing:?}: {drawn}");
 
     // A position too short to read says so.
     moved(&mut app, Position::CrownUp);

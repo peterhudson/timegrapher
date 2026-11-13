@@ -77,7 +77,10 @@ others on; each pane keeps its switches from then on.
 **Amplitude** and **Beat Error**, sharing the rest of the width. Every card is the same three rows,
 so the titles, the big figures and the controls each read in one line
 across: a title row (the caption, the card's **?** in its top-right
-corner, and what limits the reading in a small chip beside the ?), a
+corner, and what limits the reading in a small chip beside the ?; every
+**?**, a card's or a pane's, opens with a one-sentence answer, which
+hovering shows alone, then headed groups of short bullets and numbered
+steps), a
 figure row (the big figure with its ± and unit on the figure's baseline)
 and a controls row. What stands behind a figure is in its hover: the
 beats the rate is fitted to and their jitter, True Clock, the Tick and
@@ -695,6 +698,14 @@ positions test:
   the start of each stretch and less masked time.
 - **Readings** show once a position has 10 s. Under that it reads
   "Under 10 s"; a position never marked reads "Not marked".
+- **Info**, pinned at the toolbar's right, opens a panel with those two
+  rules, what Duration leaves out and when a position shows readings
+  (#1528). It stays open or shut across launches.
+- Under the tables is one line, the next thing to do: with nothing yet,
+  "New Test leads you through the six positions."; with full-wind
+  results loaded, what the next test does with them; after a full-wind
+  test, how to start the test 24 hours after winding. The steps are in
+  the pane's "?".
 - **Average** and **Largest Difference** follow once two positions
   have readings: the average rate, amplitude and beat error over the
   positions read (with "n of 6" in Duration), then the highest of each

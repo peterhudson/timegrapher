@@ -24,6 +24,8 @@ pub use timegrapher_core::timing::Anchor;
 
 mod axis;
 #[cfg(test)]
+mod key_tests;
+#[cfg(test)]
 mod still_tests;
 mod sweep;
 
@@ -1026,7 +1028,7 @@ pub fn draw_strip(
         lap.paint_layers(&drags);
     }
     f.paint_grid(&ms_lines, &time_lines);
-    f.paint_key();
+    f.paint_key(beats, period_s, anchor);
     f.paint_scales(&overlays);
     let Some(anchor) = anchor else {
         return input;
@@ -1725,12 +1727,14 @@ impl Frame<'_> {
 
     /// The key: Tick and Tock in their colours, in the corner left of the
     /// track when the strip lies across, else along the top; and the note.
-    fn paint_key(&self) {
+    fn paint_key(&self, beats: &[Beat], period_s: f64, anchor: Option<Anchor>) {
         let (painter, r, outer, vis, font) =
             (&self.painter, self.g.r, self.outer, &self.vis, &self.font);
         let colors = side_colors(vis.dark_mode);
         if self.g.horizontal {
-            self.paint_corner_key(colors);
+            self.paint_corner_key(colors, |area| {
+                anchor.map_or(0, |a| self.dots_in(beats, period_s, a, area))
+            });
         } else {
             let mut at = Pos2::new(r.left(), outer.top() + 3.0);
             for (label, c) in [("Tick", colors[0]), ("Tock", colors[1])] {
@@ -1759,10 +1763,12 @@ impl Frame<'_> {
         }
     }
 
-    /// The key lying across: in the plot's top-left corner, Tick over
-    /// Tock, each a dot and its word in its side's colour, on a plate of
-    /// the plot's ground at 80% under the beats (#1225, Peter's C2).
-    fn paint_corner_key(&self, colors: [Color32; 2]) {
+    /// The key lying across: in the plot's left corner, Tick over Tock,
+    /// each a dot and its word in its side's colour, on a plate of the
+    /// plot's ground at 80% under the beats (#1225, Peter's C2); at the
+    /// top, or at the bottom where fewer of the dots (`dots`) lie, as the
+    /// facts box moves (Hugh, #1536).
+    fn paint_corner_key(&self, colors: [Color32; 2], dots: impl Fn(Rect) -> usize) {
         let (painter, r) = (&self.painter, self.g.r);
         let rows = [("Tick", colors[0]), ("Tock", colors[1])]
             .map(|(w, c)| (painter.layout_no_wrap(w.into(), self.font.clone(), c), c));
@@ -1770,10 +1776,14 @@ impl Frame<'_> {
         let text_x = 4.0 + 2.0 * dot + 4.0;
         let row_h = rows.iter().map(|(g, _)| g.size().y).fold(0.0, f32::max);
         let wide = rows.iter().map(|(g, _)| g.size().x).fold(0.0, f32::max);
-        let plate = Rect::from_min_size(
-            r.min + Vec2::new(4.0, 4.0),
-            Vec2::new(text_x + wide + 4.0, 2.0 * row_h + 4.0),
-        );
+        let size = Vec2::new(text_x + wide + 4.0, 2.0 * row_h + 4.0);
+        let top = Rect::from_min_size(r.min + Vec2::splat(4.0), size);
+        let bottom = Rect::from_min_size(Pos2::new(top.left(), r.bottom() - 4.0 - size.y), size);
+        let plate = if dots(bottom) < dots(top) {
+            bottom
+        } else {
+            top
+        };
         painter.rect_filled(plate, 2.0, self.vis.extreme_bg_color.gamma_multiply(0.8));
         for (i, (g, c)) in rows.into_iter().enumerate() {
             let top = plate.top() + 2.0 + i as f32 * row_h;
@@ -1931,6 +1941,28 @@ impl Frame<'_> {
         }
     }
 
+    /// The beats on show: from the oldest on the strip to its end.
+    fn shown<'b>(&self, beats: &'b [Beat]) -> &'b [Beat] {
+        let lo = beats.partition_point(|b| b.time < self.oldest);
+        let hi = beats.partition_point(|b| b.time <= self.g.end);
+        &beats[lo..hi]
+    }
+
+    /// Where beat `b` is drawn on the strip.
+    fn beat_at(&self, b: &Beat, period_s: f64, anchor: Anchor) -> Pos2 {
+        let (g, extras) = (&self.g, self.extras);
+        let lead = anchor.lead_on_true(b, period_s, extras.breaks, extras.clock);
+        g.pos(wrap(lead, g.half), b.time)
+    }
+
+    /// How many of the good beats on show lie in `area`.
+    fn dots_in(&self, beats: &[Beat], period_s: f64, anchor: Anchor, area: Rect) -> usize {
+        self.shown(beats)
+            .iter()
+            .filter(|b| b.is_good() && area.contains(self.beat_at(b, period_s, anchor)))
+            .count()
+    }
+
     /// The beats on the strip as dots, Tick and Tock in their colours,
     /// faint while the watch settles. With `masked`, only the beats in a
     /// masked stretch, at 30% of their colour over the strip's ground and
@@ -1939,9 +1971,7 @@ impl Frame<'_> {
     /// (Hugh, #1068 item 2). Without, only the others.
     fn paint_beats(&self, beats: &[Beat], period_s: f64, anchor: Anchor, masked: bool) {
         let (g, r, extras) = (&self.g, self.g.r, self.extras);
-        let lo = beats.partition_point(|b| b.time < self.oldest);
-        let hi = beats.partition_point(|b| b.time <= g.end);
-        let shown = &beats[lo..hi];
+        let shown = self.shown(beats);
         // Dots shrink when the strip is crowded.
         let along = if g.horizontal { r.width() } else { r.height() };
         let per_px = shown.len() as f32 / along.max(1.0);
@@ -1961,13 +1991,7 @@ impl Frame<'_> {
             if in_mask != masked {
                 continue;
             }
-            let p = g.pos(
-                wrap(
-                    anchor.lead_on_true(b, period_s, extras.breaks, extras.clock),
-                    g.half,
-                ),
-                b.time,
-            );
+            let p = self.beat_at(b, period_s, anchor);
             let mut c = colors[b.index.rem_euclid(2) as usize];
             if in_mask {
                 c = ground.lerp_to_gamma(c, MASKED_BEAT);

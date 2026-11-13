@@ -18,35 +18,46 @@ use timegrapher_core::library::{Field, FieldKind, FromCalibre, Library, Take, Wa
 use timegrapher_core::session::Position;
 
 pub const HELP: &[&str] = &[
-    "Watches is the window's second view: the switch in the top row, or View > Watches \
-     (Ctrl+2, Cmd+2 on a Mac), shows it, and Bench (Ctrl+1) goes back. A take keeps running \
-     behind it. Open on a take, or starting one from a watch, goes to the Bench.",
     "Your watches, each with its details and every take made of it, kept in the Watches \
-     folder (Settings > General says where). Pick a watch to see its takes and to start a \
-     new one; Save… then saves the take into that watch, named by when it started.",
-    "New Watch… adds a watch: only its name is needed. Its calibre, lift angle and beat rate \
-     set up each new take of it, and can be changed for one take without changing the watch.",
-    "Add Photos… copies photos of the picked watch into its folder, each kept as it is \
-     (JPEG, PNG, TIFF, or HEIC as an iPhone takes them). They show as a strip under its \
-     details, and the first by name leads its row in the list. Click one to open it in your \
-     photo viewer, or right-click it to show its folder or delete it.",
-    "Each take is a row of the Takes table: when it started, its positions, its length, \
-     its own reading as the command line reads it (worked out the first time it is \
-     shown, then kept), and the space it uses. Clicking a row picks it; \
-     Open, at the right of the Takes title, or a double click opens it on the Bench, and \
-     the take already on show is not read again. Right-clicking it, or …, offers Keep \
-     Analysis Only… (keeping what was measured and deleting the sound, to save space), \
-     Move to Another Watch and Delete…. Open Recording… and Open Folder… in the File menu \
-     ask whether to add a recording from outside your watches to one of them, asking for \
-     anything its files don't say, or just to open it.",
-    "Pick a watch, then Listen, Positions Test, Dynamic Poise Test or Power Reserve Test: \
+     folder (Settings > General says where).",
+    "## Getting There",
+    "- Watches is the window's second view: the switch in the top row, or View > Watches \
+     (Ctrl+2, Cmd+2 on a Mac), shows it. Bench (Ctrl+1) goes back.",
+    "- A take keeps running behind it. Open on a take, or starting one from a watch, goes to \
+     the Bench.",
+    "## Watches",
+    "- Pick a watch to see its takes and to start a new one. Save… then saves the take into \
+     that watch, named by when it started.",
+    "- New Watch… adds a watch: only its name is needed.",
+    "- Its calibre, lift angle and beat rate set up each new take of it, and can be changed \
+     for one take without changing the watch.",
+    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test or Power Reserve Test: \
      each is a new take on the microphone, saved into the watch when it stops.",
-    "Quick Listen (the Listen button on the Listen card, with no watch picked) keeps nothing \
-     until you Save it: into a watch, or into a folder. Its sound goes without a question \
-     when you quit or start another take. A take saved into Unsorted is listed at the top \
-     of the watches until you file it under a watch (right-click it, then File Under a \
-     Watch) or delete it.",
-    "Keep in a Watch works while Quick Listen still listens: the take is that watch's from \
+    "## Photos",
+    "- Add Photos… copies photos of the picked watch into its folder, each kept as it is \
+     (JPEG, PNG, TIFF, or HEIC as an iPhone takes them).",
+    "- They show as a strip under its details, and the first by name leads its row in the \
+     list.",
+    "- Click one to open it in your photo viewer, or right-click it to show its folder or \
+     delete it.",
+    "## Takes",
+    "- Each take is a row of the Takes table: when it started, its positions, its length, its \
+     own reading as the command line reads it, and the space it uses.",
+    "- The reading is worked out the first time it is shown, then kept.",
+    "- Clicking a row picks it. Open, at the right of the Takes title, or a double click opens \
+     it on the Bench, and the take already on show is not read again.",
+    "- Right-clicking it, or …, offers Keep Analysis Only… (keeping what was measured and \
+     deleting the sound, to save space), Move to Another Watch and Delete….",
+    "- Open Recording… and Open Folder… in the File menu ask whether to add a recording from \
+     outside your watches to one of them, or just to open it.",
+    "- Adding one asks for anything its files don't say.",
+    "## Quick Listen",
+    "- Quick Listen (the Listen button on the Listen card, with no watch picked) keeps \
+     nothing until you Save it: into a watch, or into a folder.",
+    "- Its sound goes without a question when you quit or start another take.",
+    "- A take saved into Unsorted is listed at the top of the watches until you file it under \
+     a watch (right-click it, then File Under a Watch) or delete it.",
+    "- Keep in a Watch works while Quick Listen still listens: the take is that watch's from \
      then, and Stop saves it into the watch.",
 ];
 

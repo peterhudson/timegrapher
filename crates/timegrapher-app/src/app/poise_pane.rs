@@ -184,19 +184,9 @@ impl TimegrapherApp {
     /// The pane's toolbar, with the Info toggle pinned at its right.
     pub(super) fn poise_tools(&mut self, ui: &mut egui::Ui, title: &str) {
         let mut info = self.poise_info;
-        let mut pin = |ui: &mut egui::Ui| {
-            let accent = theme::pal(ui).accent;
-            if theme::icon_toggle(ui, Icon::Info, info, accent)
-                .on_hover_text(
-                    "Info: the fit in full, the twice-round check, and why near 220° the \
-                     heavy spot is not stated",
-                )
-                .clicked()
-            {
-                info = !info;
-            }
-        };
-        theme::pane_toolbar_pinned(ui, title, &help::DYNAMIC_POISE, Some(&mut pin), |ui| {
+        let hint = "Info: the fit in full, the twice-round check, and why near 220° the heavy \
+                    spot is not stated";
+        theme::pane_toolbar_info(ui, title, &help::DYNAMIC_POISE, (&mut info, hint), |ui| {
             self.poise_settings(ui);
             self.export_button(ui, Pane::DynamicPoise);
         });
@@ -745,7 +735,12 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
         let mean_r = pic.fit.and(pic.mean.as_ref()).map(|m| dial.radius(m.0));
         (bearing, mean_r)
     });
-    dial_grid(&painter, &dial, pal, numbers);
+    let mean_label = pic
+        .fit
+        .zip(pic.mean.as_ref())
+        .map(|(f, (m, name))| mean_label_at(&painter, &dial, (f.slowest().0, *m, name), pic, pal));
+    let keep_off = ring_numbers_keep_off(&dial, &pic.points, mean_label.as_ref());
+    dial_grid(&painter, &dial, pal, numbers, &keep_off);
     painter.text(
         rect.right_top() + Vec2::new(-4.0, 4.0),
         egui::Align2::RIGHT_TOP,
@@ -773,32 +768,51 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
             egui::Stroke::new(1.5_f32, pal.card),
         );
     }
-    if let (Some(f), Some((m, name))) = (pic.fit, &pic.mean) {
-        mean_name(&painter, &dial, (f.slowest().0, *m, name), pic, pal);
+    if let Some((at, name)) = mean_label {
+        backed(
+            &painter,
+            at.center(),
+            egui::Align2::CENTER_CENTER,
+            name,
+            pal,
+        );
     }
 }
 
-/// The mean ring's name, on the slowest point's bearing (Hugh, #1499);
-/// half a stop round, one way or the other, when a point would sit under
-/// any part of it.
-fn mean_name(
+/// What a ring number must keep off besides the hours' names: each
+/// point's dot and the mean's name with its backing (Hugh, after Walter's
+/// walk of #1546).
+fn ring_numbers_keep_off(
+    dial: &Dial,
+    points: &[(f64, f64, Option<f64>)],
+    mean_label: Option<&(egui::Rect, &str)>,
+) -> Vec<egui::Rect> {
+    let mut boxes: Vec<egui::Rect> = points
+        .iter()
+        .map(|&(d, r, _)| {
+            egui::Rect::from_center_size(dial.at(d, dial.radius(r)), Vec2::splat(2.0 * DOT_R))
+        })
+        .collect();
+    boxes.extend(mean_label.map(|(at, _)| at.expand(BACKING)));
+    boxes
+}
+
+/// Where the mean ring's name goes, and the name: on the slowest point's
+/// bearing (Hugh, #1499); half a stop round, one way or the other, when a
+/// point would sit under any part of it.
+fn mean_label_at<'n>(
     painter: &egui::Painter,
     dial: &Dial,
-    (bearing, m, name): (f64, f64, &str),
+    (bearing, m, name): (f64, f64, &'n str),
     pic: &Picture<'_>,
     pal: &theme::Palette,
-) {
+) -> (egui::Rect, &'n str) {
     let size = painter
         .layout_no_wrap(name.to_string(), egui::FontId::proportional(11.0), pal.text)
         .size();
     let deg = mean_name_bearing(dial, (bearing, m, size), &pic.points);
-    backed(
-        painter,
-        dial.at(deg, dial.radius(m)),
-        egui::Align2::CENTER_CENTER,
-        name,
-        pal,
-    );
+    let at = egui::Align2::CENTER_CENTER.anchor_size(dial.at(deg, dial.radius(m)), size);
+    (at, name)
 }
 
 /// Where the mean ring's name of `size` goes: the first of the slowest
@@ -914,6 +928,7 @@ fn dial_grid(
     dial: &Dial,
     pal: &theme::Palette,
     numbers: Option<(f64, Option<f32>)>,
+    keep_off: &[egui::Rect],
 ) {
     let small = egui::FontId::proportional(11.0);
     let grid = egui::Stroke::new(1.0_f32, pal.separator);
@@ -926,10 +941,11 @@ fn dial_grid(
             (deg, galley)
         })
         .collect();
-    let name_boxes: Vec<egui::Rect> = names
+    let mut name_boxes: Vec<egui::Rect> = names
         .iter()
         .map(|(deg, g)| hour_name_box(dial, *deg, g.size()))
         .collect();
+    name_boxes.extend_from_slice(keep_off);
     let (lo, hi, step) = dial.scale;
     let n = ((hi - lo) / step).round() as i64;
     for k in 0..=n {
@@ -944,7 +960,7 @@ fn dial_grid(
         }
         // Each ring's rate on the slowest point's bearing, inside the
         // wave, on the pane's background (Hugh, #1499); left out where it
-        // would touch an hour's name (#1530).
+        // would touch an hour's name (#1530), a point or the mean's name.
         let text = chart_scale::axis_number(v, step);
         let size = painter
             .layout_no_wrap(text.clone(), small.clone(), pal.text)
@@ -1013,6 +1029,64 @@ mod tests {
         assert!(clear_of(dial.at(0.0, dial.radius(10.0)), number, &names));
     }
 
+    /// Every text `draw` puts on a 600 pt square.
+    fn drawn_texts(draw: impl FnOnce(&egui::Ui)) -> Vec<String> {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::splat(600.0),
+            )),
+            ..Default::default()
+        };
+        let mut draw = Some(draw);
+        let out = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                if let Some(d) = draw.take() {
+                    d(ui);
+                }
+            });
+        });
+        out.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The texts `dial_grid` draws with ring numbers on `bearing`, keeping
+    /// off `keep_off` as well as the hours' names.
+    fn grid_texts(dial: &Dial, bearing: f64, keep_off: &[egui::Rect]) -> Vec<String> {
+        drawn_texts(|ui| {
+            let numbers = Some((bearing, None));
+            dial_grid(ui.painter(), dial, theme::pal(ui), numbers, keep_off);
+        })
+    }
+
+    /// The whole dial drawn: a point on the ring numbers' bearing, at a
+    /// ring's own rate, takes that ring's number out (Trevor on #1550).
+    #[test]
+    fn the_drawn_dial_leaves_out_the_number_under_a_point() {
+        let mut pic = Picture {
+            points: vec![(0.0, -10.0, None), (90.0, 10.0, None), (180.0, 0.0, None)],
+            fit: None,
+            mean: None,
+        };
+        let (lo, hi, step) = rate_scale(&pic);
+        let ring = lo + step;
+        let number = chart_scale::axis_number(ring, step);
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(600.0));
+        let before = drawn_texts(|ui| draw_dial(ui, rect, &pic));
+        assert!(before.contains(&number), "{number} in {before:?}");
+        // Before a wave the numbers sit between the first two stops.
+        pic.points.push((between(0.0), ring, None));
+        assert_eq!(rate_scale(&pic), (lo, hi, step));
+        let after = drawn_texts(|ui| draw_dial(ui, rect, &pic));
+        assert!(!after.contains(&number), "{number} in {after:?}");
+    }
+
     /// Drawn, the outer ring's number on the 12H bearing is left out while
     /// the next ring in keeps its number (#1530, Trevor on #1546).
     #[test]
@@ -1023,27 +1097,7 @@ mod tests {
             outer: 200.0,
             scale: (0.0, 20.0, 10.0),
         };
-        let ctx = egui::Context::default();
-        let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                Vec2::splat(600.0),
-            )),
-            ..Default::default()
-        };
-        let out = ctx.run(input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                dial_grid(ui.painter(), &dial, theme::pal(ui), Some((0.0, None)));
-            });
-        });
-        let texts: Vec<String> = out
-            .shapes
-            .iter()
-            .filter_map(|c| match &c.shape {
-                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
-                _ => None,
-            })
-            .collect();
+        let texts = grid_texts(&dial, 0.0, &[]);
         let (outer, next_in) = (
             chart_scale::axis_number(20.0, 10.0),
             chart_scale::axis_number(10.0, 10.0),
@@ -1051,6 +1105,38 @@ mod tests {
         assert!(texts.iter().any(|t| t == "12H"), "{texts:?}");
         assert!(!texts.contains(&outer), "{texts:?}");
         assert!(texts.contains(&next_in), "{texts:?}");
+    }
+
+    /// The slowest dot sits on its own ring's number, since the numbers
+    /// ride its bearing: that number is left out, and so is one under the
+    /// mean's name, while the rings clear of both keep theirs (Hugh, after
+    /// Walter's walk of #1546).
+    #[test]
+    fn a_ring_number_keeps_off_the_points_and_the_means_name() {
+        let dial = Dial {
+            centre: egui::pos2(300.0, 300.0),
+            inner: 30.0,
+            outer: 200.0,
+            scale: (-20.0, 20.0, 10.0),
+        };
+        let number = |v: f64| chart_scale::axis_number(v, 10.0);
+        // The slowest point at 6H, -10 s/d, and two others off the bearing.
+        let points = [
+            (180.0, -10.0, Some(0.5)),
+            (0.0, 10.0, None),
+            (90.0, 0.0, None),
+        ];
+        let bare = grid_texts(&dial, 180.0, &ring_numbers_keep_off(&dial, &[], None));
+        assert!(bare.contains(&number(-10.0)), "{bare:?}");
+        assert!(bare.contains(&number(10.0)), "{bare:?}");
+        let mean_at = egui::Align2::CENTER_CENTER
+            .anchor_size(dial.at(180.0, dial.radius(10.0)), Vec2::new(60.0, 13.0));
+        let keep_off = ring_numbers_keep_off(&dial, &points, Some(&(mean_at, "Mean +10.0")));
+        let texts = grid_texts(&dial, 180.0, &keep_off);
+        assert!(!texts.contains(&number(-10.0)), "{texts:?}");
+        assert!(!texts.contains(&number(10.0)), "{texts:?}");
+        assert!(texts.contains(&number(0.0)), "{texts:?}");
+        assert!(texts.contains(&number(-20.0)), "{texts:?}");
     }
 
     /// A point under the name's end, not its centre, moves the name off
