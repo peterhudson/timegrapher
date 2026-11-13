@@ -579,6 +579,21 @@ pub fn stretch_windows<'w>(
 /// take end to end at every reading.
 pub const BORROW_LOOK_S: f64 = 3600.0;
 
+/// How far a saved reading's borrowing of the rate's windows first
+/// reaches, s: the 300 s its 30 values need ([`RATE_SE_MIN_S`]), since a
+/// reading short enough to borrow holds few of them itself. Live starts
+/// shorter (`live::RATE_FIRST_REACH_S`), its run counting with the pool.
+pub const RATE_FIRST_REACH_S: f64 = RATE_SE_MIN_S;
+
+/// How far borrowing of the amplitude's windows first reaches, saved or
+/// live, s: 600 s, ten times the minute their 30 values of 2 s need, so a
+/// take whose unlock is often missed is still found in one reach.
+pub const AMPLITUDE_FIRST_REACH_S: f64 = crate::confidence::MIN_NOISE_VALUES as f64
+    * crate::distribution::STRETCH_S
+    * AMPLITUDE_REACH_MARGIN;
+/// [`AMPLITUDE_FIRST_REACH_S`] over the time its values need.
+const AMPLITUDE_REACH_MARGIN: f64 = 10.0;
+
 /// The windows `fetch(a, b)` gives for the take from `a` to `b` (s), over
 /// the least reach either side of a reading from `from_s` to `to_s` that
 /// gives `enough`: back first, as far as the take's start, then on past
@@ -627,7 +642,7 @@ pub fn noise_enough(windows: &[&AmplitudeWindow]) -> bool {
 /// noise from: every other one, as [`crate::confidence::rate_se`] takes
 /// them, [`crate::confidence::MIN_NOISE_VALUES`] times.
 pub fn rate_noise_enough(windows: &[WindowFit]) -> bool {
-    windows.len().div_ceil(2) >= crate::confidence::MIN_NOISE_VALUES
+    crate::confidence::rate_value_count(windows.len()) >= crate::confidence::MIN_NOISE_VALUES
 }
 
 /// Whether the 2 s window `w` belongs to the stretch from `from_s` to
@@ -1214,7 +1229,7 @@ pub fn measure_masked(
     let span = (from_s, to_s, log.duration_s);
     let take_rate = nearest_windows(
         span,
-        RATE_SE_MIN_S,
+        RATE_FIRST_REACH_S,
         |a, b| {
             let near = holes.beats(&log.beats[stretch_beats(&log.beats, a, b)]);
             scatter_windows(&holes, &near, log.bph, map(a), map(b), part)
@@ -1223,7 +1238,7 @@ pub fn measure_masked(
     );
     let take_amp = nearest_windows(
         span,
-        2.0 * RATE_SE_MIN_S,
+        AMPLITUDE_FIRST_REACH_S,
         |a, b| {
             log.amplitude_windows
                 .iter()

@@ -1,7 +1,7 @@
 //! The Distributions pane: how each reading's values spread over the take.
 
 use super::*;
-use crate::fact_box::{widest, FactBox};
+use crate::fact_box::FactBox;
 use crate::strength::{self, Grid, Strength};
 
 /// What core's readings for the Distributions pane were read for: the
@@ -500,26 +500,7 @@ fn shed_hover(r: &egui_plot::PlotResponse<()>, facts: &FactBox) {
 ///
 /// [`Distribution::fact_rows`]: timegrapher_core::distribution::Distribution::fact_rows
 fn facts_box(ui: &egui::Ui, name: &str, rows: Vec<(String, String)>, shed: Vec<usize>) -> FactBox {
-    let pal = theme::pal(ui);
-    let held = ui.id().with(("distribution facts", name));
-    FactBox {
-        base: egui_plot::PlotItemBase::new(format!("{name} facts")),
-        name_w: widest(ui, rows.iter().map(|r| r.0.as_str())),
-        value_w: widest(ui, rows.iter().map(|r| r.1.as_str())),
-        short_name_w: 0.0,
-        short_value_w: 0.0,
-        rows,
-        plot_h: 0.0,
-        tops: Vec::new(),
-        held,
-        was: ui.ctx().data(|d| d.get_temp(held)),
-        fill: ui.visuals().extreme_bg_color.gamma_multiply(0.8),
-        name_color: pal.text_secondary,
-        value_color: pal.text,
-        keep: None,
-        shed,
-        flow: true,
-    }
+    FactBox::plain(ui, "distribution facts", name, rows, shed)
 }
 
 /// Probability paper's share marks, `px` points to one standard

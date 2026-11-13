@@ -24,7 +24,7 @@ const SPACE: f32 = 8.0;
 
 /// A piece of a strip card's text: its words, size in pt, and whether it
 /// is the strong text or the quiet.
-type Piece = (String, f32, bool);
+pub(super) type Piece = (String, f32, bool);
 
 impl TimegrapherApp {
     /// The readings across the top: the cards pinned in the layout, or
@@ -105,9 +105,19 @@ impl TimegrapherApp {
             // The strip first, so ▶, drawn after, takes its own clicks.
             let strip = ui.interact(rect, ui.id().with("readings strip"), egui::Sense::click());
             self.strip_cells(ui, cells);
+            // Over the watch cell with no watch, the strip's one hover
+            // also gives the calibre, lift angle and beat rate in full,
+            // which the cell may show cut short (Hugh, #1526).
+            let on_watch = self.open_watch().is_none()
+                && strip.hover_pos().is_some_and(|p| cells[5].contains(p));
+            let hover = if on_watch {
+                format!("{}\n\nOpen the readings' cards", self.watch_detail())
+            } else {
+                "Open the readings' cards".to_string()
+            };
             if strip
                 .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .on_hover_text("Open the readings' cards")
+                .on_hover_text(hover)
                 .clicked()
             {
                 set_open(&ctx, true);
@@ -208,29 +218,56 @@ impl TimegrapherApp {
         }
     }
 
-    /// The watch's card in the strip: its name, then its calibre, lift
-    /// angle and beat rate; where that doesn't fit, a watch's name alone
-    /// (its record holds the rest), or in a Quick Listen the lift angle and
-    /// beat rate, which the watchmaker sets there.
-    fn watch_pieces(&self) -> Vec<Vec<Piece>> {
+    /// The watch cell's facts: the lift angle, "52°", the beat rate as
+    /// the Calibre card writes it, "Auto 28800", and the rate alone,
+    /// "28800" (`bph_parts`).
+    pub(super) fn watch_facts(&self) -> (String, String, String) {
         let heard = self.live.as_ref().and_then(|l| l.bph());
-        let bph = self.bph_shown(self.bph_set_by_calibre(), heard);
-        let lift = format!("{}° · {bph}", fields::plain(self.lift_deg));
+        let set = self.bph_set_by_calibre();
+        let angle = format!("{}°", fields::plain(self.lift_deg));
+        let (how, rate) = self.bph_parts(set, heard);
+        let bare = if rate.is_empty() {
+            how.unwrap_or_default().to_string()
+        } else {
+            rate
+        };
+        (angle, self.bph_shown(set, heard), bare)
+    }
+
+    /// The watch cell's calibre, lift angle and beat rate in full:
+    /// "Not Set · 52° · Auto 28800".
+    pub(super) fn watch_detail(&self) -> String {
+        let (angle, bph, _) = self.watch_facts();
         let calibre = if self.calibre.is_empty() {
             "Not Set"
         } else {
             &self.calibre
         };
-        let detail = format!("{calibre} · {lift}");
+        format!("{calibre} · {angle} · {bph}")
+    }
+
+    /// The watch's card in the strip: its name, then its calibre, lift
+    /// angle and beat rate; where that doesn't fit, a watch's name alone
+    /// (its record holds the rest), or in a Quick Listen the lift angle and
+    /// beat rate, which the watchmaker sets there.
+    pub(super) fn watch_pieces(&self) -> Vec<Vec<Piece>> {
+        let (angle, bph, bare) = self.watch_facts();
+        let lift = format!("{angle} · {bph}");
+        let detail = self.watch_detail();
         match self.open_watch().map(|e| e.watch.name.clone()) {
             Some(name) => vec![
                 vec![strong(&name, 15.0), quiet(&detail, 13.0)],
                 vec![strong(&name, 15.0)],
             ],
+            // With no watch the lift angle and the beat rate are what a
+            // watchmaker checks at a glance, so the narrowest keeps both,
+            // the angle first and the beat rate without "Auto": where even
+            // that is too wide the beat rate is the one cut short (Peter,
+            // #1526; Hugh). The cell's hover gives it in full.
             None => vec![
                 vec![strong("No Watch", 15.0), quiet(&detail, 13.0)],
                 vec![quiet(&lift, 13.0)],
-                vec![quiet(&bph, 13.0)],
+                vec![quiet(&angle, 13.0), quiet(&bare, 13.0)],
             ],
         }
     }

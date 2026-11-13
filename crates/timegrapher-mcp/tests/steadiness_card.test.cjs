@@ -18,11 +18,12 @@ const context = vm.createContext({ MINUS, fmtTime: (t) => `${t / 60}:00`, secs: 
   periodsLog: false, fftTiming: false, mapsLog: false, showWheels: true, showInfo: false });
 vm.runInContext([constant("SERIES"), constant("STEADY_VIEWS"), constant("INFO_HINT"), constant("WHEELS_HINT"),
   constant("SWITCH_DEFAULTS"), constant("viewSwitches"),
-  ...["esc", "fixedDigits", "num", "signed", "pText", "steadyStats", "steadySwitch", "switchView", "steadinessCard"].map(definition)].join("\n"), context);
+  ...["esc", "fixedDigits", "num", "signed", "pText", "steadySwitch", "switchView", "steadinessCard"].map(definition)].join("\n"), context);
 
 const rate = { series: "rate", unit: "s/d", unit_text: " s/d", readings: 179, step_s: 10, median: 1.5, autocorrelation: { p_value: 0.5 },
   headline: "The rate repeats every 46 s, 4.0 s/d peak to peak.", summary: "repeats every 46 s, 4.0 s/d peak to peak",
-  screen_headline: "The rate repeats every 46 s, 4.0 s/d peak to peak.", screen_summary: "repeats every 46 s, 4.0 s/d peak to peak" };
+  screen_headline: "The rate repeats every 46 s, 4.0 s/d peak to peak.", screen_summary: "repeats every 46 s, 4.0 s/d peak to peak",
+  screen_stats: "Tested on 179 10 s readings · median 1.5 s/d · Ljung–Box p 0.500" };
 const doc = { duration_s: 1800, series: [rate] };
 
 test("each plot's title line carries the series and core's summary; the full text waits in Info", () => {
@@ -38,17 +39,13 @@ test("each plot's title line carries the series and core's summary; the full tex
   context.showInfo = false;
 });
 
-test("a trend or a level split the headline leaves out says why, in core's words", () => {
-  const holm = "not significant after Holm's correction (p 0.031 alone)";
-  const stats = context.steadyStats({ ...rate,
-    trend: { per_hour: 0.42, note: holm },
-    changes: { segments: [{}, {}, {}], note: "under the 20% a level change needs" } });
-  assert.ok(stats.includes(`trend +0.42 s/d per hour, ${holm}`), stats);
-  assert.ok(stats.includes("3 stretches of one level, under the 20% a level change needs"), stats);
-  // A trend the headline names has no note; one stretch is no split.
-  const named = context.steadyStats({ ...rate, trend: { per_hour: -1.5, note: null }, changes: { segments: [{}], note: null } });
-  assert.ok(named.endsWith(`trend ${MINUS}1.50 s/d per hour`), named);
-  assert.ok(!named.includes("stretches"), named);
+test("Info shows core's statistics line as sent: the trend, its note and a true minus are core's (#1470)", () => {
+  context.steadyPlot = () => "<svg/>";
+  const line = `Tested on 179 10 s readings · median 1.5 s/d · trend ${MINUS}1.50 s/d/h, not significant after Holm's correction (p 0.031 alone)`;
+  context.showInfo = true;
+  const open = context.steadinessCard({ duration_s: 1800, series: [{ ...rate, screen_stats: line }] });
+  context.showInfo = false;
+  assert.ok(open.includes(`<p class="stats">${line.replace(/'/g, "&#39;")}</p>`), open);
 });
 
 test("the Long Recording view says what limits its readings, as the analyze and session views do", () => {
@@ -66,7 +63,7 @@ test("a series' own caveat shows once, on that series, in the server's words", (
     distributionCards: () => "", walkCard: () => "", fileName: () => "a.wav", timeLabel: String });
   vm.runInContext([constant("SERIES"), constant("STEADY_VIEWS"), constant("INFO_HINT"), constant("WHEELS_HINT"),
     constant("SWITCH_DEFAULTS"), constant("viewSwitches"),
-    ...["esc", "fixedDigits", "num", "signed", "pText", "steadyStats", "steadySwitch", "switchView", "steadinessCard", "limitsCard", "seriesView"].map(definition)].join("\n"), c);
+    ...["esc", "fixedDigits", "num", "signed", "pText", "steadySwitch", "switchView", "steadinessCard", "limitsCard", "seriesView"].map(definition)].join("\n"), c);
   // The sentence core's PeriodMayBeNoise gives; the view draws it as sent.
   const noise = "On a take this short with its 2 s windows this correlated (ρ 0.74 from one to the next, over 30 min), the period search names a cycle in noise alone about 1 time in 24, not 1 in 100: this cycle may be noise.";
   const series = [rate, { ...rate, series: "amplitude", unit: "deg", unit_text: "°", caveats: [{ code: "period_may_be_noise", rho: 0.74, span_s: 1800 }] },

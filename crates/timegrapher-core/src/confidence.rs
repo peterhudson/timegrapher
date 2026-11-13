@@ -649,6 +649,23 @@ fn between_stretches(stretches: &[Vec<f64>]) -> f64 {
     1.2533 * tau2.sqrt() / k.sqrt()
 }
 
+/// The rate's independent values among its windows: every other one,
+/// since the windows half overlap (`measure::RATE_WINDOW_STEP_S`). The
+/// one place that says so; [`rate_value_count`] counts them (#1556).
+pub fn rate_values<T>(windows: &[T]) -> impl Iterator<Item = &T> {
+    windows.iter().step_by(RATE_WINDOW_STRIDE)
+}
+
+/// Rate windows per independent value: a window over its step, 2.
+const RATE_WINDOW_STRIDE: usize =
+    (crate::measure::RATE_WINDOW_S / crate::measure::RATE_WINDOW_STEP_S) as usize;
+
+/// How many independent values `windows` rate windows hold, as
+/// [`rate_values`] takes them.
+pub fn rate_value_count(windows: usize) -> usize {
+    windows.div_ceil(RATE_WINDOW_STRIDE)
+}
+
 /// Estimated standard error of the rate from the 10 s windows. Taking every
 /// other available window removes ordinary half-window overlap; the
 /// correlation left between the windows taken is allowed for by
@@ -657,8 +674,8 @@ fn between_stretches(stretches: &[Vec<f64>]) -> f64 {
 /// windows in time order, where the reading holds fewer than
 /// [`MIN_NOISE_VALUES`] (#1470).
 pub fn rate_se(windows: &[WindowFit], take: &[WindowFit]) -> Option<f64> {
-    let own: Vec<&WindowFit> = windows.iter().step_by(2).collect();
-    let take: Vec<&WindowFit> = take.iter().step_by(2).collect();
+    let own: Vec<&WindowFit> = rate_values(windows).collect();
+    let take: Vec<&WindowFit> = rate_values(take).collect();
     let (s, pool) = own_and_pool(
         &own,
         &take,

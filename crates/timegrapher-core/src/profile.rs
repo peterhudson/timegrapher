@@ -92,6 +92,18 @@ pub struct TickProfile {
     pub sound3_ms: Option<f64>,
 }
 
+impl TickProfile {
+    /// The profile's amplitude at `lift_deg` from its own unlock and drop
+    /// edges, by [`side_deg`], the gate at that lift: None without both
+    /// edges or outside the gate. The one rule at its first read and at a
+    /// later lift (#1539), so a lift change can bring a side back or drop
+    /// it, as it does the amplitude windows ([`crate::amplitude::relift`]).
+    pub fn amplitude_at(&self, osc_period_s: f64, lift_deg: f64) -> Option<f64> {
+        let ms = self.drop_ms? - self.unlock_ms?;
+        side_deg(ms / 1000.0, osc_period_s, lift_deg)
+    }
+}
+
 /// Points of the profile are this far apart, ms (the envelope is already
 /// smoothed over 0.2 ms, so nothing is lost).
 const STEP_MS: f64 = 0.1;
@@ -276,8 +288,7 @@ fn mark(
     p.unlock_ms = e.map(|e| to_ms(e.unlock));
     p.drop_ms = e.map(|e| to_ms(e.drop));
     p.peak_ms = e.map(|e| to_ms(e.peak as f64));
-    p.amplitude_deg =
-        e.and_then(|e| side_deg((e.drop - e.unlock) / fs, osc_period_s, cfg.lift_deg));
+    p.amplitude_deg = p.amplitude_at(osc_period_s, cfg.lift_deg);
     p.sound1_ms = from_unlock(sh.as_ref().and_then(|s| s.t1_ms));
     p.sound2_ms = from_unlock(sh.as_ref().and_then(|s| s.t2_ms));
     p.sound3_ms = from_unlock(sh.as_ref().map(|s| s.t3_ms));
@@ -570,6 +581,44 @@ mod tests {
     use crate::amplitude::{MAX_AMPLITUDE_DEG, MIN_AMPLITUDE_DEG};
     use crate::analysis::{analyze, AnalysisConfig};
     use crate::synth::{generate, SynthConfig};
+
+    /// A profile's amplitude at another lift is read again from its own
+    /// edges through the gate, not scaled: a lift that takes it under
+    /// [`crate::amplitude::MIN_AMPLITUDE_DEG`] drops it, and going back
+    /// brings it back exactly (#1539).
+    #[test]
+    fn a_profiles_amplitude_follows_the_gate_at_a_new_lift() {
+        let osc = 0.4;
+        // The unlock-to-drop time that reads 105° at a 52° lift.
+        let dt_s = osc / std::f64::consts::PI * (52.0_f64 / (2.0 * 105.0)).asin();
+        let p = TickProfile {
+            side: Side::A,
+            beats: 10,
+            t0_ms: -5.0,
+            step_ms: 0.1,
+            median: Vec::new(),
+            p10: Vec::new(),
+            p90: Vec::new(),
+            floor: 0.0,
+            unlock_ms: Some(1.0),
+            drop_ms: Some(1.0 + dt_s * 1000.0),
+            peak_ms: None,
+            amplitude_deg: None,
+            sound1_ms: None,
+            sound2_ms: None,
+            sound3_ms: None,
+        };
+        let at = |lift| p.amplitude_at(osc, lift);
+        assert!((at(52.0).unwrap() - 105.0).abs() < 1e-9);
+        // 105 × 45 / 52 is under the 100° floor: a scale would keep it.
+        assert_eq!(at(45.0), None);
+        assert!((at(60.0).unwrap() - 105.0 * 60.0 / 52.0).abs() < 1e-9);
+        let no_edges = TickProfile {
+            drop_ms: None,
+            ..p.clone()
+        };
+        assert_eq!(no_edges.amplitude_at(osc, 52.0), None);
+    }
 
     /// One side's good beats from `from_s` up to but not at `to_s`, each
     /// cut out where [`snippet`] cuts it.

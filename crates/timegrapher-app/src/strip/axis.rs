@@ -44,9 +44,10 @@ mod tests {
     }
 
     /// Lines far enough apart are all labelled; closer, the labels step
-    /// up the 1-2-5 series, never off it (2 ms lines labelled 4 apart,
-    /// 5 ms lines 25 apart); none when nothing on it leaves room (#1512: ±20 ms on a short strip, lines 5 ms and
-    /// 21 pt apart, labelled −10, 0, +10).
+    /// up the 1-2-5 series and never off it, so never 4 ms apart on 2 ms
+    /// lines or 25 ms apart on 5 ms lines; none when nothing on it leaves
+    /// room (#1512: ±20 ms on a short strip, lines 5 ms and 21 pt apart,
+    /// labelled −10, 0, +10).
     #[test]
     fn the_ms_axis_labels_step_up_the_one_two_five_series() {
         assert_eq!(label_every(5.0, 30.0, 26.0), Some(1));

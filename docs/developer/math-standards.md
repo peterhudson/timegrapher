@@ -352,7 +352,7 @@ Each item below breaks rule 1, 2 or 4. Each gets an issue. None changes a figure
 
 ## 11. Rounding and units
 
-**Rule (Peter, 12 Nov; decided, to be built in #1470):** every figure in text is written to its place below and never finer, whatever its ± (decided over "one place finer" and "as the ± allows"). The ± measures repeatability only; the lift angle and the sound card's clock limit accuracy to about these places, so more decimals would claim a precision the reading of the watch doesn't have.
+**Rule (Peter, 12 Nov; built in #1470):** every figure in text is written to its place below and never finer, whatever its ± (decided over "one place finer" and "as the ± allows"). The ± measures repeatability only; the lift angle and the sound card's clock limit accuracy to about these places, so more decimals would claim a precision the reading of the watch doesn't have.
 
 | Figure | Unit | Place | Sign |
 |---|---|---|---|
@@ -367,10 +367,13 @@ Each item below breaks rule 1, 2 or 4. Each gets an issue. None changes a figure
 - **The ±** is written at the figure's place, rounded up, and never below one unit of the place: a 0.3° ± on an amplitude reads "149° ± 1°", a 0.04 s/d ± on a rate "+11.4 ± 0.1 s/d". Rounding an uncertainty up is the safe direction. The exact ± and the values it came from go in the hover ("± 0.3° from 5 windows; shown to the nearest 1°").
 - **A spread written after ±** (Steadiness's "± from one reading to the next", the Allan plot's least scatter) follows the ± rule: at the figure's place, rounded up (Norm, 13 Nov, #1470). Plot axis ticks are a scale, not figures, and keep 3 significant figures.
 - **A difference within one take** (a trend per hour, a cycle's peak to peak) is written one place finer than its figure: 0.01 s/d (per hour), 0.1°, 0.001 ms (`figure_text::DIFFERENCE_EXTRA_DIGITS`, `difference_digits`). Both ends share the take's lift angle and sound card clock, so the clock cancels and the lift angle only scales the difference by a few percent: repeatability sets its limit, not the accuracy that sets the places above (Norm, 13 Nov, #1470).
+- **A value worked out from figures (Peter, 13 Nov, #1576):** "we should apply normal sig-fig rules where we know the inputs to the calculation to a certain number of sig-figs, that number of sig-figs should flow through to the derived values." A value calculated in closed form from figures with a place above keeps as many significant figures as the fewest among those inputs, as written at their places. For example, the beat error angle comes from the beat error and the amplitude, so 0.46 ms at 302° gives 1.7°, and 0.47 ms at 129° gives 0.76°. Its ± is rounded up at that place. Three limits, which are Norm's reading of the scope:
+  - A result that is itself a figure in the table keeps the table's place, because that place is the accuracy limit. A rate read on a clock in ppm, for instance, is still written at 0.1 s/d.
+  - A fit over many readings (a slope, a trend, a cycle's size, the poise wave) is a statistic, not a calculation from rounded inputs. It keeps the places above and the difference rule.
+  - A difference of figures (a complication's On less Off, Im, a position's change) is a calculation like any other. It keeps its inputs' place. The one-place-finer rule above is only for fitted trends and cycle sizes.
 - **No ±:** a figure without one (too few values, section 9) is written alone at its place, with no "± —"; the hover says why.
 - **Cards:** the place is fixed, so the value's width never changes as its ± moves, and the figures are tabular (Hugh, 12 Nov).
-- **One formatter (decided 12 Nov, #1470; not yet built):** one core formatter in `figure_text` will write the value, its ± and the place for every surface (cards, tables, strip labels, the CLI, MCP and reports), and nothing else will round a figure for text.
-- **Today the decimals are typed in each surface**: six `opt` helpers, three `signed` helpers, and the app and MCP each pick when a ± shows (app.rs:12389, 12495, 12545; MCP summary.rs:12), and `figure_text::figure_digits` lets decimals follow the ± up to 3. #1470 replaces this.
+- **One formatter (decided 12 Nov, built in #1470):** core's `figure_text` (`base_digits`, `figure_with_pm`, `pm_text`) writes the value, its ± and the place for every surface (cards, tables, strip labels, the CLI, MCP and reports). Nothing else rounds a figure for text, and a surface that needs a place names a `base_digits` constant instead of typing one.
 - **Not rounded:** JSON is never rounded. CSV keeps full precision, as data. Charts and sparklines plot full precision; the rule is about text.
 - **Rate:** (P_nominal / P − 1) × 86,400, exact, with P the fitted beat period (`timing.rs:163`).
 - **Synthetic takes:** the generator steps each beat by P/(1 + r/86400) (`timing::period_s`, through `synth::period`), the period the timing fit reads r from, so a take made at +100 s/d reads +100 s/d (#816; finding N5).

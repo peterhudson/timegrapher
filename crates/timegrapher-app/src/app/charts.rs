@@ -155,11 +155,8 @@ impl TimegrapherApp {
         // strength on every chart (Hugh, #1063).
         let lines = [(marker, Strength::CallOut), (cursor, Strength::Axis)];
         for (x, strength) in lines {
-            let Some(px) = x.map(|x| resp.transform.position_from_point_x(x)) else {
-                continue;
-            };
-            if px >= frame.left() && px <= frame.right() {
-                painter.vline(px, frame.y_range(), strength::stroke(strength, pal));
+            if let Some(x) = x {
+                strength::time_line(&painter, &resp.transform, x, strength, pal);
             }
         }
         if let Some(at) = click {
@@ -504,33 +501,56 @@ fn paint_lane(
     let (top, y) = (lane.top() + 3.0, lane.top() + 3.0 + font.size / 2.0);
     let mut x = lane.left();
     let write = |x: &mut f32, text: String, ink: Color32, slot: bool| {
-        let g = p.layout_no_wrap(text.clone(), font.clone(), ink);
-        let w = if slot {
-            let zeros: String = text
-                .chars()
-                .map(|c| if c.is_ascii_digit() { '0' } else { c })
-                .collect();
-            g.size()
-                .x
-                .max(p.layout_no_wrap(zeros, font.clone(), ink).size().x)
-        } else {
-            g.size().x
-        };
-        p.galley(egui::pos2(*x, top), g, ink);
-        *x += w;
+        *x += lane_text(p, (*x, top), &text, (&font, ink), slot);
     };
     write(&mut x, title.into(), colour, false);
-    x += 16.0;
+    x += LANE_AFTER_TITLE;
     if let Some(t) = time {
         write(&mut x, t, pal.text, true);
-        x += 12.0;
+        x += LANE_GAP;
     }
     for (text, color, under, ink) in values {
         x += paint_swatch(p, egui::pos2(x, y), *color, *under) + 4.0;
         write(&mut x, text.clone(), *ink, true);
-        x += 12.0;
+        x += LANE_GAP;
     }
     paint_key(p, lane, key, (ui, x), pal);
+}
+
+/// The gap after a lane's title, before its time and values.
+pub const LANE_AFTER_TITLE: f32 = 16.0;
+/// The gap after each of a lane's time and values.
+pub const LANE_GAP: f32 = 12.0;
+
+/// How wide a lane's `text` is: when `slot`, at least as wide as its
+/// digits written as zeros, so a figure beside it doesn't jitter as the
+/// digits change under the pointer (#1063).
+pub fn lane_width(p: &egui::Painter, text: &str, font: &egui::FontId, slot: bool) -> f32 {
+    let w = |t: String| p.layout_no_wrap(t, font.clone(), Color32::WHITE).size().x;
+    let own = w(text.to_string());
+    if slot {
+        let zeros: String = text
+            .chars()
+            .map(|c| if c.is_ascii_digit() { '0' } else { c })
+            .collect();
+        own.max(w(zeros))
+    } else {
+        own
+    }
+}
+
+/// A lane's `text` with its top left at `at`, in `ink`: the width it
+/// takes ([`lane_width`]).
+pub fn lane_text(
+    p: &egui::Painter,
+    at: (f32, f32),
+    text: &str,
+    (font, ink): (&egui::FontId, Color32),
+    slot: bool,
+) -> f32 {
+    let g = p.layout_no_wrap(text.to_string(), font.clone(), ink);
+    p.galley(egui::pos2(at.0, at.1), g, ink);
+    lane_width(p, text, font, slot)
 }
 
 /// The names in a chart's key and their colours, when it has more than one

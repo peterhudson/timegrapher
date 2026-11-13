@@ -135,10 +135,9 @@ fn drawn_with(
                     None,
                     live,
                     20.0,
-                    60.0,
                     false,
                     None,
-                    "Current Position",
+                    ("Current Position", false),
                 );
             });
         });
@@ -998,6 +997,63 @@ fn the_poise_banner_turns_the_watch_45_degrees_by_the_hour() {
     assert_eq!(Kind::Positions.code(Position::CrownLeft), "CL");
 }
 
+/// The pane with nothing yet, its Info open or shut: each piece of text.
+fn drawn_empty(info: bool) -> Vec<String> {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut found = Vec::new();
+    for _ in 0..2 {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1000.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        let out = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let card = ("Current Position", info);
+                pane(
+                    ui, None, None, None, None, None, None, 20.0, false, None, card,
+                );
+            });
+        });
+        found = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect();
+    }
+    found
+}
+
+/// The table's method notes are the Info panel's, drawn only with it
+/// open; under the empty table, one line where the test starts (Hugh,
+/// #1528).
+#[test]
+fn the_method_notes_are_in_info_and_the_empty_table_keeps_one_line() {
+    let shut = drawn_empty(false);
+    let open = drawn_empty(true);
+    let lines = info_lines(20.0);
+    assert!(
+        lines[0].starts_with("Duration leaves out the first 20 s"),
+        "{lines:?}"
+    );
+    for l in &lines {
+        assert!(!shut.contains(l), "{l}: {shut:?}");
+        assert!(open.contains(l), "{l}: {open:?}");
+    }
+    let start = "New Test leads you through the six positions.";
+    assert!(shut.iter().any(|t| t == start), "{shut:?}");
+    assert!(
+        !shut.iter().any(|t| t.contains("It lets the watch settle")),
+        "{shut:?}"
+    );
+}
+
 /// An opened 24 hour half's take shows the run again from its saved
 /// results alone: its own table under the hours since full wind, and
 /// the comparison with the full-wind results it was set against.
@@ -1047,4 +1103,46 @@ fn an_opened_24_hour_half_shows_its_table_and_comparison() {
         assert!(texts.iter().any(|t| t == want), "{want} in {texts:?}");
     }
     assert!(!texts.iter().any(|t| t == "This Take"), "not read again");
+}
+
+/// Over an opened 24 hour half, whose tables have rows, the pane shows
+/// no line for an empty table (Hugh, #1552).
+#[test]
+fn an_opened_24_hour_half_shows_no_empty_table_line() {
+    let row = |position: &str| KeptRow {
+        position: position.into(),
+        rate_s_per_day: Some(2.0),
+        amplitude_deg: Some(280.0),
+        beat_error_ms: None,
+        beat_error_source: None,
+    };
+    let full = FullWind {
+        format: RESULTS_FORMAT.into(),
+        began_utc: "2026-11-12T08:00:00.000Z".into(),
+        began_unix: 1_794_470_400.0,
+        watch: "W".into(),
+        calibre: String::new(),
+        bph: Some(28800),
+        lift_angle_deg: Some(52.0),
+        settle_s: None,
+        measure_s: None,
+        positions: vec![row("DU")],
+        wind_h: None,
+        against: None,
+    };
+    let later = FullWind {
+        wind_h: Some(24.5),
+        against: Some(Box::new(full.clone())),
+        ..full
+    };
+    let texts: Vec<String> = drawn_with(None, None, Some(&later), None)
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
+    let start = "New Test leads you through the six positions.";
+    assert!(
+        texts.iter().any(|t| t.starts_with("This Test")),
+        "{texts:?}"
+    );
+    assert!(!texts.iter().any(|t| t == start), "{texts:?}");
 }

@@ -24,8 +24,8 @@ below shows the whole run, and why the Curve stops there.
 | --- | --- | --- |
 | 1 | **View** | **Curve** (this view) or **Walk** (below). Kept between runs. |
 | 2 | **Export…** | Saves the pane as a picture, PNG or SVG. |
-| 3 | The slope | "Between 207° and 251° the rate goes with the amplitude by +0.952 ± 0.005 s/d per degree": a straight line through every reading. |
-| 4 | The ends | The median rate in the lowest and the highest 2° step. |
+| 3 | The slope | The title line, "Rate · +0.952 ± 0.005 s/d per degree, 207° to 251°": a straight line through every reading. The **i** in the toolbar gives the finding in full and how the slope and its ± are read. |
+| 4 | The ends | The facts box: the median rate in the lowest and the highest 2° step. |
 | 5 | A dot and its bar | The median rate in one 2° step of amplitude, and a bar over the middle half of its readings. |
 
 **In the picture,** the dots climb in a near-straight line from
@@ -94,8 +94,9 @@ same amplitudes, so a degree stays put when you switch.
   10% of either read is left out, never filled, and one under 60% is drawn
   faint ("Thin" in the key). The full dots set the axes, so a faint one
   far off is cut at the edge and counted in the key ("Off the scale"). Where the rate goes on 15 minutes or more past
-  the last dot with no amplitude read, as at the end of a run-down, a line
-  above the plot says so: the rate is on the Paper Strip. Past 250 of them, neighbouring
+  the last dot with no amplitude read, as at the end of a run-down, the
+  facts box's last row says from when ("No amplitude after"), and the
+  **i** says the rate is on the Paper Strip. Past 250 of them, neighbouring
   5 minutes are joined, 10, 15 … minutes a dot, so
   there are at most 250.
 

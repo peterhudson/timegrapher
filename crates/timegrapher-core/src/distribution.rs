@@ -43,21 +43,21 @@ pub const RATE: Kind = Kind {
     series: "rate",
     unit: "s/d",
     resolution: 0.1,
-    decimals: 1,
+    decimals: crate::figure_text::base_digits::RATE,
     suffix: " s/d",
 };
 pub const AMPLITUDE: Kind = Kind {
     series: "amplitude",
     unit: "deg",
     resolution: 0.5,
-    decimals: 0,
+    decimals: crate::figure_text::base_digits::AMPLITUDE,
     suffix: "°",
 };
 pub const BEAT_ERROR: Kind = Kind {
     series: "beat_error",
     unit: "ms",
     resolution: 0.01,
-    decimals: 2,
+    decimals: crate::figure_text::base_digits::BEAT_ERROR,
     suffix: " ms",
 };
 

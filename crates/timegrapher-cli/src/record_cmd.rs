@@ -71,6 +71,9 @@ pub struct Options {
     pub live: Option<PathBuf>,
     /// Run until the watch stops: a Power Reserve Test.
     pub power_reserve: bool,
+    /// End the recording early once this file exists, as the app's Stop
+    /// does: another program's way to stop it.
+    pub stop_file: Option<PathBuf>,
 }
 
 /// A quick look at the take: the stretch `session` will read, after the
@@ -110,6 +113,8 @@ struct Report {
     position: &'static str,
     wind_h: Option<f64>,
     seconds: f64,
+    /// The recording was ended early by `--stop-file`.
+    stopped_early: bool,
     source: String,
     sample_rate: u32,
     check: Check,
@@ -228,6 +233,19 @@ fn place(o: &mut Options) -> Result<Placed, String> {
 /// Every take is kept and added to the session; the report states what
 /// was measured.
 pub fn run(o: &Options) -> Result<(), String> {
+    let (o, rep, settings) = record(o)?;
+    if o.json {
+        let files: Vec<PathBuf> = o.file.iter().cloned().collect();
+        output::print("record", output::input(&files, settings), &rep)?;
+    } else {
+        print_report(&rep);
+    }
+    Ok(())
+}
+
+/// Record the take as [`run`] does: the options as used, the report, and
+/// the settings the JSON document's input names.
+fn record(o: &Options) -> Result<(Options, Report, serde_json::Value), String> {
     let mut o = o.clone();
     if o.power_reserve {
         // As long as the watch runs, up to the limit.
@@ -240,11 +258,26 @@ pub fn run(o: &Options) -> Result<(), String> {
             o.position
         )
     })?;
+    // A stop file already there would end the take at once.
+    if let Some(p) = o
+        .stop_file
+        .as_ref()
+        .filter(|p| fs::symlink_metadata(p).is_ok())
+    {
+        return Err(format!(
+            "--stop-file {} is already there; remove it first",
+            p.display()
+        ));
+    }
     let placed = place(&mut o)?;
-    run_in(&o, placed.watch)
+    let (rep, settings) = record_in(&o, placed.watch)?;
+    Ok((o, rep, settings))
 }
 
-fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
+fn record_in(
+    o: &Options,
+    library_watch: Option<String>,
+) -> Result<(Report, serde_json::Value), String> {
     let pos = Position::parse(&o.position).ok_or_else(|| {
         format!(
             "'{}' is not a position; use DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H)",
@@ -259,7 +292,7 @@ fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
     let set = settings(o)?;
 
     let started = recorder::utc(SystemTime::now());
-    let (rec, source, sample_rate, ending) = capture(o, pos, &set)?;
+    let (rec, source, sample_rate, ending, stopped_early) = capture(o, pos, &set)?;
     let take = rec.dir().to_path_buf();
     // The take ends here: its last hour is kept as FLAC too.
     let dir = rec
@@ -286,22 +319,17 @@ fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
         position: pos.common(),
         wind_h: o.wind_h,
         seconds: o.seconds,
+        stopped_early,
         source,
         sample_rate,
         check,
         power_reserve: reserve,
     };
-    if o.json {
-        let files: Vec<PathBuf> = o.file.iter().cloned().collect();
-        let settings = json!({
-            "bph": set.bph, "lift_deg": set.lift, "calibre": set.calibre,
-            "device": o.device, "seconds": o.seconds,
-        });
-        output::print("record", output::input(&files, settings), &rep)?;
-    } else {
-        print_report(&rep);
-    }
-    Ok(())
+    let settings = json!({
+        "bph": set.bph, "lift_deg": set.lift, "calibre": set.calibre,
+        "device": o.device, "seconds": o.seconds,
+    });
+    Ok((rep, settings))
 }
 
 fn settings(o: &Options) -> Result<Settings, String> {
@@ -418,7 +446,9 @@ fn settings_with(
 /// Record into a new take folder under the session folder.
 /// A take recorded: its recorder, where the sound came from, its sample
 /// rate, and for a Power Reserve Test how it ended.
-type Captured = (Recorder, String, u32, Option<power_reserve::Ending>);
+/// The take, its source, its sample rate, how a Power Reserve Test ended,
+/// and whether `--stop-file` ended it early.
+type Captured = (Recorder, String, u32, Option<power_reserve::Ending>, bool);
 
 fn capture(o: &Options, pos: Position, set: &Settings) -> Result<Captured, String> {
     let info = |device: String, sample_rate: u32, bits: u16| SessionInfo {
@@ -450,8 +480,12 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<Captured, Strin
             .as_ref()
             .map(|p| Feed::new(p, pos, o.seconds, fs_hz, set));
         let mut stop = o.power_reserve.then(|| StopWatch::new(fs_hz, set));
+        let mut asked = StopFile::new(o.stop_file.as_deref());
         let mut n = 0;
         while n < want {
+            if asked.asked() {
+                break;
+            }
             let m = (want - n).min(block);
             let b = Block {
                 samples: a.samples[n..n + m].to_vec(),
@@ -476,9 +510,44 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<Captured, Strin
         if let Some(f) = feed.as_mut() {
             f.finish();
         }
-        return Ok((rec, label, fs_hz, stop.map(|s| s.ended())));
+        return Ok((rec, label, fs_hz, stop.map(|s| s.ended()), asked.seen));
     }
     live(o, pos, set, info, start)
+}
+
+/// `--stop-file`: whether the file has appeared, looked for at most four
+/// times a second, so another program can end the recording as the app's
+/// Stop does.
+struct StopFile<'a> {
+    path: Option<&'a Path>,
+    next: std::time::Instant,
+    /// The file was seen and the recording ended for it.
+    seen: bool,
+}
+
+impl<'a> StopFile<'a> {
+    fn new(path: Option<&'a Path>) -> StopFile<'a> {
+        StopFile {
+            path,
+            next: std::time::Instant::now(),
+            seen: false,
+        }
+    }
+
+    /// Whether to stop now.
+    fn asked(&mut self) -> bool {
+        let Some(p) = self.path else { return false };
+        let now = std::time::Instant::now();
+        if self.seen || now < self.next {
+            return self.seen;
+        }
+        self.next = now + Duration::from_millis(250);
+        self.seen = fs::symlink_metadata(p).is_ok();
+        if self.seen {
+            eprintln!("stopped: {} appeared", p.display());
+        }
+        self.seen
+    }
 }
 
 /// Listening for the watch to stop during a Power Reserve Test: the beats
@@ -724,11 +793,15 @@ fn live(
         .as_ref()
         .map(|p| Feed::new(p, pos, o.seconds, fs_hz, set));
     let mut stop = o.power_reserve.then(|| StopWatch::new(fs_hz, set));
+    let mut asked = StopFile::new(o.stop_file.as_deref());
     let mut got = 0usize;
     let mut next_note = 10.0;
     let mut gaps = breaks::GapWatch::new(fs_hz);
     let mut ended = false;
     'listen: while got < want {
+        if asked.asked() {
+            break;
+        }
         let came = if ended {
             gaps.finish()
         } else {
@@ -796,7 +869,13 @@ fn live(
     if let Some(f) = feed.as_mut() {
         f.finish();
     }
-    Ok((rec, cap.label.clone(), fs_hz, stop.map(|s| s.ended())))
+    Ok((
+        rec,
+        cap.label.clone(),
+        fs_hz,
+        stop.map(|s| s.ended()),
+        asked.seen,
+    ))
 }
 
 #[cfg(not(feature = "live"))]
@@ -1045,6 +1124,9 @@ fn print_report(r: &Report) {
         r.position,
         fixed_text(r.seconds, 0)
     );
+    if r.stopped_early {
+        println!("             Stopped early: the --stop-file appeared");
+    }
     for f in facts(c) {
         println!("             {f}");
     }
@@ -1560,6 +1642,7 @@ mod tests {
             json: false,
             live: None,
             power_reserve: false,
+            stop_file: None,
         }
     }
 
@@ -1590,7 +1673,10 @@ mod tests {
         o.file = Some(wav);
         o.bph = Some(28800);
         o.power_reserve = true;
-        run(&o).unwrap();
+        // A stop file that never appears changes nothing.
+        o.stop_file = Some(base.join("never"));
+        let (_, rep, _) = record(&o).unwrap();
+        assert!(!rep.stopped_early);
         let r = power_reserve::Results::from_json(
             &fs::read_to_string(folder.join(power_reserve::FILE)).unwrap(),
         )
@@ -1614,6 +1700,80 @@ mod tests {
         let info = audio::info(&files[0]).unwrap();
         let secs = info.frames.unwrap() as f64 / f64::from(info.sample_rate);
         assert!(secs > 715.0 && secs < 740.0, "{secs}");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// `--stop-file` ends a Power Reserve run as Stop Test does: by hand,
+    /// with its run and hours kept beside the take, the take shorter than
+    /// the sound on offer.
+    #[test]
+    fn a_stop_file_ends_a_power_reserve_run_by_hand() {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let base = std::env::temp_dir().join(format!("tg-record-stop-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let a = generate(
+            &SynthConfig {
+                duration_s: 60.0,
+                rate_s_per_day: 5.0,
+                ..Default::default()
+            },
+            |_| 260.0,
+            |_| 0.0,
+        );
+        let wav = base.join("run.wav");
+        audio::write_wav(&wav, &a).unwrap();
+        let folder = base.join("session");
+        let stop = base.join("stop");
+        let mut o = options(folder.clone());
+        o.file = Some(wav);
+        o.bph = Some(28800);
+        o.power_reserve = true;
+        // Played back in real time, so the stop comes part way through.
+        o.live = Some(base.join("live.json"));
+        o.stop_file = Some(stop.clone());
+        let asker = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(4));
+            fs::write(stop, "").unwrap();
+        });
+        let (_, rep, _) = record(&o).unwrap();
+        asker.join().unwrap();
+        assert!(rep.stopped_early);
+        let r = power_reserve::Results::from_json(
+            &fs::read_to_string(folder.join(power_reserve::FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(r.ending, power_reserve::Ending::ByHand);
+        let take = fs::read_dir(&folder)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| p.is_dir())
+            .unwrap();
+        let files = timegrapher_core::recording_order::recordings_in(&take, &[]).unwrap();
+        let info = audio::info(&files[0]).unwrap();
+        let secs = info.frames.unwrap() as f64 / f64::from(info.sample_rate);
+        assert!(secs > 3.0 && secs < 20.0, "{secs}");
+        // The take is in the session file, as any other is.
+        let listed = fs::read_to_string(folder.join(MANIFEST)).unwrap();
+        assert_eq!(listed.matches("[[recording]]").count(), 1, "{listed}");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// A stop file already there is refused before anything is made.
+    #[test]
+    fn a_stop_file_already_there_is_refused() {
+        let base = std::env::temp_dir().join(format!("tg-record-stale-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let stop = base.join("stop");
+        fs::write(&stop, "").unwrap();
+        let folder = base.join("session");
+        let mut o = options(folder.clone());
+        o.file = Some(base.join("missing.wav"));
+        o.stop_file = Some(stop);
+        let e = run(&o).unwrap_err();
+        assert!(e.contains("already there"), "{e}");
+        assert!(!folder.exists());
         let _ = fs::remove_dir_all(&base);
     }
 

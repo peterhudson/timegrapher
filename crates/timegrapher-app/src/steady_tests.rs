@@ -1455,3 +1455,26 @@ fn axis_numbers_on_screen_carry_a_true_minus() {
     assert_eq!(plain(-0.5, 0.5), "\u{2212}0.5");
     assert_eq!(plain(-0.0, 0.5), "0.0");
 }
+
+/// The Allan plot names its dashed line only where it is a line: with one
+/// point there is none, and the caption would cover the least scatter's
+/// label (#1560).
+#[test]
+fn a_one_point_independence_line_has_no_caption() {
+    assert_eq!(independent_caption_at(&[]), None);
+    assert_eq!(independent_caption_at(&[[1.0, 0.5]]), None);
+    assert_eq!(
+        independent_caption_at(&[[1.0, 0.5], [2.0, 0.2]]),
+        Some([2.0, 0.2])
+    );
+}
+
+/// Readings Over Time's readout writes the time on its axis, and whose
+/// time it is while a position's stretches are joined end to end, as
+/// the axis title does (#1277).
+#[test]
+fn the_readings_readout_says_whose_time_it_is() {
+    assert_eq!(readout_time(252.0, None), "4:12");
+    assert_eq!(readout_time(252.0, Some("DD")), "4:12 in DD");
+    assert_eq!(readout_time(3725.0, None), "1:02:05");
+}

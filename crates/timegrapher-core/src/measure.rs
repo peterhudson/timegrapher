@@ -775,7 +775,7 @@ pub const RATE_SE_MIN_S: f64 = confidence::MIN_NOISE_VALUES as f64 * RATE_WINDOW
 /// over a shorter time it is wider, since fewer windows went into it. Its
 /// noise is borrowed from `take` as [`confidence::rate_se`]'s.
 pub fn rate_se_over(rate_windows: &[WindowFit], take: &[WindowFit], average_s: f64) -> Option<f64> {
-    let independent = rate_windows.len().div_ceil(2) as f64;
+    let independent = confidence::rate_value_count(rate_windows.len()) as f64;
     let se = confidence::rate_se(rate_windows, take)?;
     let averaged = (average_s / RATE_WINDOW_S).clamp(1.0, independent);
     Some(se * (independent / averaged).sqrt())

@@ -1581,3 +1581,94 @@ fn the_compact_pop_up_offers_ten_while_a_45_degree_stop_is_current() {
         "{items:?}"
     );
 }
+
+/// With no watch, every width of the readings strip's watch cell keeps
+/// the lift angle beside the beat rate, the narrowest too, the angle
+/// first, and the narrowest the beat rate without "Auto " (Peter, #1526;
+/// Hugh): a watchmaker checks both at a glance.
+#[test]
+fn the_strip_keeps_the_lift_beside_the_beat_rate_with_no_watch() {
+    let app = synthetic(40.0, 5.0);
+    assert!(app.open_watch().is_none());
+    let (angle, _, bare) = app.watch_facts();
+    for choice in app.watch_pieces() {
+        let words: Vec<&str> = choice.iter().map(|(w, _, _)| w.as_str()).collect();
+        let text = words.join(" ");
+        let a = text.find(&angle).expect("the lift angle at every width");
+        let b = text.find(&bare).expect("the beat rate at every width");
+        assert!(a < b, "the angle comes first: {text}");
+        assert!(
+            choice.iter().all(|(_, size, _)| *size >= 13.0),
+            "one type size: {text}"
+        );
+    }
+    let narrowest = app.watch_pieces().pop().unwrap();
+    assert_eq!(narrowest[1].0, bare, "the narrowest gives the rate alone");
+}
+
+/// The beat rate's two parts: "Auto" for a rate found by listening, then
+/// the rate, which the strip writes alone where it is narrow (#1526).
+#[test]
+fn a_found_beat_rate_is_auto_then_the_rate() {
+    let mut app = synthetic(40.0, 5.0);
+    app.bph = None;
+    let found = |rate: &str| (Some("Auto"), rate.to_string());
+    assert_eq!(app.bph_parts(false, Some(28800)), found("28800"));
+    assert_eq!(app.bph_shown(false, Some(28800)), "Auto 28800");
+    assert_eq!(app.bph_parts(false, None), found(""));
+    assert_eq!(app.bph_shown(false, None), "Auto");
+    app.bph = Some(21600);
+    let set = (None, "21600 bph".to_string());
+    assert_eq!(app.bph_parts(false, Some(28800)), set);
+    assert_eq!(app.bph_parts(true, Some(28800)), set);
+}
+
+/// With no watch, hovering the strip's watch cell shows one tooltip: the
+/// calibre, lift angle and beat rate in full, then what a click does,
+/// never the strip's tooltip on top of a second one (Hugh, #1526).
+#[test]
+fn the_strip_watch_cell_shows_one_tooltip() {
+    let mut app = synthetic(40.0, 5.0);
+    app.readings_pinned = false;
+    let ctx = themed();
+    // A second a frame, so a still pointer is past the hover's delay.
+    let mut time = 0.0;
+    let mut pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            events,
+            time: Some(time),
+            ..screen()
+        };
+        time += 1.0;
+        let out = ctx.run(input, |ctx| app.panels(ctx));
+        out.shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some((t.galley.text().to_string(), t.pos)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    pass(&mut app, Vec::new());
+    let (angle, _, _) = app.watch_facts();
+    let at = pass(&mut app, Vec::new())
+        .into_iter()
+        .find(|(t, _)| t.starts_with(&angle))
+        .map(|(_, p)| p + egui::vec2(4.0, 6.0))
+        .expect("the watch cell's lift angle");
+    pass(&mut app, vec![egui::Event::PointerMoved(at)]);
+    pass(&mut app, Vec::new());
+    let shown = pass(&mut app, Vec::new());
+    let tips: Vec<&String> = shown
+        .iter()
+        .map(|(t, _)| t)
+        .filter(|t| t.contains("Open the readings' cards"))
+        .collect();
+    assert_eq!(tips.len(), 1, "one tooltip: {tips:?}");
+    assert!(tips[0].contains(&app.watch_detail()), "{tips:?}");
+    let details = shown
+        .iter()
+        .filter(|(t, _)| t.contains(&app.watch_detail()))
+        .count();
+    assert_eq!(details, 1, "the full facts once");
+}

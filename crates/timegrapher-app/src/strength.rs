@@ -72,6 +72,23 @@ pub fn stroke(s: Strength, pal: &Palette) -> Stroke {
     Stroke::new(w, colour(s, pal))
 }
 
+/// A time `x` drawn across a plot whose transform is `t`, at strength
+/// `s`, where it falls inside the plot: the moment shown and the
+/// pointer's time on the Charts and on Readings Over Time (#1063, #1277).
+pub fn time_line(
+    painter: &egui::Painter,
+    t: &egui_plot::PlotTransform,
+    x: f64,
+    s: Strength,
+    pal: &Palette,
+) {
+    let frame = *t.frame();
+    let px = t.position_from_point_x(x);
+    if px >= frame.left() && px <= frame.right() {
+        painter.vline(px, frame.y_range(), stroke(s, pal));
+    }
+}
+
 fn see_through(c: Color32, opacity: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (opacity * 255.0).round() as u8)
 }

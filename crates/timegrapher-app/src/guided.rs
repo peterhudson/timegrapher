@@ -13,6 +13,7 @@ use crate::app::Position;
 use crate::theme;
 use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
+use timegrapher_core::figure_text::base_digits::{AMPLITUDE, BEAT_ERROR, RATE};
 use timegrapher_core::figure_text::{fixed_text, signed_text, true_minus};
 use timegrapher_core::poise;
 use timegrapher_core::session::{self, Measurement, Reading, SourcedFigures};
@@ -1168,15 +1169,15 @@ fn table_grid(
                 match t.rows.get(i) {
                     Some((label, rate, from_mean, amp, be)) => {
                         ui.label(RichText::new(label).color(pal.text));
-                        right_in(ui, fw, signed(*rate, 1), false, pal.text);
-                        right_in(ui, from_w, signed(*from_mean, 1), false, pal.text);
-                        right_in(ui, fw, plain(*amp, 0), false, pal.text);
+                        right_in(ui, fw, signed(*rate, RATE), false, pal.text);
+                        right_in(ui, from_w, signed(*from_mean, RATE), false, pal.text);
+                        right_in(ui, fw, plain(*amp, AMPLITUDE), false, pal.text);
                         let be_ink = if t.beat_error_dimmed.get(i).copied().unwrap_or(false) {
                             pal.text_secondary
                         } else {
                             pal.text
                         };
-                        right_in(ui, fw, plain(*be, 2), false, be_ink).on_hover_text(
+                        right_in(ui, fw, plain(*be, BEAT_ERROR), false, be_ink).on_hover_text(
                             t.beat_error_hovers.get(i).map(String::as_str).unwrap_or(""),
                         );
                     }
@@ -1190,10 +1191,10 @@ fn table_grid(
                             (Some(_), Some(FreeCell::Read(rate, amp, be))) => {
                                 ui.label(RichText::new(label).strong().color(pal.text))
                                     .on_hover_text("Being measured: its figures so far");
-                                right_in(ui, fw, signed(*rate, 1), false, pal.accent);
+                                right_in(ui, fw, signed(*rate, RATE), false, pal.accent);
                                 ui.label("");
-                                right_in(ui, fw, plain(*amp, 0), false, pal.accent);
-                                right_in(ui, fw, plain(*be, 2), false, pal.accent);
+                                right_in(ui, fw, plain(*amp, AMPLITUDE), false, pal.accent);
+                                right_in(ui, fw, plain(*be, BEAT_ERROR), false, pal.accent);
                             }
                             (Some(s), _) => {
                                 ui.label(RichText::new(label).strong().color(pal.text));
@@ -1215,19 +1216,31 @@ fn table_grid(
             }
             if !t.rows.is_empty() {
                 ui.label(RichText::new(mean_word).strong().color(pal.text));
-                right_in(ui, fw, signed(t.mean_rate, 1), true, pal.text);
+                right_in(ui, fw, signed(t.mean_rate, RATE), true, pal.text);
                 ui.label("");
-                right_in(ui, fw, plain(t.mean_amplitude, 0), true, pal.text);
-                right_in(ui, fw, plain(t.mean_beat_error, 2), true, pal.text)
+                right_in(ui, fw, plain(t.mean_amplitude, AMPLITUDE), true, pal.text);
+                right_in(ui, fw, plain(t.mean_beat_error, BEAT_ERROR), true, pal.text)
                     .on_hover_text(&t.beat_error_summary);
                 ui.end_row();
             }
             if t.rows.len() >= 2 && !poise {
                 largest_label(ui);
-                right_in(ui, fw, plain(t.largest_difference, 1), true, pal.text);
+                right_in(ui, fw, plain(t.largest_difference, RATE), true, pal.text);
                 ui.label("");
-                right_in(ui, fw, plain(t.largest_amplitude, 0), true, pal.text);
-                right_in(ui, fw, plain(t.largest_beat_error, 2), true, pal.text);
+                right_in(
+                    ui,
+                    fw,
+                    plain(t.largest_amplitude, AMPLITUDE),
+                    true,
+                    pal.text,
+                );
+                right_in(
+                    ui,
+                    fw,
+                    plain(t.largest_beat_error, BEAT_ERROR),
+                    true,
+                    pal.text,
+                );
                 ui.end_row();
             }
         });
@@ -1285,8 +1298,8 @@ fn table_notes(ui: &mut egui::Ui, t: &Table) {
         ui.label(
             RichText::new(format!(
                 "Vertical less horizontal: {} s/d in rate, {}° in amplitude.",
-                signed(t.dvh_rate, 1),
-                signed(t.dvh_amplitude, 0)
+                signed(t.dvh_rate, RATE),
+                signed(t.dvh_amplitude, AMPLITUDE)
             ))
             .color(pal.text),
         )
@@ -1349,12 +1362,12 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
             ui.end_row();
             for (label, v) in &c.rows {
                 ui.label(RichText::new(label).color(pal.text));
-                right_in(ui, WIDE_W, signed(v[0], 1), false, pal.text);
-                right_in(ui, WIDE_W, signed(v[1], 1), false, pal.text);
-                right_in(ui, WIDE_W, signed(v[2], 1), true, pal.text);
-                right_in(ui, WIDE_W, plain(v[3], 0), false, pal.text);
-                right_in(ui, WIDE_W, plain(v[4], 0), false, pal.text);
-                right_in(ui, WIDE_W, signed(v[5], 0), true, pal.text);
+                right_in(ui, WIDE_W, signed(v[0], RATE), false, pal.text);
+                right_in(ui, WIDE_W, signed(v[1], RATE), false, pal.text);
+                right_in(ui, WIDE_W, signed(v[2], RATE), true, pal.text);
+                right_in(ui, WIDE_W, plain(v[3], AMPLITUDE), false, pal.text);
+                right_in(ui, WIDE_W, plain(v[4], AMPLITUDE), false, pal.text);
+                right_in(ui, WIDE_W, signed(v[5], AMPLITUDE), true, pal.text);
                 ui.end_row();
             }
         });
@@ -1363,8 +1376,8 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
         RichText::new(format!(
             "Largest change in rate, crown right left out: {} s/d. Change in the mean rate, as \
              a size: {} s/d.",
-            signed(c.im, 1),
-            plain(c.ie, 1)
+            signed(c.im, RATE),
+            plain(c.ie, RATE)
         ))
         .color(pal.text),
     )
@@ -1408,10 +1421,9 @@ pub fn pane(
     free: Option<&FreeTable>,
     live: Option<&FreeCell>,
     settle_s: f64,
-    measure_s: f64,
     watch: bool,
     note: Option<&str>,
-    card: &str,
+    (card, info): (&str, bool),
 ) -> Option<Action> {
     let pal = theme::pal(ui);
     let mut action = None;
@@ -1425,61 +1437,72 @@ pub fn pane(
     if changed {
         area = area.vertical_scroll_offset(0.0);
     }
-    area.show(ui, |ui| {
-        ui.spacing_mut().item_spacing.y = 6.0;
-        if let Some(n) = note {
-            ui.label(RichText::new(n).color(pal.text_secondary));
-        }
-        if let (Some(t), Some(ph)) = (test, phase) {
-            if ph != Phase::Finished {
-                action = banner(ui, t, ph, None);
-                ui.add_space(6.0);
+    let lines = info_lines(settle_s);
+    let panel = |ui: &mut egui::Ui, h: f32| {
+        theme::info_text(
+            ui,
+            egui::Id::new("positions info panel"),
+            ("Table", &lines),
+            h,
+        );
+    };
+    theme::with_info(ui, info, egui::Id::new("positions info"), panel, |ui| {
+        area.show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
+            if let Some(n) = note {
+                ui.label(RichText::new(n).color(pal.text_secondary));
             }
-        }
-        if let Some(t) = test {
-            this_test(ui, t, phase, live);
-        }
-        // An opened 24 hour half shows the run as saved, not read again.
-        match (test, saved) {
-            (None, Some(s)) => saved_test(ui, s),
-            (None, None) => {
-                if let Some(f) = free {
-                    this_take(ui, f, card, settle_s);
+            if let (Some(t), Some(ph)) = (test, phase) {
+                if ph != Phase::Finished {
+                    action = banner(ui, t, ph, None);
+                    ui.add_space(6.0);
                 }
             }
-            _ => {}
-        }
-        let c = match test {
-            Some(t) => t
-                .full
-                .as_ref()
-                .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
-            None => saved.and_then(saved_comparison),
-        };
-        if let Some(c) = &c {
-            ui.add_space(10.0);
-            heading(
-                ui,
-                &format!("Full Wind Against {:.1} Hours", c.hours),
-                "The full-wind test loaded at the start, against this one, run without \
-                     winding or wearing the watch in between",
-            );
-            comparison_grid(ui, c);
-        }
-        if let Some(full) = earlier {
-            ui.add_space(10.0);
-            if earlier_section(ui, full, phase) {
-                action = Some(Action::ClearEarlier);
+            if let Some(t) = test {
+                this_test(ui, t, phase, live);
             }
-        }
-        ui.add_space(10.0);
-        let about = about_text(test, earlier, settle_s, measure_s, watch);
-        if !about.is_empty() {
-            ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
-        }
-        if let Some(t) = test {
-            test_footer(ui, t);
-        }
+            // An opened 24 hour half shows the run as saved, not read again.
+            match (test, saved) {
+                (None, Some(s)) => saved_test(ui, s),
+                (None, None) => {
+                    if let Some(f) = free {
+                        this_take(ui, f, card);
+                    }
+                }
+                _ => {}
+            }
+            let c = match test {
+                Some(t) => t
+                    .full
+                    .as_ref()
+                    .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
+                None => saved.and_then(saved_comparison),
+            };
+            if let Some(c) = &c {
+                ui.add_space(10.0);
+                heading(
+                    ui,
+                    &format!("Full Wind Against {:.1} Hours", c.hours),
+                    "The full-wind test loaded at the start, against this one, run without \
+                     winding or wearing the watch in between",
+                );
+                comparison_grid(ui, c);
+            }
+            if let Some(full) = earlier {
+                ui.add_space(10.0);
+                if earlier_section(ui, full, phase) {
+                    action = Some(Action::ClearEarlier);
+                }
+            }
+            ui.add_space(10.0);
+            let about = about_text(test, earlier, (watch, saved.is_some()));
+            if !about.is_empty() {
+                ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
+            }
+            if let Some(t) = test {
+                test_footer(ui, t);
+            }
+        });
     });
     action
 }
@@ -1550,8 +1573,7 @@ pub(crate) fn test_table(
 
 /// This take's positions, as marked on the card, with what the table
 /// leaves out.
-fn this_take(ui: &mut egui::Ui, f: &FreeTable, card: &str, settle_s: f64) {
-    let pal = theme::pal(ui);
+fn this_take(ui: &mut egui::Ui, f: &FreeTable, card: &str) {
     heading(
         ui,
         "This Take",
@@ -1561,22 +1583,18 @@ fn this_take(ui: &mut egui::Ui, f: &FreeTable, card: &str, settle_s: f64) {
         ),
     );
     free_grid(ui, f);
-    ui.add_space(4.0);
-    for line in [
+}
+
+/// The Info panel's lines (#1528): how the table for a take is read.
+fn info_lines(settle_s: f64) -> Vec<String> {
+    vec![
         format!(
-            "Duration leaves out the first {} after each change of position \
-                 (Settle) and masked time.",
+            "Duration leaves out the first {} after each change of position (Settle) and \
+             masked time.",
             table_duration(settle_s)
         ),
         "A position shows readings once it has 10 s.".to_string(),
-        "Each Position applies only to the guided test.".to_string(),
-    ] {
-        ui.label(
-            RichText::new(format!("• {line}"))
-                .small()
-                .color(pal.text_tertiary),
-        );
-    }
+    ]
 }
 
 /// The full-wind results loaded from earlier, with Remove while no test
@@ -1615,45 +1633,31 @@ fn earlier_section(ui: &mut egui::Ui, full: &FullWind, phase: Option<Phase>) -> 
     removed
 }
 
-/// What the pane says under its tables: how the test runs, or what to do
-/// for the test 24 hours after winding.
+/// What the pane says under its tables, in one line: the next thing to
+/// do. With nothing yet, where the test starts; with full-wind results
+/// loaded, what the next test does with them; after a full-wind test, the
+/// test 24 hours after winding. The steps are in its "?" (Hugh, #1528).
+/// None over an opened 24 hour half (`saved`), whose tables have rows.
 fn about_text(
     test: Option<&Test>,
     earlier: Option<&FullWind>,
-    settle_s: f64,
-    measure_s: f64,
-    watch: bool,
-) -> String {
+    (watch, saved): (bool, bool),
+) -> &'static str {
     match (test, earlier) {
-        (None, None) => format!(
-            "Start Test, on the Listen card, leads you through the six positions:\n\
-                 1. It says which position to turn the watch to.\n\
-                 2. It lets the watch settle {settle_s:.0} s.\n\
-                 3. It measures it for {measure_s:.0} s and fills in its row.\n\
-                 After the sixth it ends by itself and keeps the take. {}",
-            if watch {
-                "For the test 24 hours after winding, leave the watch unwound and off the \
-                 wrist, then set Wind to 24 Hours After."
-            } else {
-                "For the test 24 hours after winding, save the results, leave the watch \
-                 unwound and off the wrist, then load them with Load Full-Wind Results… before Start Test."
-            }
-        ),
-        (None, Some(_)) => "Start Test runs the six positions again and sets them \
-                 against these results."
-            .to_string(),
+        (None, None) if saved => "",
+        (None, None) => "New Test leads you through the six positions.",
+        (None, Some(_)) => {
+            "Start Test runs the six positions again and sets them against these results."
+        }
         (Some(t), _) if t.readings.is_some() && t.full.is_none() && watch => {
             "For the same test 24 hours after winding, leave the watch unwound and off \
                  the wrist, then set Wind to 24 Hours After and press New Test."
-                .to_string()
         }
         (Some(t), _) if t.readings.is_some() && t.full.is_none() => {
-            "For the same test 24 hours after winding, save these results with Save \
-                 Results for 24 Hours… (or save the session, which keeps them), leave the \
-                 watch unwound and off the wrist, then load them and start the test again."
-                .to_string()
+            "For the same test 24 hours after winding, first keep these results with Save \
+                 Results for 24 Hours\u{2026}. \"?\" has the steps."
         }
-        _ => String::new(),
+        _ => "",
     }
 }
 
@@ -1978,9 +1982,14 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                     }
                     FreeCell::Read(rate, amp, be) => {
                         right(ui, table_duration(*duration), false, pal.text);
-                        right(ui, signed(*rate, 1), false, pal.trace_rate);
-                        right(ui, plain(*amp, 0), false, pal.trace_amplitude);
-                        right(ui, plain(*be, 2), false, pal.ink(pal.trace_beat_error));
+                        right(ui, signed(*rate, RATE), false, pal.trace_rate);
+                        right(ui, plain(*amp, AMPLITUDE), false, pal.trace_amplitude);
+                        right(
+                            ui,
+                            plain(*be, BEAT_ERROR),
+                            false,
+                            pal.ink(pal.trace_beat_error),
+                        );
                     }
                 }
                 ui.end_row();
@@ -1989,17 +1998,27 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                 ui.label(RichText::new("Average").strong().color(pal.text))
                     .on_hover_text("Over the positions read");
                 right(ui, format!("{} of 6", t.read), false, pal.text_secondary);
-                right(ui, signed(t.mean[0], 1), true, pal.trace_rate);
-                right(ui, plain(t.mean[1], 0), true, pal.trace_amplitude);
-                right(ui, plain(t.mean[2], 2), true, pal.ink(pal.trace_beat_error));
+                right(ui, signed(t.mean[0], RATE), true, pal.trace_rate);
+                right(ui, plain(t.mean[1], AMPLITUDE), true, pal.trace_amplitude);
+                right(
+                    ui,
+                    plain(t.mean[2], BEAT_ERROR),
+                    true,
+                    pal.ink(pal.trace_beat_error),
+                );
                 ui.end_row();
                 largest_label(ui);
                 ui.label("");
-                right(ui, plain(t.largest[0], 1), true, pal.trace_rate);
-                right(ui, plain(t.largest[1], 0), true, pal.trace_amplitude);
+                right(ui, plain(t.largest[0], RATE), true, pal.trace_rate);
                 right(
                     ui,
-                    plain(t.largest[2], 2),
+                    plain(t.largest[1], AMPLITUDE),
+                    true,
+                    pal.trace_amplitude,
+                );
+                right(
+                    ui,
+                    plain(t.largest[2], BEAT_ERROR),
                     true,
                     pal.ink(pal.trace_beat_error),
                 );
@@ -2193,13 +2212,13 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
     for (label, v) in &c.rows {
         let mut row = vec![label.clone()];
         for (i, x) in v.iter().enumerate() {
-            let d = if i < 3 { 1 } else { 0 };
+            let d = if i < 3 { RATE } else { AMPLITUDE };
             row.push(x.map_or_else(String::new, |x| format!("{x:.d$}")));
         }
         cells.push(row);
     }
     cells.push(Vec::new());
-    let num = |v: Option<f64>| v.map_or_else(String::new, |x| format!("{x:.1}"));
+    let num = |v: Option<f64>| v.map_or_else(String::new, |x| format!("{x:.RATE$}"));
     cells.push(vec![
         "Largest change in rate, crown right left out (Im), s/d".into(),
         num(c.im),
@@ -2280,7 +2299,7 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
 /// mean line and ring, "Mean +4.0", as the table's Mean row shows it.
 pub fn poise_mean(readings: &[Reading]) -> Option<(f64, String)> {
     let m = table(readings, Kind::Poise).mean_rate?;
-    Some((m, format!("Mean {}", signed(Some(m), 1))))
+    Some((m, format!("Mean {}", signed(Some(m), RATE))))
 }
 
 /// The poise fit of a test's upright readings ([`poise::fit`]), once

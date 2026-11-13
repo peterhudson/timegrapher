@@ -1069,16 +1069,36 @@ impl TimegrapherApp {
     /// it was found or set (`bph_set`, by the calibre); `heard` is the rate
     /// heard.
     pub(super) fn bph_shown(&self, bph_set: bool, heard: Option<u32>) -> String {
+        match self.bph_parts(bph_set, heard) {
+            (Some(how), rate) if rate.is_empty() => how.to_string(),
+            (Some(how), rate) => format!("{how} {rate}"),
+            (None, rate) => rate,
+        }
+    }
+
+    /// [`Self::bph_shown`] in its two parts: how the rate was come by,
+    /// "Auto" for one found by listening, and the rate itself, "28800",
+    /// "18000 bph" or "Found When Heard" (empty while Auto has heard
+    /// none). The readings strip writes the rate alone where it is narrow
+    /// (#1526).
+    pub(super) fn bph_parts(
+        &self,
+        bph_set: bool,
+        heard: Option<u32>,
+    ) -> (Option<&'static str>, String) {
+        const AUTO: &str = "Auto";
         if bph_set {
-            self.bph
+            let rate = self
+                .bph
                 .or_else(|| self.cal.bph(&self.calibre))
                 .or(heard)
-                .map_or_else(|| "Found When Heard".to_string(), |b| format!("{b} bph"))
+                .map_or_else(|| "Found When Heard".to_string(), |b| format!("{b} bph"));
+            (None, rate)
         } else {
             match (self.bph, heard) {
-                (Some(b), _) => format!("{b} bph"),
-                (None, Some(h)) => format!("Auto {h}"),
-                _ => "Auto".to_string(),
+                (Some(b), _) => (None, format!("{b} bph")),
+                (None, Some(h)) => (Some(AUTO), h.to_string()),
+                _ => (Some(AUTO), String::new()),
             }
         }
     }

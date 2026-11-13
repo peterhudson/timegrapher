@@ -5,6 +5,7 @@
 //! and the walk under it (#741) is core's [`walk_view`], as the chat app's
 //! card draws it.
 
+use crate::fact_box::FactBox;
 use crate::strength::{self, Grid};
 use crate::theme::{self, Icon};
 use eframe::egui::{self, Align2, Color32, Pos2, RichText, Stroke};
@@ -13,9 +14,9 @@ use timegrapher_core::chart_scale::{axis_number, round_step};
 use timegrapher_core::figure_text::{fixed_text, true_minus};
 use timegrapher_core::steadiness::IsochronismCurve;
 use timegrapher_core::steady_views::{
-    curve_amp, headline_lines, rate_padded, walk_amp, walk_axis, walk_off_scale, walk_spans,
-    WalkDot, WalkView, WALK_AMP_NAME, WALK_HINT, WALK_KEY_START, WALK_RATE_NAME, WALK_SINCE,
-    WALK_START,
+    curve_amp, iso_bin_hover, iso_facts, iso_info, iso_key, iso_title, rate_padded, walk_amp,
+    walk_axis, walk_off_scale, walk_spans, WalkDot, WalkView, ISO_TITLE, WALK_AMP_NAME,
+    WALK_KEY_START, WALK_SINCE, WALK_START,
 };
 
 /// Room for the vertical axis labels, as on the Steadiness pane.
@@ -70,7 +71,6 @@ pub fn ui(
     walk: Option<&WalkView>,
     view: View,
 ) {
-    let pal = theme::pal(ui);
     let missing = "No isochronism curve yet: the amplitude has not moved enough. It needs at \
                    least three 2° steps of amplitude with 10 readings in each, which a run-down \
                    over some hours gives.";
@@ -78,33 +78,109 @@ pub fn ui(
         amp: curve.zip(walk).and_then(|(c, w)| shared_amp(c, w)),
         gutter: gutter(ui, curve, walk),
     };
-    for line in curve
-        .map(|c| headline_lines(&true_minus(&c.headline)))
-        .unwrap_or_default()
-    {
-        ui.label(RichText::new(line).small().color(pal.text_secondary));
+    // Every word off the plot (Hugh's Text Off the Charts, #1507): the
+    // finding in the title line, the end rates in a facts box, the dots
+    // named in a key row, the rest in "i".
+    if let Some(c) = curve {
+        title_line(ui, c);
     }
-    // The facts box's line on a run-down's end whose rate goes on with no
-    // amplitude to place it at (core's, Hugh 11-12).
-    if let Some(t) = walk
-        .filter(|_| view == View::Walk)
-        .and_then(|w| w.rate_only_text.as_ref())
-    {
-        ui.label(RichText::new(t).small().color(pal.text_secondary));
-    }
-    match (view, curve, walk) {
-        (View::Curve, None, _) => note(ui, missing),
-        (View::Curve, Some(c), _) => {
-            ui.label(RichText::new(caption(c)).small().color(pal.text_tertiary));
-            let h = room(ui);
-            chart(ui, c, h, frame);
+    let walking = view == View::Walk;
+    theme::with_info(
+        ui,
+        info_open(ui.ctx()),
+        egui::Id::new("isochronism info"),
+        |ui, h| info_panel(ui, curve, walk.filter(|_| walking), h),
+        |ui| match (view, curve, walk) {
+            (View::Curve, None, _) => note(ui, missing),
+            (View::Curve, Some(c), _) => {
+                let h = room(ui);
+                chart(ui, c, h, frame);
+            }
+            (View::Walk, _, None) => note(ui, NO_WALK),
+            (View::Walk, _, Some(w)) => {
+                // The curve's end rates, then where the amplitude stops
+                // being read while the rate goes on (core's, Hugh).
+                let mut rows = curve.map(iso_facts).unwrap_or_default();
+                rows.extend(w.rate_only_row.clone());
+                let h = room(ui);
+                walk_part(ui, w, rows, h, frame);
+            }
+        },
+    );
+}
+
+/// The title line: [`ISO_TITLE`] and core's finding ([`iso_title`]).
+fn title_line(ui: &mut egui::Ui, c: &IsochronismCurve) {
+    let pal = theme::pal(ui);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.label(theme::caption(ISO_TITLE).color(pal.text));
+        ui.label(
+            RichText::new(format!("  ·  {}", iso_title(c)))
+                .small()
+                .color(pal.text),
+        );
+    });
+}
+
+/// Where whether "i" is open is kept between frames.
+fn info_id() -> egui::Id {
+    egui::Id::new("isochronism info open")
+}
+
+/// Whether the pane's "i" is open.
+fn info_open(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp(info_id())).unwrap_or_default()
+}
+
+/// The pane's toolbar: its `controls`, then "i" pinned beside the "?".
+pub fn toolbar(ui: &mut egui::Ui, title: &str, controls: impl FnMut(&mut egui::Ui)) {
+    let mut info = info_open(ui.ctx());
+    let mut pin = |ui: &mut egui::Ui| {
+        let accent = theme::pal(ui).accent;
+        if theme::icon_toggle(ui, Icon::Info, info, accent)
+            .on_hover_text("Info: the finding in full, and how the slope and its ± are read")
+            .clicked()
+        {
+            info = !info;
         }
-        (View::Walk, _, None) => note(ui, NO_WALK),
-        (View::Walk, _, Some(w)) => {
-            let h = room(ui);
-            walk_part(ui, w, h, frame);
+    };
+    theme::pane_toolbar_pinned(
+        ui,
+        title,
+        &crate::help::ISOCHRONISM,
+        Some(&mut pin),
+        controls,
+    );
+    ui.ctx().data_mut(|d| d.insert_temp(info_id(), info));
+}
+
+/// "i": core's paragraphs for the view ([`iso_info`]), then, in the Walk,
+/// where the rate goes on with no amplitude in full; selectable, no
+/// taller than `max_h`.
+fn info_panel(
+    ui: &mut egui::Ui,
+    curve: Option<&IsochronismCurve>,
+    walk: Option<&WalkView>,
+    max_h: f32,
+) {
+    let pal = theme::pal(ui);
+    theme::info_scroll(ui, egui::Id::new("isochronism info"), max_h, |ui| {
+        ui.spacing_mut().item_spacing.y = 6.0;
+        ui.label(theme::caption("Isochronism").color(pal.text_secondary));
+        let mut paras = curve
+            .map(|c| iso_info(c, walk.is_some()))
+            .unwrap_or_default();
+        paras.extend(walk.and_then(|w| w.rate_only_text.clone()));
+        for (i, t) in paras.iter().enumerate() {
+            let colour = if i == 1 { pal.text } else { pal.text_secondary };
+            ui.add(
+                egui::Label::new(RichText::new(t).small().color(colour))
+                    .wrap()
+                    .selectable(true),
+            );
         }
-    }
+    });
 }
 
 /// The height left for the pane's charts, at least what one needs.
@@ -160,28 +236,21 @@ fn name_row(ui: &egui::Ui) -> f32 {
 }
 
 /// The axes' names with their units, as #1052 set them (Hugh's F1):
-/// "Rate" over "s/d" above the rate labels, and "Amp." with "°" under
-/// the amplitude labels at the right. `plot` is the whole plot with its
-/// labels; `frame` the data within it.
+/// "s/d" above the rate labels, the rate named in the title line
+/// (#1507), and "Amp." with "°" under the amplitude labels at the right.
+/// `plot` is the whole plot with its labels; `frame` the data within it.
 fn axis_names(ui: &egui::Ui, plot: egui::Rect, frame: egui::Rect) {
     let pal = theme::pal(ui);
     let font = egui::TextStyle::Small.resolve(ui.style());
     let name = theme::semibold(font.size);
     let p = ui.painter();
     let right = frame.left() - 4.0;
-    let unit = p.text(
+    p.text(
         Pos2::new(right, frame.top() - font.size / 2.0 - 2.0),
         Align2::RIGHT_BOTTOM,
         "s/d",
         font.clone(),
         pal.text_secondary,
-    );
-    p.text(
-        Pos2::new(right, unit.top()),
-        Align2::RIGHT_BOTTOM,
-        WALK_RATE_NAME,
-        name.clone(),
-        pal.text,
     );
     let deg = p.text(
         Pos2::new(frame.right(), plot.bottom() + 2.0),
@@ -197,15 +266,6 @@ fn axis_names(ui: &egui::Ui, plot: egui::Rect, frame: egui::Rect) {
         name,
         pal.text,
     );
-}
-
-/// The line under the headline naming what the chart draws.
-fn caption(c: &IsochronismCurve) -> String {
-    // The slope and its amplitudes are the headline's: said once.
-    format!(
-        "Dots: the median rate in each {:.0}° of amplitude, with bars over its middle half",
-        c.bin_deg
-    )
 }
 
 /// A rate on the axis: a bare number with as few decimals as the grid
@@ -232,7 +292,6 @@ fn gutter(ui: &egui::Ui, curve: Option<&IsochronismCurve>, walk: Option<&WalkVie
         .into_iter()
         .chain(walk.map(|w| walk_bounds(w).1));
     let body = egui::TextStyle::Body.resolve(ui.style());
-    let name = theme::semibold(egui::TextStyle::Small.resolve(ui.style()).size);
     let width = |text: String, font: egui::FontId| {
         ui.fonts_mut(|f| f.layout_no_wrap(text, font, Color32::WHITE).size().x)
     };
@@ -244,7 +303,6 @@ fn gutter(ui: &egui::Ui, curve: Option<&IsochronismCurve>, walk: Option<&WalkVie
         // With a decimal, so either view's labels fit whatever step its
         // height picks.
         .map(|v| width(true_minus(&fixed_text(v, 1)), body.clone()))
-        .chain([width("Rate".into(), name.clone())])
         .fold(GUTTER, |g, w| g.max(w + GUTTER_PAD))
 }
 
@@ -254,16 +312,71 @@ fn chart(ui: &mut egui::Ui, c: &IsochronismCurve, h: f32, frame: Frame) {
         return;
     };
     let (x_bounds, y_bounds, grid) = axes(frame.amp.unwrap_or(x_bounds), y_bounds);
-    let (head, foot) = (2.0 * name_row(ui), name_row(ui));
-    let (h, centre) = shaped(ui, h - head - foot, frame.gutter);
+    let (head, foot) = (name_row(ui), name_row(ui));
+    let (h, centre) = shaped(ui, h - head - foot - key_row_h(ui), frame.gutter);
     ui.add_space(centre + head);
+    let mut facts = FactBox::plain(ui, "isochronism facts", "curve", iso_facts(c), Vec::new());
     let resp =
         chart_plot("isochronism", &grid, (h, frame.gutter), x_bounds, y_bounds).show(ui, |p| {
             grid.draw(p, pal);
+            facts.plot_h = p.transform().frame().height();
+            // Each bar's ends, so the box keeps clear of the bars too.
+            facts.tops = c
+                .bins
+                .iter()
+                .flat_map(|b| [[b.amplitude_deg, b.rate_q25], [b.amplitude_deg, b.rate_q75]])
+                .collect();
+            p.add(facts.clone());
             chart_items(p, c, pal);
         });
     axis_names(ui, resp.response.rect, *resp.transform.frame());
+    let at = ui
+        .ctx()
+        .pointer_hover_pos()
+        .filter(|_| resp.response.hovered());
+    if let Some(b) = at.and_then(|at| nearest_bin(c, &resp.transform, at)) {
+        resp.response.on_hover_text_at_pointer(iso_bin_hover(b));
+    }
     ui.add_space(foot);
+    curve_key(ui, c);
+}
+
+/// The height of the key row under a plot.
+fn key_row_h(ui: &egui::Ui) -> f32 {
+    ui.text_style_height(&egui::TextStyle::Small) + ui.spacing().item_spacing.y
+}
+
+/// The bin whose dot is nearest the pointer `at`, within [`HOVER_PX`].
+fn nearest_bin<'a>(
+    c: &'a IsochronismCurve,
+    t: &PlotTransform,
+    at: Pos2,
+) -> Option<&'a timegrapher_core::steadiness::AmplitudeBin> {
+    c.bins
+        .iter()
+        .map(|b| {
+            let p = t.position_from_point(&PlotPoint::new(b.amplitude_deg, b.rate_s_per_day));
+            (b, p.distance(at))
+        })
+        .filter(|&(_, d)| d <= HOVER_PX)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(b, _)| b)
+}
+
+/// The key row under the Curve: a dot on its bar, as the plot draws
+/// them, and core's name for them ([`iso_key`], Hugh, #1507).
+fn curve_key(ui: &mut egui::Ui, c: &IsochronismCurve) {
+    let pal = theme::pal(ui);
+    ui.horizontal(|ui| {
+        let (r, _) = ui.allocate_exact_size(egui::vec2(10.0, 12.0), egui::Sense::hover());
+        let colour = pal.trace_rate;
+        ui.painter().line_segment(
+            [r.center_top(), r.center_bottom()],
+            Stroke::new(strength::DATA_W, colour),
+        );
+        ui.painter().circle_filled(r.center(), 3.0, colour);
+        ui.label(RichText::new(iso_key(c)).small().color(pal.text_secondary));
+    });
 }
 
 /// A low and high bound on one axis.
@@ -355,18 +468,21 @@ const HOVER_PX: f32 = 8.0;
 /// The walk: its hint, the plot of rate against amplitude with each dot
 /// coloured by its time, and the colour key, `h` high in all. `amp` is
 /// the amplitude range and axis width it shares with the curve.
-fn walk_part(ui: &mut egui::Ui, w: &WalkView, h: f32, frame: Frame) {
+fn walk_part(ui: &mut egui::Ui, w: &WalkView, rows: Vec<(String, String)>, h: f32, frame: Frame) {
     let pal = theme::pal(ui);
-    ui.label(RichText::new(WALK_HINT).small().color(pal.text_secondary));
-    let key_h = ui.text_style_height(&egui::TextStyle::Small) + ui.spacing().item_spacing.y;
-    let (head, foot) = (2.0 * name_row(ui), name_row(ui));
-    let (h, centre) = shaped(ui, h - 2.0 * key_h - head - foot, frame.gutter);
+    let (head, foot) = (name_row(ui), name_row(ui));
+    let (h, centre) = shaped(ui, h - key_row_h(ui) - head - foot, frame.gutter);
     ui.add_space(centre + head);
     let (x, y) = walk_bounds(w);
     let (x, y, grid) = axes(frame.amp.unwrap_or(x), y);
     let off_scale = walk_off_scale(&w.dots, x, y);
-    let resp = chart_plot("isochronism walk", &grid, (h, frame.gutter), x, y)
-        .show(ui, |p| grid.draw(p, pal));
+    let mut facts = FactBox::plain(ui, "isochronism facts", "walk", rows, Vec::new());
+    let resp = chart_plot("isochronism walk", &grid, (h, frame.gutter), x, y).show(ui, |p| {
+        grid.draw(p, pal);
+        facts.plot_h = p.transform().frame().height();
+        facts.tops = w.dots.iter().map(dot_at).collect();
+        p.add(facts.clone());
+    });
     paint_walk(ui, &resp.transform, w);
     axis_names(ui, resp.response.rect, *resp.transform.frame());
     ui.add_space(foot);
@@ -755,6 +871,7 @@ fn note(ui: &mut egui::Ui, text: &str) {
 mod tests {
     use super::*;
     use timegrapher_core::steadiness::AmplitudeBin;
+    use timegrapher_core::steady_views::ISO_NO_AMP_AFTER;
 
     /// A run-down drawn by hand: flat above 250°, falling below.
     fn run_down() -> IsochronismCurve {
@@ -791,15 +908,17 @@ mod tests {
     fn draws_a_curve_and_says_why_when_it_is_missing() {
         let curve = run_down();
         // The bins only: no fitted curve and no turn (Peter, 13 Nov).
-        assert_eq!(
-            caption(&curve),
-            "Dots: the median rate in each 2° of amplitude, with bars over its middle half"
-        );
-        // The slope and its amplitudes only in the headline.
+        // The key under the plot names the dots, and the title line
+        // carries the slope and its amplitudes (#1507).
+        assert_eq!(iso_key(&curve), "Median rate in each 2° of amplitude (8)");
         assert!(
-            !caption(&curve).contains("per degree"),
+            !iso_key(&curve).contains("per degree"),
             "{}",
-            caption(&curve)
+            iso_key(&curve)
+        );
+        assert_eq!(
+            iso_title(&curve),
+            "+0.40 ± 0.02 s/d per degree, 236° to 264°"
         );
         // Bare numbers, a true minus, no minus zero (Hugh's F1).
         assert_eq!(rate_label(-0.0001, 0.5), "0.0");
@@ -1096,7 +1215,7 @@ mod tests {
             .collect()
         };
         w.thin_key = Some("Thin: under 60% read".into());
-        w.rate_only_text = Some("No amplitude read after 1 h.".into());
+        w.rate_only_row = Some((ISO_NO_AMP_AFTER.into(), "1 h".into()));
         let t = texts(&w);
         assert!(t.iter().any(|t| t == "Thin: under 60% read"), "{t:?}");
         // The key draws a full and a faded dot side by side, at the key's
@@ -1119,10 +1238,10 @@ mod tests {
             .collect();
         let mid = crate::tfmap::time_colour(dark, 0.5);
         assert_eq!(key, [mid, mid.gamma_multiply(THIN_ALPHA)]);
-        assert!(
-            t.iter().any(|t| t == "No amplitude read after 1 h."),
-            "{t:?}"
-        );
+        // The rate read past the last point is the facts box's last row
+        // (Hugh's spec, 13 Nov).
+        assert!(t.iter().any(|t| t == ISO_NO_AMP_AFTER), "{t:?}");
+        assert!(t.iter().any(|t| t == "1 h"), "{t:?}");
         let t = texts(&walk());
         assert!(!t.iter().any(|t| t.starts_with("Thin:")), "{t:?}");
         assert!(!t.iter().any(|t| t.starts_with("Off the scale")), "{t:?}");
@@ -1180,7 +1299,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        for want in [WALK_HINT, WALK_KEY_START, w.last_text.as_str(), WALK_SINCE] {
+        for want in [WALK_KEY_START, w.last_text.as_str(), WALK_SINCE] {
             assert!(texts.iter().any(|t| t == want), "{want}: {texts:?}");
         }
         assert!(
@@ -1271,23 +1390,6 @@ mod tests {
         assert_eq!(amp_label(285.0, &r), "");
         assert_eq!(amp_label(276.0, &r), "276");
         assert_eq!(amp_label(284.0, &r), "284");
-    }
-
-    /// The headline goes in short lines, one fact a line (Hugh's F4).
-    #[test]
-    fn the_summary_is_one_fact_a_line() {
-        let h = "Between 145° and 251° the rate goes with the amplitude by -0.23 ± 0.01 s/d \
-                 per degree. The rate reads +1.0 s/d at 145° and -3.0 s/d at 251°; it changes \
-                 least near 213°.";
-        assert_eq!(
-            headline_lines(h),
-            [
-                "Between 145° and 251° the rate goes with the amplitude by -0.23 ± 0.01 s/d per \
-                 degree",
-                "The rate reads +1.0 s/d at 145° and -3.0 s/d at 251°",
-                "It changes least near 213°",
-            ]
-        );
     }
 
     /// Both axes run between round values on 1-2-5 steps, about 6 to 10
@@ -1501,6 +1603,8 @@ mod tests {
             .into();
         let ctx = egui::Context::default();
         theme::install(&ctx);
+        // The finding in full is in the "i" (Hugh's spec, 13 Nov).
+        ctx.data_mut(|d| d.insert_temp(info_id(), true));
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -1522,7 +1626,7 @@ mod tests {
             .collect();
         assert!(
             text.iter()
-                .any(|t| t.ends_with("by \u{2212}0.03 ± 0.01 s/d per degree")),
+                .any(|t| t.contains("by \u{2212}0.03 ± 0.01 s/d per degree")),
             "{text:?}"
         );
         assert!(
@@ -1564,18 +1668,19 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let both = texts(Some(&curve), Some(&w), View::Curve);
-        assert!(both.iter().any(|t| t == &caption(&curve)), "{both:?}");
-        assert!(!both.iter().any(|t| t == WALK_HINT), "{both:?}");
+        assert!(both.iter().any(|t| t == &iso_key(&curve)), "{both:?}");
+        assert!(!both.iter().any(|t| t == WALK_KEY_START), "{both:?}");
         let walk_only = texts(Some(&curve), Some(&w), View::Walk);
-        assert!(walk_only.iter().any(|t| t == WALK_HINT), "{walk_only:?}");
         assert!(
-            walk_only
-                .iter()
-                .any(|t| t == &headline_lines(&curve.headline)[0]),
+            walk_only.iter().any(|t| t == WALK_KEY_START),
             "{walk_only:?}"
         );
         assert!(
-            !walk_only.iter().any(|t| t == &caption(&curve)),
+            walk_only.iter().any(|t| t.contains(&iso_title(&curve))),
+            "{walk_only:?}"
+        );
+        assert!(
+            !walk_only.iter().any(|t| t == &iso_key(&curve)),
             "{walk_only:?}"
         );
         let none = texts(Some(&curve), None, View::Walk);
@@ -1583,5 +1688,78 @@ mod tests {
             none.iter().any(|t| t.starts_with("No walk yet")),
             "{none:?}"
         );
+    }
+
+    /// Every word off the plot (Hugh's Text Off the Charts, #1507): the
+    /// title line, the end rates in the facts box, the key row; the
+    /// finding in full and the method only in "i", the Walk's rate past
+    /// its last amplitude in full there too; a dot's hover is core's.
+    #[test]
+    fn the_words_sit_off_the_plot_and_in_i() {
+        let curve = run_down();
+        let mut w = walk();
+        w.rate_only_text = Some(
+            "No amplitude read after 1 h. The rate to 2 h is on the Paper \
+                                 Strip."
+                .into(),
+        );
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let texts = |view: View, info: bool| -> Vec<String> {
+            ctx.data_mut(|d| d.insert_temp(info_id(), info));
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 700.0),
+                )),
+                ..Default::default()
+            };
+            ctx.run(input, |ctx| {
+                egui::CentralPanel::default()
+                    .show(ctx, |u| super::ui(u, Some(&curve), Some(&w), view));
+            })
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                _ => None,
+            })
+            .collect()
+        };
+        let shut = texts(View::Curve, false);
+        let title = format!("  ·  {}", iso_title(&curve));
+        for want in [ISO_TITLE, title.as_str(), iso_key(&curve).as_str()] {
+            assert!(shut.iter().any(|t| t == want), "{want}: {shut:?}");
+        }
+        for (name, value) in iso_facts(&curve) {
+            assert!(
+                shut.contains(&name) && shut.contains(&value),
+                "{name}: {shut:?}"
+            );
+        }
+        let info = iso_info(&curve, false);
+        assert!(!shut.iter().any(|t| info.contains(t)), "{shut:?}");
+        let open = texts(View::Curve, true);
+        for p in &info {
+            assert!(open.contains(p), "{p}: {open:?}");
+        }
+        let walk_open = texts(View::Walk, true);
+        for p in iso_info(&curve, true)
+            .iter()
+            .chain(w.rate_only_text.as_ref())
+        {
+            assert!(walk_open.contains(p), "{p}: {walk_open:?}");
+        }
+        // A dot's hover is the nearest bin's within reach, core's words.
+        let t = egui_plot::PlotTransform::new(
+            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(280.0, 100.0)),
+            egui_plot::PlotBounds::from_min_max([236.0, 0.0], [264.0, 20.0]),
+            egui::Vec2b::new(false, false),
+        );
+        let b = &curve.bins[0];
+        let at = t.position_from_point(&PlotPoint::new(b.amplitude_deg, b.rate_s_per_day));
+        let near = nearest_bin(&curve, &t, at + egui::vec2(2.0, 0.0)).unwrap();
+        assert_eq!(iso_bin_hover(near), iso_bin_hover(b));
+        assert!(nearest_bin(&curve, &t, at + egui::vec2(0.0, HOVER_PX + 1.0)).is_none());
     }
 }

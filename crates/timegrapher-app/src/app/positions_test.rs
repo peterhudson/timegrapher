@@ -467,6 +467,17 @@ impl TimegrapherApp {
 
     /// The Positions Test pane: the banner and the tables, and what its
     /// buttons ask for.
+    /// The pane's toolbar, with the Info toggle pinned at its right.
+    pub(super) fn positions_tools(&mut self, ui: &mut egui::Ui, title: &str) {
+        let mut info = self.positions_info;
+        let hint = "Info: how the table for a take is read";
+        theme::pane_toolbar_info(ui, title, &help::POSITIONS_TEST, (&mut info, hint), |ui| {
+            self.positions_settings(ui);
+            self.export_button(ui, Pane::PositionsTest);
+        });
+        self.positions_info = info;
+    }
+
     pub(super) fn positions_pane(&mut self, ui: &mut egui::Ui) {
         self.results_rects[0] = Some(ui.max_rect());
         let now = self.live.as_ref().map(|l| l.duration_s());
@@ -512,10 +523,9 @@ impl TimegrapherApp {
             free.as_ref(),
             live.as_ref(),
             self.guided_settle_s,
-            self.guided_measure_s,
             self.open_watch().is_some(),
             note.as_deref(),
-            self.position_card_title,
+            (self.position_card_title, self.positions_info),
         );
         let Some(action) = action else { return };
         if action == guided::Action::ClearEarlier {
@@ -525,13 +535,20 @@ impl TimegrapherApp {
             return;
         }
         let Some(now) = now else { return };
+        self.apply_guided_action(action, now);
+    }
+
+    /// A guided test's banner button, from either test's pane (#1563):
+    /// the step it asks for, then the strip's not-used and measured
+    /// stretches and the mask follow the test.
+    pub(super) fn apply_guided_action(&mut self, action: guided::Action, now: f64) {
         let Some(mut test) = self.guided.take() else {
             return;
         };
         match action {
             // Noted in the take like a position picked by hand, so its
-            // session.json follows the test. After the sixth there is no
-            // Next: the test ends by itself.
+            // session.json follows the test. After the last stop there is
+            // no Next: the test ends by itself.
             guided::Action::Next => {
                 if let Some(p) = test.advance(now) {
                     self.change_position(p);

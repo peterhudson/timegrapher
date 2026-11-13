@@ -133,14 +133,21 @@ pub const QUARTZ_HELP: &[&str] = &[
 
 pub const LIBRARY_HELP: &[&str] = &[
     "Your watches are kept in one folder, holding a folder for each watch: its details, its \
-     photos and every take made of it. Each take inside is a standard take folder, so the \
-     command line and the MCP server read it as they read one anywhere else.",
-    "Nothing in it records where it is, so the whole folder can be moved, synced or copied to \
-     another computer. Move Watches… moves it and keeps using it there; Choose Another… uses \
-     a Watches folder somewhere else, such as one copied from another computer, or an empty \
-     folder for a new one. Use the Default goes back to Timegrapher Data in your home folder.",
-    "Only one copy of the app at a time can change your watches. A second copy opens them to \
-     read only, and says so here; the folder can't be moved while another copy has it open.",
+     photos and every take made of it.",
+    "## What It Holds",
+    "- Each take inside is a standard take folder, so the command line and the MCP server read \
+     it as they read one anywhere else.",
+    "- Nothing in it records where it is, so the whole folder can be moved, synced or copied \
+     to another computer.",
+    "## Controls",
+    "- Move Watches…: moves it and keeps using it there.",
+    "- Choose Another…: uses a Watches folder somewhere else, such as one copied from another \
+     computer, or an empty folder for a new one.",
+    "- Use the Default: goes back to Timegrapher Data in your home folder.",
+    "## Other Copies",
+    "- Only one copy of the app at a time can change your watches. A second copy opens them to \
+     read only, and says so here.",
+    "- The folder can't be moved while another copy has it open.",
 ];
 
 /// What the Watches Folder section asks the app to do.

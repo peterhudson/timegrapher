@@ -14,39 +14,50 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use timegrapher_core::figure_text::true_minus;
 use timegrapher_core::library::{length_text, size_text, Reading};
-use timegrapher_core::library::{Field, FieldKind, Library, Take, Watch, WatchEntry};
+use timegrapher_core::library::{Field, FieldKind, FromCalibre, Library, Take, Watch, WatchEntry};
 use timegrapher_core::session::Position;
 
 pub const HELP: &[&str] = &[
-    "Watches is the window's second view: the switch in the top row, or View > Watches \
-     (Ctrl+2, Cmd+2 on a Mac), shows it, and Bench (Ctrl+1) goes back. A take keeps running \
-     behind it. Open on a take, or starting one from a watch, goes to the Bench.",
     "Your watches, each with its details and every take made of it, kept in the Watches \
-     folder (Settings > General says where). Pick a watch to see its takes and to start a \
-     new one; Save… then saves the take into that watch, named by when it started.",
-    "New Watch… adds a watch: only its name is needed. Its calibre, lift angle and beat rate \
-     set up each new take of it, and can be changed for one take without changing the watch.",
-    "Add Photos… copies photos of the picked watch into its folder, each kept as it is \
-     (JPEG, PNG, TIFF, or HEIC as an iPhone takes them). They show as a strip under its \
-     details, and the first by name leads its row in the list. Click one to open it in your \
-     photo viewer, or right-click it to show its folder or delete it.",
-    "Each take is a row of the Takes table: when it started, its positions, its length, \
-     its own reading as the command line reads it (worked out the first time it is \
-     shown, then kept), and the space it uses. Clicking a row picks it; \
-     Open, at the right of the Takes title, or a double click opens it on the Bench, and \
-     the take already on show is not read again. Right-clicking it, or …, offers Keep \
-     Analysis Only… (keeping what was measured and deleting the sound, to save space), \
-     Move to Another Watch and Delete…. Open Recording… and Open Folder… in the File menu \
-     ask whether to add a recording from outside your watches to one of them, asking for \
-     anything its files don't say, or just to open it.",
-    "Pick a watch, then Listen, Positions Test, Dynamic Poise Test or Power Reserve Test: \
+     folder (Settings > General says where).",
+    "## Getting There",
+    "- Watches is the window's second view: the switch in the top row, or View > Watches \
+     (Ctrl+2, Cmd+2 on a Mac), shows it. Bench (Ctrl+1) goes back.",
+    "- A take keeps running behind it. Open on a take, or starting one from a watch, goes to \
+     the Bench.",
+    "## Watches",
+    "- Pick a watch to see its takes and to start a new one. Save… then saves the take into \
+     that watch, named by when it started.",
+    "- New Watch… adds a watch: only its name is needed.",
+    "- Its calibre, lift angle and beat rate set up each new take of it, and can be changed \
+     for one take without changing the watch.",
+    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test or Power Reserve Test: \
      each is a new take on the microphone, saved into the watch when it stops.",
-    "Quick Listen (the Listen button on the Listen card, with no watch picked) keeps nothing \
-     until you Save it: into a watch, or into a folder. Its sound goes without a question \
-     when you quit or start another take. A take saved into Unsorted is listed at the top \
-     of the watches until you file it under a watch (right-click it, then File Under a \
-     Watch) or delete it.",
-    "Keep in a Watch works while Quick Listen still listens: the take is that watch's from \
+    "## Photos",
+    "- Add Photos… copies photos of the picked watch into its folder, each kept as it is \
+     (JPEG, PNG, TIFF, or HEIC as an iPhone takes them).",
+    "- They show as a strip under its details, and the first by name leads its row in the \
+     list.",
+    "- Click one to open it in your photo viewer, or right-click it to show its folder or \
+     delete it.",
+    "## Takes",
+    "- Each take is a row of the Takes table: when it started, its positions, its length, its \
+     own reading as the command line reads it, and the space it uses.",
+    "- The reading is worked out the first time it is shown, then kept.",
+    "- Clicking a row picks it. Open, at the right of the Takes title, or a double click opens \
+     it on the Bench, and the take already on show is not read again.",
+    "- Right-clicking it, or …, offers Keep Analysis Only… (keeping what was measured and \
+     deleting the sound, to save space), Move to Another Watch and Delete….",
+    "- Open Recording… and Open Folder… in the File menu ask whether to add a recording from \
+     outside your watches to one of them, or just to open it.",
+    "- Adding one asks for anything its files don't say.",
+    "## Quick Listen",
+    "- Quick Listen (the Listen button on the Listen card, with no watch picked) keeps \
+     nothing until you Save it: into a watch, or into a folder.",
+    "- Its sound goes without a question when you quit or start another take.",
+    "- A take saved into Unsorted is listed at the top of the watches until you file it under \
+     a watch (right-click it, then File Under a Watch) or delete it.",
+    "- Keep in a Watch works while Quick Listen still listens: the take is that watch's from \
      then, and Stop saves it into the watch.",
 ];
 
@@ -1889,21 +1900,19 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         Some("The movement: it fills the lift angle and beat rate below"),
         |ui| cal.picker(ui, &current, w.bph.map(|b| (b, "the watch's beat rate"))),
     );
+    let given = |n: &str| FromCalibre {
+        lift: cal.lift(n),
+        bph: cal.bph(n),
+    };
     if let Some(p) = picked {
-        if let Some(l) = cal.lift(&p) {
-            w.lift = Some(l);
-        }
-        if let Some(b) = cal.bph(&p) {
-            w.bph = Some(b);
-        }
-        w.calibre = (!p.is_empty()).then_some(p);
+        w.pick_calibre(&p, given(&p));
     }
     // Either the calibre or the watch: a figure the calibre gives is the
     // calibre's, and only one it doesn't give is set here.
-    let calibre = w.calibre.clone().unwrap_or_default();
-    let (cal_lift, cal_bph) = (cal.lift(&calibre), cal.bph(&calibre));
-    lift_row(ui, w, cal_lift);
-    bph_row(ui, w, cal_bph);
+    let given = given(w.calibre.as_deref().unwrap_or_default());
+    w.hold_calibre(given);
+    lift_row(ui, w, given);
+    bph_row(ui, w, given);
     own_fields(ui, w);
     let mut notes = w.notes.clone().unwrap_or_default();
     ui.label("Notes");
@@ -1925,19 +1934,18 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
     );
 }
 
-/// The watch's lift angle: the calibre's (`cal_lift`) where it gives one,
+/// The watch's lift angle: the calibre's (`given`) where it gives one,
 /// else set here.
-fn lift_row(ui: &mut egui::Ui, w: &mut Watch, cal_lift: Option<f64>) {
+fn lift_row(ui: &mut egui::Ui, w: &mut Watch, given: FromCalibre) {
     theme::row(
         ui,
         "Lift Angle",
-        Some(match cal_lift {
+        Some(match given.lift {
             Some(_) => "Degrees, from the calibre. Pick no calibre to set it here.",
             None => "Degrees; each new take of this watch starts with it.",
         }),
-        |ui| match cal_lift {
+        |ui| match given.lift {
             Some(l) => {
-                w.lift = Some(l);
                 ui.label(format!("{}° from the calibre", fields::plain(l)))
                     .on_hover_text(FROM_CALIBRE);
             }
@@ -1948,6 +1956,9 @@ fn lift_row(ui: &mut egui::Ui, w: &mut Watch, cal_lift: Option<f64>) {
                         .range(timegrapher_core::input_domain::LIFT_RANGE_DEG)
                         .suffix("°"),
                 );
+                // Shown only when the calibre gives none (core's
+                // `Watch::set_lift` refusal can't apply), and the field's
+                // range is core's: the widget's value is taken as it is.
                 if field.changed() {
                     w.lift = Some(lift);
                 }
@@ -1963,22 +1974,23 @@ fn lift_row(ui: &mut egui::Ui, w: &mut Watch, cal_lift: Option<f64>) {
     );
 }
 
-/// The watch's beat rate: the calibre's (`cal_bph`) where it gives one,
+/// The watch's beat rate: the calibre's (`given`) where it gives one,
 /// else set here.
-fn bph_row(ui: &mut egui::Ui, w: &mut Watch, cal_bph: Option<u32>) {
+fn bph_row(ui: &mut egui::Ui, w: &mut Watch, given: FromCalibre) {
     theme::row(
         ui,
         "Beat Rate",
-        Some(match cal_bph {
+        Some(match given.bph {
             Some(_) => "Beats per hour, from the calibre. Pick no calibre to set it here.",
             None => "Beats per hour; each new take of this watch starts with it. Auto finds it.",
         }),
-        |ui| match cal_bph {
+        |ui| match given.bph {
             Some(b) => {
-                w.bph = Some(b);
                 ui.label(format!("{b} bph from the calibre"))
                     .on_hover_text(FROM_CALIBRE);
             }
+            // Shown only when the calibre gives none, offering the
+            // standard rates: core's `Watch::set_bph` refusal can't apply.
             None => {
                 egui::ComboBox::from_id_salt("form bph")
                     .selected_text(w.bph.map_or("Auto".to_string(), |b| format!("{b} bph")))

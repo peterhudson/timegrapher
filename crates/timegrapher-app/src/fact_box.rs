@@ -68,6 +68,39 @@ pub(crate) const FACT_COLUMN_GAP: f32 = 20.0;
 pub(crate) const FACT_SIZE: f32 = 12.0;
 
 impl FactBox {
+    /// A box of `rows` with no short form, flowing into two columns
+    /// before it sheds a row, `shed` first: the Distributions' (#1528)
+    /// and the Isochronism's (#1507). `held` and `name` keep its layout
+    /// apart from another box's.
+    pub(crate) fn plain(
+        ui: &egui::Ui,
+        held: &str,
+        name: &str,
+        rows: Vec<(String, String)>,
+        shed: Vec<usize>,
+    ) -> Self {
+        let pal = crate::theme::pal(ui);
+        let held = ui.id().with((held, name));
+        FactBox {
+            base: egui_plot::PlotItemBase::new(format!("{name} facts")),
+            name_w: widest(ui, rows.iter().map(|r| r.0.as_str())),
+            value_w: widest(ui, rows.iter().map(|r| r.1.as_str())),
+            short_name_w: 0.0,
+            short_value_w: 0.0,
+            rows,
+            plot_h: 0.0,
+            tops: Vec::new(),
+            held,
+            was: ui.ctx().data(|d| d.get_temp(held)),
+            fill: ui.visuals().extreme_bg_color.gamma_multiply(0.8),
+            name_color: pal.text_secondary,
+            value_color: pal.text,
+            keep: None,
+            shed,
+            flow: true,
+        }
+    }
+
     /// Where the box goes in a plot whose frame is `frame`, `rows` tall.
     /// Fewer than four rows of facts make a short box, as narrow as its
     /// rows and tight around them.

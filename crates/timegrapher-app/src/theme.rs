@@ -353,6 +353,54 @@ pub fn help_size() -> f32 {
     16.0
 }
 
+/// The room between the lines of a "?", points; a group's heading has
+/// [`HELP_HEADING_ABOVE`] more above it (Hugh, #1520).
+const HELP_GAP: f32 = 4.0;
+const HELP_HEADING_ABOVE: f32 = 6.0;
+/// How far a bullet's or a step's words hang in from its mark, so their
+/// wrapped lines align with the words, not the mark.
+const HELP_HANG: f32 = 12.0;
+/// A "?"'s type size.
+const HELP_PT: f32 = 12.5;
+
+/// One line of a "?" text, drawn as its kind says (#1520): the answer
+/// and short paragraphs plain, a heading semibold with room above it, a
+/// bullet or a step hanging from its mark in tertiary.
+fn help_line(ui: &mut Ui, line: crate::help::Line<'_>) {
+    use crate::help::Line;
+    let plain = |ui: &mut Ui, text: &str| {
+        ui.add(egui::Label::new(RichText::new(text).size(HELP_PT)).wrap());
+    };
+    match line {
+        Line::Answer(t) | Line::Paragraph(t) => plain(ui, t),
+        Line::Heading(t) => {
+            ui.add_space(HELP_HEADING_ABOVE);
+            ui.label(RichText::new(t).font(semibold(HELP_PT)));
+        }
+        Line::Bullet(t) => hanging(ui, "\u{2022}", t),
+        Line::Step(n, t) => hanging(ui, n, t),
+    }
+}
+
+/// `text` hanging from `mark`, the mark in tertiary at the left and the
+/// words' every line [`HELP_HANG`] in, or the mark's width and a space
+/// where that is wider (a step of two digits).
+fn hanging(ui: &mut Ui, mark: &str, text: &str) {
+    let tertiary = pal(ui).text_tertiary;
+    let font = egui::FontId::proportional(HELP_PT);
+    let galley = ui.fonts_mut(|f| f.layout_no_wrap(mark.to_string(), font, tertiary));
+    let hang = HELP_HANG.max(galley.size().x + 4.0);
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        let (r, _) = ui.allocate_exact_size(Vec2::new(hang, galley.size().y), Sense::hover());
+        ui.painter().galley(r.min, galley, tertiary);
+        ui.vertical(|ui| {
+            ui.set_max_width(ui.available_width());
+            ui.add(egui::Label::new(RichText::new(text).size(HELP_PT)).wrap());
+        });
+    });
+}
+
 /// [`help`], ending with a key to a toolbar: each icon drawn beside its
 /// name, so a picture that can't be guessed can be looked up.
 pub fn help_with_key(
@@ -384,14 +432,14 @@ pub fn help_with_key(
     // little; a click shows it all.
     let body = |ui: &mut Ui, pinned: bool| {
         ui.set_max_width(360.0);
-        ui.spacing_mut().item_spacing.y = 8.0;
+        ui.spacing_mut().item_spacing.y = HELP_GAP;
         ui.label(RichText::new(title).font(semibold(14.0)));
         let shown = if pinned { paragraphs.len() } else { 1 };
-        for para in &paragraphs[..shown.min(paragraphs.len())] {
-            ui.add(egui::Label::new(RichText::new(*para).size(12.5)).wrap());
+        for (i, text) in paragraphs[..shown.min(paragraphs.len())].iter().enumerate() {
+            help_line(ui, crate::help::line(i, text));
         }
         if pinned && !key.is_empty() {
-            ui.label(RichText::new("The Toolbar's Icons").font(semibold(12.5)));
+            help_line(ui, crate::help::Line::Heading("The Toolbar's Icons"));
             let pal = pal(ui);
             ui.scope(|ui| {
                 ui.spacing_mut().item_spacing.y = 3.0;
@@ -1622,6 +1670,29 @@ pub fn pane_toolbar(ui: &mut Ui, title: &str, help_text: &[&str], controls: impl
     pane_toolbar_full(ui, title, help_text, None, controls)
 }
 
+/// [`pane_toolbar`] with the pane's Info toggle ("i") pinned just left of
+/// the "?", `hint` its hover: `info` flips when it is clicked.
+pub fn pane_toolbar_info(
+    ui: &mut Ui,
+    title: &str,
+    help_text: &[&str],
+    (info, hint): (&mut bool, &str),
+    controls: impl FnMut(&mut Ui),
+) {
+    let mut on = *info;
+    let mut pin = |ui: &mut Ui| {
+        let accent = pal(ui).accent;
+        if icon_toggle(ui, Icon::Info, on, accent)
+            .on_hover_text(hint)
+            .clicked()
+        {
+            on = !on;
+        }
+    };
+    pane_toolbar_pinned(ui, title, help_text, Some(&mut pin), controls);
+    *info = on;
+}
+
 /// [`pane_toolbar`] with one control `pinned` just left of the "?": it
 /// never folds and never moves, however the row's controls fold.
 pub fn pane_toolbar_pinned(
@@ -1661,7 +1732,7 @@ fn pane_toolbar_full(
         ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| pin(ui));
     }
     let mut text = help_text.to_vec();
-    text.push(crate::help::TOOLBAR);
+    text.extend_from_slice(crate::help::TOOLBAR);
     // The key from the row as last drawn.
     let key: Vec<(Icon, String)> = ui
         .ctx()
@@ -2587,6 +2658,24 @@ pub fn popups_above_dialogs(ctx: &egui::Context) {
 pub const INFO_BESIDE_W: f32 = 600.0;
 /// An Info panel's width, or a third of the pane if that is less.
 pub const INFO_W: f32 = 300.0;
+
+/// An Info panel of paragraphs under a `caption`, in [`info_scroll`]: the
+/// first in the text's colour, the rest secondary, their words selectable.
+pub fn info_text(ui: &mut Ui, id: egui::Id, (caption, lines): (&str, &[String]), max_h: f32) {
+    let pal = pal(ui);
+    info_scroll(ui, id, max_h, |ui| {
+        ui.spacing_mut().item_spacing.y = 8.0;
+        ui.label(crate::theme::caption(caption).color(pal.text_secondary));
+        for (i, l) in lines.iter().enumerate() {
+            let colour = if i == 0 { pal.text } else { pal.text_secondary };
+            ui.add(
+                egui::Label::new(RichText::new(l).small().color(colour))
+                    .wrap()
+                    .selectable(true),
+            );
+        }
+    });
+}
 
 /// An Info panel's scrolling body, `id` its own: no taller than `max_h`,
 /// the room on screen, its bar always showing so what is below the edge

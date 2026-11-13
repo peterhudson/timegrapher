@@ -164,11 +164,19 @@ impl SeriesKind {
         let (gap, u) = unit_after(self.unit());
         format!("{text}{gap}{u}")
     }
-    fn fmt(self, v: f64) -> String {
+    /// A reading with its unit, at the series' place: "+1.2 s/d",
+    /// "270°", "0.20 ms" ([`Self::number`]).
+    pub fn fmt(self, v: f64) -> String {
+        self.with_unit(self.number(v))
+    }
+    /// A reading without its unit, at the series' place: the rate signed,
+    /// "+1.2", the others as they are, "270", "0.20"; one that rounds to
+    /// zero takes no sign ([`crate::figure_text`]).
+    pub fn number(self, v: f64) -> String {
+        let d = self.digits();
         match self {
-            SeriesKind::Rate => format!("{v:+.1} s/d"),
-            SeriesKind::Amplitude => format!("{v:.0}°"),
-            SeriesKind::BeatError => format!("{v:.2} ms"),
+            SeriesKind::Rate => crate::figure_text::signed_text(v, d),
+            SeriesKind::Amplitude | SeriesKind::BeatError => crate::figure_text::fixed_text(v, d),
         }
     }
     /// A within-take difference (a cycle's peak to peak), one place finer
@@ -421,6 +429,10 @@ pub struct SeriesCheck {
     /// view show these; files, pipes and the model keep the ASCII minus.
     pub screen_headline: String,
     pub screen_summary: String,
+    /// [`SeriesCheck::stats_line`], the statistics behind the headline on
+    /// one line, as a screen shows it (true minus): the app's Steadiness
+    /// Info and the MCP view show this one text.
+    pub screen_stats: String,
     /// Length of each reading, seconds; readings used; readings left out
     /// as outliers.
     pub step_s: f64,
@@ -1058,6 +1070,7 @@ pub fn check_series(
         summary: String::new(),
         screen_headline: String::new(),
         screen_summary: String::new(),
+        screen_stats: String::new(),
         step_s: g.step,
         cycle_step_s: fine.as_ref().map_or(g.step, |f| f.step),
         readings: n,
@@ -2021,6 +2034,7 @@ impl SeriesCheck {
     fn set_screen_text(&mut self) {
         self.screen_headline = crate::figure_text::figure_minus(&self.headline);
         self.screen_summary = crate::figure_text::figure_minus(&self.summary);
+        self.screen_stats = crate::figure_text::figure_minus(&self.stats_line());
     }
 
     /// The period search's line when it turns in under three of the
@@ -2782,6 +2796,9 @@ mod cycle_search;
 
 #[path = "steadiness_white.rs"]
 mod white;
+
+#[path = "steadiness_stats.rs"]
+mod stats;
 use cycle_search::cycle;
 #[cfg(test)]
 use cycle_search::{refined_candidates, same_peaks_once, strongest_cycle};

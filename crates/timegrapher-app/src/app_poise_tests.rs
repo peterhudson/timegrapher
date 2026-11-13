@@ -314,3 +314,83 @@ fn draw_at(app: &mut TimegrapherApp, pane: Pane, size: Vec2) -> Vec<(String, egu
     }
     drawn
 }
+
+/// The pane's Start button goes through the guided tests' one handler
+/// (#1563): pressed after the first stop, it turns the card to the second,
+/// the strip's measured and not-used stretches follow the test, and the
+/// engine is given the new masks.
+#[test]
+fn the_panes_start_button_turns_to_the_next_stop() {
+    let base = std::env::temp_dir().join(format!("tg-app-poise-next-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let (t0, each) = (5.0, 20.0);
+    let order = guided::Kind::Poise.order();
+    let mut app = synthetic_varying(t0 + 2.0 * each, 4.0, |_| 0.0);
+    app.session.listen();
+    let _tx = queued_capture(&mut app, &base);
+    let mut test = guided::Test::poise().timed(2.0, each - 2.0);
+    test.tick(t0);
+    assert_eq!(test.tick(t0 + each), guided::Phase::Turn);
+    app.guided = Some(test);
+    app.set_position(order[0]);
+    app.guided_measured.clear();
+    app.guided_unused.clear();
+    app.live.as_mut().unwrap().set_masked(&[]);
+    let size = Vec2::new(1280.0, 900.0);
+    let drawn = draw_at(&mut app, Pane::DynamicPoise, size);
+    let start = format!("Start {} Measurement", order[1].witschi());
+    let (_, button) = drawn
+        .iter()
+        .find(|(t, _)| t.contains(&start))
+        .unwrap_or_else(|| panic!("{start} in {drawn:?}"));
+    click(&mut app, Pane::DynamicPoise, size, button.center());
+    assert_eq!(app.position, order[1]);
+    assert_eq!(app.poise_test().map(|t| t.step), Some(1));
+    assert!(
+        !app.guided_measured.is_empty(),
+        "the strip follows the test"
+    );
+    assert!(
+        app.guided_unused
+            .iter()
+            .any(|&(a, b, _)| a == 0.0 && b == t0),
+        "the time before the test reads as not used: {:?}",
+        app.guided_unused
+    );
+    let engine = app.live.as_ref().unwrap().masked().to_vec();
+    assert!(!engine.is_empty(), "the engine leaves the unused time out");
+    assert_eq!(engine, app.engine_masked());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The pane drawn with a press and release at `at`.
+fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) {
+    let ctx = themed();
+    let screen = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size));
+    let press = |pressed| egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let frames = [
+        vec![egui::Event::PointerMoved(at)],
+        vec![press(true)],
+        vec![press(false)],
+        vec![],
+    ];
+    for events in frames {
+        let input = egui::RawInput {
+            screen_rect: screen,
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.pane_tools(ui, pane);
+                app.poise_pane(ui);
+            });
+        });
+    }
+}

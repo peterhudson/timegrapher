@@ -1397,4 +1397,9 @@ fn the_reserve_info_is_kept_in_the_settings() {
     app.reserve_info = false;
     back.apply_settings(app.settings());
     assert!(!back.reserve_info);
+    // The Positions Test pane's Info, the same way (#1528).
+    assert!(!back.positions_info);
+    app.positions_info = true;
+    back.apply_settings(app.settings());
+    assert!(back.positions_info && !back.reserve_info);
 }
