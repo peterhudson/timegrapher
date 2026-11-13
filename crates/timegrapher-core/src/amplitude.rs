@@ -182,10 +182,26 @@ pub const MAX_AMPLITUDE_DEG: f64 = 380.0;
 /// [`MAX_AMPLITUDE_DEG`]: the one rule, at a take's first read and at any
 /// later lift ([`at_lift`]), so the gate applies at the lift in use.
 pub fn side_deg(unlock_to_drop_s: f64, osc_period_s: f64, lift_deg: f64) -> Option<f64> {
-    let a = amplitude_deg(unlock_to_drop_s, osc_period_s, lift_deg);
+    in_gate(amplitude_deg(unlock_to_drop_s, osc_period_s, lift_deg))
+}
+
+/// `a` if it lies in [`MIN_AMPLITUDE_DEG`] to [`MAX_AMPLITUDE_DEG`].
+fn in_gate(a: f64) -> Option<f64> {
     (MIN_AMPLITUDE_DEG..=MAX_AMPLITUDE_DEG)
         .contains(&a)
         .then_some(a)
+}
+
+/// The beat error from the unlock, ms: the drop's `beat_error_ms` moved
+/// by the difference of the even and odd sides' unlocks (ms), or None
+/// unless all three are known. The one rule, at a window's first read
+/// and at a new lift ([`at_lift`]).
+pub fn unlock_beat_error_ms(
+    beat_error_ms: Option<f64>,
+    even_unlock_ms: Option<f64>,
+    odd_unlock_ms: Option<f64>,
+) -> Option<f64> {
+    Some(beat_error_ms? + (even_unlock_ms? - odd_unlock_ms?))
 }
 
 /// A side at a new lift: its amplitude, its kept edges, its culled edges.
@@ -215,8 +231,7 @@ pub fn at_lift(w: &mut AmplitudeWindow, osc_period_s: f64, from_lift: f64, to_li
     let mut changed = false;
     for (k, (kept, culled, deg)) in sides.into_iter().enumerate() {
         let Some([u, d]) = kept.map(|(u, d)| [u, d]).or(culled) else {
-            let a = deg.map(|a| a * to_lift / from_lift);
-            new[k].0 = a.filter(|a| (MIN_AMPLITUDE_DEG..=MAX_AMPLITUDE_DEG).contains(a));
+            new[k].0 = deg.and_then(|a| in_gate(a * to_lift / from_lift));
             continue;
         };
         new[k] = match side_deg((d - u) / 1000.0, osc_period_s, to_lift) {
@@ -233,10 +248,8 @@ pub fn at_lift(w: &mut AmplitudeWindow, osc_period_s: f64, from_lift: f64, to_li
     w.set_culled([ec, oc]);
     // As at the first read: the unlock beat error needs both sides' edges.
     if changed {
-        w.beat_error_unlock_ms = match (w.beat_error_ms, ek, ok) {
-            (Some(e), Some(a), Some(b)) => Some(e + (a[0] - b[0])),
-            _ => None,
-        };
+        w.beat_error_unlock_ms =
+            unlock_beat_error_ms(w.beat_error_ms, ek.map(|e| e[0]), ok.map(|e| e[0]));
     }
 }
 
@@ -487,10 +500,11 @@ pub fn windows_between(
         let kept = |s: Option<(Option<f64>, f64, f64)>| s.and_then(|s| Some((s.0?, s.1, s.2)));
         let (even, odd) = (kept(even_all), kept(odd_all));
         let beat_error_ms = timing::beat_error_ms(win);
-        let beat_error_unlock_ms = match (beat_error_ms, even, odd) {
-            (Some(e), Some((_, ue, _)), Some((_, uo, _))) => Some(e + (ue - uo) * 1000.0),
-            _ => None,
-        };
+        let beat_error_unlock_ms = unlock_beat_error_ms(
+            beat_error_ms,
+            even.map(|s| s.1 * 1000.0),
+            odd.map(|s| s.1 * 1000.0),
+        );
         out.push(AmplitudeWindow {
             start_s: start,
             end_s: start + window_s,

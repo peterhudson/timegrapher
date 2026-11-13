@@ -695,12 +695,15 @@ pub fn draw(
                 .is_none_or(|j| shown[j])
         })
         .collect();
+    // Where Info over the rows starts, in a pane too narrow for it beside
+    // them: the readouts stop there (#1580).
+    let covered = theme::info_over_left(ui.available_rect_before_wrap(), opts.info);
     theme::with_info(
         ui,
         opts.info,
         egui::Id::new(("steady info", view)),
         |ui, h| info_panel(ui, s, &series, status, view, h),
-        |ui| rows(ui, s, &series, view, opts),
+        |ui| rows(ui, s, &series, (view, opts), covered),
     );
 }
 
@@ -752,13 +755,14 @@ fn info_panel(
 }
 
 /// Each series' row with the view's plot: one above another, filling the
-/// pane, or side by side when it is wide and short.
+/// pane, or side by side when it is wide and short. `covered` is where
+/// Info over the rows starts, if it is over them.
 fn rows(
     ui: &mut egui::Ui,
     s: &Steadiness,
     series: &[(usize, &SeriesCheck)],
-    view: View,
-    opts: Opts,
+    (view, opts): (View, Opts),
+    covered: Option<f32>,
 ) {
     let n = series.len().max(1);
     let gap = 10.0;
@@ -786,7 +790,7 @@ fn rows(
                 for (k, &(i, c)) in series.iter().enumerate() {
                     ui.allocate_ui(Vec2::new(ui.available_width(), row_h), |ui| {
                         ui.set_min_height(row_h);
-                        over = over.or(row(ui, (s, i, c), view, opts, was));
+                        over = over.or(row(ui, (s, i, c), view, opts, (was, covered)));
                     });
                     if k + 1 < n {
                         ui.add_space(gap);
@@ -802,7 +806,8 @@ fn rows(
                 ui.allocate_ui(Vec2::new(col_w, h), |ui| {
                     ui.set_width(col_w);
                     ui.set_min_height(h);
-                    let drawn_row = ui.vertical(|ui| row(ui, (s, i, c), view, opts, was));
+                    let drawn_row =
+                        ui.vertical(|ui| row(ui, (s, i, c), view, opts, (was, covered)));
                     over = over.or(drawn_row.inner);
                 });
             }
@@ -855,14 +860,15 @@ fn level_lines(c: &SeriesCheck) -> Vec<[[f64; 2]; 2]> {
 }
 
 /// One series' title and plot, and the time under the pointer on its
-/// Readings Over Time; `over` is that time on any row. Its findings and
-/// statistics are in the Info panel.
+/// Readings Over Time; `over` is that time on any row, and `covered`
+/// where Info over the rows starts. Its findings and statistics are in
+/// the Info panel.
 fn row(
     ui: &mut egui::Ui,
     (s, i, c): (&Steadiness, usize, &SeriesCheck),
     view: View,
     opts: Opts,
-    over: Option<f64>,
+    (over, covered): (Option<f64>, Option<f32>),
 ) -> Option<f64> {
     let pal = theme::pal(ui);
     // A map's key names its series ("Timing Swing (ms)"), so the map
@@ -912,7 +918,7 @@ fn row(
         pal,
     };
     match view {
-        View::Readings => return readings_plot(ui, r, (title_rect, over)),
+        View::Readings => return readings_plot(ui, r, (title_rect, over, covered)),
         View::Periods => periods_plot(ui, r),
         View::Cycle => cycle_plot(ui, r),
         View::Autocorrelation => autocorrelation_plot(ui, r),
@@ -947,7 +953,7 @@ struct Row<'a> {
 fn readings_plot(
     ui: &mut egui::Ui,
     r: Row<'_>,
-    (title_rect, over): (egui::Rect, Option<f64>),
+    (title_rect, over, covered): (egui::Rect, Option<f64>, Option<f32>),
 ) -> Option<f64> {
     let Row {
         s,
@@ -1051,9 +1057,10 @@ fn readings_plot(
     if let Some(x) = hover.or(over) {
         let painter = ui.painter_at(*resp.transform.frame());
         strength::time_line(&painter, &resp.transform, x, Strength::Axis, pal);
-        let value = crate::app::nearest_at(&near, x).map(|j| drawn[j].readout(k));
+        let value = crate::app::nearest_at(&near, x).map(|j| drawn[j].readout_parts(k));
         let time = hover.map(|x| readout_time(x, r.opts.joined_in));
-        paint_readout(ui, title_rect, (time, value), colour);
+        let edge = (title_rect, readout_right(ui.max_rect().right(), covered));
+        paint_readout(ui, edge, (time, value.unwrap_or_default()), colour);
     }
     hover
 }
@@ -1070,13 +1077,15 @@ fn readout_time(x: f64, joined_in: Option<&str>) -> String {
 /// Readings Over Time's readout on its title's line, after the title:
 /// the time (on the row under the pointer only), then the reading drawn
 /// nearest it in the series' colour, as a Charts lane writes them, each
-/// in a slot as wide as its digits as zeros (`app::lane_width`). A
-/// part that would run past the row's right edge is left out whole, so
-/// a narrow pane never shows half a figure (Hugh on #1277).
+/// in a slot as wide as its digits as zeros (`app::lane_width`). Nothing
+/// runs past `right` (the row's right edge, or Info's left edge over
+/// it): the longest of [`readout_choices`] that fits is drawn, so a
+/// narrow pane never shows half a figure and keeps the value longest
+/// (Hugh on #1277, #1580).
 fn paint_readout(
     ui: &egui::Ui,
-    title_rect: egui::Rect,
-    (time, value): (Option<String>, Option<String>),
+    (title_rect, right): (egui::Rect, f32),
+    (time, value): (Option<String>, Vec<String>),
     colour: Color32,
 ) {
     if !title_rect.is_positive() {
@@ -1085,18 +1094,60 @@ fn paint_readout(
     let pal = theme::pal(ui);
     let font = egui::TextStyle::Small.resolve(ui.style());
     let p = ui.painter();
-    let right = ui.max_rect().right();
     let top = title_rect.center().y - font.size / 2.0;
-    let mut x = title_rect.right() + crate::app::LANE_AFTER_TITLE;
-    for (text, ink) in [(time, pal.text), (value, pal.axis_ink(colour))] {
-        let Some(text) = text.map(|t| true_minus(&t)) else {
-            continue;
-        };
-        if x + crate::app::lane_width(p, &text, &font, true) > right {
-            break;
-        }
+    let left = title_rect.right() + crate::app::LANE_AFTER_TITLE;
+    let parts = |(time, value): (Option<String>, Option<String>)| {
+        [(time, pal.text), (value, pal.axis_ink(colour))]
+            .into_iter()
+            .filter_map(|(t, ink)| t.map(|t| (true_minus(&t), ink)))
+            .collect::<Vec<_>>()
+    };
+    let width = |parts: &[(String, Color32)]| {
+        parts
+            .iter()
+            .map(|(t, _)| crate::app::lane_width(p, t, &font, true) + crate::app::LANE_GAP)
+            .sum::<f32>()
+            - crate::app::LANE_GAP
+    };
+    let Some(fits) = readout_choices(time, &value)
+        .into_iter()
+        .map(parts)
+        .find(|parts| left + width(parts) <= right)
+    else {
+        return;
+    };
+    let mut x = left;
+    for (text, ink) in fits {
         x += crate::app::lane_text(p, (x, top), &text, (&font, ink), true) + crate::app::LANE_GAP;
     }
+}
+
+/// What the readout can show, longest first: the time and the whole
+/// reading, then the reading losing its last part ([`timegrapher_core::steady_views::Drawn::readout_parts`]:
+/// the range, then "mean of 8") until only its value is left, then the
+/// value alone without the time. The value is dropped only when it
+/// doesn't fit on its own (Hugh on #1580).
+fn readout_choices(
+    time: Option<String>,
+    value: &[String],
+) -> Vec<(Option<String>, Option<String>)> {
+    if value.is_empty() {
+        return vec![(time, None)];
+    }
+    let mut choices: Vec<_> = (1..=value.len())
+        .rev()
+        .map(|n| (time.clone(), Some(value[..n].join(", "))))
+        .collect();
+    if time.is_some() {
+        choices.push((None, Some(value[0].clone())));
+    }
+    choices
+}
+
+/// Where a row's readout must end: the row's right edge `row_right`, or
+/// the left edge of Info over the rows when it starts sooner (#1580).
+fn readout_right(row_right: f32, covered: Option<f32>) -> f32 {
+    covered.map_or(row_right, |left| row_right.min(left))
 }
 
 /// Readings Over Time's time axis against the strip's: ending where the
