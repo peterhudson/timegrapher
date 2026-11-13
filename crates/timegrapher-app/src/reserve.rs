@@ -1562,6 +1562,7 @@ mod tests {
         let t = finished_run(3);
         let hint = HOUR_COLUMNS[1].2;
         let ctx = egui::Context::default();
+        theme::install(&ctx);
         ctx.style_mut(|s| {
             s.interaction.tooltip_delay = 0.0;
             s.interaction.show_tooltips_only_when_still = false;
