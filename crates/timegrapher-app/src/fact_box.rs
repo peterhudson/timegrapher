@@ -300,23 +300,15 @@ impl FactBox {
             (r.left() - FACT_INSET, r.right())
         }
     }
-}
 
-impl egui_plot::PlotItem for FactBox {
-    fn shapes(
+    /// The box's `shown` rows in `cols` columns, in `r`.
+    fn rows_shapes(
         &self,
         ui: &egui::Ui,
-        transform: &egui_plot::PlotTransform,
+        shown: &[usize],
+        (r, cols): (egui::Rect, usize),
         shapes: &mut Vec<egui::Shape>,
     ) {
-        let (shown, r, cols) = self.placed(transform);
-        // Kept for the next frame's layout, as `held` reads it.
-        let right = r.right() >= transform.frame().right() - FACT_INSET - 0.5;
-        ui.ctx()
-            .data_mut(|d| d.insert_temp(self.held, (shown.len(), right)));
-        if shown.is_empty() {
-            return;
-        }
         let pad = self.pad(shown.len());
         let row = self.row_h(shown.len());
         shapes.push(egui::Shape::rect_filled(r, 6.0, self.fill));
@@ -338,6 +330,55 @@ impl egui_plot::PlotItem for FactBox {
                 shapes.push(egui::Shape::galley(at, g, self.value_color));
             });
         }
+    }
+
+    /// The box's size with all its rows in one column.
+    pub(crate) fn size(&self) -> egui::Vec2 {
+        let none = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ZERO);
+        self.rect_in(none, self.rows.len(), 1).size()
+    }
+
+    /// The box drawn by `painter` on a picture that isn't a plot, all its
+    /// rows in one column, at the first of `places` (each its top left
+    /// corner) where no point of `trace` falls under it, or nowhere when
+    /// each would cover the trace; where it went. The Dynamic Poise
+    /// pane's (#1537): the plot items' box, drawn the same way.
+    pub(crate) fn paint(
+        &self,
+        ui: &egui::Ui,
+        painter: &egui::Painter,
+        places: &[egui::Pos2],
+        trace: &[egui::Pos2],
+    ) -> Option<egui::Rect> {
+        let size = self.size();
+        let r = places
+            .iter()
+            .map(|p| egui::Rect::from_min_size(*p, size))
+            .find(|r| !trace.iter().any(|p| r.expand(2.0).contains(*p)))?;
+        let all: Vec<usize> = (0..self.rows.len()).collect();
+        let mut shapes = Vec::new();
+        self.rows_shapes(ui, &all, (r, 1), &mut shapes);
+        painter.extend(shapes);
+        Some(r)
+    }
+}
+
+impl egui_plot::PlotItem for FactBox {
+    fn shapes(
+        &self,
+        ui: &egui::Ui,
+        transform: &egui_plot::PlotTransform,
+        shapes: &mut Vec<egui::Shape>,
+    ) {
+        let (shown, r, cols) = self.placed(transform);
+        // Kept for the next frame's layout, as `held` reads it.
+        let right = r.right() >= transform.frame().right() - FACT_INSET - 0.5;
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(self.held, (shown.len(), right)));
+        if shown.is_empty() {
+            return;
+        }
+        self.rows_shapes(ui, &shown, (r, cols), shapes);
     }
 
     fn initialize(&mut self, _x_range: std::ops::RangeInclusive<f64>) {}

@@ -523,18 +523,18 @@ pub static DYNAMIC_POISE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
         ),
         "- The line over the picture states its size and fastest hour.".into(),
         "## Reading It".into(),
-        "- The line under it is inferred: where the balance's heavy spot hangs when the wave \
-     is fastest, from each position's own amplitude."
+        "- The heavy spot, in the box on the picture, is inferred: where the balance's heavy \
+     spot hangs when the wave is fastest, from each position's own amplitude."
             .into(),
         format!(
             "- Poise moves the rate least at {}° amplitude and the other way above it. So \
-     where any position may be near it, the line says the heavy spot is not stated.",
+     where any position may be near it, the box says the heavy spot is not stated.",
             timegrapher_core::figure_text::fixed_text(poise::NULL_AMPLITUDE_DEG, 1)
         ),
         "## Controls".into(),
         "- View: draws the same as a plot or round a watch face.".into(),
-        "- Info: gives the fit in full, with the wave's twice-round terms, and the amplitudes \
-     that show the heavy spot."
+        "- Info: gives the fit in full, with the wave's twice-round terms, why the heavy spot \
+     isn't stated and its caveats, the amplitudes that show it, and the table's notes."
             .into(),
         "## Saving".into(),
         "- Copy writes the watch, its calibre, the table and the fit in words, with tabs \
