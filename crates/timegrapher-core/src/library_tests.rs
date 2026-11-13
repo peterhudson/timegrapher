@@ -1493,3 +1493,14 @@ fn a_calibre_gives_its_lift_and_beat_rate_and_only_the_rest_is_set_by_hand() {
     w.hold_calibre(both);
     assert_eq!((w.lift, w.bph), (Some(52.0), Some(28_800)));
 }
+
+/// The engine a kept reading names is this build's version as it is and
+/// the first 8 hex digits of core's source hash (#1521).
+#[test]
+fn the_engine_is_this_versions_and_a_short_source_hash() {
+    let (version, source) = super::engine();
+    assert_eq!(version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(source.len(), 8, "{source}");
+    assert!(source.chars().all(|c| c.is_ascii_hexdigit()), "{source}");
+    assert!(super::ENGINE.starts_with(&format!("{version}+{source}")));
+}
