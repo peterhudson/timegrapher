@@ -24,8 +24,11 @@ pub const NAME: &str = "BE Angle";
 
 /// The angle, degrees, of a beat error `beat_error_ms` (its size) at
 /// `amplitude_deg` on a watch beating `bph`.
+/// With the beat period T = 3600 / bph ([`crate::timing::beat_period_s`]),
+/// bph / 7200 is 1 / (2T).
 pub fn degrees(amplitude_deg: f64, beat_error_ms: f64, bph: u32) -> f64 {
-    amplitude_deg * std::f64::consts::PI * f64::from(bph) / 7200.0 * beat_error_ms.abs() / 1000.0
+    let period_s = crate::timing::beat_period_s(None, bph);
+    amplitude_deg * std::f64::consts::PI * (beat_error_ms.abs() / 1000.0) / (2.0 * period_s)
 }
 
 /// A BE Angle with its ± and the decimals it is written to.

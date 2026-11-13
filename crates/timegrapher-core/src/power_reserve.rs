@@ -283,9 +283,7 @@ impl Hour {
             self.bph?,
         )
     }
-}
 
-impl Hour {
     /// A whole hour, not the run's last part: its span is 3600 s, within
     /// a second for the sums that make it.
     pub fn whole(&self) -> bool {

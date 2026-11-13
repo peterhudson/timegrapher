@@ -209,24 +209,29 @@ pub(super) fn sides_text(tick: f64, tock: f64, se: Option<f64>) -> String {
 /// The Beat Error card's figure: its size, timed from the unlock where
 /// it can be, to the unlock's ±'s decimals.
 pub(super) fn beat_error_figure(r: &LiveReading) -> Option<String> {
+    let (v, pm) = beat_error_value(r)?;
+    Some(figure(v, pm, base::BEAT_ERROR, false))
+}
+
+/// The Beat Error card's figure, its size, and its ±: the unlock's, and
+/// only when the figure is from the unlock. The one choice the figure and
+/// its BE Angle both read.
+fn beat_error_value(r: &LiveReading) -> Option<(f64, Option<f64>)> {
     let v = core_session::beat_error_size(r.beat_error_unlock_ms, r.beat_error_ms)?;
     let pm = r
         .beat_error_unlock_error_ms
         .filter(|_| r.beat_error_unlock_ms.is_some());
-    Some(figure(v, pm, base::BEAT_ERROR, false))
+    Some((v, pm))
 }
 
 /// The Beat Error card's words on its BE Angle: the card's figure and ±,
 /// the angle core works from them and the amplitude's, at `lift_deg`.
 pub(super) fn be_angle_words(r: &LiveReading, lift_deg: f64) -> Option<String> {
-    let be = core_session::beat_error_size(r.beat_error_unlock_ms, r.beat_error_ms)?;
-    let be_pm = r
-        .beat_error_unlock_error_ms
-        .filter(|_| r.beat_error_unlock_ms.is_some());
+    let (be, be_pm) = beat_error_value(r)?;
     let amp = r.amplitude_deg?;
     let angle =
         timegrapher_core::be_angle::Angle::of((amp, r.amplitude_error_deg), (be, be_pm), r.bph?)?;
-    let figure = timegrapher_core::figure_text::figure_with_pm(be, be_pm, base::BEAT_ERROR, false);
+    let figure = with_pm(be, be_pm, base::BEAT_ERROR, false);
     Some(timegrapher_core::be_angle::card_words(
         &figure, &angle, amp, lift_deg,
     ))
