@@ -642,11 +642,10 @@ impl PoiseFit {
     /// [`PoiseFit::heavy_line`] without its caveats.
     pub fn heavy_spot_line(&self) -> String {
         match (&self.heavy_spot, self.withheld) {
-            (Some(h), _) => format!(
-                "Heavy spot hangs lowest with {} at the top ({}°).",
-                hour_code(h.peak_deg.value),
-                figure_with_pm(h.peak_deg.value, h.peak_deg.se, 0, false),
-            ),
+            (Some(h), _) => {
+                let (hour, deg) = spot_at(h);
+                format!("Heavy spot hangs lowest with {hour} at the top ({deg}°).")
+            }
             (None, Some(Withheld::NullBand { .. })) => format!(
                 "At {}°, poise barely moves the rate. Heavy spot not stated.",
                 self.amplitude_range().unwrap_or_default()
@@ -660,6 +659,21 @@ impl PoiseFit {
             (None, Some(Withheld::NoSe)) => "Heavy spot not stated: no ± to test it by.".into(),
             (None, _) => "Heavy spot not stated.".into(),
         }
+    }
+
+    /// The heavy spot as the pane's facts box gives it, a name and a
+    /// value: ("Heavy spot", "6H at the top, 180 ± 12°"), or "Not stated"
+    /// where it is withheld; why, and any caveat, are in
+    /// [`PoiseFit::sentence`] (Hugh on #1537).
+    pub fn heavy_spot_row(&self) -> (String, String) {
+        let value = match &self.heavy_spot {
+            Some(h) => {
+                let (hour, deg) = spot_at(h);
+                format!("{hour} at the top, {deg}°")
+            }
+            None => "Not stated".into(),
+        };
+        ("Heavy spot".into(), value)
     }
 
     /// The caveats on the heavy spot in words, one after another, or
@@ -735,6 +749,16 @@ impl PoiseFit {
             })
             .collect()
     }
+}
+
+/// Where the heavy spot `h` hangs lowest: the hour at the top, and its
+/// bearing in degrees with its ±, as [`PoiseFit::heavy_spot_line`] and
+/// [`PoiseFit::heavy_spot_row`] both write them.
+fn spot_at(h: &Wave) -> (&'static str, String) {
+    (
+        hour_code(h.peak_deg.value),
+        figure_with_pm(h.peak_deg.value, h.peak_deg.se, 0, false),
+    )
 }
 
 fn caveat_text(c: &Caveat) -> String {

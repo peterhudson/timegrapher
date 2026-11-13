@@ -586,6 +586,14 @@ fn the_sentence_states_the_wave_then_the_heavy_spot() {
         "above 219.5° the heavy spot is opposite the fastest hour: {}",
         f.heavy_text
     );
+    // The facts box's row says the same, as a name and a value (#1537).
+    assert_eq!(
+        f.heavy_spot_row(),
+        (
+            "Heavy spot".to_string(),
+            "12H at the top, 1 ± 1°".to_string()
+        )
+    );
     assert_eq!(pending_text(), "Fitted once 5 positions are measured");
 }
 
@@ -719,6 +727,10 @@ fn in_the_band_each_fact_is_said_once() {
     assert_eq!(
         spot,
         "At 224–237°, poise barely moves the rate. Heavy spot not stated."
+    );
+    assert_eq!(
+        f.heavy_spot_row(),
+        ("Heavy spot".to_string(), "Not stated".to_string())
     );
     assert!(
         caveat.starts_with("Amplitude also changes once round"),

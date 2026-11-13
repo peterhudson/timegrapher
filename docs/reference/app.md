@@ -802,11 +802,16 @@ from 12H to 12H with a mark every 45°, or round a watch face with 12H at
 the top, further out when faster, and the mean as a dotted ring. Once
 five stops are in, core's `poise::fit` draws the once-round wave in grey
 with a line to its fastest hour, and the line over the picture is its
-`short_text`; the line under it is `heavy_text`, the heavy spot, or, in
-a grey chip, why it is not stated near 219.5°. Until then the space reads
-"Fitted once 5 positions are measured". **Info** shows `text`, the fit in
-full with its twice-round terms, and core's note on the amplitudes that
-show the heavy spot. Copy writes the watch, the table in the pane's order
+`short_text`, with, near 219.5°, a grey chip saying why the heavy spot is
+not stated. The heavy spot is a facts box's one row on the picture,
+core's `heavy_spot_row` ("Heavy spot", "6H at the top, 180 ± 12°", or
+"Not stated"): on the plot in its top left, or its top right under the
+key where the wave or a point runs under the left; on the dial above the
+watch face, at the top left (#1537). Until then the space reads "Fitted
+once 5 positions are measured". **Info** shows `text`, the fit in full
+with its twice-round terms, the heavy spot or why it is not stated and
+its caveats, core's note on the amplitudes that show the heavy spot,
+then the table's notes and the key to its grey beat errors. Copy writes the watch, the table in the pane's order
 and that sentence. A Dynamic Poise test is not set against a full-wind
 test and keeps no results for 24 hours after.
 

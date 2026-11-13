@@ -196,6 +196,48 @@ fn the_picture_has_its_key_and_mean_and_info_says_each_fact_once() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// The heavy spot is a facts box's one row on the picture, in both views,
+/// and nothing else of it is over the picture; its caveats and the
+/// table's notes are in Info, once (Hugh on #1537). On the dial the box
+/// sits above the hours' names.
+#[test]
+fn the_heavy_spot_is_in_a_facts_box_and_the_notes_in_info() {
+    let (mut app, base, tx) = measured("facts");
+    let readings = app.poise_test().unwrap().readings.clone().unwrap();
+    let fit = guided::poise_fit(&readings).expect("a fit");
+    let (name, value) = fit.heavy_spot_row();
+    let notes = guided::poise_table_notes(&readings);
+    let caveat = fit.caveat_line();
+    for view in [PoiseView::Plot, PoiseView::Dial] {
+        app.poise_view = view;
+        app.poise_info = false;
+        let texts = draw_at(&mut app, Pane::DynamicPoise, Vec2::new(1280.0, 820.0));
+        let at = |want: &str| texts.iter().find(|(t, _)| t == want).map(|(_, r)| *r);
+        let n = at(&name).unwrap_or_else(|| panic!("{view:?}: {texts:?}"));
+        let v = at(&value).unwrap_or_else(|| panic!("{value} {view:?}: {texts:?}"));
+        assert!(
+            (n.center().y - v.center().y).abs() < 1.0,
+            "one row: {n:?} {v:?}"
+        );
+        assert!(at(&fit.heavy_spot_line()).is_none(), "{view:?}");
+        assert!(caveat.is_empty() || at(&caveat).is_none(), "{view:?}");
+        for note in &notes {
+            assert!(at(note).is_none(), "{note} out of Info");
+        }
+        if view == PoiseView::Dial {
+            let hour = at(timegrapher_core::poise::hour_code(0.0)).expect("12H");
+            assert!(v.bottom() < hour.top(), "{v:?} over {hour:?}");
+        }
+        app.poise_info = true;
+        let info = draw(&mut app, Pane::DynamicPoise);
+        for note in &notes {
+            assert_eq!(info.matches(note.as_str()).count(), 1, "{note}: {info}");
+        }
+    }
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// The table stays beside the picture, tight, while the picture keeps its
 /// least width, and the tight table fits the room it is given; narrower
 /// still the picture, the result, goes over the table (Hugh, #1499).

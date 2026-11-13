@@ -678,8 +678,8 @@ fn hour_key_text(hours: &[power_reserve::Hour]) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
-/// The key's words, for tests that look for it as drawn.
-#[cfg(test)]
+/// The key's words: for the Dynamic Poise pane's Info panel (#1537), and
+/// for tests that look for it as drawn.
 pub const DIM_KEY_TEXT: &str = dim_key!();
 
 /// The Beat Error column's hover ends with the key.
