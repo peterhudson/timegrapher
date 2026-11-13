@@ -2655,20 +2655,28 @@ fn capitalised(s: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The widest period a box shows: six figures of seconds, about eleven
-/// days, to the thousandth (`train::period_text`).
+/// The widest period a box shows whole: six figures of seconds, about
+/// eleven days, to the thousandth (`train::period_text`). A longer one
+/// drops decimals to fit (`train::period_text_within`).
 const WIDEST_PERIOD: &str = "000000.000";
+
+/// Room the cursor takes beside the text in a period box.
+const CURSOR_ROOM: f32 = 4.0;
+
+/// `t`'s width in a text box's font.
+fn box_text_w(ui: &egui::Ui, t: &str) -> f32 {
+    let font = egui::FontSelection::default().resolve(ui.style());
+    ui.fonts_mut(|f| {
+        f.layout_no_wrap(t.into(), font, egui::Color32::WHITE)
+            .size()
+            .x
+    })
+}
 
 /// A period box's inner width: room for [`WIDEST_PERIOD`] and the
 /// cursor, so no digit sits under the box's edge (#1586).
 fn period_box_w(ui: &egui::Ui) -> f32 {
-    let font = egui::FontSelection::default().resolve(ui.style());
-    let digits = ui.fonts_mut(|f| {
-        f.layout_no_wrap(WIDEST_PERIOD.into(), font, egui::Color32::WHITE)
-            .size()
-            .x
-    });
-    (digits + 4.0).ceil()
+    (box_text_w(ui, WIDEST_PERIOD) + CURSOR_ROOM).ceil()
 }
 
 /// A box for a wheel's period that may be blank. Enter or clicking away
@@ -2680,16 +2688,18 @@ fn period_field(
     value: Option<f64>,
     tip: &str,
 ) -> Option<Option<f64>> {
-    let shown = value.map(|v| (PERIOD.show)(v)).unwrap_or_default();
-    blank_field(
-        ui,
-        id_salt,
-        shown,
-        "Not Known",
-        tip,
-        period_box_w(ui),
-        |t| fields::parse_number(t).filter(|v| *v > 0.0),
-    )
+    let w = period_box_w(ui);
+    let fits = |t: &str| box_text_w(ui, t) + CURSOR_ROOM <= w;
+    let (shown, cut) = value.map_or((String::new(), false), |v| {
+        train::period_text_within(v, fits)
+    });
+    let tip = match value.filter(|_| cut) {
+        Some(v) => format!("{tip}\n\nIn full: {} s", (PERIOD.show)(v)),
+        None => tip.to_owned(),
+    };
+    blank_field(ui, id_salt, shown, "Not Known", &tip, w, |t| {
+        fields::parse_number(t).filter(|v| *v > 0.0)
+    })
 }
 
 /// A box that may be blank, showing `shown`. Enter or clicking away reads

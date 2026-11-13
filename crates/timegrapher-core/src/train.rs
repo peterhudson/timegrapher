@@ -35,8 +35,37 @@ pub fn escape_period_s(bph: u32, teeth: u32) -> f64 {
 /// period and the counts' period are the same figure when they read
 /// alike here.
 pub fn period_text(p: f64) -> String {
-    let s = format!("{p:.3}");
-    s.trim_end_matches('0').trim_end_matches('.').to_string()
+    places_text(p, 3)
+}
+
+/// `p` to `places` decimals, trailing zeros dropped.
+fn places_text(p: f64, places: usize) -> String {
+    let s = format!("{p:.places$}");
+    if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
+    }
+}
+
+/// [`period_text`] in a box that holds only so much: decimals are dropped
+/// one at a time until `fits` takes it, whole seconds at the least (a
+/// moon wheel's 2,551,442.9 s reads "2551443"). True when any were
+/// dropped, so the box can give the full value in its hover (#1586).
+pub fn period_text_within(p: f64, fits: impl Fn(&str) -> bool) -> (String, bool) {
+    let full = period_text(p);
+    if fits(&full) {
+        return (full, false);
+    }
+    let mut t = full.clone();
+    for places in (0..3).rev() {
+        t = places_text(p, places);
+        if fits(&t) {
+            break;
+        }
+    }
+    let cut = t != full;
+    (t, cut)
 }
 
 /// One arbor of the going train: its wheel and the pinion on the same
@@ -903,6 +932,33 @@ mod tests {
         assert_eq!(period_text(46200.0 / 13.0), "3553.846");
         assert_eq!(period_text(60.0), "60");
         assert_eq!(period_text(0.25), "0.25");
+    }
+
+    #[test]
+    fn a_long_period_drops_decimals_until_it_fits() {
+        let ten = |t: &str| t.len() <= 10;
+        assert_eq!(
+            period_text_within(21114.027, ten),
+            ("21114.027".into(), false)
+        );
+        assert_eq!(
+            period_text_within(9_999_999.123, ten),
+            ("9999999.12".into(), true)
+        );
+        assert_eq!(
+            period_text_within(2_551_442.9, |t| t.len() <= 7),
+            ("2551443".into(), true)
+        );
+        // Dropping a decimal that was zero anyway cuts nothing.
+        assert_eq!(
+            period_text_within(60.5, |t| t.len() <= 4),
+            ("60.5".into(), false)
+        );
+        // Whole seconds at the least, cut or not.
+        assert_eq!(
+            period_text_within(123_456.7, |_| false),
+            ("123457".into(), true)
+        );
     }
 
     #[test]

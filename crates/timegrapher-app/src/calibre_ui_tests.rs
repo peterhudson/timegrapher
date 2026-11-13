@@ -452,14 +452,18 @@ fn counted_teeth_caption_the_wheels() {
     assert!(seen.iter().any(|t| t == "Teeth give 55.556 s"), "{seen:?}");
 }
 
-/// Every period box shows its whole value at 800 wide, the widest one
-/// too: no digit under the box's right edge (#1586).
+/// Every period box at 800 wide shows its value with no digit under its
+/// right edge: whole up to six figures, a longer one with decimals
+/// dropped (#1586). The Add a Wheel box too.
 #[test]
 fn a_period_box_shows_its_whole_value() {
     let mut c = Calibres::in_memory();
     c.user
         .set_wheel("ETA 2824-2", "third wheel", 999_999.999, None);
+    c.user
+        .set_wheel("ETA 2824-2", "fourth wheel", 9_999_999.999, None);
     c.selected = Some("ETA 2824-2".into());
+    c.adding = Some(("moon wheel".into(), "21114.027".into()));
     let ctx = egui::Context::default();
     theme::install(&ctx);
     let input = egui::RawInput {
@@ -479,24 +483,32 @@ fn a_period_box_shows_its_whole_value() {
             });
         }));
     }
-    let shapes = out.unwrap().shapes;
-    let right_gap = |want: &str| {
-        let (t, clip) = shapes
-            .iter()
-            .find_map(|s| match &s.shape {
-                egui::Shape::Text(t) if t.galley.text() == want => Some((t, s.clip_rect)),
-                _ => None,
-            })
-            .unwrap_or_else(|| panic!("no box shows {want}"));
-        // The box clips its text 1 px outside its inner edge.
-        clip.max.x - 1.0 - (t.pos.x + t.galley.rect.right())
-    };
-    for want in ["21114.027", "999999.999"] {
+    // A text box clips its text 1 px outside its inner edge; nothing else
+    // here is clipped that narrow.
+    let in_boxes: Vec<(String, f32)> = out
+        .unwrap()
+        .shapes
+        .iter()
+        .filter(|s| s.clip_rect.width() < 200.0)
+        .filter_map(|s| match &s.shape {
+            egui::Shape::Text(t) => Some((
+                t.galley.text().to_string(),
+                s.clip_rect.max.x - 1.0 - (t.pos.x + t.galley.rect.right()),
+            )),
+            _ => None,
+        })
+        .collect();
+    // The barrel's box and the Add a Wheel box.
+    let barrels = in_boxes.iter().filter(|(t, _)| t == "21114.027").count();
+    assert!(barrels >= 2, "{in_boxes:?}");
+    for want in ["999999.999", "10000000"] {
         assert!(
-            right_gap(want) >= 0.0,
-            "{want} cut by {} px",
-            -right_gap(want)
+            in_boxes.iter().any(|(t, _)| t == want),
+            "no box shows {want}: {in_boxes:?}"
         );
+    }
+    for (t, gap) in &in_boxes {
+        assert!(*gap >= 0.0, "{t} cut by {} px", -gap);
     }
 }
 
