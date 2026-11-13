@@ -463,6 +463,12 @@ enum Command {
         /// With --file the file is played back in real time.
         #[arg(long)]
         live: Option<PathBuf>,
+        /// End the recording early once this file exists, as the app's
+        /// Stop does: a way for another program to stop it. The take is
+        /// kept and checked; a Power Reserve Test ends "by hand" with its
+        /// hours. Refused if the file is already there.
+        #[arg(long)]
+        stop_file: Option<PathBuf>,
     },
     /// Read a watch measured in several positions (and states of wind)
     /// into one multi-position report, Witschi style.
@@ -1248,6 +1254,7 @@ fn tool_command(c: Command) -> Result<(), String> {
             json,
             live,
             power_reserve,
+            stop_file,
         } => {
             let o = record_cmd::Options {
                 folder,
@@ -1264,6 +1271,7 @@ fn tool_command(c: Command) -> Result<(), String> {
                 json,
                 live,
                 power_reserve,
+                stop_file,
             };
             record_cmd::run(&o)
         }
