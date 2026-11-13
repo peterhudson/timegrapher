@@ -282,8 +282,9 @@ pub(crate) fn position_of(e: &RecordingEntry) -> Result<Position, String> {
     match &e.position {
         Some(p) => Position::parse(p).ok_or_else(|| {
             format!(
-                "{}: unknown position '{p}' (use CH, CB, 3H, 6H, 9H, 12H or DU, DD, CU, CL, CD, CR)",
-                e.file
+                "{}: unknown position '{p}' (use {})",
+                e.file,
+                Position::accepted_names()
             )
         }),
         None => Position::from_file_name(&e.file).ok_or_else(|| {
@@ -345,9 +346,10 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
                 p.code(),
                 p.name()
             )),
-            None => t.push_str(
-                "position = \"\"  # CH, CB, 3H, 6H, 9H, 12H (or DU, DD, CU, CL, CD, CR)\n",
-            ),
+            None => t.push_str(&format!(
+                "position = \"\"  # {}\n",
+                Position::accepted_names()
+            )),
         }
         t.push_str(
             "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the reading is taken as fully wound\n",

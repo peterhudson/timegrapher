@@ -250,6 +250,25 @@ impl Position {
             .map(|(p, _)| *p)
     }
 
+    /// The names every surface lists as accepted, from [`Position::TEN`]:
+    /// the common ones first, then Witschi's where they differ, "DU, DD,
+    /// CD, CL, CU, CR, 1H30, 4H30, 7H30 or 10H30 (or CH, CB, 9H, 6H, 3H or
+    /// 12H)". [`Position::parse`] takes these and more (#1492).
+    pub fn accepted_names() -> String {
+        let common: Vec<&str> = Position::TEN.iter().map(|p| p.common()).collect();
+        let witschi: Vec<&str> = Position::TEN
+            .iter()
+            .filter(|p| p.code() != p.common())
+            .map(|p| p.code())
+            .collect();
+        let or_list = |names: &[&str]| match names.split_last() {
+            Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+            Some((last, _)) => (*last).to_string(),
+            None => String::new(),
+        };
+        format!("{} (or {})", or_list(&common), or_list(&witschi))
+    }
+
     /// The position named in a file name such as `ym42_DU_48000-01.flac`.
     /// The letter names match in any case; 3H, 6H, 9H, 12H and the 45°
     /// stops (1H30 …) only in capitals, so that a duration like `2h` or
@@ -2963,5 +2982,26 @@ mod reading_coverage_tests {
             assert_eq!(whole.windows_used, first.windows_used + last.windows_used);
         }
         assert_eq!(masked.coverage.amplitude.windows_in_span, 20);
+    }
+}
+
+#[cfg(test)]
+mod position_name_tests {
+    use super::*;
+
+    /// The accepted names come from the positions themselves, so a new
+    /// one is listed once it exists (#1492); each is one `parse` takes.
+    #[test]
+    fn the_accepted_names_are_the_positions_own() {
+        let text = Position::accepted_names();
+        assert_eq!(
+            text,
+            "DU, DD, CD, CL, CU, CR, 1H30, 4H30, 7H30 or 10H30 (or CH, CB, 9H, 6H, 3H or 12H)"
+        );
+        for name in text.split(|c: char| !c.is_ascii_alphanumeric()) {
+            if !name.is_empty() && name != "or" {
+                assert!(Position::parse(name).is_some(), "{name}");
+            }
+        }
     }
 }
