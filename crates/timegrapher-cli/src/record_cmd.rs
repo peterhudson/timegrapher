@@ -233,6 +233,19 @@ fn place(o: &mut Options) -> Result<Placed, String> {
 /// Every take is kept and added to the session; the report states what
 /// was measured.
 pub fn run(o: &Options) -> Result<(), String> {
+    let (o, rep, settings) = record(o)?;
+    if o.json {
+        let files: Vec<PathBuf> = o.file.iter().cloned().collect();
+        output::print("record", output::input(&files, settings), &rep)?;
+    } else {
+        print_report(&rep);
+    }
+    Ok(())
+}
+
+/// Record the take as [`run`] does: the options as used, the report, and
+/// the settings the JSON document's input names.
+fn record(o: &Options) -> Result<(Options, Report, serde_json::Value), String> {
     let mut o = o.clone();
     if o.power_reserve {
         // As long as the watch runs, up to the limit.
@@ -257,10 +270,14 @@ pub fn run(o: &Options) -> Result<(), String> {
         ));
     }
     let placed = place(&mut o)?;
-    run_in(&o, placed.watch)
+    let (rep, settings) = record_in(&o, placed.watch)?;
+    Ok((o, rep, settings))
 }
 
-fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
+fn record_in(
+    o: &Options,
+    library_watch: Option<String>,
+) -> Result<(Report, serde_json::Value), String> {
     let pos = Position::parse(&o.position).ok_or_else(|| {
         format!(
             "'{}' is not a position; use DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H)",
@@ -308,17 +325,11 @@ fn run_in(o: &Options, library_watch: Option<String>) -> Result<(), String> {
         check,
         power_reserve: reserve,
     };
-    if o.json {
-        let files: Vec<PathBuf> = o.file.iter().cloned().collect();
-        let settings = json!({
-            "bph": set.bph, "lift_deg": set.lift, "calibre": set.calibre,
-            "device": o.device, "seconds": o.seconds,
-        });
-        output::print("record", output::input(&files, settings), &rep)?;
-    } else {
-        print_report(&rep);
-    }
-    Ok(())
+    let settings = json!({
+        "bph": set.bph, "lift_deg": set.lift, "calibre": set.calibre,
+        "device": o.device, "seconds": o.seconds,
+    });
+    Ok((rep, settings))
 }
 
 fn settings(o: &Options) -> Result<Settings, String> {
@@ -1662,7 +1673,10 @@ mod tests {
         o.file = Some(wav);
         o.bph = Some(28800);
         o.power_reserve = true;
-        run(&o).unwrap();
+        // A stop file that never appears changes nothing.
+        o.stop_file = Some(base.join("never"));
+        let (_, rep, _) = record(&o).unwrap();
+        assert!(!rep.stopped_early);
         let r = power_reserve::Results::from_json(
             &fs::read_to_string(folder.join(power_reserve::FILE)).unwrap(),
         )
@@ -1722,8 +1736,9 @@ mod tests {
             std::thread::sleep(Duration::from_secs(4));
             fs::write(stop, "").unwrap();
         });
-        run(&o).unwrap();
+        let (_, rep, _) = record(&o).unwrap();
         asker.join().unwrap();
+        assert!(rep.stopped_early);
         let r = power_reserve::Results::from_json(
             &fs::read_to_string(folder.join(power_reserve::FILE)).unwrap(),
         )
