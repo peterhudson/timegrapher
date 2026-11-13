@@ -38,6 +38,7 @@ pub mod gappy;
 pub mod histogram;
 pub mod input_domain;
 pub mod joined;
+pub mod keeper;
 pub mod library;
 pub mod live;
 pub mod longrun;

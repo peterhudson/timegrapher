@@ -1150,6 +1150,12 @@ impl SideCheck {
         }
     }
 
+    /// The jump whose sides are still to be checked, seconds, if any: a
+    /// swap may still come at it ([`SideCheck::settle`]).
+    pub fn pending_since(&self) -> Option<f64> {
+        self.pending.as_ref().map(|p| p.0)
+    }
+
     /// Once the beats after a pending jump have [`MIN_SIDE_BEATS`] good
     /// beats of each side, compare the first of them with the sides' sound
     /// before: the jump's time and what was found. On [`SideCall::Swapped`]
