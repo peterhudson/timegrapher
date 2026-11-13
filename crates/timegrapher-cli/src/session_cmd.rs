@@ -1142,17 +1142,17 @@ pub fn signed(v: Option<f64>, digits: usize) -> String {
 pub fn wind(w: Option<f64>) -> String {
     match w {
         None => "not given".into(),
-        Some(w) if w <= 0.0 => "full wind".into(),
-        Some(w) => format!("{} h after winding", fixed_text(w, 0)),
+        Some(w) => timegrapher_core::reading_text::wind_words(w),
     }
 }
 
 /// A state of wind in a sentence ("at full wind", "24 h after winding").
 fn wind_state(w: f64) -> String {
+    let words = timegrapher_core::reading_text::wind_words(w);
     if w <= 0.0 {
-        "at full wind".into()
+        format!("at {words}")
     } else {
-        format!("{} h after winding", fixed_text(w, 0))
+        words
     }
 }
 

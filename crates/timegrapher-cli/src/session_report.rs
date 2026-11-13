@@ -262,15 +262,7 @@ fn charts(st: &StateIndices, readings: &[&Reading]) -> String {
 fn indices_table(states: &[StateIndices]) -> String {
     let mut s = String::from(r#"<table class="data"><thead><tr><th>Value</th>"#);
     for st in states {
-        let _ = write!(
-            s,
-            r#"<th class="num">{}</th>"#,
-            if st.wind_h <= 0.0 {
-                "full wind".into()
-            } else {
-                format!("{} h after winding", fixed_text(st.wind_h, 0))
-            }
-        );
+        let _ = write!(s, r#"<th class="num">{}</th>"#, wind_words(st.wind_h));
     }
     s.push_str("<th>Meaning</th></tr></thead><tbody>");
     type Row<'a> = (&'a str, &'a dyn Fn(&StateIndices) -> String, &'a str);
@@ -809,7 +801,7 @@ code {{ font-size: 13px; }}
 
 /// A state of wind in a table cell: "full wind" or "24 h after winding".
 fn wind_words(w: f64) -> String {
-    wind(Some(w))
+    timegrapher_core::reading_text::wind_words(w)
 }
 
 #[cfg(test)]
@@ -927,6 +919,18 @@ mod tests {
         assert!(page.contains(&esc(&p.fit.text)));
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["poise"][0]["fit"]["positions"], 8);
+        // 24.0 h and 24.04 h are one state, as the characteristic values
+        // name them (wind to a tenth): one fit, named 24 h, beside them.
+        let mut later = s.readings.clone();
+        for (i, r) in later.iter_mut().enumerate() {
+            r.wind_h = Some(if i % 2 == 0 { 24.0 } else { 24.04 });
+        }
+        let later = session_of(later);
+        assert_eq!(later.report.states.len(), 1);
+        assert_eq!(later.poise.len(), 1);
+        assert_eq!(later.poise[0].wind_h, later.report.states[0].wind_h);
+        assert_eq!(later.poise[0].wind_h, 24.0);
+        assert_eq!(later.poise[0].fit.positions, 8);
         let six = session_of(Position::ALL.iter().map(|&p| reading(None, p)).collect());
         assert!(six.poise.is_empty() && !html(&six).contains("Dynamic Poise"));
         assert!(serde_json::to_value(&six).unwrap().get("poise").is_none());

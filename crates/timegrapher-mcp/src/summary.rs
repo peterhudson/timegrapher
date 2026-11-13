@@ -165,11 +165,8 @@ fn poise_lines(list: &Value) -> Vec<String> {
         .flatten()
         .filter_map(|p| {
             let text = p["fit"]["text"].as_str()?;
-            let when = match p["wind_h"].as_f64() {
-                Some(h) if h > 0.0 => format!("{h} h after winding"),
-                _ => "at full wind".to_string(),
-            };
-            Some(format!("Dynamic Poise {when} (`poise`): {text}"))
+            let when = timegrapher_core::reading_text::wind_words(p["wind_h"].as_f64()?);
+            Some(format!("Dynamic Poise, {when} (`poise`): {text}"))
         })
         .collect()
 }
@@ -701,17 +698,19 @@ mod tests {
             "schema": "timegrapher.session/2",
             "readings": [],
             "poise": [{ "wind_h": 0.0, "fit": { "text": "Fastest at 3H." } },
-                      { "wind_h": 24.0, "fit": { "text": "Fastest at 6H." } }],
+                      { "wind_h": 24.0, "fit": { "text": "Fastest at 6H." } },
+                      { "fit": { "text": "No state given." } }],
         });
         let s = lead(&doc, &Map::new()).unwrap();
         assert!(
-            s.contains("Dynamic Poise at full wind (`poise`): Fastest at 3H."),
+            s.contains("Dynamic Poise, full wind (`poise`): Fastest at 3H."),
             "{s}"
         );
         assert!(
-            s.contains("Dynamic Poise 24 h after winding (`poise`): Fastest at 6H."),
+            s.contains("Dynamic Poise, 24 h after winding (`poise`): Fastest at 6H."),
             "{s}"
         );
+        assert!(!s.contains("No state given"), "{s}");
     }
 
     #[test]

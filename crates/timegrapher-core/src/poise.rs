@@ -292,19 +292,22 @@ pub struct StateFit {
 }
 
 /// The [`shown_fit`] of each state of wind whose upright readings give
-/// one, fullest first: what a session's report says of poise, in the CLI
+/// one, fullest first, the states grouped as the session report's are
+/// (hours to a tenth): what a session's report says of poise, in the CLI
 /// and MCP as in the app (#1473, #1474).
 pub fn by_state(readings: &[crate::session::Reading]) -> Vec<StateFit> {
-    let wind = |r: &crate::session::Reading| r.wind_h.unwrap_or(0.0);
-    let mut winds: Vec<f64> = readings.iter().map(wind).collect();
-    winds.sort_by(f64::total_cmp);
-    winds.dedup();
-    winds
-        .into_iter()
-        .filter_map(|w| {
-            let at = readings.iter().filter(|r| wind(r) == w);
+    use crate::session::wind_key;
+    let mut keys: Vec<i64> = readings.iter().map(|r| wind_key(r.wind_h)).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    keys.into_iter()
+        .filter_map(|k| {
+            let at = readings.iter().filter(|r| wind_key(r.wind_h) == k);
             let fit = shown_fit(at.map(|r| (r.position, &r.measurement)))?;
-            Some(StateFit { wind_h: w, fit })
+            Some(StateFit {
+                wind_h: k as f64 / 10.0,
+                fit,
+            })
         })
         .collect()
 }
