@@ -143,13 +143,17 @@ impl Worked {
         }
     }
 
-    /// The arithmetic behind `counted_s`, in words: "37.5 s: the escape
-    /// wheel's 3.75 s × 80 teeth ÷ 8 leaves of the escape pinion".
+    /// The arithmetic behind `counted_s`, in words, each count named by
+    /// its owner: "450 s: the fourth wheel's 60 s × the third wheel's 60
+    /// teeth ÷ the fourth pinion's 8 leaves".
     pub fn how(&self) -> Option<String> {
         let p = period_text(self.counted_s?);
         Some(match self.step.as_ref()? {
             Step::Escape { bph, teeth } => {
-                format!("{p} s: {teeth} teeth × two beats at {bph} bph")
+                format!(
+                    "{p} s: the {}'s {teeth} teeth × two beats at {bph} bph",
+                    self.name
+                )
             }
             Step::Mesh {
                 arbor,
@@ -159,17 +163,19 @@ impl Worked {
                 outward,
             } => {
                 let q = period_text(*period_s);
-                let pin = |a: &str| pinion_name(a);
-                if *outward {
-                    format!(
-                        "{p} s: the {arbor}'s {q} s × {teeth} teeth ÷ {leaves} leaves of the {}",
-                        pin(arbor)
-                    )
+                // Outward, this arbor's wheel drives the pinion of the one
+                // in; inward, the wheel is the other arbor's.
+                let (wheel, pinion) = if *outward {
+                    (self.name.as_str(), arbor.as_str())
                 } else {
-                    format!(
-                        "{p} s: the {arbor}'s {q} s × {leaves} leaves of the {} ÷ {teeth} teeth",
-                        pin(&self.name)
-                    )
+                    (arbor.as_str(), self.name.as_str())
+                };
+                let teeth = format!("the {wheel}'s {teeth} teeth");
+                let leaves = format!("the {}'s {leaves} leaves", pinion_name(pinion));
+                if *outward {
+                    format!("{p} s: the {arbor}'s {q} s × {teeth} ÷ {leaves}")
+                } else {
+                    format!("{p} s: the {arbor}'s {q} s × {leaves} ÷ {teeth}")
                 }
             }
         })
@@ -225,11 +231,12 @@ pub struct Solved {
 }
 
 /// Work out a train. `train` runs outward from the escape wheel: arbor
-/// `i`'s pinion is driven by arbor `i + 1`'s wheel. The beat rate and the
-/// escape wheel's teeth start the counts; where they don't reach, each
-/// typed period starts them in turn, escape wheel outward, filling only
-/// arbors nothing earlier reached. A count or period of 0 is taken as not
-/// known.
+/// `i`'s pinion is driven by arbor `i + 1`'s wheel. The beat rate (with
+/// the escape wheel's teeth) and each typed period start the counts; each
+/// arbor's `counted_s` comes from the start nearest it in meshes, the one
+/// further in on a tie, and never from its own typed period. So a wrong
+/// count shows only on the wheels either side of it. A count or period of
+/// 0 is taken as not known.
 pub fn solve(bph: Option<u32>, train: &[Arbor]) -> Solved {
     let bph = bph.filter(|&b| b > 0);
     let clean = |v: Option<u32>| v.filter(|&n| n > 0);
@@ -246,19 +253,24 @@ pub fn solve(bph: Option<u32>, train: &[Arbor]) -> Solved {
             needs: None,
         })
         .collect();
+    // How many meshes each counted period was carried over: a period
+    // comes from the nearest start, so a wrong count shows only on the
+    // wheels either side of it.
+    let mut far = vec![usize::MAX; arbors.len()];
     if let (Some(b), Some(first)) = (bph, arbors.first()) {
         if let Some(t) = first.teeth {
-            let step = Step::Escape { bph: b, teeth: t };
-            arbors[0].counted_s = Some(escape_period_s(b, t));
+            let p = escape_period_s(b, t);
+            arbors[0].counted_s = Some(p);
             arbors[0].from = Some(From::BeatRate);
-            arbors[0].step = Some(step);
-            carry(&mut arbors, 0, &From::BeatRate);
+            arbors[0].step = Some(Step::Escape { bph: b, teeth: t });
+            far[0] = 0;
+            carry(&mut arbors, &mut far, 0, p, &From::BeatRate);
         }
     }
     for i in 0..arbors.len() {
-        if arbors[i].typed_s.is_some() {
+        if let Some(p) = arbors[i].typed_s {
             let from = From::Period(arbors[i].name.clone());
-            carry(&mut arbors, i, &from);
+            carry(&mut arbors, &mut far, i, p, &from);
         }
     }
     for i in 0..arbors.len() {
@@ -282,23 +294,23 @@ pub fn solve(bph: Option<u32>, train: &[Arbor]) -> Solved {
     }
 }
 
-/// Carry arbor `at`'s period (its counted one where it has one, else its
-/// typed one) through the counts both ways, setting `counted_s` where
-/// nothing earlier did.
-fn carry(arbors: &mut [Worked], at: usize, from: &From) {
-    let Some(p) = arbors[at].counted_s.or(arbors[at].typed_s) else {
-        return;
-    };
-    let put = |arbors: &mut [Worked], to: usize, via: usize, out: f64, outward: bool| {
+/// Carry period `p` of arbor `at` through the counts both ways, setting
+/// each arbor's `counted_s` where this start is nearer, in meshes, than
+/// any before it (`far`); a tie keeps the earlier start, the one further
+/// in. `at`'s own is left as it is.
+fn carry(arbors: &mut [Worked], far: &mut [usize], at: usize, p: f64, from: &From) {
+    let mut put = |arbors: &mut [Worked], to: usize, via: usize, out: f64, outward: bool| {
         let (wheel, pinion) = if outward { (to, via) } else { (via, to) };
         let (Some(teeth), Some(leaves)) = (arbors[wheel].teeth, arbors[pinion].leaves) else {
             return None;
         };
         let ratio = f64::from(teeth) / f64::from(leaves);
         let next = if outward { out * ratio } else { out / ratio };
-        let via_name = arbors[via].name.clone();
-        let w = &mut arbors[to];
-        if w.counted_s.is_none() {
+        let meshes = to.abs_diff(at);
+        if meshes < far[to] {
+            far[to] = meshes;
+            let via_name = arbors[via].name.clone();
+            let w = &mut arbors[to];
             w.counted_s = Some(next);
             w.from = Some(from.clone());
             w.step = Some(Step::Mesh {
@@ -420,15 +432,15 @@ pub fn of_calibre(c: &crate::calibres::Calibre) -> Vec<Arbor> {
         .collect()
 }
 
+/// A count as typed: the wheel's teeth and the pinion's leaves, either
+/// left out.
+pub type Count = (Option<u32>, Option<u32>);
+
 /// Lay counts and periods typed for one solve over a train: a count or
 /// period given replaces the train's, one left out keeps it. Every arbor
 /// of [`ARBORS`] the train lacks is added blank, in its place, so that two
 /// arbors are only ever taken to mesh when they are neighbours there.
-pub fn overlay(
-    train: &mut Vec<Arbor>,
-    counts: &[(&str, (Option<u32>, Option<u32>))],
-    periods: &[(&str, f64)],
-) {
+pub fn overlay(train: &mut Vec<Arbor>, counts: &[(&str, Count)], periods: &[(&str, f64)]) {
     for name in ARBORS {
         if !train.iter().any(|a| a.name == name) {
             train.push(Arbor {
@@ -467,7 +479,7 @@ pub fn arbor_named(word: &str) -> Option<&'static str> {
 
 /// A count as typed, "TEETH/LEAVES": "108/9", "101" (teeth alone), "/9"
 /// (leaves alone).
-pub fn parse_count(text: &str) -> Result<(Option<u32>, Option<u32>), String> {
+pub fn parse_count(text: &str) -> Result<Count, String> {
     let (t, l) = text.split_once('/').unwrap_or((text, ""));
     let n = |s: &str| -> Result<Option<u32>, String> {
         let s = s.trim();
@@ -492,9 +504,8 @@ pub fn parse_periods(text: &str) -> Result<Vec<(&'static str, f64)>, String> {
         .map(|p| {
             let bad = || format!("'{}': a period is ARBOR=SECONDS, e.g. fourth=60", p.trim());
             let (a, v) = p.split_once('=').ok_or_else(bad)?;
-            let arbor = arbor_named(a).ok_or_else(|| {
-                format!("'{}' is not an arbor: {}", a.trim(), ARBORS.join(", "))
-            })?;
+            let arbor = arbor_named(a)
+                .ok_or_else(|| format!("'{}' is not an arbor: {}", a.trim(), ARBORS.join(", ")))?;
             let v: f64 = v.trim().parse().map_err(|_| bad())?;
             if v.is_finite() && v > 0.0 {
                 Ok((arbor, v))
@@ -596,7 +607,11 @@ mod tests {
         assert_eq!(s.arbors[1].counted_s, Some(60.0));
         assert_eq!(s.arbors[2].counted_s, None);
         assert_eq!(s.arbors[3].counted_s, None);
-        assert_eq!(s.meshes.len(), 2, "no fourth-pinion mesh without its leaves");
+        assert_eq!(
+            s.meshes.len(),
+            2,
+            "no fourth-pinion mesh without its leaves"
+        );
     }
 
     #[test]
@@ -633,11 +648,12 @@ mod tests {
         let s = solve(Some(28_800), &train);
         assert_eq!(
             s.arbors[0].how().unwrap(),
-            "3.75 s: 15 teeth × two beats at 28800 bph"
+            "3.75 s: the escape wheel's 15 teeth × two beats at 28800 bph"
         );
         assert_eq!(
             s.arbors[1].how().unwrap(),
-            "37.5 s: the escape wheel's 3.75 s × 80 teeth ÷ 8 leaves of the escape pinion"
+            "37.5 s: the escape wheel's 3.75 s × the fourth wheel's 80 teeth ÷ the escape \
+             pinion's 8 leaves"
         );
         let back = solve(
             None,
@@ -648,7 +664,8 @@ mod tests {
         );
         assert_eq!(
             back.arbors[0].how().unwrap(),
-            "3.75 s: the fourth wheel's 37.5 s × 8 leaves of the escape pinion ÷ 80 teeth"
+            "3.75 s: the fourth wheel's 37.5 s × the escape pinion's 8 leaves ÷ the fourth \
+             wheel's 80 teeth"
         );
         assert_eq!(back.bph_from_counts, Some(28_800.0));
     }
@@ -745,7 +762,10 @@ mod tests {
         let mut t = unitas();
         overlay(
             &mut t,
-            &[("fourth wheel", (Some(108), None)), ("barrel", (Some(101), None))],
+            &[
+                ("fourth wheel", (Some(108), None)),
+                ("barrel", (Some(101), None)),
+            ],
             &[("centre wheel", 3600.0)],
         );
         assert_eq!((t[1].teeth, t[1].leaves), (Some(108), Some(8)));
@@ -753,10 +773,18 @@ mod tests {
         assert_eq!(t.last().unwrap().name, "barrel");
         assert_eq!(t.len(), ARBORS.len());
         let mut empty = Vec::new();
-        overlay(&mut empty, &[("third wheel", (Some(90), Some(13)))], &[("escape wheel", 5.0)]);
+        overlay(
+            &mut empty,
+            &[("third wheel", (Some(90), Some(13)))],
+            &[("escape wheel", 5.0)],
+        );
         let names: Vec<&str> = empty.iter().map(|a| a.name.as_str()).collect();
         assert_eq!(names, ARBORS);
-        assert_eq!(solve(None, &empty).arbors[2].counted_s, None, "no mesh skips the fourth");
+        assert_eq!(
+            solve(None, &empty).arbors[2].counted_s,
+            None,
+            "no mesh skips the fourth"
+        );
     }
 
     #[test]

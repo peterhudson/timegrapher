@@ -384,10 +384,7 @@ impl<'a> Catalog<'a> {
     pub fn slots(&self, e: Entry<'_>) -> Vec<Slot> {
         let mut slots = self.given_slots(e);
         for w in self.train(e).arbors {
-            if let (Some(s), Some(p)) = (
-                slots.iter_mut().find(|s| s.name == w.name),
-                w.counted_s,
-            ) {
+            if let (Some(s), Some(p)) = (slots.iter_mut().find(|s| s.name == w.name), w.counted_s) {
                 if s.period_s.is_none() {
                     s.period_s = Some(p);
                     s.origin = Origin::Counts;
@@ -727,7 +724,7 @@ mod tests {
         assert_eq!((esc.period_s, esc.origin), (Some(5.0), Origin::Counts));
         assert_eq!(
             esc.basis.as_deref(),
-            Some("5 s: 15 teeth × two beats at 21600 bph")
+            Some("5 s: the escape wheel's 15 teeth × two beats at 21600 bph")
         );
         assert_eq!(slot("fourth wheel").origin, Origin::User, "typed wins");
         assert_eq!(slot("third wheel").period_s, Some(450.0));
@@ -747,7 +744,9 @@ mod tests {
             .is_none());
         t.set_count("ETA 2892-A2", "escape wheel", Some(21), None);
         let cat = Catalog::new(&t);
-        assert!(cat.contribution(cat.find("ETA 2892-A2").unwrap(), "test").is_some());
+        assert!(cat
+            .contribution(cat.find("ETA 2892-A2").unwrap(), "test")
+            .is_some());
         // Clearing both counts forgets the arbor; removing the calibre
         // forgets its counts.
         t.set_count("ETA 2892-A2", "escape wheel", None, Some(0));
@@ -766,6 +765,15 @@ mod tests {
         assert_eq!((fourth.teeth, fourth.leaves), (Some(100), Some(9)));
         assert_eq!(fourth.typed_s, Some(60.0));
         assert_eq!(fourth.caption().unwrap(), "Teeth give 55.556 s");
+        // Only the wheels either side of the changed count read otherwise:
+        // the third wheel's period comes from the fourth's given 60 s.
+        let differ: Vec<&str> = t
+            .arbors
+            .iter()
+            .filter(|a| a.differs().is_some())
+            .map(|a| a.name.as_str())
+            .collect();
+        assert_eq!(differ, ["fourth wheel"]);
     }
 
     #[test]
