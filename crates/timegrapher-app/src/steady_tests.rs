@@ -213,11 +213,12 @@ fn the_info_panel_holds_the_findings_and_the_plots_say_what_a_dot_is(s: &Steadin
 /// left edge, and the value is still shown; with Info shut the same
 /// readout reaches past that edge, so the check bites (Trevor on #1582).
 fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
-    let ctx = egui::Context::default();
-    theme::install(&ctx);
     // Each text drawn, with where it starts and ends, and Info's left
-    // edge as the pane works it out.
+    // edge as the pane works it out: in a fresh context each time, as a
+    // pointer one call left behind would still hover in the next.
     let drawn = |at: Option<egui::Pos2>, info: bool| {
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
         let mut all = Vec::new();
         let mut left = None;
         for _ in 0..3 {
