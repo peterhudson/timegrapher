@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use timegrapher_core::analysis_take;
 use timegrapher_core::calibre_store::{self, UserCalibres};
-use timegrapher_core::library::{self, Library, Watch, WatchEntry};
+use timegrapher_core::library::{self, FromCalibre, Library, Watch, WatchEntry};
 use timegrapher_core::{input_domain, take};
 
 /// The changes, as subcommands of `watches`.
@@ -189,30 +189,23 @@ fn apply(w: &mut Watch, d: &Details) -> Result<(), String> {
                     name.trim()
                 )
             })?;
-            w.lift = c.lift_angle_deg.or(w.lift);
-            w.bph = c.bph.or(w.bph);
-            w.calibre = Some(c.name);
+            w.pick_calibre(&c.name, FromCalibre::of(&c));
         }
     }
-    let cal = match w.calibre.as_deref() {
-        Some(n) => take::calibre_named(n, &user_calibres()?),
-        None => None,
+    let given = match w.calibre.as_deref() {
+        Some(n) => take::calibre_named(n, &user_calibres()?)
+            .map(|c| FromCalibre::of(&c))
+            .unwrap_or_default(),
+        None => FromCalibre::default(),
     };
+    // Core says why; the flag to leave out is the command line's.
     if let Some(b) = d.bph {
-        if let Some(cb) = cal.as_ref().and_then(|c| c.bph) {
-            return Err(format!(
-                "the calibre gives the beat rate ({cb} bph): leave out --bph, or set no calibre"
-            ));
-        }
-        w.bph = Some(input_domain::bph(b)?);
+        w.set_bph(Some(input_domain::bph(b)?), given)
+            .map_err(|e| format!("{e}, or leave out --bph"))?;
     }
     if let Some(l) = d.lift {
-        if let Some(cl) = cal.as_ref().and_then(|c| c.lift_angle_deg) {
-            return Err(format!(
-                "the calibre gives the lift angle ({cl}°): leave out --lift, or set no calibre"
-            ));
-        }
-        w.lift = Some(input_domain::lift_deg(l)?);
+        w.set_lift(l, given)
+            .map_err(|e| format!("{e}, or leave out --lift"))?;
     }
     if let Some(n) = &d.notes {
         w.notes = (!n.is_empty()).then(|| n.clone());

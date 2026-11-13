@@ -1450,3 +1450,46 @@ fn two_adds_of_one_name_never_meet() {
     );
     let _ = fs::remove_dir_all(&takes);
 }
+
+/// A picked calibre's figures are the watch's, and only a figure it
+/// doesn't give is set by hand (#1555: the app's form and `watches edit`
+/// both take this rule).
+#[test]
+fn a_calibre_gives_its_lift_and_beat_rate_and_only_the_rest_is_set_by_hand() {
+    let mut w = Watch::new("Pepsi");
+    w.lift = Some(50.0);
+    w.bph = Some(21_600);
+    let both = FromCalibre {
+        lift: Some(52.0),
+        bph: Some(28_800),
+    };
+    w.pick_calibre(" ETA 2824-2 ", both);
+    assert_eq!(w.calibre.as_deref(), Some("ETA 2824-2"));
+    assert_eq!((w.lift, w.bph), (Some(52.0), Some(28_800)));
+    let e = w.set_lift(49.0, both).unwrap_err();
+    assert!(e.contains("calibre gives the lift angle (52°)"), "{e}");
+    let e = w.set_bph(Some(21_600), both).unwrap_err();
+    assert!(e.contains("calibre gives the beat rate (28800 bph)"), "{e}");
+    assert_eq!((w.lift, w.bph), (Some(52.0), Some(28_800)));
+    // A calibre giving only its beat rate leaves the lift angle the
+    // watch's own, to set by hand, in range.
+    let bph_only = FromCalibre {
+        lift: None,
+        bph: Some(18_000),
+    };
+    w.pick_calibre("Unitas 6497", bph_only);
+    assert_eq!((w.lift, w.bph), (Some(52.0), Some(18_000)));
+    w.set_lift(44.0, bph_only).unwrap();
+    assert_eq!(w.lift, Some(44.0));
+    assert!(w.set_lift(120.0, bph_only).is_err());
+    assert_eq!(w.lift, Some(44.0));
+    // No calibre: both are the watch's, and the beat rate can go back
+    // to being found from the sound.
+    w.pick_calibre("", FromCalibre::default());
+    assert!(w.calibre.is_none());
+    w.set_bph(None, FromCalibre::default()).unwrap();
+    assert_eq!((w.lift, w.bph), (Some(44.0), None));
+    // Figures set by hand give way to a calibre picked after them.
+    w.hold_calibre(both);
+    assert_eq!((w.lift, w.bph), (Some(52.0), Some(28_800)));
+}

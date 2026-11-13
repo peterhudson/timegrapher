@@ -154,7 +154,69 @@ pub struct Watch {
     pub fields: Vec<Field>,
 }
 
+/// The lift angle and beat rate a watch's calibre gives, each where the
+/// calibre table has it. A figure given is the calibre's: the watch takes
+/// it, and it can't be set by hand while that calibre is picked.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct FromCalibre {
+    pub lift: Option<f64>,
+    pub bph: Option<u32>,
+}
+
+impl FromCalibre {
+    /// What `c` gives.
+    pub fn of(c: &crate::take::Calibre) -> Self {
+        FromCalibre {
+            lift: c.lift_angle_deg,
+            bph: c.bph,
+        }
+    }
+}
+
 impl Watch {
+    /// Pick the calibre `name` (empty: none), which gives `given`: the
+    /// watch takes each figure the calibre gives and keeps its own for
+    /// one it doesn't.
+    pub fn pick_calibre(&mut self, name: &str, given: FromCalibre) {
+        let name = name.trim();
+        self.calibre = (!name.is_empty()).then(|| name.to_string());
+        self.hold_calibre(given);
+    }
+
+    /// Keep the figures the watch's calibre gives (`given`) over any set
+    /// by hand.
+    pub fn hold_calibre(&mut self, given: FromCalibre) {
+        self.lift = given.lift.or(self.lift);
+        self.bph = given.bph.or(self.bph);
+    }
+
+    /// Set the lift angle by hand: refused when the calibre gives one
+    /// (`given`), or out of range.
+    pub fn set_lift(&mut self, lift: f64, given: FromCalibre) -> Result<(), String> {
+        if let Some(l) = given.lift {
+            return Err(format!(
+                "the calibre gives the lift angle ({l}°): set no calibre to set it by hand"
+            ));
+        }
+        self.lift = Some(crate::input_domain::lift_deg(lift)?);
+        Ok(())
+    }
+
+    /// Set the beat rate by hand (`None`: found from the sound): refused
+    /// when the calibre gives one (`given`).
+    pub fn set_bph(&mut self, bph: Option<u32>, given: FromCalibre) -> Result<(), String> {
+        if let Some(b) = given.bph {
+            return Err(format!(
+                "the calibre gives the beat rate ({b} bph): set no calibre to set it by hand"
+            ));
+        }
+        self.bph = match bph {
+            Some(b) => Some(crate::input_domain::bph(u64::from(b))?),
+            None => None,
+        };
+        Ok(())
+    }
+
     /// Set the added field `label` (ignoring case) to `value`, or add it
     /// as text at the end when the watch has none of that label.
     pub fn set_field(&mut self, label: &str, value: &str) -> Result<(), String> {

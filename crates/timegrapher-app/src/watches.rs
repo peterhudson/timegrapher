@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use timegrapher_core::figure_text::true_minus;
 use timegrapher_core::library::{length_text, size_text, Reading};
-use timegrapher_core::library::{Field, FieldKind, Library, Take, Watch, WatchEntry};
+use timegrapher_core::library::{Field, FieldKind, FromCalibre, Library, Take, Watch, WatchEntry};
 use timegrapher_core::session::Position;
 
 pub const HELP: &[&str] = &[
@@ -1889,21 +1889,19 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         Some("The movement: it fills the lift angle and beat rate below"),
         |ui| cal.picker(ui, &current, w.bph.map(|b| (b, "the watch's beat rate"))),
     );
+    let given = |n: &str| FromCalibre {
+        lift: cal.lift(n),
+        bph: cal.bph(n),
+    };
     if let Some(p) = picked {
-        if let Some(l) = cal.lift(&p) {
-            w.lift = Some(l);
-        }
-        if let Some(b) = cal.bph(&p) {
-            w.bph = Some(b);
-        }
-        w.calibre = (!p.is_empty()).then_some(p);
+        w.pick_calibre(&p, given(&p));
     }
     // Either the calibre or the watch: a figure the calibre gives is the
     // calibre's, and only one it doesn't give is set here.
-    let calibre = w.calibre.clone().unwrap_or_default();
-    let (cal_lift, cal_bph) = (cal.lift(&calibre), cal.bph(&calibre));
-    lift_row(ui, w, cal_lift);
-    bph_row(ui, w, cal_bph);
+    let given = given(w.calibre.as_deref().unwrap_or_default());
+    w.hold_calibre(given);
+    lift_row(ui, w, given);
+    bph_row(ui, w, given);
     own_fields(ui, w);
     let mut notes = w.notes.clone().unwrap_or_default();
     ui.label("Notes");
@@ -1925,19 +1923,18 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
     );
 }
 
-/// The watch's lift angle: the calibre's (`cal_lift`) where it gives one,
+/// The watch's lift angle: the calibre's (`given`) where it gives one,
 /// else set here.
-fn lift_row(ui: &mut egui::Ui, w: &mut Watch, cal_lift: Option<f64>) {
+fn lift_row(ui: &mut egui::Ui, w: &mut Watch, given: FromCalibre) {
     theme::row(
         ui,
         "Lift Angle",
-        Some(match cal_lift {
+        Some(match given.lift {
             Some(_) => "Degrees, from the calibre. Pick no calibre to set it here.",
             None => "Degrees; each new take of this watch starts with it.",
         }),
-        |ui| match cal_lift {
+        |ui| match given.lift {
             Some(l) => {
-                w.lift = Some(l);
                 ui.label(format!("{}° from the calibre", fields::plain(l)))
                     .on_hover_text(FROM_CALIBRE);
             }
@@ -1948,8 +1945,10 @@ fn lift_row(ui: &mut egui::Ui, w: &mut Watch, cal_lift: Option<f64>) {
                         .range(timegrapher_core::input_domain::LIFT_RANGE_DEG)
                         .suffix("°"),
                 );
+                // The field's range keeps it one core takes, and no
+                // calibre gives one here: never refused.
                 if field.changed() {
-                    w.lift = Some(lift);
+                    w.set_lift(lift, given).ok();
                 }
                 if w.lift.is_none() {
                     ui.label(RichText::new("(default)").color(theme::pal(ui).text_tertiary));
@@ -1963,31 +1962,36 @@ fn lift_row(ui: &mut egui::Ui, w: &mut Watch, cal_lift: Option<f64>) {
     );
 }
 
-/// The watch's beat rate: the calibre's (`cal_bph`) where it gives one,
+/// The watch's beat rate: the calibre's (`given`) where it gives one,
 /// else set here.
-fn bph_row(ui: &mut egui::Ui, w: &mut Watch, cal_bph: Option<u32>) {
+fn bph_row(ui: &mut egui::Ui, w: &mut Watch, given: FromCalibre) {
     theme::row(
         ui,
         "Beat Rate",
-        Some(match cal_bph {
+        Some(match given.bph {
             Some(_) => "Beats per hour, from the calibre. Pick no calibre to set it here.",
             None => "Beats per hour; each new take of this watch starts with it. Auto finds it.",
         }),
-        |ui| match cal_bph {
+        |ui| match given.bph {
             Some(b) => {
-                w.bph = Some(b);
                 ui.label(format!("{b} bph from the calibre"))
                     .on_hover_text(FROM_CALIBRE);
             }
             None => {
+                let mut bph = w.bph;
                 egui::ComboBox::from_id_salt("form bph")
-                    .selected_text(w.bph.map_or("Auto".to_string(), |b| format!("{b} bph")))
+                    .selected_text(bph.map_or("Auto".to_string(), |b| format!("{b} bph")))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut w.bph, None, "Auto");
+                        ui.selectable_value(&mut bph, None, "Auto");
                         for b in timegrapher_core::beats::STANDARD_BPH {
-                            ui.selectable_value(&mut w.bph, Some(b), format!("{b} bph"));
+                            ui.selectable_value(&mut bph, Some(b), format!("{b} bph"));
                         }
                     });
+                // Only the standard rates are offered, and no calibre
+                // gives one here: never refused.
+                if bph != w.bph {
+                    w.set_bph(bph, given).ok();
+                }
             }
         },
     );
