@@ -567,6 +567,7 @@ fn averaged(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::amplitude::{MAX_AMPLITUDE_DEG, MIN_AMPLITUDE_DEG};
     use crate::analysis::{analyze, AnalysisConfig};
     use crate::synth::{generate, SynthConfig};
 
@@ -634,6 +635,62 @@ mod tests {
         // Guided by where the reading put the unlock, sound 1.
         let u = unlock(Some(-8.3));
         assert!((-8.8..-7.8).contains(&u), "guided: {u}");
+    }
+
+    /// A profile's amplitude passes the gate a window's side does
+    /// ([`side_deg`]): read at a lift that puts the beat outside 100 to
+    /// 380°, it is withheld, though its edges stay.
+    #[test]
+    fn a_profiles_amplitude_outside_the_gate_is_withheld() {
+        let fs = 48_000.0;
+        let len = template_len(fs);
+        let origin = (PRE_S * fs).round() as usize;
+        let pulse = |i: usize, at_ms: f64, h: f32| {
+            let d = (i as f64 - origin as f64) / fs * 1000.0 - at_ms;
+            h * (-(d / 0.3).powi(2)).exp() as f32
+        };
+        let snips: Vec<Vec<f32>> = (0..12)
+            .map(|k| {
+                (0..len)
+                    .map(|i| {
+                        0.01 + 0.001 * ((i * 7 + k * 13) % 5) as f32
+                            + pulse(i, -8.0, 0.3)
+                            + pulse(i, 0.0, 1.0)
+                    })
+                    .collect()
+            })
+            .collect();
+        let snips: Vec<&[f32]> = snips.iter().map(Vec::as_slice).collect();
+        let osc = 0.25;
+        let at = |lift_deg: f64| {
+            let cfg = AmplitudeConfig {
+                lift_deg,
+                ..AmplitudeConfig::default()
+            };
+            let p = from_snippets(&snips, fs, Side::B, osc, &cfg, Some(-8.3)).expect("a profile");
+            let t = (p.drop_ms.expect("a drop") - p.unlock_ms.expect("an unlock")) / 1000.0;
+            (
+                p.amplitude_deg,
+                crate::amplitude::amplitude_deg(t, osc, lift_deg),
+            )
+        };
+        let (kept, raw) = at(52.0);
+        assert!(
+            (MIN_AMPLITUDE_DEG..=MAX_AMPLITUDE_DEG).contains(&raw),
+            "{raw}"
+        );
+        assert!(
+            (kept.expect("in the gate") - raw).abs() < 1e-6,
+            "{kept:?} {raw}"
+        );
+        for lift in [10.0, 200.0] {
+            let (kept, raw) = at(lift);
+            assert!(
+                !(MIN_AMPLITUDE_DEG..=MAX_AMPLITUDE_DEG).contains(&raw),
+                "{lift}: {raw}"
+            );
+            assert_eq!(kept, None, "{lift}° lift reads {raw}°");
+        }
     }
 
     #[test]
