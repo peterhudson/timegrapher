@@ -1846,10 +1846,7 @@ impl Calibres {
 }
 
 const PERIOD: fields::Format = fields::Format {
-    show: |v| {
-        let s = format!("{v:.3}");
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    },
+    show: train::period_text,
     parse: fields::parse_number,
 };
 const BPH: fields::Format = fields::Format {
@@ -2200,36 +2197,19 @@ fn count_field(
     value: Option<u32>,
     hint: &str,
 ) -> Option<Option<u32>> {
-    let id = ui.make_persistent_id(id_salt);
-    let buf = id.with("text");
     let shown = value.map(|v| v.to_string()).unwrap_or_default();
-    let mut text = ui
-        .data_mut(|d| d.get_temp::<String>(buf))
-        .unwrap_or_else(|| shown.clone());
-    let resp = ui
-        .add(
-            egui::TextEdit::singleline(&mut text)
-                .id(id)
-                .hint_text(hint)
-                .desired_width(COUNT_BOX_W - 8.0),
-        )
-        .on_hover_text(hint);
-    let mut out = None;
-    if resp.lost_focus() {
-        if text.trim() != shown {
-            out = match train::parse_count(&text) {
-                Ok((Some(v), None)) => Some(Some(v)),
-                _ if text.trim().is_empty() => Some(None),
-                _ => None,
-            };
-        }
-        ui.data_mut(|d| d.remove::<String>(buf));
-    } else if resp.has_focus() {
-        ui.data_mut(|d| d.insert_temp(buf, text));
-    } else {
-        ui.data_mut(|d| d.remove::<String>(buf));
-    }
-    out
+    blank_field(
+        ui,
+        id_salt,
+        shown,
+        hint,
+        hint,
+        COUNT_BOX_W - 8.0,
+        |t| match train::parse_count(t) {
+            Ok((Some(v), None)) => Some(v),
+            _ => None,
+        },
+    )
 }
 
 /// A wheel's period box, with Clear on one typed in; what changed goes
@@ -2680,9 +2660,27 @@ fn period_field(
     value: Option<f64>,
     tip: &str,
 ) -> Option<Option<f64>> {
+    let shown = value.map(|v| (PERIOD.show)(v)).unwrap_or_default();
+    blank_field(ui, id_salt, shown, "Not Known", tip, 66.0, |t| {
+        fields::parse_number(t).filter(|v| *v > 0.0)
+    })
+}
+
+/// A box that may be blank, showing `shown`. Enter or clicking away reads
+/// it with `parse`: `Some(Some(v))` for a new value, `Some(None)` when
+/// emptied, `None` when nothing changed or it doesn't read.
+#[allow(clippy::too_many_arguments)]
+fn blank_field<T>(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    shown: String,
+    hint: &str,
+    tip: &str,
+    width: f32,
+    parse: impl FnOnce(&str) -> Option<T>,
+) -> Option<Option<T>> {
     let id = ui.make_persistent_id(id_salt);
     let buf = id.with("text");
-    let shown = value.map(|v| (PERIOD.show)(v)).unwrap_or_default();
     let mut text = ui
         .data_mut(|d| d.get_temp::<String>(buf))
         .unwrap_or_else(|| shown.clone());
@@ -2690,17 +2688,17 @@ fn period_field(
         .add(
             egui::TextEdit::singleline(&mut text)
                 .id(id)
-                .hint_text("Not Known")
-                .desired_width(66.0),
+                .hint_text(hint)
+                .desired_width(width),
         )
         .on_hover_text(tip);
     let mut out = None;
     if resp.lost_focus() {
         if text.trim() != shown {
-            out = match fields::parse_number(&text) {
-                Some(v) if v > 0.0 => Some(Some(v)),
-                _ if text.trim().is_empty() && value.is_some() => Some(None),
-                _ => None,
+            out = if text.trim().is_empty() {
+                Some(None)
+            } else {
+                parse(&text).map(Some)
             };
         }
         ui.data_mut(|d| d.remove::<String>(buf));

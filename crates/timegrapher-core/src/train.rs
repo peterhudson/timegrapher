@@ -22,7 +22,7 @@ use serde::Serialize;
 
 /// One full swing of the balance and back, two beats, in seconds.
 pub fn balance_period_s(bph: u32) -> f64 {
-    7200.0 / f64::from(bph)
+    2.0 * crate::timing::beat_period_s(None, bph)
 }
 
 /// A lever escape wheel's turn: one tooth per swing of the balance.
@@ -278,11 +278,13 @@ pub fn solve(bph: Option<u32>, train: &[Arbor]) -> Solved {
             arbors[i].needs = needs(&arbors, i, bph.is_some());
         }
     }
+    // The escape wheel's period falls as 1 / bph, so the beat rate that
+    // turns it in `p` is its period at 1 bph over `p`.
     let bph_from_counts = match (bph, arbors.first()) {
         (None, Some(e)) => e
             .teeth
             .zip(e.period_s())
-            .map(|(t, p)| f64::from(t) * 7200.0 / p),
+            .map(|(t, p)| escape_period_s(1, t) / p),
         _ => None,
     };
     let meshes = meshes(&arbors);
