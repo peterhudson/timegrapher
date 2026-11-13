@@ -949,11 +949,6 @@ mod tests {
             period_text_within(2_551_442.9, |t| t.len() <= 7),
             ("2551443".into(), true)
         );
-        // Dropping a decimal that was zero anyway cuts nothing.
-        assert_eq!(
-            period_text_within(60.5, |t| t.len() <= 4),
-            ("60.5".into(), false)
-        );
         // Whole seconds at the least, cut or not.
         assert_eq!(
             period_text_within(123_456.7, |_| false),

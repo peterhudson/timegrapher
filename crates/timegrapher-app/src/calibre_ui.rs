@@ -2689,17 +2689,24 @@ fn period_field(
     tip: &str,
 ) -> Option<Option<f64>> {
     let w = period_box_w(ui);
-    let fits = |t: &str| box_text_w(ui, t) + CURSOR_ROOM <= w;
-    let (shown, cut) = value.map_or((String::new(), false), |v| {
-        train::period_text_within(v, fits)
-    });
-    let tip = match value.filter(|_| cut) {
-        Some(v) => format!("{tip}\n\nIn full: {} s", (PERIOD.show)(v)),
-        None => tip.to_owned(),
-    };
+    let (shown, tip) = period_shown(ui, value, tip);
     blank_field(ui, id_salt, shown, "Not Known", &tip, w, |t| {
         fields::parse_number(t).filter(|v| *v > 0.0)
     })
+}
+
+/// What a period box shows, decimals dropped to fit its width, and its
+/// hover, which gives the full value when any were dropped (#1586).
+fn period_shown(ui: &egui::Ui, value: Option<f64>, tip: &str) -> (String, String) {
+    let w = period_box_w(ui);
+    let fits = |t: &str| box_text_w(ui, t) + CURSOR_ROOM <= w;
+    let Some(v) = value else {
+        return (String::new(), tip.to_owned());
+    };
+    match train::period_text_within(v, fits) {
+        (shown, true) => (shown, format!("{tip}\n\nIn full: {} s", (PERIOD.show)(v))),
+        (shown, false) => (shown, tip.to_owned()),
+    }
 }
 
 /// A box that may be blank, showing `shown`. Enter or clicking away reads

@@ -512,6 +512,26 @@ fn a_period_box_shows_its_whole_value() {
     }
 }
 
+/// A period cut to fit its box gives the full value in its hover; one
+/// shown whole keeps the hover as it was (#1586).
+#[test]
+fn a_cut_period_gives_its_full_value_in_the_hover() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut got = Vec::new();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            for v in [Some(9_999_999.999), Some(21114.027), None] {
+                got.push(super::period_shown(ui, v, "The barrel's turn."));
+            }
+        });
+    });
+    let full = "The barrel's turn.\n\nIn full: 9999999.999 s";
+    assert_eq!(got[0], ("10000000".into(), full.into()));
+    assert_eq!(got[1], ("21114.027".into(), "The barrel's turn.".into()));
+    assert_eq!(got[2], (String::new(), "The barrel's turn.".into()));
+}
+
 #[test]
 fn wheels_typed_for_a_listed_calibre_name_its_cycles() {
     let mut c = Calibres::in_memory();
