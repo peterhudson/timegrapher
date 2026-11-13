@@ -85,14 +85,14 @@ impl Angle {
     }
 }
 
-/// The Beat Error card's hover on the angle: `beat_error` as the card
-/// writes it ("0.46 ± 0.05"), the angle, the amplitude it is at and the
-/// lift angle it rests on.
-pub fn card_words(beat_error: &str, angle: &Angle, amplitude_deg: f64, lift_deg: f64) -> String {
+/// The Beat Error card's hover on the angle, under the figure the hover
+/// already gives: the angle, the amplitude it is at and the lift angle it
+/// rests on (Hugh: the figure isn't said twice).
+pub fn card_words(angle: &Angle, amplitude_deg: f64, lift_deg: f64) -> String {
     let amp = figure_with_pm(amplitude_deg, None, base_digits::AMPLITUDE, false);
     let lift = figure_with_pm(lift_deg, None, base_digits::AMPLITUDE, false);
     format!(
-        "{beat_error} ms is a {NAME} of {} of the balance's swing, at {amp}° amplitude. \
+        "That's a {NAME} of {} of the balance's swing, at {amp}° amplitude. \
          Degrees stay the same as the amplitude falls; ms grow. The degrees rest on the \
          lift angle, {lift}°, through the amplitude.",
         angle.text()
@@ -153,10 +153,10 @@ mod tests {
     #[test]
     fn the_card_says_what_it_rests_on() {
         let a = Angle::of((302.0, Some(2.0)), (0.46, Some(0.05)), 28_800).unwrap();
-        let w = card_words("0.46 ± 0.05", &a, 302.0, 52.0);
+        let w = card_words(&a, 302.0, 52.0);
         assert_eq!(
             w,
-            "0.46 ± 0.05 ms is a BE Angle of 1.7 ± 0.2° of the balance's swing, at 302° \
+            "That's a BE Angle of 1.7 ± 0.2° of the balance's swing, at 302° \
              amplitude. Degrees stay the same as the amplitude falls; ms grow. The degrees \
              rest on the lift angle, 52°, through the amplitude."
         );

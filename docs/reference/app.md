@@ -135,8 +135,8 @@ Not Started). The status bar no longer gives the length. Under them
 **Average Over** and its pop-up ("10 s"), the time the readings are
 fitted over. **Rate**, **Amplitude** and **Beat Error** have no
 controls: each is its figure. The Beat Error figure's hover starts with its **BE
-Angle** (#1576): "0.46 ± 0.05 ms is a BE Angle of 1.7 ± 0.2° of the
-balance's swing, at 302° amplitude", then that degrees stay the same as
+Angle** (#1576), under the figure: "That's a BE Angle of 1.7 ± 0.2° of
+the balance's swing, at 302° amplitude", then that degrees stay the same as
 the amplitude falls while ms grow, and that they rest on the lift angle
 through the amplitude (core `be_angle::card_words`). The angle is shown
 beside the ms only there and in the Power Reserve table, never instead

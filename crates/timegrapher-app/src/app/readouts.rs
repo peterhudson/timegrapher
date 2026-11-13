@@ -224,16 +224,15 @@ fn beat_error_value(r: &LiveReading) -> Option<(f64, Option<f64>)> {
     Some((v, pm))
 }
 
-/// The Beat Error card's words on its BE Angle: the card's figure and ±,
-/// the angle core works from them and the amplitude's, at `lift_deg`.
+/// The Beat Error card's words on its BE Angle: the angle core works from
+/// the card's figure and ± and the amplitude's, at `lift_deg`.
 pub(super) fn be_angle_words(r: &LiveReading, lift_deg: f64) -> Option<String> {
     let (be, be_pm) = beat_error_value(r)?;
     let amp = r.amplitude_deg?;
     let angle =
         timegrapher_core::be_angle::Angle::of((amp, r.amplitude_error_deg), (be, be_pm), r.bph?)?;
-    let figure = with_pm(be, be_pm, base::BEAT_ERROR, false);
     Some(timegrapher_core::be_angle::card_words(
-        &figure, &angle, amp, lift_deg,
+        &angle, amp, lift_deg,
     ))
 }
 
