@@ -1158,6 +1158,15 @@ mod tests {
             band.readout(SeriesKind::Rate),
             "+3.2 s/d, mean of 8, +1.0 to +5.1"
         );
+        // Most needed first, so a short row drops from the end (#1580).
+        assert_eq!(
+            band.readout_parts(SeriesKind::Rate),
+            ["+3.2 s/d", "mean of 8", "+1.0 to +5.1"]
+        );
+        assert_eq!(
+            band.readout(SeriesKind::Rate),
+            band.readout_parts(SeriesKind::Rate).join(", ")
+        );
         let amp = Drawn {
             t: 0.0,
             mean: 271.6,
