@@ -41,6 +41,7 @@ guide explains what each fact means and where it can mislead.
 19. [Isochronism](19-isochronism.md): the rate at each amplitude, as the curve or the walk
 20. [Positions Test](20-positions-test.md): the six positions, guided, and full wind against 24 hours
     - 20b. [Dynamic Poise Test](20b-dynamic-poise-test.md): the eight upright positions, 45° apart, the once-round wave and the heavy spot
+    - 20c. [Complication Test](20c-complication-test.md): a chronograph or other complication off, on, then off again, and what it changes
 21. [Power Reserve Test](21-power-reserve-test.md): how long a full wind lasts, hour by hour
 22. [The Watches View](22-watches-view.md): your watches, their details and every take
 23. [Takes and Sound Files](23-takes-and-sound-files.md): keeping, opening and what is in a take

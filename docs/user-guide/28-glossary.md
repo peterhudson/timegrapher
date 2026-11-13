@@ -20,6 +20,7 @@ The words this guide uses, each with where to read more.
 | **Clock correction** | The sound card's clock is off by a steady few parts per million (ppm), which moves every rate. Measured with Quartz Correction, from USB lines, or by `timegrapher clock`, and taken out. | Chapter 3, M3 |
 | **CSV** (comma-separated values) | A plain table file any spreadsheet opens. | Chapters 20, 21 |
 | **CUSUM** (cumulative sum) | A running sum of each reading less the mean. A steady slope in it marks a level that changed. | Chapter 15, M9 |
+| **Complication Test** | A complication, such as a chronograph, off, on, then off again in one position, and how much it changes the amplitude, rate and beat error (On less Off). | Chapter 20c |
 | **Cut** | A place no reading may cross: a pause, a jump, a position change, a mask, or over 2 s with no beat. | M6 |
 | **Cycle** | A rise and fall a reading repeats, often at the period of a wheel. | Chapters 11, 12, M10 |
 | **D, DVH, X** | A positions test's largest difference in rate, its vertical less horizontal, and its average. | Chapter 20, M8 |
