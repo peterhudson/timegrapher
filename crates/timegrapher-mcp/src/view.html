@@ -1045,8 +1045,8 @@ function xyChart(o) {
   for (const n of o.beside || []) {
     const dot = [sx(n.x), sy(n.y)];
     if (!(dot[0] >= L && dot[0] <= L + plotW && dot[1] >= T && dot[1] <= T + plotH)) continue;
-    const w = n.text.length * CHAR_W * MARKS.NAME_SIZE / 11 + 6;
-    const spots = besideSpots(dot, [w, MARKS.ROW_H], T);
+    const w = n.text.length * CHAR_W * MARKS.NAME_SIZE / 11 + 2 * MARKS.NOTE_PAD;
+    const spots = besideSpots(dot, [w, MARKS.ROW_H + 2 * MARKS.NOTE_PAD], T);
     const clear = ([a, b, c, d]) => a >= L + 1 && b >= T + 1 && c <= L + plotW - 1 && d <= T + plotH - 1
       && !crosses([a - 2, b - 2, c + 2, d + 2], trace) && !avoid.some(([p, q, r, t]) => a < r && c > p && b < t && d > q);
     const k = noted ? besidePlace(spots, clear, null) : null;
@@ -1061,8 +1061,8 @@ function xyChart(o) {
       const from = [dot[0] + (near[0] - dot[0]) / len * 4, dot[1] + (near[1] - dot[1]) / len * 4];
       inside += `<line x1="${from[0].toFixed(1)}" y1="${from[1].toFixed(1)}" x2="${near[0].toFixed(1)}" y2="${near[1].toFixed(1)}" stroke="var(--text2)" stroke-width="1"/>`;
     }
-    inside += `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(c - a).toFixed(1)}" height="${(d - b).toFixed(1)}" rx="3" fill="var(--card)" fill-opacity="0.8"/>`;
-    inside += `<text x="${(a + 3).toFixed(1)}" y="${(b + 11.5).toFixed(1)}" style="fill:var(--text);font-size:${MARKS.NAME_SIZE}px">${esc(n.text)}</text>`;
+    inside += `<rect x="${a.toFixed(1)}" y="${b.toFixed(1)}" width="${(c - a).toFixed(1)}" height="${(d - b).toFixed(1)}" rx="6" fill="var(--card)" fill-opacity="0.8"/>`;
+    inside += `<text x="${(a + MARKS.NOTE_PAD).toFixed(1)}" y="${(b + MARKS.NOTE_PAD + 11.5).toFixed(1)}" style="fill:var(--text);font-size:${MARKS.NAME_SIZE}px">${esc(n.text)}</text>`;
   }
   // steady::mark_label: beside the point, on the side that keeps it inside.
   for (const n of o.notes || []) {
@@ -1095,7 +1095,7 @@ function xyChart(o) {
 // its top. Strong names (a wheel) are placed first, faint ones (a wheel's
 // ×2, a reference period) after. The app's tests and these run the same
 // cases (crates/timegrapher-app/src/marks_cases.json).
-const MARKS = { ROW_H: 15, LANE: 30, LANE_GAP: 6, NAME_GAP: 12, HYSTERESIS: 2, SHORT_PLOT: 100, INSIDE_TOP: 4, NAME_SIZE: 11.5, TICK: 4, SIDE_GAP: 12, NOTE_OFF: 8, NOTE_ROOM: 27 };
+const MARKS = { ROW_H: 15, LANE: 30, LANE_GAP: 6, NAME_GAP: 12, HYSTERESIS: 2, SHORT_PLOT: 100, INSIDE_TOP: 4, NAME_SIZE: 11.5, TICK: 4, SIDE_GAP: 12, NOTE_OFF: 8, NOTE_PAD: 3, NOTE_ROOM: 33 };
 
 // marks::order: strong first, then faint, each left to right. `names` are
 // each one's [x, width, rank], rank "strong" or "faint".

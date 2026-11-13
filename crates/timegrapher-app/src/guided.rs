@@ -1225,8 +1225,9 @@ fn table_grid(
         ("Average", "From Average")
     };
     let (fw, from_w, gap) = widths(ui, poise, from_word);
-    // The dimming's key over the table, as the Power Reserve table's.
-    crate::reserve::dim_key(ui, t.beat_error_dimmed.iter().any(|d| *d));
+    // The dimming's key over the table, as the Power Reserve table's;
+    // the Dynamic Poise pane's is in its Info panel (#1537).
+    (!poise).then(|| crate::reserve::dim_key(ui, t.beat_error_dimmed.iter().any(|d| *d)));
     let be_hint = crate::reserve::beat_error_hint(
         "As a size, from the unlock, or from the drop where the unlock isn't found.",
     );
@@ -1317,7 +1318,20 @@ fn table_grid(
                 ui.end_row();
             }
         });
-    table_notes(ui, t);
+    (!poise).then(|| table_notes(ui, t));
+}
+
+/// What the Dynamic Poise pane's Info panel says of its table (Hugh on
+/// #1537): the grey beat errors' key where one is grey, then the notes
+/// the Positions Test's table has under it.
+pub(crate) fn poise_table_notes(readings: &[Reading]) -> Vec<String> {
+    let t = table(readings, Kind::Poise);
+    let dimmed = t.beat_error_dimmed.iter().any(|d| *d);
+    dimmed
+        .then(|| crate::reserve::DIM_KEY_TEXT.to_string())
+        .into_iter()
+        .chain(t.notes)
+        .collect()
 }
 
 /// The Complication Test's table (#1576, Hugh's spec): a row for each

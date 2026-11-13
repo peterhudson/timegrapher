@@ -5,7 +5,7 @@ complete and current; check them when this file and the program disagree.
 
 Commands: `update`, `devices`, `doctor`, `calibres`, `watches`, `record`,
 `analyze`, `shape`, `profile`, `long`, `series`, `session`, `clock`,
-`report`, `regress`, `synth`. `session` (the
+`train`, `report`, `regress`, `synth`. `session` (the
 multi-position report) is documented in the repository's
 `docs/reference/sessions.md`, `series` in `docs/reference/series.md`. How to read what
 `doctor`, `session` and `series` measure, and what to do about it, is in
@@ -418,6 +418,23 @@ adds `time_frequency[]`, an STFT and a synchrosqueezed wavelet map of
 each series against time (about 1.6 MB on a 2 h take; the repository's
 `docs/reference/series.md`).
 How to read the statistics: [findings.md](findings.md#series-and-long-is-it-steady).
+
+## train
+
+```sh
+timegrapher train [--calibre NAME] [--bph N] [--escape T/L] [--fourth T/L] [--third T/L] [--centre T/L] [--barrel T] [--period ARBOR=S,...] --json
+```
+
+Works out each wheel's turn from the tooth and leaf counts a watchmaker
+counts on the bench (T/L: the wheel's teeth, the leaves of the pinion on
+the same arbor), starting from a calibre's counts where `--calibre` is
+given; each flag replaces that arbor's. With no beat rate, it works it
+out from a known period (`--period fourth=60`) and the counts between
+that wheel and the escape wheel. Nothing is saved. Use
+it when someone has counted a train the calibre table lacks, or doubts
+one: a wheel whose two sides disagree has a `clash`, and a blank one says
+in `needs` which count would fill it. `docs/reference/agent-interface.md`'s
+`train` row lists every field.
 
 ## report
 

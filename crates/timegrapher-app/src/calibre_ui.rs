@@ -2283,7 +2283,7 @@ fn add_wheel_row(
             egui::TextEdit::singleline(period)
                 .id_salt(("another period", place))
                 .hint_text("period")
-                .desired_width(66.0),
+                .desired_width(period_box_w(ui)),
         );
         ui.label("s");
         let whole =
@@ -2655,6 +2655,30 @@ fn capitalised(s: &str) -> String {
         .unwrap_or_default()
 }
 
+/// The widest period a box shows whole: six figures of seconds, about
+/// eleven days, to the thousandth (`train::period_text`). A longer one
+/// drops decimals to fit (`train::period_text_within`).
+const WIDEST_PERIOD: &str = "000000.000";
+
+/// Room the cursor takes beside the text in a period box.
+const CURSOR_ROOM: f32 = 4.0;
+
+/// `t`'s width in a text box's font.
+fn box_text_w(ui: &egui::Ui, t: &str) -> f32 {
+    let font = egui::FontSelection::default().resolve(ui.style());
+    ui.fonts_mut(|f| {
+        f.layout_no_wrap(t.into(), font, egui::Color32::WHITE)
+            .size()
+            .x
+    })
+}
+
+/// A period box's inner width: room for [`WIDEST_PERIOD`] and the
+/// cursor, so no digit sits under the box's edge (#1586).
+fn period_box_w(ui: &egui::Ui) -> f32 {
+    (box_text_w(ui, WIDEST_PERIOD) + CURSOR_ROOM).ceil()
+}
+
 /// A box for a wheel's period that may be blank. Enter or clicking away
 /// reads it: `Some(Some(v))` for a new period, `Some(None)` when emptied,
 /// `None` when nothing changed.
@@ -2664,10 +2688,25 @@ fn period_field(
     value: Option<f64>,
     tip: &str,
 ) -> Option<Option<f64>> {
-    let shown = value.map(|v| (PERIOD.show)(v)).unwrap_or_default();
-    blank_field(ui, id_salt, shown, "Not Known", tip, 66.0, |t| {
+    let w = period_box_w(ui);
+    let (shown, tip) = period_shown(ui, value, tip);
+    blank_field(ui, id_salt, shown, "Not Known", &tip, w, |t| {
         fields::parse_number(t).filter(|v| *v > 0.0)
     })
+}
+
+/// What a period box shows, decimals dropped to fit its width, and its
+/// hover, which gives the full value when any were dropped (#1586).
+fn period_shown(ui: &egui::Ui, value: Option<f64>, tip: &str) -> (String, String) {
+    let w = period_box_w(ui);
+    let fits = |t: &str| box_text_w(ui, t) + CURSOR_ROOM <= w;
+    let Some(v) = value else {
+        return (String::new(), tip.to_owned());
+    };
+    match train::period_text_within(v, fits) {
+        (shown, true) => (shown, format!("{tip}\n\nIn full: {} s", (PERIOD.show)(v))),
+        (shown, false) => (shown, tip.to_owned()),
+    }
 }
 
 /// A box that may be blank, showing `shown`. Enter or clicking away reads

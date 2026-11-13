@@ -719,7 +719,12 @@ pub fn beside_place(
 
 /// The room a note beside a point takes above it: its row and its
 /// stand-off, and a little air.
-const NOTE_ROOM: f32 = NOTE_OFF + ROW_H + 4.0;
+const NOTE_ROOM: f32 = NOTE_OFF + ROW_H + 2.0 * NOTE_PAD + 4.0;
+
+/// The room round a note's text on its plate, a short facts box's
+/// (`fact_box::FACT_PAD_SHORT`), so no gridline under the plate runs
+/// through the text (#1528).
+pub const NOTE_PAD: f32 = crate::fact_box::FACT_PAD_SHORT;
 
 /// The top of a plot's y range (from `lo`, at least `top`) that leaves a
 /// note's room clear above the trace's highest point (at `y`) on a plot
@@ -733,7 +738,8 @@ pub fn room_above(lo: f64, y: f64, top: f64, h: f32) -> f64 {
 /// A marked point's note (a plot's tallest peak, the lag a series
 /// repeats at, the period found), drawn over the plot after it is shown:
 /// the dot (`at`, plot coordinates) stays on the trace, and the note goes
-/// on a plate of `fill` (80% of the plot's background) in the nearest
+/// on a plate of `fill` (80% of the plot's background), padded and
+/// rounded as a facts box is, in the nearest
 /// clear space [`beside_place`] finds, joined to the dot by a thin
 /// leader. Clear is inside the plot, not crossed by the trace (`trace`,
 /// plot coordinates) and off `avoid` (other notes on the plot, screen).
@@ -767,7 +773,7 @@ pub fn beside(
     );
     job.wrap.max_rows = 1;
     let g = ui.fonts_mut(|f| f.layout_job(job));
-    let size = egui::vec2(g.size().x + 6.0, ROW_H);
+    let size = egui::vec2(g.size().x + 2.0 * NOTE_PAD, ROW_H + 2.0 * NOTE_PAD);
     let pts: Vec<egui::Pos2> = trace
         .iter()
         .map(|p| t.position_from_point(&egui_plot::PlotPoint::new(p[0], p[1])))
@@ -801,9 +807,9 @@ pub fn beside(
             egui::Stroke::new(1.0_f32, pal.text_secondary),
         );
     }
-    painter.rect_filled(rect, 3.0, fill);
+    painter.rect_filled(rect, crate::fact_box::FACT_RADIUS, fill);
     painter.galley(
-        egui::pos2(rect.left() + 3.0, rect.center().y - g.size().y / 2.0),
+        egui::pos2(rect.left() + NOTE_PAD, rect.center().y - g.size().y / 2.0),
         g,
         Color32::PLACEHOLDER,
     );

@@ -5,6 +5,7 @@
 //! ([`timegrapher_core::poise`]); this lays them out.
 
 use super::*;
+use crate::fact_box::{FactBox, FACT_INSET};
 use timegrapher_core::chart_scale;
 use timegrapher_core::poise::{self, PoiseFit};
 
@@ -72,6 +73,9 @@ struct Picture<'a> {
     fit: Option<&'a PoiseFit>,
     /// The table's Mean and its name, drawn with the wave.
     mean: Option<(f64, String)>,
+    /// The facts box on the picture once there is a fit: the heavy spot
+    /// (Hugh on #1537).
+    facts: Option<FactBox>,
 }
 
 impl Picture<'_> {
@@ -260,7 +264,8 @@ fn poise_body(
     let picture = |ui: &mut egui::Ui| {
         picture_block(ui, (readings, fit.as_ref(), &mean), view, bottom);
     };
-    let info_part = |ui: &mut egui::Ui| info_panel(ui, fit.as_ref());
+    let notes = guided::poise_table_notes(readings);
+    let info_part = |ui: &mut egui::Ui| info_panel(ui, fit.as_ref(), &notes);
     test_body::test_body(
         ui,
         ("poise pane", &layout),
@@ -291,10 +296,24 @@ fn picture_block(
         .filter_map(|r| poise::point(r.position, &r.measurement))
         .map(|p| (p.angle_deg, p.rate_s_per_day, p.rate_se))
         .collect();
+    let facts = fit.map(|f| {
+        let name = match view {
+            PoiseView::Plot => "plot",
+            PoiseView::Dial => "dial",
+        };
+        FactBox::plain(
+            ui,
+            "poise facts",
+            name,
+            vec![f.heavy_spot_row()],
+            Vec::new(),
+        )
+    });
     let pic = Picture {
         points,
         fit,
         mean: mean.clone(),
+        facts,
     };
     let w = ui.available_width().max(PICTURE_MIN_W);
     // The room left in the pane, never under PICTURE_H; the dial never
@@ -326,9 +345,11 @@ fn about_text(settle_s: f64, measure_s: f64) -> String {
 }
 
 /// The title line over the picture (core's short sentence, measured
-/// facts) and the line under it (the heavy spot, or a grey chip where
-/// the amplitude is near 220°), or core's words for a fit still to come.
-/// The room is kept from the start, so nothing moves when they come.
+/// facts) and, where the amplitude is near 220°, a grey chip under it;
+/// or core's words for a fit still to come. The heavy spot is in the
+/// picture's facts box, and why it isn't stated and any caveat in Info
+/// (Hugh on #1537). The room is kept from the start, so nothing moves
+/// when they come.
 fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
     let pal = theme::pal(ui);
     let line_h = ui.text_style_height(&egui::TextStyle::Body);
@@ -341,7 +362,7 @@ fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
         ui.add(egui::Label::new(RichText::new(&f.short_text).color(pal.text)).wrap());
         let band = matches!(f.withheld, Some(poise::Withheld::NullBand { .. }));
         if band {
-            // The chip holds the band's fact; its caveat follows, plain.
+            // The chip holds the band's fact.
             egui::Frame::new()
                 .fill(pal.control)
                 .corner_radius(egui::CornerRadius::same(10))
@@ -355,20 +376,15 @@ fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
                     )
                     .on_hover_text(poise::null_band_note());
                 });
-            let caveat = f.caveat_line();
-            if !caveat.is_empty() {
-                ui.add(egui::Label::new(RichText::new(caveat).color(pal.text_secondary)).wrap());
-            }
-        } else {
-            ui.add(egui::Label::new(RichText::new(&f.heavy_text).color(pal.text_secondary)).wrap());
         }
     });
 }
 
 /// The Info panel: core's full sentence (the wave, its twice-round check,
-/// the amplitude and the heavy spot), and the note on the band near 220°,
-/// which alone says why 219.5° matters.
-fn info_panel(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
+/// the amplitude, the heavy spot or why it isn't stated, and its
+/// caveats), the note on the band near 220°, which alone says why 219.5°
+/// matters, then the table's `notes` (Hugh on #1537).
+fn info_panel(ui: &mut egui::Ui, fit: Option<&PoiseFit>, notes: &[String]) {
     let pal = theme::pal(ui);
     ui.spacing_mut().item_spacing.y = 4.0;
     let text = |t: &str, c: egui::Color32| {
@@ -383,6 +399,10 @@ fn info_panel(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
     };
     ui.add_space(6.0);
     ui.add(text(&poise::null_band_note(), pal.text_secondary));
+    for n in notes {
+        ui.add_space(6.0);
+        ui.add(text(n, pal.text_secondary));
+    }
 }
 
 /// The rate scale for the picture: round ends round every rate it holds.
@@ -460,6 +480,7 @@ fn draw_plot(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
         small.clone(),
         pal.text_secondary,
     );
+    let mut wave = Vec::new();
     if let Some(f) = pic.fit {
         // The table's Mean, dotted across the plot under the wave, on a
         // whole pixel so its dashes show (Hugh, Walter, #1499).
@@ -472,7 +493,7 @@ fn draw_plot(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
             let dotted = egui::Stroke::new(1.0_f32, pal.text_secondary);
             painter.extend(egui::Shape::dashed_line(&line, dotted, DASH, DASH));
         }
-        plot_wave(&painter, area, (&x, &y), f, pal);
+        wave = plot_wave(&painter, area, (&x, &y), f, pal);
         if let Some((my, name)) = mean {
             // Above the line at the slowest hour, where the wave is below
             // it (Hugh, #1499).
@@ -485,8 +506,38 @@ fn draw_plot(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
             );
         }
     }
-    plot_key(&painter, area, pic, pal);
+    let key = plot_key(&painter, area, pic, pal);
+    if let Some(facts) = &pic.facts {
+        plot_facts(ui, &painter, (area, key), facts, (wave, (&x, &y), pic));
+    }
     plot_points(&painter, (&x, &y), pic, pal);
+}
+
+/// The plot's x of an angle and y of a rate.
+type Axes<'a> = (&'a dyn Fn(f64) -> f32, &'a dyn Fn(f64) -> f32);
+
+/// The facts box on the plot (Hugh on #1537): in its top left, or in its
+/// top right under the key where the wave or a point runs under the left
+/// (guide section 11), clear of both; none where both would cover them.
+fn plot_facts(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    (area, key): (egui::Rect, Option<egui::Rect>),
+    facts: &FactBox,
+    (mut trace, (x, y), pic): (Vec<egui::Pos2>, Axes<'_>, &Picture<'_>),
+) {
+    for &(deg, r, se) in &pic.points {
+        let e = se.unwrap_or(0.0);
+        for d in [deg, deg + 360.0 * f64::from(deg.rem_euclid(360.0) == 0.0)] {
+            trace.extend([r - e, r, r + e].map(|v| egui::pos2(x(d), y(v))));
+        }
+    }
+    let inset = Vec2::splat(FACT_INSET);
+    let right_top = egui::pos2(
+        area.right() - FACT_INSET - facts.size().x,
+        key.map_or(area.top(), |k| k.bottom()) + FACT_INSET,
+    );
+    facts.paint(ui, painter, &[area.left_top() + inset, right_top], &trace);
 }
 
 /// The measured points on the plot; 12H is at both ends, so its point is
@@ -515,10 +566,15 @@ fn plot_points(
 }
 
 /// The plot's key, inside its top right: the points, and the wave once
-/// it is fitted.
-fn plot_key(painter: &egui::Painter, area: egui::Rect, pic: &Picture<'_>, pal: &theme::Palette) {
+/// it is fitted; where it is.
+fn plot_key(
+    painter: &egui::Painter,
+    area: egui::Rect,
+    pic: &Picture<'_>,
+    pal: &theme::Palette,
+) -> Option<egui::Rect> {
     if pic.points.is_empty() {
-        return;
+        return None;
     }
     let small = egui::FontId::proportional(11.0);
     let row = 16.0;
@@ -559,6 +615,7 @@ fn plot_key(painter: &egui::Painter, area: egui::Rect, pic: &Picture<'_>, pal: &
             pal.text,
         );
     }
+    Some(back)
 }
 
 /// Small text on the pane's background, so no line crosses it.
@@ -580,22 +637,23 @@ fn backed(
 }
 
 /// Core's fit on the plot: the wave in grey, and its fastest hour as an
-/// upright line from the top, named, once the wave is clear of the noise.
+/// upright line from the top, named, once the wave is clear of the noise;
+/// the wave's points as drawn.
 fn plot_wave(
     painter: &egui::Painter,
     area: egui::Rect,
     (x, y): (&dyn Fn(f64) -> f32, &dyn Fn(f64) -> f32),
     f: &PoiseFit,
     pal: &theme::Palette,
-) {
+) -> Vec<egui::Pos2> {
     let small = egui::FontId::proportional(11.0);
-    let wave: Vec<egui::Pos2> = f
+    let mut wave: Vec<egui::Pos2> = f
         .curve((area.width() / CURVE_PX) as usize)
         .into_iter()
         .map(|(d, r)| egui::pos2(x(d), y(r)))
         .collect();
     let grey = egui::Stroke::new(1.5_f32, pal.text_secondary);
-    painter.add(egui::Shape::line(wave, grey));
+    painter.add(egui::Shape::line(wave.clone(), grey));
     if f.wave_clear {
         let (peak, top) = f.fastest();
         painter.line_segment(
@@ -609,7 +667,15 @@ fn plot_wave(
             small.clone(),
             pal.text,
         );
+        // The fastest hour's line is the wave's too, for what keeps
+        // clear of it.
+        let (from, to) = (area.top(), y(top));
+        let steps = ((to - from) / CURVE_PX).max(1.0) as usize;
+        wave.extend(
+            (0..=steps).map(|i| egui::pos2(x(peak), from + (to - from) * i as f32 / steps as f32)),
+        );
     }
+    wave
 }
 
 /// Where the dial puts a rate at an hour: the rate scale's ends at the
@@ -641,6 +707,7 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
     let pal = theme::pal(ui);
     let painter = ui.painter_at(rect);
     let small = egui::FontId::proportional(11.0);
+    let (whole, (rect, label_at)) = (rect, dial_room(&painter, rect, pic));
     let label_room = 30.0;
     let outer = (rect.height() / 2.0 - label_room).min(rect.width() / 2.0 - label_room - 20.0);
     let dial = Dial {
@@ -663,12 +730,20 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
     let keep_off = ring_numbers_keep_off(&dial, &pic.points, mean_label.as_ref());
     dial_grid(&painter, &dial, pal, numbers, &keep_off);
     painter.text(
-        rect.right_top() + Vec2::new(-4.0, 4.0),
+        label_at,
         egui::Align2::RIGHT_TOP,
-        "Further out = faster, s/d",
+        DIAL_KEY,
         small,
         pal.text_secondary,
     );
+    if let Some(facts) = &pic.facts {
+        facts.paint(
+            ui,
+            &painter,
+            &[whole.left_top() + Vec2::splat(FACT_INSET)],
+            &[],
+        );
+    }
     if let Some(f) = pic.fit {
         dial_wave(&painter, &dial, (f, pic.mean.as_ref().map(|m| m.0)), pal);
     }
@@ -698,6 +773,42 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
             pal,
         );
     }
+}
+
+/// What the dial's top right says.
+const DIAL_KEY: &str = "Further out = faster, s/d";
+
+/// The room the dial takes in `rect`, under the facts box once there is
+/// one, which takes the top left corner (Hugh on #1537), and where the
+/// key's top right goes: on the box's row where both fit beside each
+/// other, else under it.
+fn dial_room(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    pic: &Picture<'_>,
+) -> (egui::Rect, egui::Pos2) {
+    let corner = rect.right_top() + Vec2::new(-4.0, 4.0);
+    let Some(size) = pic.facts.as_ref().map(FactBox::size) else {
+        return (rect, corner);
+    };
+    let key = painter
+        .layout_no_wrap(
+            DIAL_KEY.into(),
+            egui::FontId::proportional(11.0),
+            egui::Color32::WHITE,
+        )
+        .size();
+    let head = size.y + 2.0 * FACT_INSET;
+    let beside = size.x + 2.0 * FACT_INSET + 16.0 + key.x + 4.0 <= rect.width();
+    let (key_at, top) = if beside {
+        (corner, head)
+    } else {
+        (corner + Vec2::new(0.0, head), head + key.y + 4.0)
+    };
+    (
+        egui::Rect::from_min_max(rect.min + Vec2::new(0.0, top), rect.max),
+        key_at,
+    )
 }
 
 /// What a ring number must keep off besides the hours' names: each
@@ -950,6 +1061,36 @@ mod tests {
         assert!(clear_of(dial.at(0.0, dial.radius(10.0)), number, &names));
     }
 
+    /// The painted facts box takes the first place clear of the trace,
+    /// and none where every place would cover it (#1537).
+    #[test]
+    fn a_painted_facts_box_keeps_clear_of_the_trace() {
+        let ctx = egui::Context::default();
+        let mut placed = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let rows = vec![("Heavy spot".to_string(), "6H at the top, 180°".to_string())];
+                let facts = FactBox::plain(ui, "test facts", "box", rows, Vec::new());
+                let p = ui.painter();
+                let places = [egui::pos2(10.0, 10.0), egui::pos2(300.0, 10.0)];
+                let size = facts.size();
+                let under_left = [egui::pos2(10.0, 10.0) + size / 2.0];
+                let under_both = [under_left[0], places[1] + size / 2.0];
+                for trace in [&[][..], &under_left[..], &under_both[..]] {
+                    placed.push(facts.paint(ui, p, &places, trace).map(|r| r.min));
+                }
+            });
+        });
+        assert_eq!(
+            placed,
+            [
+                Some(egui::pos2(10.0, 10.0)),
+                Some(egui::pos2(300.0, 10.0)),
+                None
+            ]
+        );
+    }
+
     /// Every text `draw` puts on a 600 pt square.
     fn drawn_texts(draw: impl FnOnce(&egui::Ui)) -> Vec<String> {
         let ctx = egui::Context::default();
@@ -994,6 +1135,7 @@ mod tests {
             points: vec![(0.0, -10.0, None), (90.0, 10.0, None), (180.0, 0.0, None)],
             fit: None,
             mean: None,
+            facts: None,
         };
         let (lo, hi, step) = rate_scale(&pic);
         let ring = lo + step;

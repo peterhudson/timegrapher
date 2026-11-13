@@ -139,7 +139,7 @@ test("a marked point's note sits on a plate beside its dot, clear of the trace, 
   assert.match(inside, /<line [^>]*stroke="var\(--text2\)" stroke-width="1"\/><rect [^>]*fill="var\(--card\)" fill-opacity="0.8"\/><text [^>]*>60 s, Fourth Wheel<\/text>/);
   // The plot is kept tall enough for the note's room above the peak: the
   // top of its range is above 1.
-  const plate = inside.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="15.0" rx="3"/);
+  const plate = inside.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="21.0" rx="6"/);
   assert.ok(plate && +plate[2] >= 5, inside);
   // On a short plot the note is the dot's hover.
   const short = plot({ names: false, vlines: [], height: 110, lines: [{ pts, color: "--rate" }], noteRoom: true,
@@ -153,7 +153,7 @@ test("a note keeps clear of the Ljung–Box note in the corner", () => {
   // would cover the corner's note, so it goes below left.
   const svg = plot({ names: false, vlines: [], lines: [{ pts: [[0, 0.05], [3, 0.05]], color: "--rate" }],
     corner: { text: "Ljung–Box p = 0.001", top: true }, beside: [{ x: 2.9, y: 0.8, text: "repeats at 2:00" }] });
-  const plate = svg.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="15.0" rx="3"/);
+  const plate = svg.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="21.0" rx="6"/);
   assert.ok(plate, svg);
   const [, x, y, w] = plate.map(Number);
   const corner = svg.match(/<text x="([\d.]+)" y="([\d.]+)" text-anchor="end">Ljung/);
