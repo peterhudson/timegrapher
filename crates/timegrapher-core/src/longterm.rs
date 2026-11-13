@@ -1018,7 +1018,6 @@ fn variance(y: &[f64]) -> f64 {
     v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / v.len() as f64
 }
 
-/// Subtract a fold's profile from the series it was folded from.
 /// The cycle and phase bin of time `t` from the grid's start. A reading
 /// whose phase falls on a bin edge (a 45 s period read every 10 s, in 9
 /// bins) goes to the bin above it every time, rather than to either side
@@ -1127,11 +1126,8 @@ fn analyse_as(
     // 0.5 ms.
     let min_p = cfg.min_period_s.max(8.0 * g.step);
     let max_p = cfg.max_period_s.unwrap_or(span / 3.0).min(span / 2.0);
-    let max_p = reach(
-        model,
-        max_p,
-        detrend_window(g, cfg.detrend_s).map(|w| w as f64 * g.step),
-    );
+    let detrend_w = detrend_window(g, cfg.detrend_s).map(|w| w as f64 * g.step);
+    let max_p = reach(model, max_p, detrend_w);
     let total_var = variance(&detrended.y);
     let mut work = detrended.clone();
     let mut components = Vec::new();
@@ -1144,7 +1140,6 @@ fn analyse_as(
     // periods beside it score as lines: on a steady AR(1) rate a 306 s
     // wander's subtraction lifted an 11.8 s line to 16 (Norm).
     let mut kept: Option<null::Levelling> = None;
-    let detrend_w = detrend_window(g, cfg.detrend_s).map(|w| w as f64 * g.step);
     if max_p > min_p && total_var > 0.0 {
         for _ in 0..cfg.max_components {
             let band = Band {
@@ -1315,7 +1310,7 @@ fn take_out(
     let more = standing_harmonics(&spectrum(&rest, detrend_w), &[(period, kept)], work.step);
     let more: Vec<f64> = extra_lines(more, &lines, span)
         .into_iter()
-        .filter(|&f| wheel_of(wheels, 1.0 / f, 1.0 / (f * f * span)).0.is_none())
+        .filter(|&f| !on_wheel(wheels, 1.0 / f, span))
         .collect();
     if more.is_empty() {
         (rest, shape)
@@ -1364,8 +1359,13 @@ const MAX_HARMONICS: usize = HARMONICS[HARMONICS.len() - 1];
 /// harmonic and read 20 s/d, where its own harmonics give 9 (Norm). With
 /// no train, nothing is a wheel.
 fn wheel_harmonic(wheels: &[Wheel], period: f64, h: usize, span: f64) -> bool {
-    let p = period / h as f64;
-    h > 1 && wheel_of(wheels, p, p * p / span).0.is_some()
+    h > 1 && on_wheel(wheels, period / h as f64, span)
+}
+
+/// Whether `period` is a wheel of the train at a take of `span`
+/// seconds: within [`wheel_of`]'s tolerance, one resolution (period²/span).
+fn on_wheel(wheels: &[Wheel], period: f64, span: f64) -> bool {
+    wheel_of(wheels, period, period * period / span).0.is_some()
 }
 
 /// `lines`, Hz, sorted, keeping one of any two within half a resolution
@@ -2675,7 +2675,7 @@ mod slow_tests {
         assert!((MIN_RATE_SWING_S_PER_DAY - 0.5 * place).abs() < 1e-12);
     }
 
-    /// The timing's search ends at 1.5 detrend windows; the readings'
+    /// The timing's search ends at 1.2 detrend windows ([`SLOPED_REACH`]); the readings'
     /// at a third of the take.
     #[test]
     fn the_timing_search_ends_where_its_detrend_keeps_half() {

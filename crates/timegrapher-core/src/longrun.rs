@@ -217,24 +217,24 @@ fn analyse_read(
         .unzip();
     let mut timing_grid = grid_median(&bw, &br, 0.0, step, n);
     // Where each piece's timing starts again from its own fit, on the
-    // grid: the bin a break falls in holds both pieces' residuals, so it
-    // reads nothing.
-    let piece_starts: Vec<usize> = cuts
+    // grid ([`longterm::piece_starts`], the one rule). The grid is on the
+    // watch's clock, a beat count, so a cut is placed at the first beat
+    // after it, not mapped through the true-time clock; and the bin it
+    // falls in holds both pieces' residuals, so it reads nothing.
+    let cuts_on_watch: Vec<f64> = cuts
         .iter()
         .filter_map(|&c| beats.get(beats.partition_point(|b| b.time < c)))
-        .map(|b| {
-            let at = watch(b) / step;
-            let i = at.floor() as usize;
-            if at > at.floor() {
-                if let Some(v) = timing_grid.y.get_mut(i) {
-                    *v = f64::NAN;
-                }
-                i + 1
-            } else {
-                i
-            }
-        })
+        .map(watch)
         .collect();
+    for &c in &cuts_on_watch {
+        let at = c / step;
+        if at > at.floor() {
+            if let Some(v) = timing_grid.y.get_mut(at.floor() as usize) {
+                *v = f64::NAN;
+            }
+        }
+    }
+    let piece_starts = longterm::piece_starts(&timing_grid, &cuts_on_watch);
     let amp_w = log
         .amplitude_windows
         .first()
