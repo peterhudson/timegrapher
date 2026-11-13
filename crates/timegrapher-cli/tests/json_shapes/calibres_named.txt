@@ -41,8 +41,10 @@ software.version
 table_size
 train
 train.arbors
+train.arbors[].clash
 train.arbors[].counted_s
 train.arbors[].from
+train.arbors[].from.arbor
 train.arbors[].from.kind
 train.arbors[].leaves
 train.arbors[].name

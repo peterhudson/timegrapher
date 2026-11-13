@@ -1,4 +1,5 @@
 arbors
+arbors[].clash
 arbors[].counted_s
 arbors[].from
 arbors[].from.arbor

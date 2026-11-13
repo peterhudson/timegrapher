@@ -2033,6 +2033,9 @@ fn slot_tip(s: &Slot, worked: Option<&train::Worked>) -> String {
                 None => "Custom, typed in".into(),
             },
         },
+        Origin::Unknown if worked.and_then(|w| w.clash.as_ref()).is_some() => {
+            worked.and_then(|w| w.clash_text()).unwrap_or_default()
+        }
         Origin::Unknown => match worked.and_then(|w| w.needs_text()) {
             Some(needs) => format!(
                 "Nobody has given this wheel's period yet: type it if you know it. \
@@ -2070,7 +2073,8 @@ fn teeth_and_leaves(
     name: &str,
 ) -> Vec<CountEdit> {
     let pal = theme::pal(ui);
-    let open_id = ui.make_persistent_id(("teeth and leaves open", place));
+    // Not under the parent's id: the panel lays out afresh on a resize.
+    let open_id = egui::Id::new(("teeth and leaves open", place));
     let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
     let mut out = Vec::new();
     let head = disclosure(ui, "Teeth and Leaves", open).on_hover_text(if open {

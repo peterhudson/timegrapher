@@ -1873,6 +1873,9 @@ folder can't be moved while another copy has it open. The Watches view adds watc
         the counts read otherwise, the given one stays and the caption says
         what the teeth give ("Teeth give 55.556 s"). A wheel the counts
         can't reach stays "Not Known", its hint naming the count missing.
+        A wheel left blank whose two sides give it different periods (a
+        count or a typed period is wrong) stays "Not Known" too, captioned
+        "Neighbours disagree", its hint giving what each side gives.
         The counts are kept for the calibre and go with **Share with the
         Project…**.
       - Then the **Sources** group, its title saying how the figures are

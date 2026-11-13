@@ -83,7 +83,11 @@ fn print_text(calibre: Option<&str>, s: &Solved) {
         } else {
             n(a.leaves)
         };
-        let how = a.how().or_else(|| a.needs_text()).unwrap_or_default();
+        let how = a
+            .how()
+            .or_else(|| a.clash_text())
+            .or_else(|| a.needs_text())
+            .unwrap_or_default();
         println!(
             "{:<14} {:>5} {:>6}  {:>10}  {:>10}  {how}",
             a.name,

@@ -114,6 +114,28 @@ pub struct Worked {
     /// carry one here from the nearest arbor with one, or the escape
     /// wheel's teeth.
     pub needs: Option<Missing>,
+    /// With no period typed, when its starts inward and outward give
+    /// periods that read otherwise: both, and no `counted_s`, since
+    /// picking one would show a guess as counted.
+    pub clash: Option<Clash>,
+}
+
+/// A blank arbor's two starts giving it periods that read otherwise.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Clash {
+    /// The side nearer the escape wheel.
+    pub inward: Side,
+    pub outward: Side,
+}
+
+/// What one side of an arbor gives it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Side {
+    /// The neighbouring arbor the period comes through, or "beat rate"
+    /// for the escape wheel's own start.
+    pub via: String,
+    pub from: From,
+    pub period_s: f64,
 }
 
 impl Worked {
@@ -135,6 +157,9 @@ impl Worked {
     /// "From Teeth" when they gave it, "Teeth give 37.5 s" when a given
     /// period reads otherwise; `None` otherwise.
     pub fn caption(&self) -> Option<String> {
+        if self.clash.is_some() {
+            return Some("Neighbours disagree".into());
+        }
         match (self.typed_s, self.counted_s) {
             (None, Some(_)) => Some("From Teeth".into()),
             _ => self
@@ -179,6 +204,19 @@ impl Worked {
                 }
             }
         })
+    }
+
+    /// Both sides' periods where they disagree, in words: "From the
+    /// fourth wheel: 450 s. From the centre wheel: 375 s. A count or a
+    /// typed period is wrong."
+    pub fn clash_text(&self) -> Option<String> {
+        let c = self.clash.as_ref()?;
+        let side = |s: &Side| format!("From the {}: {} s.", s.via, period_text(s.period_s));
+        Some(format!(
+            "{} {} A count or a typed period is wrong.",
+            side(&c.inward),
+            side(&c.outward)
+        ))
     }
 
     /// Why the counts don't reach this arbor, in words: "Needs the fourth
@@ -251,6 +289,7 @@ pub fn solve(bph: Option<u32>, train: &[Arbor]) -> Solved {
             from: None,
             step: None,
             needs: None,
+            clash: None,
         })
         .collect();
     // How many meshes each counted period was carried over: a period
@@ -274,7 +313,24 @@ pub fn solve(bph: Option<u32>, train: &[Arbor]) -> Solved {
         }
     }
     for i in 0..arbors.len() {
-        if arbors[i].period_s().is_none() {
+        if arbors[i].typed_s.is_some() {
+            continue;
+        }
+        let inward = side(&arbors, bph, i, true);
+        let outward = side(&arbors, bph, i, false);
+        if let (Some(a), Some(b)) = (inward, outward) {
+            if period_text(a.period_s) != period_text(b.period_s) {
+                let w = &mut arbors[i];
+                (w.counted_s, w.from, w.step) = (None, None, None);
+                w.clash = Some(Clash {
+                    inward: a,
+                    outward: b,
+                });
+            }
+        }
+    }
+    for i in 0..arbors.len() {
+        if arbors[i].period_s().is_none() && arbors[i].clash.is_none() {
             arbors[i].needs = needs(&arbors, i, bph.is_some());
         }
     }
@@ -344,6 +400,48 @@ fn carry(arbors: &mut [Worked], far: &mut [usize], at: usize, p: f64, from: &Fro
 /// The count that would reach arbor `i`: the gap on the way in from the
 /// escape wheel (whose teeth start the counts when there is a beat rate),
 /// or, failing that, on the way from the nearest arbor out with a period.
+/// What the nearest start on one side gives blank arbor `i`: inward, the
+/// nearest typed period nearer the escape, else the beat rate; outward,
+/// the nearest typed period further out. `None` if a count is missing
+/// on the way.
+fn side(arbors: &[Worked], bph: Option<u32>, i: usize, inward: bool) -> Option<Side> {
+    let typed = |j: usize| {
+        arbors[j]
+            .typed_s
+            .map(|p| (j, p, From::Period(arbors[j].name.clone())))
+    };
+    let (j, p, from) = if inward {
+        match (0..i).rev().find_map(typed) {
+            Some(start) => start,
+            None => (0, escape_period_s(bph?, arbors[0].teeth?), From::BeatRate),
+        }
+    } else {
+        (i + 1..arbors.len()).find_map(typed)?
+    };
+    let via = match (inward, i) {
+        (true, 0) => "beat rate".to_string(),
+        (true, _) => arbors[i - 1].name.clone(),
+        (false, _) => arbors[i + 1].name.clone(),
+    };
+    Some(Side {
+        via,
+        from,
+        period_s: reach(arbors, j, p, i)?,
+    })
+}
+
+/// Period `p` at arbor `from` carried over the counts to arbor `to`.
+fn reach(arbors: &[Worked], from: usize, p: f64, to: usize) -> Option<f64> {
+    let mut v = p;
+    for k in from + 1..=to {
+        v *= f64::from(arbors[k].teeth?) / f64::from(arbors[k - 1].leaves?);
+    }
+    for k in (to..from).rev() {
+        v *= f64::from(arbors[k].leaves?) / f64::from(arbors[k + 1].teeth?);
+    }
+    Some(v)
+}
+
 fn needs(arbors: &[Worked], i: usize, bph: bool) -> Option<Missing> {
     let gap = |j: usize| {
         // The mesh between arbor j (pinion) and j + 1 (wheel).
@@ -599,6 +697,53 @@ mod tests {
         assert_eq!(s.arbors[1].caption().unwrap(), "Teeth give 60 s");
         assert_eq!(s.arbors[0].caption().unwrap(), "From Teeth");
         assert_eq!(s.arbors[2].caption().unwrap(), "From Teeth");
+    }
+
+    /// Walter's walk on #1587: a 2824's counts (escape 20/7, fourth 84/8,
+    /// third 60/10, centre 80) at 28,800 bph with the centre typed as
+    /// 3000 s. The beat rate gives 5, 60 and 450 s inward; the centre
+    /// gives 4.167, 50 and 375 s outward. Every blank between withholds
+    /// its period and names both; the centre keeps its typed 3000 s.
+    #[test]
+    fn a_blank_whose_starts_disagree_is_not_known() {
+        let train = vec![
+            arbor("escape wheel", 20, 7, None),
+            arbor("fourth wheel", 84, 8, None),
+            arbor("third wheel", 60, 10, None),
+            arbor("centre wheel", 80, 0, Some(3000.0)),
+        ];
+        let s = solve(Some(28_800), &train);
+        for w in &s.arbors[..3] {
+            assert_eq!(w.period_s(), None, "{}", w.name);
+            assert_eq!(w.needs, None, "{}", w.name);
+            assert_eq!(w.caption().unwrap(), "Neighbours disagree");
+        }
+        assert_eq!(
+            s.arbors[2].clash_text().unwrap(),
+            "From the fourth wheel: 450 s. From the centre wheel: 375 s. \
+             A count or a typed period is wrong."
+        );
+        assert_eq!(
+            s.arbors[0].clash_text().unwrap(),
+            "From the beat rate: 5 s. From the fourth wheel: 4.167 s. \
+             A count or a typed period is wrong."
+        );
+        assert_eq!(
+            s.arbors[2].clash.as_ref().unwrap().inward.from,
+            From::BeatRate
+        );
+        let centre = &s.arbors[3];
+        assert_eq!(centre.period_s(), Some(3000.0));
+        assert_eq!(centre.caption().unwrap(), "Teeth give 3600 s");
+        // With the centre typed right, every blank is counted again.
+        let mut right = train.clone();
+        right[3].period_s = Some(3600.0);
+        let s = solve(Some(28_800), &right);
+        assert!(s
+            .arbors
+            .iter()
+            .all(|w| w.clash.is_none() && w.period_s().is_some()));
+        assert_eq!(period_text(s.arbors[2].period_s().unwrap()), "450");
     }
 
     #[test]
