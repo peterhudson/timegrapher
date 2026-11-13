@@ -2699,6 +2699,20 @@ pub fn info_scroll(ui: &mut Ui, id: egui::Id, max_h: f32, body: impl FnOnce(&mut
     area.show(ui, body);
 }
 
+/// Where an open Info panel drawn over a pane's body starts, in a pane
+/// `full` too narrow for it beside the body ([`INFO_BESIDE_W`]): its
+/// left edge. None while Info is shut or beside the body. Text the body
+/// draws to be read, such as a readout, stops there (#1580).
+pub fn info_over_left(full: egui::Rect, open: bool) -> Option<f32> {
+    (open && full.width() < INFO_BESIDE_W).then(|| full.right() - info_over_w(full) - 4.0)
+}
+
+/// How wide Info is over a pane's body: [`INFO_W`], or less in a narrow
+/// pane.
+fn info_over_w(full: egui::Rect) -> f32 {
+    INFO_W.min(full.width() - 16.0).max(120.0)
+}
+
 /// A pane's body with its Info panel ("i") when `open`: at the right,
 /// [`INFO_W`] or a third of the pane wide, past a rule, in a pane at
 /// least [`INFO_BESIDE_W`] wide; over the body from the pane's top right
@@ -2734,13 +2748,13 @@ pub fn with_info(
         return;
     }
     body(ui);
-    if open {
+    if let Some(left) = info_over_left(full, open) {
         // Over the plots, from the pane's top right corner.
-        let w = INFO_W.min(full.width() - 16.0).max(120.0);
+        let w = info_over_w(full);
         let seen = full.intersect(ui.clip_rect());
         egui::Area::new(id.with("info over"))
             .order(egui::Order::Foreground)
-            .fixed_pos(egui::pos2(full.right() - w - 4.0, seen.top() + 4.0))
+            .fixed_pos(egui::pos2(left, seen.top() + 4.0))
             .show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(w - 16.0);

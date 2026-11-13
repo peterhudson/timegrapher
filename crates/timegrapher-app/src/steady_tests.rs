@@ -1478,3 +1478,57 @@ fn the_readings_readout_says_whose_time_it_is() {
     assert_eq!(readout_time(252.0, Some("DD")), "4:12 in DD");
     assert_eq!(readout_time(3725.0, None), "1:02:05");
 }
+
+/// While Info is drawn over the rows, a row's readout stops at Info's
+/// left edge, leaving out whole any part that would reach under it; with
+/// Info shut or beside the rows the row's own edge is the limit (#1580).
+#[test]
+fn the_readout_stops_at_infos_left_edge_while_info_is_over_the_rows() {
+    let narrow = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(540.0, 400.0));
+    let wide = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(900.0, 400.0));
+    let left = theme::info_over_left(narrow, true).expect("over the rows");
+    assert_eq!(left, 540.0 - INFO_W - 4.0);
+    assert_eq!(theme::info_over_left(narrow, false), None);
+    assert_eq!(theme::info_over_left(wide, true), None);
+    assert_eq!(readout_right(532.0, Some(left)), left);
+    assert_eq!(readout_right(532.0, None), 532.0);
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    // The readout's parts as drawn with the row's right edge at `right`.
+    let parts = |right: f32| {
+        let input = egui::RawInput {
+            screen_rect: Some(narrow),
+            ..Default::default()
+        };
+        let out = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let title = egui::Rect::from_min_size(egui::pos2(8.0, 8.0), Vec2::new(190.0, 14.0));
+                let parts = (Some("4:12".to_string()), Some("+12.3 s/d".to_string()));
+                paint_readout(ui, (title, right), parts, Color32::RED);
+            });
+        });
+        let mut drawn = Vec::new();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                drawn.push((
+                    t.galley.text().to_string(),
+                    t.visual_bounding_rect().right(),
+                ));
+            }
+        }
+        drawn
+    };
+    // Room for both: both drawn.
+    assert_eq!(parts(532.0).len(), 2, "{:?}", parts(532.0));
+    // Info over the rows from `left`: nothing reaches past it, and the
+    // value that would is left out whole.
+    for right in [left, 240.0] {
+        let drawn = parts(right);
+        assert!(drawn.iter().all(|(_, r)| *r <= right), "{right}: {drawn:?}");
+        assert!(
+            drawn.iter().all(|(t, _)| !t.contains("s/d")),
+            "{right}: {drawn:?}"
+        );
+    }
+}
