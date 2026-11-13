@@ -1507,9 +1507,6 @@ fn fit_text(
     format!("{}…", chars[..n].iter().collect::<String>().trim_end())
 }
 
-/// A take's row as its hover says it: the take, its figures, where its
-/// reading is, and what a click does. `count` is the positions test's
-/// count of positions, where it is one.
 /// Which engine read a take's kept reading, for its hover (#1521, Hugh):
 /// "Read by Timegrapher 1.0.1, engine 3fa2b9c1". Core reads a reading
 /// kept by another engine again, so a kept reading is always this one's.
@@ -1518,6 +1515,9 @@ fn engine_line() -> String {
     format!("Read by Timegrapher {version}, engine {source}")
 }
 
+/// A take's row as its hover says it: the take, its figures, where its
+/// reading is, and what a click does. `count` is the positions test's
+/// count of positions, where it is one.
 fn take_hover(
     t: &Take,
     cx: &TakesContext,
