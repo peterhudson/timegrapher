@@ -214,7 +214,7 @@ fn the_info_panel_holds_the_findings_and_the_plots_say_what_a_dot_is(s: &Steadin
 /// readout reaches past that edge, so the check bites (Trevor on #1582).
 /// The pane is 432 wide, so Info starts about 120 from its left: past
 /// the hovered row's value alone (about 100) and short of its time and
-/// value together (about 137).
+/// value together (about 137). The pointer is just left of that edge.
 fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
     // Each text drawn, with where it starts and ends, and Info's left
     // edge as the pane works it out: in a fresh context each time, as a
@@ -269,12 +269,14 @@ fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
         let added: Vec<_> = all.into_iter().filter(|t| !still.contains(&t.0)).collect();
         (added, left)
     };
-    // Left of where Info would start, past the rows' value axis.
+    // Just left of where Info would start, on a row whose readout
+    // writes the time: the pointer's own row.
+    let x = drawn(None, false).1 - 8.0;
     let at = (2..28)
-        .flat_map(|i| [70.0, 85.0, 100.0].map(|x| egui::pos2(x, i as f32 * 25.0)))
-        .find(|&at| !readout(at, false).0.is_empty())
+        .map(|i| egui::pos2(x, i as f32 * 25.0))
+        .find(|&at| readout(at, false).0.iter().any(|t| t.0.contains(':')))
         .unwrap_or_else(|| {
-            let (all, left) = drawn(Some(egui::pos2(100.0, 200.0)), false);
+            let (all, left) = drawn(Some(egui::pos2(x, 200.0)), false);
             panic!("no point on a Readings row (Info from {left}): {all:?}")
         });
     let (shut, left) = readout(at, false);
