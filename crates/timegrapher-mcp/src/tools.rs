@@ -94,10 +94,11 @@ const RECORDINGS: Param = p(
     Arg::Positional,
     true,
     "Full paths of the recording: a take's folder (one holding session.toml), read as \
-     saved with its lift angle, beat rate, calibre, masks and clock; or one file, a folder \
-     of segments, or several files read as one continuous recording in the order given. \
-     For a take, give its folder, not a sound file inside it: a file alone is read with \
-     the default lift angle and settings.",
+     saved with its lift angle, beat rate, calibre, masks and clock, or one sound file that \
+     session.toml lists, read the same way; or one file, a folder of segments, or several \
+     files read as one continuous recording in the order given. Give a take's folder to \
+     read the whole take; a file no session.toml lists is read with the default lift angle \
+     and settings.",
 );
 const LIBRARY: Param = p(
     "library",
