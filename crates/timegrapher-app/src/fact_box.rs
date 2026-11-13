@@ -66,6 +66,9 @@ pub(crate) const FACT_HOLD: f32 = 6.0;
 pub(crate) const FACT_COLUMN_GAP: f32 = 20.0;
 /// The facts' type size.
 pub(crate) const FACT_SIZE: f32 = 12.0;
+/// The box's corner radius, which a point's note plate shares
+/// ([`crate::marks::beside`]).
+pub(crate) const FACT_RADIUS: f32 = 6.0;
 
 impl FactBox {
     /// A box of `rows` with no short form, flowing into two columns
@@ -311,7 +314,7 @@ impl FactBox {
     ) {
         let pad = self.pad(shown.len());
         let row = self.row_h(shown.len());
-        shapes.push(egui::Shape::rect_filled(r, 6.0, self.fill));
+        shapes.push(egui::Shape::rect_filled(r, FACT_RADIUS, self.fill));
         let font = egui::FontId::proportional(FACT_SIZE);
         // Down the first column, then the second, when they flow.
         let tall = shown.len().div_ceil(cols);
