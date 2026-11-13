@@ -553,7 +553,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 Kind::Position,
                 Arg::Flag("--position"),
                 true,
-                "The position the watch is in.",
+                "The position the watch is in: DU dial up, DD dial down, or standing \
+                 named by the hour at the top, with the crown at 3 o'clock (CU 3H, CL 6H, \
+                 CD 9H, CR 12H) and the 45° stops between them (1H30, 4H30, 7H30, 10H30).",
             ),
             p(
                 "seconds",
