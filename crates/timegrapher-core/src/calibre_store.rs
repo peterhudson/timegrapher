@@ -164,9 +164,7 @@ impl UserCalibres {
             std::fs::create_dir_all(dir).map_err(err)?;
         }
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, text + "\n").map_err(err)?;
-        crate::recorder::rename_settled(&tmp, path).map_err(err)
+        crate::library::write_atomic(path, (text + "\n").as_bytes())
     }
 
     /// Set the turn of `wheel` on a calibre, table or custom; it replaces
@@ -687,6 +685,33 @@ mod tests {
         v.remove_custom("My Movement");
         assert_eq!(v.wheels.len(), 1);
         assert!(v.custom.is_empty());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_failed_save_keeps_what_was_there_and_leaves_no_temp_file() {
+        let dir = std::env::temp_dir().join(format!("tg-user-atomic-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let path = dir.join("calibres.json");
+        // A leftover at the old fixed temp name no longer stops a save (#1589).
+        std::fs::create_dir_all(dir.join("calibres.json.tmp/stuck")).unwrap();
+        let u = store();
+        u.save(&path).unwrap();
+        assert_eq!(UserCalibres::load(&path).unwrap(), u);
+        // A folder in the file's place makes the move fail; what was there
+        // stays, and the half-done write is cleared away.
+        std::fs::remove_file(&path).unwrap();
+        let kept = path.join("kept");
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(&kept, "before").unwrap();
+        assert!(UserCalibres::default().save(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "before");
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["calibres.json", "calibres.json.tmp"]);
         std::fs::remove_dir_all(dir).ok();
     }
 

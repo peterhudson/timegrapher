@@ -15,7 +15,7 @@ use timegrapher_core::periodicity::{common_escape_wheels, standard_wheels, Wheel
 use timegrapher_core::stream::{BeatLog, StreamConfig};
 use timegrapher_core::take_context::{Masks, TakeContext};
 use timegrapher_core::timefreq::size_number;
-use timegrapher_core::{audio, joined, take, timing};
+use timegrapher_core::{audio, joined, take, take_path, timing};
 
 /// Which wheels to name: a calibre's train, the escape wheel at a given
 /// number of teeth, or both common escape wheels when neither is given.
@@ -343,8 +343,10 @@ pub(crate) struct Read {
 /// `session.toml`) is opened as every surface opens a take
 /// ([`take::open_entry`] on [`take::whole_take`]): its beat rate, lift
 /// angle, escape teeth, calibre and wheels, `card_ppm_fast`, clock log and
-/// masks, with the flags given first. Anything else is read as sound
-/// files, one continuous recording.
+/// masks, with the flags given first. One sound file its folder's
+/// session file lists is read the same way, as that take's entries for it
+/// ([`take_path::take_of`], as the app opens it). Anything else is read as
+/// sound files, one continuous recording.
 pub(crate) fn read(
     files: &[PathBuf],
     clock_args: ClockArgs,
@@ -352,10 +354,18 @@ pub(crate) fn read(
     lift: Option<f64>,
     train: Train,
 ) -> Result<Read, String> {
-    if let [dir] = files {
-        let manifest = dir.join(take::MANIFEST);
+    if let [path] = files {
+        let manifest = path.join(take::MANIFEST);
         if manifest.is_file() {
-            return read_take(&manifest, clock_args, cfg, lift, train);
+            return read_take((&manifest, None), clock_args, cfg, lift, train);
+        }
+        // A sound file its folder's session file lists is read as that
+        // take's entries for it, as the app opens it (#1573).
+        if let (false, Some(dir)) = (path.is_dir(), take_path::folder(path)) {
+            if let Some((_, entries)) = take_path::take_of(path)? {
+                let manifest = dir.join(take::MANIFEST);
+                return read_take((&manifest, Some(entries)), clock_args, cfg, lift, train);
+            }
         }
     }
     let resolved_train = train.resolve()?;
@@ -413,7 +423,10 @@ pub(crate) fn read(
 
 /// [`read`] of the take described by the session file `manifest`.
 fn read_take(
-    manifest: &Path,
+    (manifest, only): (
+        &Path,
+        Option<Vec<timegrapher_core::session::RecordingEntry>>,
+    ),
     clock_args: ClockArgs,
     cfg: &StreamConfig,
     lift: Option<f64>,
@@ -439,6 +452,9 @@ fn read_take(
     // A clock log given names the take's clock for every entry, as the
     // one clock log the whole take is read on.
     let mut m = m;
+    if let Some(entries) = only {
+        m.recordings = entries;
+    }
     if let Some(log) = clock_args.log {
         let log = std::path::absolute(log).map_err(|err| format!("{}: {err}", log.display()))?;
         for e in &mut m.recordings {
@@ -1531,6 +1547,31 @@ mod take_tests {
             },
         )
         .unwrap()
+    }
+
+    /// A sound file inside a take is read as the take reads it, as the app
+    /// opens it: its folder's session file gives the lift angle, beat rate
+    /// and stretches, not the 52° default (#1573). A sound file its
+    /// folder's session file doesn't list is read on its own.
+    #[test]
+    fn a_sound_file_in_a_take_folder_is_read_with_its_session_file() {
+        let dir = take(
+            "file-in-take",
+            "bph = 28800\nlift = 55\n\n\
+             [[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\n",
+        );
+        let folder = read_take(&dir);
+        let file = read_take(&dir.join("take.wav"));
+        assert_eq!(file.take, folder.take);
+        assert_eq!(file.cfg.analysis.amplitude.lift_deg, 55.0);
+        assert!(file.cfg.analysis.lift_known);
+        assert_eq!(file.cfg.analysis.bph, Some(28800));
+        assert_eq!(file.stretches, folder.stretches);
+        assert_eq!(file.log.beats.len(), folder.log.beats.len());
+        fs::copy(dir.join("take.wav"), dir.join("other.wav")).unwrap();
+        let other = read_take(&dir.join("other.wav"));
+        assert_eq!(other.take, None);
+        assert_eq!(other.cfg.analysis.amplitude.lift_deg, 52.0);
     }
 
     /// A take saved by the app, one entry per position over one recording,

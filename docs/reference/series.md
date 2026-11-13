@@ -73,7 +73,7 @@ timegrapher series take/ --lift 55 --clock take/clocklog.txt
 ```
 
 It reads the same input as `long`: one recording, several segments in
-order, or a folder; a take's folder is read with its `session.toml`, each
+order, or a folder; a take's folder, or one sound file its `session.toml` lists, is read with that `session.toml`, each
 entry from the end of its settling and the stretches joined, as the
 app's Steadiness panes read a position (see [long-runs.md](long-runs.md)). `--clock` corrects for the sound card's clock. The
 other options are the same as for `long`. `--reading` sets the length of
