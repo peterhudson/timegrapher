@@ -265,6 +265,50 @@ pub fn point(position: crate::session::Position, m: &crate::session::Measurement
     })
 }
 
+/// The fit a test shows over its upright readings ([`fit`]), once
+/// [`MIN_SHOWN`] of them are in; before that, None, and a pane says
+/// [`pending_text`] in its place. The app's Dynamic Poise pane and the
+/// CLI's and MCP's session report read this one (#1473, #1474).
+pub fn shown_fit<'a>(
+    readings: impl IntoIterator<Item = (crate::session::Position, &'a crate::session::Measurement)>,
+) -> Option<PoiseFit> {
+    let points: Vec<Point> = readings
+        .into_iter()
+        .filter_map(|(p, m)| point(p, m))
+        .collect();
+    if points.len() < MIN_SHOWN {
+        return None;
+    }
+    fit(&points, None)
+}
+
+/// The poise fit of one state of wind in a session ([`by_state`]).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StateFit {
+    /// Hours after full wind, 0 at full wind (or not given), as the
+    /// session report's states name them.
+    pub wind_h: f64,
+    pub fit: PoiseFit,
+}
+
+/// The [`shown_fit`] of each state of wind whose upright readings give
+/// one, fullest first: what a session's report says of poise, in the CLI
+/// and MCP as in the app (#1473, #1474).
+pub fn by_state(readings: &[crate::session::Reading]) -> Vec<StateFit> {
+    let wind = |r: &crate::session::Reading| r.wind_h.unwrap_or(0.0);
+    let mut winds: Vec<f64> = readings.iter().map(wind).collect();
+    winds.sort_by(f64::total_cmp);
+    winds.dedup();
+    winds
+        .into_iter()
+        .filter_map(|w| {
+            let at = readings.iter().filter(|r| wind(r) == w);
+            let fit = shown_fit(at.map(|r| (r.position, &r.measurement)))?;
+            Some(StateFit { wind_h: w, fit })
+        })
+        .collect()
+}
+
 /// Witschi's code of the hour nearest `deg` on the half hour: "12H" to
 /// "11H", and "1H30" and so on for the 45° steps between.
 pub fn hour_code(deg: f64) -> &'static str {

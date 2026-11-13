@@ -595,6 +595,7 @@ pub fn html(sn: &Session) -> String {
     body.push_str("<h2>Characteristic values</h2>");
     body.push_str(&indices_table(&sn.report.states));
     body.push_str(&isochronism_section(sn));
+    body.push_str(&poise_section(sn));
     body.push_str(&state_charts(sn));
     body.push_str(&reference_table(sn));
     body.push_str(&cycles_table(sn));
@@ -700,6 +701,21 @@ fn isochronism_section(sn: &Session) -> String {
             signed(r.im, 1),
             signed(r.im_all, 1),
             opt(r.ie, 1)
+        );
+    }
+    body
+}
+
+/// The Dynamic Poise fit of each state of wind that gives one, in core's
+/// words ([`timegrapher_core::poise::PoiseFit::text`]).
+fn poise_section(sn: &Session) -> String {
+    let mut body = String::new();
+    for p in &sn.poise {
+        let _ = write!(
+            body,
+            "<h3>Dynamic Poise, {}</h3><p>{}</p>",
+            esc(&wind_words(p.wind_h)),
+            esc(&p.fit.text)
         );
     }
     body
@@ -875,16 +891,47 @@ mod tests {
             bph: 28800,
             lift_deg: 52.0,
             lift_known: true,
-            readings,
             left_out: Vec::new(),
+            poise: timegrapher_core::poise::by_state(&readings),
             report,
             power_reserve: None,
+            readings,
         }
     }
 
     /// A lift angle that is only the default is said to be the default,
     /// in core's caveat wording, in both the text and the HTML report
     /// (issue #603); one set for the watch is shown plainly.
+    /// Eight upright readings give the Dynamic Poise fit, in core's words,
+    /// as the app's pane does (#1474); six and two flat give none.
+    #[test]
+    fn upright_readings_give_the_poise_fit() {
+        let upright: Vec<Reading> = Position::TEN
+            .iter()
+            .filter_map(|&p| {
+                let deg = p.top_deg()?;
+                let mut r = reading(None, p);
+                r.measurement.rate_s_per_day = Some(4.0 + 6.0 * (deg - 90.0).to_radians().cos());
+                r.measurement.amplitude_deg = Some(180.0);
+                Some(r)
+            })
+            .collect();
+        assert_eq!(upright.len(), 8);
+        let s = session_of(upright);
+        assert_eq!(s.poise.len(), 1);
+        let p = &s.poise[0];
+        assert_eq!(p.wind_h, 0.0);
+        assert!((p.fit.wave.peak_deg.value - 90.0).abs() < 1e-6, "{p:?}");
+        let page = html(&s);
+        assert!(page.contains("<h3>Dynamic Poise, full wind</h3>"), "{page}");
+        assert!(page.contains(&esc(&p.fit.text)));
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["poise"][0]["fit"]["positions"], 8);
+        let six = session_of(Position::ALL.iter().map(|&p| reading(None, p)).collect());
+        assert!(six.poise.is_empty() && !html(&six).contains("Dynamic Poise"));
+        assert!(serde_json::to_value(&six).unwrap().get("poise").is_none());
+    }
+
     #[test]
     fn default_lift_says_so() {
         let known = session_of(vec![reading(Some(0.0), Position::CH)]);

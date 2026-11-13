@@ -863,6 +863,10 @@ pub struct Session<'a> {
     /// A Power Reserve Test's run, from the folder's `power-reserve.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub power_reserve: Option<timegrapher_core::power_reserve::Results>,
+    /// The Dynamic Poise fit of each state of wind with five or more
+    /// upright readings ([`timegrapher_core::poise::by_state`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub poise: Vec<timegrapher_core::poise::StateFit>,
 }
 
 impl Session<'_> {
@@ -950,6 +954,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         bph,
         lift_deg: o.lift(&m, cal),
         lift_known: lift_known(&ctx, cal),
+        poise: timegrapher_core::poise::by_state(&readings),
         readings,
         left_out,
         report,
@@ -1197,8 +1202,17 @@ fn print_summary(s: &Session) {
     print_readings(s);
     print_notes(s);
     print_states(s);
+    print_poise(s);
     println!();
     print_findings(&s.report);
+}
+
+/// The Dynamic Poise fit of each state of wind that gives one.
+fn print_poise(s: &Session) {
+    for p in &s.poise {
+        println!();
+        println!("Poise {}: {}", wind_state(p.wind_h), p.fit.text);
+    }
 }
 
 /// The watch, its beat rate and lift, and the power reserve run.
@@ -2132,6 +2146,7 @@ mod tests {
             left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: Some(r),
+            poise: Vec::new(),
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["power_reserve"]["run_s"], 151_200.0);
@@ -2277,6 +2292,7 @@ mod tests {
             left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: None,
+            poise: Vec::new(),
         };
         let html = crate::session_report::html(&s);
         assert!(html.contains("None kept") && html.contains("timegrapher test (abc)"));
