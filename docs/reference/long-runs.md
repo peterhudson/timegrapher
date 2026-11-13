@@ -64,7 +64,9 @@ each folder expands at its argument position. The same expansion is used by
 `series`, session folder readings and report excerpts.
 
 A take's folder (one holding a `session.toml`), given alone, is read as a
-take, as `session` and the app read it: its beat rate, lift angle, escape
+take, as `session` and the app read it. So is one sound file given alone
+whose folder's `session.toml` lists it, read as the entries that name it,
+as the app opens it: its beat rate, lift angle, escape
 wheel teeth, calibre and wheels, its `card_ppm_fast`, the clock log its entries
 name and every entry's `masked` stretches, with `--bph`, `--lift`,
 `--calibre`, `--escape-teeth`, `--clock` and `long`'s `--card-ppm` and `--device` given

@@ -582,26 +582,11 @@ pub fn has_sound(dir: &Path) -> bool {
 
 /// The sound files `paths` name, in order: a file as it is, a folder as
 /// its recordings in the order its `session.toml` lists them, else in
-/// the order they were recorded ([`crate::recording_order::recordings_in`]).
+/// the order they were recorded ([`crate::take_path::recordings_in`]).
 pub fn sound_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     for path in paths {
-        let listed = if path.is_dir() {
-            fs::read_to_string(path.join(MANIFEST))
-                .ok()
-                .and_then(|text| toml::from_str::<Manifest>(&text).ok())
-                .map(|manifest| {
-                    manifest
-                        .recordings
-                        .into_iter()
-                        .map(|entry| entry.file)
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        out.extend(crate::recording_order::recordings_in(path, &listed)?);
+        out.extend(crate::take_path::recordings_in(path)?);
     }
     Ok(out)
 }

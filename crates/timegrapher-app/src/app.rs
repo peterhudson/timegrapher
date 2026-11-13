@@ -3782,33 +3782,11 @@ const BUG_REPORT_URL: &str =
 /// The session file a recording's folder may carry (see `timegrapher
 /// session`), which the app writes when it saves a take.
 use timegrapher_core::take::MANIFEST;
-
-/// The session file beside a recording or in its folder, and its entries
-/// for that recording: none when there is no session file or it doesn't
-/// list the recording.
-fn read_manifest(path: &Path) -> Result<Option<(Manifest, Vec<RecordingEntry>)>, String> {
-    let dir = path.is_dir().then_some(path).or_else(|| path.parent());
-    let Some(dir) = dir else { return Ok(None) };
-    let file = dir.join(MANIFEST);
-    if !file.is_file() {
-        return Ok(None);
-    }
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let m: Manifest =
-        toml::from_str(&text).map_err(|e| format!("Can't read {}: {e}", file.display()))?;
-    let entries: Vec<RecordingEntry> = m
-        .recordings
-        .iter()
-        .filter(|e| lists(dir, &e.file, path))
-        .cloned()
-        .collect();
-    if entries.is_empty() {
-        return Ok(None);
-    }
-    m.validate_analysis_inputs()
-        .map_err(|e| format!("Can't read {}: {e}", file.display()))?;
-    Ok(Some((m, entries)))
-}
+/// The take a path belongs to, and how a folder's recordings are
+/// ordered: core's one rule for the app, the command line and MCP (#1573).
+use timegrapher_core::take_path::{
+    folder as take_dir, lists, recordings_in, take_of as read_manifest,
+};
 
 /// What a recording added to a watch is given, of what its files and the
 /// watch didn't say.
@@ -3927,24 +3905,6 @@ fn started_guess(files: &[PathBuf]) -> Option<chrono::DateTime<chrono::Local>> {
     Some(written.checked_sub(length).unwrap_or(written).into())
 }
 
-/// Whether a session file in `dir` whose entry names `file` lists `path`:
-/// the same file or folder, or the whole folder when `path` is the only
-/// recording in it, as a take saved for a lone file lists it.
-fn lists(dir: &Path, file: &str, path: &Path) -> bool {
-    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => false,
-    };
-    let named = dir.join(file);
-    same(&named, path)
-        || (path.is_dir()
-            && recordings_in(path).is_ok_and(|files| files.iter().any(|p| same(p, &named))))
-        || (!path.is_dir()
-            && named.is_dir()
-            && path.parent().is_some_and(|p| same(p, &named))
-            && recordings_in(&named).is_ok_and(|f| f.len() == 1 && same(&f[0], path)))
-}
-
 /// `t` seconds to the nearest tenth.
 fn tenth(t: f64) -> f64 {
     (t * 10.0).round() / 10.0
@@ -3964,19 +3924,6 @@ const FOLDER_RULE: &str = "A recording this app saved (its own folder, or the fo
      its session.toml lists them, else in file-name order with numbers counted (part2 before \
      part10).";
 
-/// The recordings to analyse for `path`: the file itself, or a folder's
-/// WAV and FLAC files (the segments of one long recording) in the order
-/// its session file lists them, then any it doesn't list in natural name
-/// order.
-fn recordings_in(path: &Path) -> Result<Vec<PathBuf>, String> {
-    let listed = if path.is_dir() {
-        listed_order(path).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    timegrapher_core::recording_order::recordings_in(path, &listed)
-}
-
 fn file_name(p: &Path) -> String {
     p.file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -3989,25 +3936,11 @@ pub(crate) fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
     timegrapher_core::recording_order::natural_order(a, b)
 }
 
-/// File entries from a valid session manifest. The shared folder selector
-/// ranks existing direct files and ignores whole-folder or missing entries.
-fn listed_order(dir: &Path) -> Option<Vec<String>> {
-    let text = std::fs::read_to_string(dir.join(MANIFEST)).ok()?;
-    let manifest: Manifest = toml::from_str(&text).ok()?;
-    Some(
-        manifest
-            .recordings
-            .into_iter()
-            .map(|entry| entry.file)
-            .collect(),
-    )
-}
-
 /// Why a folder whose session file says it was kept without its sound
 /// can't be read, when it has no `analysis/` folder: it is refused as
 /// `timegrapher session` refuses it, sound in it or not.
 fn no_analysis_to_read(path: &Path) -> Option<String> {
-    let dir = if path.is_dir() { path } else { path.parent()? };
+    let dir = take_dir(path)?;
     if analysis_take::is_analysis_only(dir) || !dir.join(MANIFEST).is_file() {
         return None;
     }
