@@ -339,6 +339,36 @@ fn calibres_keep_their_fields() {
 }
 
 #[test]
+fn train_keeps_its_fields() {
+    let config = scratch("train");
+    // Every field: a period from the beat rate and one carried in from a
+    // given period, a blank that names its missing count, and meshes.
+    check(
+        "train",
+        &json(
+            &config,
+            &[
+                "train",
+                "--bph",
+                "21600",
+                "--escape",
+                "15/10",
+                "--fourth",
+                "120",
+                "--third",
+                "60/10",
+                "--centre",
+                "80",
+                "--period",
+                "centre=3600",
+                "--json",
+            ],
+        ),
+    );
+    let _ = std::fs::remove_dir_all(&config);
+}
+
+#[test]
 fn long_and_series_keep_their_fields() {
     let dir = scratch("long");
     let wav = dir.join("watch.wav");

@@ -134,7 +134,13 @@ opened, and its state under it (Listening, Stopped, Opened, or 0:00 and
 Not Started). The status bar no longer gives the length. Under them
 **Average Over** and its pop-up ("10 s"), the time the readings are
 fitted over. **Rate**, **Amplitude** and **Beat Error** have no
-controls: each is its figure.
+controls: each is its figure. The Beat Error figure's hover starts with its **BE
+Angle** (#1576), under the figure: "That's a BE Angle of 1.7 ± 0.2° of
+the balance's swing, at 302° amplitude", then that degrees stay the same as
+the amplitude falls while ms grow, and that they rest on the lift angle
+through the amplitude (core `be_angle::card_words`). The angle is shown
+beside the ms only there and in the Power Reserve table, never instead
+of it.
 
 **Compact Readings** (View > Compact Readings, or the pin at the right
 end of the readings) folds the six cards into a strip 44 points tall
@@ -888,8 +894,15 @@ measures a stretch (core `session::measure_masked`), and how much of it
 its whole 10 s readings cover (core `clean`). The table starts at the
 charts' plot edge, their value labels alone in the margin to its left, is
 no wider than the plots (scrolling sideways when it would be), and gives
-the units in its titles: Rate (s/d), Amplitude (°), Beat Error (ms) and
-Read (%), the figures right-aligned and written by core `figure_text`.
+the units in its titles: Rate (s/d), Amplitude (°), Beat Error (ms),
+**BE Angle** (°) and Read (%), the figures right-aligned and written by
+core `figure_text`. BE Angle (#1576) is the hour's beat error as an angle
+of the balance's swing, amplitude × π × bph/7200 × beat error (core
+`be_angle`, `Hour::be_angle`): it stays the same as the amplitude falls,
+where the ms grow, and rests on the lift angle through the amplitude. It
+keeps as many significant figures as the fewest of its beat error and
+amplitude (0.46 ms at 302° is 1.7°, 0.47 ms at 129° is 0.76°), is grey
+where either is, and a dash where there is no amplitude.
 Scrolled down, the titles stay at the pane's top. A beat error from the
 drop, or with no source recorded, is drawn dimmed, with the key "Grey
 beat errors: from the drop, or source not recorded." over the table (and in the Beat Error title's hover), and
@@ -897,7 +910,7 @@ every beat error's hover names its source (core
 `session::beat_error_source_label`).
 **Save as CSV…** and **Copy** give the watch, the run and the table, with
 a "Beat error from" column (unlock or drop; empty when not recorded, as
-for a figure not measured). The take
+for a figure not measured) and a "BE Angle (deg)" column. The take
 is kept in the picked watch's history, named by its local start time and
 "Power Reserve", with
 `power-reserve.json` beside the standard files; with Analysis Only it is
@@ -1895,6 +1908,28 @@ folder can't be moved while another copy has it open. The Watches view adds watc
       - **Add a Wheel…**, the group's last row, opens a row to type
         another wheel's name and period, with **Add** (or Return) to add
         it once both are filled in, and **Cancel** to forget the row.
+      - **Teeth and Leaves**, under the Wheels group and closed until its
+        title is clicked: a row for each of the escape, fourth, third and
+        centre wheels and the barrel, with a **Teeth** box for the wheel's
+        teeth and a **Leaves** box for the leaves of the pinion on the same
+        arbor (the barrel has no pinion). The beat rate is the calibre's.
+        From the counts each wheel's period follows (core `train::solve`):
+        the escape wheel turns in its teeth × two beats, and each wheel out
+        in the next one in's period × its teeth ÷ that one's pinion leaves,
+        starting from the beat rate or from a period given, whichever is
+        nearer. A period the counts give fills a blank in Wheels, captioned
+        "From Teeth", its hint giving the arithmetic; **Clear** does not
+        apply to it, so change a count instead. Where a period given and
+        the counts read otherwise, the given one stays and the caption says
+        what the teeth give ("Teeth give 55.556 s"). A wheel the counts
+        can't reach stays "Not Known", its hint naming the count missing.
+        A wheel left blank whose two sides give it different periods (a
+        count or a typed period is wrong), or whose one side starts at a
+        typed period its own teeth disagree with, stays "Not Known" too,
+        captioned "Neighbours disagree", its hint giving what each side
+        gives.
+        The counts are kept for the calibre and go with **Share with the
+        Project…**.
       - Then the **Sources** group, its title saying how the figures are
         known ("Sources · Published List"): a row for each source, its
         name the link (the address only on hover) and under it what the
@@ -1918,7 +1953,7 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     wheels. If the watch beats at another rate than the calibre, a line
     under the menu says so. With none picked and the lift angle left at
     52°, a line says the amplitude is worked out from that default.
-  - **Your additions.** Wheel periods and custom calibres are kept in
+  - **Your additions.** Wheel periods, tooth and leaf counts and custom calibres are kept in
     `calibres.json` in the settings folder (core `calibre_store`), which
     the command line and the MCP server read too. Calibres typed in under
     earlier versions move there the first time the app starts; their original
@@ -1933,7 +1968,8 @@ folder can't be moved while another copy has it open. The Watches view adds watc
     until a later save succeeds. These protections do not add numerical
     validation or concurrent-edit/crash-recovery guarantees to the catalogue.
   - **Share with the Project….** It opens a GitHub issue in the browser,
-    filled in with what you added to the calibre, to look over and send.
+    filled in with what you added to the calibre (periods and tooth and
+    leaf counts), to look over and send.
     Nothing is sent from the app.
   - **A custom calibre.** It starts with no wheels: a custom calibre is
     often obscure or vintage, so nothing is assumed. Typing its beat rate

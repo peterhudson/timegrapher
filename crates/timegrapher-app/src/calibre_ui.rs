@@ -24,6 +24,7 @@ use timegrapher_core::calibre_store::{
 use timegrapher_core::calibres::{self, Calibre};
 use timegrapher_core::input_domain::LIFT_RANGE_DEG;
 use timegrapher_core::periodicity::Wheel;
+use timegrapher_core::train;
 
 /// How many calibres the app was set to lately the menu offers.
 pub const RECENT: usize = 6;
@@ -670,6 +671,8 @@ impl Calibres {
         };
         let catalog = Catalog::new(&self.user);
         let slots = catalog.slots(e);
+        let train = catalog.train(e);
+        let counts = catalog.train_input(e);
         let table = match e {
             Entry::Table(c) => Some(c),
             Entry::Custom(_) => None,
@@ -678,12 +681,14 @@ impl Calibres {
         let adding = &mut self.adding;
         theme::group(ui, "Wheels", None, |g| {
             for s in &slots {
-                let tip = slot_tip(s);
+                let worked = train.arbors.iter().find(|a| a.name == s.name);
+                let tip = slot_tip(s, worked);
                 let id = format!("calibre-{place}-{name}-{}", s.name);
-                let caption = if s.origin == Origin::User {
-                    theme::Caption::Text("Custom")
-                } else {
-                    theme::Caption::None
+                let teeth = worked.and_then(|w| w.caption());
+                let caption = match (&teeth, s.origin) {
+                    (Some(t), _) => theme::Caption::Text(t),
+                    (None, Origin::User) => theme::Caption::Text("Custom"),
+                    _ => theme::Caption::None,
                 };
                 g.row(&title_case(&s.name), caption, &tip, |ui| {
                     slot_period(ui, s, &id, &tip, &mut edits);
@@ -706,11 +711,23 @@ impl Calibres {
             .wrap(),
         );
         ui.add_space(12.0);
+        let counted = teeth_and_leaves(ui, &counts, place, name);
         if let Some(c) = table {
             sources_and_notes(ui, c);
         }
-        if edits.is_empty() {
+        if edits.is_empty() && counted.is_empty() {
             return false;
+        }
+        for (arbor, teeth, leaves) in counted {
+            let had = self
+                .user
+                .counts
+                .iter()
+                .find(|c| c.calibre == name && c.arbor == arbor);
+            let (t0, l0) = had.map_or((None, None), |c| (c.teeth, c.leaves));
+            let teeth = teeth.unwrap_or(t0);
+            let leaves = leaves.unwrap_or(l0);
+            self.user.set_count(name, arbor, teeth, leaves);
         }
         for (wheel, v) in edits {
             match v {
@@ -1700,7 +1717,7 @@ impl Calibres {
                      this calibre, to look over and send. Nothing is sent from the app.",
                 )
                 .on_disabled_hover_text(
-                    "Nothing to share yet: type a wheel's period above, or add a custom calibre",
+                    "Nothing to share yet: type a wheel's period or its teeth above, or add a custom calibre",
                 )
                 .clicked()
             {
@@ -1829,10 +1846,7 @@ impl Calibres {
 }
 
 const PERIOD: fields::Format = fields::Format {
-    show: |v| {
-        let s = format!("{v:.3}");
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    },
+    show: train::period_text,
     parse: fields::parse_number,
 };
 const BPH: fields::Format = fields::Format {
@@ -1858,7 +1872,7 @@ const LIFT: fields::Format = fields::Format {
 
 /// The balance's period, the time for one full swing and back: two beats.
 fn balance_period(bph: u32) -> f64 {
-    7200.0 / f64::from(bph)
+    train::balance_period_s(bph)
 }
 
 /// After a custom calibre's beat rate changed from `was`: the balance's
@@ -1996,9 +2010,18 @@ fn sort_mark(painter: &egui::Painter, c: egui::Pos2, reversed: bool, ink: egui::
     painter.add(egui::Shape::convex_polygon(pts, ink, egui::Stroke::NONE));
 }
 
-/// Where a wheel's period comes from, for its hover.
-fn slot_tip(s: &Slot) -> String {
+/// Where a wheel's period comes from, for its hover; `worked` is the
+/// wheel worked out from its teeth, where the train counts it.
+fn slot_tip(s: &Slot, worked: Option<&train::Worked>) -> String {
+    if let Some(how) = worked
+        .filter(|w| w.differs().is_some())
+        .and_then(|w| w.how())
+    {
+        let given = slot_tip(s, None);
+        return format!("{}. The teeth give {how}", given.trim_end_matches('.'));
+    }
     match s.origin {
+        Origin::Counts => s.basis.clone().unwrap_or_default(),
         Origin::Shipped => format!(
             "From the list: {}",
             s.basis.clone().unwrap_or_else(|| "no basis given".into())
@@ -2010,10 +2033,187 @@ fn slot_tip(s: &Slot) -> String {
                 None => "Custom, typed in".into(),
             },
         },
-        Origin::Unknown => {
-            "Nobody has given this wheel's period yet: type it if you know it".into()
+        Origin::Unknown if worked.and_then(|w| w.clash.as_ref()).is_some() => {
+            worked.and_then(|w| w.clash_text()).unwrap_or_default()
         }
+        Origin::Unknown => match worked.and_then(|w| w.needs_text()) {
+            Some(needs) => format!(
+                "Nobody has given this wheel's period yet: type it if you know it. \
+                 From its teeth: {}",
+                lower_first(&needs)
+            ),
+            None => "Nobody has given this wheel's period yet: type it if you know it".into(),
+        },
     }
+}
+
+fn lower_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map(|f| f.to_lowercase().chain(c).collect())
+        .unwrap_or_default()
+}
+
+/// The arbors' short names in Teeth and Leaves, as watchmakers say them.
+fn arbor_label(arbor: &str) -> String {
+    title_case(arbor.strip_suffix(" wheel").unwrap_or(arbor))
+}
+
+/// A count typed in Teeth and Leaves: the arbor, then `Some(new)` for each
+/// of its teeth and leaves changed, `Some(None)` for one cleared.
+type CountEdit = (&'static str, Option<Option<u32>>, Option<Option<u32>>);
+
+/// Teeth and Leaves: each arbor's wheel teeth and pinion leaves, closed
+/// until opened. Returns the counts typed this frame: the arbor, then
+/// `Some(new)` for each count changed (`Some(None)` when cleared).
+fn teeth_and_leaves(
+    ui: &mut egui::Ui,
+    train: &[train::Arbor],
+    place: &str,
+    name: &str,
+) -> Vec<CountEdit> {
+    let pal = theme::pal(ui);
+    // Not under the parent's id: the panel lays out afresh on a resize.
+    let open_id = egui::Id::new(("teeth and leaves open", place));
+    let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
+    let mut out = Vec::new();
+    let head = disclosure(ui, "Teeth and Leaves", open).on_hover_text(if open {
+        "Hide the teeth and leaves"
+    } else {
+        "Type the teeth and leaves you count, and the wheels' periods follow"
+    });
+    if head.clicked() {
+        open = !open;
+        ui.data_mut(|d| d.insert_temp(open_id, open));
+    }
+    if !open {
+        ui.add_space(12.0);
+        return out;
+    }
+    let group = |g: &mut theme::Group<'_>| {
+        count_heads(g.ui);
+        for &arbor in &train::ARBORS {
+            let a = train.iter().find(|a| a.name == arbor);
+            let pinion = train::pinion_name(arbor);
+            let hint = if arbor == "barrel" {
+                "The barrel's teeth. It has no pinion".to_string()
+            } else {
+                format!("The {arbor}'s teeth, and the leaves of the {pinion} on its arbor")
+            };
+            g.row(&arbor_label(arbor), theme::Caption::None, &hint, |ui| {
+                // Both boxes' width from the first frame, so the row never
+                // squeezes the Leaves box while it learns its width.
+                ui.set_min_width(2.0 * COUNT_BOX_W + ui.spacing().item_spacing.x);
+                let id = format!("calibre-{place}-{name}-{arbor}");
+                let teeth =
+                    count_field(ui, &format!("{id}-teeth"), a.and_then(|a| a.teeth), "Teeth");
+                let leaves = if arbor == "barrel" {
+                    ui.add_sized(Vec2::new(COUNT_BOX_W, 20.0), egui::Label::new("\u{2013}"));
+                    None
+                } else {
+                    count_field(
+                        ui,
+                        &format!("{id}-leaves"),
+                        a.and_then(|a| a.leaves),
+                        "Leaves",
+                    )
+                };
+                if teeth.is_some() || leaves.is_some() {
+                    out.push((arbor, teeth, leaves));
+                }
+            });
+        }
+    };
+    // Rows of their own: Wheels has a Barrel row too, and a row keeps its
+    // width by its name.
+    ui.push_id("teeth and leaves", |ui| theme::group_panel(ui, group));
+    ui.add_space(-8.0);
+    ui.add(
+        egui::Label::new(
+            RichText::new(
+                "Type each wheel's teeth and its pinion's leaves. The periods above follow.",
+            )
+            .size(11.5)
+            .color(pal.text_secondary),
+        )
+        .wrap(),
+    );
+    ui.add_space(12.0);
+    out
+}
+
+/// A group's title that opens and closes it: a disclosure triangle, right
+/// when closed and down when open, then the title, both clickable.
+fn disclosure(ui: &mut egui::Ui, title: &str, open: bool) -> egui::Response {
+    let pal = theme::pal(ui);
+    ui.horizontal(|ui| {
+        ui.add_space(6.0);
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let (r, icon) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::click());
+        let c = r.center();
+        let pts = if open {
+            [(-4.0, -2.0), (4.0, -2.0), (0.0, 3.0)]
+        } else {
+            [(-2.0, -4.0), (3.0, 0.0), (-2.0, 4.0)]
+        };
+        ui.painter().add(egui::Shape::convex_polygon(
+            pts.iter().map(|&(x, y)| c + Vec2::new(x, y)).collect(),
+            pal.text_secondary,
+            egui::Stroke::NONE,
+        ));
+        let label = ui.add(
+            egui::Label::new(RichText::new(title).size(12.0).color(pal.text_secondary))
+                .sense(egui::Sense::click()),
+        );
+        icon.union(label)
+    })
+    .inner
+}
+
+/// Over the count boxes, once at the top of Teeth and Leaves: which
+/// column is which, as a table's head.
+fn count_heads(ui: &mut egui::Ui) {
+    let pal = theme::pal(ui);
+    let w = ui.available_width();
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 24.0),
+        egui::Layout::right_to_left(egui::Align::Max),
+        |ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            for head in ["Leaves", "Teeth"] {
+                ui.add_sized(
+                    Vec2::new(COUNT_BOX_W, 16.0),
+                    egui::Label::new(RichText::new(head).size(11.5).color(pal.text_secondary)),
+                );
+            }
+        },
+    );
+}
+
+/// A count box's width with its margins, points.
+const COUNT_BOX_W: f32 = 54.0;
+
+/// A count's box: `Some(new)` when it lost focus changed, `Some(None)`
+/// when emptied; a count that is not a whole number above 0 is ignored.
+fn count_field(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    value: Option<u32>,
+    hint: &str,
+) -> Option<Option<u32>> {
+    let shown = value.map(|v| v.to_string()).unwrap_or_default();
+    blank_field(
+        ui,
+        id_salt,
+        shown,
+        hint,
+        hint,
+        COUNT_BOX_W - 8.0,
+        |t| match train::parse_count(t) {
+            Ok((Some(v), None)) => Some(v),
+            _ => None,
+        },
+    )
 }
 
 /// A wheel's period box, with Clear on one typed in; what changed goes
@@ -2464,9 +2664,27 @@ fn period_field(
     value: Option<f64>,
     tip: &str,
 ) -> Option<Option<f64>> {
+    let shown = value.map(|v| (PERIOD.show)(v)).unwrap_or_default();
+    blank_field(ui, id_salt, shown, "Not Known", tip, 66.0, |t| {
+        fields::parse_number(t).filter(|v| *v > 0.0)
+    })
+}
+
+/// A box that may be blank, showing `shown`. Enter or clicking away reads
+/// it with `parse`: `Some(Some(v))` for a new value, `Some(None)` when
+/// emptied, `None` when nothing changed or it doesn't read.
+#[allow(clippy::too_many_arguments)]
+fn blank_field<T>(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    shown: String,
+    hint: &str,
+    tip: &str,
+    width: f32,
+    parse: impl FnOnce(&str) -> Option<T>,
+) -> Option<Option<T>> {
     let id = ui.make_persistent_id(id_salt);
     let buf = id.with("text");
-    let shown = value.map(|v| (PERIOD.show)(v)).unwrap_or_default();
     let mut text = ui
         .data_mut(|d| d.get_temp::<String>(buf))
         .unwrap_or_else(|| shown.clone());
@@ -2474,17 +2692,17 @@ fn period_field(
         .add(
             egui::TextEdit::singleline(&mut text)
                 .id(id)
-                .hint_text("Not Known")
-                .desired_width(66.0),
+                .hint_text(hint)
+                .desired_width(width),
         )
         .on_hover_text(tip);
     let mut out = None;
     if resp.lost_focus() {
         if text.trim() != shown {
-            out = match fields::parse_number(&text) {
-                Some(v) if v > 0.0 => Some(Some(v)),
-                _ if text.trim().is_empty() && value.is_some() => Some(None),
-                _ => None,
+            out = if text.trim().is_empty() {
+                Some(None)
+            } else {
+                parse(&text).map(Some)
             };
         }
         ui.data_mut(|d| d.remove::<String>(buf));
