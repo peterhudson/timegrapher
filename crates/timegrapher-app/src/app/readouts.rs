@@ -209,11 +209,31 @@ pub(super) fn sides_text(tick: f64, tock: f64, se: Option<f64>) -> String {
 /// The Beat Error card's figure: its size, timed from the unlock where
 /// it can be, to the unlock's ±'s decimals.
 pub(super) fn beat_error_figure(r: &LiveReading) -> Option<String> {
+    let (v, pm) = beat_error_value(r)?;
+    Some(figure(v, pm, base::BEAT_ERROR, false))
+}
+
+/// The Beat Error card's figure, its size, and its ±: the unlock's, and
+/// only when the figure is from the unlock. The one choice the figure and
+/// its BE Angle both read.
+fn beat_error_value(r: &LiveReading) -> Option<(f64, Option<f64>)> {
     let v = core_session::beat_error_size(r.beat_error_unlock_ms, r.beat_error_ms)?;
     let pm = r
         .beat_error_unlock_error_ms
         .filter(|_| r.beat_error_unlock_ms.is_some());
-    Some(figure(v, pm, base::BEAT_ERROR, false))
+    Some((v, pm))
+}
+
+/// The Beat Error card's words on its BE Angle: the angle core works from
+/// the card's figure and ± and the amplitude's, at `lift_deg`.
+pub(super) fn be_angle_words(r: &LiveReading, lift_deg: f64) -> Option<String> {
+    let (be, be_pm) = beat_error_value(r)?;
+    let amp = r.amplitude_deg?;
+    let angle =
+        timegrapher_core::be_angle::Angle::of((amp, r.amplitude_error_deg), (be, be_pm), r.bph?)?;
+    Some(timegrapher_core::be_angle::card_words(
+        &angle, amp, lift_deg,
+    ))
 }
 
 /// A row of a card, laid out left to right and kept inside it.
@@ -774,6 +794,14 @@ impl TimegrapherApp {
                      rather than the signed values, as the command line does."
                 );
             }
+        }
+        // Its BE Angle first, where the amplitude and beat rate are known
+        // (Hugh's spec, #1576).
+        if let Some(words) = r
+            .filter(|_| c.heard)
+            .and_then(|r| be_angle_words(r, lift_now))
+        {
+            from = format!("{words}\n\n{from}");
         }
         let (fig, spark, place) = sparkline::lay(rows.inner, rows.figure, rows.controls);
         let colour = theme::pal(ui).trace_beat_error;

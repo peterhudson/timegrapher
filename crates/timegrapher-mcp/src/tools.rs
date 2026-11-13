@@ -389,6 +389,81 @@ pub const TOOLS: &[ToolSpec] = &[
         defaults: &[],
     },
     ToolSpec {
+        name: "work_out_train",
+        title: "Work Out a Train from Its Teeth",
+        description: "Each wheel's turn worked out from the tooth and leaf counts a \
+            watchmaker makes on the bench, the way the calibre table's counted trains are: \
+            the escape wheel turns once per its teeth times two beats, and each wheel out \
+            in the next one in's turn times its teeth over that one's pinion leaves. Also \
+            the beat rate where only a period is known, and how often each pinion meets a \
+            new tooth. Start from a calibre's counts, or type them, or both. It only \
+            works out; nothing is saved.",
+        command: &["train"],
+        params: &[
+            p(
+                "calibre",
+                Kind::Text,
+                Arg::Flag("--calibre"),
+                false,
+                "Start from this calibre's counts and periods, e.g. \"ETA 2824-2\"; the \
+                 counts given below replace its own.",
+            ),
+            p(
+                "bph",
+                Kind::BeatRate,
+                Arg::Flag("--bph"),
+                false,
+                "Beat rate in beats per hour, e.g. 28800 (the calibre's if left out).",
+            ),
+            p(
+                "escape",
+                Kind::Text,
+                Arg::Flag("--escape"),
+                false,
+                "The escape wheel's teeth and the escape pinion's leaves, as TEETH/LEAVES, e.g. \"20/9\".",
+            ),
+            p(
+                "fourth",
+                Kind::Text,
+                Arg::Flag("--fourth"),
+                false,
+                "The fourth wheel's teeth and the fourth pinion's leaves, e.g. \"108/9\".",
+            ),
+            p(
+                "third",
+                Kind::Text,
+                Arg::Flag("--third"),
+                false,
+                "The third wheel's teeth and the third pinion's leaves, e.g. \"90/13\".",
+            ),
+            p(
+                "centre",
+                Kind::Text,
+                Arg::Flag("--centre"),
+                false,
+                "The centre wheel's teeth and the centre pinion's leaves, e.g. \"77/17\".",
+            ),
+            p(
+                "barrel",
+                Kind::Text,
+                Arg::Flag("--barrel"),
+                false,
+                "The barrel's teeth, e.g. \"101\".",
+            ),
+            p(
+                "periods",
+                Kind::Text,
+                Arg::Flag("--period"),
+                false,
+                "Turns known, ARBOR=SECONDS split by commas, e.g. \"fourth=60, centre=3600\".",
+            ),
+        ],
+        charts: false,
+        read_only: true,
+        idempotent: true,
+        defaults: &[],
+    },
+    ToolSpec {
         name: "list_watches",
         title: "List My Watches",
         description: "The watches in the library the app keeps: each one's name, calibre, \

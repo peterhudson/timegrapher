@@ -341,18 +341,18 @@ mod tests {
                 );
                 continue;
             };
-            let beat = 3600.0 / bph as f64;
             let by_name = |n: &str| c.wheels.iter().find(|w| w.name == n);
             for w in &c.wheels {
                 assert_eq!(w.name, w.name.to_lowercase(), "{}", c.calibre);
                 assert!(w.period_s > 0.0, "{} {}", c.calibre, w.name);
             }
             if let Some(b) = by_name("balance") {
-                assert!((b.period_s - 2.0 * beat).abs() < 1e-6, "{}", c.calibre);
+                let want = crate::train::balance_period_s(bph);
+                assert!((b.period_s - want).abs() < 1e-6, "{}", c.calibre);
             }
             // A lever escape wheel moves one tooth per swing, two beats.
             if let (Some(n), Some(e)) = (c.escape_teeth, by_name("escape wheel")) {
-                let want = n as f64 * 2.0 * beat;
+                let want = crate::train::escape_period_s(bph, n);
                 assert!(
                     (e.period_s - want).abs() < 1e-6,
                     "{} escape wheel",

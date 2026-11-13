@@ -334,7 +334,7 @@ fn pinned_titles_and_hovers(
     for _ in 0..2 {
         out = run(app, Vec::new());
     }
-    let hint = reserve::HOUR_COLUMNS[4].2;
+    let hint = reserve::HOUR_COLUMNS[5].2;
     assert!(
         clipped_texts(&out).iter().any(|t| t.0 == hint),
         "{w}: no hover over the pinned title"
