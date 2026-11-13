@@ -239,13 +239,18 @@ fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
                     draw(ui, Some(s), "", View::Readings, &[true, true, false], opts);
                 });
             });
-            all.clear();
-            for c in &out.shapes {
-                if let egui::Shape::Text(t) = &c.shape {
-                    let r = t.visual_bounding_rect();
-                    all.push((t.galley.text().to_string(), r.left(), r.right()));
+            fn texts(shape: &egui::Shape, into: &mut Vec<(String, f32, f32)>) {
+                match shape {
+                    egui::Shape::Text(t) => {
+                        let r = t.visual_bounding_rect();
+                        into.push((t.galley.text().to_string(), r.left(), r.right()));
+                    }
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                    _ => {}
                 }
             }
+            all.clear();
+            out.shapes.iter().for_each(|c| texts(&c.shape, &mut all));
         }
         (
             all,
@@ -260,10 +265,14 @@ fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
         let added: Vec<_> = all.into_iter().filter(|t| !still.contains(&t.0)).collect();
         (added, left)
     };
-    let at = (2..14)
-        .map(|i| egui::pos2(60.0, i as f32 * 50.0))
+    // Left of where Info would start, past the rows' value axis.
+    let at = (2..28)
+        .flat_map(|i| [120.0, 180.0].map(|x| egui::pos2(x, i as f32 * 25.0)))
         .find(|&at| !readout(at, false).0.is_empty())
-        .expect("a point on a Readings row");
+        .unwrap_or_else(|| {
+            let (all, left) = drawn(Some(egui::pos2(180.0, 200.0)), false);
+            panic!("no point on a Readings row (Info from {left}): {all:?}")
+        });
     let (shut, left) = readout(at, false);
     assert!(shut.iter().any(|t| t.2 > left), "{left}: {shut:?}");
     let (open, left) = readout(at, true);
