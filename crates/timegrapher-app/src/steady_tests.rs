@@ -121,6 +121,7 @@ fn a_once_a_minute_swing_in_every_pane() {
     the_info_panel_holds_the_findings_and_the_plots_say_what_a_dot_is(&s);
     a_short_panes_info_scrolls_and_the_cycle_note_stays_in_its_column(&s);
     the_info_panel_opens_at_its_top(&s);
+    the_readout_stays_clear_of_info_over_the_rows(&s);
     a_once_a_minute_swing_reads_periodic_and_every_view_draws(&log, s);
 }
 
@@ -205,6 +206,71 @@ fn the_info_panel_holds_the_findings_and_the_plots_say_what_a_dot_is(s: &Steadin
     // Narrow: over the plots, the same words.
     let narrow = drawn(500.0, true);
     assert!(has(&narrow, rate.as_str()) && has(&narrow, "Tested on "));
+}
+
+/// In a pane too narrow for Info beside the rows, with Info open and the
+/// pointer on a Readings Over Time row, no readout text ends past Info's
+/// left edge, and the value is still shown; with Info shut the same
+/// readout reaches past that edge, so the check bites (Trevor on #1582).
+fn the_readout_stays_clear_of_info_over_the_rows(s: &Steadiness) {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    // Each text drawn, with where it starts and ends, and Info's left
+    // edge as the pane works it out.
+    let drawn = |at: Option<egui::Pos2>, info: bool| {
+        let mut all = Vec::new();
+        let mut left = None;
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(540.0, 700.0),
+                )),
+                events: at.map(egui::Event::PointerMoved).into_iter().collect(),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    left = theme::info_over_left(ui.available_rect_before_wrap(), true);
+                    let opts = Opts {
+                        info,
+                        ..Default::default()
+                    };
+                    draw(ui, Some(s), "", View::Readings, &[true, true, false], opts);
+                });
+            });
+            all.clear();
+            for c in &out.shapes {
+                if let egui::Shape::Text(t) = &c.shape {
+                    let r = t.visual_bounding_rect();
+                    all.push((t.galley.text().to_string(), r.left(), r.right()));
+                }
+            }
+        }
+        (
+            all,
+            left.expect("540 is too narrow for Info beside the rows"),
+        )
+    };
+    // The readout: what the pointer on a row adds to the pane.
+    let readout = |at: egui::Pos2, info: bool| {
+        let (still, _) = drawn(None, info);
+        let (all, left) = drawn(Some(at), info);
+        let still: Vec<String> = still.into_iter().map(|t| t.0).collect();
+        let added: Vec<_> = all.into_iter().filter(|t| !still.contains(&t.0)).collect();
+        (added, left)
+    };
+    let at = (2..14)
+        .map(|i| egui::pos2(60.0, i as f32 * 50.0))
+        .find(|&at| !readout(at, false).0.is_empty())
+        .expect("a point on a Readings row");
+    let (shut, left) = readout(at, false);
+    assert!(shut.iter().any(|t| t.2 > left), "{left}: {shut:?}");
+    let (open, left) = readout(at, true);
+    assert!(!open.is_empty(), "the value stays");
+    for (text, _, end) in &open {
+        assert!(*end <= left, "{text} ends at {end}, past Info at {left}");
+    }
 }
 
 /// A series with too few readings says so once, in its row, not again
@@ -1480,8 +1546,8 @@ fn the_readings_readout_says_whose_time_it_is() {
 }
 
 /// While Info is drawn over the rows, a row's readout stops at Info's
-/// left edge, leaving out whole any part that would reach under it; with
-/// Info shut or beside the rows the row's own edge is the limit (#1580).
+/// left edge; with Info shut or beside the rows the row's own edge is
+/// the limit (#1580).
 #[test]
 fn the_readout_stops_at_infos_left_edge_while_info_is_over_the_rows() {
     let narrow = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(540.0, 400.0));
@@ -1492,43 +1558,73 @@ fn the_readout_stops_at_infos_left_edge_while_info_is_over_the_rows() {
     assert_eq!(theme::info_over_left(wide, true), None);
     assert_eq!(readout_right(532.0, Some(left)), left);
     assert_eq!(readout_right(532.0, None), 532.0);
+}
+
+/// A short row drops the readout's range first, then "mean of 8", then
+/// the time, and the value only when it doesn't fit alone; nothing it
+/// draws runs past its right edge (Hugh on #1580).
+#[test]
+fn a_short_readout_keeps_the_value_longest() {
+    let s = |t: &str| t.to_string();
+    let band = vec![s("157°"), s("mean of 8"), s("150 to 162")];
+    let time = Some(s("2:07:06"));
+    assert_eq!(
+        readout_choices(time.clone(), &band),
+        vec![
+            (time.clone(), Some(s("157°, mean of 8, 150 to 162"))),
+            (time.clone(), Some(s("157°, mean of 8"))),
+            (time.clone(), Some(s("157°"))),
+            (None, Some(s("157°"))),
+        ]
+    );
+    assert_eq!(
+        readout_choices(None, &[s("157°")]),
+        vec![(None, Some(s("157°")))]
+    );
+    assert_eq!(
+        readout_choices(time.clone(), &[]),
+        vec![(time.clone(), None)]
+    );
 
     let ctx = egui::Context::default();
     theme::install(&ctx);
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(900.0, 400.0));
+    let title = egui::Rect::from_min_size(egui::pos2(8.0, 8.0), Vec2::new(100.0, 14.0));
     // The readout's parts as drawn with the row's right edge at `right`.
-    let parts = |right: f32| {
+    let drawn = |right: f32| {
         let input = egui::RawInput {
-            screen_rect: Some(narrow),
+            screen_rect: Some(screen),
             ..Default::default()
         };
         let out = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let title = egui::Rect::from_min_size(egui::pos2(8.0, 8.0), Vec2::new(190.0, 14.0));
-                let parts = (Some("4:12".to_string()), Some("+12.3 s/d".to_string()));
+                let parts = (time.clone(), band.clone());
                 paint_readout(ui, (title, right), parts, Color32::RED);
             });
         });
-        let mut drawn = Vec::new();
+        let mut parts = Vec::new();
         for c in &out.shapes {
             if let egui::Shape::Text(t) = &c.shape {
-                drawn.push((
-                    t.galley.text().to_string(),
-                    t.visual_bounding_rect().right(),
-                ));
+                let r = t.visual_bounding_rect().right();
+                assert!(r <= right, "{right}: {} ends at {r}", t.galley.text());
+                parts.push(t.galley.text().to_string());
             }
         }
-        drawn
+        parts
     };
-    // Room for both: both drawn.
-    assert_eq!(parts(532.0).len(), 2, "{:?}", parts(532.0));
-    // Info over the rows from `left`: nothing reaches past it, and the
-    // value that would is left out whole.
-    for right in [left, 240.0] {
-        let drawn = parts(right);
-        assert!(drawn.iter().all(|(_, r)| *r <= right), "{right}: {drawn:?}");
-        assert!(
-            drawn.iter().all(|(t, _)| !t.contains("s/d")),
-            "{right}: {drawn:?}"
-        );
+    let mut seen: Vec<Vec<String>> = Vec::new();
+    for right in (0..200).map(|i| title.right() + i as f32 * 3.0) {
+        let parts = drawn(right);
+        if seen.last() != Some(&parts) {
+            seen.push(parts);
+        }
     }
+    let want: Vec<Vec<String>> = vec![
+        vec![],
+        vec![s("157°")],
+        vec![s("2:07:06"), s("157°")],
+        vec![s("2:07:06"), s("157°, mean of 8")],
+        vec![s("2:07:06"), s("157°, mean of 8, 150 to 162")],
+    ];
+    assert_eq!(seen, want);
 }

@@ -86,17 +86,19 @@ impl Drawn {
     /// band's mean, how many readings it holds and its lowest and
     /// highest, the unit once, "+3.2 s/d, mean of 8, +1.0 to +5.1" (Hugh).
     pub fn readout(&self, k: SeriesKind) -> String {
+        self.readout_parts(k).join(", ")
+    }
+
+    /// [`Drawn::readout`]'s parts, most needed first: the value, then
+    /// "mean of 8", then the range, so a short row can drop them from
+    /// the end and keep the value (Hugh on #1580).
+    pub fn readout_parts(&self, k: SeriesKind) -> Vec<String> {
+        let mut parts = vec![k.fmt(self.mean)];
         if self.count > 1 {
-            format!(
-                "{}, mean of {}, {} to {}",
-                k.fmt(self.mean),
-                self.count,
-                k.number(self.lo),
-                k.number(self.hi)
-            )
-        } else {
-            k.fmt(self.mean)
+            parts.push(format!("mean of {}", self.count));
+            parts.push(format!("{} to {}", k.number(self.lo), k.number(self.hi)));
         }
+        parts
     }
 }
 

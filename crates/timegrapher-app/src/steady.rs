@@ -1057,10 +1057,10 @@ fn readings_plot(
     if let Some(x) = hover.or(over) {
         let painter = ui.painter_at(*resp.transform.frame());
         strength::time_line(&painter, &resp.transform, x, Strength::Axis, pal);
-        let value = crate::app::nearest_at(&near, x).map(|j| drawn[j].readout(k));
+        let value = crate::app::nearest_at(&near, x).map(|j| drawn[j].readout_parts(k));
         let time = hover.map(|x| readout_time(x, r.opts.joined_in));
-        let right = readout_right(ui.max_rect().right(), covered);
-        paint_readout(ui, (title_rect, right), (time, value), colour);
+        let edge = (title_rect, readout_right(ui.max_rect().right(), covered));
+        paint_readout(ui, edge, (time, value.unwrap_or_default()), colour);
     }
     hover
 }
@@ -1077,14 +1077,15 @@ fn readout_time(x: f64, joined_in: Option<&str>) -> String {
 /// Readings Over Time's readout on its title's line, after the title:
 /// the time (on the row under the pointer only), then the reading drawn
 /// nearest it in the series' colour, as a Charts lane writes them, each
-/// in a slot as wide as its digits as zeros (`app::lane_width`). A
-/// part that would run past `right` (the row's right edge, or Info's
-/// left edge over it) is left out whole, so a narrow pane never shows
-/// half a figure (Hugh on #1277, #1580).
+/// in a slot as wide as its digits as zeros (`app::lane_width`). Nothing
+/// runs past `right` (the row's right edge, or Info's left edge over
+/// it): the longest of [`readout_choices`] that fits is drawn, so a
+/// narrow pane never shows half a figure and keeps the value longest
+/// (Hugh on #1277, #1580).
 fn paint_readout(
     ui: &egui::Ui,
     (title_rect, right): (egui::Rect, f32),
-    (time, value): (Option<String>, Option<String>),
+    (time, value): (Option<String>, Vec<String>),
     colour: Color32,
 ) {
     if !title_rect.is_positive() {
@@ -1094,16 +1095,53 @@ fn paint_readout(
     let font = egui::TextStyle::Small.resolve(ui.style());
     let p = ui.painter();
     let top = title_rect.center().y - font.size / 2.0;
-    let mut x = title_rect.right() + crate::app::LANE_AFTER_TITLE;
-    for (text, ink) in [(time, pal.text), (value, pal.axis_ink(colour))] {
-        let Some(text) = text.map(|t| true_minus(&t)) else {
-            continue;
-        };
-        if x + crate::app::lane_width(p, &text, &font, true) > right {
-            break;
-        }
+    let left = title_rect.right() + crate::app::LANE_AFTER_TITLE;
+    let parts = |(time, value): (Option<String>, Option<String>)| {
+        [(time, pal.text), (value, pal.axis_ink(colour))]
+            .into_iter()
+            .filter_map(|(t, ink)| t.map(|t| (true_minus(&t), ink)))
+            .collect::<Vec<_>>()
+    };
+    let width = |parts: &[(String, Color32)]| {
+        parts
+            .iter()
+            .map(|(t, _)| crate::app::lane_width(p, t, &font, true) + crate::app::LANE_GAP)
+            .sum::<f32>()
+            - crate::app::LANE_GAP
+    };
+    let Some(fits) = readout_choices(time, &value)
+        .into_iter()
+        .map(parts)
+        .find(|parts| left + width(parts) <= right)
+    else {
+        return;
+    };
+    let mut x = left;
+    for (text, ink) in fits {
         x += crate::app::lane_text(p, (x, top), &text, (&font, ink), true) + crate::app::LANE_GAP;
     }
+}
+
+/// What the readout can show, longest first: the time and the whole
+/// reading, then the reading losing its last part ([`timegrapher_core::steady_views::Drawn::readout_parts`]:
+/// the range, then "mean of 8") until only its value is left, then the
+/// value alone without the time. The value is dropped only when it
+/// doesn't fit on its own (Hugh on #1580).
+fn readout_choices(
+    time: Option<String>,
+    value: &[String],
+) -> Vec<(Option<String>, Option<String>)> {
+    if value.is_empty() {
+        return vec![(time, None)];
+    }
+    let mut choices: Vec<_> = (1..=value.len())
+        .rev()
+        .map(|n| (time.clone(), Some(value[..n].join(", "))))
+        .collect();
+    if time.is_some() {
+        choices.push((None, Some(value[0].clone())));
+    }
+    choices
 }
 
 /// Where a row's readout must end: the row's right edge `row_right`, or
