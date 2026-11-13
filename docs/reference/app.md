@@ -905,9 +905,10 @@ amplitude (0.46 ms at 302° is 1.7°, 0.47 ms at 129° is 0.76°), is grey
 where either is, and a dash where there is no amplitude.
 Scrolled down, the titles stay at the pane's top. A beat error from the
 drop, or with no source recorded, is drawn dimmed, with the key "Grey
-beat errors: from the drop, or source not recorded." over the table (and in the Beat Error title's hover), and
-every beat error's hover names its source (core
-`session::beat_error_source_label`).
+beat errors: from the drop, or source not recorded." in the Info panel
+(and in the Beat Error title's hover), and every beat error's hover names
+its source (core `session::beat_error_source_label`). Each title's hover
+shows over its whole cell, name and unit.
 **Save as CSV…** and **Copy** give the watch, the run and the table, with
 a "Beat error from" column (unlock or drop; empty when not recorded, as
 for a figure not measured) and a "BE Angle (deg)" column. The take
