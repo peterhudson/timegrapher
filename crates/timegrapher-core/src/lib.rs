@@ -11,6 +11,7 @@ pub mod analysis_take;
 pub mod analyze_doc;
 pub mod archive;
 pub mod audio;
+pub mod be_angle;
 pub mod beat_cache;
 pub mod beats;
 pub mod breaks;
