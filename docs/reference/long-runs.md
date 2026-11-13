@@ -204,9 +204,16 @@ take with `long`, `series` or `session`.
    clock its period is exact and its phase does not wander when the rate
    does.
 2. **Series.** Timing offset from a steady rate (every clean beat, in
-   0.25 s bins for runs up to 12 h, 0.5 s up to 48 h, 4 s beyond) and amplitude (2 s
+   0.25 s bins for runs up to 12 h, 0.5 s up to 80 h, 4 s beyond) and amplitude (2 s
    windows). Slow drift is removed with a running median of 30 minutes (a
-   quadratic for runs under 20 minutes).
+   quadratic for runs under 20 minutes). On the timing the median is taken
+   twice: first a local robust line (the median slope over half a window,
+   then the median level, joined between reads by a cubic through each
+   read's level and slope), then the plain median of what is left. A
+   plain median over a sloping series returns its middle sample, so on a
+   long run, where the rate sits tens of s/d from the take's mean, it
+   removed the cycles with the slope. No window crosses a break: each
+   piece between breaks is detrended alone.
 3. **Score.** The power spectrum is divided by the shape of AR(1) noise,
    with ρ read as everywhere else, and under the running median by the
    median's own noise shape (#723, #753). What is left is normalized
@@ -224,8 +231,10 @@ take with `long`, `series` or `session`.
    wheel under the 4 s floor of a run over 12 hours, whose timing is
    gridded every half second) would otherwise lift every period it divides,
    7.5, 15 and 30 s. With default settings, a component must pass the
-   model-based 1% whole-search threshold and explain at least 0.5% of the
-   detrended variation. This is not a calibrated 1% false-positive guarantee
+   model-based 1% whole-search threshold and, on the amplitude and beat
+   error, explain at least 0.5% of the detrended variation; on the timing,
+   whose walk puts most of its power at the longest periods, it must swing
+   the rate by at least 0.05 s/d (`MIN_RATE_SWING_S_PER_DAY`). This is not a calibrated 1% false-positive guarantee
    for every noise process, missing-data pattern or repeated search.
 4. **Fold and subtract.** The strongest period is refined, the series is
    folded at it (median per phase bin) to give the average cycle and the
@@ -262,8 +271,8 @@ show.
 
 The shortest period searched is eight bins of the series (the fold's
 eight phase bins), so 2 s on the 0.25 s grid of runs up to 12 hours, 4 s
-on the 0.5 s grid up to 48 hours, 32 s on the 4 s grid beyond, and 16 s
-for amplitude. Up to 48 hours that reaches a 5 s escape wheel (20 teeth at
+on the 0.5 s grid up to 80 hours, 32 s on the 4 s grid beyond, and 16 s
+for amplitude. Up to 80 hours that reaches a 5 s escape wheel (20 teeth at
 28,800 bph, 15 at 21,600), but not a 3.75 s one (15 teeth at 28,800 bph),
 which a run over 12 hours does not search.
 With fewer bins per turn, a period that is a whole number of bins folds

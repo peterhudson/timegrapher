@@ -122,10 +122,47 @@ pub fn grid_median(times: &[f64], values: &[f64], t0: f64, step: f64, n: usize) 
     Grid { t0, step, y }
 }
 
+/// How [`detrend_as`] takes the slow change out under its running median.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slow {
+    /// The window's median: for readings that wander about a level
+    /// (amplitude, beat error).
+    Level,
+    /// For the beats' timing, which climbs or falls as the rate sits off
+    /// the take's mean. On such a ramp a window holds its values in order,
+    /// its median is its middle value, and the plain median took the
+    /// cycles out with the ramp: a 5 s/d cycle on a timing that moves 1 ms
+    /// each 4 s step (a rate 20 s/d off) never turns the ramp back. So
+    /// each window's own line comes off first: its slope the median over
+    /// the window of the rise across half of it, per step, and its level
+    /// the median of what is left. That leaves the ramp's bend (a rate
+    /// that changes within the window, tens of ms on a 2 h take), which
+    /// wanders about a level, and the plain running median then takes it
+    /// off: so what is left of a cycle is the same with the ramp as
+    /// without.
+    Sloped,
+}
+
+/// The longest period, in windows, that the sloped running median
+/// ([`Slow::Sloped`]) leaves at least half of, so the timing's search ends
+/// there (Norm: a band ends where its detrend's response falls to one
+/// half; past it a line is mostly the detrend's own shape). Measured on a
+/// sine of 6 h at 0.5 s, with and without a ramp and white noise of 0.3
+/// of the sine, the same with the ramp as without: 1.00 of it is left up
+/// to half a window, 1.4 to 1.7 near 0.7 windows (the plain median's
+/// 1.3 to 1.4 there), 0.92 to 0.93 at one, 0.53 to 0.56 at 1.2 and 0.36
+/// to 0.39 at 1.33.
+pub const SLOPED_REACH: f64 = 1.2;
+
 /// Remove the slow trend. Runs shorter than 20 minutes get a quadratic
 /// fit; longer ones a running median of `window_s` (at most a quarter of
 /// the run), evaluated every 1/40 of the window and interpolated.
 pub fn detrend(g: &Grid, window_s: f64) -> Grid {
+    detrend_as(g, window_s, Slow::Level)
+}
+
+/// [`detrend`], its running median as `slow` has it.
+pub fn detrend_as(g: &Grid, window_s: f64, slow: Slow) -> Grid {
     let n = g.y.len();
     let finite: Vec<usize> = (0..n).filter(|&i| g.y[i].is_finite()).collect();
     let plan = slow_out(g, window_s);
@@ -133,45 +170,7 @@ pub fn detrend(g: &Grid, window_s: f64) -> Grid {
         return g.clone();
     }
     let y = if let SlowOut::Median(w) = plan {
-        let half = w / 2;
-        let stride = (w / 40).max(1);
-        let mut knots: Vec<(f64, f64)> = Vec::new();
-        let mut i = 0usize;
-        loop {
-            let a = i.saturating_sub(half);
-            let b = (i + half + 1).min(n);
-            let mut v: Vec<f64> = g.y[a..b]
-                .iter()
-                .copied()
-                .filter(|x| x.is_finite())
-                .collect();
-            if !v.is_empty() {
-                knots.push((i as f64, median(&mut v)));
-            }
-            if i >= n - 1 {
-                break;
-            }
-            i = (i + stride).min(n - 1);
-        }
-        let mut k = 0;
-        (0..n)
-            .map(|i| {
-                let x = i as f64;
-                while k + 2 < knots.len() && knots[k + 1].0 < x {
-                    k += 1;
-                }
-                let base = if knots.len() == 1 || x <= knots[0].0 {
-                    knots[0].1
-                } else if x >= knots[knots.len() - 1].0 {
-                    knots[knots.len() - 1].1
-                } else {
-                    let (x0, y0) = knots[k];
-                    let (x1, y1) = knots[k + 1];
-                    y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-                };
-                g.y[i] - base
-            })
-            .collect()
+        running_median_off(&g.y, w, slow)
     } else {
         let t: Vec<f64> = finite.iter().map(|&i| g.time(i)).collect();
         let v: Vec<f64> = finite.iter().map(|&i| g.y[i]).collect();
@@ -184,6 +183,126 @@ pub fn detrend(g: &Grid, window_s: f64) -> Grid {
             .collect()
     };
     Grid { y, ..g.clone() }
+}
+
+/// [`detrend_as`] on each piece of `g` on its own, a piece running from
+/// each of `starts` (grid indices, ascending) to the next: no window
+/// reaches across a break, where the beats' timing starts again from its
+/// own fit. Every piece takes the whole take's window, so the search's
+/// noise model holds on each; a piece shorter than one window is left
+/// out (NaN). With no `starts` it is [`detrend_as`].
+pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> Grid {
+    let n = g.y.len();
+    let starts: Vec<usize> = starts.iter().copied().filter(|&i| i > 0 && i < n).collect();
+    let (true, Some(w)) = (!starts.is_empty(), detrend_window(g, window_s)) else {
+        return detrend_as(g, window_s, slow);
+    };
+    let mut y = vec![f64::NAN; n];
+    let bounds: Vec<usize> = std::iter::once(0)
+        .chain(starts)
+        .chain(std::iter::once(n))
+        .collect();
+    for p in bounds.windows(2) {
+        let (a, b) = (p[0], p[1]);
+        let finite = g.y[a..b].iter().filter(|v| v.is_finite()).count();
+        if b - a < w || finite < 4 {
+            continue;
+        }
+        y[a..b].copy_from_slice(&running_median_off(&g.y[a..b], w, slow));
+    }
+    Grid { y, ..g.clone() }
+}
+
+/// `y` less its running median over `w` steps ([`Slow`]).
+fn running_median_off(y: &[f64], w: usize, slow: Slow) -> Vec<f64> {
+    match slow {
+        Slow::Level => median_off(y, w, false),
+        Slow::Sloped => median_off(&median_off(y, w, true), w, false),
+    }
+}
+
+/// `y` less its running median over `w` steps, read every 1/40 of the
+/// window and interpolated between. `sloped`: each window's own line
+/// (its slope the median rise across half the window, per step) comes off
+/// before its median, and between two reads the base is the cubic through
+/// both reads with their slopes: straight lines between reads 1/40 of a
+/// window apart left a bending timing scalloped at that spacing, a 45 s
+/// line of 4.4 µs on a rate drifting ±40 s/d under a 30 min window. The
+/// plain pass keeps straight lines: the scallop shows only where the bend
+/// over one read spacing stands above the noise, which an amplitude's or
+/// a beat error's bend never does (a 300° to 250° fall names nothing with
+/// 0.05° of noise).
+fn median_off(y: &[f64], w: usize, sloped: bool) -> Vec<f64> {
+    let n = y.len();
+    let half = w / 2;
+    let stride = (w / 40).max(1);
+    let mut knots: Vec<(f64, f64, f64)> = Vec::new();
+    let mut i = 0usize;
+    loop {
+        let a = i.saturating_sub(half);
+        let b = (i + half + 1).min(n);
+        let slope = match sloped {
+            false => 0.0,
+            true => {
+                let lag = ((b - a) / 2).max(1);
+                let lagf = lag as f64;
+                let mut d: Vec<f64> = (a..b.saturating_sub(lag))
+                    .map(|k| (y[k + lag] - y[k]) / lagf)
+                    .filter(|x| x.is_finite())
+                    .collect();
+                if d.is_empty() {
+                    0.0
+                } else {
+                    median(&mut d)
+                }
+            }
+        };
+        let mut v: Vec<f64> = y[a..b]
+            .iter()
+            .enumerate()
+            .map(|(k, &x)| x - slope * ((a + k) as f64 - i as f64))
+            .filter(|x| x.is_finite())
+            .collect();
+        if !v.is_empty() {
+            knots.push((i as f64, median(&mut v), slope));
+        }
+        if i >= n - 1 {
+            break;
+        }
+        i = (i + stride).min(n - 1);
+    }
+    if knots.is_empty() {
+        return vec![f64::NAN; n];
+    }
+    let mut k = 0;
+    (0..n)
+        .map(|i| {
+            let x = i as f64;
+            while k + 2 < knots.len() && knots[k + 1].0 < x {
+                k += 1;
+            }
+            let line = |(x0, y0, s0): (f64, f64, f64)| y0 + s0 * (x - x0);
+            let base = if knots.len() == 1 || x <= knots[0].0 {
+                line(knots[0])
+            } else if x >= knots[knots.len() - 1].0 {
+                line(knots[knots.len() - 1])
+            } else {
+                let (a, b) = (knots[k], knots[k + 1]);
+                let (d, t) = (b.0 - a.0, (x - a.0) / (b.0 - a.0));
+                if sloped {
+                    // Cubic Hermite through each read and its slope.
+                    let (t2, t3) = (t * t, t * t * t);
+                    (2.0 * t3 - 3.0 * t2 + 1.0) * a.1
+                        + (t3 - 2.0 * t2 + t) * d * a.2
+                        + (3.0 * t2 - 2.0 * t3) * b.1
+                        + (t3 - t2) * d * b.2
+                } else {
+                    a.1 + (b.1 - a.1) * t
+                }
+            };
+            y[i] - base
+        })
+        .collect()
 }
 
 /// The share of a noise's power at frequency `f` (Hz) left by a running
@@ -756,9 +875,8 @@ fn harmonic_shows(resid: &Grid, period: f64) -> impl Fn(usize, f64) -> bool {
     }
 }
 
-/// Phase bins for a fold: one per grid step, between 8 and 240. Fine
-/// bins let the subtraction remove a sharp event cleanly, so its
-/// harmonics don't come back as components of their own.
+/// Phase bins for a fold: one per grid step, between 8 and 240, so a
+/// sharp event keeps its shape in the profile and raster.
 fn fold_bins(period: f64, step: f64) -> usize {
     ((period / step).round() as usize).clamp(8, 240)
 }
@@ -888,16 +1006,6 @@ fn variance(y: &[f64]) -> f64 {
 }
 
 /// Subtract a fold's profile from the series it was folded from.
-fn subtract(g: &mut Grid, f: &Fold) {
-    let bins = f.profile.len();
-    for i in 0..g.y.len() {
-        let (_, b) = phase_bin(g.time(i) - g.t0, f.period_s, bins);
-        if g.y[i].is_finite() && f.profile[b].is_finite() {
-            g.y[i] -= f.profile[b];
-        }
-    }
-}
-
 /// The cycle and phase bin of time `t` from the grid's start. A reading
 /// whose phase falls on a bin edge (a 45 s period read every 10 s, in 9
 /// bins) goes to the bin above it every time, rather than to either side
@@ -936,13 +1044,58 @@ fn explained_at(g: &Grid, period: f64, bins: usize) -> f64 {
 /// The period search over a series of readings (amplitude, beat error):
 /// AR(1) noise is its null.
 pub fn analyse(g: &Grid, cfg: &LongConfig) -> SeriesReport {
-    analyse_as(g, cfg, NullModel::Readings, None)
+    analyse_as(g, cfg, NullModel::Readings, None, &[])
 }
 
 /// The period search over the beats' timing: random walk plus white noise
 /// is its null.
 pub fn analyse_timing(g: &Grid, cfg: &LongConfig) -> SeriesReport {
-    analyse_as(g, cfg, NullModel::Timing, None)
+    analyse_timing_pieces(g, &[], cfg)
+}
+
+/// [`analyse_timing`] of a take whose timing starts again from its own fit
+/// at each of `starts` (grid indices): each piece is detrended on its own
+/// ([`detrend_pieces`]).
+pub fn analyse_timing_pieces(g: &Grid, starts: &[usize], cfg: &LongConfig) -> SeriesReport {
+    analyse_as(g, cfg, NullModel::Timing, None, starts)
+}
+
+/// The longest period `model`'s search reads, from `max_p`: under the
+/// sloped running median of `detrend_w` seconds, no more than
+/// [`SLOPED_REACH`] of its window.
+pub(crate) fn reach(model: NullModel, max_p: f64, detrend_w: Option<f64>) -> f64 {
+    match (slow_for(model), detrend_w) {
+        (Slow::Sloped, Some(w)) => max_p.min(SLOPED_REACH * w),
+        _ => max_p,
+    }
+}
+
+/// [`analyse`] of a series whose pieces run from each of `starts` (grid
+/// indices): no detrend window reaches across a break ([`detrend_pieces`]).
+pub fn analyse_pieces(g: &Grid, starts: &[usize], cfg: &LongConfig) -> SeriesReport {
+    analyse_as(g, cfg, NullModel::Readings, None, starts)
+}
+
+/// The first step of `g` at or after each of `cuts` (seconds on the grid's
+/// clock): where each piece after a break starts.
+pub fn piece_starts(g: &Grid, cuts: &[f64]) -> Vec<usize> {
+    let mut out: Vec<usize> = cuts
+        .iter()
+        .map(|&c| ((c - g.t0) / g.step).ceil())
+        .filter(|&i| i > 0.0 && i < g.y.len() as f64)
+        .map(|i| i as usize)
+        .collect();
+    out.dedup();
+    out
+}
+
+/// How each null model's series has its slow change taken out: the
+/// timing climbs with the rate's offset, readings wander about a level.
+pub fn slow_for(model: NullModel) -> Slow {
+    match model {
+        NullModel::Timing => Slow::Sloped,
+        NullModel::Readings => Slow::Level,
+    }
 }
 
 fn analyse_as(
@@ -950,8 +1103,9 @@ fn analyse_as(
     cfg: &LongConfig,
     model: NullModel,
     given: Option<&null::Levelling>,
+    starts: &[usize],
 ) -> SeriesReport {
-    let detrended = detrend(g, cfg.detrend_s);
+    let detrended = detrend_pieces(g, cfg.detrend_s, slow_for(model), starts);
     let span = g.span();
     // At least one reading for each of the fold's 8 bins. With fewer, a
     // period that is a whole number of steps folds onto a few fixed phases,
@@ -960,11 +1114,23 @@ fn analyse_as(
     // 0.5 ms.
     let min_p = cfg.min_period_s.max(8.0 * g.step);
     let max_p = cfg.max_period_s.unwrap_or(span / 3.0).min(span / 2.0);
+    let max_p = reach(
+        model,
+        max_p,
+        detrend_window(g, cfg.detrend_s).map(|w| w as f64 * g.step),
+    );
     let total_var = variance(&detrended.y);
     let mut work = detrended.clone();
     let mut components = Vec::new();
     let mut first = None;
     let mut found: Vec<f64> = Vec::new();
+    // Every line after the first is scored on the levelling the first
+    // search read, at the mix (or ρ) fitted before anything was taken out.
+    // The null is drawn without a subtraction, so a mix refitted on what a
+    // strong line leaves reads whiter than the noise is, and the short
+    // periods beside it score as lines: on a steady AR(1) rate a 306 s
+    // wander's subtraction lifted an 11.8 s line to 16 (Norm).
+    let mut kept: Option<null::Levelling> = None;
     if max_p > min_p && total_var > 0.0 {
         for _ in 0..cfg.max_components {
             let band = Band {
@@ -973,7 +1139,7 @@ fn analyse_as(
                 false_alarm: cfg.false_alarm,
                 detrend_w: detrend_window(g, cfg.detrend_s).map(|w| w as f64 * g.step),
                 model,
-                given,
+                given: given.or(kept.as_ref()),
             };
             let s = search(&work, &band, &found);
             let threshold = s.threshold;
@@ -981,6 +1147,9 @@ fn analyse_as(
             let calibrated = s.null.calibrated;
             let pick = pick_period(&s, &work, g.step);
             if first.is_none() {
+                if given.is_none() && s.null.calibrated {
+                    kept = null::levelling(model, span, g.step, s.null.mix);
+                }
                 first = Some(s);
             }
             let Some((period, score, harmonics)) = pick else {
@@ -994,20 +1163,16 @@ fn analyse_as(
             let period = refined(&work, period, bins, span);
             let explained = explained_at(&work, period, bins) / total_var;
             let f = fold(&work, period, bins);
-            subtract(&mut work, &f);
-            if explained < cfg.min_explained {
+            let kept_h = kept_harmonics(period, harmonics, span);
+            work = without_cycle(&work, period, kept_h);
+            if model == NullModel::Readings && explained < cfg.min_explained {
                 continue;
             }
             let explained = explained.min(1.0);
-            // No more harmonics than whole cycles folded: with fewer, a line
-            // near a harmonic (the fourth wheel's 60 s by a 225 s cycle's
-            // 4th, on 10 min) cannot be told from it.
-            let most = ((span / period) as usize).max(1);
-            let shape = sized_shape(
-                &f.profile,
-                (harmonics as usize).min(most),
-                &harmonic_shows(&work, period),
-            );
+            let shape = sized_shape(&f.profile, kept_h, &harmonic_shows(&work, period));
+            if model == NullModel::Timing && rate_swing(&shape, period) < MIN_RATE_SWING_S_PER_DAY {
+                continue;
+            }
             let (lo, hi) = shape
                 .iter()
                 .filter(|v| v.is_finite())
@@ -1070,14 +1235,12 @@ fn misfit_without(
     components: &[Component],
     cfg: &LongConfig,
 ) -> (f64, Option<f64>) {
-    let mut removed = Vec::new();
     let span = detrended.span();
-    let kept = |c: &Component| (c.harmonics as usize).min(((span / c.period_s) as usize).max(1));
-    for c in components {
-        for h in 1..=kept(c) {
-            removed.push(h as f64 / c.period_s);
-        }
-    }
+    let kept = |c: &Component| kept_harmonics(c.period_s, c.harmonics, span);
+    let removed: Vec<f64> = components
+        .iter()
+        .flat_map(|c| cycle_lines(c.period_s, kept(c)))
+        .collect();
     let w = detrend_window(detrended, cfg.detrend_s).map(|w| w as f64 * detrended.step);
     let removed = distinct_lines(removed, span);
     let rest = without_lines(detrended, &removed);
@@ -1089,6 +1252,33 @@ fn misfit_without(
         without_lines(detrended, &[removed.as_slice(), &more].concat())
     };
     timing_fit_of(&rest, &spectrum(&rest, w), w, &removed, &more)
+}
+
+/// The harmonics of a cycle at `period` the search sums (`harmonics`),
+/// but no more than whole cycles folded: with fewer, a line near a
+/// harmonic (the fourth wheel's 60 s by a 225 s cycle's 4th, on 10 min)
+/// cannot be told from it.
+fn kept_harmonics(period: f64, harmonics: u8, span: f64) -> usize {
+    (harmonics as usize).min(((span / period) as usize).max(1))
+}
+
+/// The lines, Hz, of a cycle at `period` with its first `kept` harmonics.
+fn cycle_lines(period: f64, kept: usize) -> impl Iterator<Item = f64> {
+    (1..=kept).map(move |h| h as f64 / period)
+}
+
+/// `g` less a found cycle: its first `kept` harmonics as least-squares
+/// sines ([`without_lines`]), the one removal the search and the timing
+/// misfit share. The fold is for the shape and raster only. Taken off as
+/// a fold, a staircase of median per phase bin, a wander that slopes the
+/// timing steeply within each bin leaves a sawtooth at the bin rate,
+/// periodic at the cycle, whose sharp harmonics the next search named: on
+/// a steady AR(1) rate (30 min, ρ 0.7, seed 23) a 306.6 s wander's fold
+/// left 11.0 s at significance 19.1 and 11.8 s at 16.1; with sines the
+/// best was 0.9 (Norm).
+fn without_cycle(g: &Grid, period: f64, kept: usize) -> Grid {
+    let lines: Vec<f64> = cycle_lines(period, kept).collect();
+    without_lines(g, &lines)
 }
 
 /// `lines`, Hz, sorted, keeping one of any two within half a resolution
@@ -1382,6 +1572,31 @@ fn rate_at(before: Option<f64>, here: f64, after: Option<f64>, dt: f64) -> f64 {
         (None, None) => f64::NAN,
     };
     -slope * 86400.0
+}
+
+/// The smallest rate swing (s/d, highest to lowest of the cycle) a line
+/// on the timing must have to be named: half a unit of the rate's place
+/// ([`crate::figure_text::base_digits::RATE`], 0.1 s/d), so a line named
+/// never reads 0.0 s/d (Norm). It stands for the readings' share of
+/// variance ([`LongConfig::min_explained`]): the timing is a walk, whose
+/// power fills the band as 1/f², so a share of it is no measure of a
+/// line (a 5 s escape wheel line of 0.5 s/d explains 0.006% of 2 h).
+pub const MIN_RATE_SWING_S_PER_DAY: f64 = 0.05;
+
+/// The rate swing (s/d) of a timing cycle's `shape` over `period_s`.
+pub fn rate_swing(shape: &[f64], period_s: f64) -> f64 {
+    let r = rate_profile(shape, period_s);
+    let lo = r
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::INFINITY, f64::min);
+    let hi = r
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(f64::NEG_INFINITY, f64::max);
+    hi - lo
 }
 
 /// The rate (s/d) implied by a folded timing profile (seconds of offset
@@ -2246,5 +2461,146 @@ mod tests {
         );
         assert!(!r.components.is_empty() && r.search.rho < NOISE_CAVEAT_RHO);
         assert_eq!(period_may_be_noise(&r), None);
+    }
+}
+
+#[cfg(test)]
+mod slow_tests {
+    use super::*;
+
+    /// The beats' timing of a 6 h take whose rate drifts from −40 to
+    /// +40 s/d, with a 5 s/d cycle every 270 s, 20 µs of jitter and a walk.
+    fn drifting(cycle_s_per_day: f64) -> Grid {
+        let (step, span) = (0.25, 6.0 * 3600.0);
+        let mut z = crate::synth::Rng::new(5);
+        let mut walk = 0.0;
+        let (slow, tau) = (12.0 * 3600.0, std::f64::consts::TAU);
+        let y = (0..(span / step) as usize)
+            .map(|i| {
+                let t = i as f64 * step;
+                walk += 2e-7 * z.normal();
+                // The integral of a rate of 40 sin(2π(t − 3 h)/12 h) s/d...
+                let drift = -40.0 * slow / tau * ((tau * (t - 3.0 * 3600.0) / slow).cos());
+                // ...and a 5 s/d sine every 270 s.
+                let cycle = -cycle_s_per_day * 270.0 / tau * (tau * t / 270.0).cos();
+                (drift + cycle) / 86_400.0 + walk + 2e-5 * z.normal()
+            })
+            .collect();
+        Grid { t0: 0.0, step, y }
+    }
+
+    /// How much of a sine at `period` the series holds, by projection.
+    fn swing_at(g: &Grid, period: f64) -> f64 {
+        let (mut s, mut c, mut n) = (0.0, 0.0, 0.0);
+        for (i, v) in g.y.iter().enumerate().filter(|(_, v)| v.is_finite()) {
+            let x = std::f64::consts::TAU * i as f64 * g.step / period;
+            s += v * x.sin();
+            c += v * x.cos();
+            n += 1.0;
+        }
+        2.0 * (s * s + c * c).sqrt() / n
+    }
+
+    /// A 5 s/d cycle every 270 s on a rate drifting ±40 s/d is found by
+    /// the timing's search at its size (2.5 ms each way), where the plain
+    /// running median left a sixth of it: the drift's ramp holds each
+    /// window's values in order, so its median is its middle value, cycle
+    /// and all, and the cycle went out with the trend.
+    #[test]
+    fn a_cycle_on_a_drifting_rate_is_found() {
+        let g = drifting(5.0);
+        let want = 5.0 / 86_400.0 * 270.0 / std::f64::consts::TAU;
+        let plain = swing_at(&detrend_as(&g, DETREND_S, Slow::Level), 270.0);
+        let sloped = swing_at(&detrend_as(&g, DETREND_S, Slow::Sloped), 270.0);
+        assert!(plain < 0.2 * want, "plain {plain} of {want}");
+        assert!(
+            (sloped / want - 1.0).abs() < 0.15,
+            "sloped {sloped} of {want}"
+        );
+        let r = analyse_timing(&g, &LongConfig::default());
+        let c = r.components.first().expect("a cycle named");
+        assert!((c.period_s - 270.0).abs() < 1.0, "{}", c.period_s);
+        assert!(
+            (c.peak_to_peak / (2.0 * want) - 1.0).abs() < 0.2,
+            "{}",
+            c.peak_to_peak
+        );
+        // Without the cycle, nothing.
+        assert!(analyse_timing(&drifting(0.0), &LongConfig::default())
+            .components
+            .is_empty());
+    }
+
+    /// Each piece is detrended on its own: the timing's jump where a piece
+    /// starts again from its own fit reads nothing, and a piece shorter
+    /// than one window is left out.
+    #[test]
+    fn pieces_are_detrended_on_their_own() {
+        let step = 1.0;
+        let starts = [7200, 14400];
+        let y: Vec<f64> = (0..15000)
+            .map(|i| {
+                let t = i as f64 * step;
+                let piece = starts.iter().filter(|&&s| i >= s).count() as f64;
+                3e-4 * t - 2.0 * piece + 1e-5 * ((i * 7919) % 101) as f64
+            })
+            .collect();
+        let g = Grid { t0: 0.0, step, y };
+        let d = detrend_pieces(&g, DETREND_S, Slow::Sloped, &starts);
+        let worst = d.y[..14400].iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        assert!(worst < 1e-3, "{worst}");
+        assert!(d.y[14400..].iter().all(|v| v.is_nan()));
+        let across = detrend_as(&g, DETREND_S, Slow::Sloped);
+        let jump = across.y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        assert!(jump > 0.5, "{jump}");
+    }
+
+    /// An amplitude falling smoothly from 300° to 250° over the take, with
+    /// AR(1) noise of 2° (ρ 0.7) on 2 s windows and no cycle, names no
+    /// line, in particular none at the spacing of the running median's
+    /// reads (1/40 of its window) or its harmonics, on takes whose window
+    /// is 15 min (1 h), 30 min (2 h, 12 h) and 30 min over 60 h (Norm).
+    #[test]
+    fn a_bending_amplitude_names_no_line_at_the_reads_spacing() {
+        let step = 2.0;
+        for (hours, seed) in [(1.0, 1), (2.0, 2), (12.0, 3), (60.0, 4)] {
+            let span = hours * 3600.0;
+            let n = (span / step) as usize;
+            let mut z = crate::synth::Rng::new(seed);
+            let mut x = 0.0;
+            let y: Vec<f64> = (0..n)
+                .map(|i| {
+                    let t = i as f64 * step / span;
+                    x = 0.7 * x + (1.0f64 - 0.49).sqrt() * 2.0 * z.normal();
+                    300.0 - 50.0 * (1.0 - (-3.0 * t).exp()) / (1.0 - (-3.0f64).exp()) + x
+                })
+                .collect();
+            let g = Grid { t0: 0.0, step, y };
+            let r = analyse(&g, &LongConfig::default());
+            let w = detrend_window(&g, DETREND_S).unwrap() as f64 * step;
+            let named: Vec<f64> = r.components.iter().map(|c| c.period_s).collect();
+            assert!(
+                named.is_empty(),
+                "{hours} h (reads every {} s): {named:?}",
+                w / 40.0
+            );
+        }
+    }
+
+    /// The timing's floor is half a unit of the rate's written place.
+    #[test]
+    fn the_rate_swing_floor_is_half_the_rates_place() {
+        let place = 10f64.powi(-(crate::figure_text::base_digits::RATE as i32));
+        assert!((MIN_RATE_SWING_S_PER_DAY - 0.5 * place).abs() < 1e-12);
+    }
+
+    /// The timing's search ends at 1.5 detrend windows; the readings'
+    /// at a third of the take.
+    #[test]
+    fn the_timing_search_ends_where_its_detrend_keeps_half() {
+        let r = analyse_timing(&drifting(0.0), &LongConfig::default());
+        let longest = r.search.period_s.iter().fold(0.0f64, |m, &p| m.max(p));
+        assert!(longest <= SLOPED_REACH * DETREND_S + 1e-6, "{longest}");
+        assert!(longest > 0.9 * SLOPED_REACH * DETREND_S, "{longest}");
     }
 }

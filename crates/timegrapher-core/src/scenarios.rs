@@ -732,8 +732,9 @@ mod tests {
     }
 
     /// The caveat that a short take's cycle may be noise goes on the
-    /// amplitude and the beat error only (#916). Seed 112 of 30 min of red
-    /// noise (seed 35 until the search was calibrated, #1195) names a cycle
+    /// amplitude and the beat error only (#916). Seed 135 of 30 min of red
+    /// noise (seed 35 until the search was calibrated, #1195; 112 until the
+    /// timing's detrend took a local line off first) names a cycle
     /// in the rate, whose search read ρ over 0.7, so
     /// the rule would give it one; its series carries none. Seed 37 names
     /// one in the amplitude, which carries it and says so in its headline.
@@ -757,7 +758,7 @@ mod tests {
                 .iter()
                 .any(|c| matches!(c, Caveat::PeriodMayBeNoise { .. }))
         };
-        let (long, r) = pane(112);
+        let (long, r) = pane(135);
         assert!(r.series[0].period.is_some(), "the rate names a cycle");
         assert!(crate::longterm::period_may_be_noise(&long.timing).is_some());
         assert!(!noise(&r.series[0]));
@@ -769,5 +770,27 @@ mod tests {
             "{}",
             amp.headline
         );
+    }
+
+    /// A cycle the search finds is taken out as sines at its kept
+    /// harmonics, not as its fold: a staircase of median per phase bin
+    /// left a sawtooth at the bin rate on a steeply wandering timing, and
+    /// the next search named its harmonics. Seeds 23 and 154 of 30 min at
+    /// ρ 0.7 named 11.8 s and 11.0 s at 16, and 41.6 s, 6.2 s and 7.0 s,
+    /// after a slow wander (306.6 s, 209.6 s) that is itself a chance hit
+    /// of its null (Norm). Now each names the wander alone.
+    #[test]
+    fn a_wander_taken_out_leaves_no_lines_at_its_bins_rate() {
+        use crate::longterm::LongConfig;
+        let lc = LongConfig {
+            wheels: crate::periodicity::standard_wheels(BPH, 20),
+            ..Default::default()
+        };
+        for seed in [23, 154] {
+            let log = beat_log(&super::steady_red(1800.0, 0.7, seed), seed);
+            let long = crate::longrun::analyse(&log, None, &lc);
+            let found: Vec<f64> = long.timing.components.iter().map(|c| c.period_s).collect();
+            assert!(found.len() <= 1, "seed {seed}: {found:?}");
+        }
     }
 }

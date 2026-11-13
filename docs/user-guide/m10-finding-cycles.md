@@ -27,12 +27,15 @@ and its cycle is what Cycle folds (chapter 12).
 
 2. **The series.** For the rate, the **timing offset** of every clean beat
    from a steady rate, in 0.25 s bins (0.5 s for takes over 12 hours, 4 s
-   over 48 hours). For the amplitude and the beat error, their 2 s
+   over 80 hours). For the amplitude and the beat error, their 2 s
    windows.
 
 3. **Slow change off.** A running median over 30 minutes is taken off
    (a quadratic on a take under 20 minutes), so the mainspring running
-   down isn't scored as a long cycle.
+   down isn't scored as a long cycle. For the rate, a local straight
+   line is taken off first, so a rate far from the take's average
+   doesn't take its cycles with it. The take is cut at every stop and
+   restart, and each piece is treated on its own.
 
 4. **Score.** The spectrum is divided by the shape the series' own
    noise gives (AR(1), a first-order autoregressive model in which each
@@ -111,10 +114,11 @@ and its cycle is what Cycle folds (chapter 12).
 - **Which part.** A line at a wheel's period says the readings repeat with
   that wheel's turn: the wheel, its pinion, its arbor or the hand it
   carries.
-- **Long periods.** Periods over about 15 minutes, half the running median,
-  are weakened by it. A barrel's turn of hours is beyond it.
+- **Long periods.** On the amplitude and beat error, periods over about
+  15 minutes, half the running median, are weakened by it. On the rate the
+  search reaches up to 36 minutes, where half a cycle is still kept. A barrel's turn of hours is beyond it.
 - **Periods under the shortest searched:** 3 s for the rate's timing up
-  to 12 hours, 4 s from 12 to 48 hours and 32 s beyond (the longer of
+  to 12 hours, 4 s from 12 to 80 hours and 32 s beyond (the longer of
   3 s and eight bins of the series), and 16 s for the amplitude and beat
   error. A wheel faster than that can fold into slower cycles that
   aren't there.
