@@ -964,9 +964,9 @@ pub fn harmonic_offset(period_s: f64, resolution_s: f64, n: u8, of_s: f64) -> f6
     (f - f64::from(n) / of_s).abs() / (resolution_s * f * f)
 }
 
-/// For each component, the found cycle it is a harmonic of: the one n (2
-/// to 8) and found cycle q for which n times q's frequency is within one
-/// resolution (1/span) of its own ([`harmonic_offset`] under 1).
+/// For each component not at a wheel's period, the found cycle it is a
+/// harmonic of: the one n (2 to 8) and found cycle q for which n times q's
+/// frequency is within one resolution (1/span) of its own ([`harmonic_offset`] under 1).
 /// Neighbouring n are 1/q apart in frequency, more than the two
 /// resolutions (2/span) the test spans when q < span/2, so then at most
 /// one fits. A q nearer the span can fit two, and then no n is told, as
@@ -975,6 +975,13 @@ pub fn harmonic_offset(period_s: f64, resolution_s: f64, n: u8, of_s: f64) -> f6
 fn label_harmonics(components: &mut [Component]) {
     let found: Vec<f64> = components.iter().map(|c| c.period_s).collect();
     for c in components.iter_mut() {
+        // A line at a train wheel's period is that wheel's line, never a
+        // harmonic of another: the 5 s escape wheel is a 30 s cycle's 6th
+        // on DD3235, and labelled so it left the pane (Norm).
+        if c.wheel.is_some() {
+            c.harmonic_of = None;
+            continue;
+        }
         let (p, res) = (c.period_s, c.resolution_s);
         let mut fits = (2..=8u8).flat_map(|n| {
             found
