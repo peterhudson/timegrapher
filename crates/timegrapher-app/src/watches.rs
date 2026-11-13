@@ -1945,10 +1945,11 @@ fn lift_row(ui: &mut egui::Ui, w: &mut Watch, given: FromCalibre) {
                         .range(timegrapher_core::input_domain::LIFT_RANGE_DEG)
                         .suffix("°"),
                 );
-                // The field's range keeps it one core takes, and no
-                // calibre gives one here: never refused.
+                // Shown only when the calibre gives none (core's
+                // `Watch::set_lift` refusal can't apply), and the field's
+                // range is core's: the widget's value is taken as it is.
                 if field.changed() {
-                    w.set_lift(lift, given).ok();
+                    w.lift = Some(lift);
                 }
                 if w.lift.is_none() {
                     ui.label(RichText::new("(default)").color(theme::pal(ui).text_tertiary));
@@ -1977,21 +1978,17 @@ fn bph_row(ui: &mut egui::Ui, w: &mut Watch, given: FromCalibre) {
                 ui.label(format!("{b} bph from the calibre"))
                     .on_hover_text(FROM_CALIBRE);
             }
+            // Shown only when the calibre gives none, offering the
+            // standard rates: core's `Watch::set_bph` refusal can't apply.
             None => {
-                let mut bph = w.bph;
                 egui::ComboBox::from_id_salt("form bph")
-                    .selected_text(bph.map_or("Auto".to_string(), |b| format!("{b} bph")))
+                    .selected_text(w.bph.map_or("Auto".to_string(), |b| format!("{b} bph")))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut bph, None, "Auto");
+                        ui.selectable_value(&mut w.bph, None, "Auto");
                         for b in timegrapher_core::beats::STANDARD_BPH {
-                            ui.selectable_value(&mut bph, Some(b), format!("{b} bph"));
+                            ui.selectable_value(&mut w.bph, Some(b), format!("{b} bph"));
                         }
                     });
-                // Only the standard rates are offered, and no calibre
-                // gives one here: never refused.
-                if bph != w.bph {
-                    w.set_bph(bph, given).ok();
-                }
             }
         },
     );
