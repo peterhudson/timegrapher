@@ -17,13 +17,9 @@ pub(super) fn save_marks_to_take(
     positions: Option<&Entries>,
     recorded: &[RecordedPosition],
 ) -> Result<PathBuf, String> {
-    let dir = if path.is_dir() {
-        path.to_path_buf()
-    } else {
-        path.parent()
-            .ok_or_else(|| format!("{} has no folder", path.display()))?
-            .to_path_buf()
-    };
+    let dir = take_dir(path)
+        .ok_or_else(|| format!("{} has no folder", path.display()))?
+        .to_path_buf();
     let file = dir.join(MANIFEST);
     let text = timegrapher_core::recorder::read_settled(&file)
         .map_err(|e| format!("{}: {e}", file.display()))?;

@@ -64,6 +64,7 @@ pub mod stream;
 pub mod synth;
 pub mod take;
 pub mod take_context;
+pub mod take_path;
 pub mod timefreq;
 pub mod timing;
 pub mod twostate;
