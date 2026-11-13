@@ -859,7 +859,9 @@ fn sized_shape(profile: &[f64], harmonics: usize, keep: &dyn Fn(usize, f64) -> b
 /// the 1% bar of the χ² with 2 degrees of freedom its two coefficients
 /// would make in noise alone. That noise is the AR(1) noise's power at the
 /// harmonic's frequency, ρ and σ read from `resid` (one noise model), each
-/// coefficient's share 2/n of it, times π/2 for the fold's medians. The
+/// coefficient's share 2/n of it, times π/2, the share a median's
+/// coefficient would carry: kept since the shape became least-squares
+/// sines, which makes the bar conservative. The
 /// search can sum 8 harmonics to find a period while the shape drawn from
 /// them is mostly noise: a 225 s rate cycle folded over 2.6 cycles swung
 /// 29 s/d with 8 harmonics against 11 with the fundamental alone (#761).
@@ -991,6 +993,10 @@ fn label_harmonics(components: &mut [Component]) {
 pub struct SeriesReport {
     pub grid: Grid,
     pub detrended: Grid,
+    /// Where each piece of `grid` after a break starts (grid indices):
+    /// no detrend window reaches across one ([`detrend_pieces`]).
+    #[serde(skip)]
+    pub starts: Vec<usize>,
     /// The first search, before any component was subtracted.
     pub search: Search,
     pub components: Vec<Component>,
@@ -1131,13 +1137,14 @@ fn analyse_as(
     // periods beside it score as lines: on a steady AR(1) rate a 306 s
     // wander's subtraction lifted an 11.8 s line to 16 (Norm).
     let mut kept: Option<null::Levelling> = None;
+    let detrend_w = detrend_window(g, cfg.detrend_s).map(|w| w as f64 * g.step);
     if max_p > min_p && total_var > 0.0 {
         for _ in 0..cfg.max_components {
             let band = Band {
                 min_p,
                 max_p,
                 false_alarm: cfg.false_alarm,
-                detrend_w: detrend_window(g, cfg.detrend_s).map(|w| w as f64 * g.step),
+                detrend_w,
                 model,
                 given: given.or(kept.as_ref()),
             };
@@ -1162,14 +1169,12 @@ fn analyse_as(
             let bins = fold_bins(period, g.step);
             let period = refined(&work, period, bins, span);
             let explained = explained_at(&work, period, bins) / total_var;
-            let f = fold(&work, period, bins);
-            let kept_h = kept_harmonics(period, harmonics, span);
-            work = without_cycle(&work, period, kept_h);
+            let shape;
+            (work, shape) = take_out(&work, period, bins, harmonics, &cfg.wheels, detrend_w);
             if model == NullModel::Readings && explained < cfg.min_explained {
                 continue;
             }
             let explained = explained.min(1.0);
-            let shape = sized_shape(&f.profile, kept_h, &harmonic_shows(&work, period));
             if model == NullModel::Timing && rate_swing(&shape, period) < MIN_RATE_SWING_S_PER_DAY {
                 continue;
             }
@@ -1216,6 +1221,7 @@ fn analyse_as(
     SeriesReport {
         grid: g.clone(),
         detrended,
+        starts: starts.to_vec(),
         search,
         components,
     }
@@ -1244,7 +1250,8 @@ fn misfit_without(
     let w = detrend_window(detrended, cfg.detrend_s).map(|w| w as f64 * detrended.step);
     let removed = distinct_lines(removed, span);
     let rest = without_lines(detrended, &removed);
-    let more = standing_harmonics(&spectrum(&rest, w), components, kept, detrended.step);
+    let cycles: Vec<(f64, usize)> = components.iter().map(|c| (c.period_s, kept(c))).collect();
+    let more = standing_harmonics(&spectrum(&rest, w), &cycles, detrended.step);
     let more = extra_lines(more, &removed, span);
     let rest = if more.is_empty() {
         rest
@@ -1252,6 +1259,65 @@ fn misfit_without(
         without_lines(detrended, &[removed.as_slice(), &more].concat())
     };
     timing_fit_of(&rest, &spectrum(&rest, w), w, &removed, &more)
+}
+
+/// A found cycle at `period` taken out of `work`, and its shape: its
+/// kept harmonics ([`kept_harmonics`]) less any that is a wheel of the
+/// train ([`wheel_harmonic`]), each beyond the first shown only where it
+/// stands out of the noise. That noise is read with every harmonic the
+/// search can sum taken out, so another line at one of them (a 40 s line
+/// at a 240 s cycle's 6th) is not read as noise (Norm). The shape is the
+/// least-squares sines the removal takes off, read at each phase bin's
+/// middle, so one fit gives both the size and the removal. The removal
+/// also takes the cycle's further harmonics that stand out of the
+/// spectrum, as the misfit does ([`standing_harmonics`]), short of a
+/// wheel's: a pulse of 8 s every minute left its 9th harmonic, 6.7 s, to
+/// be named as a cycle of its own, where the fold's staircase took it.
+fn take_out(
+    work: &Grid,
+    period: f64,
+    bins: usize,
+    harmonics: u8,
+    wheels: &[Wheel],
+    detrend_w: Option<f64>,
+) -> (Grid, Vec<f64>) {
+    let span = work.span();
+    let kept = kept_harmonics(period, harmonics, span);
+    let wheel_h = |h: usize| wheel_harmonic(wheels, period, h, span);
+    let own: Vec<usize> = (1..=kept).filter(|&h| !wheel_h(h)).collect();
+    let all: Vec<usize> = (1..=MAX_HARMONICS).collect();
+    let shows = harmonic_shows(&without_cycle(work, period, &all), period);
+    let periods: Vec<f64> = own.iter().map(|&h| period / h as f64).collect();
+    let mean = crate::dsp::mean_of(work.y.iter().copied().filter(|v| v.is_finite()));
+    let mut shape = vec![mean.unwrap_or(f64::NAN); bins];
+    if let Some(b) = sines_fit(work, &periods) {
+        for (j, &h) in own.iter().enumerate() {
+            let (c, s) = (b[1 + 2 * j], b[2 + 2 * j]);
+            if h > 1 && !shows(h, c * c + s * s) {
+                continue;
+            }
+            for (i, o) in shape.iter_mut().enumerate() {
+                let t = (i as f64 + 0.5) * period / bins as f64;
+                let (sin, cos) = (std::f64::consts::TAU * t / periods[j]).sin_cos();
+                *o += c * cos + s * sin;
+            }
+        }
+    }
+    let lines: Vec<f64> = own.iter().map(|&h| h as f64 / period).collect();
+    let rest = without_lines(work, &lines);
+    let more = standing_harmonics(&spectrum(&rest, detrend_w), &[(period, kept)], work.step);
+    let more: Vec<f64> = extra_lines(more, &lines, span)
+        .into_iter()
+        .filter(|&f| wheel_of(wheels, 1.0 / f, 1.0 / (f * f * span)).0.is_none())
+        .collect();
+    if more.is_empty() {
+        (rest, shape)
+    } else {
+        (
+            without_lines(work, &[lines.as_slice(), &more].concat()),
+            shape,
+        )
+    }
 }
 
 /// The harmonics of a cycle at `period` the search sums (`harmonics`),
@@ -1267,18 +1333,32 @@ fn cycle_lines(period: f64, kept: usize) -> impl Iterator<Item = f64> {
     (1..=kept).map(move |h| h as f64 / period)
 }
 
-/// `g` less a found cycle: its first `kept` harmonics as least-squares
-/// sines ([`without_lines`]), the one removal the search and the timing
-/// misfit share. The fold is for the shape and raster only. Taken off as
+/// `g` less a found cycle: its `harmonics` as least-squares sines
+/// ([`without_lines`]), the one removal the search and the timing misfit
+/// share. The fold is for the shape and raster only. Taken off as
 /// a fold, a staircase of median per phase bin, a wander that slopes the
 /// timing steeply within each bin leaves a sawtooth at the bin rate,
 /// periodic at the cycle, whose sharp harmonics the next search named: on
 /// a steady AR(1) rate (30 min, ρ 0.7, seed 23) a 306.6 s wander's fold
 /// left 11.0 s at significance 19.1 and 11.8 s at 16.1; with sines the
 /// best was 0.9 (Norm).
-fn without_cycle(g: &Grid, period: f64, kept: usize) -> Grid {
-    let lines: Vec<f64> = cycle_lines(period, kept).collect();
+fn without_cycle(g: &Grid, period: f64, harmonics: &[usize]) -> Grid {
+    let lines: Vec<f64> = harmonics.iter().map(|&h| h as f64 / period).collect();
     without_lines(g, &lines)
+}
+
+/// The most harmonics a search sums.
+const MAX_HARMONICS: usize = HARMONICS[HARMONICS.len() - 1];
+
+/// Whether harmonic `h` (above the first) of a cycle at `period` is a
+/// wheel of the take's train ([`wheel_of`], its tolerance): then it is
+/// that wheel's line, not part of the cycle's shape or size. A 30 s cycle
+/// on DD3235's 30 min take carried the escape wheel's 5 s as its 6th
+/// harmonic and read 20 s/d, where its own harmonics give 9 (Norm). With
+/// no train, nothing is a wheel.
+fn wheel_harmonic(wheels: &[Wheel], period: f64, h: usize, span: f64) -> bool {
+    let p = period / h as f64;
+    h > 1 && wheel_of(wheels, p, p * p / span).0.is_some()
 }
 
 /// `lines`, Hz, sorted, keeping one of any two within half a resolution
@@ -1317,24 +1397,19 @@ fn without_lines(g: &Grid, lines: &[f64]) -> Grid {
 /// further harmonics past the bar [`standing_harmonics`] sets.
 const EXTRA_LINE_P: f64 = 0.01;
 
-/// The harmonics of each component past its `kept` ones, up to the
-/// Nyquist frequency, whose power in `sp` stands past the level noise
+/// The harmonics of each cycle `(period, kept)` past its `kept` ones, up
+/// to the Nyquist frequency, whose power in `sp` stands past the level noise
 /// passes with the chance [`EXTRA_LINE_P`] over all those tried: an
 /// exponential's tail over the mean, read as the median over ±16
 /// independent bins (the median of an exponential is its mean times ln 2).
-fn standing_harmonics(
-    sp: &Spectrum,
-    components: &[Component],
-    kept: impl Fn(&Component) -> usize,
-    step: f64,
-) -> Vec<f64> {
+fn standing_harmonics(sp: &Spectrum, cycles: &[(f64, usize)], step: f64) -> Vec<f64> {
     let span = 16 * sp.pad;
     let nyquist = 0.5 / step;
-    let tried: Vec<f64> = components
+    let tried: Vec<f64> = cycles
         .iter()
-        .flat_map(|c| {
-            let top = (nyquist * c.period_s) as usize;
-            (kept(c) + 1..=top).map(move |h| h as f64 / c.period_s)
+        .flat_map(|&(p, kept)| {
+            let top = (nyquist * p) as usize;
+            (kept + 1..=top).map(move |h| h as f64 / p)
         })
         .collect();
     let bar = (tried.len().max(1) as f64 / EXTRA_LINE_P).ln();
@@ -1702,12 +1777,11 @@ mod tests {
                 rho: 0.0,
             }
         };
-        let kept = |c: &Component| c.harmonics as usize;
-        let cs = std::slice::from_ref(&c);
-        let found = standing_harmonics(&sp(&[(3, 10.0), (5, 6.0)]), cs, kept, 1.0);
+        let cs = [(c.period_s, c.harmonics as usize)];
+        let found = standing_harmonics(&sp(&[(3, 10.0), (5, 6.0)]), &cs, 1.0);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!((found[0] - 3.0 / 60.0).abs() < 1e-12, "{found:?}");
-        assert!(standing_harmonics(&sp(&[]), cs, kept, 1.0).is_empty());
+        assert!(standing_harmonics(&sp(&[]), &cs, 1.0).is_empty());
     }
 
     /// A timing take with a cycle reads its misfit limit at the mix fitted

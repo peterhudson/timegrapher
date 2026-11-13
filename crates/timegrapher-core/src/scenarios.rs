@@ -691,12 +691,15 @@ mod tests {
     /// names something on 20 of 300 (18 before the tiling), missing the
     /// target before and after (#1195), 2 h at ρ 0.7 on 3 of 300 (2
     /// before), and 30 min at ρ 0.7 on 13 of 300 (6 of the first 100, as
-    /// before the tiling).
+    /// before the tiling). Peter raised 30 min at ρ 0.7 to 15 of 300, the
+    /// pane's 5% target, on 2026-11-13 ("Raise it to 15 (5% target)",
+    /// #1601): with the sloped timing detrend it names 14, the extra being
+    /// chance first lines on a slow wander, and 12 and 10 on fresh seeds.
     #[test]
     fn a_steady_watch_with_red_noise_names_little_on_the_whole_pane() {
         red_pane_within_of(&[
             (1800.0, 0.0, 300, 20),
-            (1800.0, 0.7, 300, 13),
+            (1800.0, 0.7, 300, 15),
             (7200.0, 0.7, 300, 3),
         ]);
         red_pane_within(&[
