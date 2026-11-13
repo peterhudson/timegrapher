@@ -133,6 +133,15 @@ pub fn unit_after(unit: &str) -> (&'static str, &str) {
 }
 
 impl SeriesKind {
+    /// The name as a title, a column head or a plot writes it: "Rate",
+    /// "Amplitude", "Beat Error".
+    pub fn title(self) -> &'static str {
+        match self {
+            SeriesKind::Rate => "Rate",
+            SeriesKind::Amplitude => "Amplitude",
+            SeriesKind::BeatError => "Beat Error",
+        }
+    }
     pub fn name(self) -> &'static str {
         match self {
             SeriesKind::Rate => "rate",

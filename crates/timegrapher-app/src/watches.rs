@@ -1507,6 +1507,14 @@ fn fit_text(
     format!("{}…", chars[..n].iter().collect::<String>().trim_end())
 }
 
+/// Which engine read a take's kept reading, for its hover (#1521, Hugh):
+/// "Read by Timegrapher 1.0.1, engine 3fa2b9c1". Core reads a reading
+/// kept by another engine again, so a kept reading is always this one's.
+fn engine_line() -> String {
+    let (version, source) = timegrapher_core::library::engine();
+    format!("Read by Timegrapher {version}, engine {source}")
+}
+
 /// A take's row as its hover says it: the take, its figures, where its
 /// reading is, and what a click does. `count` is the positions test's
 /// count of positions, where it is one.
@@ -1530,7 +1538,8 @@ fn take_hover(
         Some(TakeReading::Read(Err(why))) => figures.push_str(&format!(
             "\n\nRate, Amplitude and Beat Error: the take couldn't be read: {why}"
         )),
-        _ => {}
+        Some(TakeReading::Read(Ok(_))) => figures.push_str(&format!("\n\n{}", engine_line())),
+        None => {}
     }
     // Where a start not recorded in the take comes from, or that it is
     // unknown (#1272).
@@ -2693,6 +2702,61 @@ mod tests {
         );
         assert!(t.mean_rate.is_some());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A take's hover names the engine that read its kept reading, and
+    /// says nothing of an engine while it is being read or couldn't be
+    /// (#1521, Hugh).
+    #[test]
+    fn a_takes_hover_names_the_engine_that_read_it() {
+        let (version, source) = timegrapher_core::library::engine();
+        let line = format!("Read by Timegrapher {version}, engine {source}");
+        assert_eq!(engine_line(), line);
+        let take = Take {
+            name: "test".into(),
+            bytes: 0,
+            audio: true,
+            incomplete: false,
+            started_utc: None,
+            named_start: None,
+            duration_s: None,
+            positions: Vec::new(),
+            at_end: None,
+            power_reserve: None,
+        };
+        let dir = PathBuf::from("watch/test");
+        let read = Reading {
+            position: Some("DU".into()),
+            rate_s_per_day: Some(3.5),
+            calibrated: false,
+            amplitude_deg: Some(281.0),
+            beat_error_ms: Some(0.4),
+            beat_error_source: None,
+            caveats: Vec::new(),
+            watch_heard: true,
+        };
+        let hover = |state: TakeReading| {
+            let readings = TakeReadings::known([(dir.clone(), 0, state)]);
+            let cx = TakesContext {
+                others: &[],
+                writable: true,
+                keeping: None,
+                unsorted: false,
+                picked: None,
+                on_show: None,
+                readings: &readings,
+            };
+            take_hover(&take, &cx, &dir, None, readings.reading(&dir))
+        };
+        let kept = hover(TakeReading::Read(Ok(read.clone())));
+        assert!(kept.contains(&format!("\n\n{line}\n\n")), "{kept}");
+        for state in [
+            TakeReading::Reading,
+            TakeReading::Read(Err("no beats".into())),
+        ] {
+            let h = hover(state);
+            assert!(!h.contains("Read by Timegrapher"), "{h}");
+        }
     }
 
     /// The row's hover says how many positions a test's figures are the

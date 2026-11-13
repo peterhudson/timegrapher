@@ -798,6 +798,8 @@ fn settle_word(painter: &egui::Painter, seg: Rect, horizontal: bool) {
 /// of the faint text colour.
 const MEASURED_SHADE: f32 = 0.16;
 const SETTLING_SHADE: f32 = 0.07;
+/// A settling's shade as a share of a measured stretch's, for other tracks.
+pub(crate) const SETTLE_OF_MEASURED: f32 = SETTLING_SHADE / MEASURED_SHADE;
 /// The phase name [`paint_phase`] takes for a measured stretch.
 const MEASURED: &str = "Measured";
 

@@ -50,6 +50,8 @@ use charts::chart_key;
 pub use charts::{lane_text, lane_width, paint_key, LANE_AFTER_TITLE, LANE_GAP};
 pub use poise_pane::PoiseView;
 pub use position::Position;
+mod complication_pane;
+use new_take::{NewTake, NEW_TAKES};
 mod dialogs;
 mod distributions;
 mod dock;
@@ -59,6 +61,7 @@ mod listen_card;
 pub(crate) mod mac_menu;
 mod masks;
 mod menus;
+mod new_take;
 mod pane_export;
 mod pane_room;
 mod paper_strip;
@@ -75,6 +78,7 @@ mod settings_pane;
 mod steadiness_panes;
 mod take_io;
 mod take_reads;
+mod test_body;
 mod watches_pane;
 
 use dock::PaneBehavior;
@@ -203,36 +207,6 @@ use timegrapher_core::analysis_take;
 use timegrapher_core::recorder::{self, Recorder, SavedCopy, SessionInfo};
 use timegrapher_core::session::{self as core_session, Manifest, RecordedPosition, RecordingEntry};
 use timegrapher_core::stream::BeatLog;
-
-/// The kinds of take New Take starts for the watch picked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NewTake {
-    Listen,
-    Positions,
-    Poise,
-    PowerReserve,
-}
-
-impl NewTake {
-    /// A test's name; Listen's is its button's.
-    fn name(self) -> &'static str {
-        match self {
-            NewTake::Listen => "Listen",
-            NewTake::Positions => guided::Kind::Positions.name(),
-            NewTake::Poise => guided::Kind::Poise.name(),
-            NewTake::PowerReserve => "Power Reserve Test",
-        }
-    }
-
-    /// The guided test this is, if it is one.
-    fn guided(self) -> Option<guided::Kind> {
-        match self {
-            NewTake::Positions => Some(guided::Kind::Positions),
-            NewTake::Poise => Some(guided::Kind::Poise),
-            _ => None,
-        }
-    }
-}
 
 /// Open Recording… or Open Folder…, asked before anything is read: add
 /// the recording to a watch, with what its files don't say filled in, or
@@ -580,14 +554,16 @@ pub enum Pane {
     Isochronism,
     PositionsTest,
     DynamicPoise,
+    Complication,
     PowerReserve,
 }
 
 impl Pane {
     /// Every pane, in the order the Panes list shows them.
-    const ALL: [Pane; 18] = [
+    const ALL: [Pane; 19] = [
         Pane::PositionsTest,
         Pane::DynamicPoise,
+        Pane::Complication,
         Pane::PowerReserve,
         Pane::Strip,
         Pane::Sound,
@@ -635,7 +611,12 @@ impl Pane {
         Pane::SteadyWavelet,
         Pane::Isochronism,
     ];
-    const TESTS: [Pane; 3] = [Pane::PositionsTest, Pane::DynamicPoise, Pane::PowerReserve];
+    const TESTS: [Pane; 4] = [
+        Pane::PositionsTest,
+        Pane::DynamicPoise,
+        Pane::Complication,
+        Pane::PowerReserve,
+    ];
 
     fn title(self) -> &'static str {
         match self {
@@ -657,6 +638,7 @@ impl Pane {
             Pane::Isochronism => "Isochronism",
             Pane::PositionsTest => "Positions Test",
             Pane::DynamicPoise => "Dynamic Poise",
+            Pane::Complication => "Complication",
             Pane::PowerReserve => "Power Reserve",
         }
     }
@@ -666,7 +648,8 @@ impl Pane {
         match self {
             Pane::Watch => {
                 "Your watches and their takes: pick a watch to start Listen, a Positions \
-                 Test, a Dynamic Poise Test or a Power Reserve Test, or open one of its takes"
+                 Test, a Dynamic Poise Test, a Complication Test or a Power Reserve Test, or \
+                 open one of its takes"
             }
             Pane::Strip => "The beats as dots on a paper strip, like a printing timegrapher",
             Pane::Sound => "The typical tick and tock sound, with the edges the readings come from",
@@ -709,6 +692,11 @@ impl Pane {
                 "The eight upright positions, 45° apart, settled and measured in turn: the \
                  once-round wave in the rate as the watch turns, and where the balance's heavy \
                  spot is"
+            }
+            Pane::Complication => {
+                "One position with a complication off, on, then off again, settled and \
+                 measured in turn: how much it lowers the amplitude and moves the rate and \
+                 beat error"
             }
             Pane::PowerReserve => {
                 "The watch wound fully and listened to in one position until it stops: how \
@@ -758,6 +746,7 @@ fn pane_icon(pane: Pane) -> theme::Icon {
         Pane::Isochronism => Icon::Isochronism,
         Pane::PositionsTest => Icon::Positions,
         Pane::DynamicPoise => Icon::Poise,
+        Pane::Complication => Icon::Complication,
         Pane::PowerReserve => Icon::Reserve,
         Pane::Charts => Icon::Charts,
         Pane::Distributions => Icon::Distributions,
@@ -841,31 +830,6 @@ const KEEP_HEARD_HINT: &str = "Keep this take in this watch: listening goes on, 
 const POSITIONS_TAKE_PAINT: &str = "A Positions Test sets its own positions; paint a Listen take.";
 /// The hover on a test's setting it can't change while it runs.
 const FIXED_IN_TEST: &str = "Fixed while the test runs.";
-const NEW_TAKES: [(NewTake, &str, &str); 4] = [
-    (
-        NewTake::Listen,
-        "Listen",
-        "Listen to the watch in the position on the {card} card, for as long as you like; \
-         Stop saves the take into the watch",
-    ),
-    (
-        NewTake::Positions,
-        "Positions Test",
-        "The six positions one after another, settled and measured in turn, saved into the \
-         watch",
-    ),
-    (
-        NewTake::Poise,
-        "Dynamic Poise Test",
-        "The eight upright positions, 45° apart, settled and measured in turn: the rate's \
-         once-round wave and the balance's heavy spot, saved into the watch",
-    ),
-    (
-        NewTake::PowerReserve,
-        "Power Reserve Test",
-        "Wind the watch fully and listen in one position until it stops, saved into the watch",
-    ),
-];
 const NEW_SESSION_HINT: &str = "Clear everything and start again with the next watch or position. \
      Listening carries on into the new session, unless closing the kept sound fails. Unsaved \
      sound is asked about first, except a Quick Listen's, which goes without a question.";
@@ -919,6 +883,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
     let isochronism = tiles.insert_pane(Pane::Isochronism);
     let positions = tiles.insert_pane(Pane::PositionsTest);
     let poise = tiles.insert_pane(Pane::DynamicPoise);
+    let complication = tiles.insert_pane(Pane::Complication);
     let reserve = tiles.insert_pane(Pane::PowerReserve);
     if let Some(egui_tiles::Tile::Container(c)) = tiles.get_mut(sound) {
         c.add_child(scope);
@@ -930,6 +895,7 @@ fn default_layout(horizontal: bool) -> Tree<Pane> {
         c.add_child(isochronism);
         c.add_child(positions);
         c.add_child(poise);
+        c.add_child(complication);
         c.add_child(reserve);
     }
     // The strip across the middle and the profile across the bottom, with
@@ -1258,6 +1224,10 @@ fn upgraded_layout(mut p: Tree<Pane>) -> Tree<Pane> {
     if p.tiles.find_pane(&Pane::DynamicPoise).is_none() {
         add_missing(&mut p, Pane::DynamicPoise);
         set_pane_visible(&mut p.tiles, Pane::DynamicPoise, false);
+    }
+    if p.tiles.find_pane(&Pane::Complication).is_none() {
+        add_missing(&mut p, Pane::Complication);
+        set_pane_visible(&mut p.tiles, Pane::Complication, false);
     }
     if p.tiles.find_pane(&Pane::PowerReserve).is_none() {
         add_missing(&mut p, Pane::PowerReserve);
@@ -1947,6 +1917,8 @@ pub struct TimegrapherApp {
     /// The Dynamic Poise pane's view, and whether its Info panel shows.
     poise_view: PoiseView,
     poise_info: bool,
+    /// Whether the Complication pane's Info panel shows.
+    complication_info: bool,
     guided_settle_s: f64,
     guided_measure_s: f64,
     /// Look for a newer release each time the app starts.
@@ -2368,6 +2340,7 @@ impl TimegrapherApp {
             ten_positions: self.ten_positions,
             poise_view: self.poise_view,
             poise_info: self.poise_info,
+            complication_info: self.complication_info,
             positions_measure_s: self.guided_measure_s,
             scope: self.scope_view,
             panes: Some(self.panes.clone()),
@@ -2430,6 +2403,7 @@ impl TimegrapherApp {
             ten_positions,
             poise_view,
             poise_info,
+            complication_info,
             scope,
             panes,
             panes_dragged,
@@ -2455,8 +2429,8 @@ impl TimegrapherApp {
         self.settings_last = Tab::from_key(&settings_section);
         (self.listen_at_open, self.ten_positions) = (listen_at_open, ten_positions);
         (self.poise_view, self.poise_info) = (poise_view, poise_info);
+        (self.complication_info, self.agc_on) = (complication_info, agc_on);
         (self.mic_set_up, self.setup_declined) = (mic_set_up, setup_declined);
-        self.agc_on = agc_on;
         // A layout from before the panes moved starts afresh.
         let panes = panes.filter(|_| layout >= LAYOUT);
         self.library_dir = library;
@@ -2482,9 +2456,8 @@ impl TimegrapherApp {
         self.chart_series = some(chart_series);
         self.dist_series = some(dist_series);
         (self.hist_cumulative, self.reserve_info) = (hist_cumulative, reserve_info);
-        self.positions_info = positions_info;
+        (self.positions_info, self.sound_opts) = (positions_info, sound);
         (self.hist_readings, self.iso_view) = (hist_readings, iso_view);
-        self.sound_opts = sound;
         self.folded = folded.into_iter().collect();
         self.theme = theme;
         (self.periods_db, self.fft_timing) = (periods_db, fft_timing);
@@ -2580,6 +2553,7 @@ impl TimegrapherApp {
             ten_positions: false,
             poise_view: PoiseView::default(),
             poise_info: false,
+            complication_info: false,
             guided_measure_s: guided::MEASURE_S,
             check_at_start: true,
             keep_awake: true,
@@ -3124,6 +3098,7 @@ impl TimegrapherApp {
             }),
             Pane::PositionsTest => self.positions_tools(ui, title),
             Pane::DynamicPoise => self.poise_tools(ui, title),
+            Pane::Complication => self.complication_tools(ui, title),
             Pane::PowerReserve => self.reserve_toolbar(ui, title),
             Pane::Distributions => theme::pane_toolbar(ui, title, &help::HISTOGRAMS, |ui| {
                 steady::series_switches(ui, &mut self.dist_series);
@@ -3183,13 +3158,9 @@ impl TimegrapherApp {
         } else if let Some(t) = self.guided.as_ref().filter(|_| self.test_listening()) {
             let of = t.order().len();
             let step = (t.step + 1).min(of);
-            let kind = match t.kind {
-                guided::Kind::Positions => NewTake::Positions,
-                guided::Kind::Poise => NewTake::Poise,
-            };
             Some((
-                kind,
-                format!("{}, {step} of {of}", t.kind.code(t.position())),
+                NewTake::of(t.kind),
+                format!("{}, {step} of {of}", t.step_code(t.step.min(of - 1))),
             ))
         } else {
             None
@@ -3434,6 +3405,7 @@ impl TimegrapherApp {
             | Pane::Strip
             | Pane::PositionsTest
             | Pane::DynamicPoise
+            | Pane::Complication
             | Pane::PowerReserve => return false,
             // A map's key sits under its picture.
             Pane::SteadyStft | Pane::SteadyWavelet => crate::tfmap::KEY_H,
@@ -4586,6 +4558,9 @@ mod keep_tests;
 #[path = "app_positions_tests.rs"]
 mod positions_tests;
 
+#[cfg(test)]
+#[path = "app_complication_tests.rs"]
+mod complication_tests;
 #[cfg(test)]
 #[path = "app_poise_tests.rs"]
 mod poise_tests;

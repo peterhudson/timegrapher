@@ -442,6 +442,17 @@ fn take_out_step(x: &mut [f64]) {
     }
 }
 
+/// How many standard errors clear of zero a figure must stand before a
+/// direction is named in words: the guide's 2 SE. The poise wave and the
+/// complication test's On less Off both read it.
+pub const CLEAR_SE: f64 = 2.0;
+
+/// Whether `value` stands clear of zero by [`CLEAR_SE`] of its ± `se`,
+/// either way. A value with no ±, or a ± that isn't finite, never does.
+pub fn clear_of_zero(value: f64, se: Option<f64>) -> bool {
+    se.is_some_and(|se| se.is_finite() && value.abs() - CLEAR_SE * se > 0.0)
+}
+
 /// The fewest values [`standard_error`] gives a figure from.
 pub const MIN_VALUES: usize = 3;
 

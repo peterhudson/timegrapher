@@ -224,8 +224,8 @@ pub static POSITION: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
      readings, profile, distributions and Steadiness then use only this position's beats."
             .into(),
         format!(
-            "- The settling after a move, the Positions Test pane's Settle ({SETTLE_S:.0} s \
-     unless set), is left out of the readings. A saved take notes each position."
+            "- The settling after a move, the guided tests' Settle ({SETTLE_S:.0} s unless \
+     set), is left out of the readings. A saved take notes each position."
         ),
     ])
 });
@@ -543,6 +543,44 @@ pub static DYNAMIC_POISE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     ])
 });
 
+pub static COMPLICATION: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    use timegrapher_core::complication::DIFFERENCE_NAME;
+    worded(vec![
+        "Measures the watch in one position with a complication, such as a chronograph, off, \
+     then on, then off again: how much it lowers the amplitude and moves the rate and beat \
+     error."
+            .into(),
+        "## Steps".into(),
+        "1. Put the watch in the position you want and set the Current Position card to it. \
+     New Test sets the test up on a clear Bench; Start Test on the Listen card starts it."
+            .into(),
+        "2. The first stretch has the complication off. The banner says when to turn it on, \
+     then off again, and you press Start On Measurement, then Start Off Measurement."
+            .into(),
+        "3. Each settles and is measured for the times under Settle and Each Stretch, which \
+     every guided test shares."
+            .into(),
+        "## What It Shows".into(),
+        format!(
+            "- The table gives each stretch's amplitude, rate and beat error, then \
+     {DIFFERENCE_NAME}: the On stretch less the two Offs either side of it."
+        ),
+        "- Amplitude comes first: the drop in amplitude is usually what you are checking.".into(),
+        "- The plots give each stretch at its middle, with its ±, on one time axis. The dashed \
+     line joins the two Offs, and the ring is where On would sit with the complication off."
+            .into(),
+        "- Each plot's title gives its finding in words. A change is named only when it is \
+     clear of zero by twice its ±."
+            .into(),
+        "## Controls".into(),
+        "- Info: how the difference and its ± are worked out.".into(),
+        "## Saving".into(),
+        "- Copy writes the watch, its calibre, the table and the findings, with tabs between \
+     the columns for a spreadsheet."
+            .into(),
+    ])
+});
+
 pub static ISOCHRONISM: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     worded(vec![
         "How the rate changes with the amplitude as the mainspring lets down: a watch whose \
@@ -801,6 +839,7 @@ mod tests {
             ("SCOPE", own(SCOPE)),
             ("POSITIONS_TEST", own(&POSITIONS_TEST)),
             ("DYNAMIC_POISE", own(&DYNAMIC_POISE)),
+            ("COMPLICATION", own(&COMPLICATION)),
             ("ISOCHRONISM", own(&ISOCHRONISM)),
             ("HISTOGRAMS", own(&HISTOGRAMS)),
             ("power_reserve", power_reserve("Current Position")),

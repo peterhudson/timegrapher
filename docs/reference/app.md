@@ -35,7 +35,7 @@ Cmd+O on a Mac), Open Folder…, Save… or Save Again (Ctrl+S), Save As…
 and **Watches** (Ctrl+2); then ticks for **Readings**, **Compact
 Readings** (below), the Paper Strip, the Tick Tock Profile and the Scope,
 an **Analysis** submenu with a tick for each Analysis pane, ticks for
-**Positions Test**, **Dynamic Poise** and **Power Reserve**, and Reset Panes. All but
+**Positions Test**, **Dynamic Poise**, **Complication** and **Power Reserve**, and Reset Panes. All but
 Bench and Watches are dimmed in Watches, as the panes are the Bench's.
 **Watches**: **New Watch…**, **Find in Watches…**, which shows the
 Watches view's list with its search ready to type in. Going back to
@@ -52,7 +52,7 @@ In Watches the pane icons hide and leave their room, so the gear stays
 exactly where it is on the Bench.
 The icons come in groups: the core panes first (the Paper
 Strip, the Tick Tock Profile and the Scope), then **Analysis** (Charts,
-Distributions, the Steadiness views and Isochronism) and **Tests** (the Positions Test, Dynamic Poise and the Power Reserve Test), each
+Distributions, the Steadiness views and Isochronism) and **Tests** (the Positions Test, Dynamic Poise, the Complication Test and the Power Reserve Test), each
 under its name. The window is never smaller than 800 by 600 points, so
 the panes' toolbars and Settings always have room. Where the window is too narrow for every icon, the
 largest groups fold into a menu under their name, with the number of
@@ -60,7 +60,8 @@ their panes showing, until the rest fit.
 Each icon is a small picture with a pun on
 its pane: a pole dancer for the Paper Strip, a stethoscope for the Tick
 Tock Profile, a die showing six for the Positions Test, a Ferris wheel
-for Dynamic Poise (each seat comes to the top in turn), a camel for
+for Dynamic Poise (each seat comes to the top in turn), a light switch
+for the Complication Test (off, on, then off again), a camel for
 Charts (it charts a course across the take, as across a desert), a
 jellyfish for Distributions (its body is called its bell), an Allen key
 for Allan, and so on. A pane showing has its icon in the accent blue on a
@@ -457,8 +458,8 @@ close it). Every setting gives a short hint when the pointer rests on it. Before
 open, the Paper Strip says where to start: **Listen**, on the Listen card,
 listens without picking a watch, and Save keeps what it heard; for a
 watch's history, **Watches** at the top lists your watches, to pick one
-and then Listen, Positions Test, Dynamic Poise Test or Power Reserve
-Test, each take saved
+and then Listen, Positions Test, Dynamic Poise Test, Complication Test
+or Power Reserve Test, each take saved
 into it, or to add one with New Watch…; and recordings and folders open
 from the File menu, analysed all at once. While a recording is being
 analysed the Paper Strip shows how far the analysis has got, in hours of sound and time
@@ -808,6 +809,37 @@ full with its twice-round terms, and core's note on the amplitudes that
 show the heavy spot. Copy writes the watch, the table in the pane's order
 and that sentence. A Dynamic Poise test is not set against a full-wind
 test and keeps no results for 24 hours after.
+
+**Complication.** The Complication pane (#1576), a hidden tab beside the
+Positions Test to begin with, runs the same guided test in one position,
+the one on the Current Position card, with a complication such as a
+chronograph off, then on, then off again. **New Test** in its toolbar, or
+**Complication Test** under New Take in the Watches view, sets it up
+without moving the card; Start Test on the Listen card starts it. The
+toolbar has New Test, then Settle and **Each Stretch**, the same two
+values every guided test shares (a change in one pane changes all), then
+**Copy** and Export…, with **Info** at the right. The banner names each
+stretch ("Complication Off (1 of 3)") and between them says "Turn the
+complication on", with **Start On Measurement**; the strip marks the time
+**Not Used for Complication Test**. The table has a row for each stretch,
+Off, On and Off, with Amplitude first, then Rate and Beat Error, then
+**On less Off** with its ±: core's `complication::change`, the On stretch
+less the two Offs joined in a straight line at its middle (with evenly
+spaced stretches, their mean), so a steady run-down drops out. Beside it,
+or over it on a narrow pane, three plots share one time axis in min:s,
+Amplitude, Rate and Beat Error: each stretch at its middle with its ±,
+the Offs joined dashed, a ring where On would sit with the complication
+off and a bracket from it to On. A track over them names each stretch,
+lighter while it settles. Each plot's title gives core's finding, such
+as "Amplitude · 20 ± 1° lower with the complication on"; a change is
+named only when it is more than twice its ± from zero, else it reads
+"no clear change". A figure with no ± yet (the rate's needs about five
+minutes of take) gets no verdict: "Rate · −10.0 s/d, no ± yet (too few
+readings)". Hovering a point gives its figure. **Info** shows core's
+note on the method and the ±, in short paragraphs. The key under the
+plots drops whole parts, last first, where the pane is narrow; over the
+table, the plots keep a fixed height so the table shows under them.
+Copy writes the watch, the position, the table and the findings.
 
 **Power Reserve.** The Power Reserve pane, a hidden tab beside the
 Positions Test to begin with (its icon a fuel gauge near empty), runs the

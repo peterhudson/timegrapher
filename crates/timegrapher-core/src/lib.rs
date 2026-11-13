@@ -21,6 +21,7 @@ pub mod chart_scale;
 pub mod clean;
 pub mod clock;
 pub mod clockstore;
+pub mod complication;
 pub mod confidence;
 pub mod cores;
 pub mod cusum;

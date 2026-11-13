@@ -71,8 +71,8 @@ pub struct Settings {
     pub steady_info: bool,
     /// Each Steadiness pane's own Info panel.
     pub steady_info_set: Vec<(steady::View, bool)>,
-    /// The Positions Test's settling and measuring in each position,
-    /// seconds.
+    /// The guided tests' settling and measuring in each position or
+    /// stretch, seconds: one pair every guided test shares (#1577).
     pub positions_settle_s: f64,
     pub positions_measure_s: f64,
     /// The Current Position card's 6 | 10: ten offers the four 45° stops
@@ -81,6 +81,8 @@ pub struct Settings {
     /// The Dynamic Poise pane's Plot | Dial, and its Info panel.
     pub poise_view: crate::app::PoiseView,
     pub poise_info: bool,
+    /// The Complication pane's Info panel.
+    pub complication_info: bool,
     pub scope: scope::View,
     pub panes: Option<egui_tiles::Tree<Pane>>,
     /// The rows and columns of `panes` whose divider was dragged by hand.
@@ -189,6 +191,7 @@ impl Default for Settings {
             ten_positions: false,
             poise_view: Default::default(),
             poise_info: false,
+            complication_info: false,
             scope: scope::View::default(),
             panes: None,
             panes_dragged: Vec::new(),

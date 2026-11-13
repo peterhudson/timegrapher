@@ -61,16 +61,15 @@ pub const NULL_BAND_SHARE: f64 = 0.08;
 
 /// How many standard errors clear of zero a once-round amplitude wave must
 /// be to be named, and how far either side of an amplitude the null band
-/// reaches: the guide's 2 SE.
-pub const CLEAR_SE: f64 = 2.0;
+/// reaches: the guide's 2 SE ([`crate::confidence::CLEAR_SE`]).
+pub use crate::confidence::CLEAR_SE;
 /// The two-sided 95% normal quantile, for the angle's interval.
 const Z95: f64 = 1.96;
 
 /// Whether a size stands clear of zero by [`CLEAR_SE`] of its ±: the
 /// gate before any direction is named. A size with no ± never does.
 pub fn clear(size: &Term) -> bool {
-    size.se
-        .is_some_and(|se| se.is_finite() && size.value - CLEAR_SE * se > 0.0)
+    size.value > 0.0 && crate::confidence::clear_of_zero(size.value, size.se)
 }
 
 /// One upright position's figures for the fits.

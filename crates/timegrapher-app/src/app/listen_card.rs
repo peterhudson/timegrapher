@@ -583,12 +583,17 @@ impl TimegrapherApp {
         let name = kind.name();
         let why = self.start_test_why_not();
         let mut hint = if let Some(g) = kind.guided() {
-            let first = g.order()[0];
-            let from = match g {
-                guided::Kind::Positions => first.name(),
-                guided::Kind::Poise => first.label(),
-            };
-            format!("Start the {name}, from {from}")
+            match (g, g.order().first()) {
+                (guided::Kind::Positions, Some(first)) => {
+                    format!("Start the {name}, from {}", first.name())
+                }
+                (_, Some(first)) => format!("Start the {name}, from {}", first.label()),
+                (_, None) => format!(
+                    "Start the {name} in the position on the {} card, with the \
+                     complication off",
+                    self.position_card_title
+                ),
+            }
         } else {
             format!(
                 "Start the {name} in the position on the {} card and run until the watch \
@@ -1273,7 +1278,9 @@ impl TimegrapherApp {
                 self.leave_ready_test();
                 self.start_microphone();
             }
-            NewTake::Positions | NewTake::Poise | NewTake::PowerReserve => self.get_ready(kind),
+            NewTake::Positions | NewTake::Poise | NewTake::Complication | NewTake::PowerReserve => {
+                self.get_ready(kind)
+            }
         }
     }
 
@@ -1295,6 +1302,9 @@ impl TimegrapherApp {
             self.ten_positions = true;
             self.set_position(guided::POISE_ORDER[0]);
             self.reveal_pane(Pane::DynamicPoise);
+        } else if kind == NewTake::Complication {
+            // In the position the card shows: set it there first.
+            self.reveal_pane(Pane::Complication);
         } else {
             self.reveal_pane(Pane::PowerReserve);
         }
@@ -1357,6 +1367,7 @@ impl TimegrapherApp {
         match kind {
             NewTake::Positions => self.start_guided(self.guided_earlier.clone()),
             NewTake::Poise => self.start_poise(),
+            NewTake::Complication => self.start_complication(),
             _ => self.start_reserve_asked(true),
         }
     }

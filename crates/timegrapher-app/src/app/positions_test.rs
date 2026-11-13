@@ -17,17 +17,19 @@ impl TimegrapherApp {
         self.start_guided_test(guided::Kind::Poise, None);
     }
 
+    /// Begin the Complication Test, as the Positions Test begins, in the
+    /// position the card shows, with the complication off.
+    pub(super) fn start_complication(&mut self) {
+        self.start_guided_test(guided::Kind::Complication, None);
+    }
+
     /// Begin the guided test of `kind`; `half` is the Positions Test's
     /// full-wind test for its 24 hour half.
     pub(super) fn start_guided_test(&mut self, kind: guided::Kind, half: Option<guided::FullWind>) {
         // One test to a take: after one, a new take (asking first about
         // sound not saved), never the stopped one carried on.
         if self.guided.is_some() && !self.running() {
-            let again = match kind {
-                guided::Kind::Positions => NewTake::Positions,
-                guided::Kind::Poise => NewTake::Poise,
-            };
-            return self.new_take(again, false);
+            return self.new_take(NewTake::of(kind), false);
         }
         // A test is never Quick Listen: its sound is saved or asked about,
         // not let go, even when it follows Quick Listen or runs on from it.
@@ -47,12 +49,15 @@ impl TimegrapherApp {
         if !self.running() {
             return;
         }
-        let first = kind.order()[0];
-        if self.position != first {
-            self.change_position(first);
+        // The Complication Test stays where the card is.
+        if let Some(&first) = kind.order().first() {
+            if self.position != first {
+                self.change_position(first);
+            }
         }
         let test = match (kind, half) {
             (guided::Kind::Poise, _) => guided::Test::poise(),
+            (guided::Kind::Complication, _) => guided::Test::complication(self.position),
             (_, Some(full)) => guided::Test::after(full),
             (_, None) => guided::Test::new(),
         };
@@ -64,6 +69,7 @@ impl TimegrapherApp {
         self.reveal_pane(match kind {
             guided::Kind::Positions => Pane::PositionsTest,
             guided::Kind::Poise => Pane::DynamicPoise,
+            guided::Kind::Complication => Pane::Complication,
         });
     }
 
@@ -285,7 +291,7 @@ impl TimegrapherApp {
         }
         self.positions_wind(ui, running);
         theme::bar_gap(ui);
-        self.positions_lengths(ui, running);
+        self.positions_lengths(ui, running, "Each Position");
         self.positions_results(ui);
     }
 
@@ -351,13 +357,17 @@ impl TimegrapherApp {
     }
 
     /// The Positions Test settings' Settle and Each Position fields.
-    pub(super) fn positions_lengths(&mut self, ui: &mut egui::Ui, running: bool) {
+    /// The Settle and the measuring time every guided test shares: one
+    /// value each, so a change in one pane changes it in all (Peter, #1577).
+    /// `each` names the measuring time in this pane: "Each Position", or the
+    /// Complication Test's "Each Stretch".
+    pub(super) fn positions_lengths(&mut self, ui: &mut egui::Ui, running: bool, each: &str) {
         theme::tool_field(
             ui,
             "Settle",
             "Seconds the watch is left to settle after every change of position, in any take \
-             and in the guided test, before its beats are read. They show faint on the strip \
-             and are left out of every reading.",
+             and in every guided test, before its beats are read. They show faint on the \
+             strip and are left out of every reading. Every guided test shares it.",
             |ui| {
                 ui.add_enabled_ui(!running, |ui| {
                     let mut v = self.guided_settle_s;
@@ -378,9 +388,10 @@ impl TimegrapherApp {
         );
         theme::tool_field(
             ui,
-            "Each Position",
-            "Used by the guided test only: how long it measures each position. Longer brings \
-             the rate's ± down; a minute gives about half a second a day.",
+            each,
+            "Used by the guided tests only: how long each measures a position, or a \
+             Complication Test's stretch. Every guided test shares it. Longer brings the \
+             rate's ± down; a minute gives about half a second a day.",
             |ui| {
                 ui.add_enabled_ui(!running, |ui| {
                     let mut v = self.guided_measure_s;

@@ -8,7 +8,7 @@ use eframe::egui::{self, epaint, Color32, Pos2, Rect, Shape, Stroke};
 use std::sync::OnceLock;
 
 /// Every icon, in the order of [`drawing`]'s arms.
-const ALL: [Icon; 84] = [
+const ALL: [Icon; 85] = [
     Icon::Readings,
     Icon::Watch,
     Icon::Strip,
@@ -17,6 +17,7 @@ const ALL: [Icon; 84] = [
     Icon::Isochronism,
     Icon::Positions,
     Icon::Poise,
+    Icon::Complication,
     Icon::Rate,
     Icon::Amplitude,
     Icon::BeatError,
@@ -133,6 +134,10 @@ fn drawing(icon: Icon) -> &'static str {
         // A Ferris wheel: Each seat comes to the top in turn, as each hour does in a Dynamic Poise test.
         Icon::Poise => {
             r#"<circle cx="12" cy="10" r="7"/><path d="M12 3v14M5 10h14M7 5l10 10M17 5L7 15"/><path d="M12 10l-4.5 11.5M12 10l4.5 11.5M5 21.5h14"/><g fill="currentColor" stroke="none"><circle cx="12" cy="3" r="1.3"/><circle cx="17" cy="5" r="1.3"/><circle cx="19" cy="10" r="1.3"/><circle cx="17" cy="15" r="1.3"/><circle cx="12" cy="17" r="1.3"/><circle cx="7" cy="15" r="1.3"/><circle cx="5" cy="10" r="1.3"/><circle cx="7" cy="5" r="1.3"/></g>"#
+        }
+        // A light switch: Off, on, then off again, as the Complication Test turns it.
+        Icon::Complication => {
+            r#"<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><rect x="9.5" y="6.5" width="5" height="11" rx="1.5"/><path d="M10.2 12h3.6"/><path d="M10.8 12l-1.4-4.6h5.2L13.2 12" fill="currentColor"/>"#
         }
         // A leaping hare: Gaining or losing: how fast the watch runs.
         Icon::Rate => {

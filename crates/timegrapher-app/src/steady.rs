@@ -375,7 +375,7 @@ fn stats_line(c: &SeriesCheck) -> String {
     figure_minus(&c.stats_line())
 }
 
-fn series_colour(k: SeriesKind, pal: &theme::Palette) -> Color32 {
+pub(crate) fn series_colour(k: SeriesKind, pal: &theme::Palette) -> Color32 {
     match k {
         SeriesKind::Rate => pal.trace_rate,
         SeriesKind::Amplitude => pal.trace_amplitude,
@@ -385,11 +385,7 @@ fn series_colour(k: SeriesKind, pal: &theme::Palette) -> Color32 {
 
 /// A reading's name, as its series, chart, distribution and switch show it.
 pub fn title(k: SeriesKind) -> &'static str {
-    match k {
-        SeriesKind::Rate => "Rate",
-        SeriesKind::Amplitude => "Amplitude",
-        SeriesKind::BeatError => "Beat Error",
-    }
+    k.title()
 }
 
 /// A value in a series' units for an axis or a note.

@@ -15,9 +15,10 @@ use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
 use timegrapher_core::figure_text::base_digits::{AMPLITUDE, BEAT_ERROR, RATE};
 use timegrapher_core::figure_text::{fixed_text, signed_text, true_minus};
-use timegrapher_core::poise;
 use timegrapher_core::session::{self, Measurement, Reading, SourcedFigures};
+use timegrapher_core::steadiness::SeriesKind;
 use timegrapher_core::stream::BeatLog;
+use timegrapher_core::{complication, poise};
 
 /// The file a finished test just after winding is saved to, from the
 /// pane or beside a saved take, for the same six positions 24
@@ -195,22 +196,28 @@ pub const POISE_ORDER: [Position; 8] = [
     Position::Up10h30,
 ];
 
-/// Which guided test: the six positions, or the eight upright stops of
-/// the Dynamic Poise test. Both run the same way; they differ in their
-/// positions, their names and their tables.
+/// Which guided test: the six positions, the eight upright stops of the
+/// Dynamic Poise test, or the Complication Test's Off, On, Off in one
+/// position. All run the same way; they differ in their steps, their
+/// names and their tables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Kind {
     #[default]
     Positions,
     Poise,
+    /// Off, On, Off with the watch in one position (#1576).
+    Complication,
 }
 
 impl Kind {
     /// The positions in the order the test leads the watch through them.
+    /// The Complication Test's stay in the position the card shows, so
+    /// they are set as the test is made ([`Test::complication`]).
     pub fn order(self) -> &'static [Position] {
         match self {
             Kind::Positions => &ORDER,
             Kind::Poise => &POISE_ORDER,
+            Kind::Complication => &[],
         }
     }
 
@@ -218,6 +225,7 @@ impl Kind {
         match self {
             Kind::Positions => "Positions Test",
             Kind::Poise => "Dynamic Poise Test",
+            Kind::Complication => "Complication Test",
         }
     }
 
@@ -226,6 +234,7 @@ impl Kind {
         match self {
             Kind::Positions => NOT_USED,
             Kind::Poise => NOT_USED_POISE,
+            Kind::Complication => NOT_USED_COMPLICATION,
         }
     }
 
@@ -234,7 +243,7 @@ impl Kind {
     /// the stand names them.
     pub fn code(self, p: Position) -> &'static str {
         match self {
-            Kind::Positions => p.code(),
+            Kind::Positions | Kind::Complication => p.code(),
             Kind::Poise => p.witschi(),
         }
     }
@@ -262,6 +271,7 @@ pub enum Phase {
 pub const SETTLING: &str = "Settling";
 pub const NOT_USED: &str = "Not Used for Positions Test";
 pub const NOT_USED_POISE: &str = "Not Used for Dynamic Poise Test";
+pub const NOT_USED_COMPLICATION: &str = "Not Used for Complication Test";
 pub const BEFORE_TEST: &str = "Before Test";
 
 /// What the pane's buttons asked for.
@@ -277,6 +287,9 @@ pub enum Action {
 
 pub struct Test {
     pub kind: Kind,
+    /// The position of each step, in order: the kind's, or the
+    /// Complication Test's one position three times.
+    order: Vec<Position>,
     pub bph_set: Option<u32>,
     pub step: usize,
     /// When the watch was put in this step's position, seconds of the
@@ -311,6 +324,7 @@ impl Test {
     pub fn new() -> Self {
         Test {
             kind: Kind::Positions,
+            order: ORDER.to_vec(),
             bph_set: None,
             step: 0,
             start: None,
@@ -331,13 +345,55 @@ impl Test {
     pub fn poise() -> Self {
         Test {
             kind: Kind::Poise,
+            order: POISE_ORDER.to_vec(),
+            ..Test::new()
+        }
+    }
+
+    /// A Complication Test: the complication off, on, then off again,
+    /// with the watch kept at `p` throughout.
+    pub fn complication(p: Position) -> Self {
+        Test {
+            kind: Kind::Complication,
+            order: vec![p; complication::ORDER.len()],
             ..Test::new()
         }
     }
 
     /// The positions this test leads the watch through, in order.
-    pub fn order(&self) -> &'static [Position] {
-        self.kind.order()
+    pub fn order(&self) -> &[Position] {
+        &self.order
+    }
+
+    /// Step `i`'s code on the buttons and chips: a position's code, or
+    /// the Complication Test's Off and On.
+    pub fn step_code(&self, i: usize) -> &'static str {
+        match self.kind {
+            Kind::Complication => complication::ORDER.get(i).map_or("", |s| s.name()),
+            k => self.order.get(i).map_or("", |&p| k.code(p)),
+        }
+    }
+
+    /// Step `i` named in words: the position, or "Complication On".
+    pub fn step_name(&self, i: usize) -> String {
+        match self.kind {
+            Kind::Complication => format!("Complication {}", self.step_code(i)),
+            _ => self
+                .order
+                .get(i)
+                .map_or(String::new(), |p| p.name().to_string()),
+        }
+    }
+
+    /// How the watch is for step `i`, after "once the watch is" or "with":
+    /// "dial up", or "the complication on".
+    fn step_state(&self, i: usize) -> String {
+        match self.kind {
+            Kind::Complication => {
+                format!("the complication {}", self.step_code(i).to_lowercase())
+            }
+            _ => self.step_name(i).to_lowercase(),
+        }
     }
 
     /// The same test with its own settling and measuring times, seconds.
@@ -399,6 +455,12 @@ impl Test {
         timegrapher_core::recorder::utc(
             std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(self.began_unix),
         )
+    }
+
+    /// When the test began, seconds of the session's sound: the first
+    /// step's first start. None before its first frame.
+    pub fn began_s(&self) -> Option<f64> {
+        self.began
     }
 
     pub fn position(&self) -> Position {
@@ -471,8 +533,9 @@ impl Test {
     /// table fills in as the test goes.
     pub fn read_new(&mut self, log: &BeatLog, clock: Option<&ClockFit>, masked: &[(f64, f64)]) {
         while self.done.len() < self.spans.len() {
-            let (p, from, to) = self.spans[self.done.len()];
-            match self.reading(p, from, to, log, clock, masked) {
+            let i = self.done.len();
+            let (_, from, to) = self.spans[i];
+            match self.reading(i, from, to, log, clock, masked) {
                 Some(r) => self.done.push(r),
                 None => break,
             }
@@ -595,7 +658,8 @@ impl Test {
         let readings = self
             .spans
             .iter()
-            .filter_map(|&(p, from, to)| self.reading(p, from, to, log, clock, masked))
+            .enumerate()
+            .filter_map(|(i, &(_, from, to))| self.reading(i, from, to, log, clock, masked))
             .collect();
         self.readings = Some(readings);
     }
@@ -610,17 +674,18 @@ impl Test {
         }
     }
 
-    /// One position's stretch of the session, `from` to `to` seconds,
-    /// leaving out the stretches `masked` as `session` does.
+    /// Step `i`'s stretch of the session, `from` to `to` seconds, leaving
+    /// out the stretches `masked` as `session` does.
     fn reading(
         &self,
-        p: Position,
+        i: usize,
         from: f64,
         to: f64,
         log: &BeatLog,
         clock: Option<&ClockFit>,
         masked: &[(f64, f64)],
     ) -> Option<Reading> {
+        let p = *self.order.get(i)?;
         let position = session::Position::parse(p.code())?;
         // Cut at every jump in the beats, as the whole take is, so no fit
         // runs across one.
@@ -629,7 +694,7 @@ impl Test {
             session::measure_masked(log, clock, &jumps, masked, from, to);
         Some(Reading {
             bph_set: self.bph_set,
-            label: p.name().into(),
+            label: self.step_name(i),
             position,
             wind_h: self.wind_h(),
             date: None,
@@ -647,7 +712,8 @@ impl Test {
 /// The title for the position under way: "Dial Up (1 of 6)", and in the
 /// 24 hour half "Dial Up (1 of 6, 24.1 h After Full Wind)".
 fn step_title(test: &Test) -> String {
-    let (name, n, of) = (test.position().name(), test.step + 1, test.order().len());
+    let i = test.step.min(test.order().len() - 1);
+    let (name, n, of) = (test.step_name(i), test.step + 1, test.order().len());
     match test.wind_h() {
         Some(h) => format!("{name} ({n} of {of}, {h:.1} h After Full Wind)"),
         None => format!("{name} ({n} of {of})"),
@@ -675,7 +741,7 @@ pub(crate) fn banner(
         if let Some(n) = note {
             detail = format!("{detail} · {n}");
         }
-        let (first_w, restart_w) = slot_widths(ui, test.kind);
+        let (first_w, restart_w) = slot_widths(ui, test);
         // The step's buttons on the title's line, in reach in the shortest
         // pane; the chips and what is happening on the line under it.
         let slots_w = first_w + restart_w + 2.0 * ui.spacing().item_spacing.x;
@@ -730,12 +796,24 @@ fn phase_words(test: &Test, phase: Phase) -> (String, String, f32) {
             format!(
                 "Paused. Resume settles and measures {} again from the start; until \
                  then the strip marks the time {}.",
-                test.position().name(),
+                test.step_name(test.step),
                 test.kind.not_used()
             ),
             0.0,
         ),
         Phase::Turn => match test.next_position() {
+            Some(_) if test.kind == Kind::Complication => {
+                let next = test.step_code(test.step + 1);
+                (
+                    format!("Turn the complication {}", next.to_lowercase()),
+                    format!(
+                        "then press Start {next} Measurement. Nothing until then is \
+                         measured; the strip marks it {}.",
+                        test.kind.not_used()
+                    ),
+                    1.0,
+                )
+            }
             Some(p) if test.kind == Kind::Poise => (
                 format!("Done: {}", step_title(test)),
                 format!(
@@ -757,14 +835,12 @@ fn phase_words(test: &Test, phase: Phase) -> (String, String, f32) {
                 1.0,
             ),
             None => (
-                format!(
-                    "All {} positions measured",
-                    if test.kind == Kind::Poise {
-                        "eight"
-                    } else {
-                        "six"
-                    }
-                ),
+                match test.kind {
+                    Kind::Positions => "All six positions measured",
+                    Kind::Poise => "All eight positions measured",
+                    Kind::Complication => "All three stretches measured",
+                }
+                .to_string(),
                 "Reading them together and keeping the take…".to_string(),
                 1.0,
             ),
@@ -775,7 +851,7 @@ fn phase_words(test: &Test, phase: Phase) -> (String, String, f32) {
 
 /// The widths of the step panel's two button slots, each as wide as the
 /// widest button it holds.
-fn slot_widths(ui: &egui::Ui, kind: Kind) -> (f32, f32) {
+fn slot_widths(ui: &egui::Ui, test: &Test) -> (f32, f32) {
     let pal = theme::pal(ui);
     // Each button has its own slot, as wide as the widest it holds, so
     // none moves as the phase changes.
@@ -786,20 +862,17 @@ fn slot_widths(ui: &egui::Ui, kind: Kind) -> (f32, f32) {
             .map(|w| ui.fonts_mut(|f| f.layout_no_wrap(w, font.clone(), pal.text).size().x))
             .fold(84.0_f32, |a, w| a.max(w + pad))
     };
+    let steps = 0..test.order().len();
     let first_w = widest(
         ui,
-        &mut kind
-            .order()
-            .iter()
-            .map(|&p| format!("Start {} Measurement", kind.code(p)))
+        &mut steps
+            .clone()
+            .map(|i| format!("Start {} Measurement", test.step_code(i)))
             .chain(["Resume", "Pause"].map(String::from)),
     );
     let restart_w = widest(
         ui,
-        &mut kind
-            .order()
-            .iter()
-            .map(|&p| format!("Restart {} Measurement", kind.code(p))),
+        &mut steps.map(|i| format!("Restart {} Measurement", test.step_code(i))),
     );
     (first_w, restart_w)
 }
@@ -827,8 +900,9 @@ fn step_buttons(
     restart_w: f32,
 ) -> Option<Action> {
     let (settle, measure) = (test.settle_s, test.measure_s);
-    let code = test.kind.code(test.position());
-    let name = test.position().name();
+    let code = test.step_code(test.step);
+    let name = test.step_name(test.step);
+    let state = test.step_state(test.step);
     let mut action = None;
     match phase {
         // The sixth measured: the test ends by itself.
@@ -836,14 +910,15 @@ fn step_buttons(
             ui.allocate_space(Vec2::new(0.0, 26.0));
         }
         Phase::Turn => {
+            let n = test.step + 1;
             let (next, next_hint) = match test.next_position() {
-                Some(p) => (
-                    format!("Start {} Measurement", test.kind.code(p)),
+                Some(_) => (
+                    format!("Start {} Measurement", test.step_code(n)),
                     format!(
                         "Press once the watch is {}: it settles for {settle:.0} s, \
                          then {} is measured for {measure:.0} s",
-                        p.name().to_lowercase(),
-                        p.name()
+                        test.step_state(n),
+                        test.step_name(n)
                     ),
                 ),
                 None => (String::new(), String::new()),
@@ -861,8 +936,7 @@ fn step_buttons(
             )
             .on_hover_text(format!(
                 "The {name} measurement was disturbed (a knock, a noise): put the \
-                     watch back {} and settle and measure it again",
-                name.to_lowercase()
+                     watch back {state} and settle and measure it again"
             ))
             .clicked()
             {
@@ -872,8 +946,7 @@ fn step_buttons(
         Phase::Paused => {
             if slot(ui, first_w, theme::primary(ui, "Resume"))
                 .on_hover_text(format!(
-                    "Settle and measure {name} again from now, with the watch {}",
-                    name.to_lowercase()
+                    "Settle and measure {name} again from now, with the watch {state}"
                 ))
                 .clicked()
             {
@@ -951,7 +1024,7 @@ fn step_chips(ui: &mut egui::Ui, test: &Test) {
     }
     ui.add_space(ui.available_width() - all);
     let done = test.stretches().len();
-    for (i, &p) in test.order().iter().enumerate() {
+    for i in 0..test.order().len() {
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover());
         let (fill, ink) = if i < done {
             (pal.accent.gamma_multiply(0.35), pal.text)
@@ -970,7 +1043,7 @@ fn step_chips(ui: &mut egui::Ui, test: &Test) {
         ui.painter().text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
-            test.kind.code(p),
+            test.step_code(i),
             font.clone(),
             ink,
         );
@@ -981,14 +1054,14 @@ fn step_chips(ui: &mut egui::Ui, test: &Test) {
         } else {
             "to come"
         };
-        resp.on_hover_text(format!("{}: {state}", p.name()));
+        resp.on_hover_text(format!("{}: {state}", test.step_name(i)));
     }
 }
 
 /// A chip's width: room for "10H30" in the Dynamic Poise test.
 fn chip_w(kind: Kind) -> f32 {
     match kind {
-        Kind::Positions => 26.0,
+        Kind::Positions | Kind::Complication => 26.0,
         Kind::Poise => 38.0,
     }
 }
@@ -1245,6 +1318,163 @@ fn table_grid(
             }
         });
     table_notes(ui, t);
+}
+
+/// The Complication Test's table (#1576, Hugh's spec): a row for each
+/// stretch, Off, On, Off, with amplitude first, then On less Off, core's
+/// difference with its ±. `status` names what the next row is doing while
+/// the test runs, and `live` its figures so far.
+fn complication_grid(ui: &mut egui::Ui, t: &Test, status: Option<String>, live: Option<&FreeCell>) {
+    let pal = theme::pal(ui);
+    let readings = t.readings_so_far();
+    let measurements: Vec<Measurement> = readings.iter().map(|r| r.measurement.clone()).collect();
+    egui::Grid::new("complication")
+        .num_columns(4)
+        .spacing(Vec2::new(GAP, 5.0))
+        .min_col_width(FIGURE_W)
+        .striped(true)
+        .show(ui, |ui| {
+            let size = Vec2::new(FIGURE_W, ui.spacing().interact_size.y);
+            ui.allocate_ui_with_layout(
+                size,
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_min_size(size);
+                    ui.label(theme::caption("Stretch").color(pal.text_secondary));
+                },
+            );
+            for q in complication::SHOWN {
+                column_head(
+                    ui,
+                    FIGURE_W,
+                    q.title(),
+                    complication::unit_head(q),
+                    complication_hint(q),
+                );
+            }
+            ui.end_row();
+            let mut status = status;
+            for i in 0..t.order().len() {
+                let label = t.step_code(i);
+                if let Some(r) = readings.get(i) {
+                    let f = complication::figures(&r.measurement);
+                    ui.label(RichText::new(label).color(pal.text));
+                    for q in complication::SHOWN {
+                        let cell = right(ui, figure_cell(q, &f), false, pal.text);
+                        if q == SeriesKind::BeatError {
+                            // Its source, as the Positions table hovers it.
+                            let src = r.measurement.beat_error_source;
+                            cell.on_hover_text(session::beat_error_source_label(src));
+                        }
+                    }
+                } else {
+                    match (status.take(), live) {
+                        (Some(_), Some(FreeCell::Read(rate, amp, be))) => {
+                            ui.label(RichText::new(label).strong().color(pal.text))
+                                .on_hover_text("Being measured: its figures so far");
+                            right(ui, plain(*amp, AMPLITUDE), false, pal.accent);
+                            right(ui, signed(*rate, RATE), false, pal.accent);
+                            right(ui, plain(*be, BEAT_ERROR), false, pal.accent);
+                        }
+                        (Some(st), _) => {
+                            ui.label(RichText::new(label).strong().color(pal.text));
+                            right(ui, st, false, pal.accent);
+                            ui.label("");
+                            ui.label("");
+                        }
+                        (None, _) => {
+                            ui.label(RichText::new(label).color(pal.text_tertiary));
+                            for _ in 0..3 {
+                                ui.label("");
+                            }
+                        }
+                    }
+                }
+                ui.end_row();
+            }
+            if measurements.len() == complication::ORDER.len() {
+                ui.label(
+                    RichText::new(complication::DIFFERENCE_NAME)
+                        .strong()
+                        .color(pal.text),
+                )
+                .on_hover_text(complication::method_note());
+                for q in complication::SHOWN {
+                    let d = complication::change(q, &measurements).map_or_else(
+                        || "—".to_string(),
+                        |c| true_minus(&complication::difference_text(q, c.on_less_off)),
+                    );
+                    right(ui, d, true, pal.text);
+                }
+                ui.end_row();
+            }
+        });
+}
+
+/// A stretch's figure as the table and Copy write it: core's number at
+/// the series' place, the rate signed ([`SeriesKind::number`]).
+fn figure_cell(q: SeriesKind, f: &complication::Figures) -> String {
+    complication::figure(q, f).map_or_else(|| "—".to_string(), |f| true_minus(&q.number(f.value)))
+}
+
+/// A Complication Test column's hover.
+fn complication_hint(q: SeriesKind) -> &'static str {
+    match q {
+        SeriesKind::Amplitude => {
+            "The balance's swing, from the lift angle set. A complication that loads the \
+             going train lowers it."
+        }
+        SeriesKind::Rate => "Seconds a day gained (+) or lost (−)",
+        SeriesKind::BeatError => {
+            "As a size, from the unlock, or from the drop where the unlock isn't found."
+        }
+    }
+}
+
+/// The Complication Test's table as text a spreadsheet takes: a header,
+/// a row for each stretch, then On less Off with its ±. Fields are split
+/// by `sep`.
+fn complication_text(test: &Test, sep: char) -> String {
+    let readings = test.readings_so_far();
+    let mut out = "Stretch".to_string();
+    for q in complication::SHOWN {
+        out.push_str(&format!(
+            "{sep}{} ({})",
+            q.title(),
+            complication::unit_head(q)
+        ));
+    }
+    out.push('\n');
+    for (i, r) in readings.iter().enumerate() {
+        let f = complication::figures(&r.measurement);
+        out.push_str(test.step_code(i));
+        for q in complication::SHOWN {
+            out.push_str(&format!("{sep}{}", figure_cell(q, &f)));
+        }
+        out.push('\n');
+    }
+    let m: Vec<Measurement> = readings.iter().map(|r| r.measurement.clone()).collect();
+    if m.len() == complication::ORDER.len() {
+        out.push_str(complication::DIFFERENCE_NAME);
+        for q in complication::SHOWN {
+            let d = complication::change(q, &m).map_or_else(
+                || "—".to_string(),
+                |c| true_minus(&complication::difference_text(q, c.on_less_off)),
+            );
+            out.push_str(&format!("{sep}{d}"));
+        }
+        out.push('\n');
+        for q in complication::SHOWN {
+            if let Some(c) = complication::change(q, &m) {
+                out.push_str(&format!(
+                    "{}: {}\n",
+                    q.title(),
+                    true_minus(&complication::finding_text(q, c.on_less_off))
+                ));
+            }
+        }
+    }
+    out
 }
 
 /// What the next row is doing, in its Rate cell: from the cell's left
@@ -1561,6 +1791,7 @@ pub(crate) fn test_table(
     let id = match t.kind {
         Kind::Positions => "positions",
         Kind::Poise => "poise",
+        Kind::Complication => return complication_grid(ui, t, status, live),
     };
     table_grid(
         ui,
@@ -2277,6 +2508,12 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
     }
     line("Settling, s", format!("{:.0}", test.settle_s));
     line("Measured, s", format!("{:.0}", test.measure_s));
+    if test.kind == Kind::Complication {
+        line("Position", test.position().name().to_string());
+        out.push('\n');
+        out += &complication_text(test, sep);
+        return out;
+    }
     out.push('\n');
     let readings = test.readings_so_far();
     out += &table_text(&table(readings, test.kind), sep, test.kind);

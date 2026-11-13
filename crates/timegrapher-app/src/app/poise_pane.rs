@@ -23,10 +23,7 @@ const PICTURE_H: f32 = 300.0;
 const PICTURE_MIN_W: f32 = 320.0;
 /// The plot's height to its width at most, as in Hugh's spec.
 const PLOT_ASPECT: f32 = 0.5;
-/// The gap between the table and the picture.
-const GAP: f32 = 28.0;
-/// The Info panel's width beside the rest, and the pane width it needs.
-const INFO_W: f32 = 300.0;
+/// The pane width the Info panel needs to sit beside the rest.
 const INFO_BESIDE_W: f32 = 1100.0;
 /// A point's radius, and its ± bar's width.
 const DOT_R: f32 = 4.2;
@@ -158,7 +155,7 @@ impl TimegrapherApp {
             }
             theme::bar_gap(ui);
         }
-        self.positions_lengths(ui, running);
+        self.positions_lengths(ui, running, "Each Position");
         theme::bar_gap(ui);
         let nothing = self
             .poise_test()
@@ -250,89 +247,31 @@ fn poise_body(
     (view, info): (PoiseView, bool),
     (settle_s, measure_s): (f64, f64),
 ) -> Option<guided::Action> {
-    let pal = theme::pal(ui);
-    let mut action = None;
     let readings = test.map_or(&[][..], |t| t.readings_so_far());
     let fit = guided::poise_fit(readings);
     let mean = guided::poise_mean(readings);
-    let full = ui.available_rect_before_wrap();
-    let beside = info && full.width() >= INFO_BESIDE_W;
-    let main_w = if beside {
-        // Less the spacing round the two gaps, so Info ends inside the pane.
-        full.width() - INFO_W - GAP - 3.0 * ui.spacing().item_spacing.x
-    } else {
-        full.width()
+    let bottom = ui.available_rect_before_wrap().bottom();
+    let layout = test_body::Layout {
+        table_ws: &[guided::TABLE_W, guided::TIGHT_TABLE_W],
+        result_min_w: PICTURE_MIN_W,
+        info_beside_w: INFO_BESIDE_W,
+        rule_h: PICTURE_H,
     };
-    egui::ScrollArea::both()
-        .id_salt("poise pane")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 6.0;
-            ui.horizontal_top(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(main_w);
-                    if let (Some(t), Some(ph)) = (test, phase) {
-                        if ph != guided::Phase::Finished {
-                            action = guided::banner(ui, t, ph, amp_now);
-                            ui.add_space(6.0);
-                        }
-                    }
-                    // Beside the picture at the table's widths, or tight, while
-                    // the picture keeps its least width; else under it.
-                    let side = [guided::TABLE_W, guided::TIGHT_TABLE_W]
-                        .into_iter()
-                        .find(|w| main_w >= w + GAP + PICTURE_MIN_W);
-                    let table = |ui: &mut egui::Ui| match test {
-                        Some(t) => guided::test_table(ui, t, phase, live),
-                        None => {
-                            ui.label(
-                                RichText::new(about_text(settle_s, measure_s))
-                                    .color(pal.text_secondary),
-                            );
-                        }
-                    };
-                    let picture = |ui: &mut egui::Ui| {
-                        picture_block(ui, (readings, fit.as_ref(), &mean), view, full.bottom());
-                    };
-                    if let Some(table_w) = side {
-                        ui.horizontal_top(|ui| {
-                            ui.vertical(|ui| {
-                                ui.set_width(table_w);
-                                table(ui);
-                            });
-                            ui.add_space(GAP);
-                            ui.vertical(|ui| {
-                                picture(ui);
-                            });
-                        });
-                    } else {
-                        // The result first (Hugh, #1499).
-                        picture(ui);
-                        ui.add_space(8.0);
-                        table(ui);
-                    }
-                    if info && !beside {
-                        ui.add_space(8.0);
-                        info_panel(ui, fit.as_ref());
-                    }
-                });
-                if beside {
-                    ui.add_space(GAP / 2.0);
-                    let top = ui.cursor().top();
-                    ui.painter().vline(
-                        ui.cursor().left(),
-                        egui::Rangef::new(top, top + PICTURE_H),
-                        egui::Stroke::new(1.0_f32, pal.separator),
-                    );
-                    ui.add_space(GAP / 2.0);
-                    ui.vertical(|ui| {
-                        ui.set_width(INFO_W);
-                        info_panel(ui, fit.as_ref());
-                    });
-                }
-            });
-        });
-    action
+    let picture = |ui: &mut egui::Ui| {
+        picture_block(ui, (readings, fit.as_ref(), &mean), view, bottom);
+    };
+    let info_part = |ui: &mut egui::Ui| info_panel(ui, fit.as_ref());
+    test_body::test_body(
+        ui,
+        ("poise pane", &layout),
+        (test, phase, live, amp_now),
+        info,
+        &test_body::Parts {
+            about: about_text(settle_s, measure_s),
+            result: &picture,
+            info: &info_part,
+        },
+    )
 }
 
 /// The picture with core's words over it, in the room left above `bottom`.

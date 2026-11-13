@@ -144,6 +144,7 @@ impl egui_tiles::Behavior<Pane> for PaneBehavior<'_> {
                 Pane::Isochronism => self.app.isochronism_pane(ui),
                 Pane::PositionsTest => self.app.positions_pane(ui),
                 Pane::DynamicPoise => self.app.poise_pane(ui),
+                Pane::Complication => self.app.complication_pane(ui),
                 Pane::PowerReserve => {
                     self.app.results_rects[1] = Some(ui.max_rect());
                     self.app.reserve_pane(ui)

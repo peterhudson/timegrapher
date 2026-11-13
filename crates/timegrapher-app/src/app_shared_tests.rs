@@ -17,6 +17,17 @@ pub(super) fn synthetic_varying(
     rate: f64,
     extra: impl Fn(f64) -> f64,
 ) -> TimegrapherApp {
+    synthetic_swinging(seconds, rate, |_| 280.0, extra)
+}
+
+/// [`synthetic_varying`] with the amplitude `amp(t)` degrees at each time
+/// `t`.
+pub(super) fn synthetic_swinging(
+    seconds: f64,
+    rate: f64,
+    amp: impl Fn(f64) -> f64,
+    extra: impl Fn(f64) -> f64,
+) -> TimegrapherApp {
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     app.reset_session(48000, "syn".into());
     let cfg = SynthConfig {
@@ -24,7 +35,7 @@ pub(super) fn synthetic_varying(
         rate_s_per_day: rate,
         ..Default::default()
     };
-    let audio = generate(&cfg, |_| 280.0, extra);
+    let audio = generate(&cfg, amp, extra);
     let live = app.live.as_mut().unwrap();
     for b in audio.samples.chunks(960) {
         if live.push(b) {
