@@ -725,13 +725,9 @@ impl TimegrapherApp {
     fn new_take_file(&self, path: &Path, masked: &[[f64; 2]]) -> Result<PathBuf, String> {
         // The whole folder, as the recorder lists a take's sound: a lone
         // file is the whole of its folder's take (see `lists`).
-        let dir = if path.is_dir() {
-            path.to_path_buf()
-        } else {
-            path.parent()
-                .ok_or_else(|| format!("{} has no folder", path.display()))?
-                .to_path_buf()
-        };
+        let dir = take_dir(path)
+            .ok_or_else(|| format!("{} has no folder", path.display()))?
+            .to_path_buf();
         let file = ".".to_string();
         let target = dir.join(MANIFEST);
         if target.exists() {
@@ -1523,11 +1519,7 @@ impl TimegrapherApp {
     /// beside it, and a Power Reserve Test's results back from
     /// `power-reserve.json`, so its pane shows the run.
     pub(super) fn load_reserve(&mut self, path: &Path) {
-        let dir = if path.is_dir() {
-            path
-        } else {
-            path.parent().unwrap_or(path)
-        };
+        let dir = take_dir(path).unwrap_or(path);
         self.positions_take = timegrapher_core::library::is_positions_test(dir);
         self.load_saved_test(dir);
         // A test's take opens on its results.
