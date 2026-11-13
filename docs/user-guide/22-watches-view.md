@@ -39,7 +39,7 @@ it stops.
 | 7 | The header | The name; under it the calibre, beat rate, lift angle and added fields. | To check the settings its takes will start with. |
 | 8 | **Edit…** | The same form as New Watch, filled in. | To change a detail, add a field, or set the calibre. |
 | 9 | **Add Photos…** | Copies the photos picked into the watch (JPEG, PNG, TIFF or HEIC), each kept as it is. | The dial, the movement or a part, as it came in. |
-| 10 | **New Take** | **Listen**, **Positions Test**, **Dynamic Poise Test** (eight upright, 45° apart) or **Power Reserve Test**. Each goes to the Bench and saves into this watch when it stops. Listen starts on the microphone at once; a test is set up and waits for **Start Test** on the Listen card. Greyed out while a take runs on the Bench. | To add to the watch's history. |
+| 10 | **New Take** | **Listen**, **Positions Test**, **Dynamic Poise Test** (eight upright, 45° apart), **Complication Test** or **Power Reserve Test**. Each goes to the Bench and saves into this watch when it stops. Listen starts on the microphone at once; a test is set up and waits for **Start Test** on the Listen card. Greyed out while a take runs on the Bench. | To add to the watch's history. |
 | 11 | **Takes**, **Open** and **…** | How many takes; Open and the take menu act on the take picked. | Open takes it to the Bench, read whole. |
 | 12 | A take | Click to pick it; double-click to open it. **Analysis Only**, **Incomplete** or **On Show** follows the date when it is one. | |
 | 13 | The columns | **Started**, **Position** (DU; DU, CU; All 6; or Positions Test or Power Reserve), **Length**, **Rate** (s/d), **Amplitude** (°), **Beat Error** (ms, as a size) and **Size** (MB). | To compare takes without opening each one. |

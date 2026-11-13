@@ -19,7 +19,7 @@ saves a take.
 | 2 | **Bench \| Watches** | Switches between the two views. **Ctrl+1** and **Ctrl+2** (**Cmd** on a Mac) do the same. | Watches to find, file or compare takes; Bench to look at one. |
 | 3 | Core pane icons | Show or hide the Readings, the Paper Strip, the Tick Tock Profile and the Scope. | The panes you use on every take. |
 | 4 | **Analysis** icons | Show or hide Charts, Distributions, the nine Steadiness panes and Isochronism. | To look at how a take changes over time. |
-| 5 | **Tests** icons | Show or hide the Positions Test, Dynamic Poise and the Power Reserve Test. | To run a test or read its results. |
+| 5 | **Tests** icons | Show or hide the Positions Test, Dynamic Poise, the Complication Test and the Power Reserve Test. | To run a test or read its results. |
 | 6 | Settings gear | Opens Settings. | For the appearance, the microphone, the Watches folder and the calibres. |
 
 - **Pane icons:** a shown pane's icon is blue on a tinted chip; a hidden
@@ -150,7 +150,7 @@ no Quit and Edit has only Remove All Masks….
 - **Readings** and **Compact Readings**.
 - A tick for the Paper Strip, the Tick Tock Profile and the Scope.
 - An **Analysis** submenu, with a tick for each Analysis pane.
-- **Positions Test**, **Dynamic Poise** and **Power Reserve**.
+- **Positions Test**, **Dynamic Poise**, **Complication** and **Power Reserve**.
 - **Reset Panes.**
 
 In Watches, all but Bench and Watches are dimmed.
@@ -175,7 +175,7 @@ In Watches, all but Bench and Watches are dimmed.
 
 | Key | Does |
 | --- | --- |
-| **U**, **D** | Sets the position lying flat: Dial Up (DU), Dial Down (DD). On the Bench, while listening or before anything is on show. Not while typing, behind a dialog, or while a Positions Test, Dynamic Poise Test or Power Reserve Test runs. |
+| **U**, **D** | Sets the position lying flat: Dial Up (DU), Dial Down (DD). On the Bench, while listening or before anything is on show. Not while typing, behind a dialog, or while a guided test (Positions, Dynamic Poise or Complication) or a Power Reserve Test runs. |
 | **3**, **6**, **9**, **2** | Sets the position standing, by the last digit of the hour at the top: Crown Up (CU, 3H), Crown Left (CL, 6H), Crown Down (CD, 9H), Crown Right (CR, 12H). As U and D. |
 | **1**, **4**, **7**, **0** | Sets a 45° stop in the same way: 1:30 Up (1H30), 4:30 Up, 7:30 Up, 10:30 Up, and turns the Current Position card to **10**. As U and D. |
 | **Esc** | Puts down the Position Brush or the Mask tool. |

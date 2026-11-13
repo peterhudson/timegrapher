@@ -25,7 +25,7 @@ upright at 45° steps.
 | --- | --- | --- |
 | **View** | **Plot** or **Dial**: the rate along a line, the hour at the top across it, or round a watch face with 12H at the top, further out when faster. The same points, wave and words. Kept between runs. | Plot to read the numbers; Dial to see at a glance which side of the watch is fast. |
 | **New Test** | Sets the test up on a clear Bench at 9H at the top, and starts nothing; **Start Test** on the Listen card starts it. **Cancel Test** takes its place until then. | To begin. |
-| **Settle** and **Each Position** | The Positions Test's own (chapter 20): the seconds the watch settles after each turn, and the seconds each position is measured. Changing them here changes them there. | Longer gives a smaller ± (M7), which the fit needs. |
+| **Settle** and **Each Position** | The seconds the watch settles after each turn, and the seconds each position is measured. Every guided test shares these two (chapter 20): changing them here changes them in the Positions Test and the Complication Test too. | Longer gives a smaller ± (M7), which the fit needs. |
 | **Copy** | The watch, its calibre, the table, and the fit in words, with tabs between the columns. | To paste into a spreadsheet or a message. |
 | **Export…** | Saves the pane as a picture, PNG or SVG. | For a service record or a report. |
 | **Info** (i, at the right) | The fit in full, with its twice-round terms, and the amplitudes at which the heavy spot can be stated. | To read everything the fit found. |
@@ -139,4 +139,4 @@ the rate there too, in the same once-round pattern.
 ---
 
 Previous: [Positions Test](20-positions-test.md) ·
-Next: [Power Reserve Test](21-power-reserve-test.md)
+Next: [Complication Test](20c-complication-test.md)

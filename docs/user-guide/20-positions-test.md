@@ -35,7 +35,7 @@ menu.
 | | **Save Results for 24 Hours…** | After a test at full wind: saves its results for the test 24 hours later. Saving the session keeps them too. | To compare later. |
 | | **Info** (the "i", at the right) | Opens a panel with how a take's table is read: what Duration leaves out, and when a position shows figures. | To check why a position's time or figures look short. |
 
-Settle and Each Position are kept between runs.
+Settle and Each Position are kept between runs, and shared with the other guided tests: Dynamic Poise (chapter 20b) and the Complication Test (chapter 20c, where Each Position is called Each Stretch).
 
 ## Running a Test
 
