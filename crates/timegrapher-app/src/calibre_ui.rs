@@ -2283,7 +2283,7 @@ fn add_wheel_row(
             egui::TextEdit::singleline(period)
                 .id_salt(("another period", place))
                 .hint_text("period")
-                .desired_width(66.0),
+                .desired_width(period_box_w(ui)),
         );
         ui.label("s");
         let whole =
@@ -2655,6 +2655,22 @@ fn capitalised(s: &str) -> String {
         .unwrap_or_default()
 }
 
+/// The widest period a box shows: six figures of seconds, about eleven
+/// days, to the thousandth (`train::period_text`).
+const WIDEST_PERIOD: &str = "000000.000";
+
+/// A period box's inner width: room for [`WIDEST_PERIOD`] and the
+/// cursor, so no digit sits under the box's edge (#1586).
+fn period_box_w(ui: &egui::Ui) -> f32 {
+    let font = egui::FontSelection::default().resolve(ui.style());
+    let digits = ui.fonts_mut(|f| {
+        f.layout_no_wrap(WIDEST_PERIOD.into(), font, egui::Color32::WHITE)
+            .size()
+            .x
+    });
+    (digits + 4.0).ceil()
+}
+
 /// A box for a wheel's period that may be blank. Enter or clicking away
 /// reads it: `Some(Some(v))` for a new period, `Some(None)` when emptied,
 /// `None` when nothing changed.
@@ -2665,9 +2681,15 @@ fn period_field(
     tip: &str,
 ) -> Option<Option<f64>> {
     let shown = value.map(|v| (PERIOD.show)(v)).unwrap_or_default();
-    blank_field(ui, id_salt, shown, "Not Known", tip, 66.0, |t| {
-        fields::parse_number(t).filter(|v| *v > 0.0)
-    })
+    blank_field(
+        ui,
+        id_salt,
+        shown,
+        "Not Known",
+        tip,
+        period_box_w(ui),
+        |t| fields::parse_number(t).filter(|v| *v > 0.0),
+    )
 }
 
 /// A box that may be blank, showing `shown`. Enter or clicking away reads

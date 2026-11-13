@@ -452,6 +452,52 @@ fn counted_teeth_caption_the_wheels() {
     assert!(seen.iter().any(|t| t == "Teeth give 55.556 s"), "{seen:?}");
 }
 
+/// Every period box shows its whole value at 800 wide, the widest one
+/// too: no digit under the box's right edge (#1586).
+#[test]
+fn a_period_box_shows_its_whole_value() {
+    let mut c = Calibres::in_memory();
+    c.user
+        .set_wheel("ETA 2824-2", "third wheel", 999_999.999, None);
+    c.selected = Some("ETA 2824-2".into());
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            Vec2::new(800.0, 2000.0),
+        )),
+        ..Default::default()
+    };
+    let mut out = None;
+    for _ in 0..2 {
+        out = Some(ctx.run(input.clone(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                c.contents(ui, "", "test");
+            });
+        }));
+    }
+    let shapes = out.unwrap().shapes;
+    let right_gap = |want: &str| {
+        let (t, clip) = shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Text(t) if t.galley.text() == want => Some((t, s.clip_rect)),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no box shows {want}"));
+        // The box clips its text 1 px outside its inner edge.
+        clip.max.x - 1.0 - (t.pos.x + t.galley.rect.right())
+    };
+    for want in ["21114.027", "999999.999"] {
+        assert!(
+            right_gap(want) >= 0.0,
+            "{want} cut by {} px",
+            -right_gap(want)
+        );
+    }
+}
+
 #[test]
 fn wheels_typed_for_a_listed_calibre_name_its_cycles() {
     let mut c = Calibres::in_memory();
