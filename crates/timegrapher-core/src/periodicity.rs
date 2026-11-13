@@ -18,11 +18,10 @@ pub struct Wheel {
 /// The wheels whose periods follow from the beat rate alone. The escape
 /// wheel advances one tooth per oscillation (two beats).
 pub fn standard_wheels(bph: u32, escape_teeth: u32) -> Vec<Wheel> {
-    let beat = 3600.0 / bph as f64;
     vec![
         Wheel {
             name: "escape wheel".into(),
-            period_s: escape_teeth as f64 * 2.0 * beat,
+            period_s: crate::train::escape_period_s(bph, escape_teeth),
         },
         Wheel {
             name: "fourth wheel".into(),

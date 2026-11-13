@@ -1,5 +1,6 @@
 //! What a user adds to the calibre table: turn periods of wheels the table
-//! leaves out, and calibres it does not list. They are kept in one JSON
+//! leaves out, tooth and leaf counts ([`crate::train`]), and calibres it
+//! does not list. They are kept in one JSON
 //! file whose place the caller chooses (the app keeps it in its settings
 //! folder), read over the shipped table so that the app, the command line
 //! and the MCP server see the same thing. Nothing here leaves the
@@ -40,6 +41,22 @@ pub struct UserCalibres {
     /// Calibres the table does not list.
     #[serde(default)]
     pub custom: Vec<CustomCalibre>,
+    /// Tooth and leaf counts, for calibres in the table or the user's.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub counts: Vec<UserCount>,
+}
+
+/// The teeth and pinion leaves a user counted on one arbor of a calibre.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserCount {
+    /// The calibre's name as the table or the user writes it.
+    pub calibre: String,
+    /// Lower case, one of [`crate::train::ARBORS`]: "fourth wheel".
+    pub arbor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub teeth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leaves: Option<u32>,
 }
 
 /// A wheel's turn period the user entered for a calibre in the table.
@@ -98,6 +115,7 @@ impl Default for UserCalibres {
             schema: SCHEMA.into(),
             wheels: Vec::new(),
             custom: Vec::new(),
+            counts: Vec::new(),
         }
     }
 }
@@ -129,6 +147,11 @@ impl UserCalibres {
         for w in &mut self.wheels {
             if let Some(now) = calibres::renamed(&w.calibre) {
                 w.calibre = now.into();
+            }
+        }
+        for c in &mut self.counts {
+            if let Some(now) = calibres::renamed(&c.calibre) {
+                c.calibre = now.into();
             }
         }
     }
@@ -177,6 +200,30 @@ impl UserCalibres {
             .retain(|w| !(w.calibre == calibre && w.name == wheel));
     }
 
+    /// Set the teeth and pinion leaves counted on `arbor` of a calibre,
+    /// table or custom; `None` forgets that count, and with both `None`
+    /// the arbor's counts are forgotten. A count of 0 is not kept.
+    pub fn set_count(
+        &mut self,
+        calibre: &str,
+        arbor: &str,
+        teeth: Option<u32>,
+        leaves: Option<u32>,
+    ) {
+        let arbor = arbor.trim().to_lowercase();
+        self.counts
+            .retain(|c| !(c.calibre == calibre && c.arbor == arbor));
+        let (teeth, leaves) = (teeth.filter(|&n| n > 0), leaves.filter(|&n| n > 0));
+        if teeth.is_some() || leaves.is_some() {
+            self.counts.push(UserCount {
+                calibre: calibre.into(),
+                arbor,
+                teeth,
+                leaves,
+            });
+        }
+    }
+
     /// Add a custom calibre, or replace the one of the same name.
     pub fn put_custom(&mut self, c: CustomCalibre) {
         match self.custom.iter_mut().find(|x| x.name == c.name) {
@@ -187,6 +234,7 @@ impl UserCalibres {
 
     pub fn remove_custom(&mut self, name: &str) {
         self.custom.retain(|c| c.name != name);
+        self.counts.retain(|c| c.calibre != name);
     }
 }
 
@@ -261,6 +309,9 @@ pub enum Origin {
     Shipped,
     /// The user entered it.
     User,
+    /// Worked out from tooth and leaf counts ([`crate::train`]), where
+    /// nobody gave the period.
+    Counts,
     /// Nobody has given it yet.
     Unknown,
 }
@@ -331,6 +382,67 @@ impl<'a> Catalog<'a> {
     /// any other the table or the user names, each with its period and
     /// where it comes from, or marked unknown.
     pub fn slots(&self, e: Entry<'_>) -> Vec<Slot> {
+        let mut slots = self.given_slots(e);
+        for w in self.train(e).arbors {
+            if let (Some(s), Some(p)) = (
+                slots.iter_mut().find(|s| s.name == w.name),
+                w.counted_s,
+            ) {
+                if s.period_s.is_none() {
+                    s.period_s = Some(p);
+                    s.origin = Origin::Counts;
+                    s.basis = w.how();
+                }
+            }
+        }
+        slots
+    }
+
+    /// The going train of a calibre worked out from its counts: the
+    /// table's, with the user's over them, and the periods the table or
+    /// the user gave ([`crate::train::solve`]).
+    pub fn train(&self, e: Entry<'_>) -> crate::train::Solved {
+        crate::train::solve(e.bph(), &self.train_input(e))
+    }
+
+    /// The arbors [`Catalog::train`] works from: the counts and periods
+    /// the table and the user gave.
+    pub fn train_input(&self, e: Entry<'_>) -> Vec<crate::train::Arbor> {
+        let given = self.given_slots(e);
+        let mut arbors = match e {
+            Entry::Table(c) => crate::train::of_calibre(c),
+            Entry::Custom(c) => crate::train::ARBORS
+                .iter()
+                .map(|&name| crate::train::Arbor {
+                    name: name.into(),
+                    teeth: (name == "escape wheel").then_some(c.escape_teeth).flatten(),
+                    ..Default::default()
+                })
+                .collect(),
+        };
+        for a in &mut arbors {
+            a.period_s = given
+                .iter()
+                .find(|s| s.name == a.name)
+                .and_then(|s| s.period_s);
+            if let Some(u) = self.count(e.name(), &a.name) {
+                a.teeth = u.teeth.or(a.teeth);
+                a.leaves = u.leaves.or(a.leaves);
+            }
+        }
+        arbors
+    }
+
+    /// The counts the user gave `arbor` of `calibre`.
+    pub fn count(&self, calibre: &str, arbor: &str) -> Option<&'a UserCount> {
+        self.user
+            .counts
+            .iter()
+            .find(|c| c.calibre == calibre && c.arbor == arbor)
+    }
+
+    /// The wheels with the periods the table or the user gave.
+    fn given_slots(&self, e: Entry<'_>) -> Vec<Slot> {
         let mut slots: Vec<Slot> = WHEEL_SLOTS
             .iter()
             .map(|n| Slot {
@@ -400,7 +512,13 @@ impl<'a> Catalog<'a> {
     pub fn contribution(&self, e: Entry<'_>, version: &str) -> Option<serde_json::Value> {
         let slots = self.slots(e);
         let added: Vec<&Slot> = slots.iter().filter(|s| s.origin == Origin::User).collect();
-        if added.is_empty() && !e.is_custom() {
+        let counts: Vec<&UserCount> = self
+            .user
+            .counts
+            .iter()
+            .filter(|c| c.calibre == e.name())
+            .collect();
+        if added.is_empty() && counts.is_empty() && !e.is_custom() {
             return None;
         }
         let wheels: Vec<serde_json::Value> = added
@@ -421,6 +539,15 @@ impl<'a> Catalog<'a> {
             "in_table": !e.is_custom(),
             "wheels": wheels,
         });
+        if !counts.is_empty() {
+            v["counts"] = serde_json::to_value(
+                counts
+                    .iter()
+                    .map(|c| serde_json::json!({"arbor": c.arbor, "teeth": c.teeth, "leaves": c.leaves}))
+                    .collect::<Vec<_>>(),
+            )
+            .ok()?;
+        }
         if let Entry::Custom(c) = e {
             v["custom"] = serde_json::to_value(c).ok()?;
         }
@@ -582,6 +709,63 @@ mod tests {
             .iter()
             .any(|s| s.name == "third wheel" && s.origin == Origin::User));
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn counts_fill_blank_periods_and_travel_with_a_contribution() {
+        let mut u = store();
+        // My Movement: 21,600 bph and a 60 s fourth wheel typed; count the
+        // escape and fourth wheels and the third's teeth.
+        u.set_count("My Movement", "escape wheel", Some(15), Some(10));
+        u.set_count("My Movement", "Fourth Wheel", Some(120), Some(8));
+        u.set_count("My Movement", "third wheel", Some(60), None);
+        let cat = Catalog::new(&u);
+        let e = cat.find("My Movement").unwrap();
+        let slots = cat.slots(e);
+        let slot = |n: &str| slots.iter().find(|s| s.name == n).unwrap().clone();
+        let esc = slot("escape wheel");
+        assert_eq!((esc.period_s, esc.origin), (Some(5.0), Origin::Counts));
+        assert_eq!(
+            esc.basis.as_deref(),
+            Some("5 s: 15 teeth × two beats at 21600 bph")
+        );
+        assert_eq!(slot("fourth wheel").origin, Origin::User, "typed wins");
+        assert_eq!(slot("third wheel").period_s, Some(450.0));
+        assert_eq!(slot("centre wheel").origin, Origin::Unknown);
+        assert!(cat
+            .wheels(e)
+            .iter()
+            .any(|w| w.name == "third wheel" && w.period_s == 450.0));
+        let v = cat.contribution(e, "test").unwrap();
+        assert_eq!(v["counts"].as_array().unwrap().len(), 3);
+        assert_eq!(v["counts"][1]["arbor"], "fourth wheel");
+        assert_eq!(v["counts"][2]["leaves"], serde_json::Value::Null);
+        // Counts alone make a table calibre worth sharing.
+        let mut t = UserCalibres::default();
+        assert!(Catalog::new(&t)
+            .contribution(Catalog::new(&t).find("ETA 2892-A2").unwrap(), "test")
+            .is_none());
+        t.set_count("ETA 2892-A2", "escape wheel", Some(21), None);
+        let cat = Catalog::new(&t);
+        assert!(cat.contribution(cat.find("ETA 2892-A2").unwrap(), "test").is_some());
+        // Clearing both counts forgets the arbor; removing the calibre
+        // forgets its counts.
+        t.set_count("ETA 2892-A2", "escape wheel", None, Some(0));
+        assert!(t.counts.is_empty());
+        u.remove_custom("My Movement");
+        assert!(u.counts.is_empty());
+    }
+
+    #[test]
+    fn user_counts_replace_the_tables_only_where_given() {
+        let mut u = UserCalibres::default();
+        u.set_count("ETA 2824-2", "fourth wheel", Some(100), None);
+        let cat = Catalog::new(&u);
+        let t = cat.train(cat.find("ETA 2824-2").unwrap());
+        let fourth = &t.arbors[1];
+        assert_eq!((fourth.teeth, fourth.leaves), (Some(100), Some(9)));
+        assert_eq!(fourth.typed_s, Some(60.0));
+        assert_eq!(fourth.caption().unwrap(), "Teeth give 55.556 s");
     }
 
     #[test]
