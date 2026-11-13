@@ -469,8 +469,10 @@ fn a_period_box_shows_its_whole_value() {
         )),
         ..Default::default()
     };
+    // A group row's control grows to its width over a few frames, each
+    // one laid in the width the last one took, as the app repaints it.
     let mut out = None;
-    for _ in 0..2 {
+    for _ in 0..12 {
         out = Some(ctx.run(input.clone(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 c.contents(ui, "", "test");
