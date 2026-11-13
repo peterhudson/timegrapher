@@ -128,9 +128,7 @@ pub fn run(o: &Options) -> Result<(), String> {
         if let Some(take) = analysis_only(o) {
             // No sound to cut: the take's analysis is all there is of it.
             let name = name_of(take);
-            parts
-                .left_out
-                .push("the sound: the take was kept as its analysis alone".into());
+            parts.left_out.push(analysis_take::REPORT_NO_SOUND.into());
             whole_into(o, true, take, &name, &mut red, &mut parts)?;
             recording = json!({
                 "name": red.apply(&name),

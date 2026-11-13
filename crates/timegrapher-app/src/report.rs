@@ -791,7 +791,7 @@ impl Job {
             let mut excerpt_info = Value::Null;
             match &self.sound {
                 None if src.kept.is_some() => {
-                    left_out.push("the sound: the take was kept as its analysis alone".into());
+                    left_out.push(analysis_take::REPORT_NO_SOUND.into());
                 }
                 None => left_out.push("the recording (not included)".into()),
                 Some(x) => {
