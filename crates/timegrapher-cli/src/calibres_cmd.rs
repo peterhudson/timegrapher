@@ -157,6 +157,7 @@ fn print_json(
     });
     if name.is_some() {
         body["slots"] = json!(cat.slots(list[0]));
+        body["train"] = json!(cat.train(list[0]));
     }
     output::print(
         "calibres",
@@ -259,6 +260,7 @@ fn print_one(cat: &Catalog, e: Entry) {
         let from = match s.origin {
             Origin::Shipped => "table",
             Origin::User => "you",
+            Origin::Counts => "counts",
             Origin::Unknown => "",
         };
         let mut line = format!("  {:<16} {period}  {from}", s.name);

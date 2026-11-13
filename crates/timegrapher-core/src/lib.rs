@@ -66,6 +66,7 @@ pub mod take;
 pub mod take_context;
 pub mod timefreq;
 pub mod timing;
+pub mod train;
 pub mod twostate;
 pub mod update;
 pub mod usbagc;

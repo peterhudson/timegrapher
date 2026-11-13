@@ -17,6 +17,7 @@ mod session_cmd;
 mod session_report;
 mod shape_cmd;
 mod synth_cmd;
+mod train_cmd;
 mod update_cmd;
 mod watches_cmd;
 mod watches_edit;
@@ -333,6 +334,41 @@ enum Command {
         #[arg(long, conflicts_with = "name")]
         search: Option<String>,
         /// Print the table as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// A going train worked out from its tooth and leaf counts: each
+    /// wheel's turn, the beat rate where only periods are given, and each
+    /// mesh's period. Counts are TEETH/LEAVES (the wheel's teeth, the
+    /// leaves of the pinion on the same arbor), e.g. `--fourth 108/9`.
+    Train {
+        /// Start from this calibre's counts and periods (the table's and
+        /// those added in the app); the flags below replace them.
+        #[arg(long)]
+        calibre: Option<String>,
+        /// Beats per hour; the calibre's when left out.
+        #[arg(long, value_parser = parse_bph)]
+        bph: Option<u32>,
+        /// The escape wheel's teeth and the escape pinion's leaves.
+        #[arg(long)]
+        escape: Option<String>,
+        /// The fourth wheel's teeth and the fourth pinion's leaves.
+        #[arg(long)]
+        fourth: Option<String>,
+        /// The third wheel's teeth and the third pinion's leaves.
+        #[arg(long)]
+        third: Option<String>,
+        /// The centre wheel's teeth and the centre pinion's leaves.
+        #[arg(long)]
+        centre: Option<String>,
+        /// The barrel's teeth.
+        #[arg(long)]
+        barrel: Option<String>,
+        /// Periods known, ARBOR=SECONDS, several split by commas or the
+        /// flag repeated, e.g. `--period fourth=60,centre=3600`.
+        #[arg(long)]
+        period: Vec<String>,
+        /// Print the result as JSON instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -833,6 +869,23 @@ fn run(c: Command) -> Result<(), String> {
             out,
             from,
             to,
+            json,
+        }),
+        Command::Train {
+            calibre,
+            bph,
+            escape,
+            fourth,
+            third,
+            centre,
+            barrel,
+            period,
+            json,
+        } => train_cmd::run(&train_cmd::Options {
+            calibre,
+            bph,
+            counts: [escape, fourth, third, centre, barrel],
+            periods: period,
             json,
         }),
         c @ (Command::Synth { .. }
