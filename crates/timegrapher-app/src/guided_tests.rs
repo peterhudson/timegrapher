@@ -1216,6 +1216,54 @@ fn the_text_report_is_cores() {
     assert!(text.contains("Against the Full-Wind Test"), "{text}");
 }
 
+/// An opened 24 hour half's saved results are saved and copied as the
+/// pane shows them (#1706): the CSV holds the pane's table and the
+/// full-wind test against it, as the test's own export did, and the text
+/// report is the test's own down to its notes, which a saved test can't
+/// give the sound's conditions for. The watch and how it was read come
+/// from the results, not the pane.
+#[test]
+fn an_opened_24_hour_halfs_results_are_saved_as_the_pane_shows_them() {
+    let about = About {
+        watch: "Test Watch".into(),
+        calibre: "ETA 2824-2".into(),
+        bph: Some(28800),
+        lift_angle_deg: 52.0,
+    };
+    let readings = six_readings();
+    let mut t = Test::new();
+    t.readings = Some(readings.clone());
+    let mut half = Test::after(t.kept(&about).unwrap());
+    half.readings = Some(readings);
+    let s = half.kept(&about).unwrap();
+    assert!(s.against.is_some() && s.wind_h.is_some(), "{s:?}");
+    let pane = About::default();
+    let csv = saved_export_text(&s, &pane, ',');
+    // The heading as the test's own export gave it, then the pane's table
+    // and the comparison under it.
+    let live = export_text(&half, &about, ',');
+    let heading = |t: &str| t.split("\n\n").next().unwrap_or_default().to_string();
+    assert_eq!(heading(&csv), heading(&live));
+    assert!(csv.contains("\"Settling, s\",20\n"), "{csv}");
+    let table = table_text(&kept_table(&s), ',', Kind::Positions);
+    let c = saved_comparison(&s).expect("the full-wind test against it");
+    assert!(
+        csv.ends_with(&format!("\n{table}\n{}", comparison_text(&c, ','))),
+        "{csv}"
+    );
+    let take = Some("2026-11-13 19.17");
+    let text = saved_report_text(&s, &pane, true, take);
+    let live = report_text(&half, &about, true, take).unwrap();
+    let before_notes = |t: &str| t.split("\nNotes\n").next().unwrap_or_default().to_string();
+    assert_eq!(before_notes(&text), before_notes(&live));
+    // The hours to a tenth, as the pane and the CSV give them.
+    let h = format!("{:.1} h", s.wind_h.unwrap());
+    let against = format!("Against the Full-Wind Test, {h} after winding\n");
+    assert!(text.contains(&against), "{text}");
+    assert!(csv.contains(&format!("Rate at {h}, s/d")), "{csv}");
+    assert!(text.contains("Watch       Test Watch\n"), "{text}");
+}
+
 /// Save as Text… on the Dynamic Poise pane writes core's poise report
 /// (#1509): the table in the pane's order and the fit in full, never the
 /// Positions Test's report of the same readings.

@@ -759,7 +759,10 @@ figures are for the watchmaker to judge. With no test on the Bench, the
 three write the take's **This Take** table the same way (#1660): a take
 opened from Watches has no test of its own, so they leave out when a
 test began and its settling and measuring times, and list the rows in
-the table's own order, the card's. They are greyed with
+the table's own order, the card's. On an opened 24 hour half they write
+its saved results as the pane shows them (#1706): the watch, beat rate,
+lift angle, start and times the results keep, the table, and the
+full-wind test against it. They are greyed with
 "Nothing measured yet" only while the pane's table has no readings.
 
 **Full wind against 24 hours.** After a test run just after winding,

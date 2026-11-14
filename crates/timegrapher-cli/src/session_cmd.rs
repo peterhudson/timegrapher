@@ -1140,7 +1140,7 @@ fn text_reports(s: &Session, base: &Path) -> Vec<TextReport> {
     });
     let earlier = full.as_ref().map(|(figures, hours)| Earlier {
         figures,
-        hours: *hours,
+        hours: timegrapher_core::reading_text::WindHours::given(0.0, *hours),
     });
     let header = text_report::Header {
         watch: s.watch.map(str::to_string),

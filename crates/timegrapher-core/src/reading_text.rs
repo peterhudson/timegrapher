@@ -112,19 +112,108 @@ fn capitalised(s: &str) -> String {
 
 /// A state of wind that was given, as [`wind_state_words`] names it.
 pub fn wind_words(wind_h: f64) -> String {
+    wind_words_to(wind_h, 0)
+}
+
+/// [`wind_words`] with the hours to `digits` decimals: see [`WindHours`].
+fn wind_words_to(wind_h: f64, digits: usize) -> String {
     if wind_h <= 0.0 {
         "full wind".into()
     } else {
         format!(
             "{} h after winding",
-            crate::figure_text::fixed_text(wind_h, 0)
+            crate::figure_text::fixed_text(wind_h, digits)
         )
     }
+}
+
+/// Hours after full wind with the decimals they are known to, so every
+/// surface writes them at the precision of their source (Norm on #1713):
+/// hours a guided test measured, to a tenth ("24.2 h"); hours a person
+/// gave, as given ("24 h" for 24, "24.5 h" for 24.5), never more digits
+/// than were typed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindHours {
+    pub hours: f64,
+    pub digits: usize,
+}
+
+/// Decimals of hours a guided test measured: it times them to a tenth.
+const MEASURED_DIGITS: usize = 1;
+
+/// The most decimals hours given by hand are read to.
+const GIVEN_MAX_DIGITS: usize = 3;
+
+impl WindHours {
+    /// Hours a guided test measured, to a tenth.
+    pub fn measured(hours: f64) -> Self {
+        Self {
+            hours,
+            digits: MEASURED_DIGITS,
+        }
+    }
+
+    /// Hours `to` less hours `from`, each given by hand: the difference
+    /// keeps the decimals of the less precise of the two (math guide,
+    /// #1576). Full wind, a `from` of 0, is exact and doesn't limit it. A
+    /// typed "24.0" reads as whole, as 24: the number keeps no trailing
+    /// zero.
+    pub fn given(from: f64, to: f64) -> Self {
+        let digits = if from == 0.0 {
+            given_digits(to)
+        } else {
+            given_digits(from).min(given_digits(to))
+        };
+        Self {
+            hours: to - from,
+            digits,
+        }
+    }
+
+    /// "full wind", or "24 h after winding".
+    pub fn words(self) -> String {
+        wind_words_to(self.hours, self.digits)
+    }
+
+    /// The hours alone, "24 h", for a table's head.
+    pub fn short(self) -> String {
+        format!(
+            "{} h",
+            crate::figure_text::fixed_text(self.hours, self.digits)
+        )
+    }
+}
+
+/// How many decimals `x` was given to: 0 for 24, 1 for 24.5.
+fn given_digits(x: f64) -> usize {
+    (0..GIVEN_MAX_DIGITS)
+        .find(|&d| {
+            let scaled = x * 10f64.powi(d as i32);
+            (scaled - scaled.round()).abs() < 1e-6
+        })
+        .unwrap_or(GIVEN_MAX_DIGITS)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Hours are written at the precision of their source (Norm on
+    /// #1713): a given whole hour stays whole, measured hours keep their
+    /// tenth even when it is 0.
+    #[test]
+    fn wind_hours_keep_the_precision_of_their_source() {
+        assert_eq!(WindHours::given(0.0, 24.0).words(), "24 h after winding");
+        assert_eq!(WindHours::given(0.0, 24.0).short(), "24 h");
+        // 24 is known only to the hour, so the difference is too.
+        assert_eq!(WindHours::given(0.5, 24.0).words(), "24 h after winding");
+        assert_eq!(WindHours::given(0.1, 24.3).short(), "24.2 h");
+        // Full wind is exact: it doesn't take the tenth from 24.5.
+        assert_eq!(WindHours::given(0.0, 24.5).short(), "24.5 h");
+        assert_eq!(WindHours::measured(24.0).words(), "24.0 h after winding");
+        assert_eq!(WindHours::measured(24.2).short(), "24.2 h");
+        assert_eq!(WindHours::measured(0.0).words(), "full wind");
+    }
 
     /// The card and a take's hover say the wind to 0.1 h, or that it was
     /// not given (#1665).

@@ -177,7 +177,7 @@ impl TimegrapherApp {
             nothing,
         ) {
             let about = self.guided_about();
-            self.save_test_text(&about, guided::Kind::Poise, kept.as_deref());
+            self.save_test_text(&about, guided::Kind::Poise, None, kept.as_deref());
         }
         if theme::tool_word_button(
             ui,

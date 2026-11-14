@@ -781,7 +781,7 @@ fn saved_text(app: TimegrapherApp, path: &std::path::Path) -> (TimegrapherApp, S
 fn save_as_text_writes_the_poise_tests_report() {
     let (mut app, base, tx) = measured("save-text");
     let about = app.guided_about();
-    app.save_test_text(&about, guided::Kind::Positions, None);
+    app.save_test_text(&about, guided::Kind::Positions, None, None);
     assert!(!app.picking(), "no Positions Test on the Bench");
     let t = app.poise_test().expect("the test");
     let take = guided::began_name(t);
