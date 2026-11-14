@@ -105,9 +105,22 @@ pub fn positions_in(
     earlier: Option<Earlier>,
     order: &[Position],
 ) -> String {
+    positions_of(header, &figures(readings), earlier, order, readings)
+}
+
+/// [`positions_in`] from each position's figures, as a saved test keeps
+/// them (an opened 24 hour half, #1706). `readings` give the notes the
+/// conditions found in the sound; a saved test has none, so its notes say
+/// only how the beat error was given.
+pub fn positions_of(
+    header: &Header,
+    figures: &[SourcedFigures],
+    earlier: Option<Earlier>,
+    order: &[Position],
+    readings: &[Reading],
+) -> String {
     let mut out = heading("Positions Test", header);
-    let figures = figures(readings);
-    let ix = session::sourced_indices_over(0.0, &figures, order);
+    let ix = session::sourced_indices_over(0.0, figures, order);
     let mut rows = table_rows(&ix, "From Average");
     rows.push(mean_row("Average", &ix));
     rows.push(vec![
@@ -130,7 +143,7 @@ pub fn positions_in(
         ),
     ]);
     if let Some(e) = earlier {
-        out += &comparison(e, &figures);
+        out += &comparison(e, figures);
     }
     out += &notes(readings, &ix);
     out

@@ -494,6 +494,9 @@ pub static POSITIONS_TEST: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
         "- With no test on the Bench, all three write an opened take's This Take table, without a \
      test's start and times."
             .into(),
+        "- On an opened 24 hour half, they write its saved results and the full-wind test \
+     against them."
+            .into(),
     ])
 });
 
