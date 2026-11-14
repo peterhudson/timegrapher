@@ -284,8 +284,14 @@ impl TimegrapherApp {
 
     /// Each position's settled stretches, in the table's order.
     fn free_stretches(&self) -> Vec<(core_session::Position, f64, f64)> {
+        // The six, then the upright stops between them, for the Dynamic
+        // Poise pane (#1619).
+        let between = guided::POISE_ORDER
+            .iter()
+            .filter(|p| !guided::ORDER.contains(p));
         guided::ORDER
             .iter()
+            .chain(between)
             .filter_map(|&p| Some((p, core_session::Position::parse(p.code())?)))
             .flat_map(|(p, sp)| {
                 self.session
@@ -379,6 +385,7 @@ impl TimegrapherApp {
             self.take_breaks.clone(),
             self.clock.as_ref().map(|c| c.ppm),
         );
+        let bph_set = live.config().analysis.bph;
         let read = move |log: BeatLog| {
             let clock = reading_clock(take_clock.as_ref(), opened.is_some(), ppm, log.duration_s);
             let breaks = steady::reading_breaks(opened.unwrap_or_default(), &log);
@@ -390,7 +397,13 @@ impl TimegrapherApp {
                 &stretches,
                 core_session::POSITION_MIN_S,
             );
-            guided::free_table(&t)
+            let upright = core_session::position_rows(
+                &core_session::Position::UPRIGHT,
+                (&log, clock.as_ref(), &breaks, &masked),
+                &stretches,
+                core_session::POSITION_MIN_S,
+            );
+            guided::free_table(&t, guided::upright(&upright, log.bph, bph_set))
         };
         let log = steady::log_of(live);
         let shown = self.free_table.borrow().as_ref().map(|(_, t)| t.clone());

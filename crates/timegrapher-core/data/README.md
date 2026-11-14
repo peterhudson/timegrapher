@@ -133,6 +133,15 @@ over this table (`timegrapher_core::calibre_store`). A user can send them
 to the project as a pre-filled GitHub issue; accepted ones are folded
 into this table with the issue as their source.
 
+## Contributed through issues
+
+- **PUW 360** ([#1611](https://github.com/peterhudson/timegrapher/issues/1611),
+  CC0): wheel periods from the contributor's tooth counts, as submitted
+  (the counts were not given). The family is the 360 series as Ranfft
+  lists it; the contributor's 260 and 460 coverage is noted, not
+  transferred. No lift angle: no published figure was found, and the
+  contributor's 49° estimate is in the row's notes.
+
 ## How the periods were worked out
 
 - **balance**: one full swing is two beats, `7200 / bph` seconds.

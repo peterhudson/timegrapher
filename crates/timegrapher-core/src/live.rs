@@ -196,6 +196,9 @@ pub struct LiveAnalyzer {
     bph: Option<u32>,
     /// Whether `bph` is the rate Auto found, not one set.
     found_bph: bool,
+    /// The rate a fresh guess names instead of Auto's lock, and the
+    /// passes of doubt it holds ([`LiveAnalyzer::lock_doubted`]).
+    doubt: Option<(u32, u32)>,
     template: Option<Vec<f32>>,
     /// Building the template again from the first chunk (#1327).
     rebuild: rebuild::Rebuild,
@@ -257,12 +260,30 @@ const JUMP_LOOK: usize = 4 * beats::MIN_SIDE_BEATS + beats::JUMP_CONTEXT;
 /// minutes at 28,800 beats per hour, more than a strip shows.
 const CANDIDATES_KEPT: usize = 2000;
 
+/// The share of a window's beats at Auto's locked rate under which a pass
+/// asks a fresh guess ([`LiveAnalyzer::lock_doubted`]). It only decides
+/// when to ask; the guess decides. A watch locked on at twice its rate
+/// has every other beat empty: 0.5 to 0.67 on the #1617 put-back. On the
+/// corpus takes heard live at their own rate (about 31,600 passes, the
+/// low-wind Peacock and the dying YM42 excerpt among them), the lowest
+/// was 0.70 and the 1st percentile 0.83 or more; the 12 passes under 0.75
+/// all guessed the locked rate.
+const LOCK_GOOD_SHARE: f64 = 0.75;
+
+/// The doubt that lets Auto's lock go, seconds: passes of doubt times
+/// the time between passes ([`LiveAnalyzer::lock_doubted`]), six passes
+/// at the default half second. Three times the longest doubt seen on a
+/// right lock (two passes, in the #1617 lift-off's noise; none on the
+/// corpus), and short beside the 10 s a regular beat is judged on.
+const RELOCK_S: f64 = 3.0;
+
 impl LiveAnalyzer {
     pub fn new(sample_rate: u32, cfg: LiveConfig) -> Self {
         LiveAnalyzer {
             fs: sample_rate as f64,
             bph: cfg.analysis.bph,
             found_bph: false,
+            doubt: None,
             cfg,
             buf: Vec::new(),
             buf0: 0,
@@ -418,6 +439,7 @@ impl LiveAnalyzer {
         self.forget_rebuild();
         self.bph = self.cfg.analysis.bph;
         self.found_bph = false;
+        self.doubt = None;
         self.logged_bph = self.bph;
         self.beats.clear();
         self.clipped.clear();
@@ -762,6 +784,14 @@ impl LiveAnalyzer {
             self.quiet_pass(&local, off, from, to, beat);
             return;
         }
+        // Auto locked on to a rate the beats don't bear out: let it go,
+        // and the next pass guesses again (#1617).
+        if self.lock_doubted(&env, &local) {
+            self.let_go_of_guess();
+            self.jump_at(to, false);
+            self.settled_to = to;
+            return;
+        }
         // Number this pass's beats on from the last settled beat.
         let Some(anchor) = beats::anchor_of(&local, off, from, to, self.beats.last(), beat) else {
             self.settled_to = to;
@@ -820,13 +850,52 @@ impl LiveAnalyzer {
             && self.cfg.analysis.bph.is_none()
             && self.template.is_some()
         {
-            self.template = None;
-            self.forget_rebuild();
-            self.bph = None;
-            self.found_bph = false;
+            self.let_go_of_guess();
         }
         self.settled_to = to;
         self.next_amp_s = None;
+    }
+
+    /// Let a guessed rate go: the next pass heard guesses it afresh.
+    fn let_go_of_guess(&mut self) {
+        self.template = None;
+        self.forget_rebuild();
+        self.bph = None;
+        self.found_bph = false;
+        self.doubt = None;
+    }
+
+    /// Whether Auto's lock has stopped fitting the sound (#1617). A pass
+    /// where fewer than [`LOCK_GOOD_SHARE`] of the window's beats at the
+    /// locked rate are good asks a fresh guess on the window: one naming
+    /// the locked rate clears the doubt, one naming another rate adds a
+    /// pass to it (or starts it afresh on a third rate), and a pass with
+    /// enough good beats takes one off. The lock is let go once the
+    /// doubt holds [`RELOCK_S`] of passes. So a watch put back after
+    /// handling noise locked Auto on to another rate (an 18,000 bph watch
+    /// read at 36,000, every other beat empty) is read again at its own
+    /// rate. A rate set by hand is never doubted.
+    fn lock_doubted(&mut self, env: &[f32], local: &[Beat]) -> bool {
+        let locked = match (self.bph, self.found_bph, self.cfg.analysis.bph) {
+            (Some(b), true, None) => b,
+            _ => {
+                self.doubt = None;
+                return false;
+            }
+        };
+        let good = local.iter().filter(|b| b.is_good()).count();
+        if local.is_empty() || good as f64 >= LOCK_GOOD_SHARE * local.len() as f64 {
+            self.doubt = self.doubt.and_then(|(r, n)| (n > 1).then_some((r, n - 1)));
+            return false;
+        }
+        let guess = beats::guess_bph(env, self.fs);
+        self.doubt = match self.doubt {
+            _ if guess == locked => None,
+            Some((r, n)) if r == guess => Some((r, n + 1)),
+            _ => Some((guess, 1)),
+        };
+        self.doubt
+            .is_some_and(|(_, n)| n as f64 * self.cfg.update_s >= RELOCK_S)
     }
 
     /// Settles this pass's numbered beats before `to`, noting those that
@@ -1616,3 +1685,6 @@ mod sound_tests;
 #[cfg(test)]
 #[path = "live/live_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod relock_tests;

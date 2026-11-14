@@ -566,6 +566,40 @@ fn the_watch_line_cuts_the_name_and_keeps_its_arrow() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// A take opened from outside Watches names its own watch, from its
+/// session file: the card's title names it as the status bar does, not
+/// No Watch, and says it isn't in Watches (Hugh, on Walter's find).
+#[test]
+fn a_take_from_outside_watches_names_its_own_watch_on_the_card() {
+    let (mut app, base) = line_app("own", &["Pepsi"], None);
+    app.watch = "Rolex Submariner 41mm".into();
+    assert!(app.open_watch().is_none());
+    assert_eq!(
+        app.named_watch(),
+        Some(("Rolex Submariner 41mm".to_string(), false))
+    );
+    assert!(app.status_words().contains("· Rolex Submariner 41mm ·"));
+    let ctx = themed();
+    let mut text = String::new();
+    for _ in 0..2 {
+        text = painted_text(&ctx.run(screen(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.allocate_ui(Vec2::new(300.0, theme::TITLE_ROW_H), |ui| {
+                    ui.set_max_width(300.0);
+                    app.watch_line(ui, &[]);
+                });
+            });
+        }));
+    }
+    let line = text.lines().find(|l| l.ends_with('⏷')).unwrap_or_default();
+    assert_eq!(line, "Rolex Submariner 41mm ⏷");
+    // A watch in Watches is named as one.
+    app.pick_watch(&watch_id(&app, "Pepsi"));
+    assert_eq!(app.named_watch(), Some(("Pepsi".to_string(), true)));
+    drop(app);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// The Settings gear is in the same place in both views: in Watches
 /// the pane icons hide but keep their room.
 #[test]

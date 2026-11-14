@@ -447,6 +447,15 @@
     ]
   },
   {
+    "maker": "PUW",
+    "aliases": [
+      "Pforzheimer Uhren-Rohwerke"
+    ],
+    "sources": [
+      "https://ranfft.org/manufacturer/248-PUW: Ranfft lists PUW as \"Pforzheimer Uhren-Rohwerke GmbH\", Pforzheim"
+    ]
+  },
+  {
     "maker": "Piaget",
     "common": true,
     "aliases": [],

@@ -558,6 +558,31 @@ mod tests {
     }
 
     #[test]
+    fn a_windows_se_holds_on_correlated_noise_in_short_runs() {
+        // Noise correlating at 0.5 in runs of 30 between missing values
+        // (#1544's case, Trevor's review), with no line, over 200 seeds:
+        // a window's size over its SE should spread as a Rayleigh does,
+        // rms √2, as it should when its correlation is read right (#1618
+        // reads the SE from the noise's own power, not from ρ̂).
+        let mut z2 = Vec::new();
+        for seed in 0..200 {
+            let mut rng = Rng::new(900_003 + seed);
+            let mut e = 0.0;
+            let g = grid(1.0, 31 * 100, |t| {
+                if (t as usize) % 31 == 30 {
+                    return f64::NAN;
+                }
+                e = 0.5 * e + 0.75f64.sqrt() * rng.normal();
+                e
+            });
+            let (ca, sb, se) = fit_line(&g, 0, g.y.len(), std::f64::consts::TAU / 60.0).unwrap();
+            z2.push((ca.hypot(sb) / se).powi(2));
+        }
+        let rms = (z2.iter().sum::<f64>() / z2.len() as f64).sqrt();
+        assert!((1.25..1.6).contains(&rms), "rms size over SE {rms}");
+    }
+
+    #[test]
     fn a_window_se_allows_for_noise_that_follows_itself() {
         // A 60 s line of 2 ms under noise whose neighbours correlate at
         // 0.8 (0.5 ms in size). One SE should be about the scatter of the

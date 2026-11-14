@@ -1720,92 +1720,13 @@ fn state(wind_h: f64, readings: &[&Reading]) -> StateIndices {
 /// values `session` gives, for any interface that shows them.
 #[path = "session_aggregates.rs"]
 mod session_aggregates;
-pub use session_aggregates::{sourced_indices, sourced_indices_over, SourcedFigures};
+pub use session_aggregates::{
+    position_rows, positions_table, sourced_indices, sourced_indices_over, PositionRow,
+    PositionsTable, SourcedFigures, TakeRead, POSITION_MIN_S,
+};
 
 fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
     v.max_by(|a, b| a.abs().total_cmp(&b.abs()))
-}
-
-/// The least time in a position, seconds, before a take's Positions Test
-/// table reads it: one whole 10 s reading.
-pub const POSITION_MIN_S: f64 = 10.0;
-
-/// One position's row of a take's Positions Test table.
-#[derive(Debug, Clone)]
-pub struct PositionRow {
-    pub position: Position,
-    /// Seconds marked in the position, after each stretch's settling and
-    /// less masked time.
-    pub duration_s: f64,
-    /// Its reading, once `duration_s` reaches the least asked for.
-    pub measurement: Option<Measurement>,
-}
-
-/// A take's Positions Test table: a row for each of the six positions,
-/// in [`Position::ALL`]'s order, and the values over the positions read.
-#[derive(Debug, Clone)]
-pub struct PositionsTable {
-    pub rows: Vec<PositionRow>,
-    pub indices: StateIndices,
-}
-
-/// The Positions Test table of any take, live or opened, guided or not:
-/// each position's settled `stretches` (position, start, end, seconds on
-/// the sound card's clock, settling already trimmed from each start) read
-/// together as one reading, as [`measure_masked`] reads a take: the time
-/// between them and the `masked` stretches (cleaned with [`masked_spans`])
-/// left out. A position is read once its duration reaches `min_s`; the
-/// indices are over the positions read.
-pub fn positions_table(
-    log: &BeatLog,
-    clock: Option<&ClockFit>,
-    breaks: &[Break],
-    masked: &[(f64, f64)],
-    stretches: &[(Position, f64, f64)],
-    min_s: f64,
-) -> PositionsTable {
-    let rows: Vec<PositionRow> = Position::ALL
-        .iter()
-        .map(|&p| {
-            let mut spans: Vec<(f64, f64)> = stretches
-                .iter()
-                .filter(|s| s.0 == p)
-                .map(|&(_, a, b)| (a.max(0.0), b.min(log.duration_s)))
-                .filter(|(a, b)| a < b)
-                .collect();
-            spans.sort_by(|a, b| a.0.total_cmp(&b.0));
-            let duration_s = spans
-                .iter()
-                .map(|&(a, b)| b - a - masked_within(masked, a, b))
-                .sum::<f64>()
-                .max(0.0);
-            let measurement = (duration_s >= min_s)
-                .then(|| measure_together(log, clock, breaks, masked, &spans))
-                .flatten();
-            PositionRow {
-                position: p,
-                duration_s,
-                measurement,
-            }
-        })
-        .collect();
-    let figures: Vec<SourcedFigures> = rows
-        .iter()
-        .filter_map(|r| {
-            let m = r.measurement.as_ref()?;
-            Some((
-                r.position,
-                m.rate_s_per_day,
-                m.amplitude_deg,
-                m.beat_error(),
-                m.beat_error_source,
-            ))
-        })
-        .collect();
-    PositionsTable {
-        indices: sourced_indices(0.0, &figures),
-        rows,
-    }
 }
 
 /// Stretches `spans` of a take (in time order) read together as one
@@ -2308,6 +2229,11 @@ pub struct RecordingEntry {
     pub masked: Vec<[f64; 2]>,
     pub notes: Option<String>,
     pub reference: Option<Reference>,
+    /// The Complication Test's stretch this entry is, `"off"` or `"on"`
+    /// (#1620): a take keeps its test's three stretches so they are read
+    /// again when it is opened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complication: Option<String>,
     /// A fault confirmed at the bench, on a corpus holdout take:
     /// `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`.
     /// Left out, the recording is of a healthy watch.
