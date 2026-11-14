@@ -143,3 +143,49 @@ fn record_files_a_test_under_a_library_watch() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("--watch NAME"));
     let _ = fs::remove_dir_all(&d);
 }
+
+/// While the app has the library open, a take is not recorded into
+/// through a link either: to the take, to its watch, or to the library
+/// (#1641). The take's session file is left as it was.
+#[cfg(unix)]
+#[test]
+fn record_through_a_link_into_the_library_is_refused_while_the_app_has_it() {
+    let d = scratch("link");
+    let wav = synth(&d);
+    let root = d.join("Timegrapher Data");
+    let mut lib = Library::create(&root).unwrap();
+    let dir = lib.add(&Watch::new("Pepsi")).unwrap();
+    drop(lib);
+    let take = dir.join(TAKES).join("first");
+    let j = doc(&record(&[take.to_str().unwrap(), "--position", "DU"], &wav));
+    let session = PathBuf::from(j["session_file"].as_str().unwrap());
+    let before = fs::read(&session).unwrap();
+    let links = d.join("links");
+    fs::create_dir_all(&links).unwrap();
+    let link = |name: &str, to: &Path| {
+        let l = links.join(name);
+        std::os::unix::fs::symlink(to, &l).unwrap();
+        l
+    };
+    let aliases = [
+        link("take", &take),
+        link("watch", &dir).join(TAKES).join("first"),
+        link("watch-new", &dir).join(TAKES).join("second"),
+        link("library", &root)
+            .join(dir.strip_prefix(&root).unwrap())
+            .join(TAKES)
+            .join("first"),
+    ];
+    let held = Library::open(&root).unwrap();
+    assert!(held.read_only.is_none(), "this test holds the lock");
+    for alias in &aliases {
+        let out = record(&[alias.to_str().unwrap(), "--position", "DD"], &wav);
+        assert_eq!(out.status.code(), Some(1), "{}", alias.display());
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("quit the app"), "{}: {err}", alias.display());
+    }
+    assert_eq!(fs::read(&session).unwrap(), before);
+    assert!(!dir.join(TAKES).join("second").exists());
+    drop(held);
+    let _ = fs::remove_dir_all(&d);
+}
