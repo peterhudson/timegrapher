@@ -71,7 +71,7 @@ pub fn position_name(p: &str) -> String {
 }
 
 /// A state of wind as every surface names it: "full wind" at 0 (or less),
-/// "24 h after winding", hours to the whole hour, or "wind not given"
+/// "24 h after winding", the hours as given, or "wind not given"
 /// where the reading carries none (#1665): a reading is never called fully
 /// wound unless that was set.
 pub fn wind_state_words(wind_h: Option<f64>) -> String {
@@ -110,9 +110,10 @@ fn capitalised(s: &str) -> String {
         .map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
 }
 
-/// A state of wind that was given, as [`wind_state_words`] names it.
+/// A state of wind that was given, as [`wind_state_words`] names it:
+/// the hours as given ([`WindHours::given`] from full wind, #1715).
 pub fn wind_words(wind_h: f64) -> String {
-    wind_words_to(wind_h, 0)
+    WindHours::given(0.0, wind_h).words()
 }
 
 /// [`wind_words`] with the hours to `digits` decimals: see [`WindHours`].
@@ -213,6 +214,10 @@ mod tests {
         assert_eq!(WindHours::measured(24.0).words(), "24.0 h after winding");
         assert_eq!(WindHours::measured(24.2).short(), "24.2 h");
         assert_eq!(WindHours::measured(0.0).words(), "full wind");
+        // A state of wind given by hand reads as given (#1715).
+        assert_eq!(wind_words(24.0), "24 h after winding");
+        assert_eq!(wind_words(24.5), "24.5 h after winding");
+        assert_eq!(wind_words(0.0), "full wind");
     }
 
     /// The card and a take's hover say the wind to 0.1 h, or that it was
