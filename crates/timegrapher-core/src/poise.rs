@@ -53,11 +53,12 @@ pub fn pending_text() -> String {
 }
 
 /// What a pane says with no fit: on a take that is done (`done`, opened
-/// again and not being recorded) with fewer than [`MIN_SHOWN`] of its
-/// `measured` upright positions, what it lacks, as no more will come
-/// (Hugh on #1622); else [`pending_text`].
+/// again and not being recorded) with one to fewer than [`MIN_SHOWN`] of
+/// its `measured` upright positions, what it lacks, as no more will come
+/// (Hugh on #1622); else [`pending_text`], as for a take with no stops at
+/// all, where there is nothing to explain.
 pub fn unfitted_text(measured: usize, done: bool) -> String {
-    if done && measured < MIN_SHOWN {
+    if done && (1..MIN_SHOWN).contains(&measured) {
         format!("Needs {MIN_SHOWN} upright positions to fit; this take has {measured}")
     } else {
         pending_text()
