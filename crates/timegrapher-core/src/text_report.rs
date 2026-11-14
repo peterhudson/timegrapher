@@ -14,12 +14,16 @@
 use crate::figure_text::{base_digits, fixed_text, grouped, signed_text};
 use crate::measure::Caveat;
 use crate::poise;
-use crate::reading_text::wind_words;
+use crate::reading_text::wind_words_to;
 use crate::session::{self, Measurement, Position, Reading, SourcedFigures, StateIndices};
 
 /// The column the sentences wrap at (Hugh, 2026-11-14): a text file reads
 /// in any editor and in an email at this width.
 pub const WIDTH: usize = 72;
+
+/// Decimals of the hours after full wind, a tenth, as the app's pane
+/// and CSV write them.
+const HOURS_DIGITS: usize = 1;
 
 /// The file names `timegrapher session` writes the reports to, beside
 /// `report.html`.
@@ -310,10 +314,12 @@ fn comparison(e: Earlier, later: &[SourcedFigures]) -> String {
     let Some(c) = session::comparison(e.figures, e.hours, later) else {
         return String::new();
     };
-    let now = wind_words(e.hours);
+    // The hours to a tenth, as the pane and the CSV give them (Hugh on
+    // #1713).
+    let now = wind_words_to(e.hours, HOURS_DIGITS);
     // Short heads, so the table keeps within the width: the section's
     // heading names both states in full.
-    let later_head = format!("{} h", fixed_text(e.hours, 0));
+    let later_head = format!("{} h", fixed_text(e.hours, HOURS_DIGITS));
     let mut rows = vec![
         vec![
             "Position".into(),

@@ -1256,6 +1256,10 @@ fn an_opened_24_hour_halfs_results_are_saved_as_the_pane_shows_them() {
     let live = report_text(&half, &about, true, take).unwrap();
     let before_notes = |t: &str| t.split("\nNotes\n").next().unwrap_or_default().to_string();
     assert_eq!(before_notes(&text), before_notes(&live));
-    assert!(text.contains("Against the Full-Wind Test"), "{text}");
+    // The hours to a tenth, as the pane and the CSV give them.
+    let h = format!("{:.1} h", s.wind_h.unwrap());
+    let against = format!("Against the Full-Wind Test, {h} after winding\n");
+    assert!(text.contains(&against), "{text}");
+    assert!(csv.contains(&format!("Rate at {h}, s/d")), "{csv}");
     assert!(text.contains("Watch       Test Watch\n"), "{text}");
 }

@@ -189,7 +189,7 @@ fn a_session_with_two_states_sets_the_later_against_full_wind() {
     let doc = session(&dir, &toml);
     let text = report(&doc, "positions-report.txt").expect("a positions report");
     assert!(
-        text.contains("Against the Full-Wind Test, 24 h after winding\n"),
+        text.contains("Against the Full-Wind Test, 24.0 h after winding\n"),
         "{text}"
     );
     let at = text.find("Against").unwrap();

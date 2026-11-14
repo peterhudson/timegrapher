@@ -73,12 +73,19 @@ pub fn position_name(p: &str) -> String {
 /// A state of wind as every surface names it: "full wind" at 0 (or less),
 /// else "24 h after winding", hours to the whole hour.
 pub fn wind_words(wind_h: f64) -> String {
+    wind_words_to(wind_h, 0)
+}
+
+/// [`wind_words`] with the hours to `digits` decimals, "24.2 h after
+/// winding", where they were measured to a tenth, as a guided test's 24
+/// hour half (#1713).
+pub fn wind_words_to(wind_h: f64, digits: usize) -> String {
     if wind_h <= 0.0 {
         "full wind".into()
     } else {
         format!(
             "{} h after winding",
-            crate::figure_text::fixed_text(wind_h, 0)
+            crate::figure_text::fixed_text(wind_h, digits)
         )
     }
 }
