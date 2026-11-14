@@ -488,17 +488,10 @@ pub(crate) fn listing_of(file: &Path) -> Result<Option<(Manifest, PathBuf)>, Str
 /// kept entry settles as it does in the whole session file.
 fn listing_in(file: &Path, session_file: &Path) -> Result<Option<(Manifest, PathBuf)>, String> {
     let (mut m, base, _) = load_manifest_file(session_file)?;
-    // An entry names the file when its sound is that file alone: as a
-    // path, or as a folder (".", a take's own) whose only sound it is.
-    let same = |e: &RecordingEntry| {
-        let Ok(file) = fs::canonicalize(file) else {
-            return false;
-        };
-        match take::sound_files(&[base.join(&e.file)]).as_deref() {
-            Ok([one]) => fs::canonicalize(one).is_ok_and(|one| one == file),
-            _ => false,
-        }
-    };
+    // An entry names the file as the app and `series` find it: its sound
+    // is that file alone, as a path or as a folder (".", a take's own)
+    // whose only sound it is (`take_path::lists`, #1573).
+    let same = |e: &RecordingEntry| timegrapher_core::take_path::lists(&base, &e.file, file);
     // An entry carrying on the position of the one before it, in another
     // file, settles as session reads it, though that one is not kept here
     // (`take::continues_position`).

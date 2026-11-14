@@ -662,6 +662,94 @@ fn heavy_clipping_still_reads_live() {
     );
 }
 
+/// Kept as its analysis while it is recorded, a real take is kept as when
+/// its sound is kept and measured after, every file of `analysis/` byte
+/// for byte (#1514): the sound pushed in blocks of an odd size, as it
+/// comes from a sound card, with one stretch's sound shape kept.
+#[test]
+fn kept_while_recorded_matches_kept_after_on_real_takes() {
+    use timegrapher_core::analysis_take::{files, measure};
+    use timegrapher_core::keeper::{KeepAs, Keeper};
+    for path in corpus_takes(&[LIVE_TAKES[1], LIVE_TAKES[3]]) {
+        let cfg = timegrapher_core::stream::StreamConfig::default();
+        let software = serde_json::json!({"name": "timegrapher", "version": "test"});
+        let shapes = vec![Some((300.0, 360.0))];
+        let after = measure(&[path.as_path()], &cfg, &shapes, software.clone(), |_| {}).unwrap();
+        let info = timegrapher_core::audio::info(&path).unwrap();
+        let keeper = Keeper::start(KeepAs {
+            sample_rate: info.sample_rate,
+            bytes_per_frame: info.bytes_per_frame,
+            cfg: cfg.clone(),
+            shapes,
+            software,
+        });
+        timegrapher_core::audio::stream(&path, 4097, |b| assert!(keeper.push(b))).unwrap();
+        let live = keeper.finish().unwrap();
+        eprintln!(
+            "{}: {} beats, {} jumps, {} profiles",
+            path.display(),
+            after.log.beats.len(),
+            after.header.jumps.len(),
+            after.profiles.len()
+        );
+        let (a, b) = (files(&after).unwrap(), files(&live).unwrap());
+        assert_eq!(a.len(), b.len());
+        for ((name, x), (_, y)) in a.iter().zip(&b) {
+            assert!(x == y, "{}: {name} differs", path.display());
+        }
+    }
+}
+
+/// The take that runs down: its second sound file, about 600 to 1200 s
+/// into the excerpt, where the beats jump 14 times (`series` on 2fedcb8).
+const DYING_TAKE: &str = "ym42_DU_65h_excerpt_dying";
+const DYING_FILE: &str = "take_part01-002.flac";
+
+/// Kept while recorded, a stretch of real sound where the beats jump again
+/// and again is kept as when it is measured after, every file byte for
+/// byte (#1514). Runs where `TIMEGRAPHER_CORPUS` is set.
+#[test]
+fn kept_while_recorded_matches_kept_after_where_the_beats_jump() {
+    use timegrapher_core::analysis_take::{files, measure};
+    use timegrapher_core::keeper::{KeepAs, Keeper};
+    let Some(root) = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from) else {
+        assert!(
+            std::env::var_os("TIMEGRAPHER_REQUIRE_CORPUS").is_none(),
+            "TIMEGRAPHER_CORPUS is not set"
+        );
+        eprintln!("SKIP kept where the beats jump: TIMEGRAPHER_CORPUS not set");
+        return;
+    };
+    let path = root.join("takes").join(DYING_TAKE).join(DYING_FILE);
+    let cfg = timegrapher_core::stream::StreamConfig::default();
+    let software = serde_json::json!({"name": "timegrapher", "version": "test"});
+    let shapes = vec![Some((60.0, 120.0))];
+    let after = measure(&[path.as_path()], &cfg, &shapes, software.clone(), |_| {}).unwrap();
+    let info = timegrapher_core::audio::info(&path).unwrap();
+    let keeper = Keeper::start(KeepAs {
+        sample_rate: info.sample_rate,
+        bytes_per_frame: info.bytes_per_frame,
+        cfg: cfg.clone(),
+        shapes,
+        software,
+    });
+    timegrapher_core::audio::stream(&path, 4097, |b| assert!(keeper.push(b))).unwrap();
+    let live = keeper.finish().unwrap();
+    eprintln!(
+        "{}: {} beats, jumps at {:?}, {} profiles",
+        path.display(),
+        after.log.beats.len(),
+        after.header.jumps,
+        after.profiles.len()
+    );
+    assert!(after.header.jumps.len() >= 5, "{:?}", after.header.jumps);
+    let (a, b) = (files(&after).unwrap(), files(&live).unwrap());
+    assert_eq!(a.len(), b.len());
+    for ((name, x), (_, y)) in a.iter().zip(&b) {
+        assert!(x == y, "{}: {name} differs", path.display());
+    }
+}
+
 const REAL_TAKES: [&str; 4] = [
     "daytona4130_DU_30min",
     "ym42_DD_30min",

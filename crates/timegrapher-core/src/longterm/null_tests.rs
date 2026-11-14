@@ -1,5 +1,7 @@
 use super::*;
-use crate::longterm::{detrend, detrend_window, search, spectrum, x_scale, Band, Grid, DETREND_S};
+use crate::longterm::{
+    detrend_as, detrend_window, reach, search, slow_for, spectrum, x_scale, Band, Grid, DETREND_S,
+};
 use crate::synth::Rng;
 
 /// The table's take lengths (s) and grid steps, by model: the steps the
@@ -15,9 +17,10 @@ fn rows(model: NullModel) -> Vec<(f64, f64)> {
     let mut out = Vec::new();
     match model {
         NullModel::Timing => {
+            // At 0.5 s to 80 h (`longrun::timing_step`), past it at 4 s.
             out.extend(SHORT.iter().chain(&TO_12H).map(|&s| (s, 0.25)));
-            out.extend(TO_48H.iter().map(|&s| (s, 0.5)));
-            out.extend(TO_144H.iter().map(|&s| (s, 4.0)));
+            out.extend(TO_48H.iter().chain(&TO_144H[1..3]).map(|&s| (s, 0.5)));
+            out.extend(TO_144H[1..].iter().map(|&s| (s, 4.0)));
         }
         NullModel::Readings => {
             out.extend(
@@ -132,6 +135,11 @@ struct Measured {
     /// Timing: each mean-pass draw's fitted mix and misfit.
     #[serde(default)]
     misfit_draws: Vec<(f64, f64)>,
+    /// Timing: each mean-pass draw's fitted mix and, at each x point,
+    /// its whitened power's count, sum and sum of squares, from which
+    /// [`rebin_means`] reads each cell's mean and shape by fitted mix.
+    #[serde(default)]
+    per_x: Vec<PerX>,
     /// The fitted Gumbel's location and scale, score units.
     mu: f64,
     sigma: f64,
@@ -192,6 +200,7 @@ fn null_mean(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> 
     let own = levelling(model, span, step, mix);
     let mut fitted = Vec::new();
     let mut misfits = Vec::new();
+    let mut per_x = Vec::new();
     for d in 0..draws {
         let g = null_grid(
             model,
@@ -201,13 +210,17 @@ fn null_mean(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> 
             scale,
             seed_of(&[id[0], id[1], id[2], id[3], 1, d as u64]),
         );
-        let det = detrend(&g, DETREND_S);
+        let det = detrend_as(&g, DETREND_S, slow_for(model));
         let sp = spectrum(&det, w);
         let jmin = ((2.0 / span) / sp.df).ceil().max(1.0) as usize;
+        let mut here = vec![[0.0; 3]; X_POINTS];
         for j in jmin..sp.white.len() {
             if let Some(k) = x_index(j as f64 * sp.df * scale) {
                 sum[k] += sp.white[j];
                 cnt[k] += 1;
+                here[k][0] += 1.0;
+                here[k][1] += sp.white[j];
+                here[k][2] += sp.white[j] * sp.white[j];
             }
         }
         let f = match model {
@@ -217,6 +230,7 @@ fn null_mean(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> 
                 if t.misfit.is_finite() {
                     misfits.push((t.mix, t.misfit));
                 }
+                per_x.push((t.mix, std::mem::take(&mut here)));
                 t.mix
             }
         };
@@ -254,6 +268,7 @@ fn null_mean(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> 
         fitted_mix: fitted[fitted.len() / 2],
         misfit_p99,
         misfit_draws: misfits,
+        per_x,
     }
 }
 
@@ -282,7 +297,12 @@ fn misfit_draws(span: f64, step: f64, mix: f64, draws: usize) -> Vec<(f64, f64)>
         .filter_map(|d| {
             let seed = seed_of(&[id[0], id[1], id[2], id[3], 1, d as u64]);
             let g = null_grid(NullModel::Timing, span, step, mix, scale, seed);
-            let t = fit_of_draw(&spectrum(&detrend(&g, DETREND_S), w), w, step, scale);
+            let t = fit_of_draw(
+                &spectrum(&detrend_as(&g, DETREND_S, slow_for(NullModel::Timing)), w),
+                w,
+                step,
+                scale,
+            );
             t.misfit.is_finite().then_some((t.mix, t.misfit))
         })
         .collect()
@@ -317,7 +337,13 @@ struct NullMean {
     misfit_p99: Option<f64>,
     /// Timing: each draw's fitted mix and misfit.
     misfit_draws: Vec<(f64, f64)>,
+    /// Timing: each draw's fitted mix and whitened power by x point.
+    per_x: Vec<PerX>,
 }
+
+/// One draw's fitted mix and, at each x point, the count, sum and sum of
+/// squares of its whitened power.
+type PerX = (f64, Vec<[f64; 3]>);
 
 /// The maxima of the same draws as [`measure`]'s, each levelled as a take
 /// is: by the table's levelling at its own fitted mix, so the fit
@@ -342,10 +368,14 @@ fn maxima_as_takes(
     let smax = (0..draws)
         .map(|d| {
             let seed = seed_of(&[id[0], id[1], id[2], id[3], 2, d as u64]);
-            let det = detrend(&null_grid(model, span, step, mix, scale, seed), DETREND_S);
+            let det = detrend_as(
+                &null_grid(model, span, step, mix, scale, seed),
+                DETREND_S,
+                slow_for(model),
+            );
             let band = |given| Band {
                 min_p: 3f64.max(8.0 * step),
-                max_p: span / 3.0,
+                max_p: reach(model, span / 3.0, w),
                 false_alarm: 0.01,
                 detrend_w: w,
                 model,
@@ -380,6 +410,7 @@ fn measure(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> Me
         fitted_mix,
         misfit_p99,
         misfit_draws,
+        per_x,
     } = null_mean(model, span, step, mix, draws);
     // The plain trials count's tail; the maxima don't depend on it.
     let lev = Levelling {
@@ -403,10 +434,10 @@ fn measure(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> Me
             scale,
             seed_of(&[id[0], id[1], id[2], id[3], 2, d as u64]),
         );
-        let det = detrend(&g, DETREND_S);
+        let det = detrend_as(&g, DETREND_S, slow_for(model));
         let band = Band {
             min_p,
-            max_p: span / 3.0,
+            max_p: reach(model, span / 3.0, w),
             false_alarm: 0.01,
             detrend_w: w,
             model,
@@ -439,6 +470,7 @@ fn measure(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> Me
         fitted: Vec::new(),
         tail_from: None,
         misfit_draws,
+        per_x,
         mu,
         sigma,
     }
@@ -456,6 +488,9 @@ struct Run {
     /// Draws a cell for the misfit (`NULL_MISFIT_DRAWS`, default
     /// [`MISFIT_DRAWS`]), at least `draws`.
     misfit_n: usize,
+    /// `NULL_PERX`: a cached timing cell without per-draw powers gets
+    /// them from its mean pass's own draws, all else kept.
+    perx: bool,
 }
 
 impl Run {
@@ -467,15 +502,34 @@ impl Run {
             refit,
             misfit,
             misfit_n,
+            perx,
         } = self;
         let (draws, remean, misfit, misfit_n) = (*draws, *remean, *misfit, *misfit_n);
+        let refit_too = refit
+            .as_ref()
+            .is_some_and(|r| r == "all" || format!("{model:?}") == *r);
         // A cell already measured (the run was cut short) is
         // read back rather than run again.
         let kept = cache
             .as_ref()
             .map(|d| format!("{d}/{model:?}_{span}_{step}_{mix}_{draws}.json"));
         let old = kept.as_ref().and_then(|f| std::fs::read_to_string(f).ok());
-        match old.and_then(|t| serde_json::from_str::<Measured>(&t).ok()) {
+        let old = old.and_then(|t| serde_json::from_str::<Measured>(&t).ok());
+        let old = match old {
+            Some(mut m) if *perx && model == NullModel::Timing && m.per_x.is_empty() => {
+                m.per_x = null_mean(model, span, step, mix, draws).per_x;
+                if let Some(f) = &kept {
+                    std::fs::write(f, serde_json::to_string(&m).unwrap()).unwrap();
+                }
+                eprintln!("{model:?} span {span} step {step} mix {mix}: per-draw powers");
+                if !refit_too {
+                    return m;
+                }
+                Some(m)
+            }
+            o => o,
+        };
+        match old {
             // The mean measured again over its band, the
             // maxima kept (they use the band's mean only,
             // the same draws).
@@ -545,6 +599,7 @@ fn write_period_null_table() {
         refit: std::env::var("NULL_REFIT").ok(),
         misfit: std::env::var("NULL_MISFIT").is_ok(),
         misfit_n: std::env::var("NULL_MISFIT_DRAWS").map_or(MISFIT_DRAWS, |s| s.parse().unwrap()),
+        perx: std::env::var("NULL_PERX").is_ok(),
     };
     let mut jobs = Vec::new();
     for model in [NullModel::Timing, NullModel::Readings] {
@@ -593,9 +648,7 @@ fn write_period_null_table() {
             .partial_cmp(&(b.cell.model as u8, b.cell.step_s, b.cell.span_s, b.cell.mix))
             .unwrap()
     });
-    if std::env::var("NULL_REBIN").is_ok() {
-        rebin_by_fitted_mix(&mut done);
-    }
+    rebin(&mut done);
     let cells = fit_shapes(&done);
     // The tail check: with each cell's fit, how often a null maximum reads
     // under 1% and 0.1% (pooled over every cell).
@@ -616,7 +669,7 @@ fn write_period_null_table() {
     }
     let misfit_n = run.misfit_n.max(draws);
     let note = format!(
-        "Generated by write_period_null_table (longterm/null_tests.rs), fixed seeds. {draws} draws a cell for the mean and as many for the maximum. The maximum's generalised extreme value by maximum likelihood: location and scale for each cell (the scale's relative error about {:.0}%); the shape profiled over 0 to {:.1} in steps of 0.02, shared by each take length and step (readings) or each mix (timing). Timing's location and scale are fitted to the maxima grouped by the mix each take's search fitted, which is the coordinate the lookup reads, pooled from every drawn mix of that length and step. The drawn mixes are white, 1 to 10^4 up to 0.35 of the sampling rate, and walk. The drawn mixes reach both ends of the lookup's axis, white and walk, so no fitted mix lies past them. A cell that fewer than {MIN_BIN} draws read takes the {MIN_BIN} read nearest it. Each cell's tail is then the least favourable over the drawn mixes read as it or either neighbour (the lookup blends neighbours): fitted to the drawn mix, of those giving at least {MIN_SOURCE} draws, whose maxima most often pass the fit's p 0.001 and 0.0003 levels, refitted until that mix is the one fitted, and sharing that mix's shape group. So the false-alarm chance holds for every drawn mix, not on average over them. Each bin's whitened power is scored by its own null spread (a gamma shape per x). Each timing cell also gives a misfit limit: the misfit is the rms in decades of the quarter-octave band powers from the walk plus white fitted to them, and the limit is the largest 99th percentile of it ({misfit_n} draws a drawn mix) over the drawn mixes (of those with at least {MIN_SOURCE} draws there) read as this cell or either neighbour. Pooled tail check: {p1} of {n} null maxima under p 0.01 (expected {:.0}), {p01} under 0.001 (expected {:.0}).",
+        "Generated by write_period_null_table (longterm/null_tests.rs), fixed seeds. {draws} draws a cell for the mean and as many for the maximum. The maximum's generalised extreme value by maximum likelihood: location and scale for each cell (the scale's relative error about {:.0}%); the shape profiled over 0 to {:.1} in steps of 0.02, shared by each take length and step (readings) or each mix (timing). Timing's location and scale are fitted to the maxima grouped by the mix each take's search fitted, which is the coordinate the lookup reads, pooled from every drawn mix of that length and step. The drawn mixes are white, 1 to 10^4 up to 0.35 of the sampling rate, and walk. The drawn mixes reach both ends of the lookup's axis, white and walk, so no fitted mix lies past them. A cell that fewer than {MIN_BIN} draws read takes the {MIN_BIN} read nearest it. Each cell's tail is then the least favourable over the drawn mixes read as it or either neighbour (the lookup blends neighbours): fitted to the drawn mix, of those giving at least {MIN_SOURCE} draws, whose maxima most often pass the fit's p 0.001 and 0.0003 levels, refitted until that mix is the one fitted, and sharing that mix's shape group. So the false-alarm chance holds for every drawn mix, not on average over them. Timing's mean and gamma shape at each x are read the same way: the highest mean and the lowest shape over the drawn mixes (of those with at least {MIN_SOURCE} draws there) read as the cell or either neighbour, since the fit reads the mix only at x of 2 and above. Each bin's whitened power is scored by its own null spread (a gamma shape per x). Each timing cell also gives a misfit limit: the misfit is the rms in decades of the quarter-octave band powers from the walk plus white fitted to them, and the limit is the largest 99th percentile of it ({misfit_n} draws a drawn mix) over the drawn mixes (of those with at least {MIN_SOURCE} draws there) read as this cell or either neighbour. Pooled tail check: {p1} of {n} null maxima under p 0.01 (expected {:.0}), {p01} under 0.001 (expected {:.0}).",
         78.0 / (draws as f64).sqrt(),
         0.02 * XI_STEPS as f64,
         n as f64 * 0.01,
@@ -816,6 +869,122 @@ fn rebin_by_fitted_mix(done: &mut [Measured]) {
             m.tail_from = worst.is_finite().then_some(worst);
         }
         rebin_misfit(done, &idx, &keys);
+    }
+}
+
+/// `NULL_MEAN_REBIN`: timing's means and shapes read by fitted mix,
+/// least favourable ([`rebin_means`]); before the tails (`NULL_REBIN`),
+/// whose maxima (`NULL_REFIT`) are levelled by the table these means
+/// went into.
+fn rebin(done: &mut [Measured]) {
+    if std::env::var("NULL_MEAN_REBIN").is_ok() {
+        rebin_means(done);
+    }
+    if std::env::var("NULL_REBIN").is_ok() {
+        rebin_by_fitted_mix(done);
+    }
+}
+
+/// A draw's nearest cell and its whitened power by x point.
+type ReadAs<'a> = (usize, &'a [[f64; 3]]);
+
+/// A cell's mean and gamma shape at each x point.
+type MeanShape = (Vec<Option<f64>>, Vec<Option<f64>>);
+
+/// Each timing cell's mean and shape at each x as the lookup meets them,
+/// by the rule the tail follows ([`rebin_by_fitted_mix`]): from the draws
+/// of every drawn mix read as this cell or either neighbour, the drawn
+/// mix (of those with [`MIN_SOURCE`] draws there) with the highest mean
+/// at that x, and the lowest gamma shape (the heaviest spread). The fit
+/// reads the mix only at x ≥ 2, so below it, where the sloped detrend's
+/// response rises to 1.4 to 1.76 near 0.7 of its window, a take's power
+/// is set by its walk while its mix may read white: mix 3 read as white
+/// on 35% of 30 min takes, and those passed p 0.001 2.9 times in 100 when
+/// levelled by the white draws' own mean (Norm). Means are a take's
+/// divisor, so the highest is the least favourable; the shape is
+/// unchanged by the divisor. A cell no drawn mix reads keeps its own.
+fn rebin_means(done: &mut [Measured]) {
+    let mut rows: Vec<(f64, f64)> = done
+        .iter()
+        .filter(|m| m.cell.model == NullModel::Timing)
+        .map(|m| (m.cell.span_s, m.cell.step_s))
+        .collect();
+    rows.dedup();
+    for (span, step) in rows {
+        let idx: Vec<usize> = (0..done.len())
+            .filter(|&i| {
+                let c = &done[i].cell;
+                c.model == NullModel::Timing && c.span_s == span && c.step_s == step
+            })
+            .collect();
+        let keys: Vec<f64> = idx
+            .iter()
+            .map(|&i| axis(NullModel::Timing, done[i].cell.mix))
+            .collect();
+        let nearest = |u: f64| {
+            (0..keys.len())
+                .min_by(|&a, &b| (keys[a] - u).abs().total_cmp(&(keys[b] - u).abs()))
+                .unwrap()
+        };
+        // Each source's draws, by the cell they read as.
+        let read: Vec<Vec<ReadAs>> = idx
+            .iter()
+            .map(|&i| {
+                assert!(
+                    !done[i].per_x.is_empty(),
+                    "{span} {step} {}: no per-draw powers; measure again",
+                    done[i].cell.mix
+                );
+                done[i]
+                    .per_x
+                    .iter()
+                    .filter(|d| d.0.is_finite())
+                    .map(|d| (nearest(axis(NullModel::Timing, d.0)), d.1.as_slice()))
+                    .collect()
+            })
+            .collect();
+        let mut out: Vec<MeanShape> = Vec::new();
+        for k in 0..idx.len() {
+            let mut mean = vec![None::<f64>; X_POINTS];
+            let mut shape = vec![None::<f64>; X_POINTS];
+            for r in &read {
+                let mine: Vec<_> = r.iter().filter(|d| d.0.abs_diff(k) <= 1).collect();
+                if mine.len() < MIN_SOURCE {
+                    continue;
+                }
+                for x in 0..X_POINTS {
+                    let (n, s1, s2) = mine.iter().fold((0.0, 0.0, 0.0), |a, d| {
+                        (a.0 + d.1[x][0], a.1 + d.1[x][1], a.2 + d.1[x][2])
+                    });
+                    if n < 20.0 {
+                        continue;
+                    }
+                    let m = s1 / n;
+                    let var = s2 / n - m * m;
+                    mean[x] = Some(mean[x].map_or(m, |v| v.max(m)));
+                    if var > 0.0 {
+                        let g = m * m / var;
+                        shape[x] = Some(shape[x].map_or(g, |v| v.min(g)));
+                    }
+                }
+            }
+            out.push((mean, shape));
+        }
+        let round = |v: Option<f64>| v.map(|v| (v * 1e4).round() / 1e4);
+        for (k, &i) in idx.iter().enumerate() {
+            let (mean, shape) = &out[k];
+            let c = &mut done[i].cell;
+            // A point no source with enough draws reads keeps its own.
+            for x in 0..X_POINTS {
+                if mean[x].is_some() {
+                    c.mean[x] = round(mean[x]);
+                }
+                if shape[x].is_some() && c.shape.len() == X_POINTS {
+                    c.shape[x] = round(shape[x]);
+                }
+            }
+            eprintln!("means Timing {span} {step} {}: read by fitted mix", c.mix);
+        }
     }
 }
 
@@ -1092,7 +1261,7 @@ fn fresh_sines_hold_the_misfit() {
                     ]);
                     let mut g =
                         null_grid(NullModel::Timing, c.span_s, c.step_s, c.mix, scale, seed);
-                    let det = detrend(&g, DETREND_S);
+                    let det = detrend_as(&g, DETREND_S, slow_for(NullModel::Timing));
                     let ys: Vec<f64> = det.y.iter().copied().filter(|v| v.is_finite()).collect();
                     let rms = (ys.iter().map(|v| v * v).sum::<f64>() / ys.len() as f64).sqrt();
                     if std::env::var("FRESH_NOSINE").is_ok() {
@@ -1174,10 +1343,10 @@ fn fresh_seeds_hold_the_tail() {
                 for d in 0..draws {
                     let seed = seed_of(&[id[0], id[1], id[2], id[3], tag, d as u64]);
                     let g = null_grid(c.model, c.span_s, c.step_s, c.mix, scale, seed);
-                    let det = detrend(&g, DETREND_S);
+                    let det = detrend_as(&g, DETREND_S, slow_for(c.model));
                     let band = Band {
                         min_p: 3f64.max(8.0 * c.step_s),
-                        max_p: c.span_s / 3.0,
+                        max_p: reach(c.model, c.span_s / 3.0, w),
                         false_alarm: 0.01,
                         detrend_w: w,
                         model: c.model,
@@ -1354,7 +1523,7 @@ fn flicker_timing_sits_past_the_nulls_misfit() {
         Grid { t0: 0.0, step, y }
     };
     let read = |g: &Grid| {
-        let sp = spectrum(&detrend(g, DETREND_S), w);
+        let sp = spectrum(&detrend_as(g, DETREND_S, slow_for(NullModel::Timing)), w);
         let from = (2.0 / (sp.df * scale)).ceil() as usize;
         let f = timing_fit(&sp.power, sp.df, step, from, scale);
         let limit = levelling(NullModel::Timing, span, step, f.mix)
@@ -1394,7 +1563,7 @@ fn timing_mix_recovers_the_crossover() {
         let mut v: Vec<f64> = (0..21)
             .map(|d| {
                 let g = null_grid(NullModel::Timing, span, step, mix, scale, seed_of(&[9, d]));
-                let sp = spectrum(&detrend(&g, DETREND_S), w);
+                let sp = spectrum(&detrend_as(&g, DETREND_S, slow_for(NullModel::Timing)), w);
                 let from = (2.0 / (sp.df * scale)).ceil() as usize;
                 timing_mix(&sp.power, sp.df, step, from, scale)
             })
@@ -1478,4 +1647,53 @@ fn the_misfit_culls_bands_and_bins_by_its_rules() {
     // Three of four thinned: the band is dropped, not read on its last bin.
     assert!(read(&[15], &[], &[12.0, 13.0, 14.0]) < 1e-9);
     assert!(read(&[15], &[], &[]) < 1e-9);
+}
+
+/// Mix 3 read as white (a third of 30 min to 2 h takes) is levelled by
+/// the white cell's mean, which must cover the walk power the sloped
+/// detrend lifts near 0.7 of its window, below where the fit reads the
+/// mix. Levelled by the white draws' own mean, 2,000 takes of 30 min
+/// passed p 0.001 21 times (Norm's ruling (i): means and shapes read by
+/// fitted mix). 1,000 fresh takes a length, each levelled as a take is,
+/// must stay within the 99% bound of 1 expected (4).
+#[test]
+fn a_walk_read_as_white_holds_its_false_alarms() {
+    let counts: Vec<(f64, usize)> = std::thread::scope(|sc| {
+        let hs: Vec<_> = [1800.0, 3600.0, 7200.0]
+            .into_iter()
+            .map(|span| {
+                sc.spawn(move || {
+                    let step = 0.25;
+                    let g0 = null_grid(NullModel::Readings, span, step, 0.0, 1.0, 1);
+                    let w = detrend_window(&g0, DETREND_S).map(|w| w as f64 * step);
+                    let scale = x_scale(&g0, w);
+                    let hits = (0..1000u64)
+                        .filter(|&d| {
+                            let seed =
+                                seed_of(&[NullModel::Timing as u64, span as u64, 25, 3000, 41, d]);
+                            let g = null_grid(NullModel::Timing, span, step, 3.0, scale, seed);
+                            let det = detrend_as(&g, DETREND_S, slow_for(NullModel::Timing));
+                            let band = Band {
+                                min_p: 3f64.max(8.0 * step),
+                                max_p: reach(NullModel::Timing, span / 3.0, w),
+                                false_alarm: 0.01,
+                                detrend_w: w,
+                                model: NullModel::Timing,
+                                given: None,
+                            };
+                            let s = search(&det, &band, &[]);
+                            s.tail
+                                .significance(s.score.iter().copied().fold(0.0, f64::max))
+                                > 3.0
+                        })
+                        .count();
+                    (span, hits)
+                })
+            })
+            .collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    for (span, hits) in counts {
+        assert!(hits <= 4, "{span} s: {hits} of 1000 past p 0.001 (bound 4)");
+    }
 }

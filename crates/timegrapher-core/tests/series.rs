@@ -168,14 +168,17 @@ fn a_slow_cycle_beside_an_aliased_fast_line_is_still_found() {
     );
     assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
     // The period search's line, under three readings, is named beside it.
+    // The 3.75 s line is the escape wheel's (15 teeth), so it is listed as
+    // its own line, never as the 15 s cycle's 4th harmonic: the wheel-line
+    // rule (Norm, 13 Nov).
     let p = s.faster_than_readings().expect(&s.headline);
     assert!(
         s.headline.contains(&format!(
             ". The beat timing also repeats every {:.1} s",
             p.period_s
-        )) && s
-            .headline
-            .ends_with("10 s readings are too coarse to show it."),
+        )) && s.headline.ends_with(
+            "10 s readings are too coarse to show it. The rate's period search also finds 3.8 s."
+        ),
         "{}",
         s.headline
     );

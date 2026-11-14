@@ -447,7 +447,7 @@ pub fn lines_for_take(
     keep_windows: bool,
 ) -> Vec<WheelLine> {
     let amp = &long.amplitude.grid;
-    let timing = scaled(&long.timing.detrended, 1000.0);
+    let timing = scaled(&level_timing(long, lc), 1000.0);
     let [_, be] = crate::steadiness::window_grids(log, clock, &long.breaks);
     let be = crate::longterm::detrend(&be, lc.detrend_s);
     let mut out = Vec::new();
@@ -473,13 +473,30 @@ pub fn turns_for_take(
     lc: &crate::longterm::LongConfig,
 ) -> Vec<WheelTurns> {
     let amp = &long.amplitude.grid;
-    let timing = scaled(&long.timing.detrended, 1000.0);
+    let timing = scaled(&level_timing(long, lc), 1000.0);
     let mut out = Vec::new();
     for w in followed(&lc.wheels, lc.detrend_s) {
         out.extend(turns(&timing, amp, w, "rate", "ms"));
         out.extend(turns(&long.amplitude.detrended, amp, w, "amplitude", "deg"));
     }
     out
+}
+
+/// The take's beat timing with its slow change taken off by the plain
+/// running median, piece by piece, as the wheels have always been
+/// followed in it. Not the period search's sloped pass
+/// ([`crate::longterm::Slow::Sloped`]): its gain of 1.4 to 1.76 near 0.7
+/// of the window lifts the wander left inside each wheel window, and on
+/// YM42's 2 h take the fourth wheel's standard error doubled (0.052 to
+/// 0.100 ms). A window's own line takes off the slope the median leaves.
+fn level_timing(long: &crate::longrun::LongReport, lc: &crate::longterm::LongConfig) -> Grid {
+    let t = &long.timing;
+    crate::longterm::detrend_pieces(
+        &t.grid,
+        lc.detrend_s,
+        crate::longterm::Slow::Level,
+        &t.starts,
+    )
 }
 
 fn scaled(g: &Grid, k: f64) -> Grid {

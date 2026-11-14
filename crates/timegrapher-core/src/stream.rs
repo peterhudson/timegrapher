@@ -479,7 +479,7 @@ pub fn analyze_samples(samples: &[f32], sample_rate: u32, cfg: &StreamConfig) ->
 
 /// Threads to prepare chunks on: every core but one, which the decoding
 /// and the in-order analysis keep busy.
-fn prepare_threads() -> usize {
+pub(crate) fn prepare_threads() -> usize {
     std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1).max(1))
 }
 
@@ -501,7 +501,45 @@ fn analyze_fed(
     cfg: &StreamConfig,
     threads: usize,
     feed: impl FnOnce(&mut dyn FnMut(&[f32]) -> bool) -> Result<(), AudioError> + Send,
+    progress: impl FnMut(f64),
+) -> Result<BeatLog, AudioError> {
+    analyze_fed_seen(sample_rate, cfg, threads, feed, progress, |_| {})
+}
+
+/// A chunk just analysed, in order, as [`analyze_fed_seen`] shows it: its
+/// sound, and the beats kept so far. A beat kept is final but for its
+/// side: a side swap ([`State::chunk`]) adds 1 to the numbers of the
+/// beats from its time on, at a pending jump's time or, when the take's
+/// sides are named the other way round, at minus infinity (all of them).
+pub(crate) struct Seen<'a> {
+    /// The chunk's sound, its margins included, from sample `x0` on.
+    pub x: &'a [f32],
+    pub x0: usize,
+    /// Its own stretch's start, seconds.
+    pub core_a: f64,
+    pub beats: &'a [Beat],
+    pub bph: u32,
+    /// Every side swap so far, in order: chunks analysed before it, and
+    /// its time.
+    pub swaps: &'a [(usize, f64)],
+    /// The jump whose sides are still to be checked, seconds: a swap may
+    /// still come at it.
+    pub pending: Option<f64>,
+    /// Whether the watch has been heard: until it is, the beat rate is
+    /// guessed again from each chunk, so `bph` may change.
+    pub heard: bool,
+}
+
+/// [`analyze_fed`], with `seen` shown each chunk once it is analysed, in
+/// order (#1514): a take kept as its analysis while it is recorded reads
+/// its beats as they come.
+pub(crate) fn analyze_fed_seen(
+    sample_rate: u32,
+    cfg: &StreamConfig,
+    threads: usize,
+    feed: impl FnOnce(&mut dyn FnMut(&[f32]) -> bool) -> Result<(), AudioError> + Send,
     mut progress: impl FnMut(f64),
+    mut seen: impl FnMut(Seen),
 ) -> Result<BeatLog, AudioError> {
     use std::sync::mpsc::sync_channel;
     let threads = threads.max(1);
@@ -532,7 +570,7 @@ fn analyze_fed(
             sc.spawn(move || amplitude_all(&rx, &tx, fs, cfg));
         }
         drop(wins_tx);
-        in_order(&mut st, done_rx, &job_tx, &mut progress);
+        in_order(&mut st, done_rx, &job_tx, &mut progress, &mut seen);
         drop(job_tx);
         cutter.join().expect("the cutting thread panicked")
     })?;
@@ -619,6 +657,7 @@ fn in_order(
     rx: std::sync::mpsc::Receiver<(usize, Prepared)>,
     jobs: &std::sync::mpsc::SyncSender<(AmpJob, Prepared)>,
     progress: &mut impl FnMut(f64),
+    seen: &mut impl FnMut(Seen),
 ) {
     let mut ready = std::collections::BTreeMap::new();
     let mut next = 0;
@@ -627,6 +666,16 @@ fn in_order(
         while let Some(c) = ready.remove(&next) {
             let job = st.chunk(&c);
             next += 1;
+            seen(Seen {
+                x: &c.x,
+                x0: c.x0,
+                core_a: c.core_a,
+                beats: &st.beats,
+                bph: st.bph,
+                swaps: &st.swaps,
+                pending: st.sides.pending_since(),
+                heard: st.template.is_some(),
+            });
             // The last chunk's end is reported once, by the caller.
             if c.core_b.is_finite() {
                 progress(c.core_b);
