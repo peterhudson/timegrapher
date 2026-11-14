@@ -721,3 +721,16 @@ fn reads_as_the_cli(app: &TimegrapherApp) -> Vec<timegrapher_core::session::Meas
     }
     compared
 }
+
+/// With no stops at all, as on a fresh Quick Listen, the pane says how a
+/// test fits, not that the take lacks positions (Hugh on #1622).
+#[test]
+fn a_take_with_no_stops_says_how_the_test_fits() {
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    let drawn = draw(&mut app, Pane::DynamicPoise);
+    assert!(
+        drawn.contains(&timegrapher_core::poise::pending_text()),
+        "{drawn}"
+    );
+    assert!(!drawn.contains("Needs 5"), "{drawn}");
+}
