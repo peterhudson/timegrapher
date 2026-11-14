@@ -294,11 +294,14 @@ under it its calibre, beat rate, lift angle and added fields, with
 **Edit…** and **Add Photos…** at the right. Then, in this order:
 
 - **New Take**: **Listen** (the blue one, the default), **Positions
-  Test** and **Power Reserve Test**, three equal buttons, each with a
-  line under it saying what it does. Each switches to the Bench and
+  Test**, **Dynamic Poise Test**, **Power Reserve Test** and **Complication
+  Test**, five equal buttons, each with a line under it saying what it
+  does: in one row where the window is wide enough for every name and
+  line to show whole, else as few to a row as that takes, the rows as
+  even as can be (three then two, or two, two and one). Each switches to the Bench and
   starts a new take on the microphone there, asked about first when
   there is unsaved sound other than a Quick Listen take's, and saved into
-  the watch when it stops. While a take runs on the Bench, the three are
+  the watch when it stops. While a take runs on the Bench, the five are
   greyed out, and the New Take row says "Stop the take on the Bench
   first." at its right; that row is always there, so nothing moves.
 - **Takes**, with the count, and **Open** and **…** at the right of its

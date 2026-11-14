@@ -98,9 +98,13 @@ impl TimegrapherApp {
             });
             // The position card named by its title at this width.
             let hints =
-                NEW_TAKES.map(|(_, _, hint)| hint.replace("{card}", self.position_card_title));
-            let names = std::array::from_fn(|i| (NEW_TAKES[i].1, hints[i].as_str()));
-            if let Some(i) = watches::new_take_buttons(ui, names, busy) {
+                NEW_TAKES.map(|(_, _, hint, _)| hint.replace("{card}", self.position_card_title));
+            let names: Vec<(&str, &str, &str)> = NEW_TAKES
+                .iter()
+                .zip(&hints)
+                .map(|(t, hint)| (t.1, hint.as_str(), t.3))
+                .collect();
+            if let Some(i) = watches::new_take_buttons(ui, &names, busy) {
                 self.view = View::Bench;
                 self.new_take(NEW_TAKES[i].0, false);
             }
