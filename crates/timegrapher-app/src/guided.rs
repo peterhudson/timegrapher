@@ -360,6 +360,20 @@ impl Test {
         }
     }
 
+    /// A Complication Test kept with a take, at `p`, its Off, On and Off
+    /// stretches `spans` (seconds of the take's sound) as its session file
+    /// lists them (#1620): finished but not yet read ([`Self::finish`]).
+    pub fn saved_complication(p: Position, spans: &[(f64, f64)]) -> Option<Self> {
+        if spans.len() != complication::ORDER.len() {
+            return None;
+        }
+        let mut t = Test::complication(p);
+        t.spans = spans.iter().map(|&(a, b)| (p, a, b)).collect();
+        t.began = spans.first().map(|s| s.0 - t.settle_s);
+        t.step = spans.len() - 1;
+        Some(t)
+    }
+
     /// The positions this test leads the watch through, in order.
     pub fn order(&self) -> &[Position] {
         &self.order
@@ -1786,6 +1800,18 @@ fn saved_test(ui: &mut egui::Ui, s: &FullWind) {
     );
 }
 
+/// A Dynamic Poise table of a take's `readings` with no test on the
+/// Bench: its upright stops read again (#1619).
+pub(crate) fn poise_table(ui: &mut egui::Ui, readings: &[Reading]) {
+    table_grid(
+        ui,
+        ("poise", Kind::Poise),
+        &table(readings, Kind::Poise),
+        None,
+        None,
+    );
+}
+
 /// A test's table, filling in as each position is measured, with a word
 /// in the row under way; the banner has the seconds.
 pub(crate) fn test_table(
@@ -2114,11 +2140,54 @@ pub struct FreeTable {
     pub largest: [Option<f64>; 3],
     /// How many positions have readings.
     pub read: usize,
+    /// The take's upright stops read the same way, for the Dynamic Poise
+    /// pane with no test on the Bench (#1619).
+    pub upright: Upright,
+}
+
+/// A take's upright stops read again, as readings: each stop marked long
+/// enough to read, in [`session::Position::UPRIGHT`]'s order (core
+/// `session::position_rows`).
+#[derive(Debug, Clone, Default)]
+pub struct Upright(pub Vec<Reading>);
+
+/// The same when every reading has the same position, duration and
+/// figures.
+impl PartialEq for Upright {
+    fn eq(&self, other: &Self) -> bool {
+        let durations = |u: &Upright| u.0.iter().map(|r| r.duration_s).collect::<Vec<_>>();
+        reading_figures(&self.0) == reading_figures(&other.0) && durations(self) == durations(other)
+    }
+}
+
+/// The readings of core's `rows` that were read, for a take at `bph`,
+/// `bph_set` the beat rate supplied (as a test's readings carry it).
+pub fn upright(rows: &[session::PositionRow], bph: u32, bph_set: Option<u32>) -> Upright {
+    Upright(
+        rows.iter()
+            .filter_map(|r| {
+                Some(Reading {
+                    label: position_label(r.position),
+                    position: r.position,
+                    wind_h: None,
+                    date: None,
+                    notes: None,
+                    duration_s: r.duration_s,
+                    bph,
+                    bph_set,
+                    measurement: r.measurement.clone()?,
+                    cycles: Vec::new(),
+                    shape: None,
+                    reference: None,
+                })
+            })
+            .collect(),
+    )
 }
 
 /// The free take's table from core's, in the Current Position card's
-/// order.
-pub fn free_table(t: &session::PositionsTable) -> FreeTable {
+/// order, with the take's `upright` stops.
+pub fn free_table(t: &session::PositionsTable, upright: Upright) -> FreeTable {
     let rows: Vec<(String, f64, FreeCell)> = Position::ALL
         .iter()
         .filter_map(|p| {
@@ -2152,6 +2221,7 @@ pub fn free_table(t: &session::PositionsTable) -> FreeTable {
             t.indices.d_beat_error,
         ],
         read,
+        upright,
     }
 }
 

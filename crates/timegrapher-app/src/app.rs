@@ -1890,6 +1890,9 @@ pub struct TimegrapherApp {
     guided_earlier: Option<guided::FullWind>,
     /// An opened 24 hour half's saved results, which the pane shows again.
     guided_saved: Option<guided::FullWind>,
+    /// An opened take's Complication Test, its three stretches from the
+    /// session file, read again once the take's beats are in (#1620).
+    complication_saved: Option<guided::Test>,
     /// For a watch set up for 24 Hours After, its full-wind tests from 12
     /// to 36 hours ago, newest first, for Compare With to pick from.
     guided_choices: Vec<guided::FullWind>,
@@ -2543,6 +2546,7 @@ impl TimegrapherApp {
             guided_measured: Vec::new(),
             guided_earlier: None,
             guided_saved: None,
+            complication_saved: None,
             guided_choices: Vec::new(),
             guided_earlier_file: false,
             guided_earlier_for: None,

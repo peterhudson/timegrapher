@@ -30,7 +30,7 @@
 use crate::confidence::{clear_of_zero, CLEAR_SE};
 use crate::figure_text::figure_with_pm;
 use crate::poise::Term;
-use crate::session::Measurement;
+use crate::session::{Manifest, Measurement, Position};
 use crate::steadiness::{unit_after, SeriesKind};
 
 /// One stretch of the test: the complication off or on.
@@ -48,10 +48,45 @@ impl Stretch {
             Stretch::On => "On",
         }
     }
+
+    /// Its name in a take's session file, a stretch's `complication`
+    /// value: "off" or "on" (#1620).
+    pub fn saved_name(self) -> &'static str {
+        match self {
+            Stretch::Off => "off",
+            Stretch::On => "on",
+        }
+    }
 }
 
 /// The test's order: Off, On, Off (Peter, 13 Nov 2026).
 pub const ORDER: [Stretch; 3] = [Stretch::Off, Stretch::On, Stretch::Off];
+
+/// A saved take's Complication Test, from its session file `m`: the
+/// position and the start and end (s) of the stretches it lists with a
+/// `complication` value, when they are [`ORDER`]'s, in that order, all at
+/// one position and each with its start and end (#1620). None for any
+/// other take, so a take is never read as a test it was not.
+pub fn saved_stretches(m: &Manifest) -> Option<(Position, Vec<(f64, f64)>)> {
+    let entries: Vec<_> = m
+        .recordings
+        .iter()
+        .filter(|e| e.complication.is_some())
+        .collect();
+    let named = entries.iter().map(|e| e.complication.as_deref());
+    if !named.eq(ORDER.iter().map(|s| Some(s.saved_name()))) {
+        return None;
+    }
+    let code = entries.first()?.position.as_deref()?;
+    if entries.iter().any(|e| e.position.as_deref() != Some(code)) {
+        return None;
+    }
+    let spans = entries
+        .iter()
+        .map(|e| Some((e.start_s?, e.end_s?)))
+        .collect::<Option<Vec<_>>>()?;
+    Some((Position::parse(code)?, spans))
+}
 
 /// The table's last row: the On stretch less the two Offs joined at its
 /// middle ([`difference`]).
@@ -273,6 +308,77 @@ pub fn method_note() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// A session file listing stretches `(complication, position, start,
+    /// end)`.
+    fn manifest(entries: &[(&str, &str, Option<f64>, Option<f64>)]) -> Manifest {
+        Manifest {
+            recordings: entries
+                .iter()
+                .map(|&(c, p, start_s, end_s)| crate::session::RecordingEntry {
+                    complication: Some(c.into()),
+                    position: Some(p.into()),
+                    start_s,
+                    end_s,
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_saved_test_is_read_back_off_on_off_at_its_position() {
+        let m = manifest(&[
+            ("off", "DU", Some(10.0), Some(70.0)),
+            ("on", "DU", Some(80.0), Some(140.0)),
+            ("off", "DU", Some(150.0), Some(210.0)),
+        ]);
+        let (p, spans) = saved_stretches(&m).expect("a test");
+        assert_eq!(p, Position::CH);
+        assert_eq!(spans, vec![(10.0, 70.0), (80.0, 140.0), (150.0, 210.0)]);
+    }
+
+    #[test]
+    fn a_saved_take_is_not_read_as_a_test_it_was_not() {
+        let some = |e: f64| Some(e);
+        for (why, entries) in [
+            (
+                "wrong order",
+                vec![
+                    ("on", "DU", some(10.0), some(70.0)),
+                    ("off", "DU", some(80.0), some(140.0)),
+                    ("off", "DU", some(150.0), some(210.0)),
+                ],
+            ),
+            (
+                "two positions",
+                vec![
+                    ("off", "DU", some(10.0), some(70.0)),
+                    ("on", "DD", some(80.0), some(140.0)),
+                    ("off", "DU", some(150.0), some(210.0)),
+                ],
+            ),
+            (
+                "a missing end",
+                vec![
+                    ("off", "DU", some(10.0), some(70.0)),
+                    ("on", "DU", some(80.0), None),
+                    ("off", "DU", some(150.0), some(210.0)),
+                ],
+            ),
+            (
+                "only two stretches",
+                vec![
+                    ("off", "DU", some(10.0), some(70.0)),
+                    ("on", "DU", some(80.0), some(140.0)),
+                ],
+            ),
+        ] {
+            assert_eq!(saved_stretches(&manifest(&entries)), None, "{why}");
+        }
+        assert_eq!(saved_stretches(&Manifest::default()), None, "no test");
+    }
+
     use super::*;
 
     fn f(value: f64, se: f64) -> Option<Figure> {
