@@ -416,13 +416,7 @@ fn tallest_peak(pts: &[[f64; 2]]) -> Option<[f64; 2]> {
 
 /// Seconds as a short time: "45 s", "12 min", "2.5 h".
 fn secs(s: f64) -> String {
-    if s < 120.0 {
-        format!("{s:.0} s")
-    } else if s < 7200.0 {
-        format!("{:.0} min", s / 60.0)
-    } else {
-        format!("{:.1} h", s / 3600.0)
-    }
+    timegrapher_core::steady_views::period_words(s)
 }
 
 /// A time on a linear axis: "30 s" under a minute, then "1:30", so ticks
@@ -1931,11 +1925,11 @@ impl WheelLine {
     }
 }
 
-/// The lines to mark on a period axis spanning `span`: each wheel's turn
-/// and half of it ("×2", where a wheel that is off centre shows twice a
-/// turn, unless another wheel turns there), then each mesh where no wheel
-/// or ×2 already marks its period; with no wheels, the reference
-/// periods; with `None` (the marks off), nothing.
+/// The lines to mark on a period axis spanning `span`: core's
+/// ([`timegrapher_core::steady_views::wheel_lines`]: each wheel's turn, its
+/// ×2 and each mesh, one line where two periods are within 3%) inside the
+/// axis; with no wheels, the reference periods; with `None` (the marks
+/// off), nothing.
 pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelLine> {
     let inside = |x: f64| x > x_lo && x < x_hi;
     let Some(Marks { wheels, meshes }) = shown else {
@@ -1954,49 +1948,22 @@ pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) ->
             .filter(|l| inside(l.x))
             .collect();
     }
-    let mut out = Vec::new();
-    for w in wheels {
-        let title = marks::title_case(&w.name);
-        let short = marks::wheel_short(&w.name);
-        out.push(WheelLine {
-            x: w.period_s.log10(),
-            turn: Turn::Wheel,
-            name: title.clone(),
-            short: short.clone(),
-            hover: format!("{title}: {}", secs(w.period_s)),
-        });
-        let half = w.period_s / 2.0;
-        if !wheels.iter().any(|o| one_mark(o.period_s, half)) {
-            out.push(WheelLine {
-                x: half.log10(),
-                turn: Turn::Twice,
-                name: format!("{title} ×2"),
-                short: format!("{short} ×2"),
-                hover: format!("{title} ×2: {}", secs(half)),
-            });
-        }
-    }
-    for m in meshes {
-        if out.iter().any(|l| one_mark(10f64.powf(l.x), m.period_s)) {
-            continue;
-        }
-        let title = marks::title_case(&m.name);
-        out.push(WheelLine {
-            x: m.period_s.log10(),
-            turn: Turn::Mesh,
-            name: format!("{title} Mesh"),
-            short: marks::mesh_short(&m.name),
-            hover: format!("{title} Mesh: {}.", m.about),
-        });
-    }
-    out.retain(|l| inside(l.x));
-    out
-}
-
-/// Whether two periods are near enough (3%) to share one line on a period
-/// axis, which keeps the first one marked there.
-fn one_mark(a_s: f64, b_s: f64) -> bool {
-    (a_s / b_s - 1.0).abs() < 0.03
+    use timegrapher_core::steady_views::{self as views, WheelTurn};
+    views::wheel_lines(wheels, meshes)
+        .into_iter()
+        .map(|l| WheelLine {
+            x: l.period_s.log10(),
+            turn: match l.turn {
+                WheelTurn::Wheel => Turn::Wheel,
+                WheelTurn::Twice => Turn::Twice,
+                WheelTurn::Mesh => Turn::Mesh,
+            },
+            name: l.name,
+            short: l.short,
+            hover: l.hover,
+        })
+        .filter(|l| inside(l.x))
+        .collect()
 }
 
 /// The lines in the plot, under its trace, all call-outs: a wheel's

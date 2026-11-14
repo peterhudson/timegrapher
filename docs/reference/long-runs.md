@@ -119,6 +119,14 @@ core's `Catalog::meshes` (#1472):
 marks for a chart, not wheels a cycle is named after, and empty with no
 calibre or none of its tooth and leaf counts.
 
+`input.settings.wheel_lines` gives the lines a period chart marks for
+them, as the app marks them (#1694): each wheel's turn (`turn` `wheel`),
+half of it (`twice`) unless another wheel turns within 3% of that, and
+each mesh (`mesh`) where no wheel or ×2 already marks a period within
+3%, each with its `name`, `short` name and `hover`, from core's
+`steady_views::wheel_lines`. Every period is listed; a chart keeps those
+inside its axis.
+
 ## Calibrating the sound card
 
 A sound card's crystal is typically 10–50 ppm off (1–4 s/d) and drifts

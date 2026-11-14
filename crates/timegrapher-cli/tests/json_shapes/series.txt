@@ -70,6 +70,7 @@ input.settings.reference_lines[].period_s
 input.settings.stretch_s
 input.settings.stretches
 input.settings.take
+input.settings.wheel_lines
 input.settings.wheels
 input.settings.wind_h
 isochronism

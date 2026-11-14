@@ -502,46 +502,7 @@ impl egui_plot::PlotItem for InsideNames {
     }
 }
 
-/// "escape wheel" as "Escape Wheel": a wheel's name as the app shows it.
-pub fn title_case(name: &str) -> String {
-    name.split(' ')
-        .map(|w| {
-            let mut c = w.chars();
-            c.next()
-                .map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// A wheel's short name, for the narrow lane beside a map: "fourth wheel"
-/// as "4th Wheel". A name with no short form is shown whole.
-pub fn wheel_short(name: &str) -> String {
-    match name {
-        "centre wheel" => "2nd Wheel".into(),
-        "third wheel" => "3rd Wheel".into(),
-        "fourth wheel" => "4th Wheel".into(),
-        "escape wheel" => "Esc Wheel".into(),
-        "seconds wheel" => "Sec Wheel".into(),
-        "intermediate wheel" => "Int Wheel".into(),
-        _ => title_case(name),
-    }
-}
-
-/// A mesh's name in a narrow lane: its pinion by the short name of the
-/// wheel on the same arbor, as [`wheel_short`] gives it ("4th Mesh"),
-/// except the centre pinion, whose "Centre" the plots already say (Hugh,
-/// #1612).
-pub fn mesh_short(pinion: &str) -> String {
-    if pinion == "centre pinion" {
-        return "Centre Mesh".into();
-    }
-    let wheel = pinion.strip_suffix(" pinion").map(|a| format!("{a} wheel"));
-    match wheel.as_deref().map(wheel_short) {
-        Some(w) if w.ends_with(" Wheel") => format!("{} Mesh", w.trim_end_matches(" Wheel")),
-        _ => format!("{} Mesh", title_case(pinion)),
-    }
-}
+pub use timegrapher_core::steady_views::{mesh_short, title_case, wheel_short};
 
 /// The length of the tick that joins a line across a map to its name.
 const TICK: f32 = 4.0;
