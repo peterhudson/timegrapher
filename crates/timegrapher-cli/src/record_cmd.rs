@@ -154,9 +154,11 @@ struct Placed {
     watch: Option<String>,
 }
 
-/// The library holding `folder` as one of a watch's takes, if it is one.
+/// The library holding `folder` as one of a watch's takes, if it is one:
+/// where it really is, so a link to the take, its watch or the library
+/// holds the library's lock too (#1641).
 fn library_of(folder: &Path) -> Option<PathBuf> {
-    let abs = std::path::absolute(folder).ok()?;
+    let abs = library::resolved(&std::path::absolute(folder).ok()?);
     let takes = abs.parent()?;
     let root = takes.parent()?.parent()?;
     (takes.file_name()? == library::TAKES && Library::is_library(root)).then(|| root.to_path_buf())

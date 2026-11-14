@@ -58,15 +58,26 @@ impl TimegrapherApp {
         let pairs: Vec<[f64; 2]> = spans.iter().map(|&(a, b)| [a, b]).collect();
         self.put_masked(timegrapher_core::session::masked_spans(&pairs));
         self.mask_engine();
-        // A Positions Test's positions are read again without them.
+        self.reread_guided();
+        // The charts are read again for the next frame, a take on show's
+        // in the background ([`Self::refresh_trend_shown`]).
+    }
+
+    /// The guided test's stretches read again from the take as it now
+    /// is, after its masks or its lift change: the test on the Bench
+    /// (Positions, Complication or Dynamic Poise) at once, an opened
+    /// take's Complication Test when next shown. Other views read from
+    /// the same beats, so they agree (#1645).
+    pub(super) fn reread_guided(&mut self) {
         if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
             let clock = self.reading_clock(log.duration_s);
             if let Some(test) = self.guided.as_mut() {
                 test.reread(&log, clock.as_ref(), &self.masked);
             }
         }
-        // The charts are read again for the next frame, a take on show's
-        // in the background ([`Self::refresh_trend_shown`]).
+        if let Some(t) = self.complication_saved.as_mut() {
+            t.readings = None;
+        }
     }
 
     /// Add the stretch from `a` to `b` to those masked; one under half a

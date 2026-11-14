@@ -23,6 +23,37 @@ pub const MIME: &str = "text/html;profile=mcp-app";
 pub const META_KEY: &str = "timegrapher/charts";
 const HTML: &str = include_str!("view.html");
 
+/// The name of `check_steadiness`'s compact document. It keeps the CLI's
+/// `schema` (every reader of a series document still reads it) and says in
+/// `projection` that it is not the CLI's own document, and how it differs
+/// (#1651).
+pub const SERIES_PROJECTION: &str = "timegrapher.mcp.series_compact/1";
+
+/// What [`take_series_charts`] takes out of the CLI's series document: the
+/// view's arrays, and the coherence grids no view draws. A path names an
+/// object key; `[]` stands for every item of an array.
+const SERIES_REMOVED: &[&str] = &[
+    "series[].views",
+    "period_span",
+    "spectra",
+    "time_frequency",
+    "coherence[].coherence",
+    "coherence[].phase_deg",
+    "distributions.overall[].points",
+    "distributions.stretches[].distributions[].points",
+];
+
+/// What it puts in place of something the CLI wrote, in a shape of its own.
+const SERIES_REPLACED: &[&str] = &["walk"];
+
+/// What it adds that the CLI's document does not carry.
+const SERIES_ADDED: &[&str] = &[
+    "projection",
+    "series[].unit_text",
+    "spectrum_support",
+    "time_frequency_maps",
+];
+
 /// The page with the app's palette in it, so the charts and the app cannot
 /// drift apart.
 pub fn page() -> &'static str {
@@ -449,8 +480,16 @@ fn thin(points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
 /// `period_span`, the `spectra` the FFT view draws, the time-frequency maps
 /// and each distribution's probability-plot `points`, a few
 /// hundred kB on a long take), so the model reads the headlines and not
-/// thousands of numbers; the view puts them back.
+/// thousands of numbers; the view puts them back. The document says so in
+/// its `projection`.
 pub fn take_series_charts(doc: &mut Value) -> Value {
+    doc["projection"] = json!({
+        "schema": SERIES_PROJECTION,
+        "of": doc["schema"],
+        "removed": SERIES_REMOVED,
+        "replaced": SERIES_REPLACED,
+        "added": SERIES_ADDED,
+    });
     let mut views = Vec::new();
     if let Some(series) = doc.get_mut("series").and_then(Value::as_array_mut) {
         for s in series {
@@ -896,7 +935,12 @@ mod tests {
             },
         });
         let charts = take_series_charts(&mut doc);
-        let text = doc.to_string();
+        // The compact document names itself and keeps the CLI's schema.
+        assert_eq!(doc["projection"]["schema"], SERIES_PROJECTION);
+        assert!(doc["projection"]["of"].is_null());
+        let mut plain = doc.clone();
+        plain.as_object_mut().unwrap().remove("projection");
+        let text = plain.to_string();
         assert!(
             !text.contains("views")
                 && !text.contains("points")
@@ -945,7 +989,10 @@ mod tests {
         assert_eq!(dots[0]["hover"], "0.1 h after start · 300° · 0.0 s/d");
         assert_eq!(doc["walk"]["points"], 600);
         assert_eq!(doc["walk"]["merged_points"], 200);
-        assert!(doc.to_string().len() < 1000, "{doc}");
+        // What the model reads, besides the projection's fixed list of paths.
+        let mut plain = doc.clone();
+        plain.as_object_mut().unwrap().remove("projection");
+        assert!(plain.to_string().len() < 1000, "{doc}");
         // No walk, or too short a one: no card.
         let mut none = json!({ "walk": null });
         assert!(take_series_charts(&mut none)["walk"].is_null());
