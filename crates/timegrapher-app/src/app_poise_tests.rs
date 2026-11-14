@@ -4,6 +4,7 @@
 
 use super::tests::{queued_capture, synthetic_varying, themed};
 use super::*;
+use timegrapher_core::synth::{generate, SynthConfig};
 
 /// The Watches view's Dynamic Poise Test sets the take up on the Bench:
 /// its pane shows, the card turns to 10 at 9H, and nothing starts until
@@ -129,6 +130,56 @@ fn measured(name: &str) -> (TimegrapherApp, std::path::PathBuf, impl Sized) {
     let ctx = egui::Context::default();
     app.guided_tick(&ctx);
     (app, base, tx)
+}
+
+/// A take whose eight upright stops are marked, with no test on the
+/// Bench, as a saved Dynamic Poise take opens again (#1619): the pane
+/// reads each stop from the take's marks, as the Positions pane reads its
+/// six, so the table and core's fit come back.
+#[test]
+fn a_take_opened_again_shows_its_upright_stops_and_fit() {
+    let each = 62.0;
+    let order = guided::Kind::Poise.order();
+    // 30 s/d each way, fastest at 180° (6H at the top), as `measured`.
+    let extra = move |t: f64| {
+        let k = ((t / each).floor() as usize).min(order.len() - 1);
+        let deg = order[k].core().top_deg().unwrap();
+        30.0 * (deg - 180.0).to_radians().cos()
+    };
+    let mut app = synthetic_varying(0.0, 0.0, |_| 0.0);
+    app.session.listen();
+    let cfg = SynthConfig {
+        duration_s: each * order.len() as f64,
+        ..Default::default()
+    };
+    let audio = generate(&cfg, |_| 280.0, extra);
+    let per_stop = (each * 48_000.0) as usize;
+    for (p, sound) in order.iter().zip(audio.samples.chunks(per_stop)) {
+        app.session.set_state(session::State::Listening);
+        app.set_position(*p);
+        let live = app.live.as_mut().unwrap();
+        for b in sound.chunks(960) {
+            live.push(b);
+        }
+    }
+    assert!(app.guided.is_none(), "no test on the Bench");
+    let t = app.free_table(&egui::Context::default()).expect("a table");
+    let readings = &t.upright.0;
+    assert_eq!(readings.len(), 8, "{t:?}");
+    let fit = guided::poise_fit(readings).expect("fitted from eight");
+    assert!(
+        fit.short_text.contains("fastest near 6H at the top"),
+        "{}",
+        fit.short_text
+    );
+    // The six positions' own table is as it was: only its six.
+    assert_eq!(t.rows.len(), 6);
+    let drawn = draw(&mut app, Pane::DynamicPoise);
+    for label in ["Crown Down (CD, 9H)", "7:30 Up (7H30)", "10:30 Up (10H30)"] {
+        assert!(drawn.contains(label), "{label}: {drawn}");
+    }
+    assert!(drawn.contains(&fit.short_text), "{drawn}");
+    assert!(!drawn.contains(&poise_pending()), "{drawn}");
 }
 
 /// The pane draws a test part way, before five stops are in: the table's

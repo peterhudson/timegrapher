@@ -197,6 +197,7 @@ fn complication_body(
         info,
         &test_body::Parts {
             about: about_text(settle_s, measure_s),
+            kept: None,
             result: &plots,
             info: &info_panel,
         },

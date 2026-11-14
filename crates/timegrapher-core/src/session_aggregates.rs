@@ -149,6 +149,114 @@ fn source_caveats<'a>(
     caveats
 }
 
+/// The least time in a position, seconds, before a take's Positions Test
+/// table reads it: one whole 10 s reading.
+pub const POSITION_MIN_S: f64 = 10.0;
+
+/// One position's row of a take's Positions Test table.
+#[derive(Debug, Clone)]
+pub struct PositionRow {
+    pub position: Position,
+    /// Seconds marked in the position, after each stretch's settling and
+    /// less masked time.
+    pub duration_s: f64,
+    /// Its reading, once `duration_s` reaches the least asked for.
+    pub measurement: Option<Measurement>,
+}
+
+/// A take's Positions Test table: a row for each of the six positions,
+/// in [`Position::ALL`]'s order, and the values over the positions read.
+#[derive(Debug, Clone)]
+pub struct PositionsTable {
+    pub rows: Vec<PositionRow>,
+    pub indices: StateIndices,
+}
+
+/// The Positions Test table of any take, live or opened, guided or not:
+/// each position's settled `stretches` (position, start, end, seconds on
+/// the sound card's clock, settling already trimmed from each start) read
+/// together as one reading, as [`measure_masked`] reads a take: the time
+/// between them and the `masked` stretches (cleaned with [`masked_spans`])
+/// left out. A position is read once its duration reaches `min_s`; the
+/// indices are over the positions read.
+pub fn positions_table(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    masked: &[(f64, f64)],
+    stretches: &[(Position, f64, f64)],
+    min_s: f64,
+) -> PositionsTable {
+    let rows = position_rows(
+        &Position::ALL,
+        (log, clock, breaks, masked),
+        stretches,
+        min_s,
+    );
+    let figures: Vec<SourcedFigures> = rows
+        .iter()
+        .filter_map(|r| {
+            let m = r.measurement.as_ref()?;
+            Some((
+                r.position,
+                m.rate_s_per_day,
+                m.amplitude_deg,
+                m.beat_error(),
+                m.beat_error_source,
+            ))
+        })
+        .collect();
+    PositionsTable {
+        indices: sourced_indices(0.0, &figures),
+        rows,
+    }
+}
+
+/// A take and how it is read: its beats, its clock, its breaks and its
+/// masked stretches.
+pub type TakeRead<'a> = (
+    &'a BeatLog,
+    Option<&'a ClockFit>,
+    &'a [Break],
+    &'a [(f64, f64)],
+);
+
+/// A row for each of `over`, in its order, read as [`positions_table`]
+/// reads each position: its settled `stretches` together, once their
+/// duration reaches `min_s`. The Dynamic Poise pane reads a take's eight
+/// upright stops ([`Position::UPRIGHT`]) by it.
+pub fn position_rows(
+    over: &[Position],
+    (log, clock, breaks, masked): TakeRead<'_>,
+    stretches: &[(Position, f64, f64)],
+    min_s: f64,
+) -> Vec<PositionRow> {
+    over.iter()
+        .map(|&p| {
+            let mut spans: Vec<(f64, f64)> = stretches
+                .iter()
+                .filter(|s| s.0 == p)
+                .map(|&(_, a, b)| (a.max(0.0), b.min(log.duration_s)))
+                .filter(|(a, b)| a < b)
+                .collect();
+            spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let duration_s = spans
+                .iter()
+                .map(|&(a, b)| b - a - masked_within(masked, a, b))
+                .sum::<f64>()
+                .max(0.0);
+            let measurement = (duration_s >= min_s)
+                .then(|| measure_together(log, clock, breaks, masked, &spans))
+                .flatten();
+            PositionRow {
+                position: p,
+                duration_s,
+                measurement,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

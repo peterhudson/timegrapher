@@ -223,12 +223,21 @@ impl TimegrapherApp {
                     r.amplitude_error_deg,
                 ))
             });
+        // No test on the Bench: the take's own upright stops, read again
+        // as the Positions pane reads its six, so a saved test's results
+        // come back when its take is opened (#1619).
+        let kept = if self.guided.is_none() {
+            self.free_table_shown(ui.ctx()).map(|t| t.upright.0)
+        } else {
+            None
+        };
         let info = self.poise_info;
         let view = self.poise_view;
         let settle = (self.guided_settle_s, self.guided_measure_s);
         let action = poise_body(
             ui,
             (self.poise_test(), phase, live.as_ref()),
+            kept.as_deref().filter(|k| !k.is_empty()),
             amp_now.as_deref(),
             (view, info),
             settle,
@@ -247,11 +256,15 @@ fn poise_body(
         Option<guided::Phase>,
         Option<&guided::FreeCell>,
     ),
+    kept: Option<&[timegrapher_core::session::Reading]>,
     amp_now: Option<&str>,
     (view, info): (PoiseView, bool),
     (settle_s, measure_s): (f64, f64),
 ) -> Option<guided::Action> {
-    let readings = test.map_or(&[][..], |t| t.readings_so_far());
+    let readings = match test {
+        Some(t) => t.readings_so_far(),
+        None => kept.unwrap_or_default(),
+    };
     let fit = guided::poise_fit(readings);
     let mean = guided::poise_mean(readings);
     let bottom = ui.available_rect_before_wrap().bottom();
@@ -266,6 +279,7 @@ fn poise_body(
     };
     let notes = guided::poise_table_notes(readings);
     let info_part = |ui: &mut egui::Ui| info_panel(ui, fit.as_ref(), &notes);
+    let kept_table = |ui: &mut egui::Ui| guided::poise_table(ui, readings);
     test_body::test_body(
         ui,
         ("poise pane", &layout),
@@ -273,6 +287,9 @@ fn poise_body(
         info,
         &test_body::Parts {
             about: about_text(settle_s, measure_s),
+            kept: kept
+                .is_some()
+                .then_some(&kept_table as &dyn Fn(&mut egui::Ui)),
             result: &picture,
             info: &info_part,
         },
