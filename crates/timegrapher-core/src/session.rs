@@ -852,6 +852,73 @@ pub fn scatter_windows(
     )
 }
 
+/// Whether the stretch from `from_s` to `to_s` (true time) can hold a
+/// whole scatter window ([`scatter_windows`]: `len` seconds, one every
+/// `step` on the take's grid) clear of its `holes`: decided from where
+/// the windows fall, not from the beats in them, so a stretch of noise
+/// whose windows give no fit still holds one ([`crate::measure::regularity_assessed`],
+/// Norm on #1688). A 10 s window every 5 s fits in every stretch of
+/// 15 s or more without a cut, and in some under that.
+pub fn holds_scatter_window(holes: &Cuts, from_s: f64, to_s: f64, len: f64, step: f64) -> bool {
+    crate::clean::nominal_windows(from_s, to_s, len, step).any(|(a, b)| holes.clear(a, b))
+}
+
+/// Where a reading ending at `end_s` judges its beats' regularity from,
+/// seconds: its own start, `from_s`, or the tiling point at or before
+/// [`crate::live::SCATTER_LOOKBACK_S`] back from its end, whichever is
+/// earlier, so a 10 s reading holds a whole window (#636); never before
+/// `since_s`, the latest cut, mask, break or the take's start, so it
+/// never reaches into another position's sound. Live and saved readings
+/// both look back by it (Norm on #1688, #680).
+pub fn scatter_look_back(from_s: f64, end_s: f64, since_s: f64) -> f64 {
+    let step = RATE_WINDOW_STEP_S;
+    let back = ((end_s - crate::live::SCATTER_LOOKBACK_S) / step).floor() * step;
+    from_s.min(back).max(since_s).max(0.0)
+}
+
+/// The scatter a saved stretch's regularity is judged on.
+struct Judged {
+    jitter_us: Option<f64>,
+    /// Whether a whole window lies where it is judged.
+    holds_window: bool,
+    /// Where it is judged from, audio seconds.
+    from_s: f64,
+}
+
+/// A saved stretch's `windows`, from `audio` (start, end) on true time
+/// `on_true`, when they hold a whole window. When they cannot, the
+/// windows looking back as live's do ([`scatter_look_back`]) from the
+/// latest cut before its end (#1688): so a short stretch is judged as
+/// the live screen judged it, and one with a whole window inside reads
+/// as it always has.
+fn judged_scatter(
+    log: &BeatLog,
+    holes: &Cuts,
+    audio: (f64, f64),
+    on_true: (f64, f64),
+    windows: &[WindowFit],
+) -> Judged {
+    let ((from_s, to_s), (from_t, to_t)) = (audio, on_true);
+    let holds = |a: f64| holds_scatter_window(holes, a, to_t, RATE_WINDOW_S, RATE_WINDOW_STEP_S);
+    if holds(from_t) {
+        return Judged {
+            jitter_us: scatter_jitter_us(windows),
+            holds_window: true,
+            from_s,
+        };
+    }
+    let back_t = scatter_look_back(from_t, to_t, holes.stretch_from(to_t));
+    let back_s = holes.audio_time(back_t, 0.0, from_s);
+    let beats = holes.beats(&log.beats[stretch_beats(&log.beats, back_s, to_s)]);
+    let part = window_part_s(&log.amplitude_windows);
+    let back = scatter_windows(holes, &beats, log.bph, back_t, to_t, part);
+    Judged {
+        jitter_us: scatter_jitter_us(&back),
+        holds_window: holds(back_t),
+        from_s: back_s,
+    }
+}
+
 /// The timing scatter a stretch is judged on for whether a watch is
 /// heard: the median jitter of its windows. Live and saved readings and
 /// `analyze` all decide on it (#680).
@@ -1194,11 +1261,12 @@ pub fn measure_masked(
         .filter(|&&t| t >= from_s && t < to_s && !in_mask(masked, t))
         .count();
     let listened_s = to_s - from_s - masked_s;
-    let jitter_us = scatter_jitter_us(&windows);
-    // Under 10 s the beats' averaged sound (outside the masks) says
-    // whether a watch is heard.
+    let judged = judged_scatter(log, &holes, (from_s, to_s), (from_t, to_t), &windows);
+    let jitter_us = judged.jitter_us;
+    // Where regularity is not judged, the beats' averaged sound (outside
+    // the masks) says whether a watch is heard.
     let beat_sound = log.beat_sound(
-        &in_range
+        &log.beats[stretch_beats(&log.beats, judged.from_s, to_s)]
             .iter()
             .filter(|b| !masked.iter().any(|m| b.time >= m.0 && b.time < m.1))
             .copied()
@@ -1208,7 +1276,8 @@ pub fn measure_masked(
             ..Default::default()
         },
     );
-    let no_watch = crate::measure::no_watch_reason(jitter_us, log.bph, listened_s, beat_sound);
+    let assessed = crate::measure::regularity_assessed(listened_s, judged.holds_window);
+    let no_watch = crate::measure::no_watch_reason(jitter_us, log.bph, assessed, beat_sound);
     let mut m = Measurement {
         start_s: from_s,
         end_s: to_s,

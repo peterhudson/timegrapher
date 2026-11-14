@@ -113,7 +113,7 @@
     },
     "crates/timegrapher-app/src/export.rs": {
      "bounds": 0,
-     "comparisons": 2,
+     "comparisons": 1,
      "constants": 0,
      "defaults": 0
     },
@@ -246,7 +246,7 @@
    },
    "total": {
     "bounds": 103,
-    "comparisons": 98,
+    "comparisons": 97,
     "constants": 60,
     "defaults": 2
    }
