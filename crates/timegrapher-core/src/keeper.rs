@@ -850,7 +850,11 @@ mod tests {
             sample_rate: audio.sample_rate,
         };
         audio::write_wav(&cut_path, &cut).unwrap();
+        // As it would be opened: kept in `analysis/` and read back, its
+        // times to the µs as the parts keep them.
         let ended = kept_live(&[cut_path], &cfg, &[], &[4097]);
+        analysis_take::write(&cut_dir, &ended).unwrap();
+        let ended = analysis_take::read(&cut_dir).unwrap();
         let parts = checkpoint::read(&dir).unwrap().stored;
         // The wrong Tick just before the cut is left out, in both.
         let at = |s: &Stored| {
@@ -888,6 +892,15 @@ mod tests {
                 csv(&ended.log.amplitude_windows)
             );
         }
+        // No reported figure moves (Norm on #1711): the whole measurement,
+        // rate, amplitude, beat error, their ±, the watch heard and the
+        // caveats. Only beat quality and the last stretch's profiles, left
+        // out above, differ, for the reason given there.
+        let measured = |s: &Stored| {
+            let m = crate::session::measure(&s.log, None, 0.0, f64::INFINITY);
+            serde_json::to_string_pretty(&m).unwrap()
+        };
+        assert_eq!(measured(&parts), measured(&ended));
         let (p, q) = (&parts.profiles, &ended.profiles);
         assert_eq!(p.len(), q.len());
         let n = p.len() - 1;
