@@ -189,9 +189,10 @@ impl TimegrapherApp {
 
     /// The wind under the code at `pos`, muted, with `align`; on a card
     /// where it can be set, a click opens the Wind menu. Centred under the
-    /// compact card's code, it shrinks to fit as the code does; after the
-    /// codes, where it doesn't fit whole it is in the hover alone, never
-    /// wrapped or pushing the codes (Hugh).
+    /// compact card's code, it shrinks to fit as the code does, down to
+    /// [`WIND_MIN_SIZE`]; after the codes it is never shrunk. Where it
+    /// doesn't fit whole it is in the hover alone, never cut, wrapped or
+    /// pushing the codes (Hugh).
     pub(super) fn wind_line(&mut self, ui: &mut egui::Ui, pos: egui::Pos2, align: egui::Align2) {
         let pal = theme::pal(ui);
         let words = self.wind_words();
@@ -211,12 +212,14 @@ impl TimegrapherApp {
         } else {
             (room.right() - pos.x).min(room.width())
         };
-        let shown = centred || wide <= fits;
         let size = if wide > fits && centred {
             WIND_SIZE * (fits - 1.0) / wide
         } else {
             WIND_SIZE
         };
+        let shown = wide <= fits || (centred && size >= WIND_MIN_SIZE);
+        // Laid out only at a size it is drawn at.
+        let size = if shown { size } else { WIND_SIZE };
         let font = egui::FontId::proportional(size);
         let galley = ui
             .painter()
@@ -271,6 +274,10 @@ impl TimegrapherApp {
 
 /// The wind line's size, points: as a card's secondary lines.
 const WIND_SIZE: f32 = 11.0;
+
+/// The smallest the wind line shrinks to on the compact card, points:
+/// smaller isn't readable (Hugh).
+const WIND_MIN_SIZE: f32 = 9.0;
 
 /// The wind line's hover where it can be set.
 const WIND_HINT: &str = "When the watch was last fully wound. Each take is saved with the \

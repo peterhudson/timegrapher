@@ -187,21 +187,24 @@ fn the_card_shows_the_wind_whole() {
             "{w} {compact} {ten}: {drawn:?} in {card:?}"
         );
     }
-    // Beside the codes where it doesn't fit whole, it is in the hover
-    // alone: never shrunk, cut or wrapped (Hugh).
-    app.ten_positions = true;
-    let card = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(150.0, 110.0));
-    let out = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let inner = card.shrink(f32::from(theme::CARD_PADDING));
-            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
-            app.position_card(&mut child, false);
+    // Beside the codes where it doesn't fit whole, and on a compact card
+    // too narrow for it at 9 pt, it is in the hover alone: never cut,
+    // wrapped or too small to read (Hugh).
+    for (w, compact, ten) in [(150.0, false, true), (95.0, true, false)] {
+        app.ten_positions = ten;
+        let card = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(w, 110.0));
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let inner = card.shrink(f32::from(theme::CARD_PADDING));
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+                app.position_card(&mut child, compact);
+            });
         });
-    });
-    assert!(
-        !out.shapes.iter().any(|c| matches!(&c.shape,
-            egui::Shape::Text(t) if t.galley.text().starts_with("Full wind"))),
-        "{}",
-        painted_text(&out)
-    );
+        assert!(
+            !out.shapes.iter().any(|c| matches!(&c.shape,
+                egui::Shape::Text(t) if t.galley.text().starts_with("Full wind"))),
+            "{w}: {}",
+            painted_text(&out)
+        );
+    }
 }
