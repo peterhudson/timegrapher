@@ -269,9 +269,21 @@ impl TimegrapherApp {
         self.reveal_pane(Pane::PowerReserve);
     }
 
-    /// Follow a running Power Reserve Test, whether its pane shows or
-    /// not: read the beats every few seconds, and end it at the stop.
+    /// [`Self::reserve_follow`] from a frame of the window, which draws
+    /// again each second while the test runs.
     pub(super) fn reserve_tick(&mut self, ctx: &egui::Context) {
+        self.reserve_follow();
+        if self.reserve_running() {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
+        }
+    }
+
+    /// Follow a running Power Reserve Test, whether its pane shows or
+    /// not: read the beats every few seconds, and end it at the stop or
+    /// the time limit. Called from the window's frames and from the
+    /// listening thread's ([`Self::pump`]), so a window that isn't drawn
+    /// (minimised, a locked screen) still ends the test (#1647).
+    pub(super) fn reserve_follow(&mut self) {
         self.reserve_write_again();
         if !self.reserve_running() {
             return;
@@ -280,7 +292,6 @@ impl TimegrapherApp {
             return;
         };
         let now = live.duration_s();
-        ctx.request_repaint_after(std::time::Duration::from_secs(1));
         if now - self.reserve_read_s < 2.0 {
             return;
         }
