@@ -2783,6 +2783,15 @@ mod slow_tests {
         let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[b1, b2]);
         let worst = d.y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
         assert!(worst < 1e-6, "{worst}");
+        // The floor itself, in readings (Norm, #1716; pinned for #1723):
+        // a last piece of 9 is left out and one of 10 kept.
+        for (last, kept) in [(9, false), (10, true)] {
+            let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[b1, n - last]);
+            assert!(
+                d.y[n - last..].iter().all(|v| v.is_finite() == kept),
+                "{last}"
+            );
+        }
         // Above 20 min a piece shorter than the window is left out.
         let n = 900;
         let y: Vec<f64> = (0..n)

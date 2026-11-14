@@ -346,6 +346,25 @@ pub fn for_take(
 
 #[cfg(test)]
 mod tests {
+
+    /// Each spectrum is read from its readings levelled piece by piece
+    /// between the take's breaks, not across them (#1608, #1723).
+    #[test]
+    fn for_take_reads_each_series_by_piece() {
+        let (log, long, lc) = crate::break_fixture::a_take_with_a_break();
+        let clock = long.clock.as_ref();
+        let out = for_take(&log, clock, &long, &lc, 10.0);
+        let grids = crate::steadiness::reading_grids(&log, clock, &long.breaks, 10.0).0;
+        assert_eq!(out.len(), 3);
+        let js = |s: &GappySpectrum| serde_json::to_value(s).unwrap();
+        for (s, g) in out.iter().zip(&grids) {
+            let by_piece = crate::steadiness::level_by_piece(g, clock, &long.breaks, &lc);
+            let across = crate::longterm::detrend(g, lc.detrend_s);
+            let on = |d| spectrum(&d, s.series, s.unit, &lc.wheels).unwrap();
+            assert_eq!(js(s), js(&on(by_piece)), "{}", s.series);
+            assert_ne!(js(s), js(&on(across)), "{}", s.series);
+        }
+    }
     use super::*;
     use crate::synth::Rng;
 

@@ -14,6 +14,8 @@ pub mod audio;
 pub mod be_angle;
 pub mod beat_cache;
 pub mod beats;
+#[cfg(test)]
+mod break_fixture;
 pub mod breaks;
 pub mod calibre_store;
 pub mod calibres;
