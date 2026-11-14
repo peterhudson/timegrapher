@@ -374,8 +374,6 @@ impl Drop for Keeper {
     }
 }
 
-/// The Keeper's reading: the blocks from `rx`, until it closes, read as
-/// one recording.
 /// The sample the Keeper may profile up to, once it has `read` samples
 /// and the chunk just read starts `core_a` seconds in. Up to that chunk's
 /// start: its beats from there on may still change with the next chunk's
@@ -391,6 +389,8 @@ fn profile_bound(core_a: f64, heard: bool, read: usize, fs: f64) -> usize {
     behind.min(wait.max(held_to))
 }
 
+/// The Keeper's reading: the blocks from `rx`, until it closes, read as
+/// one recording.
 fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError> {
     let cfg = &how.cfg;
     let fs = f64::from(how.sample_rate);
