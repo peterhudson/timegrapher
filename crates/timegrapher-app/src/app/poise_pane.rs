@@ -161,10 +161,13 @@ impl TimegrapherApp {
         }
         self.positions_lengths(ui, running, "Each Position");
         theme::bar_gap(ui);
-        let nothing = self
-            .poise_test()
-            .is_none_or(|t| t.readings_so_far().is_empty())
-            .then_some("Nothing measured yet");
+        // The rows the table shows: the test's, else a reopened take's.
+        let kept = self.poise_kept(ui.ctx());
+        let nothing = match self.poise_test() {
+            Some(t) => t.readings_so_far().is_empty(),
+            None => kept.is_none(),
+        }
+        .then_some("Nothing measured yet");
         if theme::tool_word_button(
             ui,
             Icon::Copy,
@@ -175,11 +178,29 @@ impl TimegrapherApp {
             nothing,
         ) {
             let about = self.guided_about();
-            if let Some(t) = self.poise_test() {
-                ui.ctx().copy_text(guided::export_text(t, &about, '\t'));
+            let text = match (self.poise_test(), kept) {
+                (Some(t), _) => Some(guided::export_text(t, &about, '\t')),
+                (None, Some(k)) => Some(guided::poise_rows_text(&k, &about, '\t')),
+                _ => None,
+            };
+            if let Some(text) = text {
+                ui.ctx().copy_text(text);
                 self.info_msg("Copied the Dynamic Poise table".to_string());
             }
         }
+    }
+
+    /// No test on the Bench: the take's own upright stops, read again
+    /// as the Positions pane reads its six, so a saved test's results
+    /// come back when its take is opened (#1619). The table and Copy
+    /// both read these (#1657).
+    fn poise_kept(&self, ctx: &egui::Context) -> Option<Vec<timegrapher_core::session::Reading>> {
+        if self.guided.is_some() {
+            return None;
+        }
+        self.free_table_shown(ctx)
+            .map(|t| t.upright.0)
+            .filter(|k| !k.is_empty())
     }
 
     /// The pane's toolbar, with the Info toggle pinned at its right.
@@ -223,24 +244,14 @@ impl TimegrapherApp {
                     r.amplitude_error_deg,
                 ))
             });
-        // No test on the Bench: the take's own upright stops, read again
-        // as the Positions pane reads its six, so a saved test's results
-        // come back when its take is opened (#1619).
-        let kept = if self.guided.is_none() {
-            self.free_table_shown(ui.ctx()).map(|t| t.upright.0)
-        } else {
-            None
-        };
+        let kept = self.poise_kept(ui.ctx());
         let info = self.poise_info;
         let view = self.poise_view;
         let settle = (self.guided_settle_s, self.guided_measure_s);
         let action = poise_body(
             ui,
             (self.poise_test(), phase, live.as_ref()),
-            (
-                kept.as_deref().filter(|k| !k.is_empty()),
-                self.guided.is_none() && !self.running(),
-            ),
+            (kept.as_deref(), self.guided.is_none() && !self.running()),
             amp_now.as_deref(),
             (view, info),
             settle,
