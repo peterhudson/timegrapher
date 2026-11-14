@@ -186,6 +186,8 @@ const POSITIONS = /*POSITIONS*/null;
 // The heading for a reading with no regular beat: core's measure::NO_WATCH_TITLE,
 // as the app writes it (#510).
 const NO_BEAT_TITLE = /*NO_BEAT_TITLE*/null;
+// A reading whose wind was not given, in core's words (#1665).
+const WIND_NOT_GIVEN = /*WIND_NOT_GIVEN*/null;
 // Each figure's decimals: core's library::base_digits (rate 1, amplitude
 // 0, beat error 2, jitter 0), filled in by the server. A figure with a ±
 // takes the decimals the server gives beside it (library::figure_digits),
@@ -703,7 +705,9 @@ function sessionView(doc, limits) {
   const rep = doc.report || {};
   const readings = (doc.readings || []).map((r, i) => Object.assign({ index: i }, r));
   const rank = (r) => { const k = ORDER.indexOf(r.position); return k < 0 ? ORDER.length : k; };
-  readings.sort((a, b) => rank(a) - rank(b) || (a.wind_h || 0) - (b.wind_h || 0) || a.index - b.index);
+  // Wind not given sorts after every given wind, as core lists its state last.
+  const unset = (r) => (r.wind_h == null ? 1 : 0);
+  readings.sort((a, b) => rank(a) - rank(b) || unset(a) - unset(b) || (a.wind_h || 0) - (b.wind_h || 0) || a.index - b.index);
   const title = [doc.watch, doc.calibre].filter(Boolean).join(" · ");
   let html = `<h1>Multi-Position Test</h1><p class="sub">${esc(title || "")}${title ? " · " : ""}${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   const state = (rep.states || [])[0];
@@ -724,7 +728,7 @@ function sessionView(doc, limits) {
       (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
         cell(abs(chosenBeatError(m.beat_error_unlock_ms, m.beat_error_ms, m.beat_error_source).value), 2)
         : `<td colspan="3" style="text-align:center;color:var(--text2)">${esc(NO_BEAT_TITLE)}</td>`) +
-      `<td>${esc(r.wind_h == null ? 0 : r.wind_h)}</td></tr>`;
+      `<td>${esc(r.wind_h == null ? WIND_NOT_GIVEN : r.wind_h)}</td></tr>`;
   });
   html += `</tbody></table></div>`;
   if (limits && limits.length) html += limitsCard(limits);

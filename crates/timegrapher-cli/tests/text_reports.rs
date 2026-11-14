@@ -214,3 +214,51 @@ fn a_session_with_two_states_sets_the_later_against_full_wind() {
     let ie = timegrapher_core::figure_text::fixed_text(ie, 1);
     assert!(ends("(Ie)", &ie), "{text}");
 }
+
+/// Readings whose wind was not given are never pooled with full wind nor
+/// set against it (#1665): beside six at full wind, the report is of the
+/// full-wind readings alone, with nothing set against them.
+#[test]
+fn readings_with_no_wind_given_stay_out_of_a_full_wind_report() {
+    let dir = scratch("unset");
+    let mut toml = String::from("bph = 28800\nlift = 52\n\n");
+    for (i, pos) in ["DU", "DD", "CD", "CL", "CU", "CR"].iter().enumerate() {
+        let (a, b) = (format!("{pos}-0.wav"), format!("{pos}-unset.wav"));
+        watch_wav(&dir.join(&a), 2.0 * i as f64, 280.0, i as u64 + 41);
+        watch_wav(&dir.join(&b), 2.0 * i as f64 + 20.0, 240.0, i as u64 + 51);
+        toml += &entry(&a, pos, 0.0);
+        toml += &format!("[[recording]]\nfile = \"{b}\"\nposition = \"{pos}\"\nsettle_s = 5\n\n");
+    }
+    let doc = session(&dir, &toml);
+    let states = doc["report"]["states"].as_array().unwrap();
+    assert_eq!(states.len(), 2);
+    assert!(states[1]["wind_h"].is_null());
+    let text = report(&doc, "positions-report.txt").expect("a positions report");
+    assert!(!text.contains("Against"), "{text}");
+    let x = states[0]["x"].as_f64().unwrap();
+    let line = text.lines().find(|l| l.starts_with("Average")).unwrap();
+    assert!(
+        line.contains(&timegrapher_core::figure_text::signed_text(x, 1)),
+        "the full-wind state's average alone: {line}"
+    );
+}
+
+/// With no wind given at all, the report is of every reading, as before.
+#[test]
+fn a_session_with_no_wind_given_reports_its_readings() {
+    let dir = scratch("none-set");
+    let mut toml = String::from("bph = 28800\nlift = 52\n\n");
+    for (i, pos) in ["DU", "DD", "CD", "CL", "CU", "CR"].iter().enumerate() {
+        let a = format!("{pos}.wav");
+        watch_wav(&dir.join(&a), 2.0 * i as f64, 280.0, i as u64 + 61);
+        toml += &format!("[[recording]]\nfile = \"{a}\"\nposition = \"{pos}\"\nsettle_s = 5\n\n");
+    }
+    let doc = session(&dir, &toml);
+    let x = doc["report"]["states"][0]["x"].as_f64().unwrap();
+    let text = report(&doc, "positions-report.txt").expect("a positions report");
+    let line = text.lines().find(|l| l.starts_with("Average")).unwrap();
+    assert!(
+        line.contains(&timegrapher_core::figure_text::signed_text(x, 1)),
+        "{line}"
+    );
+}

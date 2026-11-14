@@ -1698,9 +1698,11 @@ fn spread(v: impl Iterator<Item = f64>) -> Option<f64> {
 
 /// Hours after full wind to a tenth: the states of wind's one key. A
 /// reading whose wind was not given is a state of its own (`None`),
-/// never pooled with full wind (#1665).
+/// never pooled with full wind (#1665); so is one whose wind is not a
+/// number (`wind_h = nan`), which would otherwise key to 0.
 pub(crate) fn wind_key(w: Option<f64>) -> Option<i64> {
-    w.map(|w| (w * 10.0).round() as i64)
+    w.filter(|w| w.is_finite())
+        .map(|w| (w * 10.0).round() as i64)
 }
 
 /// Whether a reading whose wind is `reading` falls in the state of wind
@@ -1708,6 +1710,29 @@ pub(crate) fn wind_key(w: Option<f64>) -> Option<i64> {
 /// given only with wind not given.
 pub fn in_wind_state(reading: Option<f64>, state: Option<f64>) -> bool {
     wind_key(reading) == wind_key(state)
+}
+
+/// The readings a session's text report is of, and the earlier state
+/// it is set against: the least wound state whose wind was given, against
+/// the fullest when there are two or more, with the hours between them.
+/// With no wind given at all, the readings whose wind was not given, on
+/// their own. Readings whose wind was not given are never set against a
+/// given state, nor pooled with one (#1665).
+pub fn report_states(readings: &[Reading]) -> (Vec<&Reading>, Option<(Vec<&Reading>, f64)>) {
+    let at = |k: Option<i64>| -> Vec<&Reading> {
+        readings
+            .iter()
+            .filter(|r| wind_key(r.wind_h) == k)
+            .collect()
+    };
+    let given: Vec<i64> = wind_keys(readings).into_iter().flatten().collect();
+    match (given.first(), given.last()) {
+        (Some(&first), Some(&last)) => {
+            let earlier = (last > first).then(|| (at(Some(first)), (last - first) as f64 / 10.0));
+            (at(Some(last)), earlier)
+        }
+        _ => (at(None), None),
+    }
 }
 
 /// The states of wind among `readings`, fullest first, then the one
@@ -1825,8 +1850,8 @@ pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> Ses
                 ]);
                 isochronism.push(Isochronism {
                     position: p,
-                    from_wind_h: a.0.wind_h.unwrap_or_default(),
-                    to_wind_h: b.0.wind_h.unwrap_or_default(),
+                    from_wind_h: a.0.wind_h.expect("a given state's wind"),
+                    to_wind_h: b.0.wind_h.expect("a given state's wind"),
                     rate_change: b.1.rate_s_per_day.unwrap() - a.1.rate_s_per_day.unwrap(),
                     amplitude_change: b.1.amplitude_deg.zip(a.1.amplitude_deg).map(|(x, y)| x - y),
                     beat_error_change: (selected.values.len() == 2)

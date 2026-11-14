@@ -1130,25 +1130,17 @@ fn power_reserve_of(
 fn text_reports(s: &Session, base: &Path) -> Vec<TextReport> {
     use timegrapher_core::session::Position;
     use timegrapher_core::text_report::{self, Earlier};
-    let wind = |r: &Reading| r.wind_h.unwrap_or(0.0);
-    let fullest = s.readings.iter().map(wind).fold(f64::INFINITY, f64::min);
-    let least = s
-        .readings
-        .iter()
-        .map(wind)
-        .fold(f64::NEG_INFINITY, f64::max);
-    let at = |w: f64| -> Vec<Reading> {
-        s.readings
-            .iter()
-            .filter(|r| wind(r) == w)
-            .cloned()
-            .collect()
-    };
-    let readings = at(least);
-    let full = text_report::figures(&at(fullest));
-    let earlier = (least > fullest).then_some(Earlier {
-        figures: &full,
-        hours: least - fullest,
+    // Core picks the state the report is of, and the one it is set
+    // against: wind not given is never pooled with a given state (#1665).
+    let (shown, against) = timegrapher_core::session::report_states(&s.readings);
+    let readings: Vec<Reading> = shown.into_iter().cloned().collect();
+    let full = against.as_ref().map(|(full, hours)| {
+        let full: Vec<Reading> = full.iter().map(|r| (*r).clone()).collect();
+        (text_report::figures(&full), *hours)
+    });
+    let earlier = full.as_ref().map(|(figures, hours)| Earlier {
+        figures,
+        hours: *hours,
     });
     let header = text_report::Header {
         watch: s.watch.map(str::to_string),

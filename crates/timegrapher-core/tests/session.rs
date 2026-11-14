@@ -1689,3 +1689,44 @@ fn a_state_of_wind_not_given_is_named_so() {
     assert_eq!(wind_state_words(Some(0.0)), "full wind");
     assert_eq!(wind_state_words(Some(24.0)), "24 h after winding");
 }
+
+/// A wind that is not a number (`wind_h = nan` in a session file) is not
+/// given, never full wind.
+#[test]
+fn a_wind_that_is_not_a_number_is_not_given() {
+    let nan = Reading {
+        wind_h: Some(f64::NAN),
+        ..reading(Position::CH, 0.0, 25.0, 280.0, 0.1)
+    };
+    let rep = evaluate(&[reading(Position::CH, 0.0, 5.0, 280.0, 0.1), nan]);
+    let winds: Vec<Option<f64>> = rep.states.iter().map(|s| s.wind_h).collect();
+    assert_eq!(winds, vec![Some(0.0), None]);
+}
+
+/// A session's text report is of the least wound state whose wind was
+/// given, set against the fullest; readings whose wind was not given join
+/// neither, and are reported on their own only when no wind was given.
+#[test]
+fn the_text_report_never_pools_wind_not_given() {
+    let unset = Reading {
+        wind_h: None,
+        ..reading(Position::CH, 0.0, 50.0, 280.0, 0.1)
+    };
+    let all = [
+        reading(Position::CH, 0.0, 5.0, 280.0, 0.1),
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+        unset.clone(),
+    ];
+    let (shown, against) = session::report_states(&all);
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].wind_h, Some(24.0));
+    let (full, hours) = against.expect("set against full wind");
+    assert_eq!((full.len(), full[0].wind_h, hours), (1, Some(0.0), 24.0));
+    let full_and_unset = [all[0].clone(), unset.clone()];
+    let (shown, against) = session::report_states(&full_and_unset);
+    assert_eq!((shown.len(), shown[0].wind_h), (1, Some(0.0)));
+    assert!(against.is_none());
+    let (shown, against) = session::report_states(std::slice::from_ref(&unset));
+    assert_eq!((shown.len(), shown[0].wind_h), (1, None));
+    assert!(against.is_none());
+}
