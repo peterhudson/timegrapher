@@ -5,13 +5,12 @@
 //! cone at a stretch's ends) is left empty: the card shows through.
 
 use crate::marks::{self, Rank};
-use crate::steady::{wheel_lines, Turn, WheelLine};
+use crate::steady::{wheel_lines, Marks, Turn, WheelLine};
 use crate::strength;
 use crate::theme;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use egui_plot::{LineStyle, Plot};
 use timegrapher_core::library::length_text;
-use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::steadiness::unit_after;
 use timegrapher_core::timefreq::{size_number, TimeFrequency};
 
@@ -137,7 +136,7 @@ pub fn key_title(m: &TimeFrequency, log: bool) -> String {
 }
 
 /// Draw map `m` with `base` (the pane's plot, its axes still to set),
-/// over the session's `0..upto_s`, with the wheels' turns marked across
+/// over the session's `0..upto_s`, with the wheels' turns and meshes marked across
 /// it and a key under it.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
@@ -147,7 +146,7 @@ pub fn draw(
     m: &TimeFrequency,
     upto_s: f64,
     log: bool,
-    wheels: Option<&[Wheel]>,
+    wheels: Option<Marks<'_>>,
     time_label: impl Fn(f64) -> String + 'static,
     period_label: impl Fn(f64) -> String + Clone + 'static,
 ) {
@@ -272,7 +271,10 @@ fn wheel_rows(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::P
         p.hline(
             egui_plot::HLine::new(l.name.clone(), l.x)
                 .color(l.ink(pal))
-                .style(LineStyle::dotted_dense())
+                .style(match l.turn {
+                    Turn::Mesh => LineStyle::dashed_loose(),
+                    _ => LineStyle::dotted_dense(),
+                })
                 .width(l.width()),
         );
     }

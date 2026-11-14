@@ -657,6 +657,10 @@ pub struct Calibre {
     pub lift_set_aside_deg: Option<f64>,
     pub escape_teeth: Option<u32>,
     pub wheels: Vec<crate::periodicity::Wheel>,
+    /// Its meshes, for marking beside the wheels ([`Catalog::meshes`]).
+    ///
+    /// [`Catalog::meshes`]: crate::calibre_store::Catalog::meshes
+    pub meshes: Vec<crate::periodicity::Wheel>,
 }
 
 /// Why a reading's lift angle is the default when no lift was given and
@@ -703,6 +707,7 @@ pub fn calibre_named(name: &str, user: &crate::calibre_store::UserCalibres) -> O
         lift_angle_deg: entry.lift_angle_deg(),
         lift_set_aside_deg: entry.lift_set_aside_deg(),
         escape_teeth: entry.escape_teeth(),
+        meshes: cat.meshes(entry),
         wheels,
     })
 }
@@ -2399,6 +2404,7 @@ mod tests {
             lift_set_aside_deg: aside,
             escape_teeth: None,
             wheels: Vec::new(),
+            meshes: Vec::new(),
         };
         assert_eq!(lift_default_why(None).unwrap(), "calibre not set");
         assert_eq!(
@@ -2421,6 +2427,7 @@ mod tests {
             lift_set_aside_deg: None,
             escape_teeth: Some(20),
             wheels: Vec::new(),
+            meshes: Vec::new(),
         };
         let bare: Manifest = toml::from_str("").unwrap();
         let none = stream_settings(&bare, None, Given::default());
@@ -2465,6 +2472,7 @@ mod tests {
             lift_set_aside_deg: None,
             escape_teeth: None,
             wheels: Vec::new(),
+            meshes: Vec::new(),
         };
         let file = |text: &str| -> Manifest { toml::from_str(text).unwrap() };
         let known = |m: &Manifest, c: Option<&Calibre>| {

@@ -1736,6 +1736,11 @@ impl TimegrapherApp {
         self.cal.wheels(&self.calibre)
     }
 
+    /// The picked calibre's meshes, marked beside its wheels.
+    pub(super) fn calibre_meshes(&self) -> Vec<Wheel> {
+        self.cal.meshes(&self.calibre)
+    }
+
     /// Pick a calibre: its lift angle, where the list or the user gives
     /// one, and its wheels for naming the cycles Steadiness finds.
     pub(super) fn set_calibre(&mut self, name: String) {

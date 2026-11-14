@@ -131,19 +131,16 @@ impl TimegrapherApp {
             let log = self.live.as_ref().and_then(steady::log_of);
             if let Some((log, breaks)) = log.map(|l| self.steady_log(l, &runs, clock.as_ref())) {
                 let wheels = self.calibre_wheels();
+                let meshes = self.calibre_meshes();
                 let clock = clock.filter(|_| !joined); // A joined log is on it.
                 let (tx, rx) = std::sync::mpsc::channel();
                 let ctx = ctx.clone();
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
                 self.steady_work = (stage.clone(), std::time::Instant::now());
                 std::thread::spawn(move || {
-                    let _ = tx.send(steady::compute_with(
-                        &log,
-                        &breaks,
-                        wheels,
-                        clock.as_ref(),
-                        &stage,
-                    ));
+                    let mut s = steady::compute_with(&log, &breaks, wheels, clock.as_ref(), &stage);
+                    s.meshes = meshes;
+                    let _ = tx.send(s);
                     ctx.request_repaint();
                 });
                 self.steady_job = Some((self.rev, rx));

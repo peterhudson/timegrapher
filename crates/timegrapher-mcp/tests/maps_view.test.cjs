@@ -32,7 +32,7 @@ const context = vm.createContext({
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
 assert.ok(html.includes("const MARK_ROOM_PX = /*MARK_ROOM_PX*/null;"), "the server fills the mark room in");
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const MARKS = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0] + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 
-  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "wheelShort", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markStack", "markWidth", "markText", "laneRight", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
+  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "oneMark", "wheelShort", "meshShort", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markStack", "markWidth", "markText", "laneRight", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
     .map(definition).join("\n") + "\nthis.mapPaints = mapPaints; this.WHEELS_HINT = WHEELS_HINT;", context);
 
 // Values made in the renderer's context, as plain ones.
@@ -138,6 +138,21 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   assert.ok(!rows(plainDoc).includes(">1 h<"));
   assert.match(rows(named), /<line[^>]*stroke="var\(--callout\)"[^>]*\/><polyline[^>]*\/><text[^>]*font-weight:600[^>]*>4th Wheel</s);
   assert.ok(!rows(named).includes("×2"));
+  // A calibre's meshes (#1472): faint and loosely dashed, named by their
+  // pinion, on the axes and the maps; one at a wheel's or a ×2's period
+  // is left to that line.
+  const meshed = { input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }], reference_lines: [],
+    named_meshes: [{ name: "fourth pinion", period_s: 20 / 3 }, { name: "third pinion", period_s: 600 / 13 }, { name: "centre pinion", period_s: 30.2 }] } } };
+  assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).slice(2), [
+    { x: Math.log10(20 / 3), color: "--callout", width: 1, dash: "mesh", name: "fourth pinion Mesh", rank: "faint", ink: "--callout",
+      hover: `fourth pinion Mesh: ${20 / 3} s. One tooth of the wheel driving the fourth pinion engages, drives and leaves in this time.` },
+    { x: Math.log10(600 / 13), color: "--callout", width: 1, dash: "mesh", name: "third pinion Mesh", rank: "faint", ink: "--callout",
+      hover: `third pinion Mesh: ${600 / 13} s. One tooth of the wheel driving the third pinion engages, drives and leaves in this time.` },
+  ]);
+  assert.equal(context.meshShort("fourth pinion"), "4th Mesh");
+  assert.equal(context.meshShort("centre pinion"), "2nd Mesh");
+  assert.equal(rows(meshed).match(/stroke-dasharray="10 10"/g).length, 2);
+  assert.ok(rows(meshed).includes(">4th Mesh<") && rows(meshed).includes(">3rd Mesh<"));
   // Wheel Periods off: nothing, on the axes or the maps.
   context.showWheels = false;
   assert.deepEqual(plain(context.wheelMarks(named, [0, 5])), []);

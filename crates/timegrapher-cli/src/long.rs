@@ -218,6 +218,16 @@ impl ResolvedTrain {
         wheels
     }
 
+    /// The calibre's meshes, marked beside its wheels
+    /// ([`timegrapher_core::calibre_store::Catalog::meshes`]); none with
+    /// no calibre.
+    pub(crate) fn meshes(&self) -> Vec<Wheel> {
+        self.calibre
+            .as_ref()
+            .map(|c| c.meshes.clone())
+            .unwrap_or_default()
+    }
+
     /// The lift angle for long and series: `--lift`, else the calibre's,
     /// else the default.
     pub(crate) fn lift_deg(&self, flag: Option<f64>) -> f64 {
@@ -625,6 +635,7 @@ pub fn run(
         file.with_file_name(format!("{stem}_long"))
     });
 
+    let meshes = resolved_train.meshes();
     let mut lc = LongConfig {
         wheels: resolved_train.wheels(log.bph),
         ..Default::default()
@@ -658,6 +669,7 @@ pub fn run(
         "escape_teeth": escape_teeth,
         "wheels": wheels,
         "named_wheels": lc.wheels,
+        "named_meshes": meshes,
         "reference_lines": reference_lines(&lc.wheels),
         "out": out.display().to_string(),
     });

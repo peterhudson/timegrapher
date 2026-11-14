@@ -347,6 +347,14 @@ impl Calibres {
         )
     }
 
+    /// The meshes known for `name`, marked beside its wheels
+    /// ([`Catalog::meshes`]); none when no calibre is set.
+    pub fn meshes(&self, name: &str) -> Vec<Wheel> {
+        self.find(name)
+            .map(|e| Catalog::new(&self.user).meshes(e))
+            .unwrap_or_default()
+    }
+
     pub fn lift(&self, name: &str) -> Option<f64> {
         self.find(name)?.lift_angle_deg()
     }

@@ -1373,6 +1373,49 @@ fn a_wheels_twice_and_a_reference_are_fainter_call_outs() {
     assert_eq!(line(Turn::Twice).ink(pal), line(Turn::Wheel).ink(pal));
 }
 
+/// A calibre's meshes are marked after its wheels, faint and named by
+/// their pinion (#1472); one at a wheel's or a ×2's period is left to that
+/// line, and with the marks off there are none.
+#[test]
+fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
+    let w = |name: &str, period_s: f64| Wheel {
+        name: name.into(),
+        period_s,
+    };
+    let wheels = [w("fourth wheel", 60.0)];
+    let meshes = [
+        w("fourth pinion", 60.0 / 9.0),
+        w("third pinion", 600.0 / 13.0),
+        w("centre pinion", 30.2),
+    ];
+    let marks = Marks {
+        wheels: &wheels,
+        meshes: &meshes,
+    };
+    let lines = wheel_lines(Some(marks), (0.0, 5.0));
+    let got: Vec<(&str, &str, bool)> = lines
+        .iter()
+        .map(|l| (l.name.as_str(), l.short.as_str(), l.turn == Turn::Mesh))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("Fourth Wheel", "4th Wheel", false),
+            ("Fourth Wheel ×2", "4th Wheel ×2", false),
+            ("Fourth Pinion Mesh", "4th Mesh", true),
+            ("Third Pinion Mesh", "3rd Mesh", true),
+        ]
+    );
+    let mesh = &lines[2];
+    assert_eq!(mesh.rank(), Rank::Faint);
+    assert_eq!(mesh.width(), 1.0);
+    assert!(mesh
+        .hover
+        .contains("One tooth of the wheel driving the fourth pinion"));
+    assert_eq!(crate::marks::mesh_short("centre pinion"), "2nd Mesh");
+    assert!(wheel_lines(None, (0.0, 5.0)).is_empty());
+}
+
 /// A trend or a split of levels the headline leaves out says why, in
 /// core's words, as `series` and the MCP view do (#954, #971); one it
 /// names says nothing more.

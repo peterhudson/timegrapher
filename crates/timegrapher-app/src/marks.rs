@@ -528,6 +528,16 @@ pub fn wheel_short(name: &str) -> String {
     }
 }
 
+/// A mesh's name in a narrow lane: its pinion by the short name of the
+/// wheel on the same arbor, as [`wheel_short`] gives it ("4th Mesh").
+pub fn mesh_short(pinion: &str) -> String {
+    let wheel = pinion.strip_suffix(" pinion").map(|a| format!("{a} wheel"));
+    match wheel.as_deref().map(wheel_short) {
+        Some(w) if w.ends_with(" Wheel") => format!("{} Mesh", w.trim_end_matches(" Wheel")),
+        _ => format!("{} Mesh", title_case(pinion)),
+    }
+}
+
 /// The length of the tick that joins a line across a map to its name.
 const TICK: f32 = 4.0;
 /// From the map's edge to its names: the tick, then the room a leader

@@ -502,6 +502,23 @@ impl<'a> Catalog<'a> {
             .collect()
     }
 
+    /// The meshes known for a calibre, for marking beside its wheels
+    /// (#1472): each named by the pinion a wheel's teeth drive, with the
+    /// time one tooth takes to engage, drive and leave
+    /// ([`crate::train::Mesh`]), where the counts and a turn give it.
+    pub fn meshes(&self, e: Entry<'_>) -> Vec<Wheel> {
+        self.train(e)
+            .meshes
+            .into_iter()
+            .filter_map(|m| {
+                m.period_s.map(|p| Wheel {
+                    name: crate::train::pinion_name(&m.pinion),
+                    period_s: p,
+                })
+            })
+            .collect()
+    }
+
     /// The JSON a contribution carries: the calibre and what the user
     /// added to it, nothing else. `None` when there is nothing to send.
     pub fn contribution(&self, e: Entry<'_>, version: &str) -> Option<serde_json::Value> {
@@ -601,6 +618,41 @@ mod tests {
             notes: None,
         });
         u
+    }
+
+    #[test]
+    fn meshes_are_named_by_their_pinion_from_the_one_train() {
+        // ETA 2824-2's counts (#1472): the meshes come from
+        // `train::solve`, named as a watchmaker names the pinion.
+        let u = UserCalibres::default();
+        let cat = Catalog::new(&u);
+        let e = cat.find("ETA 2824-2").unwrap();
+        let named: Vec<(String, f64)> = cat
+            .meshes(e)
+            .into_iter()
+            .map(|w| (w.name, w.period_s))
+            .collect();
+        let solved: Vec<(String, f64)> = cat
+            .train(e)
+            .meshes
+            .iter()
+            .map(|m| (crate::train::pinion_name(&m.pinion), m.period_s.unwrap()))
+            .collect();
+        assert_eq!(named, solved);
+        let names: Vec<&str> = named.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "escape pinion",
+                "fourth pinion",
+                "third pinion",
+                "centre pinion"
+            ]
+        );
+        // A calibre with a wheel's period but no counts has none.
+        let u = store();
+        let cat = Catalog::new(&u);
+        assert!(cat.meshes(cat.find("My Movement").unwrap()).is_empty());
     }
 
     #[test]
