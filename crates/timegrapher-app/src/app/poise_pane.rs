@@ -533,11 +533,20 @@ fn plot_facts(
         }
     }
     let inset = Vec2::splat(FACT_INSET);
-    let right_top = egui::pos2(
-        area.right() - FACT_INSET - facts.size().x,
-        key.map_or(area.top(), |k| k.bottom()) + FACT_INSET,
+    let size = facts.size();
+    let right = area.right() - FACT_INSET - size.x;
+    let right_top = egui::pos2(right, key.map_or(area.top(), |k| k.bottom()) + FACT_INSET);
+    let bottom = area.bottom() - FACT_INSET - size.y;
+    let bottoms = [
+        egui::pos2(area.left() + FACT_INSET, bottom),
+        egui::pos2(right, bottom),
+    ];
+    facts.paint(
+        ui,
+        painter,
+        (&[area.left_top() + inset, right_top], &bottoms),
+        &trace,
     );
-    facts.paint(ui, painter, &[area.left_top() + inset, right_top], &trace);
 }
 
 /// The measured points on the plot; 12H is at both ends, so its point is
@@ -740,7 +749,7 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
         facts.paint(
             ui,
             &painter,
-            &[whole.left_top() + Vec2::splat(FACT_INSET)],
+            (&[whole.left_top() + Vec2::splat(FACT_INSET)], &[]),
             &[],
         );
     }
@@ -1061,10 +1070,13 @@ mod tests {
         assert!(clear_of(dial.at(0.0, dial.radius(10.0)), number, &names));
     }
 
-    /// The painted facts box takes the first place clear of the trace,
-    /// and none where every place would cover it (#1537).
+    /// The painted facts box takes the first top place clear of the
+    /// trace; with both covered, the bottom place farther from it (the
+    /// right when they're as far); with
+    /// all four covered, the first top place anyway: a fact is never
+    /// dropped (Hugh, #1626).
     #[test]
-    fn a_painted_facts_box_keeps_clear_of_the_trace() {
+    fn a_painted_facts_box_keeps_clear_of_the_trace_and_is_never_dropped() {
         let ctx = egui::Context::default();
         let mut placed = Vec::new();
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
@@ -1072,21 +1084,39 @@ mod tests {
                 let rows = vec![("Heavy spot".to_string(), "6H at the top, 180°".to_string())];
                 let facts = FactBox::plain(ui, "test facts", "box", rows, Vec::new());
                 let p = ui.painter();
-                let places = [egui::pos2(10.0, 10.0), egui::pos2(300.0, 10.0)];
+                let tops = [egui::pos2(10.0, 10.0), egui::pos2(300.0, 10.0)];
+                let bottoms = [egui::pos2(10.0, 300.0), egui::pos2(300.0, 300.0)];
                 let size = facts.size();
-                let under_left = [egui::pos2(10.0, 10.0) + size / 2.0];
-                let under_both = [under_left[0], places[1] + size / 2.0];
-                for trace in [&[][..], &under_left[..], &under_both[..]] {
-                    placed.push(facts.paint(ui, p, &places, trace).map(|r| r.min));
+                let mid = |at: egui::Pos2| at + size / 2.0;
+                let under_left = [mid(tops[0])];
+                let under_top = [mid(tops[0]), mid(tops[1])];
+                // Both tops covered, and a point just past the bottom
+                // right's corner: the bottom left is farther from it.
+                let near_right = [
+                    mid(tops[0]),
+                    mid(tops[1]),
+                    bottoms[1] - egui::vec2(8.0, 8.0),
+                ];
+                let under_all = [mid(tops[0]), mid(tops[1]), mid(bottoms[0]), mid(bottoms[1])];
+                for trace in [
+                    &[][..],
+                    &under_left[..],
+                    &under_top[..],
+                    &near_right[..],
+                    &under_all[..],
+                ] {
+                    placed.push(facts.paint(ui, p, (&tops, &bottoms), trace).min);
                 }
             });
         });
         assert_eq!(
             placed,
             [
-                Some(egui::pos2(10.0, 10.0)),
-                Some(egui::pos2(300.0, 10.0)),
-                None
+                egui::pos2(10.0, 10.0),
+                egui::pos2(300.0, 10.0),
+                egui::pos2(300.0, 300.0),
+                egui::pos2(10.0, 300.0),
+                egui::pos2(10.0, 10.0),
             ]
         );
     }

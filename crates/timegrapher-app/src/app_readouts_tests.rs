@@ -472,8 +472,9 @@ fn the_profiles_marks_keep_off_the_names() {
             "{m:?} under the facts: {facts:?}"
         );
     }
-    // Over a trace high under both corners, the box keeps no rows: the
-    // trace and its marks come first, and the hover has the facts.
+    // Over a trace high under both top corners, the box is still drawn
+    // in each plot, in a bottom corner or else top left: a fact is never
+    // dropped (Hugh, #1626).
     for (_, k) in &mut app.sound_history {
         for p in k.sides.iter_mut().flatten() {
             let top = p.p90.iter().copied().fold(0.0f32, f32::max);
@@ -482,12 +483,12 @@ fn the_profiles_marks_keep_off_the_names() {
         }
     }
     let (_, _, _, facts) = run(&mut app, 1440.0, 788.0);
-    assert!(
-        facts
-            .iter()
-            .all(|f| plots.iter().all(|p| !p.contains_rect(*f))),
-        "{facts:?}"
-    );
+    for p in &plots {
+        assert!(
+            facts.iter().any(|f| p.contains_rect(*f)),
+            "{p:?}: {facts:?}"
+        );
+    }
     app.sound_history = kept;
     app.sound_opts.side_by_side = false;
     let (names, rings, bars, _) = run(&mut app, 1440.0, 1000.0);
