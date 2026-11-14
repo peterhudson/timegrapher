@@ -70,6 +70,15 @@ with a meter, rather than guessing:
   silent after a replug, check which input the desktop's sound settings
   show before you check the wiring.
 
+**A ready-made adapter.** Instead of wiring a cable yourself, Tim Tells
+Time's [Bench Timer Mic Adapter](https://benchtimer.timtellstime.com/#adapter)
+takes the microphone from a Weishi 1000 or 1900 stand ("same GX16 plug,
+same pin layout") to the computer over one USB-C cable. Its maker
+describes it as GPS-calibrated, with a clock good to about ±0.2 s/d. It
+is made for the maker's own Bench Timer app and hasn't been tried with
+this one. It isn't on sale yet: its page has a list to join for the
+first production run.
+
 **Check it works:** Quick Listen (chapter 2) with the watch on the stand.
 The signal figure (below) should be well above 4×, and the Tick Tock
 Profile (chapter 7) should show the quiet unlock as well as the drop. `timegrapher
