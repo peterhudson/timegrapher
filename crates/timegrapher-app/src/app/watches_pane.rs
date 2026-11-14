@@ -604,19 +604,9 @@ impl TimegrapherApp {
     /// A take moved: the recording opened from it follows, and so does
     /// Save Again.
     pub(super) fn take_moved(&mut self, from: &Path, to: &Path) {
-        // The take being heard: its next save goes into it where it is.
-        if self.session.saved_to() == Some(from) {
-            if let Some(r) = self.session.recorder.as_mut() {
-                r.copy_moved(from, to);
-            }
-        }
-        self.session.saved_moved(from, to);
-        if let Ok(rest) = Path::new(&self.opened_path).strip_prefix(from) {
-            let now = to.join(rest);
-            self.opened_path = now.display().to_string();
-            if Path::new(self.file_path.trim()).starts_with(from) {
-                self.file_path = self.opened_path.clone();
-            }
+        let opened = Path::new(&self.opened_path).starts_with(from);
+        self.paths_moved(from, to);
+        if opened {
             // The take on show is the watch's it went to now: the Bench's
             // card and the status line name that one (#1280).
             let went = match &self.library {
@@ -630,6 +620,31 @@ impl TimegrapherApp {
                 self.unsorted_open = false;
                 self.watch = name;
             }
+        }
+    }
+
+    /// A folder moved, from `from` to `to`: a take, or the whole Watches
+    /// folder (#1646). Every path inside it follows: the take saved into
+    /// it and its next Save Again, every save noted, the recording opened
+    /// and the path typed.
+    pub(super) fn paths_moved(&mut self, from: &Path, to: &Path) {
+        let saved = self.session.saved_to().map(Path::to_path_buf);
+        if let Some((take, rest)) = saved
+            .as_ref()
+            .and_then(|t| Some((t, t.strip_prefix(from).ok()?)))
+        {
+            // Its next save goes into the take where it is now.
+            let now = to.join(rest);
+            if let Some(r) = self.session.recorder.as_mut() {
+                r.copy_moved(take, &now);
+            }
+        }
+        self.session.saved_moved(from, to);
+        if let Ok(rest) = Path::new(&self.opened_path).strip_prefix(from) {
+            self.opened_path = to.join(rest).display().to_string();
+        }
+        if let Ok(rest) = Path::new(self.file_path.trim()).strip_prefix(from) {
+            self.file_path = to.join(rest).display().to_string();
         }
     }
 

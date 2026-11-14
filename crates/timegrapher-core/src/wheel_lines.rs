@@ -147,11 +147,15 @@ fn mean_between(g: &Grid, a: f64, b: f64) -> Option<f64> {
 }
 
 /// Least squares of `y = m + s t + a cos wt + b sin wt` over the finite
-/// values of `g.y[i0..i1]`: `(a, b, residual sd, readings, lag-one
-/// correlation of the residuals)`, the last pooled over the runs of
-/// readings between missing ones and corrected for its bias
-/// ([`crate::confidence::corrected_lag_one`]).
-fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, usize, f64)> {
+/// values of `g.y[i0..i1]`: `(a, b, standard error of a and of b)`.
+///
+/// The standard error is read from the residual's own power beside the
+/// line ([`near_power`]), not from its scatter and a lag-one correlation:
+/// the beat timing on its 0.25 s grid wanders like a walk, so its
+/// neighbours correlate past any ρ̂ that can be read (it sat at the 0.99
+/// clamp in 10 of 11 windows on YM42's 2 h take, #1618), and the power at
+/// one period is not what an AR(1) of the whole scatter says it is.
+fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64)> {
     let tm = g.time((i0 + i1) / 2);
     let mut rows = Vec::new();
     for i in i0..i1 {
@@ -175,17 +179,38 @@ fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, us
             (*i, y - f)
         })
         .collect();
-    let rss: f64 = res.iter().map(|(_, r)| r * r).sum();
-    let mut runs: Vec<Vec<f64>> = Vec::new();
-    for (k, &(i, r)) in res.iter().enumerate() {
-        if k == 0 || i != res[k - 1].0 + 1 {
-            runs.push(Vec::new());
-        }
-        runs.last_mut().expect("a run").push(r);
-    }
-    let runs: Vec<&[f64]> = runs.iter().map(Vec::as_slice).collect();
-    let rho = crate::confidence::corrected_lag_one(&runs);
-    Some((p[2], p[3], (rss / (n - 4) as f64).sqrt(), n, rho))
+    let timed: Vec<(f64, f64)> = res.iter().map(|&(i, r)| (g.time(i), r)).collect();
+    let span = (i1 - i0) as f64 * g.step;
+    // White noise of variance s² has a mean periodogram of s² and gives a
+    // and b each a variance of 2 s² / n; a noise that follows itself gives
+    // them its own power at the line's period in place of s².
+    let se = (2.0 * near_power(&timed, w, span) / n as f64).sqrt();
+    Some((p[2], p[3], se))
+}
+
+/// Periodogram ordinates either side of the line, averaged for its noise.
+const NEAR: i32 = 6;
+
+/// The mean periodogram, `|Σ r e^(-iωt)|² / n`, of the residuals `res`
+/// (time, value) at the frequencies [`NEAR`] or fewer whole cycles a
+/// window (`span`) either side of `w`'s, its own left out: the power the
+/// noise has about the line, however it follows itself. Neighbours a
+/// whole cycle a window apart keep the line's own leakage out; on a red
+/// spectrum their mean errs high, so the standard error errs wide.
+fn near_power(res: &[(f64, f64)], w: f64, span: f64) -> f64 {
+    let n = res.len() as f64;
+    let ks: Vec<i32> = (-NEAR..=NEAR).filter(|&k| k != 0).collect();
+    let sum: f64 = ks
+        .iter()
+        .map(|&k| {
+            let wk = w + std::f64::consts::TAU * f64::from(k) / span;
+            let (c, s) = res.iter().fold((0.0, 0.0), |(c, s), &(t, r)| {
+                (c + r * (wk * t).cos(), s + r * (wk * t).sin())
+            });
+            (c * c + s * s) / n
+        })
+        .sum();
+    sum / ks.len() as f64
 }
 
 /// The line of `wheel` in `g` (with its slow change taken off), window
@@ -223,7 +248,7 @@ pub fn line(
         let Some(amplitude_deg) = mean_between(amp, t0, t1) else {
             continue;
         };
-        let Some((ca, sb, sd, n, rho)) = fit_line(g, a, b, w) else {
+        let Some((ca, sb, se)) = fit_line(g, a, b, w) else {
             continue;
         };
         windows.push(LineWindow {
@@ -231,11 +256,7 @@ pub fn line(
             end_s: t1,
             amplitude_deg,
             size: ca.hypot(sb),
-            // Residuals that follow one another hold fewer independent
-            // readings, by their strength at the line's own period.
-            se: sd
-                * (2.0 / crate::confidence::effective_readings_at(n as f64, rho, g.step / p))
-                    .sqrt(),
+            se,
             // a cos wt + b sin wt = R sin(wt + phi).
             phase_deg: ca.atan2(sb).to_degrees(),
         });
@@ -537,28 +558,28 @@ mod tests {
     }
 
     #[test]
-    fn a_windows_correlation_is_corrected_for_its_bias() {
+    fn a_windows_se_holds_on_correlated_noise_in_short_runs() {
         // Noise correlating at 0.5 in runs of 30 between missing values
-        // (#1544, Trevor's review): the raw lag-one correlation of 30
-        // values reads about 0.36, short by MP's 2(1 + 3ρ)/n; the window
-        // reads it corrected, near 0.5.
-        let mut rng = Rng::new(900_003);
-        let mut e = 0.0;
-        let g = grid(1.0, 31 * 100, |t| {
-            if (t as usize) % 31 == 30 {
-                return f64::NAN;
-            }
-            e = 0.5 * e + 0.75f64.sqrt() * rng.normal();
-            e
-        });
-        let (.., rho) = fit_line(&g, 0, g.y.len(), std::f64::consts::TAU / 60.0).unwrap();
-        let runs: Vec<&[f64]> =
-            g.y.split(|v| v.is_nan())
-                .filter(|r| !r.is_empty())
-                .collect();
-        let raw = crate::confidence::pooled_lag_one(runs.iter().copied()).unwrap();
-        assert!(raw < 0.42, "raw {raw}");
-        assert!((rho - 0.5).abs() < 0.04, "corrected {rho}");
+        // (#1544's case, Trevor's review), with no line, over 200 seeds:
+        // a window's size over its SE should spread as a Rayleigh does,
+        // rms √2, as it should when its correlation is read right (#1618
+        // reads the SE from the noise's own power, not from ρ̂).
+        let mut z2 = Vec::new();
+        for seed in 0..200 {
+            let mut rng = Rng::new(900_003 + seed);
+            let mut e = 0.0;
+            let g = grid(1.0, 31 * 100, |t| {
+                if (t as usize) % 31 == 30 {
+                    return f64::NAN;
+                }
+                e = 0.5 * e + 0.75f64.sqrt() * rng.normal();
+                e
+            });
+            let (ca, sb, se) = fit_line(&g, 0, g.y.len(), std::f64::consts::TAU / 60.0).unwrap();
+            z2.push((ca.hypot(sb) / se).powi(2));
+        }
+        let rms = (z2.iter().sum::<f64>() / z2.len() as f64).sqrt();
+        assert!((1.25..1.6).contains(&rms), "rms size over SE {rms}");
     }
 
     #[test]
@@ -586,6 +607,33 @@ mod tests {
             (0.6..1.7).contains(&(scatter / se)),
             "scatter {scatter} against se {se}"
         );
+    }
+
+    #[test]
+    fn a_window_se_reads_a_wandering_timings_own_power() {
+        // No line, on 4 h of a 0.25 s timing grid that wanders like a walk
+        // (0.02 ms a step) under white jitter of 0.05 ms, as the beat timing
+        // does: its neighbours correlate past 0.99, so a lag-one ρ̂ can't
+        // say its power at 60 s. A window's size over its SE should then
+        // spread as a Rayleigh does, with an rms of √2 (#1618).
+        let a = grid(2.0, 7200, |_| 255.0);
+        let mut z2 = Vec::new();
+        for seed in 0..20 {
+            let mut rng = Rng::new(500 + seed);
+            let mut walk = 0.0;
+            let g = grid(0.25, 57600, |_| {
+                walk += 0.02 * rng.normal();
+                walk + 0.05 * rng.normal()
+            });
+            let l = line(&g, &a, &fourth(), "rate", "ms", true).unwrap();
+            // Every other window, so none overlaps the next.
+            for w in l.windows.unwrap().iter().step_by(2) {
+                z2.push((w.size / w.se).powi(2));
+            }
+        }
+        let rms = (z2.iter().sum::<f64>() / z2.len() as f64).sqrt();
+        assert!(z2.len() >= 100, "{}", z2.len());
+        assert!((1.2..1.65).contains(&rms), "rms size over SE {rms}");
     }
 
     /// Over 300 seeded takes of 2 h of 1 s readings, each a 10 ms line at

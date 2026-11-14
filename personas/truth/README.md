@@ -34,11 +34,16 @@ Good, Poor or Low Confidence in the program's own output are findings
 against it. Interpretation belongs to the helper and the watchmaker skill,
 and must be sourced.
 
-When interpreting, grade amplitude only against Witschi's tolerances, the table the program and
-the watchmaker skill use (`docs/reference/sessions.md`, "Findings"): fully wound, 260–320°
-dial up or down (horizontal) and 240–280° crown up, down, left or right
-(vertical), with over 330° overbanking. Make no per-calibre amplitude claim
-("a 3235 should be above 250°") without a source. The Yacht-Master 42's
-readings in the corpus (221–254°) are below those ranges in every position,
-so a helper that calls its amplitude low is right, not alarmist; the rate is
+When interpreting, judge amplitude, fully wound, against a set of tolerances
+that fits the watch and name its source, as the watchmaker skill says
+(`skills/watchmaker/SKILL.md`, "Amplitude first"; every set is in
+`skills/watchmaker/references/when-to-see-a-watchmaker.md`): the maker's
+figure where one exists, otherwise Witschi's training course of 2010
+(250–330° horizontal, 250–270° vertical, its worked example down to 220°
+vertical) or Witschi's "Standard Tolerances" of 2025 (260–320° horizontal,
+240–280° vertical), with over 330° overbanking. Make no per-calibre
+amplitude claim ("a 3235 should be above 250°") without a source. The
+Yacht-Master 42's readings in the corpus (221–254°) are below the 2025
+ranges in every position and below the course's in all but dial up, so a
+helper that calls its amplitude low is right, not alarmist; the rate is
 still its bigger fault.
