@@ -115,6 +115,10 @@ pub(super) struct Background {
     pub(super) reserve_live: Option<Job<f64, Option<reserve::Test>>>,
     /// The take's second the run so far was last asked for at.
     pub(super) reserve_live_s: f64,
+    /// What the run on show from a long take was read from, so it is
+    /// read again when the take, its masks or its settings change after
+    /// it came (#1644).
+    pub(super) reserve_of: Option<Revision>,
 }
 
 /// A Positions Test table being read in the background, and what from.
@@ -472,14 +476,15 @@ impl TimegrapherApp {
     /// [`Self::reserve_from_long_take`] for the window, read in the
     /// background once a take has opened, so a take of many hours doesn't
     /// hold the window as it lands (#1014). It is read again if what it
-    /// rests on changes before it comes, and let go when the pane gets a
-    /// test of its own. While listening, the run so far is read once a
+    /// rests on changes before it comes, and again if it changes after
+    /// (#1644), and let go when the pane gets a test of its own. While listening, the run so far is read once a
     /// minute ([`Self::long_reserve_listening`]), and once more where
     /// listening stops.
     fn long_reserve_shown(&mut self, ctx: &egui::Context) {
         if self.reserve_is_test() {
             self.bg.reserve = None;
             self.bg.reserve_live = None;
+            self.bg.reserve_of = None;
             return;
         }
         if self.running() {
@@ -487,22 +492,31 @@ impl TimegrapherApp {
             return;
         }
         self.bg.reserve_live = None;
+        let key = self.rev;
+        if self.bg.reserve.is_none() && self.bg.reserve_of.is_some_and(|of| of != key) {
+            self.bg.reserve = Some(None);
+        }
         let Some(wanted) = &self.bg.reserve else {
             return;
         };
-        let key = self.rev;
         match wanted.as_ref().filter(|j| j.key == key).map(Job::done) {
             Some(Ok(t)) => {
                 self.reserve = t;
                 self.bg.reserve = None;
+                self.bg.reserve_of = Some(key);
             }
             Some(Err(true)) => {}
             Some(Err(false)) => self.bg.reserve = None,
-            None => {
-                self.bg.reserve = self
-                    .long_take_reader()
-                    .map(|read| Some(Job::start(key, ctx, read)));
-            }
+            None => match self.long_take_reader() {
+                Some(read) => self.bg.reserve = Some(Some(Job::start(key, ctx, read))),
+                // Nothing left to read it from: a run read before goes.
+                None => {
+                    self.bg.reserve = None;
+                    if self.bg.reserve_of.take().is_some() {
+                        self.reserve = None;
+                    }
+                }
+            },
         }
     }
 
