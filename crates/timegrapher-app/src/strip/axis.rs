@@ -17,10 +17,12 @@ pub(super) fn label_every(step: f64, step_px: f32, need: f32) -> Option<i64> {
     })
 }
 
-/// A signed number of ms for an axis label.
-pub(super) fn axis_ms(ms: f64) -> String {
+/// A signed number of ms for an axis label on lines `step` ms apart:
+/// zero in seconds, as its neighbours are, once every line is a whole
+/// second or more from the next (Hugh: "0 s" between "−10 s" and "+10 s").
+pub(super) fn axis_ms(ms: f64, step: f64) -> String {
     if ms.abs() < 1e-9 {
-        "0 ms".into()
+        if step >= 1000.0 { "0 s" } else { "0 ms" }.into()
     } else {
         let sign = if ms > 0.0 { "+" } else { "−" };
         if ms.abs() >= 1000.0 {
@@ -37,10 +39,15 @@ mod tests {
 
     #[test]
     fn axis_labels_turn_to_seconds() {
-        assert_eq!(axis_ms(0.0), "0 ms");
-        assert_eq!(axis_ms(-250.0), "−250");
-        assert_eq!(axis_ms(2000.0), "+2.0 s");
-        assert_eq!(axis_ms(-20_000.0), "−20 s");
+        assert_eq!(axis_ms(0.0, 50.0), "0 ms");
+        assert_eq!(axis_ms(-250.0, 50.0), "−250");
+        assert_eq!(axis_ms(2000.0, 500.0), "+2.0 s");
+        assert_eq!(axis_ms(-20_000.0, 5000.0), "−20 s");
+        // Zero takes its neighbours' unit: ms while any line is under a
+        // second from the next, seconds once all are.
+        assert_eq!(axis_ms(0.0, 500.0), "0 ms");
+        assert_eq!(axis_ms(0.0, 1000.0), "0 s");
+        assert_eq!(axis_ms(0.0, 10_000.0), "0 s");
     }
 
     /// Lines far enough apart are all labelled; closer, the labels step
@@ -73,9 +80,15 @@ mod drawn {
     /// The ms labels drawn on a strip lying across, `height` points tall
     /// overall, at Width ±20 ms.
     fn ms_labels(height: f32) -> Vec<String> {
+        labels_at(height, 20.0)
+    }
+
+    /// The axis labels drawn on a strip lying across, `height` points
+    /// tall overall, at Width ±`half_width_ms`.
+    fn labels_at(height: f32, half_width_ms: f64) -> Vec<String> {
         let ctx = egui::Context::default();
         let view = StripView {
-            half_width_ms: 20.0,
+            half_width_ms,
             span_s: 100.0,
             horizontal: true,
             still: false,
@@ -106,7 +119,7 @@ mod drawn {
                 egui::Shape::Text(t) => Some(t.galley.text().to_string()),
                 _ => None,
             })
-            .filter(|t| t == "0 ms" || t.starts_with('+') || t.starts_with('−'))
+            .filter(|t| t == "0 ms" || t == "0 s" || t.starts_with('+') || t.starts_with('−'))
             .collect()
     }
 
@@ -133,5 +146,19 @@ mod drawn {
     #[test]
     fn a_strip_too_short_for_any_step_labels_only_zero() {
         assert_eq!(ms_labels(90.0), vec!["0 ms".to_string()]);
+    }
+
+    /// At Width ±30 s every line is seconds apart, so zero reads "0 s"
+    /// like the "+10 s" and "−10 s" beside it, not "0 ms" (Hugh, on
+    /// Walter's #1603 shots).
+    #[test]
+    fn zero_takes_the_seconds_of_its_neighbours() {
+        let labels = labels_at(400.0, 30_000.0);
+        assert!(labels.iter().any(|t| t == "0 s"), "{labels:?}");
+        assert!(
+            labels.iter().any(|t| t.ends_with(" s") && t != "0 s"),
+            "{labels:?}"
+        );
+        assert!(!labels.iter().any(|t| t == "0 ms"), "{labels:?}");
     }
 }
