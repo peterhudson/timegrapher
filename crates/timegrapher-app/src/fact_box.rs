@@ -259,18 +259,6 @@ impl FactBox {
         )
     }
 
-    /// How many of the trace's points fall within `r`'s span of x: the
-    /// fewer, the emptier the corner.
-    fn under(&self, t: &egui_plot::PlotTransform, r: egui::Rect) -> usize {
-        self.tops
-            .iter()
-            .filter(|p| {
-                let x = t.position_from_point_x(p[0]);
-                x >= r.left() && x <= r.right()
-            })
-            .count()
-    }
-
     /// Whether the trace runs under `r`, or within `more` points under it
     /// short of the plot's foot, where a trace at rest lies.
     pub(crate) fn covers(&self, t: &egui_plot::PlotTransform, r: egui::Rect, more: f32) -> bool {
@@ -286,10 +274,11 @@ impl FactBox {
     /// left corner, or the top right where the trace runs under the left
     /// and not the right. Where the trace runs under both top corners the
     /// box keeps fewer rows, Unlock to Drop last. Where even one row would
-    /// sit on it in both, all the rows go in the emptier bottom corner
-    /// the trace leaves clear, or else top left anyway, on the box's
-    /// plate: a fact is never dropped (Hugh, #1626). A layout other than
-    /// the one last drawn must clear the trace by [`FACT_HOLD`] more.
+    /// sit on it in both, all the rows go in the bottom corner the trace
+    /// leaves clear, the emptier of two ([`emptiest`]), or else top left
+    /// anyway, on the box's plate: a fact is never dropped (Hugh, #1626).
+    /// A layout other than the one last drawn must clear the trace by
+    /// [`FACT_HOLD`] more.
     pub(crate) fn layout(&self, t: &egui_plot::PlotTransform) -> (Vec<usize>, egui::Rect) {
         let (shown, r, _) = self.placed(t);
         (shown, r)
@@ -335,14 +324,20 @@ impl FactBox {
                 }
             }
         }
+        let trace: Vec<egui::Pos2> = self
+            .tops
+            .iter()
+            .map(|p| egui::pos2(t.position_from_point_x(p[0]), t.position_from_point_y(p[1])))
+            .collect();
         for cols in self.column_tries(frame, all) {
             let (_, _, left, right) = self.four(t, all, cols);
-            let mut bottoms = [(left, Corner::BottomLeft), (right, Corner::BottomRight)];
-            bottoms.sort_by_key(|&(r, _)| self.under(t, r));
-            for (r, at) in bottoms {
-                if !self.covers_from(t, r, hold(all, at)) {
-                    return (shown, r, cols, at);
-                }
+            let clear: Vec<(egui::Rect, Corner)> =
+                [(left, Corner::BottomLeft), (right, Corner::BottomRight)]
+                    .into_iter()
+                    .filter(|&(r, at)| !self.covers_from(t, r, hold(all, at)))
+                    .collect();
+            if let Some(&(r, at)) = emptiest(&clear, |c| c.0, &trace) {
+                return (shown, r, cols, at);
             }
         }
         let r = self.corners(t, all, first_cols).0;
@@ -415,7 +410,7 @@ impl FactBox {
     /// rows in one column; where it went. It takes the first of `tops`
     /// (each its top left corner) where no point of `trace` falls under
     /// it; else the one of `bottoms` farthest from the trace of those it
-    /// keeps clear of (the last of those as far); else the first of `tops` anyway, on its plate: a
+    /// keeps clear of ([`emptiest`]); else the first of `tops` anyway, on its plate: a
     /// fact is never dropped (Hugh, #1626). The Dynamic Poise pane's
     /// (#1537): the plot items' box, drawn the same way.
     pub(crate) fn paint(
@@ -428,23 +423,12 @@ impl FactBox {
         let size = self.size();
         let at = |p: &egui::Pos2| egui::Rect::from_min_size(*p, size);
         let clear = |r: &egui::Rect| !trace.iter().any(|p| r.expand(2.0).contains(*p));
-        let gap = |r: &egui::Rect| {
-            trace
-                .iter()
-                .map(|p| r.distance_to_pos(*p))
-                .fold(f32::INFINITY, f32::min)
-        };
+        let clear_bottoms: Vec<egui::Rect> = bottoms.iter().map(at).filter(clear).collect();
         let r = tops
             .iter()
             .map(at)
             .find(clear)
-            .or_else(|| {
-                bottoms
-                    .iter()
-                    .map(at)
-                    .filter(clear)
-                    .max_by(|a, b| gap(a).total_cmp(&gap(b)))
-            })
+            .or_else(|| emptiest(&clear_bottoms, |r| *r, trace).copied())
             .unwrap_or_else(|| at(&tops[0]));
         let all: Vec<usize> = (0..self.rows.len()).collect();
         let mut shapes = Vec::new();
@@ -492,6 +476,26 @@ impl egui_plot::PlotItem for FactBox {
     fn base_mut(&mut self) -> &mut egui_plot::PlotItemBase {
         &mut self.base
     }
+}
+
+/// Of the bottom corners a facts box keeps clear of the trace, left to
+/// right, the emptiest: the one farthest from the nearest point of
+/// `trace` (screen points), the right one when they're as far (Hugh,
+/// #1626: on the Submariner plot, bottom right). The one rule for a
+/// plot's box and a painted one.
+fn emptiest<'a, T>(
+    clear: &'a [T],
+    rect: impl Fn(&T) -> egui::Rect,
+    trace: &[egui::Pos2],
+) -> Option<&'a T> {
+    let gap = |c: &T| {
+        let r = rect(c);
+        trace
+            .iter()
+            .map(|p| r.distance_to_pos(*p))
+            .fold(f32::INFINITY, f32::min)
+    };
+    clear.iter().max_by(|a, b| gap(a).total_cmp(&gap(b)))
 }
 
 /// The widest of `texts` in the facts' type, points.
