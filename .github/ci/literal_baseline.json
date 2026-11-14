@@ -315,7 +315,7 @@
     },
     "crates/timegrapher-cli/src/session_report.rs": {
      "bounds": 2,
-     "comparisons": 2,
+     "comparisons": 1,
      "constants": 6,
      "defaults": 0
     },
@@ -328,7 +328,7 @@
    },
    "total": {
     "bounds": 10,
-    "comparisons": 16,
+    "comparisons": 15,
     "constants": 17,
     "defaults": 19
    }
