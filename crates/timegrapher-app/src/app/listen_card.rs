@@ -1737,7 +1737,7 @@ impl TimegrapherApp {
     }
 
     /// The picked calibre's meshes, marked beside its wheels.
-    pub(super) fn calibre_meshes(&self) -> Vec<Wheel> {
+    pub(super) fn calibre_meshes(&self) -> Vec<timegrapher_core::train::MeshLine> {
         self.cal.meshes(&self.calibre)
     }
 

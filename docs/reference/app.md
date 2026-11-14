@@ -1581,7 +1581,9 @@ counts give it, each pinion's mesh (the time one tooth of the wheel
 driving it takes to engage, drive and leave, from core's
 `Catalog::meshes`, #1472) is a faint, loosely dashed line named
 "Fourth Pinion Mesh", or "4th Mesh" beside a map, unless a wheel or a ×2
-already marks that period; the grid behind is pale. The
+already marks that period. Its hover gives core's words: "Fourth Pinion
+Mesh: 6.67 s, the time one tooth of the third wheel takes to pass through
+the fourth pinion's leaves."; the grid behind is pale. The
 wheels' lines are grey and dotted, and named, so they never
 read as the grid or a reading. With no calibre picked, or none of its
 wheels known, one minute and one hour are marked in grey instead, periods

@@ -142,12 +142,14 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   // pinion, on the axes and the maps; one at a wheel's or a ×2's period
   // is left to that line.
   const meshed = { input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }], reference_lines: [],
-    named_meshes: [{ name: "fourth pinion", period_s: 20 / 3 }, { name: "third pinion", period_s: 600 / 13 }, { name: "centre pinion", period_s: 30.2 }] } } };
+    named_meshes: [{ name: "fourth pinion", period_s: 20 / 3, about: "6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves" },
+      { name: "third pinion", period_s: 600 / 13, about: "46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves" },
+      { name: "centre pinion", period_s: 30.2, about: "30.2 s" }] } } };
   assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).slice(2), [
     { x: Math.log10(20 / 3), color: "--callout", width: 1, dash: "mesh", name: "fourth pinion Mesh", rank: "faint", ink: "--callout",
-      hover: `fourth pinion Mesh: ${20 / 3} s. One tooth of the wheel driving the fourth pinion engages, drives and leaves in this time.` },
+      hover: "fourth pinion Mesh: 6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves." },
     { x: Math.log10(600 / 13), color: "--callout", width: 1, dash: "mesh", name: "third pinion Mesh", rank: "faint", ink: "--callout",
-      hover: `third pinion Mesh: ${600 / 13} s. One tooth of the wheel driving the third pinion engages, drives and leaves in this time.` },
+      hover: "third pinion Mesh: 46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves." },
   ]);
   assert.equal(context.meshShort("fourth pinion"), "4th Mesh");
   assert.equal(context.meshShort("centre pinion"), "2nd Mesh");

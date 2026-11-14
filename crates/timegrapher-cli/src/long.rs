@@ -221,7 +221,7 @@ impl ResolvedTrain {
     /// The calibre's meshes, marked beside its wheels
     /// ([`timegrapher_core::calibre_store::Catalog::meshes`]); none with
     /// no calibre.
-    pub(crate) fn meshes(&self) -> Vec<Wheel> {
+    pub(crate) fn meshes(&self) -> Vec<timegrapher_core::train::MeshLine> {
         self.calibre
             .as_ref()
             .map(|c| c.meshes.clone())

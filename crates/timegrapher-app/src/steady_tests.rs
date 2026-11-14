@@ -1383,10 +1383,16 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
         period_s,
     };
     let wheels = [w("fourth wheel", 60.0)];
+    let mesh = |name: &str, period_s: f64| timegrapher_core::train::MeshLine {
+        name: name.into(),
+        wheel: String::new(),
+        period_s,
+        about: format!("about the {name}"),
+    };
     let meshes = [
-        w("fourth pinion", 60.0 / 9.0),
-        w("third pinion", 600.0 / 13.0),
-        w("centre pinion", 30.2),
+        mesh("fourth pinion", 60.0 / 9.0),
+        mesh("third pinion", 600.0 / 13.0),
+        mesh("centre pinion", 30.2),
     ];
     let marks = Marks {
         wheels: &wheels,
@@ -1406,12 +1412,11 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
             ("Third Pinion Mesh", "3rd Mesh", true),
         ]
     );
-    let mesh = &lines[2];
-    assert_eq!(mesh.rank(), Rank::Faint);
-    assert_eq!(mesh.width(), 1.0);
-    assert!(mesh
-        .hover
-        .contains("One tooth of the wheel driving the fourth pinion"));
+    let line = &lines[2];
+    assert_eq!(line.rank(), Rank::Faint);
+    assert_eq!(line.width(), 1.0);
+    // Core says what it is (`train::Mesh::line`).
+    assert_eq!(line.hover, "Fourth Pinion Mesh: about the fourth pinion.");
     assert_eq!(crate::marks::mesh_short("centre pinion"), "2nd Mesh");
     assert!(wheel_lines(None, (0.0, 5.0)).is_empty());
 }

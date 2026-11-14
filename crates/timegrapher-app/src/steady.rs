@@ -203,7 +203,7 @@ pub struct Steadiness {
     wheels: Vec<Wheel>,
     /// The calibre's meshes, marked beside its wheels; set by whoever
     /// knows the calibre, after the tests run.
-    pub meshes: Vec<Wheel>,
+    pub meshes: Vec<timegrapher_core::train::MeshLine>,
     /// The periods every series' search covers between them, log10 seconds,
     /// so the three Periods plots share one time axis.
     period_span: Option<(f64, f64)>,
@@ -1871,7 +1871,7 @@ pub const WHEELS_HINT: &str = "Mark the period each of the calibre's wheels turn
 #[derive(Clone, Copy)]
 pub(crate) struct Marks<'a> {
     pub wheels: &'a [Wheel],
-    pub meshes: &'a [Wheel],
+    pub meshes: &'a [timegrapher_core::train::MeshLine],
 }
 
 /// The wheels and meshes to mark: `None` when the marks are off.
@@ -1986,12 +1986,7 @@ pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) ->
             turn: Turn::Mesh,
             name: format!("{title} Mesh"),
             short: marks::mesh_short(&m.name),
-            hover: format!(
-                "{title} Mesh: {}. One tooth of the wheel driving the {} engages, drives \
-                 and leaves in this time.",
-                secs(m.period_s),
-                m.name
-            ),
+            hover: format!("{title} Mesh: {}.", m.about),
         });
     }
     out.retain(|l| inside(l.x));

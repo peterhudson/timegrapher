@@ -298,6 +298,44 @@ pub struct Mesh {
     pub period_s: Option<f64>,
 }
 
+/// The figures a mesh's period is written to where it is marked: the
+/// counts are exact, so enough to match the line to a peak (Hugh, #1612).
+pub const MESH_FIGURES: usize = 3;
+
+/// A mesh to mark beside the wheels: named by its pinion ("fourth
+/// pinion"), with the wheel that drives it and what the mark means.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MeshLine {
+    /// The driven pinion, as a watchmaker names it: "fourth pinion".
+    pub name: String,
+    /// The driving wheel: "third wheel".
+    pub wheel: String,
+    pub period_s: f64,
+    /// Its period and what it is, for a hover: "6.67 s, the time one
+    /// tooth of the third wheel takes to pass through the fourth
+    /// pinion's leaves".
+    pub about: String,
+}
+
+impl Mesh {
+    /// The line to mark for this mesh, where its period is known.
+    pub fn line(&self) -> Option<MeshLine> {
+        let p = self.period_s?;
+        let name = pinion_name(&self.pinion);
+        let figures = crate::figure_text::derived_digits(p, MESH_FIGURES);
+        Some(MeshLine {
+            about: format!(
+                "{} s, the time one tooth of the {} takes to pass through the {name}'s leaves",
+                crate::figure_text::fixed_text(p, figures),
+                self.wheel
+            ),
+            wheel: self.wheel.clone(),
+            period_s: p,
+            name,
+        })
+    }
+}
+
 /// A train worked out from its counts.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Solved {
@@ -859,6 +897,22 @@ mod tests {
             assert!((p - w).abs() < 1e-9 * w, "{pin}: {p} s, want {w} s");
         }
         assert_eq!(s.meshes[1].wheel, "third wheel");
+        // Marked to three figures, the driving wheel named (Hugh, #1612).
+        let about: Vec<String> = s
+            .meshes
+            .iter()
+            .filter_map(|m| m.line())
+            .map(|l| l.about)
+            .collect();
+        assert_eq!(
+            about,
+            [
+                "0.556 s, the time one tooth of the fourth wheel takes to pass through the escape pinion's leaves",
+                "6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves",
+                "46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves",
+                "209 s, the time one tooth of the barrel takes to pass through the centre pinion's leaves",
+            ]
+        );
     }
 
     #[test]

@@ -660,7 +660,7 @@ pub struct Calibre {
     /// Its meshes, for marking beside the wheels ([`Catalog::meshes`]).
     ///
     /// [`Catalog::meshes`]: crate::calibre_store::Catalog::meshes
-    pub meshes: Vec<crate::periodicity::Wheel>,
+    pub meshes: Vec<crate::train::MeshLine>,
 }
 
 /// Why a reading's lift angle is the default when no lift was given and

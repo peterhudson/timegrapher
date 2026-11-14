@@ -1350,8 +1350,8 @@ function oneMark(a, b) { return Math.abs(a / b - 1) < 0.03; }
 // (log10 s): each wheel's turn, and half of it ("×2", where a wheel that is
 // off centre shows twice a turn) unless another wheel turns there; with no
 // wheel named, the reference periods; with Wheel Periods off, nothing.
-// Then each pinion's mesh (input.settings.named_meshes) where no wheel or
-// ×2 already marks its period. Each line's x, turn ("wheel", "twice",
+// Then each pinion's mesh (input.settings.named_meshes, its hover core's
+// `about`) where no wheel or ×2 already marks its period. Each line's x, turn ("wheel", "twice",
 // "mesh" or "reference"), name, short name and hover.
 function wheelLines(doc, span) {
   if (!showWheels) return [];
@@ -1374,7 +1374,7 @@ function wheelLines(doc, span) {
     if (out.some((l) => oneMark(Math.pow(10, l.x), m.period_s))) continue;
     const title = wheelTitle(m.name);
     out.push({ x: Math.log10(m.period_s), turn: "mesh", name: `${title} Mesh`, short: meshShort(m.name),
-      hover: `${title} Mesh: ${secs(m.period_s)}. One tooth of the wheel driving the ${m.name} engages, drives and leaves in this time.` });
+      hover: `${title} Mesh: ${m.about}.` });
   }
   return out.filter(inside);
 }

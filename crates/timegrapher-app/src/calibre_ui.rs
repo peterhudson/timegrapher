@@ -349,7 +349,7 @@ impl Calibres {
 
     /// The meshes known for `name`, marked beside its wheels
     /// ([`Catalog::meshes`]); none when no calibre is set.
-    pub fn meshes(&self, name: &str) -> Vec<Wheel> {
+    pub fn meshes(&self, name: &str) -> Vec<timegrapher_core::train::MeshLine> {
         self.find(name)
             .map(|e| Catalog::new(&self.user).meshes(e))
             .unwrap_or_default()

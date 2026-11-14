@@ -504,18 +504,13 @@ impl<'a> Catalog<'a> {
 
     /// The meshes known for a calibre, for marking beside its wheels
     /// (#1472): each named by the pinion a wheel's teeth drive, with the
-    /// time one tooth takes to engage, drive and leave
-    /// ([`crate::train::Mesh`]), where the counts and a turn give it.
-    pub fn meshes(&self, e: Entry<'_>) -> Vec<Wheel> {
+    /// time one tooth takes to pass through its leaves
+    /// ([`crate::train::Mesh::line`]), where the counts and a turn give it.
+    pub fn meshes(&self, e: Entry<'_>) -> Vec<crate::train::MeshLine> {
         self.train(e)
             .meshes
-            .into_iter()
-            .filter_map(|m| {
-                m.period_s.map(|p| Wheel {
-                    name: crate::train::pinion_name(&m.pinion),
-                    period_s: p,
-                })
-            })
+            .iter()
+            .filter_map(crate::train::Mesh::line)
             .collect()
     }
 
@@ -630,7 +625,7 @@ mod tests {
         let named: Vec<(String, f64)> = cat
             .meshes(e)
             .into_iter()
-            .map(|w| (w.name, w.period_s))
+            .map(|m| (m.name, m.period_s))
             .collect();
         let solved: Vec<(String, f64)> = cat
             .train(e)
