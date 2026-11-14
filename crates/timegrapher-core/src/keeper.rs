@@ -406,18 +406,16 @@ fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError
             }
             swaps = seen.swaps.len();
             second.release(seen.pending);
-            // A chunk behind, so the beats there are kept for good; not
-            // past a jump whose sides may yet swap, nor before the watch is
-            // heard, while its rate may change; unless that would hold
+            // Up to the chunk just read, whose beats from its start on may
+            // still change with the next chunk's (a beat is only ever kept
+            // at or after a chunk's start, `beats::anchor_of`); before
+            // that, every beat is kept for good, but for a side swap, which
+            // `swap_from` makes on the profiles. Not before the watch is
+            // heard, while its rate may change, unless that would hold
             // back too much sound.
-            let behind = ((seen.core_a - cfg.margin_s) * fs).max(0.0) as usize;
+            let behind = (seen.core_a * fs).max(0.0) as usize;
             let held_to = second.read().saturating_sub((MAX_HELD_S * fs) as usize);
-            let wait = if seen.heard {
-                seen.pending
-                    .map_or(usize::MAX, |t| (t * fs).max(0.0) as usize)
-            } else {
-                0
-            };
+            let wait = if seen.heard { usize::MAX } else { 0 };
             second.profile_until(
                 seen.beats,
                 seen.bph,
@@ -549,14 +547,24 @@ mod tests {
 
     /// Kept while it is recorded, a take's analysis is the same, byte for
     /// byte, as when it is kept from its sound after (#1514): fed in odd
-    /// blocks, across many chunks (short ones here), a recording split
-    /// into files, and the shape stretch.
+    /// blocks, across several chunks (short ones here, but long enough
+    /// for the watch to be heard in the first), a recording split into
+    /// files, and the shape stretch. Chunks of 11.5 s end half a second
+    /// into a stretch (10 to 12 s, 22 to 24 s, ...), so a stretch read
+    /// as soon as its sound is in, before the next chunk's beats, misses
+    /// its last beats.
     #[test]
     fn kept_while_recorded_is_kept_as_after() {
-        let dir = scratch("parity");
+        for chunk_s in [12.0, 11.5] {
+            kept_in_chunks_is_kept_as_after(chunk_s);
+        }
+    }
+
+    fn kept_in_chunks_is_kept_as_after(chunk_s: f64) {
+        let dir = scratch(&format!("parity-{chunk_s}"));
         let paths = take(&dir, 75.0, 3);
         let cfg = StreamConfig {
-            chunk_s: 7.0,
+            chunk_s,
             ..Default::default()
         };
         let shapes = vec![Some((20.0, 80.0))];
@@ -569,7 +577,10 @@ mod tests {
             let (a, b) = (kept_files(&after), kept_files(&live));
             assert_eq!(a.len(), b.len());
             for ((name, x), (_, y)) in a.iter().zip(&b) {
-                assert!(x == y, "{name} differs, blocks {sizes:?}");
+                assert!(
+                    x == y,
+                    "{name} differs, {chunk_s} s chunks, blocks {sizes:?}"
+                );
             }
         }
         let _ = std::fs::remove_dir_all(dir);
@@ -584,7 +595,7 @@ mod tests {
         let dir = scratch("lead");
         let paths = take_after(&dir, 30.0, 30.0, 1, 21_600);
         let cfg = StreamConfig {
-            chunk_s: 7.0,
+            chunk_s: 12.0,
             ..Default::default()
         };
         assert_eq!(cfg.analysis.bph, None);
