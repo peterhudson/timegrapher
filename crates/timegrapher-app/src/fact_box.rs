@@ -284,6 +284,13 @@ impl FactBox {
         (shown, r)
     }
 
+    /// The box's plate as `t` draws it, if it shows any row: what an
+    /// edge's line stops at ([`around_plate`]).
+    pub(crate) fn plate(&self, t: &egui_plot::PlotTransform) -> Option<egui::Rect> {
+        let (shown, r) = self.layout(t);
+        (!shown.is_empty()).then_some(r)
+    }
+
     /// As [`Self::layout`], with the columns the rows take: before
     /// shedding a row, a box that flows tries its rows in two columns,
     /// half as tall, in either corner.
@@ -496,6 +503,20 @@ fn emptiest<'a, T>(
             .fold(f32::INFINITY, f32::min)
     };
     clear.iter().max_by(|a, b| gap(a).total_cmp(&gap(b)))
+}
+
+/// The stretches of a vertical line at `x` from `a` down to `b` (screen
+/// points) left showing when the facts box's `plate` covers it: a line
+/// stops at the plate's edge and goes on below it, never touching the
+/// box's text (Hugh, #1633).
+pub(crate) fn around_plate(plate: Option<egui::Rect>, x: f32, a: f32, b: f32) -> Vec<(f32, f32)> {
+    match plate.filter(|p| x >= p.left() && x <= p.right() && a < p.bottom() && b > p.top()) {
+        None => vec![(a, b)],
+        Some(p) => [(a, b.min(p.top())), (a.max(p.bottom()), b)]
+            .into_iter()
+            .filter(|(a, b)| b > a)
+            .collect(),
+    }
 }
 
 /// The widest of `texts` in the facts' type, points.

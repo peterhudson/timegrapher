@@ -12,15 +12,19 @@ new feature release; nobody raises Z by hand.
   release_version.py set VERSION      write VERSION into Cargo.toml and the
                                       workspace crates' entries in Cargo.lock,
                                       in the build's own checkout only
-  release_version.py changes          turn `git log --merges --format=
+  release_version.py changes          turn `git log --first-parent --format=
                                       '%s%x1f%b%x1e'` on stdin into a
                                       Markdown list of pull requests
+  release_version.py notes FROM TO    the same list for every change on
+                                      main's first-parent line in FROM..TO:
+                                      merge commits and squash merges alike
 
 Standard library only; no network.
 """
 
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -91,7 +95,12 @@ def set_cargo_lock(text, old, version):
 
 
 def changes(log):
-    """One line per merged pull request: its title and number."""
+    """One line per change on main: its title and pull request number.
+
+    A merge commit ("Merge pull request #N from ...") gives the title from
+    its body. A squash merge's subject already ends in "(#N)", and a commit
+    pushed straight to main has no number; both are listed by subject.
+    """
     lines = []
     for record in log.split("\x1e"):
         if not record.strip():
@@ -104,6 +113,16 @@ def changes(log):
         else:
             lines.append(f"- {subject}")
     return "\n".join(lines) + "\n" if lines else ""
+
+
+def log_since(start, end, cwd=None):
+    """Every first-parent change in start..end, newest first, in the form
+    `changes` reads. Not `--merges`: a squash merge has one parent and
+    would be left out (#1655)."""
+    return subprocess.run(
+        ["git", "log", "--first-parent", "--format=%s%x1f%b%x1e",
+         f"{start}..{end}"],
+        cwd=cwd, check=True, capture_output=True, text=True).stdout
 
 
 def read(path):
@@ -136,6 +155,8 @@ def main(argv):
         print(version)
     elif len(argv) == 2 and argv[1] == "changes":
         sys.stdout.write(changes(sys.stdin.read()))
+    elif len(argv) == 4 and argv[1] == "notes":
+        sys.stdout.write(changes(log_since(argv[2], argv[3])))
     else:
         raise SystemExit(__doc__)
 
