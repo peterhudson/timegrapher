@@ -19,7 +19,7 @@
 //! edges this is the drop's beat error minus the difference between the
 //! two sides' unlock-to-drop times.
 
-use crate::beats::{trimmed_template, trimmed_template_from, Beat, PRE_S};
+use crate::beats::{trimmed_template_from, Beat, PRE_S};
 use crate::dsp::{median_f32, moving_average};
 use crate::timing;
 use serde::Serialize;
@@ -162,6 +162,13 @@ pub fn edges_guided(
 /// window's sound 1 is looked for first, seconds. Amplitude falling from
 /// 300° to 250° moves the unlock about 1.3 ms earlier.
 const UNLOCK_SEARCH_S: f64 = 0.003;
+
+/// How much later than the unlock on a template of every beat given a
+/// window's sound 1 may sit before the window is taken to have found a
+/// later sound, seconds. The beats given are one chunk of a stream (47 s):
+/// in that time a run-down's unlock barely moves, and even a fall from 300° to 250° moves it 1.3 ms. Near stopping, the
+/// impulse sits 6 ms after the unlock at 28,800 bph (#1623).
+const UNLOCK_LATE_S: f64 = 0.002;
 
 /// A sound 1 found from the start of a template [`template_pre_s`] long,
 /// earlier than the one found from the guide and at least this share of
@@ -421,7 +428,6 @@ pub fn windows_between(
     cfg: &AmplitudeConfig,
 ) -> Vec<AmplitudeWindow> {
     let mut out = Vec::new();
-    let origin = (PRE_S * fs).round() as usize;
     let long_pre_s = template_pre_s(osc_period_s, cfg.lift_deg);
     let long_origin = (long_pre_s * fs).round() as usize;
     let side_times = |win: &[Beat], even: bool| -> Vec<f64> {
@@ -435,14 +441,29 @@ pub fn windows_between(
     // before the unlock can pass for sound 1 (the Daytona read 130–170° in
     // about one window in 40 that way), so a window's sound 1 is looked for
     // from UNLOCK_SEARCH_S before this one, unless a sound as loud as
-    // EARLIER_SOUND_MIN comes before it.
-    let guide = |even: bool| -> Option<f64> {
+    // EARLIER_SOUND_MIN comes before it. Each side's guide is first read
+    // on a template that reaches the unlock at MIN_AMPLITUDE_DEG
+    // ([`template_pre_s`]); where that unlock lies beyond a PRE_S
+    // template's search ([`Guide::Long`]), the side is read on long
+    // templates throughout, as one of PRE_S finds the impulse there
+    // instead (#1623).
+    let guide = |even: bool| -> Option<Guide> {
         let times = side_times(beats, even);
-        let e = (times.len() >= 3)
-            .then(|| trimmed_template(env, fs, &times))
-            .flatten()
-            .and_then(|t| edges(&t, fs, origin, cfg.onset_fraction));
-        e.map(|e| e.unlock)
+        if times.len() < 3 {
+            return None;
+        }
+        let unlock = |pre_s: f64| {
+            let origin = (pre_s * fs).round() as usize;
+            trimmed_template_from(env, fs, &times, pre_s)
+                .and_then(|t| edges(&t, fs, origin, cfg.onset_fraction))
+                .map(|e| e.unlock)
+        };
+        match unlock(long_pre_s) {
+            Some(long) if (long - long_origin as f64) / fs < -short_reach_s() => {
+                Some(Guide::Long(long))
+            }
+            _ => unlock(PRE_S).map(Guide::Short),
+        }
     };
     let from = [guide(true), guide(false)];
     let mut start = from_s;
@@ -463,28 +484,8 @@ pub fn windows_between(
             if times.len() < 3 {
                 return None;
             }
-            let tmpl = trimmed_template(env, fs, &times)?;
-            let guided = edges_guided(
-                &tmpl,
-                fs,
-                origin,
-                cfg.onset_fraction,
-                from[usize::from(!even)],
-            )?;
-            // Sound 1 looked for from the start of a template long enough
-            // for the lowest amplitude, as seconds from the beat time.
-            let height = |e: &Edges| e.unlock_level - e.floor;
-            let at = |i: f64, origin: usize| (i - origin as f64) / fs;
-            let earlier = trimmed_template_from(env, fs, &times, long_pre_s)
-                .and_then(|t| edges_after(&t, fs, long_origin, cfg.onset_fraction, 0))
-                .filter(|e| {
-                    at(e.unlock, long_origin) < at(guided.unlock, origin) - 0.0003
-                        && height(e) >= EARLIER_SOUND_MIN * height(&guided)
-                });
-            let (unlock, drop) = match earlier {
-                Some(e) => (at(e.unlock, long_origin), at(e.drop, long_origin)),
-                None => (at(guided.unlock, origin), at(guided.drop, origin)),
-            };
+            let (unlock, drop) =
+                side_edges(env, fs, &times, from[usize::from(!even)], long_pre_s, cfg)?;
             let a = side_deg(drop - unlock, osc_period_s, cfg.lift_deg);
             Some((a, unlock, drop))
         };
@@ -521,6 +522,70 @@ pub fn windows_between(
         start += window_s;
     }
     out
+}
+
+/// Where a side's guide unlock was read ([`windows_between`]), samples
+/// into its template: on one of [`PRE_S`], or of [`template_pre_s`] when
+/// the unlock lies beyond the shorter one's search.
+#[derive(Debug, Clone, Copy)]
+enum Guide {
+    Short(f64),
+    Long(f64),
+}
+
+/// How far before the drop a guide's unlock may sit for a window's search
+/// on a [`PRE_S`] template to reach it, seconds: past the 3 ms the floor is
+/// taken on and the [`UNLOCK_SEARCH_S`] the search starts before the guide.
+fn short_reach_s() -> f64 {
+    PRE_S - 0.003 - UNLOCK_SEARCH_S
+}
+
+/// One side's unlock and drop in a window, seconds from its beat times, on
+/// its beats `times`, by its guide: sound 1 from the guide's search, or
+/// an earlier one as loud as [`EARLIER_SOUND_MIN`] of it on a template
+/// [`template_pre_s`] long. On a long guide, a window whose sound 1 sits
+/// later than the guide's by more than [`UNLOCK_LATE_S`] took a later
+/// sound, the impulse, and gives none: it is withheld, not timed again
+/// from a sound it did not find (#1623).
+fn side_edges(
+    env: &[f32],
+    fs: f64,
+    times: &[f64],
+    guide: Option<Guide>,
+    long_pre_s: f64,
+    cfg: &AmplitudeConfig,
+) -> Option<(f64, f64)> {
+    let long_origin = (long_pre_s * fs).round() as usize;
+    let long = trimmed_template_from(env, fs, times, long_pre_s);
+    let (tmpl, origin, guide_at) = match guide {
+        Some(Guide::Long(g)) => (long.clone()?, long_origin, Some(g)),
+        g => {
+            let origin = (PRE_S * fs).round() as usize;
+            let g = g.map(|g| match g {
+                Guide::Short(g) | Guide::Long(g) => g,
+            });
+            (trimmed_template_from(env, fs, times, PRE_S)?, origin, g)
+        }
+    };
+    let guided = edges_guided(&tmpl, fs, origin, cfg.onset_fraction, guide_at)?;
+    let height = |e: &Edges| e.unlock_level - e.floor;
+    let at = |i: f64, origin: usize| (i - origin as f64) / fs;
+    let earlier = long
+        .and_then(|t| edges_after(&t, fs, long_origin, cfg.onset_fraction, 0))
+        .filter(|e| {
+            at(e.unlock, long_origin) < at(guided.unlock, origin) - 0.0003
+                && height(e) >= EARLIER_SOUND_MIN * height(&guided)
+        });
+    let (unlock, drop) = match earlier {
+        Some(e) => (at(e.unlock, long_origin), at(e.drop, long_origin)),
+        None => (at(guided.unlock, origin), at(guided.drop, origin)),
+    };
+    if let Some(Guide::Long(g)) = guide {
+        if unlock > at(g, long_origin) + UNLOCK_LATE_S {
+            return None;
+        }
+    }
+    Some((unlock, drop))
 }
 
 #[cfg(test)]
@@ -842,5 +907,127 @@ mod tests {
         assert_eq!(w.beat_error_unlock_ms, Some(0.3), "no side changed state");
         at_lift(&mut w, 0.25, 56.0, 70.0);
         assert_eq!(w.odd_deg, None, "403.8° is over the gate");
+    }
+
+    /// 2 s windows of a 28,800 bph watch at `amp` and a 59° lift, `secs`
+    /// long, whose sound 1 is faint next to the impulse: the unlock at a
+    /// twentieth of the drop's height, the impulse at a quarter, at 0.72
+    /// of the way from the drop back to the unlock (as on the 69 h run-down
+    /// of #1623), over a floor with a little seeded noise. Also the
+    /// amplitude the impulse would read.
+    fn faint_unlock(amp: f64, secs: f64, seed: u64) -> (Vec<AmplitudeWindow>, f64) {
+        let (fs, period, lift) = (48_000.0, 0.125, 59.0);
+        let osc = 2.0 * period;
+        let dt = osc / std::f64::consts::PI * (lift / (2.0 * amp)).asin();
+        let mut state = seed;
+        let mut env: Vec<f32> = (0..((secs + 0.5) * fs) as usize)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                0.01 + 0.004 * ((state >> 40) as f32 / (1u64 << 24) as f32 - 0.5)
+            })
+            .collect();
+        let at = |t: f64| (t * fs).round() as usize;
+        let mut beats = Vec::new();
+        for k in 0..(secs / period) as i64 - 2 {
+            let t = 0.1 + k as f64 * period;
+            env[at(t - dt)..at(t - dt + 0.0003)].fill(0.06);
+            env[at(t - 0.72 * dt)..at(t - 0.72 * dt + 0.0003)].fill(0.26);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let cfg = AmplitudeConfig {
+            lift_deg: lift,
+            ..Default::default()
+        };
+        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        (w, amplitude_deg(0.72 * dt, osc, lift))
+    }
+
+    /// Near stopping, sound 1 is faint next to the impulse. A side reads
+    /// the unlock, within 3°, or nothing; never the impulse (142° on a 69 h
+    /// run-down whose unlock sat 23.5 ms before the drop, #1623; Norm's
+    /// bands on the issue).
+    #[test]
+    fn a_faint_unlock_before_a_loud_impulse_is_not_read_as_the_impulse() {
+        for (amp, seed) in [(100.0, 11), (115.0, 12), (130.0, 13)] {
+            let (w, impulse) = faint_unlock(amp, 20.0, seed);
+            assert!(impulse > amp + 20.0, "{amp}°: impulse {impulse}°");
+            for w in &w {
+                for a in [w.even_deg, w.odd_deg].into_iter().flatten() {
+                    assert!((a - amp).abs() < 3.0, "{a}° read at {amp}°: {w:?}");
+                }
+            }
+        }
+    }
+
+    /// A healthy watch with the same faint unlock reads as before: under
+    /// 1% of its sides withheld and its median within 1° (Norm's bands,
+    /// #1623).
+    #[test]
+    fn a_faint_unlock_on_a_healthy_watch_is_read() {
+        for (amp, seed) in [(250.0, 21), (275.0, 22), (300.0, 23)] {
+            let (w, _) = faint_unlock(amp, 100.0, seed);
+            let mut read: Vec<f64> = w
+                .iter()
+                .flat_map(|w| [w.even_deg, w.odd_deg])
+                .flatten()
+                .collect();
+            assert!(
+                read.len() * 100 > 99 * 2 * w.len(),
+                "{amp}°: {} of {}",
+                read.len(),
+                2 * w.len()
+            );
+            read.sort_by(f64::total_cmp);
+            let median = read[read.len() / 2];
+            assert!((median - amp).abs() < 1.0, "{amp}°: median {median}°");
+        }
+    }
+
+    /// A window that doesn't hear the faint unlock the stretch's other
+    /// beats show, and so takes the impulse, is withheld, not read at the
+    /// impulse nor timed again from the stretch's unlock (Norm's rule 3,
+    /// #1623).
+    #[test]
+    fn a_window_that_misses_the_stretchs_unlock_is_withheld() {
+        let (fs, period, lift) = (48_000.0, 0.125, 59.0);
+        let osc = 2.0 * period;
+        let mut env = vec![0.01f32; (20.5 * fs) as usize];
+        let at = |t: f64| (t * fs).round() as usize;
+        let mut beats = Vec::new();
+        for k in 0..160i64 {
+            let t = 0.1 + k as f64 * period;
+            if !(6.0..8.0).contains(&t) {
+                env[at(t - 0.021)..at(t - 0.0207)].fill(0.06);
+            }
+            env[at(t - 0.015)..at(t - 0.0147)].fill(0.26);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let cfg = AmplitudeConfig {
+            lift_deg: lift,
+            ..Default::default()
+        };
+        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, 20.0, &cfg);
+        let missed = w.iter().find(|w| w.start_s == 6.0).unwrap();
+        assert_eq!(
+            (missed.even_deg, missed.odd_deg),
+            (None, None),
+            "{missed:?}"
+        );
+        assert_eq!(missed.culled(), [None, None], "no edges kept to read again");
+        let heard = w.iter().find(|w| w.start_s == 10.0).unwrap();
+        let want = amplitude_deg(0.021, osc, lift);
+        assert!((heard.even_deg.unwrap() - want).abs() < 3.0, "{heard:?}");
     }
 }
