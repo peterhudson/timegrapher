@@ -176,6 +176,20 @@ const UNLOCK_SEARCH_S: f64 = 0.003;
 /// after the unlock at 28,800 bph (#1623).
 const UNLOCK_LATE_S: f64 = 0.002;
 
+/// How far apart the two sides' unlocks on their long templates may lie,
+/// as a share of their mean distance from the drop, for the sides to be
+/// read on long templates ([`Guide::Long`]). The unlock-to-drop time is
+/// the balance crossing the lift, and both sides cross it at the same
+/// amplitude, so the two differ only by the pallets' lift asymmetry: a few
+/// degrees of a 50–60° lift, under a tenth. A share, not a fixed time,
+/// because that time grows as the amplitude falls (14 ms near 160°, 23 ms
+/// near 110° at 28,800 bph), and the real gap and the template's noise
+/// grow with it: a fixed 2 ms split the sides of Peter's 69 h run-down at
+/// 62 h. On Peter's Submariner at Crown Down a faint sound at 18.4 ms was
+/// read as the Tock's unlock against the Tick's 14 ms, about 27% apart
+/// (#1703, Norm's ruling).
+const SIDES_UNLOCK_AGREE_SHARE: f64 = 0.15;
+
 /// A sound 1 found from the start of a template [`template_pre_s`] long,
 /// earlier than the one found from the guide and at least this share of
 /// its height, is taken instead: the unlock lay before the search from the
@@ -452,8 +466,13 @@ pub fn windows_between(
     // ([`template_pre_s`]); where that unlock lies beyond a PRE_S
     // template's search ([`Guide::Long`]), the side is read on long
     // templates throughout, as one of PRE_S finds the impulse there
-    // instead (#1623).
-    let guide = |even: bool| -> Option<Guide> {
+    // instead (#1623). The balance swings the same arc each way, so a
+    // stretch whose unlock lies that far out does so on both sides alike:
+    // the sides go long together, when both long unlocks lie beyond the
+    // reach and within [`SIDES_UNLOCK_AGREE_SHARE`] of their mean distance
+    // from the drop of each other, or not at all. A faint sound before one side's unlock reads as a long unlock on
+    // that side alone (#1703).
+    let guide = |even: bool| -> Option<(Option<f64>, Option<f64>)> {
         let times = side_times(beats, even);
         if times.len() < 3 {
             return None;
@@ -464,14 +483,29 @@ pub fn windows_between(
                 .and_then(|t| edges(&t, fs, origin, cfg.onset_fraction))
                 .map(|e| e.unlock)
         };
-        match unlock(long_pre_s) {
-            Some(long) if (long - long_origin as f64) / fs < -short_reach_s() => {
-                Some(Guide::Long(long))
-            }
-            _ => unlock(PRE_S).map(Guide::Short),
+        Some((unlock(long_pre_s), unlock(PRE_S)))
+    };
+    let (even_g, odd_g) = (guide(true), guide(false));
+    let long_s = |g: Option<(Option<f64>, Option<f64>)>| {
+        g.and_then(|g| g.0)
+            .map(|l| (l, (l - long_origin as f64) / fs))
+            .filter(|(_, at)| *at < -short_reach_s())
+    };
+    let long = match (long_s(even_g), long_s(odd_g)) {
+        (Some(e), Some(o))
+            if (e.1 - o.1).abs() <= SIDES_UNLOCK_AGREE_SHARE * (e.1 + o.1).abs() / 2.0 =>
+        {
+            Some([e.0, o.0])
+        }
+        _ => None,
+    };
+    let pick = |g: Option<(Option<f64>, Option<f64>)>, k: usize| -> Option<Guide> {
+        match long {
+            Some(l) => Some(Guide::Long(l[k])),
+            None => g?.1.map(Guide::Short),
         }
     };
-    let from = [guide(true), guide(false)];
+    let from = [pick(even_g, 0), pick(odd_g, 1)];
     let mut start = from_s;
     let mut lo = 0usize;
     while start + window_s <= to_s + 1e-9 {
@@ -1035,5 +1069,137 @@ mod tests {
         let heard = w.iter().find(|w| w.start_s == 10.0).unwrap();
         let want = amplitude_deg(0.021, osc, lift);
         assert!((heard.even_deg.unwrap() - want).abs() < 3.0, "{heard:?}");
+    }
+
+    /// 2 s windows of a 28,800 bph watch at `lift` whose unlock sits
+    /// 13 ms before the drop on both sides (0.28 of the drop's height), its
+    /// impulse at 0.7 of that (0.06), over a floor with seeded noise, with
+    /// a faint bump at a twentieth of the drop's height on the Tick from
+    /// `tick_bump` and on the Tock from `tock_bump` (seconds before the
+    /// drop, start and end), if given. Checks that both sides read the
+    /// unlock, within 3°, and that the unlock beat error stays near the
+    /// drop's.
+    fn reads_past_bumps(
+        seed: u64,
+        lift: f64,
+        tick_bump: Option<[f64; 2]>,
+        tock_bump: Option<[f64; 2]>,
+    ) {
+        let (fs, period, secs) = (48_000.0, 0.125, 30.0);
+        let osc = 2.0 * period;
+        let dt = 0.013;
+        let mut state = seed;
+        let mut env: Vec<f32> = (0..((secs + 0.5) * fs) as usize)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                0.016 + 0.004 * ((state >> 40) as f32 / (1u64 << 24) as f32 - 0.5)
+            })
+            .collect();
+        let at = |t: f64| (t * fs).round() as usize;
+        let mut beats = Vec::new();
+        for k in 0..(secs / period) as i64 - 2 {
+            let t = 0.1 + k as f64 * period;
+            if let Some([a, b]) = if k % 2 == 0 { tick_bump } else { tock_bump } {
+                env[at(t - a)..at(t - b)].fill(0.05);
+            }
+            env[at(t - dt)..at(t - dt + 0.0003)].fill(0.28);
+            env[at(t - 0.7 * dt)..at(t - 0.7 * dt + 0.0003)].fill(0.06);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let cfg = AmplitudeConfig {
+            lift_deg: lift,
+            ..Default::default()
+        };
+        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        let want = amplitude_deg(dt, osc, lift);
+        assert!(!w.is_empty());
+        for w in &w {
+            for a in [w.even_deg, w.odd_deg] {
+                let a = a.unwrap_or_else(|| panic!("a side withheld: {w:?}"));
+                assert!((a - want).abs() < 3.0, "{a}° read at {want}°: {w:?}");
+            }
+            let be = w.beat_error_unlock_ms.unwrap() - w.beat_error_ms.unwrap();
+            assert!(be.abs() < 0.1, "unlock beat error {be} ms off: {w:?}");
+        }
+    }
+
+    /// A faint sound before one side's unlock is not read as its unlock:
+    /// the sides go on long templates together or not at all (#1703, as on
+    /// Peter's Submariner at Crown Down, whose Tock read 119° and its beat
+    /// error 4.7 ms). The bump is on the Tock only, from 22 to 20.5 ms
+    /// before the drop: before a 20 ms template starts, so only the long
+    /// template sees it.
+    #[test]
+    fn a_faint_sound_before_one_sides_unlock_is_not_read_as_it() {
+        reads_past_bumps(1705, 53.0, None, Some([0.022, 0.0205]));
+    }
+
+    /// Bumps on both sides that the long templates read as unlocks beyond
+    /// the 20 ms template's reach, but further apart than
+    /// [`SIDES_UNLOCK_AGREE_SHARE`] of their mean (the Tick's from 25.5 ms,
+    /// the Tock's from 20.9 ms before the drop, about 20%; at a 59° lift
+    /// the long template's floor ends at 25.85 ms): one balance can't swing
+    /// both, so neither side goes long (#1703, Trevor's review).
+    #[test]
+    fn long_unlocks_that_disagree_keep_both_sides_short() {
+        reads_past_bumps(1706, 59.0, Some([0.0255, 0.025]), Some([0.0209, 0.0204]));
+    }
+
+    /// Near stopping the sides' faint unlocks lie far out and apart in time
+    /// by a share of it, not a fixed time: they still go long together
+    /// (#1703; a fixed 2 ms split the sides of Peter's 69 h run-down at
+    /// 62 h, Trevor's review). A 28,800 bph watch at a 59° lift, its Tick's
+    /// unlock 23 ms and its Tock's 20.5 ms before the drop (2.5 ms, about
+    /// 11% of their mean), each at a twentieth of the drop's height, its
+    /// impulse at a quarter, 0.72 of the way back, over a floor with seeded
+    /// noise. Each side reads its own unlock, within 3°, in every window.
+    #[test]
+    fn faint_unlocks_more_than_2_ms_apart_but_within_the_share_go_long() {
+        let (fs, period, lift, secs) = (48_000.0, 0.125, 59.0, 30.0);
+        let osc = 2.0 * period;
+        let dts = [0.023, 0.0205];
+        let mut state = 1710u64;
+        let mut env: Vec<f32> = (0..((secs + 0.5) * fs) as usize)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                0.01 + 0.004 * ((state >> 40) as f32 / (1u64 << 24) as f32 - 0.5)
+            })
+            .collect();
+        let at = |t: f64| (t * fs).round() as usize;
+        let mut beats = Vec::new();
+        for k in 0..(secs / period) as i64 - 2 {
+            let t = 0.1 + k as f64 * period;
+            let dt = dts[(k % 2) as usize];
+            env[at(t - dt)..at(t - dt + 0.0003)].fill(0.06);
+            env[at(t - 0.72 * dt)..at(t - 0.72 * dt + 0.0003)].fill(0.26);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let cfg = AmplitudeConfig {
+            lift_deg: lift,
+            ..Default::default()
+        };
+        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        let want = dts.map(|dt| amplitude_deg(dt, osc, lift));
+        assert!(!w.is_empty());
+        for w in &w {
+            for (a, want) in [w.even_deg, w.odd_deg].into_iter().zip(want) {
+                let a = a.unwrap_or_else(|| panic!("a side withheld: {w:?}"));
+                assert!((a - want).abs() < 3.0, "{a}° read at {want}°: {w:?}");
+            }
+        }
     }
 }
