@@ -239,7 +239,8 @@ fn the_newest_beat_is_drawn_strongest() {
     assert_eq!(alphas.len(), 3, "one line per beat");
     assert!(alphas[0] < alphas[1] && alphas[1] < alphas[2], "{alphas:?}");
     assert_eq!(alphas[2], 255, "the newest at full strength");
-    // At 192 kHz the same 20 ms is 3840 samples: one stroke per column.
+    // At 192 kHz the same 20 ms is 3840 samples: one filled column per
+    // column of the row.
     let dense = [row("Tick", vec![vec![0.3; 3840]], Vec::new())];
     let out = frame(&ctx, (600.0, 200.0), Vec::new(), |ui| {
         draw(ui, &dense, Zoom::Ms20, 0.125, 192_000.0)
@@ -247,7 +248,7 @@ fn the_newest_beat_is_drawn_strongest() {
     let strokes = out
         .shapes
         .iter()
-        .filter(|c| matches!(&c.shape, Shape::LineSegment { stroke, .. } if stroke.color == dense[0].color))
+        .filter(|c| matches!(&c.shape, Shape::Rect(r) if r.fill == dense[0].color))
         .count();
     assert!((500..=560).contains(&strokes), "{strokes}");
 }
@@ -446,4 +447,42 @@ fn an_edge_before_the_span_is_not_drawn() {
         .filter(|c| matches!(&c.shape, Shape::LineSegment { stroke, .. } if stroke.color == ink))
         .count();
     assert_eq!(lines, 1, "only the drop's line");
+}
+
+/// A trace with more samples than the row has columns draws each column
+/// from its lowest to its highest. Where the sound is still, a column's
+/// span is under a point, and drawn as a line piece it was rounded to
+/// the pixel at both ends into nothing: the quiet stretches between the
+/// sounds showed no trace when the Span was long. Each column keeps a
+/// point of ink at least.
+#[test]
+fn a_still_stretch_of_a_long_trace_still_shows() {
+    const INK: egui::Color32 = egui::Color32::from_rgb(201, 3, 199);
+    let ctx = egui::Context::default();
+    let r = Rect::from_min_size(Pos2::new(10.0, 10.0), egui::vec2(400.0, 100.0));
+    // Barely moving: under a point either way of the middle.
+    let t: Vec<f32> = (0..4000).map(|j| (j % 7) as f32 * 1e-4).collect();
+    let out = frame(&ctx, (500.0, 200.0), Vec::new(), |ui| {
+        draw_trace(ui.painter(), &t, r, INK, (60.0, 1.0, 40.0), |j| {
+            r.left() + j as f32 * r.width() / t.len() as f32
+        });
+    });
+    let mut cols = std::collections::BTreeSet::new();
+    for p in ctx.tessellate(out.shapes, out.pixels_per_point) {
+        let egui::epaint::Primitive::Mesh(m) = p.primitive else {
+            continue;
+        };
+        for tri in m.indices.chunks(3) {
+            let v: Vec<_> = tri.iter().map(|&i| m.vertices[i as usize]).collect();
+            let area = ((v[1].pos - v[0].pos).x * (v[2].pos - v[0].pos).y
+                - (v[1].pos - v[0].pos).y * (v[2].pos - v[0].pos).x)
+                .abs();
+            if area > 1e-3 && v.iter().any(|v| v.color == INK) {
+                let x = v.iter().map(|v| v.pos.x).sum::<f32>() / 3.0;
+                cols.insert(x.floor() as i32);
+            }
+        }
+    }
+    let missing: Vec<i32> = (11..409).filter(|x| !cols.contains(x)).collect();
+    assert!(missing.is_empty(), "columns with no ink: {missing:?}");
 }
