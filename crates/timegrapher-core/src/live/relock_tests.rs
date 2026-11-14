@@ -70,12 +70,13 @@ fn a_rate_set_by_hand_stands() {
 }
 
 /// A watch Auto locked on to rightly keeps its rate: 30 s at standard
-/// rates from 18,000 to 36,000, with a large beat error and with noise,
-/// never lets the lock go.
+/// rates from 18,000 to 36,000, plain, with a 4 ms beat error, and at 20
+/// and 10 dB, never lets the lock go. At 10 dB a watch may never be
+/// locked on to at all; once it is, the lock stands.
 #[test]
 fn a_right_lock_is_never_let_go() {
     for bph in [18_000, 21_600, 28_800, 36_000] {
-        for (be, snr_db) in [(0.4, 30.0), (4.0, 30.0), (0.4, 20.0)] {
+        for (be, snr_db) in [(0.4, 30.0), (4.0, 30.0), (0.4, 20.0), (0.4, 10.0)] {
             let audio = generate(
                 &SynthConfig {
                     bph,
@@ -96,11 +97,13 @@ fn a_right_lock_is_never_let_go() {
                     rates.push(live.bph());
                 }
             }
-            assert_eq!(
-                rates,
-                vec![None, Some(bph)],
-                "{bph} bph, {be} ms, {snr_db} dB"
-            );
+            let case = format!("{bph} bph, {be} ms, {snr_db} dB: {rates:?}");
+            if snr_db >= 20.0 {
+                assert_eq!(rates, vec![None, Some(bph)], "{case}");
+            } else {
+                assert!(rates.len() <= 2 && rates[0].is_none(), "{case}");
+                assert!(rates.iter().flatten().all(|&r| r == bph), "{case}");
+            }
         }
     }
 }

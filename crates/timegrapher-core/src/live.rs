@@ -260,16 +260,21 @@ const JUMP_LOOK: usize = 4 * beats::MIN_SIDE_BEATS + beats::JUMP_CONTEXT;
 /// minutes at 28,800 beats per hour, more than a strip shows.
 const CANDIDATES_KEPT: usize = 2000;
 
-/// The share of a window's beats at Auto's locked rate that must be good
-/// for the lock to stand unquestioned ([`LiveAnalyzer::lock_doubted`]). A
-/// watch locked on at twice its rate has every other beat empty, about
-/// half good; one at its own rate, nearly all.
+/// The share of a window's beats at Auto's locked rate under which a pass
+/// asks a fresh guess ([`LiveAnalyzer::lock_doubted`]). It only decides
+/// when to ask; the guess decides. A watch locked on at twice its rate
+/// has every other beat empty: 0.5 to 0.67 on the #1617 put-back. On the
+/// corpus takes heard live at their own rate (about 33,000 passes, the
+/// low-wind Peacock and the dying YM42 excerpt among them), the lowest
+/// was 0.70 and the 1st percentile 0.83 or more; the 12 passes under 0.75
+/// all guessed the locked rate.
 const LOCK_GOOD_SHARE: f64 = 0.75;
 
 /// The doubt that lets Auto's lock go, seconds: passes of doubt times
-/// the time between passes ([`LiveAnalyzer::lock_doubted`]). Six passes
-/// at the default half second; short beside the 10 s a regular beat is
-/// judged on.
+/// the time between passes ([`LiveAnalyzer::lock_doubted`]), six passes
+/// at the default half second. Three times the longest doubt seen on a
+/// right lock (two passes, in the #1617 lift-off's noise; none on the
+/// corpus), and short beside the 10 s a regular beat is judged on.
 const RELOCK_S: f64 = 3.0;
 
 impl LiveAnalyzer {
