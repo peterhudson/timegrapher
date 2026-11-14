@@ -789,15 +789,11 @@ mod tests {
         });
         let (kept, status) = kept_with_parts(&paths, &cfg, &[], &[4097, 1, 99_999], parts);
         assert_eq!(kept_files(&kept), kept_files(&plain));
-        // The last chunk read starts 69 s in: everything before is final.
-        assert_eq!(
-            status,
-            Checkpointed {
-                to_s: 60.0,
-                failed: None
-            }
-        );
-        assert_parts_are_the_take_so_far(&dir, &kept, 60.0);
+        // The last chunk read starts 69 s in, so the parts reach 60 s, or
+        // less where its windows were still being found on other threads.
+        assert_eq!(status.failed, None);
+        assert!([20.0, 40.0, 60.0].contains(&status.to_s), "{}", status.to_s);
+        assert_parts_are_the_take_so_far(&dir, &kept, status.to_s);
         checkpoint::remove(&dir).unwrap();
         assert!(!checkpoint::exists(&dir));
         checkpoint::remove(&dir).unwrap();
