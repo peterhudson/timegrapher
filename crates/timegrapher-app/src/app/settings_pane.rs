@@ -835,6 +835,15 @@ impl TimegrapherApp {
         }
     }
 
+    /// A note or setting the recorder kept in memory but couldn't write
+    /// to session.json; `finish` writes it at the latest (#1639).
+    pub(super) fn session_write_failed(&mut self, e: &dyn std::fmt::Display) {
+        self.error(format!(
+            "The take's session file couldn't be written ({e}). The change is kept, \
+             and goes into the file with the next change or when the take stops."
+        ));
+    }
+
     pub(super) fn note_settings(&mut self) {
         if self.session.recording_fault().is_some() {
             return;
