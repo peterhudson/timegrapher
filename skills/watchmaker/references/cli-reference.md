@@ -200,8 +200,10 @@ writes the run, hour by hour, to the session folder's
 `power-reserve.json` (`ending`: `stopped`, `by_hand` or `limit`; the
 app's tests can also end `recording_failed`, a run at least that long;
 `run_s` in true seconds; the silences of 30 s or more; `hours[]`, each
-measured as `session` measures a stretch). Without a FOLDER the folder
-is named by the date and time and "Power Reserve". The `--json` document
+measured as `session` measures a stretch). Without a FOLDER the test
+is one take in the watch's `takes/`, as the app files one: the
+recording itself, in a folder named by the date and time and "Power
+Reserve", holding its own `session.toml` and `power-reserve.json`. The `--json` document
 adds `power_reserve` with the same contents, and `session FOLDER --json`
 gives it too whenever the folder holds `power-reserve.json`.
 
