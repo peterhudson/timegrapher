@@ -145,3 +145,52 @@ fn keep_analysis_only_reads_the_lift_by_core_rule() {
         assert_eq!(core.unwrap_or(false), expected, "{text}");
     }
 }
+
+/// Lift changed after a guided test has measured reads its stretches
+/// again at the new lift, as every other view is: the Positions,
+/// Complication and Dynamic Poise tests' amplitudes scale with it, so
+/// the table, its Copy and the take's lift agree (#1645, from an
+/// external audit).
+#[test]
+fn a_new_lift_rereads_every_guided_tests_amplitudes() {
+    let each = 12.0;
+    for kind in [
+        guided::Kind::Positions,
+        guided::Kind::Complication,
+        guided::Kind::Poise,
+    ] {
+        let mut app = synthetic(8.0 * each + 10.0, 0.0);
+        let mut test = match kind {
+            guided::Kind::Complication => guided::Test::complication(app.position),
+            guided::Kind::Poise => guided::Test::poise(),
+            _ => guided::Test::new(),
+        }
+        .timed(2.0, each - 2.0);
+        let mut t = 1.0;
+        test.tick(t);
+        for _ in 0..8 {
+            t += each;
+            test.tick(t);
+            if test.advance(t).is_none() {
+                break;
+            }
+        }
+        let log = app.live.as_ref().and_then(steady::log_of).unwrap();
+        test.finish(&log, None, &app.masked);
+        app.guided = Some(test);
+        let amps = |app: &TimegrapherApp| -> Vec<f64> {
+            let readings = app.guided.as_ref().unwrap().readings.as_ref().unwrap();
+            readings
+                .iter()
+                .map(|r| r.measurement.amplitude_deg.unwrap())
+                .collect()
+        };
+        let before = amps(&app);
+        assert!(before.len() >= 2, "{kind:?}: {before:?}");
+        let k = 60.0 / app.lift_deg;
+        app.set_lift(60.0);
+        for (a, b) in before.iter().zip(amps(&app)) {
+            assert!((b - a * k).abs() < 0.05, "{kind:?}: {a} then {b}");
+        }
+    }
+}
