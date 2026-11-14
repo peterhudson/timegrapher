@@ -163,8 +163,6 @@ pub fn detrend(g: &Grid, window_s: f64) -> Grid {
 
 /// [`detrend`], its running median as `slow` has it.
 pub fn detrend_as(g: &Grid, window_s: f64, slow: Slow) -> Grid {
-    let n = g.y.len();
-    let finite: Vec<usize> = (0..n).filter(|&i| g.y[i].is_finite()).collect();
     let plan = slow_out(g, window_s);
     if matches!(plan, SlowOut::Nothing) {
         return g.clone();
@@ -172,31 +170,28 @@ pub fn detrend_as(g: &Grid, window_s: f64, slow: Slow) -> Grid {
     let y = if let SlowOut::Median(w) = plan {
         running_median_off(&g.y, w, slow)
     } else {
-        let t: Vec<f64> = finite.iter().map(|&i| g.time(i)).collect();
-        let v: Vec<f64> = finite.iter().map(|&i| g.y[i]).collect();
-        let c = polyfit2(&t, &v);
-        (0..n)
-            .map(|i| {
-                let t = g.time(i);
-                g.y[i] - (c[0] + c[1] * t + c[2] * t * t)
-            })
-            .collect()
+        quadratic_off(g)
     };
     Grid { y, ..g.clone() }
 }
 
 /// [`detrend_as`] on each piece of `g` on its own, a piece running from
-/// each of `starts` (grid indices, ascending) to the next: no window
-/// reaches across a break, where the beats' timing starts again from its
-/// own fit. Every piece takes the whole take's window, so the search's
-/// noise model holds on each; a piece shorter than one window is left
-/// out (NaN). With no `starts` it is [`detrend_as`].
+/// each of `starts` (grid indices, ascending) to the next: nothing is
+/// fitted across a break, where the beats' timing starts again from its
+/// own fit. The pieces are chosen first, then the method, the whole
+/// take's (#1608): on a take of 20 min or more each piece takes the whole
+/// take's running median window, so the search's noise model holds on
+/// each, and a piece shorter than one window is left out (NaN); under
+/// 20 min each piece gets its own quadratic, and a piece with fewer than
+/// [`MIN_PIECE_READINGS`] readings is left out. With no `starts` it is
+/// [`detrend_as`].
 pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> Grid {
     let n = g.y.len();
     let starts: Vec<usize> = starts.iter().copied().filter(|&i| i > 0 && i < n).collect();
-    let (true, Some(w)) = (!starts.is_empty(), detrend_window(g, window_s)) else {
+    let plan = slow_out(g, window_s);
+    if starts.is_empty() || matches!(plan, SlowOut::Nothing) {
         return detrend_as(g, window_s, slow);
-    };
+    }
     let mut y = vec![f64::NAN; n];
     let bounds: Vec<usize> = std::iter::once(0)
         .chain(starts)
@@ -205,12 +200,43 @@ pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> 
     for p in bounds.windows(2) {
         let (a, b) = (p[0], p[1]);
         let finite = g.y[a..b].iter().filter(|v| v.is_finite()).count();
-        if b - a < w || finite < 4 {
+        if finite < MIN_PIECE_READINGS {
             continue;
         }
-        y[a..b].copy_from_slice(&running_median_off(&g.y[a..b], w, slow));
+        match plan {
+            SlowOut::Median(w) if b - a >= w => {
+                y[a..b].copy_from_slice(&running_median_off(&g.y[a..b], w, slow));
+            }
+            SlowOut::Quadratic => {
+                let piece = Grid {
+                    t0: g.time(a) - 0.5 * g.step,
+                    step: g.step,
+                    y: g.y[a..b].to_vec(),
+                };
+                y[a..b].copy_from_slice(&quadratic_off(&piece));
+            }
+            _ => {}
+        }
     }
     Grid { y, ..g.clone() }
+}
+
+/// The fewest readings a piece is detrended from: a quadratic's three
+/// terms and one reading over, as [`detrend_as`] asks of a whole take.
+pub const MIN_PIECE_READINGS: usize = 4;
+
+/// `g` less its least-squares quadratic in time.
+fn quadratic_off(g: &Grid) -> Vec<f64> {
+    let finite: Vec<usize> = (0..g.y.len()).filter(|&i| g.y[i].is_finite()).collect();
+    let t: Vec<f64> = finite.iter().map(|&i| g.time(i)).collect();
+    let v: Vec<f64> = finite.iter().map(|&i| g.y[i]).collect();
+    let c = polyfit2(&t, &v);
+    (0..g.y.len())
+        .map(|i| {
+            let t = g.time(i);
+            g.y[i] - (c[0] + c[1] * t + c[2] * t * t)
+        })
+        .collect()
 }
 
 /// `y` less its running median over `w` steps ([`Slow`]).
@@ -2634,6 +2660,75 @@ mod slow_tests {
         let across = detrend_as(&g, DETREND_S, Slow::Sloped);
         let jump = across.y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
         assert!(jump > 0.5, "{jump}");
+    }
+
+    /// The pieces are chosen before the method (#1608): just below, at and
+    /// above 20 min, a level step from 270° to 250° at a break 30% of the
+    /// way in leaves nothing once each piece is detrended on its own,
+    /// where one detrend over the whole take leaves the step. Before, a
+    /// take under 20 min took one quadratic over both pieces: on a 600 s
+    /// take with the break at 300 s it left 9.975°.
+    #[test]
+    fn pieces_are_chosen_before_the_method() {
+        let step = 2.0;
+        let mut rng = crate::synth::Rng::new(1608);
+        for span in [600.0, 1198.0, 1200.0, 1800.0] {
+            let n = (span / step) as usize;
+            let cut = (0.3 * n as f64) as usize;
+            let y: Vec<f64> = (0..n)
+                .map(|i| if i < cut { 270.0 } else { 250.0 } + 0.05 * rng.normal())
+                .collect();
+            let g = Grid { t0: 0.0, step, y };
+            let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[cut]);
+            let worst = d.y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            assert!(worst < 0.5, "{span} s: {worst}");
+            let across = detrend_as(&g, DETREND_S, Slow::Level);
+            let step_left = across.y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            assert!(step_left > 5.0, "{span} s across: {step_left}");
+        }
+        // The issue's case, with no noise: 600 s, the break at 300 s.
+        let y: Vec<f64> = (0..300)
+            .map(|i| if i < 150 { 270.0 } else { 250.0 })
+            .collect();
+        let g = Grid { t0: 0.0, step, y };
+        let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[150]);
+        assert!(d.y.iter().all(|v| v.abs() < 1e-9), "{:?}", &d.y[..3]);
+    }
+
+    /// Under 20 min each piece takes its own quadratic, whatever the
+    /// pieces' lengths: two unequal pieces, each a different quadratic in
+    /// time, come out flat; a piece of three readings is left out (NaN),
+    /// as one shorter than a window is above 20 min.
+    #[test]
+    fn short_takes_fit_a_quadratic_to_each_piece() {
+        let step = 2.0;
+        let n = 500;
+        let (b1, b2) = (120, 497);
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                let t = i as f64 * step;
+                if i < b1 {
+                    270.0 + 0.01 * t - 2e-5 * t * t
+                } else {
+                    250.0 - 0.02 * t + 1e-5 * t * t
+                }
+            })
+            .collect();
+        let g = Grid { t0: 0.0, step, y };
+        assert!(g.span() < MEDIAN_FROM_S);
+        let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[b1, b2]);
+        let worst = d.y[..b2].iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        assert!(worst < 1e-6, "{worst}");
+        assert!(d.y[b2..].iter().all(|v| v.is_nan()));
+        // Above 20 min a piece shorter than the window is left out.
+        let n = 900;
+        let y: Vec<f64> = (0..n)
+            .map(|i| if i < 880 { 270.0 } else { 250.0 })
+            .collect();
+        let g = Grid { t0: 0.0, step, y };
+        let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[880]);
+        assert!(d.y[880..].iter().all(|v| v.is_nan()));
+        assert!(d.y[..880].iter().all(|v| v.abs() < 1e-9));
     }
 
     /// An amplitude falling smoothly from 300° to 250° over the take, with

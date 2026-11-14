@@ -335,7 +335,7 @@ pub fn for_take(
         .zip(names)
         .filter_map(|(g, (name, unit))| {
             spectrum(
-                &crate::longterm::detrend(g, lc.detrend_s),
+                &crate::steadiness::level_by_piece(g, clock, &long.breaks, lc),
                 name,
                 unit,
                 &lc.wheels,
@@ -647,7 +647,7 @@ mod tests {
         let grids =
             crate::steadiness::reading_grids(&log, long.clock.as_ref(), &long.breaks, 10.0).0;
         for (s, g) in out.iter().zip(&grids) {
-            let d = crate::longterm::detrend(g, lc.detrend_s);
+            let d = crate::steadiness::level_by_piece(g, long.clock.as_ref(), &long.breaks, &lc);
             let direct = spectrum(&d, s.series, s.unit, &lc.wheels).unwrap();
             assert_eq!(s.readings, direct.readings, "{}", s.series);
             assert_eq!(s.power, direct.power, "{}", s.series);

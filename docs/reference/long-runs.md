@@ -219,8 +219,10 @@ take with `long`, `series` or `session`.
    read's level and slope), then the plain median of what is left. A
    plain median over a sloping series returns its middle sample, so on a
    long run, where the rate sits tens of s/d from the take's mean, it
-   removed the cycles with the slope. No window crosses a break: each
-   piece between breaks is detrended alone.
+   removed the cycles with the slope. Nothing is fitted across a break:
+   each piece between breaks is detrended alone, under 20 minutes by its
+   own quadratic. The beat error's wheel lines, the time-frequency maps,
+   the kurtograms and the gappy spectra are detrended the same way.
 3. **Score.** The power spectrum is divided by the shape of AR(1) noise,
    with ρ read as everywhere else, and under the running median by the
    median's own noise shape (#723, #753). What is left is normalized

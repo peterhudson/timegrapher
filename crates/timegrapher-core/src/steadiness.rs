@@ -2572,6 +2572,20 @@ pub(crate) fn beat_error_long(
     longterm::analyse_pieces(&g, &starts, lc)
 }
 
+/// `g` (readings about a level, on the take's clock) less its slow change,
+/// each piece between the take's cuts on its own, as the period searches
+/// take it off (#1608): nothing is fitted across a break.
+pub(crate) fn level_by_piece(
+    g: &Grid,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    lc: &LongConfig,
+) -> Grid {
+    let cuts = Cuts::new(clock, breaks, &[]).piece_cuts();
+    let starts = longterm::piece_starts(g, &cuts);
+    longterm::detrend_pieces(g, lc.detrend_s, longterm::Slow::Level, &starts)
+}
+
 /// Tick's and Tock's amplitudes, each on the amplitude windows' grid as
 /// [`window_grids`] puts them.
 pub(crate) fn side_grids(
