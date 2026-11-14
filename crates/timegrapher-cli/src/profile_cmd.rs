@@ -108,7 +108,7 @@ fn svg(profiles: &[Option<TickProfile>; 2], file: &Path, from: f64, to: f64, lif
 <rect width="100%" height="100%" fill="#fff"/>
 <text x="{ml}" y="20" font-size="14">{} — {from:.1}–{to:.1} s, lift {lift}°: typical sound (line, mean of the middle half of beats), 10–90% of beats (band), engine marks</text>
 "##,
-        file.file_name().map_or("".into(), |n| n.to_string_lossy())
+        timegrapher_core::xml::escape(&file.file_name().map_or("".into(), |n| n.to_string_lossy()))
     );
     // A shared level scale so the two sides can be compared.
     let all = profiles.iter().flatten();
@@ -233,4 +233,74 @@ fn side(s: &mut String, p: &TickProfile, f: &Frame, y0: f64, (lo, hi): (f32, f32
         y0 + 16.0,
         p.beats
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Whether `doc` is well-formed as far as an SVG writer can break it:
+    /// every tag closes in order, and every `&` starts an entity.
+    fn well_formed(doc: &str) -> Result<(), String> {
+        let mut open: Vec<&str> = Vec::new();
+        let mut rest = doc;
+        while let Some(i) = rest.find(['<', '&']) {
+            let (text, at) = rest.split_at(i);
+            if text.contains('>') {
+                return Err(format!("a bare > in {text:?}"));
+            }
+            if let Some(after) = at.strip_prefix('&') {
+                let end = after.find(';').ok_or("an & with no ;")?;
+                let name = &after[..end];
+                if !matches!(name, "amp" | "lt" | "gt" | "quot" | "apos") && !name.starts_with('#')
+                {
+                    return Err(format!("a bare & before {name:?}"));
+                }
+                rest = &after[end + 1..];
+                continue;
+            }
+            let end = at.find('>').ok_or("a tag with no >")?;
+            let tag = &at[1..end];
+            if tag.matches('"').count() % 2 == 1 || tag[1..].contains('<') {
+                return Err(format!("a broken tag {tag:?}"));
+            }
+            let name = tag
+                .trim_start_matches('/')
+                .split([' ', '/'])
+                .next()
+                .unwrap_or("");
+            if tag.starts_with('/') {
+                if open.pop() != Some(name) {
+                    return Err(format!("</{name}> closes nothing open"));
+                }
+            } else if !tag.ends_with('/') {
+                open.push(name);
+            }
+            rest = &at[end + 1..];
+        }
+        open.is_empty()
+            .then_some(())
+            .ok_or(format!("{open:?} left open"))
+    }
+
+    /// A file name with `&`, `<`, `>` and `"` in it is escaped in the
+    /// exported SVG, which stays well-formed (#1649).
+    #[test]
+    fn a_file_name_with_markup_leaves_the_svg_well_formed() {
+        let doc = svg(
+            &[None, None],
+            Path::new("watch & <\"test\">.wav"),
+            0.0,
+            2.0,
+            52.0,
+        );
+        well_formed(&doc).unwrap();
+        assert!(
+            doc.contains("watch &amp; &lt;&quot;test&quot;&gt;.wav"),
+            "{doc}"
+        );
+        // The checker catches what the escaper prevents.
+        assert!(well_formed("<svg><text>watch & test</text></svg>").is_err());
+        assert!(well_formed("<svg><text>a <b</text></svg>").is_err());
+    }
 }

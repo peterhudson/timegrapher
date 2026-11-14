@@ -361,7 +361,7 @@ fn analyze_read(
     let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
         crate::confidence::amplitude_windows_se(take.iter().copied(), &take, f)
     };
-    let heard = hear(audio, &beats, bph, &fits.rate_windows, from_s, beat_sound);
+    let heard = hear(audio, &beats, bph, &fits, from_s, beat_sound);
     let watch_heard = heard.no_watch.is_none();
     // A withheld figure has no ± (#1429).
     let f = &fits.figures;
@@ -458,16 +458,17 @@ fn hear(
     audio: &Audio,
     beats: &[Beat],
     bph: u32,
-    rate_windows: &[WindowFit],
+    fits: &Fits,
     from_s: f64,
     beat_sound: Option<bool>,
 ) -> Heard {
     let fs = audio.sample_rate as f64;
     let listened_s = audio.duration() - from_s;
-    let jitter_us = crate::session::scatter_jitter_us(rate_windows);
+    let jitter_us = crate::session::scatter_jitter_us(&fits.rate_windows);
+    let assessed = crate::measure::regularity_assessed(listened_s, fits.holds_window);
     Heard {
         jitter_us,
-        no_watch: crate::measure::no_watch_reason(jitter_us, bph, listened_s, beat_sound),
+        no_watch: crate::measure::no_watch_reason(jitter_us, bph, assessed, beat_sound),
         listened_s,
         expected: crate::beats::expected_beats(listened_s, bph),
         clipping: Clipping::measure(&audio.samples, fs, beats),
@@ -533,6 +534,10 @@ struct Fits {
     residuals: Vec<f64>,
     /// The rate windows from `from_s` on.
     rate_windows: Vec<WindowFit>,
+    /// Whether a whole rate window fits from `from_s` on, clear of the
+    /// jumps ([`crate::session::holds_scatter_window`]), so regularity is
+    /// judged (#1688).
+    holds_window: bool,
 }
 
 impl Fits {
@@ -591,6 +596,13 @@ fn fit_take(
         cfg.rate_window_s / 2.0,
         part,
     );
+    let holds_window = crate::session::holds_scatter_window(
+        &holes,
+        from_s,
+        duration,
+        cfg.rate_window_s,
+        cfg.rate_window_s / 2.0,
+    );
     Fits {
         clear,
         overall,
@@ -598,6 +610,7 @@ fn fit_take(
         figures,
         residuals,
         rate_windows,
+        holds_window,
     }
 }
 

@@ -65,8 +65,9 @@ folds.
   own clock, the rate from the beat timing, the amplitude and beat error
   from their 2 s windows, with the slow change taken off by the same
   30-minute running median.
-- **A sine fitted at each period,** to the samples present, each weighted
-  by a Hann window over the whole take, less their weighted mean. With
+- **A sine fitted at each period,** together with a constant, to the
+  samples present, each weighted by a Hann window over the whole take.
+  A period whose cycle the samples cover too thinly is left out. With
   every sample present this is the ordinary windowed FFT; with some
   missing it is the **Lomb–Scargle** periodogram, so nothing is filled
   in and a line keeps its size as samples go missing.
