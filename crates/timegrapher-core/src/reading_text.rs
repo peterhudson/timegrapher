@@ -115,11 +115,19 @@ impl WindHours {
     }
 
     /// Hours `to` less hours `from`, each given by hand: the difference
-    /// to as many decimals as the more precise of the two was given to.
+    /// keeps the decimals of the less precise of the two (math guide,
+    /// #1576). Full wind, a `from` of 0, is exact and doesn't limit it. A
+    /// typed "24.0" reads as whole, as 24: the number keeps no trailing
+    /// zero.
     pub fn given(from: f64, to: f64) -> Self {
+        let digits = if from == 0.0 {
+            given_digits(to)
+        } else {
+            given_digits(from).min(given_digits(to))
+        };
         Self {
             hours: to - from,
-            digits: given_digits(from).max(given_digits(to)),
+            digits,
         }
     }
 
@@ -158,8 +166,11 @@ mod tests {
     fn wind_hours_keep_the_precision_of_their_source() {
         assert_eq!(WindHours::given(0.0, 24.0).words(), "24 h after winding");
         assert_eq!(WindHours::given(0.0, 24.0).short(), "24 h");
-        assert_eq!(WindHours::given(0.5, 24.0).words(), "23.5 h after winding");
+        // 24 is known only to the hour, so the difference is too.
+        assert_eq!(WindHours::given(0.5, 24.0).words(), "24 h after winding");
         assert_eq!(WindHours::given(0.1, 24.3).short(), "24.2 h");
+        // Full wind is exact: it doesn't take the tenth from 24.5.
+        assert_eq!(WindHours::given(0.0, 24.5).short(), "24.5 h");
         assert_eq!(WindHours::measured(24.0).words(), "24.0 h after winding");
         assert_eq!(WindHours::measured(24.2).short(), "24.2 h");
         assert_eq!(WindHours::measured(0.0).words(), "full wind");
