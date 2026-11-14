@@ -632,9 +632,10 @@ fn short_term_sd(y: &[f64]) -> Option<f64> {
     (d.len() >= 2).then(|| (0.5 * d.iter().sum::<f64>() / d.len() as f64).sqrt())
 }
 
-/// Robust σ of neighbour differences: 1.4826·MAD/√2.
+/// Robust σ of neighbour differences: their [`crate::dsp::robust_sd`]
+/// (1.4826·MAD) over √2.
 fn robust_diff_sigma(y: &[f64]) -> Option<f64> {
-    let mut d: Vec<f64> = y
+    let d: Vec<f64> = y
         .windows(2)
         .filter(|w| w[0].is_finite() && w[1].is_finite())
         .map(|w| w[1] - w[0])
@@ -642,9 +643,7 @@ fn robust_diff_sigma(y: &[f64]) -> Option<f64> {
     if d.len() < 4 {
         return None;
     }
-    let m = median(&mut d);
-    let mut a: Vec<f64> = d.iter().map(|x| (x - m).abs()).collect();
-    Some(1.4826 * median(&mut a) / std::f64::consts::SQRT_2)
+    Some(crate::dsp::robust_sd(&d) / std::f64::consts::SQRT_2)
 }
 
 pub(crate) fn ln_gamma(x: f64) -> f64 {

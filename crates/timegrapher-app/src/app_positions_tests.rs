@@ -4,6 +4,7 @@
 use super::tests::{frames, queued_capture, synthetic, themed, SETTLE_S};
 use super::*;
 use timegrapher_core::synth::{generate, SynthConfig};
+use timegrapher_core::text_report;
 
 /// The settling's hint names the settling the app uses, the Positions
 /// Test pane's Settle, in a free take as in a test: 20 s unless set.
@@ -1000,4 +1001,65 @@ fn a_masked_stretch_can_be_reshaped() {
     assert_eq!(app.masked, [(10.0, 40.0)], "no such stretch");
     app.reshape_mask((10.0, 40.0), (10.0, 10.2));
     assert!(app.masked.is_empty());
+}
+
+/// A take opened from Watches, with no test on the Bench: its This Take
+/// table can be saved as CSV, saved as text and copied (#1660). The
+/// exports read the six the table shows, and write them through the
+/// same core functions a test's exports use. A take keeps no test of
+/// its own, so the text leaves out the settling and measuring lines.
+#[test]
+fn an_opened_takes_table_can_be_saved_and_copied() {
+    let (app, base) = super::poise_tests::saved_and_opened("six", guided::Kind::Positions.order());
+    let ctx = egui::Context::default();
+    let t = app.free_table(&ctx).expect("a table");
+    assert_eq!(t.read, 6, "{t:?}");
+    let kept = app.positions_kept(&ctx).expect("not Nothing measured yet");
+    assert_eq!(guided::TakeReadings(kept.clone()), t.six);
+    let about = app.guided_about();
+    // Each row in the order the pane lists it (Hugh on #1705).
+    let in_order = |text: &str| {
+        let at: Vec<usize> = t
+            .rows
+            .iter()
+            .map(|(label, ..)| text.find(label.as_str()).unwrap_or(usize::MAX))
+            .collect();
+        assert!(at[0] < usize::MAX, "{text}");
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "{at:?}: {text}");
+    };
+    let csv = guided::kept_rows_text(&kept, guided::Kind::Positions, &about, ',');
+    in_order(&csv);
+    assert!(!csv.contains("Test Began"), "{csv}");
+    assert!(!csv.contains("-0.0"), "{csv}");
+    let take = app
+        .take_on_show()
+        .and_then(|p| Some(p.file_name()?.to_string_lossy().into_owned()));
+    let text = guided::kept_report_text(
+        &kept,
+        guided::Kind::Positions,
+        &about,
+        app.lift_known(),
+        take.as_deref(),
+    )
+    .expect("a Positions Test report");
+    let header = text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: take.as_deref().and_then(text_report::take_date),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        // No calibre gives it, so the lift is in the heading, as in the CSV.
+        lift_angle_deg: Some(about.lift_angle_deg),
+        settle_s: None,
+        measure_s: None,
+    };
+    assert!(!about.calibre.contains('°'), "{}", about.calibre);
+    let card = guided::card_order();
+    assert_eq!(text, text_report::positions_in(&header, &kept, None, &card));
+    in_order(&text);
+    assert!(text.contains("Lift Angle"), "{text}");
+    assert!(
+        !text.contains("Settling") && !text.contains("Measured"),
+        "{text}"
+    );
+    let _ = std::fs::remove_dir_all(&base);
 }
