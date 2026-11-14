@@ -1020,7 +1020,7 @@ mod tests {
                 doc["spectrum_support"],
                 json!([{"series":"rate", "unit":"ms", "support":support}])
             );
-            let lead = crate::summary::lead(&doc, &serde_json::Map::new()).unwrap();
+            let lead = crate::summary::lead(&doc).unwrap();
             assert!(lead.contains(if support.is_null() {
                 "FFT rate input support was not recorded."
             } else {
