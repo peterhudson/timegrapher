@@ -132,45 +132,80 @@ fn measured(name: &str) -> (TimegrapherApp, std::path::PathBuf, impl Sized) {
     (app, base, tx)
 }
 
-/// A take whose eight upright stops are marked, with no test on the
-/// Bench, as a saved Dynamic Poise take opens again (#1619): the pane
-/// reads each stop from the take's marks, as the Positions pane reads its
-/// six, so the table and core's fit come back.
-#[test]
-fn a_take_opened_again_shows_its_upright_stops_and_fit() {
+/// A take listened to with `stops` marked by hand in turn, `each` s
+/// apart, its rate 30 s/d each way round the dial (fastest with 6H at
+/// the top, as `measured`), saved, then opened in a fresh app as a saved
+/// take is opened (#1619); and the folder to remove.
+fn saved_and_opened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
+    let base = std::env::temp_dir().join(format!("tg-app-poise-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
     let each = 62.0;
-    let order = guided::Kind::Poise.order();
-    // 30 s/d each way, fastest at 180° (6H at the top), as `measured`.
+    let tops: Vec<f64> = stops.iter().map(|p| p.core().top_deg().unwrap()).collect();
     let extra = move |t: f64| {
-        let k = ((t / each).floor() as usize).min(order.len() - 1);
-        let deg = order[k].core().top_deg().unwrap();
+        let deg = tops[((t / each).floor() as usize).min(tops.len() - 1)];
         30.0 * (deg - 180.0).to_radians().cos()
     };
     let mut app = synthetic_varying(0.0, 0.0, |_| 0.0);
     app.session.listen();
+    app.session.recorder =
+        Some(Recorder::start(&base.join("live"), app.info("test", 48000, 16)).unwrap());
     let cfg = SynthConfig {
-        duration_s: each * order.len() as f64,
+        duration_s: each * stops.len() as f64,
         ..Default::default()
     };
     let audio = generate(&cfg, |_| 280.0, extra);
     let per_stop = (each * 48_000.0) as usize;
-    for (p, sound) in order.iter().zip(audio.samples.chunks(per_stop)) {
+    let mut second = 1_700_000_000;
+    for (p, sound) in stops.iter().zip(audio.samples.chunks(per_stop)) {
         app.session.set_state(session::State::Listening);
         app.set_position(*p);
-        let live = app.live.as_mut().unwrap();
-        for b in sound.chunks(960) {
-            live.push(b);
+        // A second at a time, each stamped, so the clock log can be read.
+        for s in sound.chunks(48_000) {
+            let block = timegrapher_core::capture::Block {
+                samples: s.to_vec(),
+                at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(second),
+            };
+            second += 1;
+            let r = app.session.recorder.as_mut().unwrap();
+            r.write(&block).unwrap();
+            let live = app.live.as_mut().unwrap();
+            for b in s.chunks(960) {
+                live.push(b);
+            }
         }
     }
-    assert!(app.guided.is_none(), "no test on the Bench");
+    app.save_into(&base.join("saved"));
+    app.wait_for_save();
+    let saved = app.session.saved_to().expect("saved").to_path_buf();
+    let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+    again.start_batch(&saved);
+    let t = Instant::now();
+    while again.batch.is_some() && t.elapsed().as_secs() < 300 {
+        again.poll();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(again.live.is_some(), "{:?}", again.message);
+    assert!(again.guided.is_none(), "no test on the Bench");
+    (again, base)
+}
+
+/// A take of the eight upright stops, saved and opened again (#1619):
+/// the pane reads each stop from the take's saved marks, as the
+/// Positions pane reads its six, so the table and core's fit come back.
+#[test]
+fn a_saved_poise_take_opened_again_shows_its_stops_and_fit() {
+    let (mut app, base) = saved_and_opened("reopen", guided::Kind::Poise.order());
     let t = app.free_table(&egui::Context::default()).expect("a table");
     let readings = &t.upright.0;
     assert_eq!(readings.len(), 8, "{t:?}");
+    // The synthetic take has no noise, so core states no ± and no
+    // fastest hour; the wave it fits is the one put in.
     let fit = guided::poise_fit(readings).expect("fitted from eight");
+    assert!((fit.wave.size.value - 30.0).abs() < 1.0, "{}", fit.text);
     assert!(
-        fit.short_text.contains("fastest near 6H at the top"),
+        (fit.wave.peak_deg.value - 180.0).abs() < 3.0,
         "{}",
-        fit.short_text
+        fit.text
     );
     // The six positions' own table is as it was: only its six.
     assert_eq!(t.rows.len(), 6);
@@ -180,6 +215,31 @@ fn a_take_opened_again_shows_its_upright_stops_and_fit() {
     }
     assert!(drawn.contains(&fit.short_text), "{drawn}");
     assert!(!drawn.contains(&poise_pending()), "{drawn}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A saved take of only the four vertical positions, as a Positions Test
+/// leaves them, opened again: the pane shows its four and says what the
+/// fit lacks, not that it waits for a stop that won't come (Hugh on
+/// #1622).
+#[test]
+fn a_saved_take_of_four_stops_says_it_needs_five() {
+    let four = [
+        Position::CrownDown,
+        Position::CrownLeft,
+        Position::CrownUp,
+        Position::CrownRight,
+    ];
+    let (mut app, base) = saved_and_opened("four", &four);
+    let t = app.free_table(&egui::Context::default()).expect("a table");
+    assert_eq!(t.upright.0.len(), 4, "{t:?}");
+    let drawn = draw(&mut app, Pane::DynamicPoise);
+    let lacks = timegrapher_core::poise::unfitted_text(4, true);
+    assert_eq!(lacks, "Needs 5 upright positions to fit; this take has 4");
+    assert!(drawn.contains(&lacks), "{drawn}");
+    assert!(!drawn.contains(&poise_pending()), "{drawn}");
+    assert!(drawn.contains("Crown Left (CL, 6H)"), "{drawn}");
+    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// The pane draws a test part way, before five stops are in: the table's

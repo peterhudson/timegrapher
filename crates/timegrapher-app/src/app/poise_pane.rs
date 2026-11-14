@@ -274,11 +274,22 @@ fn poise_body(
         info_beside_w: INFO_BESIDE_W,
         rule_h: PICTURE_H,
     };
+    // A take opened again, not a test under way: no more stops will come.
+    let measured = readings
+        .iter()
+        .filter(|r| poise::point(r.position, &r.measurement).is_some())
+        .count();
+    let unfitted = poise::unfitted_text(measured, test.is_none());
     let picture = |ui: &mut egui::Ui| {
-        picture_block(ui, (readings, fit.as_ref(), &mean), view, bottom);
+        picture_block(
+            ui,
+            (readings, fit.as_ref(), &mean),
+            (view, &unfitted),
+            bottom,
+        );
     };
     let notes = guided::poise_table_notes(readings);
-    let info_part = |ui: &mut egui::Ui| info_panel(ui, fit.as_ref(), &notes);
+    let info_part = |ui: &mut egui::Ui| info_panel(ui, (fit.as_ref(), &unfitted), &notes);
     let kept_table = |ui: &mut egui::Ui| guided::poise_table(ui, readings);
     test_body::test_body(
         ui,
@@ -304,10 +315,10 @@ fn picture_block(
         Option<&PoiseFit>,
         &Option<(f64, String)>,
     ),
-    view: PoiseView,
+    (view, unfitted): (PoiseView, &str),
     bottom: f32,
 ) {
-    words(ui, fit);
+    words(ui, fit, unfitted);
     let points = readings
         .iter()
         .filter_map(|r| poise::point(r.position, &r.measurement))
@@ -363,17 +374,17 @@ fn about_text(settle_s: f64, measure_s: f64) -> String {
 
 /// The title line over the picture (core's short sentence, measured
 /// facts) and, where the amplitude is near 220°, a grey chip under it;
-/// or core's words for a fit still to come. The heavy spot is in the
+/// or core's words for a fit still to come, or one a take lacks. The heavy spot is in the
 /// picture's facts box, and why it isn't stated and any caveat in Info
 /// (Hugh on #1537). The room is kept from the start, so nothing moves
 /// when they come.
-fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
+fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>, unfitted: &str) {
     let pal = theme::pal(ui);
     let line_h = ui.text_style_height(&egui::TextStyle::Body);
     ui.allocate_ui(Vec2::new(ui.available_width(), 2.0 * line_h + 8.0), |ui| {
         ui.spacing_mut().item_spacing.y = 3.0;
         let Some(f) = fit else {
-            ui.label(RichText::new(poise::pending_text()).color(pal.text_secondary));
+            ui.label(RichText::new(unfitted).color(pal.text_secondary));
             return;
         };
         ui.add(egui::Label::new(RichText::new(&f.short_text).color(pal.text)).wrap());
@@ -401,7 +412,7 @@ fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
 /// the amplitude, the heavy spot or why it isn't stated, and its
 /// caveats), the note on the band near 220°, which alone says why 219.5°
 /// matters, then the table's `notes` (Hugh on #1537).
-fn info_panel(ui: &mut egui::Ui, fit: Option<&PoiseFit>, notes: &[String]) {
+fn info_panel(ui: &mut egui::Ui, (fit, unfitted): (Option<&PoiseFit>, &str), notes: &[String]) {
     let pal = theme::pal(ui);
     ui.spacing_mut().item_spacing.y = 4.0;
     let text = |t: &str, c: egui::Color32| {
@@ -412,7 +423,7 @@ fn info_panel(ui: &mut egui::Ui, fit: Option<&PoiseFit>, notes: &[String]) {
     ui.label(theme::caption("Dynamic Poise").color(pal.text_secondary));
     match fit {
         Some(f) => ui.add(text(&f.sentence_beside_note(), pal.text)),
-        None => ui.add(text(&poise::pending_text(), pal.text_secondary)),
+        None => ui.add(text(unfitted, pal.text_secondary)),
     };
     ui.add_space(6.0);
     ui.add(text(&poise::null_band_note(), pal.text_secondary));
