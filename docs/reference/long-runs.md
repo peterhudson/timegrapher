@@ -229,8 +229,9 @@ take with `long`, `series` or `session`.
    long run, where the rate sits tens of s/d from the take's mean, it
    removed the cycles with the slope. Nothing is fitted across a break:
    each piece between breaks is detrended alone, under 20 minutes by its
-   own quadratic. The beat error's wheel lines, the time-frequency maps,
-   the kurtograms and the gappy spectra are detrended the same way.
+   own quadratic, and a piece of fewer than 30 readings is left out. The
+   beat error's wheel lines, the time-frequency maps, the kurtograms and
+   the gappy spectra are detrended the same way.
 3. **Score.** The power spectrum is divided by the shape of AR(1) noise,
    with ρ read as everywhere else, and under the running median by the
    median's own noise shape (#723, #753). What is left is normalized

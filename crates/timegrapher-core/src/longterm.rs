@@ -183,7 +183,8 @@ pub fn detrend_as(g: &Grid, window_s: f64, slow: Slow) -> Grid {
 /// take's running median window, so the search's noise model holds on
 /// each, and a piece shorter than one window is left out (NaN); under
 /// 20 min each piece gets its own quadratic, and a piece with fewer than
-/// [`MIN_PIECE_READINGS`] readings is left out. With no `starts` it is
+/// [`MIN_QUADRATIC_PIECE_READINGS`] readings is left out. With no
+/// `starts` it is
 /// [`detrend_as`].
 pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> Grid {
     let n = g.y.len();
@@ -207,7 +208,7 @@ pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> 
             SlowOut::Median(w) if b - a >= w => {
                 y[a..b].copy_from_slice(&running_median_off(&g.y[a..b], w, slow));
             }
-            SlowOut::Quadratic => {
+            SlowOut::Quadratic if finite >= MIN_QUADRATIC_PIECE_READINGS => {
                 let piece = Grid {
                     t0: g.time(a) - 0.5 * g.step,
                     step: g.step,
@@ -224,6 +225,14 @@ pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> 
 /// The fewest readings a piece is detrended from: a quadratic's three
 /// terms and one reading over, as [`detrend_as`] asks of a whole take.
 pub const MIN_PIECE_READINGS: usize = 4;
+
+/// The fewest readings a piece takes its own quadratic from, under 20 min
+/// (Norm, #1716). A quadratic fitted to n readings keeps (n - 3)/n of
+/// their noise's variance: 25% at 4 readings. A piece that short would sit
+/// in the spectra beside pieces at nearly their full variance, so it is
+/// left out, as a piece shorter than one window is above 20 min. From 30
+/// readings a piece keeps 90% or more.
+pub const MIN_QUADRATIC_PIECE_READINGS: usize = 30;
 
 /// `g` less its least-squares quadratic in time.
 fn quadratic_off(g: &Grid) -> Vec<f64> {
@@ -2697,13 +2706,15 @@ mod slow_tests {
 
     /// Under 20 min each piece takes its own quadratic, whatever the
     /// pieces' lengths: two unequal pieces, each a different quadratic in
-    /// time, come out flat; a piece of three readings is left out (NaN),
-    /// as one shorter than a window is above 20 min.
+    /// time, come out flat; a piece one reading short of
+    /// [`MIN_QUADRATIC_PIECE_READINGS`] is left out (NaN), as one shorter
+    /// than a window is above 20 min, and a piece of exactly that many is
+    /// kept.
     #[test]
     fn short_takes_fit_a_quadratic_to_each_piece() {
         let step = 2.0;
         let n = 500;
-        let (b1, b2) = (120, 497);
+        let (b1, b2) = (120, n - (MIN_QUADRATIC_PIECE_READINGS - 1));
         let y: Vec<f64> = (0..n)
             .map(|i| {
                 let t = i as f64 * step;
@@ -2720,6 +2731,10 @@ mod slow_tests {
         let worst = d.y[..b2].iter().fold(0.0f64, |m, v| m.max(v.abs()));
         assert!(worst < 1e-6, "{worst}");
         assert!(d.y[b2..].iter().all(|v| v.is_nan()));
+        let b2 = n - MIN_QUADRATIC_PIECE_READINGS;
+        let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[b1, b2]);
+        let worst = d.y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        assert!(worst < 1e-6, "{worst}");
         // Above 20 min a piece shorter than the window is left out.
         let n = 900;
         let y: Vec<f64> = (0..n)
