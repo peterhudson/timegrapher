@@ -1116,14 +1116,30 @@ mod tests {
             lo > frame.left() + 100.0 && hi <= frame.right(),
             "{lo} {hi}"
         );
-        // Under a trace high on both sides, it keeps no rows (the hover
-        // has them), and nothing keeps off its corner.
+        // Under a trace high on both sides, it goes to a bottom corner the
+        // trace leaves clear, its row kept (Hugh, #1626).
         let high = FactBox {
             tops: (0..=10).map(|i| [i as f64 / 10.0, 0.95]).collect(),
             ..short.clone()
         };
-        assert!(high.layout(&t).0.is_empty());
-        assert_eq!(high.span(&t), (frame.left(), frame.left()));
+        let (rows, r) = high.layout(&t);
+        assert_eq!(rows, vec![3]);
+        assert!(
+            (r.bottom() - (frame.bottom() - FACT_INSET)).abs() < 1e-3,
+            "{r:?}"
+        );
+        // A trace across the whole plot, high and at mid height, covers
+        // every corner: the box sits top left anyway, never dropped.
+        let everywhere = FactBox {
+            tops: (0..=40)
+                .map(|i| [i as f64 / 40.0, if i % 2 == 0 { 0.95 } else { 0.3 }])
+                .collect(),
+            ..short.clone()
+        };
+        let (rows, r) = everywhere.layout(&t);
+        assert_eq!(rows, vec![3]);
+        assert_eq!(r.min, frame.min + egui::vec2(FACT_INSET, FACT_INSET));
+        assert_eq!(everywhere.span(&t), (frame.left(), r.right()));
         // A tall box over a trace high under the left corner, and on the
         // right low enough for one row but not two: it sheds rows,
         // keeping Unlock to Drop, in the right corner.
@@ -1189,7 +1205,7 @@ mod tests {
         assert_eq!(b.layout(&t).0, vec![3]);
         assert!(left(&b));
         let was_left = FactBox {
-            was: Some((1, false)),
+            was: Some((1, Corner::TopLeft)),
             ..b.clone()
         };
         assert!(left(&was_left));
@@ -1197,7 +1213,7 @@ mod tests {
         // trace clears the left by the hold as well, or lies at the
         // plot's foot.
         let was_right = FactBox {
-            was: Some((1, true)),
+            was: Some((1, Corner::TopRight)),
             ..b.clone()
         };
         assert_eq!(was_right.layout(&t).0, vec![3]);
