@@ -1064,21 +1064,19 @@ mod tests {
         assert!((heard.even_deg.unwrap() - want).abs() < 3.0, "{heard:?}");
     }
 
-    /// A faint sound before one side's unlock is not read as its unlock:
-    /// the sides go on long templates together or not at all (#1703, as on
-    /// Peter's Submariner at Crown Down, whose Tock read 119° and its beat
-    /// error 4.7 ms). A 28,800 bph watch at a 53° lift whose unlock sits
-    /// 13 ms before the drop on both sides, with a bump at a twentieth of
-    /// the drop's height from 22 to 20.5 ms before the drop on the Tock
-    /// only: before a 20 ms template starts, so only the long template
-    /// sees it, over a floor with seeded noise. Both sides read the unlock,
-    /// within 3°, and the unlock beat error stays near the drop's.
-    #[test]
-    fn a_faint_sound_before_one_sides_unlock_is_not_read_as_it() {
+    /// 2 s windows of a 28,800 bph watch at a 53° lift whose unlock sits
+    /// 13 ms before the drop on both sides (0.28 of the drop's height), its
+    /// impulse at 0.7 of that (0.06), over a floor with seeded noise, with
+    /// a faint bump at a twentieth of the drop's height on the Tick from
+    /// `tick_bump` and on the Tock from `tock_bump` (seconds before the
+    /// drop, start and end), if given. Checks that both sides read the
+    /// unlock, within 3°, and that the unlock beat error stays near the
+    /// drop's.
+    fn reads_past_bumps(seed: u64, tick_bump: Option<[f64; 2]>, tock_bump: Option<[f64; 2]>) {
         let (fs, period, lift, secs) = (48_000.0, 0.125, 53.0, 30.0);
         let osc = 2.0 * period;
         let dt = 0.013;
-        let mut state = 1705u64;
+        let mut state = seed;
         let mut env: Vec<f32> = (0..((secs + 0.5) * fs) as usize)
             .map(|_| {
                 state = state
@@ -1091,8 +1089,8 @@ mod tests {
         let mut beats = Vec::new();
         for k in 0..(secs / period) as i64 - 2 {
             let t = 0.1 + k as f64 * period;
-            if k % 2 == 1 {
-                env[at(t - 0.022)..at(t - 0.0205)].fill(0.05);
+            if let Some([a, b]) = if k % 2 == 0 { tick_bump } else { tock_bump } {
+                env[at(t - a)..at(t - b)].fill(0.05);
             }
             env[at(t - dt)..at(t - dt + 0.0003)].fill(0.28);
             env[at(t - 0.7 * dt)..at(t - 0.7 * dt + 0.0003)].fill(0.06);
@@ -1118,5 +1116,26 @@ mod tests {
             let be = w.beat_error_unlock_ms.unwrap() - w.beat_error_ms.unwrap();
             assert!(be.abs() < 0.1, "unlock beat error {be} ms off: {w:?}");
         }
+    }
+
+    /// A faint sound before one side's unlock is not read as its unlock:
+    /// the sides go on long templates together or not at all (#1703, as on
+    /// Peter's Submariner at Crown Down, whose Tock read 119° and its beat
+    /// error 4.7 ms). The bump is on the Tock only, from 22 to 20.5 ms
+    /// before the drop: before a 20 ms template starts, so only the long
+    /// template sees it.
+    #[test]
+    fn a_faint_sound_before_one_sides_unlock_is_not_read_as_it() {
+        reads_past_bumps(1705, None, Some([0.022, 0.0205]));
+    }
+
+    /// Bumps on both sides that the long templates read as unlocks beyond
+    /// the 20 ms template's reach, but more than
+    /// [`SIDES_UNLOCK_AGREE_S`] apart (the Tick's from 23.2 ms, the Tock's
+    /// from 20.9 ms before the drop): one balance can't swing both, so
+    /// neither side goes long (#1703, Trevor's review).
+    #[test]
+    fn long_unlocks_that_disagree_keep_both_sides_short() {
+        reads_past_bumps(1706, Some([0.0232, 0.0227]), Some([0.0209, 0.0204]));
     }
 }
