@@ -183,9 +183,8 @@ fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, us
         }
         runs.last_mut().expect("a run").push(r);
     }
-    let rho = crate::confidence::pooled_lag_one(runs.iter().map(Vec::as_slice))
-        .unwrap_or(0.0)
-        .clamp(0.0, 0.99);
+    let runs: Vec<&[f64]> = runs.iter().map(Vec::as_slice).collect();
+    let rho = crate::confidence::corrected_lag_one(&runs);
     Some((p[2], p[3], (rss / (n - 4) as f64).sqrt(), n, rho))
 }
 
