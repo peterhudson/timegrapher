@@ -35,6 +35,7 @@ pub mod excerpt;
 pub mod figure_text;
 pub mod filter;
 pub mod flac;
+pub mod full_wind;
 pub mod gappy;
 pub mod histogram;
 pub mod input_domain;

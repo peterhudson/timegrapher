@@ -1821,27 +1821,34 @@ impl Body<'_> {
 /// This test's heading and its table, filling in as each position is
 /// measured.
 fn this_test(ui: &mut egui::Ui, t: &Test, phase: Option<Phase>, live: Option<&FreeCell>) {
-    let title = match t.wind_h() {
-        Some(h) => format!("This Test, {h:.1} h After Full Wind"),
-        None => "This Test".to_string(),
-    };
     heading(
         ui,
-        &title,
+        &test_title(t.wind_h()),
         "Each position's figures as soon as it is measured, read the same way as \
              the command line reads them",
     );
     test_table(ui, t, phase, live);
 }
 
+/// A Positions Test's heading: its hours after full wind for a 24 hour
+/// half, never a wind it wasn't given (#1665).
+pub(crate) fn test_title(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(
+        || "This Test".to_string(),
+        |h| {
+            format!(
+                "This Test, {} h After Full Wind",
+                timegrapher_core::figure_text::fixed_text(h, 1)
+            )
+        },
+    )
+}
+
 /// An opened 24 hour half's heading and table, from its saved results.
 fn saved_test(ui: &mut egui::Ui, s: &FullWind) {
     heading(
         ui,
-        &format!(
-            "This Test, {:.1} h After Full Wind",
-            s.wind_h.unwrap_or(0.0)
-        ),
+        &test_title(s.wind_h),
         "Each position's figures as the test measured them, saved with the take",
     );
     table_grid(

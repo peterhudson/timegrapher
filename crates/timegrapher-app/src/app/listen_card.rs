@@ -105,8 +105,12 @@ impl TimegrapherApp {
                 Vec2::splat(side),
             )
         } else if compact {
+            // Raised into the gap above, for the wind under it (#1665).
             egui::Rect::from_min_size(
-                egui::pos2(rows.figure.left(), rows.figure.center().y - side / 2.0),
+                egui::pos2(
+                    rows.figure.left(),
+                    rows.figure.top() - theme::ROW_GAP * 0.75,
+                ),
                 Vec2::splat(side),
             )
         } else {
@@ -151,12 +155,18 @@ impl TimegrapherApp {
             theme::semibold(17.0),
             pal.text,
         );
-        clip.text(
+        let code = clip.text(
             egui::pos2(fig.left(), fig.center().y + 4.0),
             egui::Align2::LEFT_TOP,
             &codes,
             egui::FontId::proportional(12.0),
             pal.text_secondary,
+        );
+        // The wind beside the codes (#1665).
+        self.wind_line(
+            &mut ui.new_child(egui::UiBuilder::new().max_rect(fig)),
+            egui::pos2(code.right() + 8.0, code.center().y),
+            egui::Align2::LEFT_CENTER,
         );
         // The six buttons, a segmented control across the card.
         let track = rows.controls;
@@ -199,12 +209,17 @@ impl TimegrapherApp {
             theme::semibold(15.0),
             pal.text,
         );
-        clip.text(
+        let code = clip.text(
             egui::pos2(name.right() + 8.0, line.center().y + 1.0),
             egui::Align2::LEFT_CENTER,
             codes,
             egui::FontId::proportional(12.0),
             pal.text_secondary,
+        );
+        self.wind_line(
+            &mut ui.new_child(egui::UiBuilder::new().max_rect(line)),
+            egui::pos2(code.right() + 8.0, code.center().y),
+            egui::Align2::LEFT_CENTER,
         );
         let foot = rows.controls.bottom();
         let row = |bottom: f32| {
@@ -295,7 +310,7 @@ impl TimegrapherApp {
             20.0
         };
         let code = painter.with_clip_rect(rows.figure).text(
-            egui::pos2(x, rows.figure.center().y),
+            egui::pos2(x, pic.center().y),
             egui::Align2::LEFT_CENTER,
             here.code(),
             theme::semibold(size),
@@ -303,6 +318,16 @@ impl TimegrapherApp {
         );
         ui.interact(code, ui.id().with("position code"), egui::Sense::hover())
             .on_hover_text(format!("{} ({codes})", here.name()));
+        // The wind under the picture and code, across the card (#1665).
+        let under = egui::Rect::from_min_max(
+            egui::pos2(rows.inner.left(), pic.bottom()),
+            egui::pos2(rows.inner.right(), rows.controls.top()),
+        );
+        self.wind_line(
+            &mut ui.new_child(egui::UiBuilder::new().max_rect(under)),
+            under.center(),
+            egui::Align2::CENTER_CENTER,
+        );
         // The six or ten in one pop-up; their keys still pick them. Where
         // the position can't be set (a take on show, a test running),
         // no pop-up: the code beside the picture says it all.
@@ -310,6 +335,9 @@ impl TimegrapherApp {
             return;
         }
         let mut picked = here;
+        let offered = Position::offered(self.card_ten());
+        let settable = self.wind_settable();
+        let mut wind = None;
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt("position menu")
@@ -323,17 +351,21 @@ impl TimegrapherApp {
                 // says what it does instead.
                 // Tall enough for all ten: egui's default height shows six
                 // and hides the 45° stops below a scroll (Walter, #1491).
+                // Open while the wind's hours are typed: a pick closes it.
                 egui::ComboBox::from_id_salt("position")
                     .width(ui.available_width())
                     .height(f32::INFINITY)
                     .selected_text("Set")
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show_ui(ui, |ui| {
-                        for &p in Position::offered(self.card_ten()) {
-                            ui.selectable_value(
-                                &mut picked,
-                                p,
-                                format!("{} ({}) · key {}", p.name(), p.code(), p.key_name()),
-                            );
+                        for &p in offered {
+                            let key = format!("{} ({}) · key {}", p.name(), p.code(), p.key_name());
+                            if ui.selectable_value(&mut picked, p, key).clicked() {
+                                ui.close();
+                            }
+                        }
+                        if settable {
+                            wind = self.wind_menu(ui);
                         }
                     })
                     .response
@@ -346,6 +378,9 @@ impl TimegrapherApp {
             });
         if picked != here && picked != self.position {
             self.change_position(picked);
+        }
+        if let Some(w) = wind {
+            self.pick_wind(w);
         }
     }
 

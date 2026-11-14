@@ -425,6 +425,7 @@ impl TimegrapherApp {
                     self.error(format!("Couldn't open {}: {err}", dir.display()));
                 }
             }
+            Some(watches::TakeAction::SetWind(take, wind_h)) => self.set_take_wind(&take, wind_h),
             Some(watches::TakeAction::Delete(take)) => {
                 let bytes = folder_size(&take);
                 self.take_ask = Some(watches::Ask::Delete { take, bytes });
@@ -891,6 +892,7 @@ impl TimegrapherApp {
             return;
         }
         self.watch_open = Some(id.to_string());
+        self.forget_quick_wind();
         self.unsorted_open = false;
         // The watch picked shows, not the list left over from before.
         self.list_for = None;

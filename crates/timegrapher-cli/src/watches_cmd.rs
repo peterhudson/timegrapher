@@ -269,6 +269,7 @@ mod tests {
                 ending: timegrapher_core::power_reserve::Ending::Stopped,
                 position: "DU".into(),
             }),
+            wind_h: None,
         };
         assert_eq!(
             take_line(&t, false, None),

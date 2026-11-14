@@ -152,6 +152,11 @@ pub struct Watch {
     /// The fields the user added, in their order.
     #[serde(default, rename = "field", skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<Field>,
+    /// When it was last fully wound, UTC (`2026-10-08T21:04:05.123Z`), as
+    /// the app's Position card or a test's Start gave it: each take of it
+    /// is saved with its hours since then (#1665). None where not given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_wind: Option<String>,
 }
 
 /// The lift angle and beat rate a watch's calibre gives, each where the
@@ -266,6 +271,7 @@ impl Watch {
             notes: None,
             archived: false,
             fields: Vec::new(),
+            full_wind: None,
         }
     }
 
@@ -489,6 +495,10 @@ pub struct Take {
     /// For a Power Reserve Test's take, its run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub power_reserve: Option<crate::power_reserve::Summary>,
+    /// Hours from full wind to its start, as its session file gives them
+    /// ([`crate::full_wind::take_wind_h`]): none where not given (#1665).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wind_h: Option<f64>,
 }
 
 impl Take {
@@ -1737,6 +1747,7 @@ fn unsorted_entry(root: &Path) -> WatchEntry {
             notes: None,
             archived: false,
             fields: Vec::new(),
+            full_wind: None,
         },
         takes: Vec::new(),
         photos: Vec::new(),
@@ -2259,6 +2270,7 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
             .ok()
             .and_then(|t| crate::power_reserve::Results::from_json(&t).ok())
             .map(|r| r.summary()),
+        wind_h: manifest.as_ref().and_then(crate::full_wind::take_wind_h),
     })
 }
 

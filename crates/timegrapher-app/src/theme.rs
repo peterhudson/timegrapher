@@ -1278,6 +1278,37 @@ pub fn dash(ui: &mut Ui, a: Color32, b: Color32) -> Response {
 mod tests {
     use super::*;
 
+    /// A gap that is the first of the "…" menu's folded controls draws no
+    /// line, so the menu opens on a control, never an empty row (Walter,
+    /// #1718); a gap further down still does.
+    #[test]
+    fn a_folded_menu_opens_without_a_line() {
+        let ctx = egui::Context::default();
+        for (folded, lines) in [(vec!["|0", "a"], 0), (vec!["a", "|0"], 1)] {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    set_bar(
+                        ui,
+                        Some(Bar {
+                            title: "t".into(),
+                            menu: Some(()),
+                            folded: folded.iter().map(|s| s.to_string()).collect(),
+                            ..Default::default()
+                        }),
+                    );
+                    bar_gap(ui);
+                    set_bar(ui, None);
+                });
+            });
+            let drawn = out
+                .shapes
+                .iter()
+                .filter(|c| matches!(c.shape, egui::Shape::LineSegment { .. }))
+                .count();
+            assert_eq!(drawn, lines, "{folded:?}");
+        }
+    }
+
     /// The time panes' gutter fits the widest value label drawn, padded,
     /// never under its least, and doesn't narrow again (#1225).
     #[test]
@@ -1887,7 +1918,11 @@ pub fn bar_item<R>(ui: &mut Ui, key: &str, add: impl FnOnce(&mut Ui) -> R) -> Op
 /// follows it.
 pub fn bar_gap(ui: &mut Ui) {
     let n = bar(ui).map_or(0, |b| b.met.len());
-    bar_item(ui, &format!("|{n}"), |ui| {
+    let key = format!("|{n}");
+    // The first of the "…" menu's folded controls: no line above it, an
+    // empty first row (Walter, #1718).
+    let first = bar(ui).is_some_and(|b| b.menu.is_some() && b.folded.first() == Some(&key));
+    bar_item(ui, &key, |ui| {
         if in_toolbar(ui) {
             // As tall as an icon, not the whole pane.
             let (rect, _) = ui.allocate_exact_size(Vec2::new(6.0, 18.0), Sense::hover());
@@ -1896,7 +1931,7 @@ pub fn bar_gap(ui: &mut Ui) {
                 rect.y_range(),
                 Stroke::new(1.0_f32, pal(ui).separator),
             );
-        } else {
+        } else if !first {
             ui.separator();
         }
     });

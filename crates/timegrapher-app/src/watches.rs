@@ -559,6 +559,7 @@ pub enum TakeAction {
     Delete(PathBuf),
     /// Stop keeping a take as its analysis.
     CancelKeep,
+    SetWind(PathBuf, Option<f64>),
 }
 
 /// What the takes list needs besides the watch: the other watches (id,
@@ -1296,7 +1297,7 @@ fn take_menu(
     {
         act = Some(TakeAction::Delete(dir.clone()));
     }
-    act
+    crate::take_wind::set_wind_menu(ui, t, &dir, changes).or(act)
 }
 
 /// The watch's takes as a table, newest first: a click picks a row, a
@@ -1587,16 +1588,16 @@ fn take_hover(
         Some(TakeReading::Read(Ok(_))) => figures.push_str(&format!("\n\n{}", engine_line())),
         None => {}
     }
-    // Where a start not recorded in the take comes from, or that it is
-    // unknown (#1272).
+    // Where a start not recorded in the take comes from, or unknown (#1272).
     let start = match (&t.started_utc, &t.named_start) {
         (Some(_), _) => "",
         (None, Some(_)) => "\n\nStart time from the take folder's name.",
         (None, None) => "\n\nStart time not recorded.",
     };
     format!(
-        "{}{start}{figures}\n\n{}",
+        "{}\n{}{start}{figures}\n\n{}",
         take_line(t, test, reading),
+        timegrapher_core::reading_text::wind_before_take_words(t.wind_h),
         if on_show {
             "This take is on show on the Bench. Right-click for more."
         } else if t.incomplete {
@@ -2185,6 +2186,7 @@ mod tests {
             positions: Vec::new(),
             at_end: None,
             power_reserve: None,
+            wind_h: None,
         };
         assert_eq!(keep_refused(&whole, &dir, (true, false), "read only"), None);
         assert_eq!(
@@ -2341,6 +2343,7 @@ mod tests {
                 rate_corrected_s_per_day: None,
             }),
             power_reserve: None,
+            wind_h: None,
         };
         let reading = Reading {
             position: Some("DU".into()),
@@ -2430,6 +2433,7 @@ mod tests {
                 ending: timegrapher_core::power_reserve::Ending::ByHand,
                 position: "DU".into(),
             }),
+            wind_h: None,
         };
         assert_eq!(take_cells(&t, None, None)[2], "1:53");
         assert!(take_line(&t, false, None).starts_with("Power Reserve 1 min 53 s"));
@@ -2456,6 +2460,7 @@ mod tests {
             positions: vec!["DU".into()],
             at_end: None,
             power_reserve: None,
+            wind_h: None,
         };
         let reading = Reading {
             position: Some("DU".into()),
@@ -2679,6 +2684,7 @@ mod tests {
             positions: vec!["DU".into()],
             at_end: None,
             power_reserve: None,
+            wind_h: None,
         };
         assert_eq!(take_cells(&t, None, None)[1], "DU");
         assert_eq!(take_cells(&t, Some([None; 3]), None)[1], "Positions Test");
@@ -2745,6 +2751,7 @@ mod tests {
             positions: Vec::new(),
             at_end: None,
             power_reserve: None,
+            wind_h: None,
         };
         let dir = PathBuf::from("watch/test");
         let read = Reading {
@@ -2805,6 +2812,7 @@ mod tests {
             positions: vec!["DU".into(), "CL".into()],
             at_end: None,
             power_reserve: None,
+            wind_h: None,
         };
         let reading = Reading {
             position: Some("CL".into()),
@@ -2901,6 +2909,7 @@ mod tests {
                 positions: vec!["DU".into(), "DD".into(), "CU".into()],
                 at_end: None,
                 power_reserve: None,
+                wind_h: None,
             };
             let hover = take_hover(&take, &cx, &dir, Some(3), None);
             assert!(hover.contains("Rate and Amplitude: Mean of the 3 positions measured"));
@@ -2953,6 +2962,7 @@ mod tests {
             positions: Vec::new(),
             at_end: None,
             power_reserve: None,
+            wind_h: None,
         };
         let at = |name: &str| {
             lib.watches

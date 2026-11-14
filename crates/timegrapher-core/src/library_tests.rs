@@ -169,6 +169,7 @@ fn a_tests_facts_leave_out_its_last_window() {
             rate_corrected_s_per_day: None,
         }),
         power_reserve: None,
+        wind_h: None,
     };
     assert_eq!(
         t.facts(false),
@@ -1274,6 +1275,7 @@ fn a_takes_facts_read_show_its_own_reading() {
         positions: vec!["DU".into(), "Crown Left at 45°".into()],
         at_end: None,
         power_reserve: None,
+        wind_h: None,
     };
     let reading = Reading {
         position: Some("DU".into()),
