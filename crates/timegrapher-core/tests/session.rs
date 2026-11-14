@@ -1730,3 +1730,17 @@ fn the_text_report_never_pools_wind_not_given() {
     assert_eq!((shown.len(), shown[0].wind_h), (1, None));
     assert!(against.is_none());
 }
+
+/// Two given states neither of which is full wind (2 h and 24 h): the
+/// report is of the later one alone, never with the earlier labelled as
+/// the full-wind test.
+#[test]
+fn a_report_is_set_only_against_full_wind() {
+    let two = [
+        reading(Position::CH, 2.0, 5.0, 280.0, 0.1),
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+    ];
+    let (shown, against) = session::report_states(&two);
+    assert_eq!((shown.len(), shown[0].wind_h), (1, Some(24.0)));
+    assert!(against.is_none());
+}

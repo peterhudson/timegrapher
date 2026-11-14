@@ -1712,9 +1712,11 @@ pub fn in_wind_state(reading: Option<f64>, state: Option<f64>) -> bool {
     wind_key(reading) == wind_key(state)
 }
 
-/// The readings a session's text report is of, and the earlier state
+/// The readings a session's text report is of, and the full-wind state
 /// it is set against: the least wound state whose wind was given, against
-/// the fullest when there are two or more, with the hours between them.
+/// full wind (`wind_h` 0) when that was measured too, with the later
+/// state's hours since full wind. A fullest given state that is not full
+/// wind is not set against anything: the report names it full wind.
 /// With no wind given at all, the readings whose wind was not given, on
 /// their own. Readings whose wind was not given are never set against a
 /// given state, nor pooled with one (#1665).
@@ -1728,7 +1730,8 @@ pub fn report_states(readings: &[Reading]) -> (Vec<&Reading>, Option<(Vec<&Readi
     let given: Vec<i64> = wind_keys(readings).into_iter().flatten().collect();
     match (given.first(), given.last()) {
         (Some(&first), Some(&last)) => {
-            let earlier = (last > first).then(|| (at(Some(first)), (last - first) as f64 / 10.0));
+            let earlier =
+                (first == 0 && last > first).then(|| (at(Some(first)), last as f64 / 10.0));
             (at(Some(last)), earlier)
         }
         _ => (at(None), None),
