@@ -31,8 +31,8 @@ pub const HELP: &[&str] = &[
     "- New Watch… adds a watch: only its name is needed.",
     "- Its calibre, lift angle and beat rate set up each new take of it, and can be changed \
      for one take without changing the watch.",
-    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test or Power Reserve Test: \
-     each is a new take on the microphone, saved into the watch when it stops.",
+    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test, Power Reserve Test or \
+     Complication Test: each is a new take on the microphone, saved into the watch when it stops.",
     "## Photos",
     "- Add Photos… copies photos of the picked watch into its folder, each kept as it is \
      (JPEG, PNG, TIFF, or HEIC as an iPhone takes them).",
@@ -736,14 +736,6 @@ pub fn take_line(t: &Take, positions_test: bool, reading: Option<&Reading>) -> S
     t.facts_read(positions_test, reading).join(" · ")
 }
 
-/// The captions under the three New Take buttons: Listen, Positions Test, Power Reserve Test.
-pub const NEW_TAKE_CAPTIONS: [&str; 4] = [
-    "As long as you like",
-    "Six positions, guided",
-    "Eight upright, 45° apart",
-    "From full wind to a stop",
-];
-
 /// The words under a watch's name in its header: its calibre, beat rate
 /// and lift angle, then its added fields, each named. The beat rate and
 /// lift angle are the ones its takes start with: the calibre's where the
@@ -859,13 +851,16 @@ pub fn title_row(
     );
 }
 
+/// A panel's margin inside its edge, points.
+const PANEL_MARGIN: i8 = 8;
+
 /// A rounded panel for a section's content.
 pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let pal = theme::pal(ui);
     egui::Frame::new()
         .fill(pal.raised.gamma_multiply(0.6))
         .corner_radius(egui::CornerRadius::same(theme::CONTROL_RADIUS + 2))
-        .inner_margin(egui::Margin::same(8))
+        .inner_margin(egui::Margin::same(PANEL_MARGIN))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add(ui)
@@ -873,59 +868,111 @@ pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
         .inner
 }
 
-/// New Take's four buttons, equal, each with its caption under it; Listen,
-/// the default, is the blue one. Which was pressed, if any. While `why`
-/// says so, they are greyed out with that reason.
+/// New Take's buttons (name, hover, caption), equal, each with its caption
+/// under it, as many to a row as [`new_take_row`] says (#1634); Listen, the default, is the blue
+/// one. Which was pressed, if any. While `why` says so, they are greyed
+/// out with that reason.
 pub fn new_take_buttons(
     ui: &mut egui::Ui,
-    names: [(&str, &str); 4],
+    names: &[(&str, &str, &str)],
     why: Option<&str>,
 ) -> Option<usize> {
-    let pal = theme::pal(ui);
     let mut pressed = None;
     let gap = 10.0;
-    let n = names.len() as f32;
-    let w = ((ui.available_width() - (n - 1.0) * gap) / n).max(80.0);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = gap;
-        for (i, (name, hint)) in names.into_iter().enumerate() {
-            ui.allocate_ui_with_layout(
-                Vec2::new(w, 64.0),
-                egui::Layout::top_down(egui::Align::Center),
-                |ui| {
-                    ui.set_width(w);
-                    panel(ui, |ui| {
-                        let b = if i == 0 {
-                            theme::primary(ui, name)
-                        } else {
-                            theme::secondary(ui, name)
-                        };
-                        let r = ui
-                            .add_enabled(
-                                why.is_none(),
-                                b.min_size(Vec2::new(ui.available_width(), 26.0)),
-                            )
-                            .on_hover_text(hint)
-                            .on_disabled_hover_text(why.unwrap_or_default());
-                        if r.clicked() {
-                            pressed = Some(i);
-                        }
-                        // One line, so the buttons stay level.
-                        ui.vertical_centered(|ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(NEW_TAKE_CAPTIONS[i])
-                                        .small()
-                                        .color(pal.text_secondary),
-                                )
-                                .truncate(),
-                            );
-                        });
-                    });
-                },
-            );
+    let tile = |n: usize| (ui.available_width() - (n as f32 - 1.0) * gap) / n as f32;
+    let row_n = new_take_row(ui, names, tile);
+    let w = tile(row_n).max(80.0);
+    // Its own spacing, so what follows it keeps the page's.
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = gap;
+        for (row, chunk) in names.chunks(row_n).enumerate() {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                for (k, &b) in chunk.iter().enumerate() {
+                    let i = row * row_n + k;
+                    if new_take_button(ui, (i, b), w, why) {
+                        pressed = Some(i);
+                    }
+                }
+            });
         }
     });
+    pressed
+}
+
+/// How many of New Take's `names` go in a row, `tile(n)` wide each: all
+/// of them where every name and caption is whole ([`new_take_fits`]),
+/// else as many as fit with the rows as even as can be (3 + 2, then
+/// 2 + 2 + 1), and one where none fits.
+pub fn new_take_row(
+    ui: &egui::Ui,
+    names: &[(&str, &str, &str)],
+    tile: impl Fn(usize) -> f32,
+) -> usize {
+    (1..=names.len())
+        .map(|rows| names.len().div_ceil(rows))
+        .find(|&n| new_take_fits(ui, names, tile(n)))
+        .unwrap_or(1)
+}
+
+/// Whether every button name (with its padding) and caption of New
+/// Take's `names` is whole on one line in a tile `w` wide, less its
+/// panel's margins.
+pub fn new_take_fits(ui: &egui::Ui, names: &[(&str, &str, &str)], w: f32) -> bool {
+    let inside = w - 2.0 * f32::from(PANEL_MARGIN);
+    let width = |text: &str, style: egui::TextStyle| {
+        let font = style.resolve(ui.style());
+        ui.painter()
+            .layout_no_wrap(text.to_string(), font, egui::Color32::WHITE)
+            .size()
+            .x
+    };
+    let padding = 2.0 * ui.spacing().button_padding.x;
+    names.iter().all(|(name, _, caption)| {
+        width(name, egui::TextStyle::Button) + padding <= inside
+            && width(caption, egui::TextStyle::Small) <= inside
+    })
+}
+
+/// One of [`new_take_buttons`], the `i`th, `w` wide: whether it was
+/// pressed.
+fn new_take_button(
+    ui: &mut egui::Ui,
+    (i, (name, hint, caption)): (usize, (&str, &str, &str)),
+    w: f32,
+    why: Option<&str>,
+) -> bool {
+    let pal = theme::pal(ui);
+    let mut pressed = false;
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 64.0),
+        egui::Layout::top_down(egui::Align::Center),
+        |ui| {
+            ui.set_width(w);
+            panel(ui, |ui| {
+                let b = if i == 0 {
+                    theme::primary(ui, name)
+                } else {
+                    theme::secondary(ui, name)
+                };
+                let r = ui
+                    .add_enabled(
+                        why.is_none(),
+                        b.min_size(Vec2::new(ui.available_width(), 26.0)),
+                    )
+                    .on_hover_text(hint)
+                    .on_disabled_hover_text(why.unwrap_or_default());
+                pressed = r.clicked();
+                // One line, so the buttons stay level.
+                ui.vertical_centered(|ui| {
+                    ui.add(
+                        egui::Label::new(RichText::new(caption).small().color(pal.text_secondary))
+                            .truncate(),
+                    );
+                });
+            });
+        },
+    );
     pressed
 }
 
@@ -1268,8 +1315,7 @@ pub fn takes_table(
                 RichText::new(if cx.unsorted {
                     "No takes here: a Quick Listen take saved with File > Save… waits here until it is filed."
                 } else {
-                    "No takes yet: Listen, Positions Test, Dynamic Poise Test or Power Reserve Test, \
-                     above, each keeps one here."
+                    "No takes yet: each button above keeps one here."
                 })
                 .color(pal.text_secondary),
             );
@@ -2161,30 +2207,6 @@ mod tests {
         std::fs::remove_file(&file).unwrap();
         assert_eq!(take_kept_by_name(&dir), None);
         std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    /// New Take's captions are whole under their buttons in an 800 point
-    /// window, where the watch's side is narrowest.
-    #[test]
-    fn the_new_take_captions_fit_an_800_window() {
-        let ctx = egui::Context::default();
-        crate::theme::install(&ctx);
-        // The window less the list, its gap and the margins.
-        let side = 800.0 - crate::app::WATCH_LIST_W - 17.0 - 2.0 * 12.0 - 16.0;
-        let tile = (side - 2.0 * 10.0) / 3.0 - 16.0;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                for c in NEW_TAKE_CAPTIONS {
-                    let font = egui::TextStyle::Small.resolve(ui.style());
-                    let w = ui
-                        .painter()
-                        .layout_no_wrap(c.to_string(), font, egui::Color32::WHITE)
-                        .size()
-                        .x;
-                    assert!(w <= tile, "{c}: {w} in {tile}");
-                }
-            });
-        });
     }
 
     /// A watch's Calibre, Lift Angle, Beat Rate and Notes are always in its
