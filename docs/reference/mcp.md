@@ -358,7 +358,9 @@ its note sits in the nearest clear space the trace doesn't cross, above
 right first, on a plate with a thin leader to the dot, as in the app;
 Periods and FFT keep a row clear above the trace's highest point for it.
 On a short plot, or with nowhere clear, the note is the dot's hover. A Wheel Periods switch beside each of those views' own switch
-turns the marks off and on, as in the app.
+turns the marks off and on, as in the app. The calibre's meshes
+(`input.settings.named_meshes`) are marked with them, faint and loosely
+dashed, as in the app.
 Nothing but the lines' names is drawn outside a chart's plot. Hover over a chart over time to read its
 values. The charts follow the chat app's light or dark look. They are one page served by this program, so they load
 nothing from the internet. Chat apps without MCP Apps show the same results

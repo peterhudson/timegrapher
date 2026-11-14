@@ -22,6 +22,7 @@ input.settings.escape_teeth
 input.settings.highpass_hz
 input.settings.lift_deg
 input.settings.masked
+input.settings.named_meshes
 input.settings.named_wheels
 input.settings.notch_hz
 input.settings.out

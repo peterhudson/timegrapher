@@ -1576,7 +1576,14 @@ the size 0 dB stands for in the swing's unit at its top end; the pointer
 over a cell shows its size with its unit, its period and its time, as
 "Timing Swing 1.8 ms · period 12 s · at 3:20"; the two maps show **one map at a time**, Rate first, picked with the Rate, Amplitude and Beat Error icons joined into one three-part control, so the map has the pane, and they share the choice, so switching between them keeps the same map). In Periods and FFT each wheel's
 period is a bold dotted line and half of it, twice a turn as an off-centre wheel
-shows, a fainter dotted line marked ×2; the grid behind is pale. The
+shows, a fainter dotted line marked ×2; where the calibre's tooth and leaf
+counts give it, each pinion's mesh (the time one tooth of the wheel
+driving it takes to engage, drive and leave, from core's
+`Catalog::meshes`, #1472) is a faint, loosely dashed line named
+"Fourth Pinion Mesh", or "4th Mesh" beside a map, unless a wheel or a ×2
+already marks that period. Its hover gives core's words: "Fourth Pinion
+Mesh: 6.67 s, the time one tooth of the third wheel takes to pass through
+the fourth pinion's leaves."; the grid behind is pale. The
 wheels' lines are grey and dotted, and named, so they never
 read as the grid or a reading. With no calibre picked, or none of its
 wheels known, one minute and one hour are marked in grey instead, periods

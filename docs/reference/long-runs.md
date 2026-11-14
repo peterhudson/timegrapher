@@ -110,7 +110,14 @@ plus three that name the periodic components after wheels:
 
 `series` takes the same three. Both list the wheels they used in the
 JSON's `input.settings.named_wheels`, and the reference lines in
-`input.settings.reference_lines` (empty when a wheel is named).
+`input.settings.reference_lines` (empty when a wheel is named). The
+calibre's meshes are in `input.settings.named_meshes` (`name`, the
+pinion, as "fourth pinion"; `wheel`, the wheel driving it; `period_s`,
+the time one of its teeth takes to pass through the pinion's leaves; and
+`about`, that said to three figures, as the app's hover says it), from
+core's `Catalog::meshes` (#1472):
+marks for a chart, not wheels a cycle is named after, and empty with no
+calibre or none of its tooth and leaf counts.
 
 ## Calibrating the sound card
 

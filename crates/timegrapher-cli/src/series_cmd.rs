@@ -65,6 +65,7 @@ pub fn run(o: Options) -> Result<(), String> {
         o.lift,
         o.train,
     )?;
+    let meshes = resolved_train.meshes();
     let mut lc = LongConfig {
         wheels: resolved_train.wheels(log.bph),
         ..Default::default()
@@ -100,6 +101,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "calibre": calibre,
             "escape_teeth": escape_teeth,
             "named_wheels": lc.wheels,
+            "named_meshes": meshes,
             "reference_lines": crate::long::reference_lines(&lc.wheels),
             "wheels": o.wheels,
             "reading_s": o.check.rate_reading_s,

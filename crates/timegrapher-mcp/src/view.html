@@ -260,7 +260,7 @@ const FAINT_CALL_OUT_W = 1;
 // How strongly the cycle plot's boxes are drawn: the shape's colour at this
 // opacity, so the shape stays on top (steady::BOX_OPACITY).
 const BOX_OPACITY = 0.6;
-const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5", wheel: "4 4", dense: "0 5", sparse: "0 10" };
+const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5", wheel: "4 4", dense: "0 5", sparse: "0 10", mesh: "10 10" };
 
 // Charts are drawn at the width they are shown, so their text stays at its size.
 function chartWidth() {
@@ -1337,16 +1337,27 @@ function wheelShort(name) {
   return { "centre wheel": "2nd Wheel", "third wheel": "3rd Wheel", "fourth wheel": "4th Wheel", "escape wheel": "Esc Wheel",
     "seconds wheel": "Sec Wheel", "intermediate wheel": "Int Wheel" }[name] || wheelTitle(name);
 }
+// marks::mesh_short: a mesh's short name, its pinion by the short name of
+// the wheel on the same arbor ("4th Mesh"), but "Centre Mesh".
+function meshShort(pinion) {
+  if (pinion === "centre pinion") return "Centre Mesh";
+  const w = pinion.endsWith(" pinion") ? wheelShort(pinion.slice(0, -" pinion".length) + " wheel") : "";
+  return w.endsWith(" Wheel") ? `${w.slice(0, -" Wheel".length)} Mesh` : `${wheelTitle(pinion)} Mesh`;
+}
 
+// steady::one_mark: two periods near enough (3%) to share one line.
+function oneMark(a, b) { return Math.abs(a / b - 1) < 0.03; }
 // steady::wheel_lines: the lines to mark on a period axis spanning `span`
 // (log10 s): each wheel's turn, and half of it ("×2", where a wheel that is
 // off centre shows twice a turn) unless another wheel turns there; with no
 // wheel named, the reference periods; with Wheel Periods off, nothing.
-// Each line's x, turn ("wheel", "twice" or "reference"), name, short name
-// and hover.
+// Then each pinion's mesh (input.settings.named_meshes, its hover core's
+// `about`) where no wheel or ×2 already marks its period. Each line's x, turn ("wheel", "twice",
+// "mesh" or "reference"), name, short name and hover.
 function wheelLines(doc, span) {
   if (!showWheels) return [];
   const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
+  const meshes = (doc.input && doc.input.settings && doc.input.settings.named_meshes) || [];
   const inside = (l) => l.x > span[0] && l.x < span[1];
   if (!wheels.length) {
     return referenceLines(doc).map((r) => ({ x: Math.log10(r.period_s), turn: "reference", name: r.label, short: r.label, hover: (REFERENCE_HOVER || {})[r.label] || r.label })).filter(inside);
@@ -1356,9 +1367,15 @@ function wheelLines(doc, span) {
     const title = wheelTitle(w.name), short = wheelShort(w.name);
     out.push({ x: Math.log10(w.period_s), turn: "wheel", name: title, short, hover: `${title}: ${secs(w.period_s)}` });
     const half = w.period_s / 2;
-    if (!wheels.some((o) => Math.abs(o.period_s / half - 1) < 0.03)) {
+    if (!wheels.some((o) => oneMark(o.period_s, half))) {
       out.push({ x: Math.log10(half), turn: "twice", name: `${title} ×2`, short: `${short} ×2`, hover: `${title} ×2: ${secs(half)}` });
     }
+  }
+  for (const m of meshes) {
+    if (out.some((l) => oneMark(Math.pow(10, l.x), m.period_s))) continue;
+    const title = wheelTitle(m.name);
+    out.push({ x: Math.log10(m.period_s), turn: "mesh", name: `${title} Mesh`, short: meshShort(m.name),
+      hover: `${title} Mesh: ${m.about}.` });
   }
   return out.filter(inside);
 }
@@ -1372,12 +1389,13 @@ function wheelInk() { return { ink: "--callout" }; }
 function wheelWidth(l) { return l.turn === "wheel" ? CALL_OUT_W : FAINT_CALL_OUT_W; }
 
 // steady::wheel_marks: the lines down a period plot, under its trace, all
-// call-outs: a wheel's dotted, a ×2's looser, a reference's solid; named
+// call-outs: a wheel's dotted, a ×2's looser, a mesh's loosely dashed, a
+// reference's solid; named
 // above the plot by the lane rules.
 function wheelMarks(doc, span) {
   return wheelLines(doc, span).map((l) => {
     const { ink } = wheelInk(l);
-    const style = l.turn === "wheel" ? { dash: "dense" } : l.turn === "twice" ? { dash: "sparse" } : {};
+    const style = l.turn === "wheel" ? { dash: "dense" } : l.turn === "twice" ? { dash: "sparse" } : l.turn === "mesh" ? { dash: "mesh" } : {};
     return { x: l.x, color: ink, width: wheelWidth(l), ...style, name: l.name, rank: wheelRank(l), ink, hover: l.hover };
   });
 }
@@ -1653,7 +1671,7 @@ function steadySwitch() {
 const INFO_HINT = "Info: what this view shows, and each reading's findings and statistics, in full.";
 
 // steady::WHEELS_HINT.
-const WHEELS_HINT = "Mark the period each of the calibre's wheels turns in, in a grey dotted line named above the plot, and half of it more loosely dotted, where a wheel that is off centre shows twice a turn. With no calibre picked, or none of its wheels known, one minute and one hour are marked in grey instead: periods alone, named after no wheel.";
+const WHEELS_HINT = "Mark the period each of the calibre's wheels turns in, in a grey dotted line named above the plot, and half of it more loosely dotted, where a wheel that is off centre shows twice a turn. Where the calibre's tooth and leaf counts give them, each pinion's mesh is marked too, faintly dashed: the time one tooth of the wheel driving it takes to engage, drive and leave, where amplitude can step. With no calibre picked, or none of its wheels known, one minute and one hour are marked in grey instead: periods alone, named after no wheel.";
 
 function wireSteadiness(root) {
   for (const b of root.querySelectorAll("button[data-steady]")) {
@@ -1792,7 +1810,7 @@ function mapChart(m, doc, log) {
   // The map fills the plot, so its axes are drawn over it.
   let over = `<path class="axis" fill="none" d="M${L} ${T}V${T + plotH}H${L + plotW}"/>`;
   for (const l of lines) {
-    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(l.x)}" y2="${sy(l.x)}" stroke="var(${l.ink})" stroke-width="${wheelWidth(l)}" stroke-dasharray="${DASH.dense}" stroke-linecap="round"/>`;
+    over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(l.x)}" y2="${sy(l.x)}" stroke="var(${l.ink})" stroke-width="${wheelWidth(l)}" stroke-dasharray="${l.turn === "mesh" ? DASH.mesh : DASH.dense}" stroke-linecap="round"/>`;
   }
   over += laneRight(lines.map((l) => ({ ...l, y: sy(l.x) })), L + plotW, T, T + plotH);
   const k = mapPaints.length;

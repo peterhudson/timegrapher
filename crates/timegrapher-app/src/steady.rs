@@ -201,6 +201,9 @@ pub struct Steadiness {
     /// Where each fold's period came from.
     fold_from: [FoldFrom; 3],
     wheels: Vec<Wheel>,
+    /// The calibre's meshes, marked beside its wheels; set by whoever
+    /// knows the calibre, after the tests run.
+    pub meshes: Vec<timegrapher_core::train::MeshLine>,
     /// The periods every series' search covers between them, log10 seconds,
     /// so the three Periods plots share one time axis.
     period_span: Option<(f64, f64)>,
@@ -362,6 +365,7 @@ pub fn compute_with(
         fold_from,
         period_span,
         wheels: lc.wheels,
+        meshes: Vec::new(),
         maps,
         upto_s: log.duration_s,
     }
@@ -1857,20 +1861,36 @@ pub struct Opts {
 /// What Wheel Periods does, for its hint.
 pub const WHEELS_HINT: &str = "Mark the period each of the calibre's wheels turns in, in \
      a grey dotted line named above the plot, and half of it more loosely dotted, where a \
-     wheel that is off centre shows twice a turn. With no calibre picked, or none of its wheels known, one minute and \
+     wheel that is off centre shows twice a turn. Where the calibre's tooth and leaf counts \
+     give them, each pinion's mesh is marked too, faintly dashed: the time one tooth of the \
+     wheel driving it takes to engage, drive and leave, where amplitude can step. With no calibre picked, or none of its wheels known, one minute and \
      one hour are marked in grey instead: periods alone, named after no wheel.";
 
-/// The wheels to mark: `None` when the marks are off.
-fn marked(s: &Steadiness, opts: Opts) -> Option<&[Wheel]> {
-    opts.wheels.then_some(&s.wheels[..])
+/// What the period axis marks: the calibre's wheels, and its meshes
+/// ([`timegrapher_core::calibre_store::Catalog::meshes`]).
+#[derive(Clone, Copy)]
+pub(crate) struct Marks<'a> {
+    pub wheels: &'a [Wheel],
+    pub meshes: &'a [timegrapher_core::train::MeshLine],
+}
+
+/// The wheels and meshes to mark: `None` when the marks are off.
+fn marked(s: &Steadiness, opts: Opts) -> Option<Marks<'_>> {
+    opts.wheels.then_some(Marks {
+        wheels: &s.wheels,
+        meshes: &s.meshes,
+    })
 }
 
 /// What a line on the period axis marks: a wheel's turn, half of it (a
-/// wheel off centre shows twice a turn), or a reference period.
+/// wheel off centre shows twice a turn), a pinion's mesh (one tooth of
+/// the wheel driving it engaging, driving and leaving), or a reference
+/// period.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Turn {
     Wheel,
     Twice,
+    Mesh,
     Reference,
 }
 
@@ -1913,11 +1933,12 @@ impl WheelLine {
 
 /// The lines to mark on a period axis spanning `span`: each wheel's turn
 /// and half of it ("×2", where a wheel that is off centre shows twice a
-/// turn, unless another wheel turns there); with no wheels, the
-/// reference periods; with `None` (the marks off), nothing.
-pub(crate) fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelLine> {
+/// turn, unless another wheel turns there), then each mesh where no wheel
+/// or ×2 already marks its period; with no wheels, the reference
+/// periods; with `None` (the marks off), nothing.
+pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelLine> {
     let inside = |x: f64| x > x_lo && x < x_hi;
-    let Some(wheels) = wheels else {
+    let Some(Marks { wheels, meshes }) = shown else {
         return Vec::new();
     };
     if wheels.is_empty() {
@@ -1945,10 +1966,7 @@ pub(crate) fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) ->
             hover: format!("{title}: {}", secs(w.period_s)),
         });
         let half = w.period_s / 2.0;
-        if !wheels
-            .iter()
-            .any(|o| (o.period_s / half - 1.0).abs() < 0.03)
-        {
+        if !wheels.iter().any(|o| one_mark(o.period_s, half)) {
             out.push(WheelLine {
                 x: half.log10(),
                 turn: Turn::Twice,
@@ -1958,12 +1976,31 @@ pub(crate) fn wheel_lines(wheels: Option<&[Wheel]>, (x_lo, x_hi): (f64, f64)) ->
             });
         }
     }
+    for m in meshes {
+        if out.iter().any(|l| one_mark(10f64.powf(l.x), m.period_s)) {
+            continue;
+        }
+        let title = marks::title_case(&m.name);
+        out.push(WheelLine {
+            x: m.period_s.log10(),
+            turn: Turn::Mesh,
+            name: format!("{title} Mesh"),
+            short: marks::mesh_short(&m.name),
+            hover: format!("{title} Mesh: {}.", m.about),
+        });
+    }
     out.retain(|l| inside(l.x));
     out
 }
 
+/// Whether two periods are near enough (3%) to share one line on a period
+/// axis, which keeps the first one marked there.
+fn one_mark(a_s: f64, b_s: f64) -> bool {
+    (a_s / b_s - 1.0).abs() < 0.03
+}
+
 /// The lines in the plot, under its trace, all call-outs: a wheel's
-/// dotted, a ×2's looser, a reference period's solid (a named mark). Their names are drawn by
+/// dotted, a ×2's looser, a mesh's loosely dashed, a reference period's solid (a named mark). Their names are drawn by
 /// [`wheel_names`].
 fn wheel_marks(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::Palette) {
     for l in lines {
@@ -1973,6 +2010,7 @@ fn wheel_marks(p: &mut egui_plot::PlotUi<'_>, lines: &[WheelLine], pal: &theme::
         p.vline(match l.turn {
             Turn::Wheel => v.style(LineStyle::dotted_dense()),
             Turn::Twice => v.style(LineStyle::dotted_loose()),
+            Turn::Mesh => v.style(LineStyle::dashed_loose()),
             Turn::Reference => v,
         });
     }
