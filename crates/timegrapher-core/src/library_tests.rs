@@ -1571,6 +1571,7 @@ fn a_folder_holding_the_watches_is_not_added() {
     let written = [("session.toml", "bph = 28800\n".to_string())];
     // Both are take folders, so the overlap is what refuses them.
     take(&base, &[("b.wav", "DD")], 1, "2026-10-22T14:30:00Z");
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut tried = vec![outer.clone(), base.clone()];
     #[cfg(unix)]
     {
