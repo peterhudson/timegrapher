@@ -18,7 +18,7 @@ function constant(name) {
   return match[0].replace(/^(?:const|let) /, "var ");
 }
 const context = vm.createContext({ MINUS: "−", CHAR_W: 6.6, ICONS: null, paneWs: {}, chartWidth: () => 1240 });
-vm.runInContext(["PANE_MIN_CHART", "poiseShown"].map(constant).join("\n"), context);
+vm.runInContext(["PANE_MIN_CHART", "PANE_CHAR_W", "poiseShown"].map(constant).join("\n"), context);
 vm.runInContext(["esc", "fixedDigits", "axisLabel", "gridAcross", "valueTick", "testPane",
   "icon", "columnHead", "paneChartWidth", "plHead", "poisePane", "poiseDots", "poisePlot", "poiseDial", "poiseKey"].map(definition).join("\n"), context);
 
@@ -29,7 +29,7 @@ const picture = {
   wave: [[0, 1], [180, -1], [360, 1]],
   fastest: { at: 60, rate_s_per_day: 3, name: "Fastest 2H" },
   slowest_deg: 240,
-  mean: { at: 0.5, rate_s_per_day: 0.5, name: "Mean +0.5", figure: "+0.5" }, unit: "s/d", mean_title: "Mean",
+  mean: { at: 0.5, rate_s_per_day: 0.5, name: "Mean +0.5", figure: "+0.5" }, unit: "s/d", mean_title: "Mean", rate_title: "Rate",
   axis: [-4, 4, 2], key: ["Upright positions (5)", "Fitted wave"],
   heavy: ["Heavy spot", "8H at the top, 240 ± 20°"], hours,
   title: "Dynamic Poise", hour_axis: "Hour at the top", dial_key: "Further out = faster, s/d",
@@ -96,4 +96,22 @@ test("Plot and Dial sit side by side where both fit", () => {
   } finally {
     context.poiseShown.dial = false;
   }
+});
+
+test("the hover sits in the chart's title row, above the heavy spot and the key", () => {
+  const markup = context.poisePane(p, "p0", null);
+  const head = markup.indexOf('<div class="pl-head"><b>Rate</b>');
+  assert.ok(head > 0, markup);
+  assert.ok(head < markup.indexOf("8H at the top") && head < markup.indexOf("poise-key"), "title row first");
+});
+
+test("no ring number sits on a point or its ± bar", () => {
+  // A point right where the ring numbers run (half way from the slowest hour).
+  const bearing = picture.slowest_deg + 180 / hours.length;
+  // Its dot on the +2 ring, its ± bar reaching the +4 ring.
+  const pic = { ...picture, points: [...picture.points, { ...dot(bearing, "X", 2), rate_se: 2 }] };
+  const svg = context.poiseDial(pic, 400);
+  const labels = [...svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)" text-anchor="middle" style="fill:var\(--text3\)">([^<]*)</g)].map((m) => m[3]);
+  assert.ok(labels.length, svg);
+  for (const v of ["+2", "+4"]) assert.ok(!labels.includes(v), `${v} on the point: ${labels}`);
 });

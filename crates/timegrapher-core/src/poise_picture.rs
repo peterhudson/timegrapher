@@ -135,6 +135,9 @@ pub struct Picture {
     pub hour_axis: &'static str,
     pub dial_key: &'static str,
     pub mean_title: &'static str,
+    /// The measure the picture draws, as its column and chart are titled:
+    /// "Rate".
+    pub rate_title: &'static str,
 }
 
 /// The picture of `readings`' upright positions and their `fit`.
@@ -196,6 +199,7 @@ pub fn picture(readings: &[Reading], fit: Option<&PoiseFit>) -> Picture {
         hour_axis: HOUR_AXIS,
         dial_key: DIAL_KEY,
         mean_title: MEAN,
+        rate_title: crate::steadiness::SeriesKind::Rate.title(),
     }
 }
 

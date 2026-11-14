@@ -109,6 +109,7 @@ canvas.map { position: absolute; image-rendering: pixelated; cursor: crosshair; 
 .icon-toggle { width: 26px; height: 26px; padding: 3px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .icon-toggle:hover { background: var(--surface-2, rgba(127,127,127,.12)); }
 .icon-toggle[aria-pressed="true"] { color: var(--tint); background: color-mix(in srgb, var(--tint) 16%, transparent); border-color: color-mix(in srgb, var(--tint) 45%, transparent); }
+.legend.above.poise-key { justify-content: flex-start; }
 .poise-charts { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
 .poise-chart { flex: 1 1 320px; min-width: 0; }
 details.info { display: inline-block; vertical-align: middle; margin-right: 6px; }
@@ -932,7 +933,7 @@ const poiseShown = { plot: true, dial: false };
 
 function poisePane(p, id, state) {
   const pic = p.picture;
-  let table = `<table class="pane-rows"><thead><tr><th>Position</th>${columnHead("Rate", pic.unit)}</tr></thead><tbody>`;
+  let table = `<table class="pane-rows"><thead><tr><th>Position</th>${columnHead(pic.rate_title, pic.unit)}</tr></thead><tbody>`;
   for (const d of pic.points) table += `<tr data-pos="${esc(d.code)}"><td>${esc(d.code)}</td><td>${esc(d.figure)}</td></tr>`;
   if (pic.mean) table += `<tr class="avg"><td>${esc(pic.mean_title)}</td><td>${esc(pic.mean.figure)}</td></tr>`;
   table += `</tbody></table>`;
@@ -950,7 +951,7 @@ function poisePane(p, id, state) {
   const charts = [poiseShown.plot && poisePlot(pic, w), poiseShown.dial && poiseDial(pic, w)].filter(Boolean)
     .map((c) => `<div class="poise-chart">${c}</div>`).join("");
   const title = state ? `${pic.title}, ${state}` : pic.title;
-  return `<div data-pane="${esc(id)}">${testPane(title, table, `<div class="chart pl" data-pl="${esc(id)}-poise">${heavy}${plHead("", "var(--rate)")}${poiseKey(pic)}<div class="poise-charts">${charts}</div></div>`, toggle)}</div>`;
+  return `<div data-pane="${esc(id)}">${testPane(title, table, `<div class="chart pl" data-pl="${esc(id)}-poise">${plHead(pic.rate_title, "var(--rate)")}${heavy}${poiseKey(pic)}<div class="poise-charts">${charts}</div></div>`, toggle)}</div>`;
 }
 
 // The points with their ±, each a lane for the one hover.
@@ -1037,7 +1038,15 @@ function poiseDial(pic, width) {
       // A ring's number is left out where it would sit on a point or on
       // the mean's name, as on the app's dial.
       const near = (q, w) => Math.abs(x - q[0]) < w && Math.abs(y - q[1]) < 12;
-      if (pic.points.some((d) => near(xy(d.angle_deg, d.rate_s_per_day), 26))) continue;
+      // A point is its dot and its ± bar, each kept a dot's width clear of
+      // the number's box (Walter on #1747: "+9" sat on the 4H30 dot).
+      const half = valueTick({ series: "rate", unit: "s/d" }, v, step, false).length * PANE_CHAR_W / 2 + 4;
+      const onBox = (q) => Math.abs(x - q[0]) < half + 4.2 && q[1] > y - 6 - 4.2 && q[1] < y + 8 + 4.2;
+      const covers = (d) => {
+        const se = d.rate_se || 0;
+        return [-1, -0.5, 0, 0.5, 1].some((k) => onBox(xy(d.angle_deg, d.rate_s_per_day + k * se)));
+      };
+      if (pic.points.some(covers)) continue;
       // Nor on an hour's name round the face.
       const nameAt = (deg) => { const a = (deg - 90) * Math.PI / 180; return [c + (outer + 16) * Math.cos(a), c + (outer + 16) * Math.sin(a)]; };
       if (pic.hours.some(([deg]) => near(nameAt(deg), 34))) continue;
@@ -1065,20 +1074,21 @@ function poiseDial(pic, width) {
 // The key over the picture: the points, then the wave once it is fitted.
 function poiseKey(pic) {
   if (!pic.key.length) return "";
-  return `<div class="legend above">${pic.key.map((k, i) => `<span><svg class="key" width="14" height="12">${i === 0
+  return `<div class="legend above poise-key">${pic.key.map((k, i) => `<span><svg class="key" width="14" height="12">${i === 0
     ? `<circle cx="7" cy="6" r="4.2" fill="var(--rate)"/>` : `<line x1="0" x2="14" y1="6" y2="6" stroke="var(--text2)" stroke-width="1.5"/>`}</svg>${esc(k)}</span>`).join("")}</div>`;
 }
 
 // Which of an axis's tick labels are drawn: the last always (it carries
 // the unit), then each one before it that clears the next drawn one, so no
 // two labels touch however narrow the steps (Walter on #1747). Each label
-// is {x, text, end}: end-anchored at x when `end`, else centred.
+// is {x, text, end, start}: end-anchored at x when `end`, start-anchored
+// when `start`, else centred.
 function tickLabelsShown(labels, cw = CHAR_W) {
   const shown = labels.map(() => null);
   let left = Infinity;
   for (let i = labels.length - 1; i >= 0; i--) {
     const l = labels[i], w = l.text.length * cw;
-    const [a, b] = l.end ? [l.x - w, l.x] : [l.x - w / 2, l.x + w / 2];
+    const [a, b] = l.end ? [l.x - w, l.x] : l.start ? [l.x, l.x + w] : [l.x - w / 2, l.x + w / 2];
     if (b + 4 <= left) { shown[i] = l; left = a; }
   }
   return shown;
@@ -1134,11 +1144,14 @@ function stepChart(s, hours, id) {
   const xs = gridFor(0, end, plotW, 60);
   const shown = tickLabelsShown(xs.ticks.map((h, i) => {
     const last = i === xs.ticks.length - 1;
-    return { x: sx(h), text: axisLabel(h, xs.step, last ? " h" : ""), end: sx(h) > L + plotW - 16 };
+    return { x: sx(h), text: axisLabel(h, xs.step, last ? " h" : ""), end: sx(h) > L + plotW - 16, start: i === 0 && sx(h) < L + 16 };
   }), PANE_CHAR_W);
   xs.ticks.forEach((h, i) => {
     g += gridDown(sx(h), L, T, plotH);
-    if (shown[i]) g += `<text x="${sx(h)}" y="${T + plotH + 15}" text-anchor="${shown[i].end ? "end" : "middle"}">${esc(shown[i].text)}</text>`;
+    // The first hour's label starts at the axis, clear of the lowest
+    // value's label beside it (Walter on #1747).
+    const anchor = shown[i] && (shown[i].end ? "end" : shown[i].start ? "start" : "middle");
+    if (shown[i]) g += `<text x="${sx(h)}" y="${T + plotH + 15}" text-anchor="${anchor}">${esc(shown[i].text)}</text>`;
   });
   g += `<line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${T + plotH}"/><line class="axis" x1="${L}" x2="${L + plotW}" y1="${T + plotH}" y2="${T + plotH}"/>`;
   const color = `var(${(PANE_KINDS.find(([k]) => k === s.series) || [])[1] || "--rate"})`;

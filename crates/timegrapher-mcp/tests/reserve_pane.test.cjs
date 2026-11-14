@@ -92,3 +92,8 @@ test("no two hour labels touch, at the narrowest chart", () => {
     context.chartWidth = () => 860;
   }
 });
+
+test("the first hour's label starts at the axis, clear of the lowest value's", () => {
+  const chart = context.stepChart(reserve.series[0], reserve.hours, "r-rate");
+  assert.ok(/<text x="52" y="163" text-anchor="start">0<\/text>/.test(chart), chart);
+});
