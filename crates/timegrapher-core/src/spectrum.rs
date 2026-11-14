@@ -233,11 +233,12 @@ impl SpectrumSupport {
 
 /// The least share of a full cycle's cover a size is read from: the
 /// smaller eigenvalue of the cosine and sine sums, once the constant is
-/// fitted, over Σw/2, what the full cover gives each. Below it the sine's
-/// size cannot be told from the constant's, and the ± of the size would be
-/// more than 1/√0.1 ≈ 3.2 times its full-cover value, so the bin is
-/// withheld (#1638). Half of each cycle kept reads 0.19 and is kept; a
-/// sixteenth reads 0.003 and is withheld.
+/// fitted, over Σw/2, what the full cover gives each. Below it the size's
+/// ± would be over √10 ≈ 3.2× its full-cover value, so the line can't be
+/// sized and the bin is withheld (#1638). Half of each cycle kept reads
+/// 0.19 and is kept; a sixteenth reads 0.003 and is withheld. A kept bin's
+/// size is solved through that same block, so thin cover moves no size;
+/// the spectrum shows no ± and no false-alarm level.
 pub const MIN_PHASE_COVER: f64 = 0.1;
 
 /// A real FFT's value at bin `k` of `l`, any k: real input repeats with
