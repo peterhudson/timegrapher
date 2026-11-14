@@ -44,8 +44,7 @@ pub(crate) struct SecondReading {
     fs: f64,
     margin: usize,
     step: usize,
-    usb_keep: usize,
-    usb: Vec<f32>,
+    usb: usbclock::Live,
     /// Each shape stretch, first and last sample, and its sound so far.
     cuts: Vec<(usize, usize, Vec<f32>)>,
     /// The sound from sample `buf0` on, back to the next stretch's margin.
@@ -81,8 +80,7 @@ impl SecondReading {
             fs,
             margin: (PROFILE_MARGIN_S * fs).round() as usize,
             step: (PROFILE_EVERY_S * fs).round() as usize,
-            usb_keep: (usbclock::MAX_DURATION_S * fs) as usize,
-            usb: Vec::new(),
+            usb: usbclock::Live::new(sample_rate),
             cuts: shapes
                 .iter()
                 .flatten()
@@ -102,10 +100,7 @@ impl SecondReading {
     /// The samples after those read so far.
     pub(crate) fn audio(&mut self, block: &[f32]) {
         let (s, e) = (self.pos, self.pos + block.len());
-        if self.usb.len() < self.usb_keep {
-            let take = (self.usb_keep - self.usb.len()).min(block.len());
-            self.usb.extend_from_slice(&block[..take]);
-        }
+        self.usb.push(block);
         for (a, b, v) in &mut self.cuts {
             if e > *a && s < *b {
                 v.extend_from_slice(&block[(*a).max(s) - s..(*b).min(e) - s]);
@@ -297,11 +292,12 @@ impl SecondReading {
                 })
             })
             .collect();
-        let usb_clock = usbclock::measure(&self.usb, log.sample_rate).map(|c| StoredUsbClock {
-            ppm: c.ppm,
-            lines: c.lines,
-            spread_ppm: c.spread_ppm,
-        });
+        let usb_clock =
+            usbclock::measure(self.usb.kept(), log.sample_rate).map(|c| StoredUsbClock {
+                ppm: c.ppm,
+                lines: c.lines,
+                spread_ppm: c.spread_ppm,
+            });
         let mut signals: Vec<f32> = self.profiles.iter().filter_map(|p| p.signal).collect();
         let signal_median = (!signals.is_empty()).then(|| crate::dsp::median_f32(&mut signals));
         // The beats' header, with what the second reading found.

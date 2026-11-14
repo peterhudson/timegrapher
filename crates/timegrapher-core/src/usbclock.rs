@@ -165,6 +165,165 @@ pub fn measure(x: &[f32], fs: u32) -> Option<UsbClock> {
     })
 }
 
+/// The lengths of sound, seconds, at which a [`Live`] reading measures the
+/// USB lines: from [`MIN_DURATION_S`], doubling, to [`MAX_DURATION_S`],
+/// past which a saved take reads no more. Each measurement is the one a
+/// take saved at that length reads ([`measure`] on the same samples); the
+/// doubling keeps their cost, which grows with the square of the length,
+/// to about twice the last one's.
+pub const LIVE_READS_S: [f64; 6] = [MIN_DURATION_S, 60.0, 120.0, 240.0, 480.0, MAX_DURATION_S];
+
+/// Where a live reading's USB-line clock stands (#1721).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum LiveClock {
+    /// Too little sound for the lines yet: `heard_s` of [`MIN_DURATION_S`].
+    NotMeasured { heard_s: f64 },
+    /// Measured on the first `over_s` of sound, as a take saved at that
+    /// length reads them.
+    Measured { clock: UsbClock, over_s: f64 },
+    /// The first `over_s` of sound holds no lines that stand clear and
+    /// agree, so a take saved then reads none either.
+    NoLines { over_s: f64 },
+}
+
+impl LiveClock {
+    /// The lines' correction, ppm, when they were found.
+    pub fn usb_ppm(&self) -> Option<f64> {
+        match self {
+            LiveClock::Measured { clock, .. } => Some(clock.ppm),
+            _ => None,
+        }
+    }
+
+    /// What a live rate must say beside it while the recording's own clock
+    /// is still to be read; `None` once it is read, lines or none, when the
+    /// rate is the one the take reads saved and opened again. `kept`: a
+    /// correction known for the input is applied meanwhile.
+    pub fn not_yet(&self, kept: bool) -> Option<String> {
+        let LiveClock::NotMeasured { heard_s } = self else {
+            return None;
+        };
+        let on = if kept {
+            "the correction kept for this input"
+        } else {
+            "the sound card's clock"
+        };
+        Some(format!(
+            "Rate on {on} for now: the recording's own clock (its USB lines) is read after {MIN_DURATION_S:.0} s of sound, {:.0} s in.",
+            heard_s.max(0.0).floor()
+        ))
+    }
+}
+
+/// The USB-line clock read while the sound is heard (#1721): the first
+/// [`MAX_DURATION_S`] are kept, as a saved take's reading keeps them, and
+/// measured at each length of [`LIVE_READS_S`] reached. [`Live::due`]
+/// says when a measurement is due, [`Live::samples`] gives its sound (to
+/// measure off the audio thread with [`measure_at`]) and [`Live::set`]
+/// takes its answer; [`Live::clock`] is the latest.
+#[derive(Debug, Clone)]
+pub struct Live {
+    fs: u32,
+    keep: usize,
+    x: Vec<f32>,
+    heard: usize,
+    clock: Option<LiveClock>,
+}
+
+impl Live {
+    pub fn new(fs: u32) -> Self {
+        Live {
+            fs,
+            keep: (MAX_DURATION_S * f64::from(fs)) as usize,
+            x: Vec::new(),
+            heard: 0,
+            clock: None,
+        }
+    }
+
+    /// The samples after those heard so far.
+    pub fn push(&mut self, block: &[f32]) {
+        if self.x.len() < self.keep {
+            let take = (self.keep - self.x.len()).min(block.len());
+            self.x.extend_from_slice(&block[..take]);
+        }
+        self.heard += block.len();
+    }
+
+    /// The sound kept: the first [`MAX_DURATION_S`].
+    pub fn kept(&self) -> &[f32] {
+        &self.x
+    }
+
+    fn heard_s(&self) -> f64 {
+        self.heard as f64 / f64::from(self.fs)
+    }
+
+    fn over_s(&self) -> Option<f64> {
+        match self.clock {
+            Some(LiveClock::Measured { over_s, .. } | LiveClock::NoLines { over_s }) => {
+                Some(over_s)
+            }
+            _ => None,
+        }
+    }
+
+    /// The longest length of [`LIVE_READS_S`] heard and not yet measured.
+    pub fn due(&self) -> Option<f64> {
+        let heard = self.heard_s();
+        LIVE_READS_S
+            .iter()
+            .copied()
+            .rev()
+            .find(|&t| t <= heard)
+            .filter(|&t| self.over_s().is_none_or(|o| t > o))
+    }
+
+    /// The first `over_s` of sound kept, to measure.
+    pub fn samples(&self, over_s: f64) -> &[f32] {
+        let n = (over_s * f64::from(self.fs)).round() as usize;
+        &self.x[..n.min(self.x.len())]
+    }
+
+    /// A measurement's answer, kept unless a longer one is already in.
+    pub fn set(&mut self, clock: LiveClock) {
+        let over = |c: &LiveClock| match c {
+            LiveClock::Measured { over_s, .. } | LiveClock::NoLines { over_s } => *over_s,
+            LiveClock::NotMeasured { .. } => f64::NEG_INFINITY,
+        };
+        if self.clock.as_ref().is_none_or(|c| over(&clock) > over(c)) {
+            self.clock = Some(clock);
+        }
+    }
+
+    /// The latest measurement, or how much sound is in until the first.
+    pub fn clock(&self) -> LiveClock {
+        self.clock.unwrap_or(LiveClock::NotMeasured {
+            heard_s: self.heard_s(),
+        })
+    }
+
+    /// Measure what is due now, on this thread: for a caller with no
+    /// thread of its own to measure on, and for tests.
+    pub fn measure_due(&mut self) -> LiveClock {
+        if let Some(t) = self.due() {
+            let c = measure_at(self.samples(t), self.fs, t);
+            self.set(c);
+        }
+        self.clock()
+    }
+}
+
+/// [`measure`] on `x`, the first `over_s` of a reading's sound, as a
+/// [`LiveClock`].
+pub fn measure_at(x: &[f32], fs: u32, over_s: f64) -> LiveClock {
+    match measure(x, fs) {
+        Some(clock) => LiveClock::Measured { clock, over_s },
+        None => LiveClock::NoLines { over_s },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     /// Sound sampled too slowly to hold any USB line reads no clock, rather
@@ -219,5 +378,67 @@ mod tests {
         let fs = 48000u32;
         assert_eq!(measure(&noise(fs as usize * 40, 3), fs), None);
         assert_eq!(measure(&noise(fs as usize * 5, 3), fs), None);
+    }
+
+    /// A live reading measures at each length of LIVE_READS_S the lines a
+    /// take saved at that length reads, keeps the longest, and says the
+    /// rate is not yet on the recording's clock before the first.
+    #[test]
+    fn a_live_reading_measures_what_a_saved_take_would() {
+        let fs = 48000u32;
+        let n = fs as usize * 130;
+        let mut x = noise(n, 11);
+        for v in x.iter_mut() {
+            *v *= 0.02;
+        }
+        for (f, a) in [(5000.0, 0.002), (6000.0, 0.003), (7000.0, 0.002)] {
+            let f = f * (1.0 - 19.3e-6);
+            for (i, v) in x.iter_mut().enumerate() {
+                *v += (a * (2.0 * std::f64::consts::PI * f * i as f64 / fs as f64).sin()) as f32;
+            }
+        }
+        let mut live = Live::new(fs);
+        let mut seen = Vec::new();
+        for block in x.chunks(4800) {
+            live.push(block);
+            if let Some(t) = live.due() {
+                seen.push(t);
+                let c = measure_at(live.samples(t), fs, t);
+                let saved = measure(&x[..(t * fs as f64) as usize], fs).expect("lines");
+                assert_eq!(
+                    c,
+                    LiveClock::Measured {
+                        clock: saved,
+                        over_s: t
+                    }
+                );
+                live.set(c);
+            }
+            if live.due().is_none() && seen.is_empty() {
+                let note = live.clock().not_yet(false).expect("not measured yet");
+                assert!(note.contains("sound card"), "{note}");
+                assert_eq!(live.clock().usb_ppm(), None);
+            }
+        }
+        assert_eq!(seen, [30.0, 60.0, 120.0]);
+        assert!((live.clock().usb_ppm().unwrap() - 19.3).abs() < 0.2);
+        assert_eq!(live.clock().not_yet(true), None);
+        // A shorter answer arriving late does not replace a longer one.
+        live.set(LiveClock::NoLines { over_s: 60.0 });
+        assert!(matches!(
+            live.clock(),
+            LiveClock::Measured { over_s: 120.0, .. }
+        ));
+        assert_eq!(live.kept().len(), n);
+    }
+
+    #[test]
+    fn a_live_reading_with_no_lines_says_so_once_measured() {
+        let fs = 48000u32;
+        let mut live = Live::new(fs);
+        live.push(&noise(fs as usize * 31, 5));
+        assert_eq!(live.measure_due(), LiveClock::NoLines { over_s: 30.0 });
+        assert_eq!(live.clock().not_yet(false), None);
+        assert_eq!(live.due(), None);
     }
 }
