@@ -1315,8 +1315,7 @@ pub fn takes_table(
                 RichText::new(if cx.unsorted {
                     "No takes here: a Quick Listen take saved with File > Save… waits here until it is filed."
                 } else {
-                    "No takes yet: Listen, Positions Test, Dynamic Poise Test or Power Reserve Test, \
-                     above, each keeps one here."
+                    "No takes yet: each button above keeps one here."
                 })
                 .color(pal.text_secondary),
             );

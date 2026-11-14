@@ -415,29 +415,36 @@ fn new_takes_last_button_starts_the_last_take_in_one_row_or_more() {
     assert_eq!(new_take_pressed(420.0, NEW_TAKES[1].1), Some(1));
 }
 
-/// New Take's names and captions are whole at every width: in one row
-/// at 1280, three then two at 1000, and at 800, where the watch's side
-/// is narrowest and "Power Reserve Test" is too wide for a third, two to
-/// a row (#1634).
+/// New Take's names and captions are whole at every width (#1634): at
+/// the app's narrowest, 800, the watch's side has the window to itself
+/// and New Take goes three then two; at 1000, beside the list, three then
+/// two; at 1280, one row. A side too narrow for a third of "Power Reserve
+/// Test" goes two to a row, never cutting it.
 #[test]
 fn new_take_rows_keep_every_name_and_caption_whole() {
     let ctx = egui::Context::default();
     theme::install(&ctx);
     let names = new_take_names();
-    // The window less the list, its gap and the margins.
-    let side = |window: f32| window - WATCH_LIST_W - 17.0 - 2.0 * 12.0 - 16.0;
-    let tile = |window: f32| move |n: usize| (side(window) - (n as f32 - 1.0) * 10.0) / n as f32;
+    // The window less its margins and the scroll bar's room; from
+    // WATCHES_SIDE_BY_SIDE on, less the list and its gap too.
+    let side = |window: f32| {
+        let inside = window - 2.0 * 12.0 - 16.0 - 8.0;
+        if window - 2.0 * 12.0 >= WATCHES_SIDE_BY_SIDE {
+            inside - WATCH_LIST_W - 17.0
+        } else {
+            inside
+        }
+    };
+    let tiles = |side: f32| move |n: usize| (side - (n as f32 - 1.0) * 10.0) / n as f32;
+    let row = |ui: &egui::Ui, window: f32| watches::new_take_row(ui, &names, tiles(side(window)));
     let _ = ctx.run(egui::RawInput::default(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
-            assert_eq!(watches::new_take_row(ui, &names, tile(1280.0)), 5, "1280");
-            assert_eq!(watches::new_take_row(ui, &names, tile(800.0)), 2, "800");
-            // Wide enough for three, not five: three then two.
-            assert_eq!(watches::new_take_row(ui, &names, tile(1000.0)), 3, "1000");
-            assert!(watches::new_take_fits(ui, &names, tile(800.0)(2)));
-            assert!(
-                !watches::new_take_fits(ui, &names, tile(800.0)(3)),
-                "a third"
-            );
+            assert_eq!(row(ui, 1280.0), 5, "1280");
+            assert_eq!(row(ui, 1000.0), 3, "1000");
+            assert_eq!(row(ui, 800.0), 3, "800");
+            // A side too narrow for a third: two to a row.
+            assert_eq!(watches::new_take_row(ui, &names, tiles(450.0)), 2, "450");
+            assert!(!watches::new_take_fits(ui, &names, tiles(450.0)(3)));
         });
     });
 }
