@@ -299,22 +299,6 @@ fn the_position_being_measured_shows_its_figures_so_far() {
     assert!(!settling.iter().any(|t| t == "281"), "{settling:?}");
 }
 
-#[test]
-fn a_position_says_how_its_beat_error_was_given() {
-    assert_eq!(
-        caveat_condition("Dial Up", &Caveat::BeatErrorAsSize).as_deref(),
-        Some("Dial Up: beat error given as a size, its sign differs either side of a cut")
-    );
-    assert_eq!(
-        caveat_condition("Dial Up", &Caveat::SidesByCount { count: 1 }).as_deref(),
-        Some(
-            "Dial Up: Tick and Tock named by the beat count across 1 break, not told \
-             apart by their sound"
-        )
-    );
-    assert_eq!(caveat_condition("Dial Up", &Caveat::LiftUnknown), None);
-}
-
 /// A bump of the stand inside a position, masked: the position is read
 /// without it, its rate comes back, the masked caveat says how much was
 /// left out, and the masked seconds aren't counted as beats missing.
@@ -1145,4 +1129,79 @@ fn an_opened_24_hour_half_shows_no_empty_table_line() {
         "{texts:?}"
     );
     assert!(!texts.iter().any(|t| t == start), "{texts:?}");
+}
+
+/// Six positions, 10 s each, read from one synthetic watch.
+fn six_readings() -> Vec<Reading> {
+    let cfg = SynthConfig {
+        duration_s: 61.0,
+        rate_s_per_day: 3.0,
+        ..Default::default()
+    };
+    let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+    let mut live = LiveAnalyzer::new(48000, LiveConfig::default());
+    for b in audio.samples.chunks(4800) {
+        live.push(b);
+    }
+    let log = crate::steady::log_of(&live).expect("beat rate");
+    ORDER
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let from = 10.0 * i as f64;
+            Reading {
+                label: p.code().into(),
+                position: p.core(),
+                wind_h: None,
+                date: None,
+                notes: None,
+                duration_s: 10.0,
+                bph: 28800,
+                bph_set: Some(28800),
+                measurement: session::measure(&log, None, from, from + 10.0),
+                cycles: Vec::new(),
+                shape: None,
+                reference: None,
+            }
+        })
+        .collect()
+}
+
+/// Save as Text… writes core's report of the test (#1508): the watch
+/// and how it was read, its Date from the take's name, the table as
+/// core writes it, and in the 24 hour half the full-wind test beside
+/// it. The lift angle is left out when it is the default.
+#[test]
+fn the_text_report_is_cores() {
+    let about = About {
+        watch: "Test Watch".into(),
+        calibre: "ETA 2824-2".into(),
+        bph: Some(28800),
+        lift_angle_deg: 52.0,
+    };
+    let readings = six_readings();
+    let mut t = Test::new();
+    t.readings = Some(readings.clone());
+    let text = report_text(&t, &about, true, Some("2026-11-13 19.17")).unwrap();
+    let header = text_report::Header {
+        watch: Some("Test Watch".into()),
+        date: Some("2026-11-13 19:17".into()),
+        calibre: Some("ETA 2824-2".into()),
+        bph: Some(28800),
+        lift_angle_deg: Some(52.0),
+        settle_s: Some(t.settle_s),
+        measure_s: Some(t.measure_s),
+    };
+    assert_eq!(text, text_report::positions(&header, &readings, None));
+    assert!(text.contains("Date        2026-11-13 19:17\n"), "{text}");
+    let unset = report_text(&t, &about, false, None).unwrap();
+    assert!(
+        !unset.contains("Lift Angle") && !unset.contains("Date"),
+        "{unset}"
+    );
+    // The 24 hour half carries the full-wind test beside it.
+    let mut half = Test::after(t.kept(&about).unwrap());
+    half.readings = Some(readings);
+    let text = report_text(&half, &about, true, None).unwrap();
+    assert!(text.contains("Against the Full-Wind Test"), "{text}");
 }

@@ -18,7 +18,7 @@ use timegrapher_core::figure_text::{fixed_text, signed_text, true_minus};
 use timegrapher_core::session::{self, Measurement, Reading, SourcedFigures};
 use timegrapher_core::steadiness::SeriesKind;
 use timegrapher_core::stream::BeatLog;
-use timegrapher_core::{complication, poise};
+use timegrapher_core::{complication, poise, text_report};
 
 /// The file a finished test just after winding is saved to, from the
 /// pane or beside a saved take, for the same six positions 24
@@ -1969,52 +1969,15 @@ pub struct Table {
     pub notes: Vec<String>,
 }
 
-/// The conditions found in one position's measurement, as plain facts.
-fn conditions(label: &str, bph_set: Option<u32>, m: &Measurement) -> Vec<String> {
-    let mut out = Vec::new();
-    if !m.watch_heard {
-        out.push(format!(
-            "{label}: {}",
-            session::no_regular_beat_in(m, bph_set)
-        ));
-    }
-    if m.clipped_beats > 0 {
-        let pct = m.clipped_fraction * 100.0;
-        out.push(if pct < 0.5 {
-            format!("{label}: clipping on under 1% of beats")
-        } else {
-            format!("{label}: clipping on {pct:.0}% of beats")
-        });
-    }
-    out.extend(m.caveats.iter().filter_map(|c| caveat_condition(label, c)));
-    out
-}
-
-/// The line for a caveat a position's reading carries, where the table
-/// says it.
-fn caveat_condition(label: &str, c: &timegrapher_core::measure::Caveat) -> Option<String> {
-    use timegrapher_core::measure::Caveat;
-    match c {
-        Caveat::ShortSpan { span_s } => Some(format!("{label}: {span_s:.0} s of beats")),
-        Caveat::BeatErrorAsSize => Some(format!(
-            "{label}: beat error given as a size, its sign differs either side of a cut"
-        )),
-        Caveat::SidesByCount { count } => Some(format!(
-            "{label}: Tick and Tock named by the beat count across {count} break{}, \
-             not told apart by their sound",
-            timegrapher_core::measure::plural(*count)
-        )),
-        _ => None,
-    }
-}
-
 /// The table from the readings, with the figures `timegrapher session`
 /// prints for the same stretches and its position names.
 pub fn table(readings: &[Reading], kind: Kind) -> Table {
-    let figures = reading_figures(readings);
+    let figures = text_report::figures(readings);
     let notes = readings
         .iter()
-        .flat_map(|r| conditions(&position_label(r.position), r.bph_set, &r.measurement))
+        .flat_map(|r| {
+            text_report::conditions(&position_label(r.position), r.bph_set, &r.measurement)
+        })
         .collect();
     table_of(&figures, notes, kind)
 }
@@ -2022,23 +1985,6 @@ pub fn table(readings: &[Reading], kind: Kind) -> Table {
 /// The table of an earlier test's saved results.
 pub fn kept_table(full: &FullWind) -> Table {
     table_of(&kept_figures(full), Vec::new(), Kind::Positions)
-}
-
-/// Each reading's figures, as core reads them.
-fn reading_figures(readings: &[Reading]) -> Vec<SourcedFigures> {
-    readings
-        .iter()
-        .map(|r| {
-            let m = &r.measurement;
-            (
-                r.position,
-                m.rate_s_per_day,
-                m.amplitude_deg,
-                m.beat_error(),
-                m.beat_error_source,
-            )
-        })
-        .collect()
 }
 
 /// A saved test's figures, as core reads them.
@@ -2142,7 +2088,8 @@ pub struct Upright(pub Vec<Reading>);
 impl PartialEq for Upright {
     fn eq(&self, other: &Self) -> bool {
         let durations = |u: &Upright| u.0.iter().map(|r| r.duration_s).collect::<Vec<_>>();
-        reading_figures(&self.0) == reading_figures(&other.0) && durations(self) == durations(other)
+        text_report::figures(&self.0) == text_report::figures(&other.0)
+            && durations(self) == durations(other)
     }
 }
 
@@ -2359,7 +2306,7 @@ pub struct Comparison {
 /// file with both. The kept figures stand in for the full-wind
 /// measurements.
 pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<Comparison> {
-    comparison_of(&kept_figures(full), hours, &reading_figures(readings))
+    comparison_of(&kept_figures(full), hours, &text_report::figures(readings))
 }
 
 /// A saved 24 hour half (`later`) against the full-wind results it was set
@@ -2634,6 +2581,78 @@ pub fn results_dialog(k: &FullWind, dir: &std::path::Path) -> rfd::FileDialog {
 }
 
 /// The dialog for saving the test as a CSV file, starting in `dir`.
+/// The test as the plain-text report core writes ([`text_report`]): the
+/// watch and how it was read, the table, and in the 24 hour half the
+/// full-wind test beside it. The lift angle is left out when
+/// `lift_known` is false (the default, not set for the watch), and `take`
+/// is the take's folder name, whose start is the report's Date. None for
+/// a Complication Test, which has no text report.
+pub fn report_text(
+    test: &Test,
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+) -> Option<String> {
+    let header = text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: take.and_then(text_report::take_date),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        lift_angle_deg: lift_known.then_some(about.lift_angle_deg),
+        settle_s: Some(test.settle_s),
+        measure_s: Some(test.measure_s),
+    };
+    let readings = test.readings_so_far();
+    match test.kind {
+        Kind::Positions => {
+            let full = test.full.as_ref().map(|(f, h)| (kept_figures(f), *h));
+            let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
+                figures,
+                hours: *hours,
+            });
+            Some(text_report::positions(&header, readings, earlier))
+        }
+        Kind::Poise => Some(text_report::poise(&header, readings)),
+        Kind::Complication => None,
+    }
+}
+
+/// When the test began in this computer's time, as a take's name starts
+/// ([`timegrapher_core::library::TAKE_NAME_TIME`]): "2026-11-13 19.17".
+pub fn began_name(test: &Test) -> String {
+    let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(test.began_unix);
+    chrono::DateTime::<chrono::Local>::from(at)
+        .format(timegrapher_core::library::TAKE_NAME_TIME)
+        .to_string()
+}
+
+/// The dialog for saving a test's text report, starting in `dir`:
+/// "Test Watch Positions Test 2026-11-13 19.17.txt", the watch's name
+/// as a file name allows, the test, and when it was saved.
+pub fn text_dialog(kind: Kind, watch: &str, dir: &std::path::Path) -> rfd::FileDialog {
+    let stamp = chrono::Local::now()
+        .format(timegrapher_core::library::TAKE_NAME_TIME)
+        .to_string();
+    let name = [
+        timegrapher_core::library::folder_name(watch.trim()),
+        kind.name().to_string(),
+        stamp,
+    ]
+    .iter()
+    .filter(|s| !s.is_empty())
+    .cloned()
+    .collect::<Vec<_>>()
+    .join(" ");
+    let mut d = rfd::FileDialog::new()
+        .set_title(format!("Save the {} as Text", kind.name()))
+        .set_file_name(format!("{name}.txt"))
+        .add_filter("Text", &["txt"]);
+    if dir.is_dir() {
+        d = d.set_directory(dir);
+    }
+    d
+}
+
 pub fn csv_dialog(dir: &std::path::Path) -> rfd::FileDialog {
     let stamp: String = timegrapher_core::recorder::utc(std::time::SystemTime::now())
         .chars()
