@@ -2745,18 +2745,6 @@ impl TimegrapherApp {
         self.capture.is_some()
     }
 
-    /// Keep listening while the window isn't drawing: save and read the
-    /// sound that has come in, and follow a Power Reserve Test to its
-    /// end. Called from [`crate::pump`]'s thread.
-    pub(crate) fn pump(&mut self) -> usize {
-        if self.capture.is_none() {
-            return 0;
-        }
-        let taken = self.poll_for(PUMP_BUDGET);
-        self.reserve_follow();
-        taken
-    }
-
     /// Whether to hold the computer awake now: listening to the
     /// microphone, with Keep Awake on.
     pub(crate) fn wants_awake(&self) -> bool {
