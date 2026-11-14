@@ -264,7 +264,7 @@ const CANDIDATES_KEPT: usize = 2000;
 /// asks a fresh guess ([`LiveAnalyzer::lock_doubted`]). It only decides
 /// when to ask; the guess decides. A watch locked on at twice its rate
 /// has every other beat empty: 0.5 to 0.67 on the #1617 put-back. On the
-/// corpus takes heard live at their own rate (about 33,000 passes, the
+/// corpus takes heard live at their own rate (about 31,600 passes, the
 /// low-wind Peacock and the dying YM42 excerpt among them), the lowest
 /// was 0.70 and the 1st percentile 0.83 or more; the 12 passes under 0.75
 /// all guessed the locked rate.
