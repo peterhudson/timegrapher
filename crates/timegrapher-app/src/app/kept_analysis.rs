@@ -102,7 +102,7 @@ impl TimegrapherApp {
                 software: report::software(),
                 checkpoints: Some(Checkpoints {
                     take: r.dir().to_path_buf(),
-                    every_s: timegrapher_core::checkpoint::EVERY_S,
+                    every_s: checkpoint_every_s(),
                 }),
             })),
             ..Kept::default()
@@ -358,6 +358,22 @@ impl TimegrapherApp {
         self.info_msg("Writing the test's take: wait until it is kept.".into());
         true
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How often a test's analysis is kept on the disk, in place of every
+    /// 10 minutes, so a short run is kept.
+    pub(super) static EVERY_S: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+}
+
+/// How often the analysis is kept on the disk as it goes.
+fn checkpoint_every_s() -> f64 {
+    #[cfg(test)]
+    if let Some(s) = EVERY_S.with(std::cell::Cell::get) {
+        return s;
+    }
+    timegrapher_core::checkpoint::EVERY_S
 }
 
 /// Keep block `b` in `session`'s recording: its sound written, and read
