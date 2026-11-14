@@ -73,42 +73,17 @@ impl TimegrapherApp {
     }
 
     /// An opened take's Complication Test from its session file at
-    /// `dir`: the three stretches it lists as Off, On and Off, in that
-    /// order, at one position (#1620).
+    /// `dir`, the stretches core's `complication::saved_stretches` finds
+    /// in it (#1620).
     pub(super) fn load_saved_complication(&mut self, dir: &std::path::Path) {
         let m: Option<Manifest> = std::fs::read_to_string(dir.join(MANIFEST))
             .ok()
             .and_then(|t| toml::from_str(&t).ok());
-        let entries: Vec<_> = m
-            .map(|m| m.recordings)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|e| e.complication.is_some())
-            .collect();
-        let steps: Vec<String> = complication::ORDER
-            .iter()
-            .map(|s| s.name().to_lowercase())
-            .collect();
-        let named: Vec<String> = entries
-            .iter()
-            .filter_map(|e| e.complication.clone())
-            .collect();
-        let position = entries
-            .first()
-            .and_then(|e| Position::from_name(e.position.as_deref()?));
-        let one_place = entries
-            .iter()
-            .all(|e| e.position == entries.first().and_then(|f| f.position.clone()));
-        let spans: Option<Vec<(f64, f64)>> = entries
-            .iter()
-            .map(|e| Some((e.start_s?, e.end_s?)))
-            .collect();
-        self.complication_saved = match (position, spans) {
-            (Some(p), Some(spans)) if named == steps && one_place => {
-                guided::Test::saved_complication(p, &spans)
-            }
-            _ => None,
-        };
+        self.complication_saved = m
+            .as_ref()
+            .and_then(complication::saved_stretches)
+            .and_then(|(p, spans)| Some((Position::of_core(p)?, spans)))
+            .and_then(|(p, spans)| guided::Test::saved_complication(p, &spans));
         if self.complication_saved.is_some() {
             self.reveal_pane(Pane::Complication);
         }

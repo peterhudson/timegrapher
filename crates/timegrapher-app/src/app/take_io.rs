@@ -1465,7 +1465,8 @@ impl TimegrapherApp {
             self.guided
                 .as_ref()
                 .filter(|t| t.kind == guided::Kind::Complication)
-                .map(|t| t.step_code(i).to_lowercase())
+                .and_then(|_| timegrapher_core::complication::ORDER.get(i))
+                .map(|s| s.saved_name().to_string())
         };
         let test: Vec<RecordingEntry> = self
             .guided
