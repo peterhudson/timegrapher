@@ -200,8 +200,10 @@ writes the run, hour by hour, to the session folder's
 `power-reserve.json` (`ending`: `stopped`, `by_hand` or `limit`; the
 app's tests can also end `recording_failed`, a run at least that long;
 `run_s` in true seconds; the silences of 30 s or more; `hours[]`, each
-measured as `session` measures a stretch). Without a FOLDER the folder
-is named by the date and time and "Power Reserve". The `--json` document
+measured as `session` measures a stretch). Without a FOLDER the test
+is one take in the watch's `takes/`, as the app files one: the
+recording itself, in a folder named by the date and time and "Power
+Reserve", holding its own `session.toml` and `power-reserve.json`. The `--json` document
 adds `power_reserve` with the same contents, and `session FOLDER --json`
 gives it too whenever the folder holds `power-reserve.json`.
 
@@ -248,8 +250,9 @@ JSON body:
 | `confidence` | `rate`, `amplitude`, `beat_error`, each `se`: one standard error in the reading's unit. Null when no regular beat is found, and each also null until the recording holds 30 of its values: about 300 s of beats for the rate (every other 10 s window), so a recording of a minute or two has no rate ±, and about 60 s for the amplitude and beat error (2 s windows) |
 | `shape` | The Tick (`even`) and the Tock (`odd`), each `windows_measured`, `share_with_sound_1`, `share_with_sound_2`, `i12_ms`, `i13_ms`, `ratio13`, `tail_ratio`; and `beat_error_first_quarter_ms`, `beat_error_last_quarter_ms`, `beat_error_quarter_windows`. Read with [tick-shape.md](tick-shape.md#rules-for-possible-faults). Null when no regular beat is found |
 | `overall.rate_s_per_day` | Rate over the whole file, + gains. **Uncalibrated**: the sound card's clock error (1–4 s/d typical) is included |
-| `beat_error_unlock_ms` | **The beat error to quote**: signed, measured from the unlock (this project's headline beat error); report its absolute value |
-| `overall.beat_error_ms` | Signed beat error from the fit, measured from the drop (positive: even beats late); differs from the unlock figure when Tick and Tock take different times from unlock to drop. Across a break (in a `session` reading, also across a masked stretch) where the sign turns over, both beat errors are given as positive sizes, and the caveat `beat_error_as_size` says so: name no side from the sign then |
+| `beat_error_unlock_ms` | Signed, measured from the unlock; null when the unlock wasn't found or wasn't consistent (then the drop is chosen) |
+| `beat_error_source` | `unlock`, `drop` or null: which figure is the beat error to quote (report its absolute value), with the caveat `beat_error_from_drop` (and its `why`) when the drop; null, no beat error was read. See SKILL.md item 4 |
+| `overall.beat_error_ms` | Signed beat error from the fit, measured from the drop (positive: even beats late); differs from the unlock figure when Tick and Tock take different times from unlock to drop. Across a break (in a `session` reading, also across a masked stretch) where the sign turns over, both beat errors are given as positive sizes, and the caveat `beat_error_as_size` says so: name no side from the sign then. The beat error to quote when `beat_error_source` is `drop` |
 | `overall.period_s` | Fitted beat period |
 | `overall.jitter_us`, `jitter_us` | Scatter of single beats, microseconds (overall, and the median within 10 s windows) |
 | `overall.beats_used` | Beats in the fit |

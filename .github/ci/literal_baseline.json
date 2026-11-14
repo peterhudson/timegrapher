@@ -314,8 +314,8 @@
      "defaults": 1
     },
     "crates/timegrapher-cli/src/session_report.rs": {
-     "bounds": 2,
-     "comparisons": 1,
+     "bounds": 1,
+     "comparisons": 2,
      "constants": 6,
      "defaults": 0
     },
@@ -327,8 +327,8 @@
     }
    },
    "total": {
-    "bounds": 10,
-    "comparisons": 15,
+    "bounds": 9,
+    "comparisons": 16,
     "constants": 17,
     "defaults": 19
    }
@@ -363,6 +363,6 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 4521
+  "crates/timegrapher-app/src/app.rs": 4502
  }
 }

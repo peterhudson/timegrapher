@@ -721,3 +721,240 @@ fn reads_as_the_cli(app: &TimegrapherApp) -> Vec<timegrapher_core::session::Meas
     }
     compared
 }
+
+/// Press the Dynamic Poise pane's Save as Text…, found where the
+/// toolbar drew it, then pick `path` as the dialog would: what it wrote.
+fn press_save_as_text(mut app: TimegrapherApp, path: &std::path::Path) -> String {
+    let ctx = themed();
+    let size = Vec2::new(1280.0, 820.0);
+    let run = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.pane_tools(ui, Pane::DynamicPoise);
+                app.poise_pane(ui);
+            });
+        });
+    };
+    run(&mut app, vec![]);
+    run(&mut app, vec![]);
+    let tools = theme::tools_drawn_at(&ctx);
+    let at = tools
+        .iter()
+        .find(|(k, _)| k.ends_with("/Save as Text…"))
+        .unwrap_or_else(|| panic!("Save as Text… in {tools:?}"))
+        .1
+        .center();
+    let press = |pressed| egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    run(&mut app, vec![egui::Event::PointerMoved(at)]);
+    run(&mut app, vec![press(true)]);
+    run(&mut app, vec![press(false)]);
+    assert!(app.picking(), "Save as Text… asks where");
+    saved_text(app, path).1
+}
+
+/// What Save as Text… writes, picked to `path` as the dialog would.
+fn saved_text(app: TimegrapherApp, path: &std::path::Path) -> (TimegrapherApp, String) {
+    let app = std::sync::Mutex::new(app);
+    assert!(crate::pick::answer(&app, |_, pick| {
+        assert_eq!(pick, crate::pick::Pick::Save);
+        vec![path.to_path_buf()]
+    }));
+    let text = std::fs::read_to_string(path).expect("the report written");
+    (app.into_inner().unwrap(), text)
+}
+
+/// Save as Text… on the Dynamic Poise pane, pressed with its test on the
+/// Bench, writes core's poise report of the test (#1509): the watch, how
+/// it was read with Settle and Each Position, the table and the fit. The
+/// Positions Test's Save as Text… asks nothing for it.
+#[test]
+fn save_as_text_writes_the_poise_tests_report() {
+    let (mut app, base, tx) = measured("save-text");
+    let about = app.guided_about();
+    app.save_test_text(&about, guided::Kind::Positions, None, None);
+    assert!(!app.picking(), "no Positions Test on the Bench");
+    let t = app.poise_test().expect("the test");
+    let take = guided::began_name(t);
+    let readings = t.readings_so_far().to_vec();
+    let header = timegrapher_core::text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: timegrapher_core::text_report::take_date(&take),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        // No calibre gives it, so the lift is in the heading.
+        lift_angle_deg: Some(about.lift_angle_deg),
+        settle_s: Some(t.settle_s),
+        measure_s: Some(t.measure_s),
+    };
+    assert!(!about.calibre.contains('°'), "{}", about.calibre);
+    let text = press_save_as_text(app, &base.join("poise.txt"));
+    assert_eq!(readings.len(), 8);
+    assert_eq!(
+        text,
+        timegrapher_core::text_report::poise(&header, &readings)
+    );
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Save as Text… on the Dynamic Poise pane, pressed for a take opened
+/// again with no test on the Bench, writes core's poise report of the upright stops
+/// the pane shows, with no Settle or Each Position (#1509).
+#[test]
+fn save_as_text_writes_an_opened_poise_takes_report() {
+    let (app, base) = saved_and_opened("save-text-kept", guided::Kind::Poise.order());
+    // The pane's table is read off the window's thread: wait for it.
+    let ctx = egui::Context::default();
+    let start = Instant::now();
+    let kept = loop {
+        if let Some(k) = app.poise_kept(&ctx) {
+            break k;
+        }
+        assert!(start.elapsed().as_secs() < 300, "never read");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(kept.len(), 8);
+    let about = app.guided_about();
+    let take = app
+        .take_on_show()
+        .and_then(|p| Some(p.file_name()?.to_string_lossy().into_owned()));
+    let header = timegrapher_core::text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: take
+            .as_deref()
+            .and_then(timegrapher_core::text_report::take_date),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        lift_angle_deg: Some(about.lift_angle_deg),
+        settle_s: None,
+        measure_s: None,
+    };
+    let text = press_save_as_text(app, &base.join("kept.txt"));
+    assert_eq!(text, timegrapher_core::text_report::poise(&header, &kept));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// With no stops at all, as on a fresh Quick Listen, the pane says how a
+/// test fits, not that the take lacks positions (Hugh on #1622).
+#[test]
+fn a_take_with_no_stops_says_how_the_test_fits() {
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    let drawn = draw(&mut app, Pane::DynamicPoise);
+    assert!(
+        drawn.contains(&timegrapher_core::poise::pending_text()),
+        "{drawn}"
+    );
+    assert!(!drawn.contains("Needs 5"), "{drawn}");
+}
+
+/// A Dynamic Poise test run live with the pane's Next on one continuous
+/// sound (no handling between stops), settling 5 s and measuring 30 s at
+/// each, saved and opened again: every stop reads the same live as
+/// reopened (#1720, Norm: the reopened table is right).
+#[test]
+fn a_poise_test_reads_the_same_live_as_reopened() {
+    let base = std::env::temp_dir().join(format!("tg-app-poise-live1720-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let (settle, measure) = (5.0, 30.0);
+    let mut app = synthetic_varying(0.0, 0.0, |_| 0.0);
+    app.session.listen();
+    app.session.recorder =
+        Some(Recorder::start(&base.join("live"), app.info("test", 48000, 16)).unwrap());
+    let cfg = SynthConfig {
+        duration_s: 8.0 * (settle + measure) + 1.0,
+        snr_db: 30.0,
+        rate_s_per_day: 9.0,
+        seed: 1720,
+        ..Default::default()
+    };
+    let audio = generate(&cfg, |_| 310.0, |_| 0.0);
+    let tx = queued_capture(&mut app, &base);
+    app.guided = Some(guided::Test::poise().timed(settle, measure));
+    // The pane's Settle and Each Position, as each frame gives the session.
+    (app.guided_settle_s, app.guided_measure_s) = (settle, measure);
+    app.session.set_settle_s(settle);
+    app.session.set_state(session::State::Listening);
+    let ctx = egui::Context::default();
+    let mut k = 0u64;
+    for s in audio.samples.chunks(48_000) {
+        // The 20 ms blocks a microphone sends, taken as listening takes
+        // them (saved, read, settling and stretches as the app goes).
+        for b in s.chunks(960) {
+            tx.send(Event::Audio(timegrapher_core::capture::Block {
+                samples: b.to_vec(),
+                at: std::time::UNIX_EPOCH
+                    + std::time::Duration::from_millis(1_700_000_000_000 + 20 * k),
+            }))
+            .unwrap();
+            k += 1;
+        }
+        let want = k as f64 * 0.02;
+        let t = Instant::now();
+        while app.live.as_ref().unwrap().duration_s() < want - 1e-6 && t.elapsed().as_secs() < 30 {
+            app.poll();
+        }
+        let now = app.live.as_ref().unwrap().duration_s();
+        app.guided_tick(&ctx);
+        // Next, as the pane's button gives it, once the stop is read.
+        let next = app.guided.as_mut().is_some_and(|t| {
+            t.tick(now) == guided::Phase::Turn && !t.needs_reading() && t.next_position().is_some()
+        });
+        if next {
+            app.apply_guided_action(guided::Action::Next, now);
+        }
+    }
+    let live = app
+        .poise_test()
+        .and_then(|t| t.readings.clone())
+        .expect("finished live");
+    assert_eq!(live.len(), 8);
+    app.save_into(&base.join("saved"));
+    app.wait_for_save();
+    let saved = app.session.saved_to().expect("saved").to_path_buf();
+    let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+    again.start_batch(&saved);
+    let t = Instant::now();
+    while again.batch.is_some() && t.elapsed().as_secs() < 300 {
+        again.poll();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let table = again.free_table(&ctx).expect("a table");
+    let reopened = &table.upright.0;
+    assert_eq!(reopened.len(), 8);
+    for (l, r) in live.iter().zip(reopened) {
+        let (a, b) = (&l.measurement, &r.measurement);
+        // Read whole both ways: no settling or turn culls part of a stop.
+        assert!(
+            a.beats.abs_diff(b.beats) <= 8,
+            "{} beats {} live, {} reopened",
+            l.label,
+            a.beats,
+            b.beats
+        );
+        let (ra, rb) = (a.rate_s_per_day.unwrap(), b.rate_s_per_day.unwrap());
+        let (aa, ab) = (a.amplitude_deg.unwrap(), b.amplitude_deg.unwrap());
+        assert!(
+            (ra - rb).abs() < 0.01,
+            "{} rate {ra} live, {rb} reopened",
+            l.label
+        );
+        assert!(
+            (aa - ab).abs() < 1.0,
+            "{} amplitude {aa} live, {ab} reopened",
+            l.label
+        );
+    }
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}

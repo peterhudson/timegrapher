@@ -513,7 +513,8 @@ enum Command {
         /// A Power Reserve Test: record until the watch stops (the last
         /// beat heard before 10 minutes with none) or 80 hours pass, in
         /// place of --seconds, and keep the run, hour by hour, in the
-        /// session folder's power-reserve.json.
+        /// session folder's power-reserve.json. Into a library (--watch
+        /// without FOLDER) the test is one take, as the app files it.
         #[arg(long, conflicts_with = "seconds")]
         power_reserve: bool,
         /// Print the result as JSON instead of text.
@@ -1432,12 +1433,24 @@ fn run_analyze(
             &body,
         )?;
     } else {
+        // The calibre's own figures: a flag, then a take's session file,
+        // comes before them (#1573), and the lines below give what was used.
         if let Some(c) = calibre {
+            let figures: Vec<String> = [
+                c.bph.map(|b| format!("{b} bph")),
+                c.lift_angle_deg.map(|l| format!("lift {l}°")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
             println!(
-                "Calibre      {}: {}lift {}°, as set unless a flag said otherwise",
+                "Calibre      {}: {}, unless a flag or the take's session file says otherwise",
                 c.name,
-                c.bph.map_or(String::new(), |b| format!("{b} bph, ")),
-                cfg.amplitude.lift_deg
+                if figures.is_empty() {
+                    "no beat rate or lift angle".into()
+                } else {
+                    figures.join(", ")
+                }
             );
         }
         // A listed file leads with what `session` reads of it, as the MCP

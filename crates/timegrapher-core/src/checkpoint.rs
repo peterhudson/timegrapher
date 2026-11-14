@@ -195,18 +195,26 @@ impl Writer {
             .min(seen.windows_to_s)
             .min(profiled_to_s);
         let mut failed = None;
+        let mut wrote = false;
         while seen.heard && self.next_to_s() <= safe_s {
             if let Err(e) = self.write_part(seen, profiles) {
                 failed = Some(e);
                 break;
             }
+            wrote = true;
         }
         if failed.is_none() && self.stale {
             failed = self.write_header().err();
+            wrote |= failed.is_none();
         }
         let mut status = self.status.lock().unwrap_or_else(|e| e.into_inner());
         status.to_s = self.partial.header.duration_s;
-        status.failed = failed;
+        // A failure stands until a later write works: a chunk with no
+        // part due says nothing new, whenever the reading thread gets to
+        // it.
+        if failed.is_some() || wrote {
+            status.failed = failed;
+        }
     }
 
     /// The next part's end, seconds.
@@ -532,5 +540,60 @@ pub fn remove(take: &Path) -> io::Result<()> {
     match std::fs::remove_dir_all(take.join(DIR)) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A chunk read up to `to_s` with nothing in it, the watch heard.
+    fn seen(to_s: f64) -> Seen<'static> {
+        Seen {
+            x: &[],
+            x0: 0,
+            core_a: to_s,
+            beats: &[],
+            bph: 21_600,
+            swaps: &[],
+            pending: None,
+            heard: true,
+            windows: &[],
+            windows_to_s: to_s,
+            clipped_beats: &[],
+            clipped_samples: 0,
+            jumps: &[],
+            sided: &[],
+        }
+    }
+
+    /// A part that can't be written says why until one is: a chunk after
+    /// it with no part due leaves the failure standing, however the
+    /// reading thread's chunks land (#1744's Windows run).
+    #[test]
+    fn a_failure_stands_until_a_part_is_written() {
+        let dir = std::env::temp_dir().join(format!("tg-checkpoint-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A file where the take's folder should be.
+        let blocked = dir.join("a file");
+        std::fs::write(&blocked, b"").unwrap();
+        let status = Arc::new(Mutex::new(Checkpointed::default()));
+        let mut w = Writer::new(Writing {
+            take: &blocked,
+            every_s: 12.0,
+            sample_rate: 48_000,
+            bytes_per_frame: 2,
+            cfg: &StreamConfig::default(),
+            software: serde_json::json!({"name": "timegrapher", "version": "test"}),
+            status: status.clone(),
+        });
+        let failed = || status.lock().unwrap().failed.clone();
+        w.after_chunk(&seen(24.0), &[], 24.0);
+        let why = failed().expect("a part was due");
+        assert!(why.contains(DIR), "{why}");
+        w.after_chunk(&seen(6.0), &[], 6.0);
+        assert_eq!(failed(), Some(why));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

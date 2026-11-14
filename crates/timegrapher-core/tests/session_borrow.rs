@@ -89,7 +89,10 @@ fn loud_handling_between_stops_does_not_grow_a_stops_pm() {
     // the handling in: what the rule keeps out.
     let (rate_alone, amp_alone) = ses(&loud, false);
     assert!(rate_alone > 1.5 * rate_q, "{rate_alone} vs {rate_q}");
-    assert!(amp_alone > 1.5 * amp_q, "{amp_alone} vs {amp_q}");
+    // The amplitude's against the same loud stop read as a test (Peter's
+    // card on #1672): against the quiet take it was 4.4x only while a
+    // window with no value split its stretch and inflated the ± (#1637).
+    assert!(amp_alone > 1.5 * amp_l, "{amp_alone} vs {amp_l}");
 }
 
 /// One stretch is a plain take, not a test: a caller passing its own span

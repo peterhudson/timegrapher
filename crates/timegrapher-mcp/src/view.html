@@ -92,6 +92,36 @@ canvas.map { position: absolute; image-rendering: pixelated; cursor: crosshair; 
 .map-key .unread { width: 14px; height: 10px; border: 1px solid var(--text3); border-radius: 2px; margin-left: 12px; }
 .bar { height: 4px; border-radius: 2px; background: var(--control); margin: -6px 0 12px; overflow: hidden; }
 .bar > div { height: 100%; background: var(--text2); }
+/* A test pane (#1729): the table left, the charts right, the charts under
+   it where they would be narrower than PANE_MIN_CHART; only the table scrolls. */
+.pane { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.pane-table { flex: 0 1 auto; max-height: 480px; overflow: auto; min-width: 0; }
+.pane-charts { flex: 1 1 0; }
+.pane-rows tr.hot { outline: 1.5px solid var(--callout); outline-offset: -1.5px; }
+.pane-rows tr.avg td { color: var(--text2); }
+/* Its height kept when it holds no figure, so a hover never moves the chart under the pointer. */
+.pl-head { font-size: 12.5px; margin: 8px 0 2px; white-space: nowrap; min-height: 1.35em; overflow: hidden; text-overflow: ellipsis; }
+.pl-head .pl-val { font-variant-numeric: tabular-nums; }
+.pl-head .pl-name { color: var(--text); }
+.pane-charts svg text { font-size: 12px; }
+.pane-rows th .unit { display: block; font-weight: 400; color: var(--text2); font-size: 11.5px; }
+.icon-seg { display: inline-flex; gap: 4px; margin-bottom: 4px; }
+.icon-toggle { width: 26px; height: 26px; padding: 3px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.icon-toggle:hover { background: var(--surface-2, rgba(127,127,127,.12)); }
+.icon-toggle[aria-pressed="true"] { color: var(--tint); background: color-mix(in srgb, var(--tint) 16%, transparent); border-color: color-mix(in srgb, var(--tint) 45%, transparent); }
+.poise-charts { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.poise-chart { flex: 1 1 320px; min-width: 0; }
+details.info { display: inline-block; vertical-align: middle; margin-right: 6px; }
+details.info summary { list-style: none; cursor: pointer; color: var(--text2); display: inline-flex; }
+details.info summary::-webkit-details-marker { display: none; }
+details.info[open] { display: block; margin: 0 0 6px; }
+details.info[open] summary { color: var(--accent, var(--text)); }
+svg .lane .hit { fill: transparent; }
+svg .lane .ring { fill: none; stroke: var(--callout); stroke-width: 1.5; display: none; }
+svg .lane.hot .ring { display: inline; }
+/* Small text on the card, so no line crosses it (the app's backed label). */
+svg text.backed { paint-order: stroke; stroke: var(--card); stroke-width: 4px; stroke-linejoin: round; }
+.pane-rows td.thin { color: var(--text3); }
 </style>
 </head>
 <body>
@@ -177,8 +207,6 @@ new ResizeObserver(notifySize).observe(document.body);
 
 // ---- Formatting ---------------------------------------------------------
 
-// The app's order: Dial Up, Dial Down, Crown Up, Crown Down, Crown Left, Crown Right.
-const ORDER = ["CH", "CB", "3H", "9H", "6H", "12H"];
 // Each position's common code and name, from core, under both its Witschi
 // code and its common one: the server fills it in (null in the raw file,
 // so its readers fall back to the code).
@@ -186,8 +214,12 @@ const POSITIONS = /*POSITIONS*/null;
 // The heading for a reading with no regular beat: core's measure::NO_WATCH_TITLE,
 // as the app writes it (#510).
 const NO_BEAT_TITLE = /*NO_BEAT_TITLE*/null;
-// A reading whose wind was not given, in core's words (#1665).
-const WIND_NOT_GIVEN = /*WIND_NOT_GIVEN*/null;
+// The position groups' names, core's session::PositionGroup::name, by
+// their JSON names: {"horizontal": "Horizontal", ...}.
+const GROUP_NAMES = /*GROUP_NAMES*/null;
+// The app's icons, core's drawings (core `icons`): each series' by its
+// name, the "i", and their line width. The server fills them in.
+const ICONS = /*ICONS*/null;
 // Each figure's decimals: core's library::base_digits (rate 1, amplitude
 // 0, beat error 2, jitter 0), filled in by the server. A figure with a ±
 // takes the decimals the server gives beside it (library::figure_digits),
@@ -701,13 +733,9 @@ function takeTiles(readings, pms) {
   }).join("");
 }
 
-function sessionView(doc, limits) {
+function sessionView(doc, limits, reserve) {
   const rep = doc.report || {};
-  const readings = (doc.readings || []).map((r, i) => Object.assign({ index: i }, r));
-  const rank = (r) => { const k = ORDER.indexOf(r.position); return k < 0 ? ORDER.length : k; };
-  // Wind not given sorts after every given wind, as core lists its state last.
-  const unset = (r) => (r.wind_h == null ? 1 : 0);
-  readings.sort((a, b) => rank(a) - rank(b) || unset(a) - unset(b) || (a.wind_h || 0) - (b.wind_h || 0) || a.index - b.index);
+  const readings = doc.readings || [];
   const title = [doc.watch, doc.calibre].filter(Boolean).join(" · ");
   let html = `<h1>Multi-Position Test</h1><p class="sub">${esc(title || "")}${title ? " · " : ""}${esc(doc.bph)} beats per hour · lift angle ${esc(doc.lift_deg)}°</p>`;
   const state = (rep.states || [])[0];
@@ -718,82 +746,455 @@ function sessionView(doc, limits) {
       ${tile("Mean Amplitude", "--amplitude", num(state.amplitude_mean, 0), "°", Number.isFinite(state.dvh_amplitude) ? `vertical minus horizontal ${signed(state.dvh_amplitude, 0)}°` : "")}
     </div>`;
   }
-  const cell = (v, digits, sign) => `<td>${sign ? signed(v, digits) : num(v, digits)}</td>`;
-  html += `<div class="card"><h2>Positions</h2><table><thead><tr><th>Position</th><th>Rate, s/d</th><th>Amplitude, °</th><th>Beat Error, ms</th><th>Wind, h</th></tr></thead><tbody>`;
-  readings.forEach((r) => {
-    const m = r.measurement || {};
-    const pos = (POSITIONS || {})[r.position] || [r.position, r.position];
-    const heard = m.watch_heard !== false;
-    html += `<tr><td>${esc(pos[1])} <span style="color:var(--text3)">${esc(pos[0])}</span></td>` +
-      (heard ? cell(m.rate_s_per_day, 1, true) + cell(m.amplitude_deg, 0) +
-        cell(abs(chosenBeatError(m.beat_error_unlock_ms, m.beat_error_ms, m.beat_error_source).value), 2)
-        : `<td colspan="3" style="text-align:center;color:var(--text2)">${esc(NO_BEAT_TITLE)}</td>`) +
-      `<td>${esc(r.wind_h == null ? WIND_NOT_GIVEN : r.wind_h)}</td></tr>`;
-  });
-  html += `</tbody></table></div>`;
   if (limits && limits.length) html += limitsCard(limits);
-  const heard = readings.filter((r) => r.measurement && r.measurement.watch_heard !== false);
-  if (heard.length) {
-    const name = (r) => ((POSITIONS || {})[r.position] || [r.position, r.position])[1];
-    const rate = heard.map((r) => ({ label: name(r), value: r.measurement.rate_s_per_day }));
-    const amp = heard.map((r) => ({ label: name(r), value: r.measurement.amplitude_deg }));
-    if (rate.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Rate by Position</h2><p class="hint">Each position's rate</p>${bars(rate, "--rate", " s/d", 1)}</div>`;
-    if (amp.every((r) => Number.isFinite(r.value))) html += `<div class="card"><h2>Amplitude by Position</h2><p class="hint">Each position's amplitude</p>${bars(amp, "--amplitude", "°", 0)}</div>`;
-  }
+  const lines = rep.position_lines || [];
+  lines.forEach((sl, i) => {
+    const st = (rep.states || [])[i] || {};
+    const inState = (r) => (r.wind_h == null ? null : r.wind_h) === (st.wind_h == null ? null : st.wind_h);
+    // Headed in core's words wherever there are several states, or the one
+    // state isn't full wind: a wind not given is never left unsaid (#1665).
+    html += positionsPane(sl, readings.filter(inState), `s${i}`, lines.length > 1 || sl.wind_h !== 0);
+  });
+  (doc.poise || []).forEach((p, i) => {
+    // Named for its state of wind as the Positions panes are, where there are several.
+    const sl = lines.find((l) => (l.wind_h == null ? null : l.wind_h) === (p.wind_h == null ? null : p.wind_h));
+    if (p.picture) html += poisePane(p, `p${i}`, sl && (lines.length > 1 || sl.wind_h !== 0) ? sl.name : null);
+  });
+  if (reserve) html += reservePane(reserve, "r");
   return html;
 }
 
-// Horizontal bars from zero, one per position, on a plot area wide enough
-// for every bar and its value.
-//   rows: [{label, value}]
-// A bar's figure: a rate or beat error with its sign, an amplitude
-// without a plus (#1431).
-function barFigure(v, unit, decimals) { return (unit !== "°" ? signed(v, decimals) : num(v, decimals)) + unit; }
-function bars(rows, color, unit, decimals) {
-  const W = chartWidth(), rowH = 26, T = 4, B = 20, R = 6;
-  const fmt = (v) => barFigure(v, unit, decimals);
-  const L = Math.ceil(12 + 7 * Math.max(...rows.map((r) => r.label.length)));
-  const plotW = W - L - R, plotH = rowH * rows.length;
-  let lo = 0, hi = 0;
-  for (const r of rows) {
-    lo = Math.min(lo, r.value); hi = Math.max(hi, r.value);
-  }
-  if (!(hi > lo)) hi = lo + 1;
-  // Room inside the plot for the values beside the bars' ends.
-  const labelW = 10 + CHAR_W * Math.max(...rows.map((r) => fmt(r.value).length));
-  const padL = rows.some((r) => r.value < 0) ? labelW : 8;
-  const padR = rows.some((r) => r.value >= 0) ? labelW : 8;
-  // The data plus 15% of its span on each side a bar ends, and room for
-  // the values beside the bars' ends.
-  const span = hi - lo, neg = lo < 0, pos = hi > 0;
-  const fl = neg ? 0.15 : 0, fr = pos ? 0.15 : 0;
-  const k = Math.min(
-    (plotW - padL - padR) / span,
-    (plotW - padR) / (span * (1 + fl)),
-    (plotW - padL) / (span * (1 + fr)),
-    plotW / (span * (1 + fl + fr)));
-  const d0 = lo - Math.max(padL / k, fl * span), d1 = d0 + plotW / k;
-  const sx = (v) => L + (v - d0) * k;
-  const area = plotArea(L, T, plotW, plotH);
-  let g = area.svg, inside = "";
-  const grid = gridFor(d0, d1, plotW, 70);
-  for (const v of grid.ticks) {
-    inside += `${gridDown(sx(v), L, T, plotH)}`;
-    const t = axisLabel(v, grid.step, unit);
-    const anchor = sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
-    g += `<text x="${sx(v)}" y="${T + plotH + 15}" text-anchor="${anchor}">${esc(t)}</text>`;
-  }
-  inside += `<line class="zero" x1="${sx(0)}" x2="${sx(0)}" y1="${T}" y2="${T + plotH}"/>`;
-  rows.forEach((r, i) => {
-    const y = T + i * rowH, v = r.value;
-    const x0 = Math.min(sx(0), sx(v)), w = Math.max(2, Math.abs(sx(v) - sx(0)));
-    g += `<text x="${L - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" style="fill:var(--text)">${esc(r.label)}</text>`;
-    inside += `<rect x="${x0}" y="${y + 6}" width="${w}" height="${rowH - 12}" rx="3" fill="var(${color})"><title>${esc(r.label)}: ${esc(fmt(v))}</title></rect>`;
-    const right = v >= 0;
-    inside += `<text x="${right ? sx(v) + 5 : sx(v) - 5}" y="${y + rowH / 2 + 4}" text-anchor="${right ? "start" : "end"}" style="fill:var(--text)">${esc(fmt(v))}</text>`;
+// ---- Test panes (#1729: Hugh's layout, approved by Peter 2026-11-14) -----
+//
+// Every test pane: the table on the left and the charts on the right, the
+// charts under the table where they would be under PANE_MIN_CHART wide;
+// only the table scrolls. One chart per measure, each shown by its series
+// toggle, all on at first. One hover: a lane in any chart or a row of the
+// table rings that position in every chart, outlines its row and gives its
+// figures in each chart's title row.
+
+// The narrowest the charts are drawn beside the table (Hugh's 320 pt).
+const PANE_MIN_CHART = 320;
+// The measures a pane's toggles show, all on at first; kept across redraws.
+const paneShown = { rate: true, amplitude: true, beat_error: true };
+const PANE_KINDS = [["rate", "--rate"], ["amplitude", "--amplitude"], ["beat_error", "--beat-error"]];
+
+// The pane: its heading, the table and the charts beside it.
+function testPane(title, table, charts, toggles) {
+  return `<div class="card pane-card">${title ? `<h2>${esc(title)}</h2>` : ""}<div class="pane">
+    <div class="pane-table">${table}</div>
+    <div class="pane-charts" style="min-width:${PANE_MIN_CHART}px">${toggles}${charts}</div></div></div>`;
+}
+
+// One of the app's icons (core `icons`) as inline SVG, in the colour of
+// the text around it.
+function icon(name, size) {
+  const d = (ICONS || {})[name];
+  if (!d) return "";
+  return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${(ICONS || {}).width || 1.7}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+}
+
+// The three series toggles over a pane's charts: the app's hare, swing and
+// seesaw (theme::icon_toggle), tinted in the series' colour while on.
+function paneToggles(titles) {
+  return `<div class="icon-seg pane-seg">${PANE_KINDS.map(([k, color]) =>
+    `<button class="icon-toggle" data-series="${k}" aria-pressed="${paneShown[k]}" title="${esc(titles[k] || k)}" aria-label="${esc(titles[k] || k)}" style="--tint:var(${color})">${icon(k, 18)}</button>`).join("")}</div>`;
+}
+
+// A character's width in a pane chart's 12px text.
+const PANE_CHAR_W = CHAR_W * 12 / 11;
+
+// The width pane `id`'s charts are drawn at, so their text stays at its
+// size (Hugh on #1747): its charts' column as last laid out, else a guess.
+let paneWs = {}, paneWFor = -1, paneWTries = 0;
+function paneChartWidth(id) {
+  return Math.max(PANE_MIN_CHART, Math.floor(paneWs[id] || chartWidth() - 380));
+}
+
+// A table's column heading: its name, and its unit under it (the 11-04
+// units rule: the cells are bare figures).
+function columnHead(name, unit) {
+  return `<th>${esc(name)}${unit ? `<span class="unit">${esc(unit)}</span>` : ""}</th>`;
+}
+
+// One state of wind's Positions Test pane, from core's position lines
+// (`report.position_lines`): the table of each position's figures and the
+// averages, and a position line per measure. `readings` are the state's,
+// for the row of a position with no regular beat.
+function positionsPane(sl, readings, id, titled) {
+  const kinds = PANE_KINDS.map(([k]) => k).filter((k) => sl[k]);
+  const lanes = (sl.rate || {}).lanes || [];
+  const deaf = (code) => readings.some((r) => ((POSITIONS || {})[r.position] || [r.position])[0] === code &&
+    r.measurement && r.measurement.watch_heard === false);
+  const text = (k, i) => esc((((sl[k] || {}).lanes || [])[i] || {}).figure || "–");
+  let table = `<table class="pane-rows"><thead><tr><th>Position</th>${kinds.map((k) => columnHead(sl[k].title, sl[k].unit)).join("")}</tr></thead><tbody>`;
+  lanes.forEach((l, i) => {
+    table += `<tr data-pos="${esc(l.position)}"><td>${esc(l.name)}</td>` +
+      (l.value == null && deaf(l.position)
+        ? `<td colspan="${kinds.length}" style="text-align:center;color:var(--text2)">${esc(NO_BEAT_TITLE)}</td>`
+        : kinds.map((k) => `<td>${text(k, i)}</td>`).join("")) + `</tr>`;
   });
-  g += `<g clip-path="url(#${area.id})">${inside}</g>`;
-  return `<svg viewBox="0 0 ${W} ${T + plotH + B}" width="${W}" height="${T + plotH + B}" role="img">${g}</svg>`;
+  for (const of of ["all", "vertical", "horizontal"]) {
+    const avg = (k) => ((sl[k] || {}).averages || []).find((a) => a.of === of);
+    const name = kinds.map(avg).find(Boolean);
+    if (!name) continue;
+    table += `<tr class="avg"><td>${esc(name.name)}</td>${kinds.map((k) => `<td>${esc((avg(k) || {}).figure || "–")}</td>`).join("")}</tr>`;
+  }
+  table += `</tbody></table>`;
+  const charts = kinds.filter((k) => paneShown[k]).map((k) => positionLineChart(sl[k], `${id}-${k}`)).join("");
+  const titles = Object.fromEntries(kinds.map((k) => [k, sl[k].title]));
+  return `<div data-pane="${esc(id)}">${testPane(titled ? sl.name : "", table, charts, paneToggles(titles))}</div>`;
+}
+
+// A lane's height, px.
+const LANE_H = 22;
+
+// A pane chart's title row: its name, and on a hover the hovered row's
+// full name and its figure in the series' colour (Hugh, rule 4).
+function plHead(title, color) {
+  return `<div class="pl-head">${title ? `<b>${esc(title)}</b> ` : ""}<span class="pl-name"></span> <span class="pl-val" style="color:${color}"></span></div>`;
+}
+
+// One measure's position line (core `position_line`): the value along the
+// axis, a lane per position under its group's name, the averages as grey
+// dashed lines named above the plot, and on a later state the full-wind
+// figure hollow with an arrow to this test's. No position is joined to
+// another. The title row gives the hovered position's figures.
+function positionLineChart(line, id) {
+  if (!line.axis) return "";
+  const [lo, hi, step] = line.axis;
+  const W = paneChartWidth(id.split("-")[0]), L = 74, R = 14;
+  const plotW = W - L - R;
+  const sx = (v) => L + (v - lo) / (hi - lo) * plotW;
+  // The averages' names in a lane of one row above the plot, joined to
+  // their lines (marks::lane_above_one): three names slide along the row,
+  // so no leader passes another name (Walter on #1742).
+  const T = 4 + (line.averages.length ? MARKS.LANE_GAP + MARKS.ROW_H : 0);
+  const groups = [...new Set(line.lanes.map((l) => l.group))];
+  const plotH = LANE_H * (groups.length + line.lanes.length);
+  const H = T + plotH + 22;
+  let g = `<rect class="plot" x="${L}" y="${T}" width="${plotW}" height="${plotH}"/>`;
+  const ticks = Math.round((hi - lo) / step);
+  const shown = tickLabelsShown(Array.from({ length: ticks + 1 }, (_, i) => {
+    const v = lo + i * step;
+    return { x: sx(v), text: valueTick(line, v, step, i === ticks), end: i === ticks };
+  }), PANE_CHAR_W);
+  for (let i = 0; i <= ticks; i++) {
+    const x = sx(lo + i * step);
+    g += gridDown(x, L, T, plotH);
+    if (shown[i]) g += `<text x="${x}" y="${T + plotH + 15}" text-anchor="${shown[i].end ? "end" : "middle"}">${esc(shown[i].text)}</text>`;
+  }
+  g += `<line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${T + plotH}"/><line class="axis" x1="${L}" x2="${L + plotW}" y1="${T + plotH}" y2="${T + plotH}"/>`;
+  for (const a of line.averages) {
+    g += `<line x1="${sx(a.value)}" x2="${sx(a.value)}" y1="${T}" y2="${T + plotH}" stroke="var(--callout)" stroke-width="${CALL_OUT_W}" stroke-dasharray="${DASH.dashed}"><title>${esc(a.hover)}</title></line>`;
+  }
+  g += laneAbove(line.averages.map((a) => ({ x: a.value, name: a.name, rank: "faint", ink: "--callout", hover: a.hover })), sx, L, T, plotW, true);
+  const color = `var(${(PANE_KINDS.find(([k]) => k === line.series) || [])[1] || "--rate"})`;
+  let y = T;
+  for (const grp of groups) {
+    const name = (GROUP_NAMES || {})[grp] || grp;
+    g += `<text x="4" y="${y + LANE_H / 2 + 4}" style="fill:var(--text2);font-weight:600">${esc(name)}</text>`;
+    y += LANE_H;
+    for (const l of line.lanes.filter((m) => m.group === grp)) {
+      const cy = y + LANE_H / 2;
+      const val = [l.text, l.full_wind_text && `${(line.key || [])[1] || ""} ${l.full_wind_text}`].filter(Boolean).join(" · ");
+      g += `<g class="lane" data-pos="${esc(l.position)}" data-label="${esc(l.name)}" data-val="${esc(val)}"><rect class="hit" x="0" y="${y}" width="${W}" height="${LANE_H}"/>`;
+      g += `<text x="${L - 8}" y="${cy + 4}" text-anchor="end" style="fill:var(--text)">${esc(l.position)}</text>`;
+      if (l.full_wind != null && l.value != null) {
+        const x0 = sx(l.full_wind), x1 = sx(l.value), d = x1 - x0;
+        if (Math.abs(d) > 12) g += `<line x1="${x0}" x2="${x1 - 7 * Math.sign(d)}" y1="${cy}" y2="${cy}" stroke="var(--text2)" stroke-width="${CALL_OUT_W}" marker-end="url(#pl-arrow-${esc(id)})"/>`;
+      }
+      if (l.full_wind != null) g += `<circle class="ring" cx="${sx(l.full_wind)}" cy="${cy}" r="8"/><circle cx="${sx(l.full_wind)}" cy="${cy}" r="5" fill="var(--card)" stroke="${color}" stroke-width="1.5"/>`;
+      if (l.value != null) g += `<circle class="ring" cx="${sx(l.value)}" cy="${cy}" r="8"/><circle cx="${sx(l.value)}" cy="${cy}" r="5" fill="${color}"/>`;
+      g += `<title>${esc(l.hover)}</title></g>`;
+      y += LANE_H;
+    }
+  }
+  const arrows = line.lanes.some((l) => l.full_wind != null && l.value != null);
+  const defs = !arrows ? "" : `<defs><marker id="pl-arrow-${esc(id)}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="var(--text2)"/></marker></defs>`;
+  const key = line.key
+    ? `<div class="legend above"><span><svg class="key" width="12" height="12"><circle cx="6" cy="6" r="5" fill="${color}"/></svg>${esc(line.key[0])}</span><span><svg class="key" width="12" height="12"><circle cx="6" cy="6" r="4.5" fill="var(--card)" stroke="${color}" stroke-width="1.5"/></svg>${esc(line.key[1])}</span></div>`
+    : "";
+  return `<div class="chart pl" data-pl="${esc(id)}">${plHead(line.title, color)}${key}<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(line.title)}">${defs}${g}</svg></div>`;
+}
+
+// ---- Dynamic Poise pane (#1729) -----------------------------------------
+//
+// One state of wind's Dynamic Poise: the upright positions' rates in the
+// table, and core's picture (`poise[].picture`) beside it, along a line or
+// round a watch face as the Plot and Dial buttons choose, with core's
+// words over it. The view works out no scale and writes no words of its
+// own.
+
+// Which of the Plot and the Dial are shown, each its own toggle like the
+// panes' series toggles, kept across redraws; the Plot at first, as the app's.
+const poiseShown = { plot: true, dial: false };
+
+function poisePane(p, id, state) {
+  const pic = p.picture;
+  let table = `<table class="pane-rows"><thead><tr><th>Position</th>${columnHead("Rate", pic.unit)}</tr></thead><tbody>`;
+  for (const d of pic.points) table += `<tr data-pos="${esc(d.code)}"><td>${esc(d.code)}</td><td>${esc(d.figure)}</td></tr>`;
+  if (pic.mean) table += `<tr class="avg"><td>${esc(pic.mean_title)}</td><td>${esc(pic.mean.figure)}</td></tr>`;
+  table += `</tbody></table>`;
+  const toggle = `<div class="seg poise-seg">${[["plot", "Plot"], ["dial", "Dial"]].map(([k, name]) =>
+    `<button data-poise="${k}" aria-pressed="${poiseShown[k]}">${name}</button>`).join("")}</div>`;
+  // Core's words on the fit behind an "i", the heavy spot's line in view
+  // (the 11-13 text-placement rule).
+  const words = `<details class="info"><summary title="About the fit" aria-label="About the fit">${icon("info", 16)}</summary><p class="hint">${esc(p.fit.text)}</p></details>`;
+  const heavy = pic.heavy ? `<p class="hint heavy">${words}<b>${esc(pic.heavy[0])}</b> ${esc(pic.heavy[1])}</p>` : words;
+  // Plot and Dial side by side, each at least PANE_MIN_CHART wide, the one
+  // under the other where they don't fit.
+  const both = poiseShown.plot && poiseShown.dial;
+  const full = paneChartWidth(id);
+  const w = both && full >= 2 * PANE_MIN_CHART + 12 ? Math.floor((full - 12) / 2) : full;
+  const charts = [poiseShown.plot && poisePlot(pic, w), poiseShown.dial && poiseDial(pic, w)].filter(Boolean)
+    .map((c) => `<div class="poise-chart">${c}</div>`).join("");
+  const title = state ? `${pic.title}, ${state}` : pic.title;
+  return `<div data-pane="${esc(id)}">${testPane(title, table, `<div class="chart pl" data-pl="${esc(id)}-poise">${heavy}${plHead("", "var(--rate)")}${poiseKey(pic)}<div class="poise-charts">${charts}</div></div>`, toggle)}</div>`;
+}
+
+// The points with their ±, each a lane for the one hover.
+function poiseDots(pic, at) {
+  let g = "";
+  for (const d of pic.points) {
+    const ends = d.angle_deg % 360 === 0 && at.plot ? [0, 360] : [d.angle_deg];
+    g += `<g class="lane" data-pos="${esc(d.code)}" data-label="${esc(d.code)}" data-val="${esc(d.text)}">`;
+    for (const deg of ends) {
+      const [x, y] = at.xy(deg, d.rate_s_per_day);
+      if (d.rate_se != null) {
+        const [x0, y0] = at.xy(deg, d.rate_s_per_day - d.rate_se), [x1, y1] = at.xy(deg, d.rate_s_per_day + d.rate_se);
+        g += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="var(--rate)" stroke-width="1.5"/>`;
+      }
+      g += `<circle class="ring" cx="${x}" cy="${y}" r="8"/><circle cx="${x}" cy="${y}" r="4.2" fill="var(--rate)" stroke="var(--card)" stroke-width="1.5"/>`;
+      g += `<circle class="hit" cx="${x}" cy="${y}" r="10"/>`;
+    }
+    g += `<title>${esc(`${d.code} ${d.text}`)}</title></g>`;
+  }
+  return g;
+}
+
+// The plot: across, the hour at the top from 12H to 12H, a mark every 45°
+// (the half hours dashed); up, the rate. The mean dotted, the wave grey
+// and its fastest hour named once it is clear of the noise.
+function poisePlot(pic, width) {
+  const [lo, hi, step] = pic.axis;
+  const W = width || 480, L = 58, R = 14, T = 30, plotH = 200, H = T + plotH + 36;
+  const plotW = W - L - R;
+  const sx = (deg) => L + deg / 360 * plotW, sy = (r) => T + (hi - r) / (hi - lo) * plotH;
+  let g = `<rect class="plot" x="${L}" y="${T}" width="${plotW}" height="${plotH}"/>`;
+  const n = Math.round((hi - lo) / step);
+  for (let i = 0; i <= n; i++) {
+    const v = lo + i * step;
+    g += `${gridAcross(sy(v), L, plotW, T + plotH)}`;
+    // No rate's numbers until there is a rate; the unit on the top one.
+    if (pic.points.length) g += `<text x="${L - 6}" y="${sy(v) + 4}" text-anchor="end">${esc(valueTick({ series: "rate", unit: "s/d" }, v, step, i === n))}</text>`;
+  }
+  [...pic.hours, [360, pic.hours[0][1]]].forEach(([deg, code], i) => {
+    const half = i % 2 === 1;
+    g += `<line x1="${sx(deg)}" x2="${sx(deg)}" y1="${T}" y2="${T + plotH}" class="grid"${half ? ' stroke-dasharray="2 3"' : ""}/>`;
+    // The ends' 12H set inward, clear of the rate's lowest number.
+    const anchor = i === 0 ? "start" : i === pic.hours.length ? "end" : "middle";
+    g += `<text x="${sx(deg)}" y="${T + plotH + 15}" text-anchor="${anchor}"${half ? ' style="fill:var(--text3)"' : ""}>${esc(code)}</text>`;
+  });
+  g += `<text x="${L + plotW / 2}" y="${H - 2}" text-anchor="middle">${esc(pic.hour_axis)}</text>`;
+  if (pic.mean) {
+    const y = Math.round(sy(pic.mean.rate_s_per_day)) + 0.5;
+    g += `<line x1="${L}" x2="${L + plotW}" y1="${y}" y2="${y}" stroke="var(--text2)" stroke-dasharray="3 3"/>`;
+  }
+  if (pic.wave.length) g += `<path d="${pic.wave.map(([d, r], i) => `${i ? "L" : "M"}${sx(d).toFixed(1)} ${sy(r).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--text2)" stroke-width="1.5"/>`;
+  if (pic.fastest) {
+    const x = sx(pic.fastest.at);
+    // Its name over the line, set off inward near either end of the plot.
+    const anchor = x < L + 40 ? "start" : x > L + plotW - 40 ? "end" : "middle";
+    g += `<line x1="${x}" x2="${x}" y1="${T}" y2="${sy(pic.fastest.rate_s_per_day)}" stroke="var(--text2)" stroke-width="1.2"/><text x="${x}" y="${T - 4}" text-anchor="${anchor}" style="fill:var(--text)">${esc(pic.fastest.name)}</text>`;
+  }
+  if (pic.mean && pic.slowest_deg != null) g += `<text class="backed" x="${sx(pic.slowest_deg)}" y="${sy(pic.mean.rate_s_per_day) - 4}" text-anchor="middle">${esc(pic.mean.name)}</text>`;
+  g += poiseDots(pic, { plot: true, xy: (deg, r) => [sx(deg), sy(r)] });
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(pic.hour_axis)}">${g}</svg>`;
+}
+
+// The dial: 12H at the top, the rate further out when faster, the scale's
+// ends at the inner and outer rings; the mean a dotted ring, the wave grey.
+function poiseDial(pic, width) {
+  const [lo, hi, step] = pic.axis;
+  const S = Math.min(width || 400, 420), c = S / 2, outer = c - 40, inner = outer * 0.15;
+  const rad = (r) => inner + (r - lo) / (hi - lo) * (outer - inner);
+  const xy = (deg, r) => {
+    const a = (deg - 90) * Math.PI / 180, q = rad(r);
+    return [+(c + q * Math.cos(a)).toFixed(1), +(c + q * Math.sin(a)).toFixed(1)];
+  };
+  let g = "";
+  const n = Math.round((hi - lo) / step);
+  // The ring numbers half way between two stops from the slowest hour, so
+  // they keep off the spokes, the points and the mean's name there.
+  const between = 180 / pic.hours.length;
+  const bearing = (pic.slowest_deg == null ? 0 : pic.slowest_deg) + between;
+  for (let i = 0; i <= n; i++) {
+    const v = lo + i * step;
+    g += `<circle cx="${c}" cy="${c}" r="${rad(v).toFixed(1)}" fill="none" class="grid"/>`;
+    if (pic.points.length) {
+      const [x, y] = xy(bearing, v);
+      // A ring's number is left out where it would sit on a point or on
+      // the mean's name, as on the app's dial.
+      const near = (q, w) => Math.abs(x - q[0]) < w && Math.abs(y - q[1]) < 12;
+      if (pic.points.some((d) => near(xy(d.angle_deg, d.rate_s_per_day), 26))) continue;
+      // Nor on an hour's name round the face.
+      const nameAt = (deg) => { const a = (deg - 90) * Math.PI / 180; return [c + (outer + 16) * Math.cos(a), c + (outer + 16) * Math.sin(a)]; };
+      if (pic.hours.some(([deg]) => near(nameAt(deg), 34))) continue;
+      if (pic.mean && pic.slowest_deg != null && near(xy(pic.slowest_deg, pic.mean.rate_s_per_day), 20 + pic.mean.name.length * 3.5)) continue;
+      g += `<text x="${x}" y="${y + 4}" text-anchor="middle" style="fill:var(--text3)">${esc(valueTick({ series: "rate", unit: "s/d" }, v, step, false))}</text>`;
+    }
+  }
+  for (const [deg, code] of pic.hours) {
+    const [x0, y0] = xy(deg, lo), [x1, y1] = xy(deg, hi);
+    g += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" class="grid"/>`;
+    const a = (deg - 90) * Math.PI / 180;
+    g += `<text x="${(c + (outer + 16) * Math.cos(a)).toFixed(1)}" y="${(c + (outer + 16) * Math.sin(a) + 4).toFixed(1)}" text-anchor="middle">${esc(code)}</text>`;
+  }
+  if (pic.mean) g += `<circle cx="${c}" cy="${c}" r="${rad(pic.mean.rate_s_per_day).toFixed(1)}" fill="none" stroke="var(--text2)" stroke-dasharray="3 3"/>`;
+  if (pic.wave.length) g += `<path d="${pic.wave.map(([d, r], i) => `${i ? "L" : "M"}${xy(d, r).join(" ")}`).join(" ")}" fill="none" stroke="var(--text2)" stroke-width="1.5"/>`;
+  if (pic.mean && pic.slowest_deg != null) {
+    const [x, y] = xy(pic.slowest_deg, pic.mean.rate_s_per_day);
+    g += `<text class="backed" x="${x}" y="${y - 4}" text-anchor="middle">${esc(pic.mean.name)}</text>`;
+  }
+  g += poiseDots(pic, { plot: false, xy });
+  g += `<text x="${S - 4}" y="14" text-anchor="end">${esc(pic.dial_key)}</text>`;
+  return `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" style="margin:auto" role="img" aria-label="${esc(pic.dial_key)}">${g}</svg>`;
+}
+
+// The key over the picture: the points, then the wave once it is fitted.
+function poiseKey(pic) {
+  if (!pic.key.length) return "";
+  return `<div class="legend above">${pic.key.map((k, i) => `<span><svg class="key" width="14" height="12">${i === 0
+    ? `<circle cx="7" cy="6" r="4.2" fill="var(--rate)"/>` : `<line x1="0" x2="14" y1="6" y2="6" stroke="var(--text2)" stroke-width="1.5"/>`}</svg>${esc(k)}</span>`).join("")}</div>`;
+}
+
+// Which of an axis's tick labels are drawn: the last always (it carries
+// the unit), then each one before it that clears the next drawn one, so no
+// two labels touch however narrow the steps (Walter on #1747). Each label
+// is {x, text, end}: end-anchored at x when `end`, else centred.
+function tickLabelsShown(labels, cw = CHAR_W) {
+  const shown = labels.map(() => null);
+  let left = Infinity;
+  for (let i = labels.length - 1; i >= 0; i--) {
+    const l = labels[i], w = l.text.length * cw;
+    const [a, b] = l.end ? [l.x - w, l.x] : [l.x - w / 2, l.x + w / 2];
+    if (b + 4 <= left) { shown[i] = l; left = a; }
+  }
+  return shown;
+}
+
+// A measure's axis tick: a rate's carries its sign, as its figures do, and
+// the last carries the unit ("°" set close, as core writes it).
+function valueTick(series, v, step, last) {
+  const t = axisLabel(v, step, "");
+  const sign = series.series === "rate" && v > 0 && !/^[0.]+$/.test(t) ? "+" : "";
+  return sign + t + (last ? (series.unit.startsWith("°") ? "" : " ") + series.unit : "");
+}
+
+// The Power Reserve pane (#1729): the table of each hour's figures and
+// Read %, and a chart per measure of the hourly levels as steps, from the
+// server's `timegrapher/reserve` (core's hours and words). A thin figure
+// (read from too few of its windows) is grey, as in the app's table; an
+// hour with no figure breaks the line.
+function reservePane(r, id) {
+  const series = r.series.filter((s) => s.axis);
+  let table = `<table class="pane-rows"><thead><tr>${columnHead(r.hours_title, "")}${series.map((s) => columnHead(s.title, s.unit)).join("")}${columnHead(r.read_title, r.read_unit)}</tr></thead><tbody>`;
+  r.hours.forEach((h, i) => {
+    table += `<tr data-pos="h${i}"><td>${esc(String(h.hour))}</td>${series.map((s) => {
+      const st = s.steps[i];
+      return `<td${st.thin ? ' class="thin"' : ""}>${esc(st.figure || "–")}</td>`;
+    }).join("")}<td>${esc(h.read || "–")}</td></tr>`;
+  });
+  table += `</tbody></table>`;
+  const charts = series.filter((s) => paneShown[s.series]).map((s) => stepChart(s, r.hours, `${id}-${s.series}`)).join("");
+  const titles = Object.fromEntries(series.map((s) => [s.series, s.title]));
+  return `<div data-pane="${esc(id)}">${testPane(r.title, table, charts, paneToggles(titles))}</div>`;
+}
+
+// One measure's hourly levels as steps: each hour a level across its span,
+// joined to the next by a riser where both were read, one continuous line
+// broken only where an hour has no figure (Norm's chart rules: steps for
+// hourly values, gaps break lines, no bars). A thin hour's level is grey.
+// The units are on the axes.
+function stepChart(s, hours, id) {
+  const [lo, hi, step] = s.axis;
+  const end = hours.length ? hours[hours.length - 1].hour + hours[hours.length - 1].span_h : 1;
+  const W = paneChartWidth(id.split("-")[0]), L = 52, R = 14, T = 8, plotH = 140;
+  const plotW = W - L - R, H = T + plotH + 22;
+  const sx = (h) => L + h / end * plotW;
+  const sy = (v) => T + (hi - v) / (hi - lo) * plotH;
+  let g = `<rect class="plot" x="${L}" y="${T}" width="${plotW}" height="${plotH}"/>`;
+  const yticks = Math.round((hi - lo) / step);
+  for (let i = 0; i <= yticks; i++) {
+    const v = lo + i * step;
+    g += `${gridAcross(sy(v), L, plotW, T + plotH)}<text x="${L - 6}" y="${sy(v) + 4}" text-anchor="end">${esc(valueTick(s, v, step, i === yticks))}</text>`;
+  }
+  // The hours' labels, none touching the next (Hugh on #1747).
+  const xs = gridFor(0, end, plotW, 60);
+  const shown = tickLabelsShown(xs.ticks.map((h, i) => {
+    const last = i === xs.ticks.length - 1;
+    return { x: sx(h), text: axisLabel(h, xs.step, last ? " h" : ""), end: sx(h) > L + plotW - 16 };
+  }), PANE_CHAR_W);
+  xs.ticks.forEach((h, i) => {
+    g += gridDown(sx(h), L, T, plotH);
+    if (shown[i]) g += `<text x="${sx(h)}" y="${T + plotH + 15}" text-anchor="${shown[i].end ? "end" : "middle"}">${esc(shown[i].text)}</text>`;
+  });
+  g += `<line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${T + plotH}"/><line class="axis" x1="${L}" x2="${L + plotW}" y1="${T + plotH}" y2="${T + plotH}"/>`;
+  const color = `var(${(PANE_KINDS.find(([k]) => k === s.series) || [])[1] || "--rate"})`;
+  // One path: a level per hour, a riser to the next where it follows on.
+  let d = "", prev = null, thin = "", hits = "";
+  hours.forEach((h, i) => {
+    const v = s.steps[i].value;
+    const x0 = sx(h.hour), x1 = sx(h.hour + h.span_h);
+    if (v == null) { prev = null; } else {
+      const y = sy(v);
+      d += prev && Math.abs(prev - x0) < 0.5 ? ` V${y.toFixed(1)} H${x1.toFixed(1)}` : ` M${x0.toFixed(1)} ${y.toFixed(1)} H${x1.toFixed(1)}`;
+      prev = x1;
+      if (s.steps[i].thin) thin += `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="var(--text3)" stroke-width="2.5"/>`;
+    }
+    const mid = (x0 + x1) / 2;
+    hits += `<g class="lane" data-pos="h${i}" data-label="${esc(`${h.hour} h`)}" data-val="${esc(s.steps[i].text || "–")}"><rect class="hit" x="${x0}" y="${T}" width="${Math.max(1, x1 - x0)}" height="${plotH}"/><line class="ring" x1="${mid}" x2="${mid}" y1="${T}" y2="${T + plotH}"/></g>`;
+  });
+  g += `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2"/>${thin}${hits}`;
+  return `<div class="chart pl" data-pl="${esc(id)}">${plHead(s.title, color)}<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(s.title)}">${g}</svg></div>`;
+}
+
+// The one hover across a pane: the position under the pointer, in a chart
+// or the table, ringed in every chart, its row outlined, its figures in
+// each chart's title row; and the series toggles.
+function wirePanes(root) {
+  for (const pane of root.querySelectorAll("[data-pane]")) {
+    const hot = (pos) => {
+      for (const el of pane.querySelectorAll("[data-pos]")) el.classList.toggle("hot", el.dataset.pos === pos);
+      for (const c of pane.querySelectorAll(".chart.pl")) {
+        const lane = pos && c.querySelector(`.lane[data-pos="${CSS.escape(pos)}"]`);
+        c.querySelector(".pl-name").textContent = lane ? lane.dataset.label || pos : "";
+        c.querySelector(".pl-val").textContent = lane ? lane.dataset.val : "";
+      }
+    };
+    pane.addEventListener("pointerover", (ev) => {
+      const at = ev.target.closest && ev.target.closest("[data-pos]");
+      hot(at ? at.dataset.pos : null);
+    });
+    pane.addEventListener("pointerleave", () => hot(null));
+    for (const b of pane.querySelectorAll(".poise-seg button")) {
+      b.addEventListener("click", () => { poiseShown[b.dataset.poise] = !poiseShown[b.dataset.poise]; redraw(); });
+    }
+    for (const b of pane.querySelectorAll(".pane-seg button")) {
+      b.addEventListener("click", () => { paneShown[b.dataset.series] = !paneShown[b.dataset.series]; redraw(); });
+    }
+  }
+  // Draw the charts again at the width their column was laid out at, once
+  // or twice for each width of the page.
+  if (paneWFor !== lastWidth) { paneWFor = lastWidth; paneWTries = 0; }
+  let moved = false;
+  for (const pane of root.querySelectorAll("[data-pane]")) {
+    const column = pane.querySelector(".pane-charts");
+    const w = column ? Math.floor(column.clientWidth) : 0;
+    if (w && Math.abs(w - (paneWs[pane.dataset.pane] || 0)) > 4) { paneWs[pane.dataset.pane] = w; moved = true; }
+  }
+  if (moved && paneWTries++ < 2) requestAnimationFrame(redraw);
 }
 
 // What limits the readings: the server's sentences from the caveats, each
@@ -1287,18 +1688,24 @@ function markText(x, y, name, rank, extra = "") {
 // marks::lane_above: lines down a plot (its frame from L, T, plotW wide),
 // named in a lane of two rows above it, each name joined to its line by a
 // short stroke of the line's colour, with an angled leader where it had
-// to slide. Each line and its name say its hover.
-function laneAbove(lines, sx, L, T, plotW) {
+// to slide. Each line and its name say its hover. With `one`,
+// marks::lane_above_one: a lane of one row, for a plot that names only a
+// few lines, where a name slides along the row (markPlaceRow).
+function laneAbove(lines, sx, L, T, plotW, one) {
   const { ROW_H, LANE_GAP } = MARKS;
   const seen = lines.filter((l) => sx(l.x) >= L && sx(l.x) <= L + plotW);
   const names = seen.map((l) => [sx(l.x), markWidth(l.name, l.rank), l.rank]);
-  const placed = markPlace(names, L + 2, L + plotW - 2, []);
+  const placed = one
+    ? markPlaceRow(names, L + 2, L + plotW - 2).map((a) => [a, 0])
+    : markPlace(names, L + 2, L + plotW - 2, []);
   let strokes = "", boxes = "";
   seen.forEach((l, i) => {
     const [x, w] = names[i], [left, row] = placed[i];
     const off = LANE_GAP + row * ROW_H, top = T - off - ROW_H, centre = left + w / 2;
+    // One angled line from the name's lower edge to the top of its line
+    // on a one-row lane (Hugh on #1747); a bend under a two-row lane.
     const pts = [[centre, T - off - 1]];
-    if (Math.abs(centre - x) > 1) pts.push([x, T - LANE_GAP / 2]);
+    if (!one && Math.abs(centre - x) > 1) pts.push([x, T - LANE_GAP / 2]);
     pts.push([x, T]);
     strokes += `<polyline points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${l.ink})"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-width="1"/>`;
     boxes += `<g><title>${esc(l.hover)}</title><rect x="${(left - 2).toFixed(1)}" y="${(top - 2).toFixed(1)}" width="${(w + 4).toFixed(1)}" height="${ROW_H + 4}" rx="2" fill="var(--card)"/>${markText(left, top + 11.5, l.name, l.rank)}</g>`;
@@ -2288,7 +2695,7 @@ function redraw() {
   } else if (doc.schema.startsWith("timegrapher.analyze/")) {
     html = recordingView(doc, extra, limits, noBeat, last._meta && last._meta["timegrapher/pm"]);
   } else if (doc.schema.startsWith("timegrapher.session/")) {
-    html = sessionView(doc, limits);
+    html = sessionView(doc, limits, last._meta && last._meta["timegrapher/reserve"]);
   } else if (doc.schema.startsWith("timegrapher.profile/")) {
     html = profileView(doc, last._meta && last._meta["timegrapher/profile_facts"]);
   } else if (doc.schema.startsWith("timegrapher.series/")) {
@@ -2301,6 +2708,7 @@ function redraw() {
   lastWidth = root.clientWidth;
   root.innerHTML = html;
   wireCharts(root);
+  wirePanes(root);
   wireSteadiness(root);
   paintMaps(root);
 }

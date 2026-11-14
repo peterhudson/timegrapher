@@ -78,6 +78,12 @@ pub fn wind_state_words(wind_h: Option<f64>) -> String {
     wind_h.map_or_else(|| WIND_NOT_GIVEN.to_string(), wind_words)
 }
 
+/// [`wind_state_words`] as a heading: "Full wind", "24 h after winding",
+/// "Wind not given".
+pub fn wind_state_title(wind_h: Option<f64>) -> String {
+    capitalised(&wind_state_words(wind_h))
+}
+
 /// The words for a state of wind that was not given.
 pub const WIND_NOT_GIVEN: &str = "wind not given";
 

@@ -296,6 +296,7 @@ fn view_meta(doc: &Value, result: &mut Value) {
         (views::PM_KEY, views::pm_texts(doc)),
         (caveats::NO_BEAT_KEY, caveats::no_beat(doc).map(Value::from)),
         (caveats::SERIES_KEY, caveats::series_limits(doc)),
+        (views::RESERVE_KEY, views::reserve_view(doc)),
     ];
     for (key, value) in entries {
         if let Some(value) = value {

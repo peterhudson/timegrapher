@@ -1013,6 +1013,11 @@ impl Session {
     /// they are, for the next start to offer back (the app is quitting
     /// without having asked about them).
     pub fn keep_recording(&mut self) {
+        // One keeping no sound has nothing to offer back: it goes, unless
+        // it holds the analysis of a take not yet written (#1514).
+        if self.recorder.as_ref().is_some_and(|r| !r.keeps_sound()) {
+            return self.discard_recording();
+        }
         if let Some(r) = self.recorder.take() {
             if self.recording_fault.is_some() {
                 drop(r);
@@ -1030,6 +1035,10 @@ impl Session {
                 // Drop closes handles best-effort, without writing a normal
                 // completed session.json or deleting uncertain audio.
                 drop(r);
+            } else if timegrapher_core::checkpoint::exists(r.dir()) {
+                // A take kept as its analysis alone and not yet written:
+                // its folder keeps the analysis kept as it went (#1514).
+                let _ = r.finish(None);
             } else if let Ok(dir) = r.finish(None) {
                 let _ = std::fs::remove_dir_all(dir);
             }

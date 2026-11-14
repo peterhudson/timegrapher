@@ -22,7 +22,10 @@
 //! minutes with none, core `power_reserve`) or 80 hours pass, then keeps
 //! the run's results, hour by hour, in the session folder's
 //! `power-reserve.json`, as the app's Power Reserve pane does. In the
-//! library its folder is named by the date and time and "Power Reserve".
+//! library the test is one take, as the app files it (#1732): the
+//! recording itself, in a folder named by the date and time and "Power
+//! Reserve" ([`library::power_reserve_take_dir`]), with its own session
+//! file and `power-reserve.json`.
 
 use crate::long::Train;
 use crate::output;
@@ -152,6 +155,11 @@ struct Placed {
     _library: Option<Library>,
     /// The watch it was made under, without a FOLDER.
     watch: Option<String>,
+    /// A Power Reserve Test filed into a library: the local minute it
+    /// started, which names its take. The take is then one folder, as
+    /// the app keeps one ([`library::power_reserve_take_dir`], #1732),
+    /// and the session folder is the watch's `takes/`.
+    reserve_take: Option<String>,
 }
 
 /// The library holding `folder` as one of a watch's takes, if it is one:
@@ -187,6 +195,7 @@ fn place(o: &mut Options) -> Result<Placed, String> {
         return Ok(Placed {
             _library: held,
             watch: None,
+            reserve_take: None,
         });
     }
     let name = o.watch.clone().ok_or(
@@ -221,16 +230,23 @@ fn place(o: &mut Options) -> Result<Placed, String> {
     }
     o.bph = o.bph.or(w.bph);
     o.lift = o.lift.or(w.lift);
-    let mut started = chrono::Local::now()
+    let started = chrono::Local::now()
         .format(library::TAKE_NAME_TIME)
         .to_string();
-    if o.power_reserve {
-        started.push_str(" Power Reserve");
-    }
-    o.folder = Some(library::unused_dir(&e.dir.join(library::TAKES), &started));
+    let takes = e.dir.join(library::TAKES);
+    // A Power Reserve Test is recorded straight into the watch's takes and
+    // filed as one take, as the app files it; any other test gets a
+    // session folder its positions are added to.
+    let reserve_take = o.power_reserve.then(|| started.clone());
+    o.folder = Some(if o.power_reserve {
+        takes
+    } else {
+        library::unused_dir(&takes, &started)
+    });
     Ok(Placed {
         watch: Some(w.name.clone()),
         _library: Some(lib),
+        reserve_take,
     })
 }
 
@@ -275,13 +291,14 @@ fn record(o: &Options) -> Result<(Options, Report, serde_json::Value), String> {
         ));
     }
     let placed = place(&mut o)?;
-    let (rep, settings) = record_in(&o, placed.watch)?;
+    let (rep, settings) = record_in(&o, placed.watch, placed.reserve_take.as_deref())?;
     Ok((o, rep, settings))
 }
 
 fn record_in(
     o: &Options,
     library_watch: Option<String>,
+    reserve_take: Option<&str>,
 ) -> Result<(Report, serde_json::Value), String> {
     let pos = Position::parse(&o.position).ok_or_else(|| {
         format!(
@@ -304,19 +321,35 @@ fn record_in(
     let dir = rec
         .finish_as_flac(None)
         .map_err(|e| format!("{}: {e}", take.display()))?;
+    // Filed into a library, a Power Reserve Test's recording is its take.
+    let dir = match reserve_take {
+        Some(started) => file_reserve_take(dir, &library::power_reserve_take_dir(o.dir(), started)),
+        None => dir,
+    };
     write_take_manifest(&dir, pos, &set, Some("clock.csv"))?;
+    // The run's results go beside the session file that lists the take:
+    // the take's own when it is the whole test.
+    let results_dir = if reserve_take.is_some() {
+        &dir
+    } else {
+        o.dir()
+    };
     let reserve = if o.power_reserve {
         let ending = ending.unwrap_or(power_reserve::Ending::ByHand);
         let r = reserve_results(&dir, &started, pos, set.bph, ending)?;
-        power_reserve::write(o.dir(), &r)
-            .map_err(|e| format!("{}: {e}", o.dir().join(power_reserve::FILE).display()))?;
+        power_reserve::write(results_dir, &r)
+            .map_err(|e| format!("{}: {e}", results_dir.join(power_reserve::FILE).display()))?;
         Some(r)
     } else {
         None
     };
 
     let check = check(&dir, &set)?;
-    let session_file = add_to_session(o, pos, &set, &dir, &started, &check)?;
+    let session_file = if reserve_take.is_some() {
+        dir.join(MANIFEST)
+    } else {
+        add_to_session(o, pos, &set, &dir, &started, &check)?
+    };
 
     let rep = Report {
         take: dir.display().to_string(),
@@ -1010,6 +1043,26 @@ fn header(set: &Settings) -> String {
         set.lift_known
     );
     t
+}
+
+/// Rename the finished recording `dir` to its Power Reserve take folder
+/// `to`, waiting as every save does for a file another program has open
+/// ([`recorder::rename_settled`]). Should it still be refused, the
+/// recording stays where it is, under its own name, and is the take: its
+/// session file and run are written there all the same, so a run of up to
+/// 80 h is never lost to a rename (Felix on #1734).
+fn file_reserve_take(dir: PathBuf, to: &Path) -> PathBuf {
+    match recorder::rename_settled(&dir, to) {
+        Ok(()) => to.to_path_buf(),
+        Err(e) => {
+            eprintln!(
+                "warning: the take couldn't be renamed to {} ({e}); it is kept as {}",
+                to.display(),
+                dir.display()
+            );
+            dir
+        }
+    }
 }
 
 /// The app's session file inside the take, so the app opens the take with
@@ -1771,6 +1824,24 @@ mod tests {
         // The take is in the session file, as any other is.
         let listed = fs::read_to_string(folder.join(MANIFEST)).unwrap();
         assert_eq!(listed.matches("[[recording]]").count(), 1, "{listed}");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// A Power Reserve take that can't be renamed stays a take under its
+    /// recording's own name, so its run is still written (#1734).
+    #[test]
+    fn a_reserve_take_that_cant_be_renamed_is_kept_where_it_is() {
+        let base = std::env::temp_dir().join(format!("tg-record-rename-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let rec = base.join("2026-11-14T17-18-10_YM42_CR");
+        fs::create_dir_all(&rec).unwrap();
+        // A folder that isn't there can't take the recording.
+        let to = base.join("missing").join("2026-11-14 17.18 Power Reserve");
+        assert_eq!(file_reserve_take(rec.clone(), &to), rec);
+        assert!(rec.is_dir());
+        let free = base.join("2026-11-14 17.18 Power Reserve");
+        assert_eq!(file_reserve_take(rec.clone(), &free), free);
+        assert!(free.is_dir() && !rec.exists());
         let _ = fs::remove_dir_all(&base);
     }
 

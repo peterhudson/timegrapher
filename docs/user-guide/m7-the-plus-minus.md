@@ -18,8 +18,12 @@ window for the rate.
 ```text
 d     = each reading less the one before it
 s     = 1.4826 × median distance of d from its median ÷ √2
-ρ     = lag-one correlation of the readings, after a straight line is
-        taken off, held between 0 and 0.99
+r     = lag-one correlation of the readings, after a straight line is
+        taken off each level (pooled over the levels; a level ends at a
+        cut, or at a long dropout whose two sides no longer agree; two
+        readings either side of a missing window are not neighbours)
+ρ     = r + 2 × (1 + 3r) ÷ n̄, held between 0 and 0.99
+        (n̄ = the levels' mean length)
 n_eff = n × (1 − ρ) ÷ (1 + ρ)
 ±     = 1.2533 × s ÷ √(1 − ρ) ÷ √n_eff
 ```
@@ -35,6 +39,11 @@ In words:
    amplitude windows correlate by anywhere from 0.01 to 0.90 (the
    [Math Standards Guide](../developer/math-standards.md#12-method-audit),
    section 12).
+   Taking the line off makes the measured `r` read low, by about
+   2 × (1 + 3r) ÷ n on n readings (Marriott and Pope, 1954), so that much
+   is added back. In seeded runs of 30 readings, `r` fell on average
+   0.07, 0.15 and 0.26 short of a true 0, 0.5 and 0.9, where the formula
+   gives 0.07, 0.17 and 0.25.
 3. **The effective count, `n_eff`,** counts correlated readings as fewer
    independent ones. At ρ = 0.5, 30 readings are worth 10.
 4. **The ±** is the standard error of a median of `n_eff` readings.
