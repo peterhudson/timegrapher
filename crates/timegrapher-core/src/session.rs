@@ -574,123 +574,13 @@ pub fn leave_out(
     breaks.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
 }
 
-/// The beats a reading of the stretch from `from_s` to `to_s` (audio
-/// seconds) takes, from a time-ordered `beats`: those at `from_s` or after
-/// and before `to_s`. Live and saved readings both take them so
-/// ([`crate::live::LiveAnalyzer::reading_at`], [`measure_masked`]).
-pub fn stretch_beats(beats: &[Beat], from_s: f64, to_s: f64) -> std::ops::Range<usize> {
-    let lo = beats.partition_point(|b| b.time < from_s);
-    let hi = beats.partition_point(|b| b.time < to_s);
-    lo.min(hi)..hi
-}
-
-/// The amplitude windows a reading of the stretch from `from_s` to `to_s`
-/// (audio seconds) takes: those `holes` keeps, clear of every hole on
-/// true time, whose midpoint lies in the stretch, from `from_s` up to but
-/// not at `to_s`, so each window belongs to exactly one of two stretches
-/// that meet (#632). Live and saved readings both take them so, so one
-/// stretch reads one way.
-pub fn stretch_windows<'w>(
-    holes: &Cuts,
-    windows: &'w [AmplitudeWindow],
-    from_s: f64,
-    to_s: f64,
-) -> Vec<&'w AmplitudeWindow> {
-    holes
-        .amplitude_windows(windows)
-        .into_iter()
-        .filter(|w| window_in(w, from_s, to_s))
-        .collect()
-}
-
-/// How far either side of a reading its ± looks for the values it
-/// borrows its noise from when it holds too few (#1470), s: an hour. Noise
-/// from further away describes a different state of the watch
-/// (math-standards section 7); it also keeps a figure whose windows
-/// rarely give a value (an unlock seldom found) from searching a long
-/// take end to end at every reading.
-pub const BORROW_LOOK_S: f64 = 3600.0;
-
-/// How far a saved reading's borrowing of the rate's windows first
-/// reaches, s: the 300 s its 30 values need ([`RATE_SE_MIN_S`]), since a
-/// reading short enough to borrow holds few of them itself. Live starts
-/// shorter (`live::RATE_FIRST_REACH_S`), its run counting with the pool.
-pub const RATE_FIRST_REACH_S: f64 = RATE_SE_MIN_S;
-
-/// How far borrowing of the amplitude's windows first reaches, saved or
-/// live, s: 600 s, ten times the minute their 30 values of 2 s need, so a
-/// take whose unlock is often missed is still found in one reach.
-pub const AMPLITUDE_FIRST_REACH_S: f64 = crate::confidence::MIN_NOISE_VALUES as f64
-    * crate::distribution::STRETCH_S
-    * AMPLITUDE_REACH_MARGIN;
-/// [`AMPLITUDE_FIRST_REACH_S`] over the time its values need.
-const AMPLITUDE_REACH_MARGIN: f64 = 10.0;
-
-/// The windows `fetch(a, b)` gives for the take from `a` to `b` (s), over
-/// the least reach either side of a reading from `from_s` to `to_s` that
-/// gives `enough`: back first, as far as the take's start, then on past
-/// the reading towards `end_s`, the take's end (#1470). Each reach starts
-/// at `first_s` and doubles, up to [`BORROW_LOOK_S`].
-pub fn nearest_windows<T>(
-    (from_s, to_s, end_s): (f64, f64, f64),
-    first_s: f64,
-    fetch: impl Fn(f64, f64) -> Vec<T>,
-    enough: impl Fn(&[T]) -> bool,
-) -> Vec<T> {
-    let reach = |at: &dyn Fn(f64) -> (f64, f64), done: &dyn Fn(f64) -> bool| {
-        let mut look = first_s;
-        loop {
-            let (a, b) = at(look);
-            let w = fetch(a, b);
-            if enough(&w) || done(look) || look >= BORROW_LOOK_S {
-                return (w, look);
-            }
-            look *= 2.0;
-        }
-    };
-    let back = |look: f64| ((from_s - look).max(0.0), to_s);
-    let (w, look) = reach(&back, &|look| from_s - look <= 0.0);
-    if enough(&w) || to_s >= end_s {
-        return w;
-    }
-    let a = back(look).0;
-    reach(&|on| (a, (to_s + on).min(end_s)), &|on| to_s + on >= end_s).0
-}
-
-/// Whether enough of a figure's values are among `windows` to borrow its
-/// noise from: [`crate::confidence::MIN_NOISE_VALUES`] of each of the
-/// amplitude and the unlock beat error.
-pub fn noise_enough(windows: &[&AmplitudeWindow]) -> bool {
-    let n = crate::confidence::MIN_NOISE_VALUES;
-    windows.iter().filter(|w| w.mean().is_some()).count() >= n
-        && windows
-            .iter()
-            .filter(|w| w.beat_error_unlock_ms.is_some())
-            .count()
-            >= n
-}
-
-/// Whether enough rate windows are among `windows` to borrow the rate's
-/// noise from: every other one, as [`crate::confidence::rate_se`] takes
-/// them, [`crate::confidence::MIN_NOISE_VALUES`] times.
-pub fn rate_noise_enough(windows: &[WindowFit]) -> bool {
-    crate::confidence::rate_value_count(windows.len()) >= crate::confidence::MIN_NOISE_VALUES
-}
-
-/// Whether the 2 s window `w` belongs to the stretch from `from_s` to
-/// `to_s` (seconds on the windows' own clock): its midpoint lies in the
-/// stretch, from `from_s` up to but not at `to_s`, so each window belongs
-/// to exactly one of two stretches that meet (#632). The one rule for
-/// which windows a stretch takes.
-pub fn window_in(w: &AmplitudeWindow, from_s: f64, to_s: f64) -> bool {
-    window_span_in(w.start_s, w.end_s, from_s, to_s)
-}
-
-/// Midpoint membership for measured and nominal amplitude windows alike.
-pub(crate) fn window_span_in(start: f64, end: f64, from_s: f64, to_s: f64) -> bool {
-    let mid = (start + end) / 2.0;
-    mid >= from_s && mid < to_s
-}
+#[path = "session_windows.rs"]
+mod session_windows;
+pub(crate) use session_windows::window_span_in;
+pub use session_windows::{
+    nearest_windows, noise_enough, rate_noise_enough, read_within, stop_window_in, stretch_beats,
+    stretch_windows, window_in, AMPLITUDE_FIRST_REACH_S, BORROW_LOOK_S, RATE_FIRST_REACH_S,
+};
 
 /// What a stretch's amplitude windows ([`stretch_windows`]) read.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -850,6 +740,73 @@ pub fn scatter_windows(
         RATE_WINDOW_STEP_S,
         part_s,
     )
+}
+
+/// Whether the stretch from `from_s` to `to_s` (true time) can hold a
+/// whole scatter window ([`scatter_windows`]: `len` seconds, one every
+/// `step` on the take's grid) clear of its `holes`: decided from where
+/// the windows fall, not from the beats in them, so a stretch of noise
+/// whose windows give no fit still holds one ([`crate::measure::regularity_assessed`],
+/// Norm on #1688). A 10 s window every 5 s fits in every stretch of
+/// 15 s or more without a cut, and in some under that.
+pub fn holds_scatter_window(holes: &Cuts, from_s: f64, to_s: f64, len: f64, step: f64) -> bool {
+    crate::clean::nominal_windows(from_s, to_s, len, step).any(|(a, b)| holes.clear(a, b))
+}
+
+/// Where a reading ending at `end_s` judges its beats' regularity from,
+/// seconds: its own start, `from_s`, or the tiling point at or before
+/// [`crate::live::SCATTER_LOOKBACK_S`] back from its end, whichever is
+/// earlier, so a 10 s reading holds a whole window (#636); never before
+/// `since_s`, the latest cut, mask, break or the take's start, so it
+/// never reaches into another position's sound. Live and saved readings
+/// both look back by it (Norm on #1688, #680).
+pub fn scatter_look_back(from_s: f64, end_s: f64, since_s: f64) -> f64 {
+    let step = RATE_WINDOW_STEP_S;
+    let back = ((end_s - crate::live::SCATTER_LOOKBACK_S) / step).floor() * step;
+    from_s.min(back).max(since_s).max(0.0)
+}
+
+/// The scatter a saved stretch's regularity is judged on.
+struct Judged {
+    jitter_us: Option<f64>,
+    /// Whether a whole window lies where it is judged.
+    holds_window: bool,
+    /// Where it is judged from, audio seconds.
+    from_s: f64,
+}
+
+/// A saved stretch's `windows`, from `audio` (start, end) on true time
+/// `on_true`, when they hold a whole window. When they cannot, the
+/// windows looking back as live's do ([`scatter_look_back`]) from the
+/// latest cut before its end (#1688): so a short stretch is judged as
+/// the live screen judged it, and one with a whole window inside reads
+/// as it always has.
+fn judged_scatter(
+    log: &BeatLog,
+    holes: &Cuts,
+    audio: (f64, f64),
+    on_true: (f64, f64),
+    windows: &[WindowFit],
+) -> Judged {
+    let ((from_s, to_s), (from_t, to_t)) = (audio, on_true);
+    let holds = |a: f64| holds_scatter_window(holes, a, to_t, RATE_WINDOW_S, RATE_WINDOW_STEP_S);
+    if holds(from_t) {
+        return Judged {
+            jitter_us: scatter_jitter_us(windows),
+            holds_window: true,
+            from_s,
+        };
+    }
+    let back_t = scatter_look_back(from_t, to_t, holes.stretch_from(to_t));
+    let back_s = holes.audio_time(back_t, 0.0, from_s);
+    let beats = holes.beats(&log.beats[stretch_beats(&log.beats, back_s, to_s)]);
+    let part = window_part_s(&log.amplitude_windows);
+    let back = scatter_windows(holes, &beats, log.bph, back_t, to_t, part);
+    Judged {
+        jitter_us: scatter_jitter_us(&back),
+        holds_window: holds(back_t),
+        from_s: back_s,
+    }
 }
 
 /// The timing scatter a stretch is judged on for whether a watch is
@@ -1088,10 +1045,6 @@ pub fn measure_with_breaks(
 /// one; the masks' beats and amplitude windows are left out,
 /// the beats expected and the sound listened to leave out their time, and
 /// the caveats say how much was masked.
-#[expect(
-    clippy::too_many_lines,
-    reason = "over the limit before it was set; split it (architecture guide, section 12)"
-)]
 pub fn measure_masked(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -1100,6 +1053,30 @@ pub fn measure_masked(
     from_s: f64,
     to_s: f64,
 ) -> Measurement {
+    measure_reading(log, clock, breaks, masked, (from_s, to_s), &[])
+}
+
+/// [`measure_masked`] of a stretch of a take whose readings are `read`
+/// (audio seconds, in time order): the stretches its test read, each stop
+/// after its settling. A reading too short for its own ± borrows its
+/// noise only from inside them, never from the turns, settling or
+/// handling between (#1624); with fewer than two (a plain take, or a
+/// test's first stop alone), from the take around it, as before.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
+pub fn measure_reading(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    masked: &[(f64, f64)],
+    (from_s, to_s): (f64, f64),
+    read: &[(f64, f64)],
+) -> Measurement {
+    // A test is two or more stops: one stretch alone reads as a plain
+    // take, so every caller passing its own span gets the same figures.
+    let stops: &[(f64, f64)] = if read.len() < 2 { &[] } else { read };
     // A reversed or out-of-range stretch reads as an empty one.
     let to_s = to_s.min(log.duration_s).max(0.0);
     let from_s = from_s.max(0.0).min(to_s);
@@ -1138,7 +1115,10 @@ pub fn measure_masked(
             ..Default::default()
         })
         .collect();
-    let amp = stretch_windows(&holes, &log.amplitude_windows, from_s, to_s);
+    let mut amp = stretch_windows(&holes, &log.amplitude_windows, from_s, to_s);
+    // A test's stop takes only the windows wholly inside it: one over its
+    // edge holds the handling between stops (#1624).
+    amp.retain(|w| stop_window_in(w, stops, from_s, to_s));
     let StretchFits {
         fit,
         turned,
@@ -1194,11 +1174,12 @@ pub fn measure_masked(
         .filter(|&&t| t >= from_s && t < to_s && !in_mask(masked, t))
         .count();
     let listened_s = to_s - from_s - masked_s;
-    let jitter_us = scatter_jitter_us(&windows);
-    // Under 10 s the beats' averaged sound (outside the masks) says
-    // whether a watch is heard.
+    let judged = judged_scatter(log, &holes, (from_s, to_s), (from_t, to_t), &windows);
+    let jitter_us = judged.jitter_us;
+    // Where regularity is not judged, the beats' averaged sound (outside
+    // the masks) says whether a watch is heard.
     let beat_sound = log.beat_sound(
-        &in_range
+        &log.beats[stretch_beats(&log.beats, judged.from_s, to_s)]
             .iter()
             .filter(|b| !masked.iter().any(|m| b.time >= m.0 && b.time < m.1))
             .copied()
@@ -1208,7 +1189,8 @@ pub fn measure_masked(
             ..Default::default()
         },
     );
-    let no_watch = crate::measure::no_watch_reason(jitter_us, log.bph, listened_s, beat_sound);
+    let assessed = crate::measure::regularity_assessed(listened_s, judged.holds_window);
+    let no_watch = crate::measure::no_watch_reason(jitter_us, log.bph, assessed, beat_sound);
     let mut m = Measurement {
         start_s: from_s,
         end_s: to_s,
@@ -1259,12 +1241,18 @@ pub fn measure_masked(
     // The take's windows nearest the stretch, to borrow the ±'s noise
     // from where it holds too few values (#1470).
     let span = (from_s, to_s, log.duration_s);
+    let within = |a: f64, b: f64| read_within(stops, a, b);
     let take_rate = nearest_windows(
         span,
         RATE_FIRST_REACH_S,
         |a, b| {
-            let near = holes.beats(&log.beats[stretch_beats(&log.beats, a, b)]);
-            scatter_windows(&holes, &near, log.bph, map(a), map(b), part)
+            within(a, b)
+                .into_iter()
+                .flat_map(|(a, b)| {
+                    let near = holes.beats(&log.beats[stretch_beats(&log.beats, a, b)]);
+                    scatter_windows(&holes, &near, log.bph, map(a), map(b), part)
+                })
+                .collect()
         },
         rate_noise_enough,
     );
@@ -1272,9 +1260,10 @@ pub fn measure_masked(
         span,
         AMPLITUDE_FIRST_REACH_S,
         |a, b| {
+            let parts = within(a, b);
             log.amplitude_windows
                 .iter()
-                .filter(|w| window_in(w, a, b))
+                .filter(|w| parts.iter().any(|&(a, b)| stop_window_in(w, stops, a, b)))
                 .filter(|w| holes.clear(map(w.start_s), map(w.end_s)))
                 .collect()
         },
@@ -1573,7 +1562,8 @@ pub struct Reading {
     /// The recording's name, as shown in the report.
     pub label: String,
     pub position: Position,
-    /// Hours since the watch was fully wound (`None`: not given, taken as full).
+    /// Hours since the watch was fully wound (`None`: not given, its own
+    /// state, never taken as full wind).
     pub wind_h: Option<f64>,
     pub date: Option<String>,
     pub notes: Option<String>,
@@ -1607,7 +1597,9 @@ pub struct PositionValue {
 /// Witschi's characteristic values for one state of wind.
 #[derive(Debug, Clone, Serialize)]
 pub struct StateIndices {
-    pub wind_h: f64,
+    /// Hours since the watch was fully wound, 0 at full wind; `None` for
+    /// the readings whose wind was not given, a state of its own.
+    pub wind_h: Option<f64>,
     pub positions: Vec<PositionValue>,
     /// Mean rate over the positions, and over the horizontal and the
     /// vertical ones.
@@ -1693,12 +1685,12 @@ fn spread(v: impl Iterator<Item = f64>) -> Option<f64> {
     Some(hi - lo)
 }
 
-/// Hours after full wind to a tenth: the states of wind's one key.
-pub(crate) fn wind_key(w: Option<f64>) -> i64 {
-    (w.unwrap_or(0.0) * 10.0).round() as i64
-}
+#[path = "session_wind.rs"]
+mod session_wind;
+pub use session_wind::{in_wind_state, report_states};
+pub(crate) use session_wind::{wind_key, wind_keys};
 
-fn state(wind_h: f64, readings: &[&Reading]) -> StateIndices {
+fn state(wind_h: Option<f64>, readings: &[&Reading]) -> StateIndices {
     let figures: Vec<SourcedFigures> = readings
         .iter()
         .map(|r| {
@@ -1729,6 +1721,9 @@ fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
     v.max_by(|a, b| a.abs().total_cmp(&b.abs()))
 }
 
+/// Stretches of a take, start and end (s), in time order.
+pub type Spans<'a> = &'a [(f64, f64)];
+
 /// Stretches `spans` of a take (in time order) read together as one
 /// reading, as [`measure_masked`] reads a take: from the first's start to
 /// the last's end, with the time between them and the `masked` stretches
@@ -1736,19 +1731,22 @@ fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
 /// once). Its `masked_s` is all that is left out; its masked caveat says
 /// only the time masked by hand inside the stretches (#1228). None for no
 /// stretches. What a Positions Test table reads each position by, and the
-/// app its whole take.
+/// app its whole take. A reading too short for its own ± borrows its
+/// noise from inside the take's `read` stretches ([`measure_reading`]):
+/// all the stops of its test, other positions' too (#1624).
 pub fn measure_together(
     log: &BeatLog,
     clock: Option<&ClockFit>,
     breaks: &[Break],
     masked: &[(f64, f64)],
-    spans: &[(f64, f64)],
+    (spans, read): (Spans<'_>, Spans<'_>),
 ) -> Option<Measurement> {
     let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
     let pairs = |v: &[(f64, f64)]| v.iter().map(|&(a, b)| [a, b]).collect::<Vec<_>>();
     let mut cut = masked.to_vec();
     cut.extend(spans.windows(2).map(|w| (w[0].1, w[1].0)));
-    let mut m = measure_masked(log, clock, breaks, &masked_spans(&pairs(&cut)), from, to);
+    let cut = masked_spans(&pairs(&cut));
+    let mut m = measure_reading(log, clock, breaks, &cut, (from, to), read);
     let hand = masked_spans(&pairs(masked));
     let by_hand: f64 = spans.iter().map(|&(a, b)| masked_within(&hand, a, b)).sum();
     m.caveats
@@ -1763,18 +1761,15 @@ pub fn measure_together(
 /// Witschi's characteristic values for the readings, and the conditions
 /// found in each recording.
 pub fn evaluate(readings: &[Reading]) -> SessionReport {
-    // States of wind, fullest first.
-    let mut keys: Vec<i64> = readings.iter().map(|r| wind_key(r.wind_h)).collect();
-    keys.sort_unstable();
-    keys.dedup();
-    let states: Vec<StateIndices> = keys
-        .iter()
-        .map(|&k| {
+    // States of wind, fullest first, then wind not given.
+    let states: Vec<StateIndices> = wind_keys(readings)
+        .into_iter()
+        .map(|k| {
             let rs: Vec<&Reading> = readings
                 .iter()
                 .filter(|r| wind_key(r.wind_h) == k)
                 .collect();
-            state(k as f64 / 10.0, &rs)
+            state(k.map(|k| k as f64 / 10.0), &rs)
         })
         .collect();
     evaluate_states(states, findings(readings))
@@ -1785,11 +1780,13 @@ pub fn evaluate(readings: &[Reading]) -> SessionReport {
 /// readings, such as a saved Positions Test's.
 pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> SessionReport {
     // Isochronism: each position from the fullest to the least wound
-    // state it was measured in.
+    // state it was measured in, over the states whose wind was given.
+    let given: Vec<&StateIndices> = states.iter().filter(|s| s.wind_h.is_some()).collect();
     let mut isochronism = Vec::new();
     for p in Position::ALL {
-        let at: Vec<(&StateIndices, &PositionValue)> = states
+        let at: Vec<(&StateIndices, &PositionValue)> = given
             .iter()
+            .copied()
             .filter_map(|s| {
                 s.positions
                     .iter()
@@ -1805,8 +1802,8 @@ pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> Ses
                 ]);
                 isochronism.push(Isochronism {
                     position: p,
-                    from_wind_h: a.0.wind_h,
-                    to_wind_h: b.0.wind_h,
+                    from_wind_h: a.0.wind_h.expect("a given state's wind"),
+                    to_wind_h: b.0.wind_h.expect("a given state's wind"),
                     rate_change: b.1.rate_s_per_day.unwrap() - a.1.rate_s_per_day.unwrap(),
                     amplitude_change: b.1.amplitude_deg.zip(a.1.amplitude_deg).map(|(x, y)| x - y),
                     beat_error_change: (selected.values.len() == 2)
@@ -1825,8 +1822,8 @@ pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> Ses
             .map(|i| i.rate_change),
     );
     let im_all = largest(isochronism.iter().map(|i| i.rate_change));
-    let ie = match (states.first(), states.last()) {
-        (Some(a), Some(b)) if states.len() >= 2 => {
+    let ie = match (given.first(), given.last()) {
+        (Some(a), Some(b)) if given.len() >= 2 => {
             // The positions with a rate in both states, so each mean is
             // over the same positions.
             let common = |s: &StateIndices, o: &StateIndices| {
@@ -1908,10 +1905,9 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
         })
     };
     let at = |r: &Reading| {
-        let w = r
-            .wind_h
-            .filter(|&w| w > 0.0)
-            .map_or(String::new(), |w| format!(", {w:.0} h after winding"));
+        let w = r.wind_h.filter(|&w| w > 0.0).map_or(String::new(), |w| {
+            format!(", {}", crate::reading_text::wind_words(w))
+        });
         let name = r
             .label
             .rsplit(['/', '\\'])

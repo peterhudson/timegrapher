@@ -1564,9 +1564,7 @@ impl Library {
                 from.display()
             ));
         }
-        if resolved(from).starts_with(resolved(&self.root)) {
-            return Err(format!("{} is already in your watches", from.display()));
-        }
+        self.not_already_in(from)?;
         if from.join(take::MANIFEST).is_file() {
             // A session file that doesn't read would show as a broken take.
             manifest_of(from).map_err(|e| format!("this take's session file doesn't read: {e}"))?;
@@ -1625,6 +1623,24 @@ impl Library {
         Ok((to, left))
     }
 
+    /// The one guard both imports use (#1656), before anything is staged:
+    /// `from` is refused when it is already inside the watches folder, or
+    /// holds it, where the copy would be made inside what it copies and
+    /// copy itself again and again (#1642).
+    fn not_already_in(&self, from: &Path) -> Result<(), String> {
+        let (from_at, root) = (resolved(from), resolved(&self.root));
+        if from_at.starts_with(&root) {
+            return Err(format!("{} is already in your watches", from.display()));
+        }
+        if root.starts_with(&from_at) {
+            return Err(format!(
+                "{} holds your watches folder: add the take's own folder instead",
+                from.display()
+            ));
+        }
+        Ok(())
+    }
+
     /// Add a recording from outside the library that has no session file
     /// (a lone WAV or FLAC file, or a folder of them) to a watch (by its
     /// id), as a new take named `name`: the file, or everything in the
@@ -1639,9 +1655,7 @@ impl Library {
         written: &[(&str, String)],
     ) -> Result<PathBuf, String> {
         self.writable()?;
-        if resolved(from).starts_with(resolved(&self.root)) {
-            return Err(format!("{} is already in your watches", from.display()));
-        }
+        self.not_already_in(from)?;
         let to_watch = self
             .watches
             .iter()
@@ -1742,8 +1756,10 @@ fn unsorted_name(name: &str) -> Result<(), String> {
 
 /// `p` with links followed: the nearest folder of it that exists,
 /// resolved, with the rest of `p` after it. A `..` in the part that
-/// doesn't exist is left as it is (no caller passes one).
-fn resolved(p: &Path) -> PathBuf {
+/// doesn't exist is left as it is (no caller passes one). The command
+/// line's `record` decides by it whether a folder is a library's take
+/// (#1641).
+pub fn resolved(p: &Path) -> PathBuf {
     let mut rest = Vec::new();
     let mut at = p;
     loop {

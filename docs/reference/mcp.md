@@ -154,6 +154,14 @@ states that same basis. This tool uses the recording's automatic stored/USB
 resolution and exposes no explicit clock-log or card-correction input.
 Older CLI documents without this field keep their existing lead.
 
+`check_steadiness`'s structured result is a compact form of the CLI's
+`series` document: the arrays only the charts draw go to the view, and the
+walk becomes its outline. It keeps the CLI's `schema` and names itself in
+`projection`: `schema` (`timegrapher.mcp.series_compact/1`), `of` (the CLI
+document's schema) and the paths it `removed`, `replaced` and `added`
+(`[]` stands for every item of an array). For the full document, run the
+CLI's `series --views --json`.
+
 `analyze_recording`'s lead and view give the rate the CLI chose: the rate
 in its `clock` block where it applied a correction (stored, given, or the
 recording's USB lines, in that order), else the rate on the sound card's

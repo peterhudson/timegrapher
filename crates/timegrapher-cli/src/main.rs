@@ -1455,7 +1455,7 @@ fn run_analyze(
 
 /// The line between a listed file's take readings and the whole file's.
 const WHOLE_FILE: &str =
-    "Whole file   read alone, with no settling and none of the take's settings:";
+    "Whole file   read alone, with no settling, at the take's beat rate and lift angle:";
 
 /// What `session` reads of a take's file ([`session_cmd::take_of`]), one
 /// line for each entry naming it ([`take_lines`]).
@@ -1673,7 +1673,9 @@ fn print_summary(
         println!("{}", measure::no_watch_text(reason, s.jitter_us, s.bph_set));
         return;
     }
-    if !measure::regularity_assessed(s.duration_s) {
+    // A whole recording read from its start holds a whole scatter
+    // window once it is 10 s long (#1688).
+    if !measure::regularity_assessed(s.duration_s, true) {
         println!(
             "Beat regularity not assessed: {} s of sound, {} s needed",
             fixed_text(s.duration_s, 1),

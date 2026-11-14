@@ -1088,7 +1088,7 @@ fn stretches_read_together_count_masked_time_once() {
     std::fs::remove_file(&path).ok();
     let spans = [(2.0, 20.0), (26.0, 42.0)];
     // A mask from 15 s to 30 s covers the 6 s between the stretches too.
-    let m = session::measure_together(&log, None, &[], &[(15.0, 30.0)], &spans).unwrap();
+    let m = session::measure_together(&log, None, &[], &[(15.0, 30.0)], (&spans, &[])).unwrap();
     assert!((m.masked_s - 15.0).abs() < 1e-9, "{}", m.masked_s);
     // Its caveat says what was masked by hand inside the stretches: 15 s
     // to 20 s and 26 s to 30 s (#1228).
@@ -1103,14 +1103,14 @@ fn stretches_read_together_count_masked_time_once() {
     assert_eq!(said.len(), 1, "{:?}", m.caveats);
     assert!((said[0] - 9.0).abs() < 1e-9, "{said:?}");
     // With no hand masks, the time between is left out with no caveat.
-    let m = session::measure_together(&log, None, &[], &[], &spans).unwrap();
+    let m = session::measure_together(&log, None, &[], &[], (&spans, &[])).unwrap();
     assert!((m.masked_s - 6.0).abs() < 1e-9, "{}", m.masked_s);
     let masked_caveat = |c: &timegrapher_core::measure::Caveat| {
         matches!(c, timegrapher_core::measure::Caveat::Masked { .. })
     };
     assert!(!m.caveats.iter().any(masked_caveat), "{:?}", m.caveats);
     assert!(close(m.rate_s_per_day, 5.0, 3.0), "{:?}", m.rate_s_per_day);
-    assert!(session::measure_together(&log, None, &[], &[], &[]).is_none());
+    assert!(session::measure_together(&log, None, &[], &[], (&[], &[])).is_none());
 }
 
 /// A break the recorder wrote with a gap under 0 s (its timestamps put the
@@ -1494,8 +1494,8 @@ fn states_of_wind_a_tenth_of_an_hour_apart_are_kept_apart() {
         ..a.clone()
     };
     let rep = evaluate(&[a, b]);
-    let winds: Vec<f64> = rep.states.iter().map(|s| s.wind_h).collect();
-    assert_eq!(winds, vec![0.0, 0.1]);
+    let winds: Vec<Option<f64>> = rep.states.iter().map(|s| s.wind_h).collect();
+    assert_eq!(winds, vec![Some(0.0), Some(0.1)]);
 }
 
 /// The largest isochronism leaves crown right (12H) out (NIHS 93-10);
@@ -1633,4 +1633,114 @@ fn a_position_marked_past_the_end_is_read_to_it() {
         "{}",
         du.duration_s
     );
+}
+
+/// A reading whose wind was not given is a state of its own, listed after
+/// the given ones, and never pooled with full wind (#1665): full wind at
+/// +5 s/d and not given at +25 s/d were one "full wind" state of +15 s/d.
+#[test]
+fn a_reading_with_no_wind_given_is_never_taken_as_full_wind() {
+    let full = reading(Position::CH, 0.0, 5.0, 280.0, 0.1);
+    let unset = Reading {
+        wind_h: None,
+        ..reading(Position::CH, 0.0, 25.0, 280.0, 0.1)
+    };
+    let rep = evaluate(&[unset, full]);
+    let winds: Vec<Option<f64>> = rep.states.iter().map(|s| s.wind_h).collect();
+    assert_eq!(winds, vec![Some(0.0), None]);
+    assert!(close(rep.states[0].x, 5.0, 0.5), "{:?}", rep.states[0].x);
+    assert!(close(rep.states[1].x, 25.0, 0.5), "{:?}", rep.states[1].x);
+}
+
+/// The isochronism and Ie run from the fullest to the least wound state
+/// whose wind was given; the readings with no wind given take no part.
+#[test]
+fn the_isochronism_and_ie_leave_out_wind_not_given() {
+    let unset = Reading {
+        wind_h: None,
+        ..reading(Position::CH, 0.0, 50.0, 280.0, 0.1)
+    };
+    let rep = evaluate(&[
+        reading(Position::CH, 0.0, 5.0, 280.0, 0.1),
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+        unset,
+    ]);
+    assert_eq!(rep.states.len(), 3);
+    let ch = &rep.isochronism[0];
+    assert_eq!((ch.from_wind_h, ch.to_wind_h), (0.0, 24.0));
+    assert!((ch.rate_change - 5.0).abs() < 0.5, "{ch:?}");
+    assert!(close(rep.ie, 5.0, 0.5), "{:?}", rep.ie);
+    // Wind not given alone: no isochronism, no Ie.
+    let alone = evaluate(&[
+        Reading {
+            wind_h: None,
+            ..reading(Position::CH, 0.0, 5.0, 280.0, 0.1)
+        },
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+    ]);
+    assert!(alone.isochronism.is_empty() && alone.ie.is_none());
+}
+
+/// Every surface names a state of wind the same way, wind not given too.
+#[test]
+fn a_state_of_wind_not_given_is_named_so() {
+    use timegrapher_core::reading_text::wind_state_words;
+    assert_eq!(wind_state_words(None), "wind not given");
+    assert_eq!(wind_state_words(Some(0.0)), "full wind");
+    assert_eq!(wind_state_words(Some(24.0)), "24 h after winding");
+}
+
+/// A wind that is not a number (`wind_h = nan` in a session file) is not
+/// given, never full wind.
+#[test]
+fn a_wind_that_is_not_a_number_is_not_given() {
+    let nan = Reading {
+        wind_h: Some(f64::NAN),
+        ..reading(Position::CH, 0.0, 25.0, 280.0, 0.1)
+    };
+    let rep = evaluate(&[reading(Position::CH, 0.0, 5.0, 280.0, 0.1), nan]);
+    let winds: Vec<Option<f64>> = rep.states.iter().map(|s| s.wind_h).collect();
+    assert_eq!(winds, vec![Some(0.0), None]);
+}
+
+/// A session's text report is of the least wound state whose wind was
+/// given, set against the fullest; readings whose wind was not given join
+/// neither, and are reported on their own only when no wind was given.
+#[test]
+fn the_text_report_never_pools_wind_not_given() {
+    let unset = Reading {
+        wind_h: None,
+        ..reading(Position::CH, 0.0, 50.0, 280.0, 0.1)
+    };
+    let all = [
+        reading(Position::CH, 0.0, 5.0, 280.0, 0.1),
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+        unset.clone(),
+    ];
+    let (shown, against) = session::report_states(&all);
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].wind_h, Some(24.0));
+    let (full, hours) = against.expect("set against full wind");
+    assert_eq!((full.len(), full[0].wind_h, hours), (1, Some(0.0), 24.0));
+    let full_and_unset = [all[0].clone(), unset.clone()];
+    let (shown, against) = session::report_states(&full_and_unset);
+    assert_eq!((shown.len(), shown[0].wind_h), (1, Some(0.0)));
+    assert!(against.is_none());
+    let (shown, against) = session::report_states(std::slice::from_ref(&unset));
+    assert_eq!((shown.len(), shown[0].wind_h), (1, None));
+    assert!(against.is_none());
+}
+
+/// Two given states neither of which is full wind (2 h and 24 h): the
+/// report is of the later one alone, never with the earlier labelled as
+/// the full-wind test.
+#[test]
+fn a_report_is_set_only_against_full_wind() {
+    let two = [
+        reading(Position::CH, 2.0, 5.0, 280.0, 0.1),
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+    ];
+    let (shown, against) = session::report_states(&two);
+    assert_eq!((shown.len(), shown[0].wind_h), (1, Some(24.0)));
+    assert!(against.is_none());
 }

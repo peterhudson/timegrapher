@@ -12,11 +12,13 @@ use crate::analysis_take::{
 };
 use crate::audio::AudioError;
 use crate::beats::Beat;
+use crate::checkpoint::{self, Checkpointed};
 use crate::dsp::envelope;
-use crate::profile::{self, Side};
+use crate::profile;
 use crate::stream::{self, BeatLog, StreamConfig};
 use crate::usbclock;
-use std::sync::mpsc;
+use std::path::PathBuf;
+use std::sync::{mpsc, Arc, Mutex};
 
 /// Audio either side of a profile's stretch, for its beats' windows, as
 /// the app's profile pane reads it.
@@ -116,6 +118,12 @@ impl SecondReading {
     /// Samples read so far.
     pub(crate) fn read(&self) -> usize {
         self.pos
+    }
+
+    /// The stretches profiled so far, and the time, seconds, every
+    /// stretch ending by it is profiled to (one without beats has none).
+    fn profiled(&self) -> (&[StretchProfiles], f64) {
+        (&self.profiles, self.start_s(self.k))
     }
 
     /// Profile every stretch whose sound and margin are in and that ends
@@ -240,13 +248,7 @@ impl SecondReading {
     fn swap_from(&mut self, t: f64, beats: &[Beat], bph: u32, cfg: &StreamConfig) {
         for (i, &k) in self.stretches.iter().enumerate() {
             if self.start_s(k) >= t {
-                let p = &mut self.profiles[i];
-                p.sides.swap(0, 1);
-                for (s, side) in p.sides.iter_mut().zip([Side::A, Side::B]) {
-                    if let Some(s) = s {
-                        s.side = side;
-                    }
-                }
+                self.profiles[i].swap_sides();
             }
         }
         if let Some(h) = self.held.take_if(|h| h.jump_s == t) {
@@ -320,6 +322,7 @@ impl SecondReading {
 pub struct Keeper {
     tx: Option<mpsc::SyncSender<Vec<f32>>>,
     worker: Option<std::thread::JoinHandle<Result<Stored, AudioError>>>,
+    checkpointed: Arc<Mutex<Checkpointed>>,
 }
 
 /// What a [`Keeper`] keeps, besides the sound it is given.
@@ -332,17 +335,39 @@ pub struct KeepAs {
     /// Each recording's shape stretch ([`analysis_take::shape_stretches`]).
     pub shapes: Vec<Option<(f64, f64)>>,
     pub software: serde_json::Value,
+    /// Where to keep the analysis on the disk as it is recorded, if
+    /// anywhere ([`checkpoint`]).
+    pub checkpoints: Option<Checkpoints>,
+}
+
+/// Parts of the analysis kept on the disk as it is recorded
+/// ([`checkpoint`]): in the take folder `take`, one each `every_s` of
+/// sound ([`checkpoint::EVERY_S`]).
+pub struct Checkpoints {
+    pub take: PathBuf,
+    pub every_s: f64,
 }
 
 impl Keeper {
     /// Start keeping a take recorded as `how` says.
     pub fn start(how: KeepAs) -> Keeper {
         let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(QUEUED_BLOCKS);
-        let worker = std::thread::spawn(move || keep(&how, rx));
+        let checkpointed = Arc::new(Mutex::new(Checkpointed::default()));
+        let status = checkpointed.clone();
+        let worker = std::thread::spawn(move || keep(&how, rx, status));
         Keeper {
             tx: Some(tx),
             worker: Some(worker),
+            checkpointed,
         }
+    }
+
+    /// How far the analysis is kept on the disk ([`KeepAs::checkpoints`]).
+    pub fn checkpointed(&self) -> Checkpointed {
+        self.checkpointed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// The next block of sound. False once the reading has stopped (it
@@ -391,10 +416,25 @@ fn profile_bound(core_a: f64, heard: bool, read: usize, fs: f64) -> usize {
 
 /// The Keeper's reading: the blocks from `rx`, until it closes, read as
 /// one recording.
-fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError> {
+fn keep(
+    how: &KeepAs,
+    rx: mpsc::Receiver<Vec<f32>>,
+    status: Arc<Mutex<Checkpointed>>,
+) -> Result<Stored, AudioError> {
     let cfg = &how.cfg;
     let fs = f64::from(how.sample_rate);
     let mut second = SecondReading::new(how.sample_rate, &how.shapes);
+    let mut parts = how.checkpoints.as_ref().map(|c| {
+        checkpoint::Writer::new(checkpoint::Writing {
+            take: &c.take,
+            every_s: c.every_s,
+            sample_rate: how.sample_rate,
+            bytes_per_frame: how.bytes_per_frame,
+            cfg,
+            software: how.software.clone(),
+            status,
+        })
+    });
     let mut swaps = 0;
     let feed = move |push: &mut dyn FnMut(&[f32]) -> bool| {
         for block in rx {
@@ -421,6 +461,10 @@ fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError
             second.release(seen.pending);
             let until = profile_bound(seen.core_a, seen.heard, second.read(), fs);
             second.profile_until(seen.beats, seen.bph, cfg, (until, seen.pending));
+            if let Some(parts) = parts.as_mut() {
+                let (profiles, to_s) = second.profiled();
+                parts.after_chunk(&seen, profiles, to_s);
+            }
         },
     )?;
     Ok(second.finish(
@@ -435,7 +479,8 @@ fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis_take::{files, measure};
+    use crate::amplitude::AmplitudeWindow;
+    use crate::analysis_take::{self, files, measure};
     use crate::audio::{self, Audio};
     use crate::synth::{generate, SynthConfig};
     use std::path::{Path, PathBuf};
@@ -515,6 +560,18 @@ mod tests {
         shapes: &[Option<(f64, f64)>],
         sizes: &[usize],
     ) -> Stored {
+        kept_with_parts(paths, cfg, shapes, sizes, None).0
+    }
+
+    /// [`kept_live`], its parts kept on the disk as `checkpoints` says,
+    /// and how far they reached.
+    fn kept_with_parts(
+        paths: &[PathBuf],
+        cfg: &StreamConfig,
+        shapes: &[Option<(f64, f64)>],
+        sizes: &[usize],
+        checkpoints: Option<Checkpoints>,
+    ) -> (Stored, Checkpointed) {
         let info = audio::info(&paths[0]).unwrap();
         let keeper = Keeper::start(KeepAs {
             sample_rate: info.sample_rate,
@@ -522,6 +579,7 @@ mod tests {
             cfg: cfg.clone(),
             shapes: shapes.to_vec(),
             software: software(),
+            checkpoints,
         });
         let mut sound = Vec::new();
         for p in paths {
@@ -536,7 +594,10 @@ mod tests {
             assert!(keeper.push(&sound[at..end]));
             at = end;
         }
-        keeper.finish().unwrap()
+        let status = keeper.checkpointed.clone();
+        let stored = keeper.finish().unwrap();
+        let status = status.lock().unwrap().clone();
+        (stored, status)
     }
 
     /// The files `analysis/` would hold, by name.
@@ -675,6 +736,446 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Tolerances, 1e-4 of each reporting step (1°, 0.1 s/d, 0.01 ms).
+    const DEG_TOL: f64 = 1e-4;
+    const RATE_TOL: f64 = 1e-5;
+    const MS_TOL: f64 = 1e-6;
+
+    /// Both none, or both numbers within `tol`.
+    fn close(pair: (Option<f64>, Option<f64>), tol: f64) -> bool {
+        match pair {
+            (Some(a), Some(b)) => (a - b).abs() <= tol,
+            (a, b) => a == b,
+        }
+    }
+
+    /// The tolerance a measurement's figure at `path` is held to: its
+    /// rate, amplitude and beat error figures and their ±; none for
+    /// anything else, held exactly.
+    fn figure_tol(path: &str) -> Option<f64> {
+        let (head, leaf) = (
+            path.split('.').nth(1).unwrap_or(""),
+            path.rsplit('.').next().unwrap_or(""),
+        );
+        let level = matches!(leaf, "low" | "high");
+        if head.starts_with("beat_error")
+            || leaf.starts_with("beat_error")
+            || path == ".confidence.beat_error.se"
+        {
+            Some(MS_TOL)
+        } else if path == ".confidence.rate.se"
+            || (head.starts_with("rate") && (head != "rate_states" || level))
+        {
+            Some(RATE_TOL)
+        } else if path == ".confidence.amplitude.se"
+            || (head.starts_with("amplitude_")
+                && head != "amplitude_windows"
+                && (head != "amplitude_states" || level))
+        {
+            Some(DEG_TOL)
+        } else {
+            None
+        }
+    }
+
+    /// The windows `a` and `b` the same: exactly before `last_chunk`
+    /// seconds, and within [`DEG_TOL`] and [`MS_TOL`] from there.
+    fn assert_windows_agree(a: &[AmplitudeWindow], b: &[AmplitudeWindow], last_chunk: f64) {
+        assert_eq!(a.len(), b.len());
+        let k = a.partition_point(|w| w.start_s < last_chunk);
+        for csv in [analysis_take::windows_csv, analysis_take::culled_csv] {
+            assert_eq!(csv(&a[..k]), csv(&b[..k]));
+        }
+        for (x, y) in a[k..].iter().zip(&b[k..]) {
+            let ms = |w: &AmplitudeWindow| {
+                [
+                    w.beat_error_ms,
+                    w.beat_error_unlock_ms,
+                    w.even_unlock_ms,
+                    w.odd_unlock_ms,
+                    w.even_drop_ms,
+                    w.odd_drop_ms,
+                ]
+            };
+            let pairs = [x.even_deg, x.odd_deg]
+                .into_iter()
+                .zip([y.even_deg, y.odd_deg])
+                .map(|p| (p, DEG_TOL))
+                .chain(ms(x).into_iter().zip(ms(y)).map(|p| (p, MS_TOL)));
+            assert_eq!(
+                (x.start_s, x.end_s, x.culled()),
+                (y.start_s, y.end_s, y.culled())
+            );
+            for (pair, tol) in pairs {
+                assert!(close(pair, tol), "window {} {pair:?}", x.start_s);
+            }
+        }
+    }
+
+    /// Which of a measurement's figures [`figure_tol`] holds to what.
+    #[test]
+    fn figure_tolerances_are_those_of_the_reported_figures() {
+        for (path, tol) in [
+            (".rate_s_per_day", Some(RATE_TOL)),
+            (".rate_p95", Some(RATE_TOL)),
+            (".rate_states.low", Some(RATE_TOL)),
+            (".rate_states.delta_bic", None),
+            (".confidence.rate.se", Some(RATE_TOL)),
+            (".amplitude_deg", Some(DEG_TOL)),
+            (".amplitude_states.high", Some(DEG_TOL)),
+            (".amplitude_windows", None),
+            (".confidence.amplitude.se", Some(DEG_TOL)),
+            (".beat_error_unlock_ms", Some(MS_TOL)),
+            (".amplitude_states.beat_error_drop_ms", Some(MS_TOL)),
+            (".confidence.beat_error.se", Some(MS_TOL)),
+            (".jitter_us", None),
+            (".beats", None),
+            (".coverage.rate.windows_used", None),
+        ] {
+            assert_eq!(figure_tol(path), tol, "{path}");
+        }
+    }
+
+    /// Two measurements, as JSON, the same: each figure [`figure_tol`]
+    /// names within its tolerance, everything else exactly.
+    fn assert_same_figures(a: &serde_json::Value, b: &serde_json::Value, path: &str) {
+        use serde_json::Value;
+        match (a, b) {
+            (Value::Object(x), Value::Object(y)) => {
+                assert_eq!(
+                    x.keys().collect::<Vec<_>>(),
+                    y.keys().collect::<Vec<_>>(),
+                    "{path}"
+                );
+                for (k, v) in x {
+                    assert_same_figures(v, &y[k], &format!("{path}.{k}"));
+                }
+            }
+            (Value::Number(x), Value::Number(y)) if figure_tol(path).is_some() => {
+                let tol = figure_tol(path).unwrap_or_default();
+                assert!(close((x.as_f64(), y.as_f64()), tol), "{path}: {x} {y}");
+            }
+            _ => assert_eq!(a, b, "{path}"),
+        }
+    }
+
+    /// The parts read back, as far as they reach: the take kept, beats,
+    /// amplitude windows and profiles, cut there.
+    fn assert_parts_are_the_take_so_far(take: &Path, whole: &Stored, to_s: f64) {
+        let parts = checkpoint::read(take).unwrap().stored;
+        assert_eq!(parts.header.duration_s, to_s);
+        assert_eq!(parts.log.bph, whole.log.bph);
+        // Kept to the µs, as `analysis/` keeps them.
+        let n = whole.log.beats.partition_point(|b| b.time < to_s);
+        assert!(n > 0);
+        let rows = |s: &Stored, n: usize| {
+            analysis_take::beats_rows(&s.log.beats[..n], &s.log.clipped_beats, s.log.bph)
+        };
+        assert_eq!(rows(&parts, parts.log.beats.len()), rows(whole, n));
+        let wins: Vec<_> = whole
+            .log
+            .amplitude_windows
+            .iter()
+            .filter(|w| w.start_s < to_s)
+            .cloned()
+            .collect();
+        assert!(!wins.is_empty());
+        for csv in [analysis_take::windows_csv, analysis_take::culled_csv] {
+            assert_eq!(csv(&parts.log.amplitude_windows), csv(&wins));
+        }
+        let n = whole.profiles.partition_point(|p| p.end_s <= to_s);
+        assert!(n > 0);
+        // Kept as `analysis/` keeps them.
+        assert!(
+            analysis_take::profiles_bin(&parts.profiles)
+                == analysis_take::profiles_bin(&whole.profiles[..n])
+        );
+        let before = |v: &[f64]| v.iter().copied().filter(|&t| t < to_s).collect::<Vec<_>>();
+        assert_eq!(parts.log.jumps, before(&whole.log.jumps));
+        assert_eq!(parts.log.sided, before(&whole.log.sided));
+    }
+
+    /// Kept on the disk as it is recorded, every 20 s here, a take reads
+    /// back from its parts as the take kept up to the last part's end, and
+    /// the take kept is the same, byte for byte, as with no parts.
+    #[test]
+    fn parts_read_back_as_the_take_so_far() {
+        let dir = scratch("parts");
+        let paths = take(&dir, 75.0, 1);
+        let cfg = StreamConfig {
+            chunk_s: 11.5,
+            ..Default::default()
+        };
+        let plain = kept_live(&paths, &cfg, &[], &[4097]);
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 20.0,
+        });
+        let (kept, status) = kept_with_parts(&paths, &cfg, &[], &[4097, 1, 99_999], parts);
+        assert_eq!(kept_files(&kept), kept_files(&plain));
+        // The last chunk read starts 69 s in, so the parts reach 60 s, or
+        // less where its windows were still being found on other threads.
+        assert_eq!(status.failed, None);
+        assert!([20.0, 40.0, 60.0].contains(&status.to_s), "{}", status.to_s);
+        assert_parts_are_the_take_so_far(&dir, &kept, status.to_s);
+        checkpoint::remove(&dir).unwrap();
+        assert!(!checkpoint::exists(&dir));
+        checkpoint::remove(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The parts read back are the take kept from its sound cut where they
+    /// reach (Norm on #1711): a take that ended there. The outlier check
+    /// near the cut sees only the windows before it, as that take's does.
+    /// The sound has a wrong-sounding Tick in one window within 30 s of
+    /// each possible cut (8 to 10 s, 28 to 30 s and 48 to 50 s): the
+    /// unlock 1 ms early there, as the seed-1 sound renders it.
+    #[test]
+    fn parts_read_back_as_a_take_that_ended_there() {
+        let dir = scratch("cut");
+        let render = |lead_s: f64| {
+            generate(
+                &SynthConfig {
+                    duration_s: 75.0,
+                    seed: 1,
+                    even_unlock_lead_s: lead_s,
+                    ..Default::default()
+                },
+                |_| 270.0,
+                |_| 0.0,
+            )
+        };
+        let mut audio = render(0.0);
+        let wrong = render(0.001);
+        let fs = audio.sample_rate as usize;
+        for from in [8, 28, 48] {
+            let r = from * fs..(from + 2) * fs;
+            audio.samples[r.clone()].copy_from_slice(&wrong.samples[r]);
+        }
+        let path = dir.join("take_part01-001.wav");
+        audio::write_wav(&path, &audio).unwrap();
+        let cfg = StreamConfig {
+            chunk_s: 10.0,
+            ..Default::default()
+        };
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 20.0,
+        });
+        let (_, status) = kept_with_parts(&[path], &cfg, &[], &[4097], parts);
+        assert_eq!(status.failed, None);
+        let to_s = status.to_s;
+        assert!([20.0, 40.0, 60.0].contains(&to_s), "{to_s}");
+        let cut_dir = dir.join("cut");
+        std::fs::create_dir_all(&cut_dir).unwrap();
+        let cut_path = cut_dir.join("take_part01-001.wav");
+        let cut = Audio {
+            samples: audio.samples[..(to_s as usize) * fs].to_vec(),
+            sample_rate: audio.sample_rate,
+        };
+        audio::write_wav(&cut_path, &cut).unwrap();
+        // As it would be opened: kept in `analysis/` and read back, its
+        // times to the µs as the parts keep them.
+        let ended = kept_live(&[cut_path], &cfg, &[], &[4097]);
+        analysis_take::write(&cut_dir, &ended).unwrap();
+        let ended = analysis_take::read(&cut_dir).unwrap();
+        let parts = checkpoint::read(&dir).unwrap().stored;
+        // The wrong Tick just before the cut is left out, in both.
+        let at = |s: &Stored| {
+            s.log
+                .amplitude_windows
+                .iter()
+                .find(|w| w.start_s == to_s - 12.0)
+                .map(|w| (w.even_deg, w.odd_deg))
+                .unwrap()
+        };
+        let (even, odd) = at(&parts);
+        assert!(even.is_none() != odd.is_none(), "{even:?} {odd:?}");
+        assert_eq!(at(&ended), (even, odd));
+        // The take that ended reads its last chunk with no sound after
+        // it, the parts with the sound after: there alone the beats'
+        // quality (each beat's match, beside its time) differs, a little,
+        // and the last stretch's profiles. Every time, number, window and
+        // culled side is the same.
+        let last_chunk = to_s - cfg.chunk_s;
+        let (a, b) = (&parts.log.beats, &ended.log.beats);
+        assert_eq!(a.len(), b.len());
+        for (x, y) in a.iter().zip(b) {
+            // To the µs, as kept.
+            let us = |t: f64| (t * 1e6).round() as i64;
+            assert_eq!((x.index, us(x.time)), (y.index, us(y.time)));
+            if x.time < last_chunk {
+                assert_eq!(x.quality, y.quality, "{}", x.time);
+            } else {
+                assert!((x.quality / y.quality - 1.0).abs() < 0.01, "{}", x.time);
+            }
+        }
+        // In the last chunk the order of float sums differs across
+        // platforms, a take cut there having no sound after it: there the
+        // windows, and the figures read from them, agree to 1e-4 of each
+        // reporting step (Norm on #1711), 10,000 times below any digit
+        // reported. Before it, and everything else, exactly.
+        assert_windows_agree(
+            &parts.log.amplitude_windows,
+            &ended.log.amplitude_windows,
+            last_chunk,
+        );
+        // No reported figure moves (Norm on #1711): the whole measurement,
+        // rate, amplitude, beat error and their ± to those tolerances,
+        // every count, the watch heard, the caveats, coverage and sources
+        // exactly. Only beat quality and the last stretch's profiles, left
+        // out above, differ, for the reason given there.
+        let measured = |s: &Stored| {
+            let m = crate::session::measure(&s.log, None, 0.0, f64::INFINITY);
+            serde_json::to_value(&m).unwrap()
+        };
+        assert_same_figures(&measured(&parts), &measured(&ended), "");
+        let (p, q) = (&parts.profiles, &ended.profiles);
+        assert_eq!(p.len(), q.len());
+        let n = p.len() - 1;
+        assert_eq!(p[n].end_s, to_s);
+        assert!(analysis_take::profiles_bin(&p[..n]) == analysis_take::profiles_bin(&q[..n]));
+        assert_eq!(parts.log.jumps, ended.log.jumps);
+        assert_eq!(parts.log.sided, ended.log.sided);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A take whose sides are named only well after its first parts (its
+    /// beat error grows slowly from 0, past 0.1 ms only after a minute)
+    /// reads back from its parts with the first parts' beats numbered one
+    /// further and their sides swapped, as the reading renumbered them.
+    #[test]
+    fn sides_named_after_a_part_read_back_renamed() {
+        let dir = scratch("renamed");
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 150.0,
+                beat_error_ms: 0.0,
+                beat_error_drift_ms_per_s: 0.0015,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let path = dir.join("take_part01-001.wav");
+        audio::write_wav(&path, &audio).unwrap();
+        let cfg = StreamConfig {
+            chunk_s: 10.0,
+            ..Default::default()
+        };
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 10.0,
+        });
+        let (kept, status) = kept_with_parts(&[path], &cfg, &[], &[48_000], parts);
+        let partial: checkpoint::Partial = serde_json::from_slice(
+            &std::fs::read(dir.join(checkpoint::DIR).join(checkpoint::HEADER)).unwrap(),
+        )
+        .unwrap();
+        let renamed = partial.renamed_before.expect("named after a part");
+        // Named past 0.1 ms, after 67 s: whole parts before, and after.
+        assert!(
+            (3..partial.parts.len()).contains(&renamed),
+            "{renamed} of {}",
+            partial.parts.len()
+        );
+        assert_parts_are_the_take_so_far(&dir, &kept, status.to_s);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A part changed on the disk is left out, with every part after
+    /// it, and the take reads up to the part before, saying why; a part
+    /// file the list doesn't name is passed over; a take with no parts,
+    /// or whose first part doesn't read, has none to read.
+    #[test]
+    fn parts_not_as_listed_are_left_out() {
+        let dir = scratch("tampered");
+        let paths = take(&dir, 50.0, 1);
+        let cfg = StreamConfig {
+            chunk_s: 12.0,
+            ..Default::default()
+        };
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 8.0,
+        });
+        let (_, status) = kept_with_parts(&paths, &cfg, &[], &[4097], parts);
+        // The last chunk read starts 48 s in: 6 parts, or fewer while its
+        // windows were still being found.
+        assert!(status.to_s >= 24.0, "{}", status.to_s);
+        let n = (status.to_s / 8.0) as usize;
+        let folder = dir.join(checkpoint::DIR);
+        let unlisted = format!("{:04}-beats.csv.gz", n + 1);
+        std::fs::write(folder.join(unlisted), b"not listed").unwrap();
+        let all = checkpoint::read(&dir).unwrap();
+        assert_eq!(all.stored.header.duration_s, status.to_s);
+        assert_eq!(all.left_out, None);
+        let part = folder.join("0002-windows.csv.gz");
+        let mut bytes = std::fs::read(&part).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 1;
+        std::fs::write(&part, &bytes).unwrap();
+        let first = checkpoint::read(&dir).unwrap();
+        let h = &first.stored.header;
+        assert_eq!(h.duration_s, 8.0);
+        let rows = (h.beats, h.windows, h.profiles);
+        let log = &first.stored.log;
+        assert_eq!(
+            rows,
+            (
+                log.beats.len(),
+                log.amplitude_windows.len(),
+                first.stored.profiles.len()
+            )
+        );
+        assert!(log.beats.last().unwrap().time < 8.0);
+        assert!(log.amplitude_windows.iter().all(|w| w.start_s < 8.0));
+        let why = first.left_out.unwrap();
+        assert!(
+            why.starts_with(&format!("parts 2 to {n} of {n}, from 8 s: "))
+                && why.contains("0002-windows.csv.gz isn't as partial.json lists it"),
+            "{why}"
+        );
+        // Grown past its listed size: refused by its size alone.
+        std::fs::write(folder.join("0001-beats.csv.gz"), vec![0u8; 1 << 20]).unwrap();
+        let e = checkpoint::read(&dir).unwrap_err().to_string();
+        assert!(
+            e.contains("0001-beats.csv.gz isn't as partial.json lists it"),
+            "{e}"
+        );
+        checkpoint::remove(&dir).unwrap();
+        let e = checkpoint::read(&dir).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Parts that can't be written leave the recording and its reading
+    /// going, say why, and the take is kept all the same.
+    #[test]
+    fn parts_not_written_say_why_and_the_take_is_kept() {
+        let dir = scratch("unwritable");
+        let paths = take(&dir, 40.0, 1);
+        let cfg = StreamConfig {
+            chunk_s: 12.0,
+            ..Default::default()
+        };
+        let plain = kept_live(&paths, &cfg, &[], &[4097]);
+        // A file where the take's folder should be.
+        let blocked = dir.join("a file");
+        std::fs::write(&blocked, b"").unwrap();
+        let parts = Some(Checkpoints {
+            take: blocked,
+            every_s: 12.0,
+        });
+        let (kept, status) = kept_with_parts(&paths, &cfg, &[], &[4097], parts);
+        assert_eq!(kept_files(&kept), kept_files(&plain));
+        assert_eq!(status.to_s, 0.0);
+        assert!(status
+            .failed
+            .is_some_and(|e| e.contains("analysis.partial")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// Nothing pushed keeps an empty take, and a Keeper dropped unfinished
     /// stops its reading.
     #[test]
@@ -685,6 +1186,7 @@ mod tests {
             cfg: StreamConfig::default(),
             shapes: Vec::new(),
             software: software(),
+            checkpoints: None,
         };
         let s = Keeper::start(how()).finish().unwrap();
         assert!(s.log.beats.is_empty() && s.profiles.is_empty());

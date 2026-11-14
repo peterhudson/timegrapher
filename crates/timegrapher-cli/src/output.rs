@@ -18,14 +18,16 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// findings' severity and advice, and `moves_with`, and `series/3` the
 /// isochronism's quadratic (`curve_centre_deg`, `curve`, `curve_explained`,
 /// `turn_deg`); `session/2` dropped
-/// the tolerances, limits, verdicts and the findings' severity and advice;
+/// the tolerances, limits, verdicts and the findings' severity and advice,
+/// and `session/3` made a state of wind not given its own (`wind_h` null)
+/// instead of full wind's;
 /// `analyze/2`, `doctor/2` and `regress-holdout/2` dropped their grades,
 /// verdicts, named faults and advice.
 pub fn schema_version(kind: &str) -> u32 {
     match kind {
         "record" => 2,
         "series" => 3,
-        "session" => 2,
+        "session" => 3,
         "analyze" => 2,
         "doctor" => 2,
         "regress-holdout" => 2,

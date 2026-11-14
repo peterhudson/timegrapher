@@ -704,7 +704,26 @@ impl LiveAnalyzer {
     }
 
     /// Add audio. Returns true when a pass ran (the readings may have changed).
+    ///
+    /// The passes run at the same points of the sound whatever size of
+    /// block it comes in: a block is cut where a pass is due, so a
+    /// microphone's 100 ms blocks and a file's 20 ms ones find the same
+    /// first template and read the same beats (#1720).
     pub fn push(&mut self, samples: &[f32]) -> bool {
+        let mut ran = false;
+        let mut rest = samples;
+        while !rest.is_empty() {
+            let due = self.next_pass.saturating_sub(self.total).max(1) as usize;
+            let (part, later) = rest.split_at(due.min(rest.len()));
+            ran |= self.push_part(part);
+            rest = later;
+        }
+        ran
+    }
+
+    /// [`Self::push`] for a part of a block that reaches no further than
+    /// the next pass.
+    fn push_part(&mut self, samples: &[f32]) -> bool {
         self.buf.extend_from_slice(samples);
         self.total += samples.len() as u64;
         let keep = (self.cfg.window_s * self.fs).ceil() as usize;
@@ -1277,9 +1296,7 @@ impl LiveAnalyzer {
         // Within that of a break, before a window can be whole, regularity
         // is not assessed; past it, no whole window is noise.
         let heard_since = self.heard_cuts().stretch_from(end_s).max(0.0);
-        let step = crate::measure::RATE_WINDOW_STEP_S;
-        let look_back = ((end_s - SCATTER_LOOKBACK_S) / step).floor() * step;
-        let scatter_from = window_from.min(look_back).max(heard_since).max(0.0);
+        let scatter_from = crate::session::scatter_look_back(window_from, end_s, heard_since);
         let scatter = bph.map_or_else(Vec::new, |b| {
             crate::session::scatter_windows(
                 holes,
@@ -1292,6 +1309,9 @@ impl LiveAnalyzer {
         });
         let jitter_us = crate::session::scatter_jitter_us(&scatter);
         let judged_s = judged_s(!scatter.is_empty(), end_s, window_from, heard_since, holes);
+        // Its look back always holds a whole window past a cut's first
+        // SCATTER_LOOKBACK_S, before which `judged_s` is 0 (#1688).
+        let assessed = measure::regularity_assessed(judged_s, true);
         let timing_scatter_fraction =
             bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
         // Where the timing can't say, the beats' averaged sound, from the
@@ -1300,7 +1320,7 @@ impl LiveAnalyzer {
         // its stretch's ([`BeatLog::beat_sound`]), not the latest run's.
         let sound_beats = crate::session::stretch_beats(&self.beats, scatter_from, end_s);
         let beat_sound = match (bph, &self.beats[sound_beats]) {
-            (Some(b), [first, .., last]) if measure::beat_sound_needed(jitter_us, b, judged_s) => {
+            (Some(b), [first, .., last]) if measure::beat_sound_needed(jitter_us, b, assessed) => {
                 let snips: Vec<(f64, bool, &[f32])> = self
                     .sample
                     .items()
@@ -1320,8 +1340,10 @@ impl LiveAnalyzer {
             _ => None,
         };
         let no_watch = match bph {
-            Some(b) => measure::no_watch_reason(jitter_us, b, judged_s, beat_sound),
-            None => measure::regularity_assessed(listened_s).then_some(NoWatchReason::Scatter),
+            Some(b) => measure::no_watch_reason(jitter_us, b, assessed, beat_sound),
+            None => {
+                measure::regularity_assessed(listened_s, true).then_some(NoWatchReason::Scatter)
+            }
         };
         Verdict {
             jitter_us,
