@@ -1328,6 +1328,9 @@ fn the_listening_thread_ends_a_power_reserve_test_without_frames() {
     ));
     for s in sound {
         app.live.as_mut().unwrap().push(s);
+        // Pushed straight in, so mark it as arrived: otherwise a slow run
+        // finds the input silent for 3 s and stops listening first.
+        app.audio_at = Some(Instant::now());
         // The listening thread's turn; never a frame's.
         app.pump();
         if !app.reserve_running() {
