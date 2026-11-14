@@ -31,8 +31,8 @@ pub const HELP: &[&str] = &[
     "- New Watch… adds a watch: only its name is needed.",
     "- Its calibre, lift angle and beat rate set up each new take of it, and can be changed \
      for one take without changing the watch.",
-    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test or Power Reserve Test: \
-     each is a new take on the microphone, saved into the watch when it stops.",
+    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test, Complication Test or \
+     Power Reserve Test: each is a new take on the microphone, saved into the watch when it stops.",
     "## Photos",
     "- Add Photos… copies photos of the picked watch into its folder, each kept as it is \
      (JPEG, PNG, TIFF, or HEIC as an iPhone takes them).",
@@ -736,14 +736,6 @@ pub fn take_line(t: &Take, positions_test: bool, reading: Option<&Reading>) -> S
     t.facts_read(positions_test, reading).join(" · ")
 }
 
-/// The captions under the three New Take buttons: Listen, Positions Test, Power Reserve Test.
-pub const NEW_TAKE_CAPTIONS: [&str; 4] = [
-    "As long as you like",
-    "Six positions, guided",
-    "Eight upright, 45° apart",
-    "From full wind to a stop",
-];
-
 /// The words under a watch's name in its header: its calibre, beat rate
 /// and lift angle, then its added fields, each named. The beat rate and
 /// lift angle are the ones its takes start with: the calibre's where the
@@ -873,59 +865,74 @@ pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
         .inner
 }
 
-/// New Take's four buttons, equal, each with its caption under it; Listen,
-/// the default, is the blue one. Which was pressed, if any. While `why`
-/// says so, they are greyed out with that reason.
+/// New Take's buttons (name, hover, caption), equal, each with its caption
+/// under it, in two rows, the first the longer (#1634); Listen, the default, is the blue
+/// one. Which was pressed, if any. While `why` says so, they are greyed
+/// out with that reason.
 pub fn new_take_buttons(
     ui: &mut egui::Ui,
-    names: [(&str, &str); 4],
+    names: &[(&str, &str, &str)],
     why: Option<&str>,
 ) -> Option<usize> {
-    let pal = theme::pal(ui);
     let mut pressed = None;
     let gap = 10.0;
-    let n = names.len() as f32;
+    let row_n = names.len().div_ceil(2).max(1);
+    let n = row_n as f32;
     let w = ((ui.available_width() - (n - 1.0) * gap) / n).max(80.0);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = gap;
-        for (i, (name, hint)) in names.into_iter().enumerate() {
-            ui.allocate_ui_with_layout(
-                Vec2::new(w, 64.0),
-                egui::Layout::top_down(egui::Align::Center),
-                |ui| {
-                    ui.set_width(w);
-                    panel(ui, |ui| {
-                        let b = if i == 0 {
-                            theme::primary(ui, name)
-                        } else {
-                            theme::secondary(ui, name)
-                        };
-                        let r = ui
-                            .add_enabled(
-                                why.is_none(),
-                                b.min_size(Vec2::new(ui.available_width(), 26.0)),
-                            )
-                            .on_hover_text(hint)
-                            .on_disabled_hover_text(why.unwrap_or_default());
-                        if r.clicked() {
-                            pressed = Some(i);
-                        }
-                        // One line, so the buttons stay level.
-                        ui.vertical_centered(|ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(NEW_TAKE_CAPTIONS[i])
-                                        .small()
-                                        .color(pal.text_secondary),
-                                )
-                                .truncate(),
-                            );
-                        });
-                    });
-                },
-            );
-        }
-    });
+    ui.spacing_mut().item_spacing.y = gap;
+    for (row, chunk) in names.chunks(row_n).enumerate() {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap;
+            for (k, &b) in chunk.iter().enumerate() {
+                let i = row * row_n + k;
+                if new_take_button(ui, (i, b), w, why) {
+                    pressed = Some(i);
+                }
+            }
+        });
+    }
+    pressed
+}
+
+/// One of [`new_take_buttons`], the `i`th, `w` wide: whether it was
+/// pressed.
+fn new_take_button(
+    ui: &mut egui::Ui,
+    (i, (name, hint, caption)): (usize, (&str, &str, &str)),
+    w: f32,
+    why: Option<&str>,
+) -> bool {
+    let pal = theme::pal(ui);
+    let mut pressed = false;
+    ui.allocate_ui_with_layout(
+        Vec2::new(w, 64.0),
+        egui::Layout::top_down(egui::Align::Center),
+        |ui| {
+            ui.set_width(w);
+            panel(ui, |ui| {
+                let b = if i == 0 {
+                    theme::primary(ui, name)
+                } else {
+                    theme::secondary(ui, name)
+                };
+                let r = ui
+                    .add_enabled(
+                        why.is_none(),
+                        b.min_size(Vec2::new(ui.available_width(), 26.0)),
+                    )
+                    .on_hover_text(hint)
+                    .on_disabled_hover_text(why.unwrap_or_default());
+                pressed = r.clicked();
+                // One line, so the buttons stay level.
+                ui.vertical_centered(|ui| {
+                    ui.add(
+                        egui::Label::new(RichText::new(caption).small().color(pal.text_secondary))
+                            .truncate(),
+                    );
+                });
+            });
+        },
+    );
     pressed
 }
 
@@ -2174,7 +2181,7 @@ mod tests {
         let tile = (side - 2.0 * 10.0) / 3.0 - 16.0;
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                for c in NEW_TAKE_CAPTIONS {
+                for c in crate::app::new_take_captions() {
                     let font = egui::TextStyle::Small.resolve(ui.style());
                     let w = ui
                         .painter()

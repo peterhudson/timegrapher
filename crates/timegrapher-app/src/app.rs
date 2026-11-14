@@ -51,6 +51,8 @@ pub use charts::{lane_text, lane_width, paint_key, LANE_AFTER_TITLE, LANE_GAP};
 pub use poise_pane::PoiseView;
 pub use position::Position;
 mod complication_pane;
+#[cfg(test)]
+pub(crate) use new_take::new_take_captions;
 use new_take::{NewTake, NEW_TAKES};
 mod dialogs;
 mod distributions;

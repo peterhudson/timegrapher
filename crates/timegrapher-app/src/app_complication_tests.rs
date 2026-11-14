@@ -312,3 +312,33 @@ fn draw_at(app: &mut TimegrapherApp, size: Vec2) -> Vec<(String, egui::Rect)> {
     }
     drawn
 }
+
+/// The watch page's New Take offers every take, each with its own
+/// caption (#1634): the Complication Test's says off, on, off, and the
+/// Power Reserve Test, fifth since the Complication Test came, is still
+/// offered.
+#[test]
+fn new_take_offers_every_take_with_its_own_caption() {
+    let caption = |k: NewTake| NEW_TAKES.iter().find(|t| t.0 == k).map(|t| t.3);
+    assert_eq!(
+        caption(NewTake::Complication),
+        Some("Off, on, then off again")
+    );
+    assert_eq!(
+        caption(NewTake::PowerReserve),
+        Some("From full wind to a stop")
+    );
+    let names: Vec<(&str, &str, &str)> = NEW_TAKES.iter().map(|t| (t.1, t.2, t.3)).collect();
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let out = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            watches::new_take_buttons(ui, &names, None);
+        });
+    });
+    let drawn = format!("{:?}", out.shapes);
+    for (name, _, caption) in &names {
+        assert!(drawn.contains(name), "{name}");
+        assert!(drawn.contains(caption), "{caption}");
+    }
+}
