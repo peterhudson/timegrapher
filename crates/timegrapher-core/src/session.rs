@@ -1673,6 +1673,9 @@ pub struct SessionReport {
     /// over the positions measured in both, s/d.
     pub ie: Option<f64>,
     pub findings: Vec<Finding>,
+    /// Each state's position lines, as every surface draws the Positions
+    /// Test (#1729).
+    pub position_lines: Vec<crate::position_line::StateLines>,
 }
 
 fn spread(v: impl Iterator<Item = f64>) -> Option<f64> {
@@ -1690,7 +1693,7 @@ mod session_wind;
 pub use session_wind::{in_wind_state, report_states};
 pub(crate) use session_wind::{wind_key, wind_keys};
 
-fn state(wind_h: Option<f64>, readings: &[&Reading]) -> StateIndices {
+fn state(wind_h: Option<f64>, readings: &[&Reading], over: &[Position]) -> StateIndices {
     let figures: Vec<SourcedFigures> = readings
         .iter()
         .map(|r| {
@@ -1704,7 +1707,7 @@ fn state(wind_h: Option<f64>, readings: &[&Reading]) -> StateIndices {
             )
         })
         .collect();
-    sourced_indices(wind_h, &figures)
+    sourced_indices_over(wind_h, &figures, over)
 }
 
 /// Witschi's characteristic values for one state of wind `wind_h`, from
@@ -1713,8 +1716,9 @@ fn state(wind_h: Option<f64>, readings: &[&Reading]) -> StateIndices {
 #[path = "session_aggregates.rs"]
 mod session_aggregates;
 pub use session_aggregates::{
-    comparison, position_rows, positions_table, sourced_indices, sourced_indices_over, Comparison,
-    PositionRow, PositionsTable, SourcedFigures, TakeRead, IE_NAME, IM_NAME, POSITION_MIN_S,
+    comparison, group_mean, position_rows, positions_table, sourced_indices, sourced_indices_over,
+    Comparison, PositionGroup, PositionRow, PositionsTable, SourcedFigures, TakeRead, IE_NAME,
+    IM_NAME, POSITION_MIN_S,
 };
 
 fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
@@ -1761,18 +1765,24 @@ pub fn measure_together(
 /// Witschi's characteristic values for the readings, and the conditions
 /// found in each recording.
 pub fn evaluate(readings: &[Reading]) -> SessionReport {
-    // States of wind, fullest first, then wind not given.
-    let states: Vec<StateIndices> = wind_keys(readings)
-        .into_iter()
-        .map(|k| {
-            let rs: Vec<&Reading> = readings
-                .iter()
-                .filter(|r| wind_key(r.wind_h) == k)
-                .collect();
-            state(k.map(|k| k as f64 / 10.0), &rs)
-        })
-        .collect();
-    evaluate_states(states, findings(readings))
+    // States of wind, fullest first, then wind not given: over the six,
+    // and over all ten for the position lines' lanes.
+    let over = |positions: &[Position]| -> Vec<StateIndices> {
+        wind_keys(readings)
+            .into_iter()
+            .map(|k| {
+                let rs: Vec<&Reading> = readings
+                    .iter()
+                    .filter(|r| wind_key(r.wind_h) == k)
+                    .collect();
+                state(k.map(|k| k as f64 / 10.0), &rs, positions)
+            })
+            .collect()
+    };
+    let mut report = evaluate_states(over(&Position::ALL), findings(readings));
+    report.position_lines =
+        crate::position_line::state_lines_over(&report.states, &over(&Position::TEN));
+    report
 }
 
 /// [`evaluate`] from the states of wind already read, fullest first,
@@ -1843,6 +1853,7 @@ pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> Ses
         _ => None,
     };
     SessionReport {
+        position_lines: crate::position_line::state_lines(&states),
         states,
         isochronism,
         im,

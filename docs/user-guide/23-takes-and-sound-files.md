@@ -141,8 +141,8 @@ used only one (`2026-10-20 14.32 Dial Up`):
 At start-up the app keeps as FLAC any hour of a saved take still in WAV,
 in the background ("Keeping saved takes as FLAC: 2 of 5"). An hour an
 older version saved at 24 bits, or as floating point, is rounded to 16
-bits as it is kept, as every take is now; the readings don't change. A
-few unusual sample rates stay WAV.
+bits as it is kept, as every take is now. A few unusual sample rates
+stay WAV.
 
 **The Watches folder** holds every watch and take:
 
@@ -160,6 +160,13 @@ Timegrapher Data/
 
 Nothing in it records where it is, so it can be moved, synced or backed
 up whole. Chapter 24 gives where it is and how to move it.
+
+Two things are kept in the app's settings folder, not the Watches
+folder: each sound input's stored clock correction (`clocks.json`, M3),
+used for a recording with no clock log of its own, and the calibres you
+added (`calibres.json`, chapter 24). Back up that folder too, and copy
+it with the Watches folder to a new computer. Chapter 27 gives where it
+is on each system.
 
 ## What to Look For
 

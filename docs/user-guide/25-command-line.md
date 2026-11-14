@@ -64,8 +64,8 @@ gives one command's options. `timegrapher --version` gives the version.
 | Option | What it does |
 | --- | --- |
 | `--calibre "Dandong 3235"` | Takes the beat rate, lift angle and wheels from the calibre table. An unknown name lists the known ones. |
-| `--bph 28800` | The beat rate. Left out, it is found from the beats. |
-| `--lift 52` | The lift angle in degrees: the calibre's, else 52. The amplitude depends on it (M4). |
+| `--bph 28800` | The beat rate. Left out, a file in a take uses the take's; otherwise `analyze` takes the calibre's, and else it is found from the beats. |
+| `--lift 52` | The lift angle in degrees. Left out, a file in a take uses the take's; otherwise the calibre's, else 52. The amplitude depends on it (M4). |
 | `--device NAME` | Corrects the rate with the clock error stored for that input. |
 | `--notch 5000,6000` | Takes out steady tones, such as a hum or whine near the stand. |
 | `--highpass 1500` | The high-pass corner in Hz. |
@@ -75,27 +75,27 @@ gives one command's options. `timegrapher --version` gives the version.
 
 ```text
 $ timegrapher analyze take_part01-001.flac --calibre "Dandong 3235"
-Calibre      Dandong 3235: 28800 bph, lift 59°, as set unless a flag said otherwise
+Calibre      Dandong 3235: 28800 bph, lift 59°, unless a flag or the take's session file says otherwise
 Take         …/session.toml lists this file; `timegrapher session` reads it:
-             Dial Up (DU) from 20 to 600 s: rate -0.7 ± 0.4 s/d, amplitude 282 ± 1°, beat error 0.24 ± 0.04 ms
-Whole file   read alone, with no settling and none of the take's settings:
+             Dial Up (DU) from 20 to 600 s: rate -0.7 ± 0.5 s/d, amplitude 282 ± 2°, beat error 0.24 ± 0.05 ms
+Whole file   read alone, with no settling, at the take's beat rate and lift angle:
 Duration     600.0 s at 48000 Hz
 Beat rate    28800 bph, 4711 beats found (98.1% of those expected)
-Rate         -0.7 ± 0.3 s/d, corrected for the sound card's clock (18.9 ppm slow, …); +0.9 s/d on the card's clock
-Beat error   0.24 ± 0.04 ms (from the unlock; 0.49 ms from the drop)
+Rate         -0.7 ± 0.4 s/d, corrected for the sound card's clock (18.9 ppm slow, …); +0.9 s/d on the card's clock
+Beat error   0.23 ± 0.05 ms (from the unlock; 0.49 ms from the drop)
 Jitter       258 us per beat (within 10 s windows)
 Rate spread  -3.0 to 4.3 s/d (5th-95th percentile of 10 s windows)
-Amplitude    303 ± 1 deg (Tick 292, Tock 309; lift angle 59 deg)
+Amplitude    282 ± 2 deg (Tick 272, Tock 288; lift angle 55 deg)
 Clipping     on 0.0% of beats (0 of 4711, 210 samples), peak 0.0 dBFS
 ```
 
 This is ten minutes of a Dandong 3235, dial up. The file is part of a
 take, so the first lines give the take's own reading, as the app and
 `session` read it, after its 20 s settle. The rest reads the file alone,
-from its first beat and without the take's settings, so its figures can
-differ from the take's; the take's are the ones the app shows. The rate
-is corrected
-for the sound card's clock from the USB lines in the recording (M3), and
+from its first beat with no settling, at the take's beat rate and lift
+angle unless `--lift` or `--bph` sets them, so its figures can differ
+from the take's; the take's are the ones the app shows. The rate is
+corrected for the sound card's clock from the USB lines in the recording (M3), and
 gives the uncorrected figure too.
 
 ## For Scripts and Agents

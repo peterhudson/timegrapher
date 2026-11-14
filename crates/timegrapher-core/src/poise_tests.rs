@@ -606,6 +606,13 @@ fn a_done_take_with_too_few_positions_says_what_it_lacks() {
     // A test under way, or a take with five or more, waits as before.
     assert_eq!(unfitted_text(4, false), pending_text());
     assert_eq!(unfitted_text(5, true), pending_text());
+    // With no stops at all, a Quick Listen say, there is nothing to
+    // explain: the pane says how a test fits, as before (Hugh).
+    assert_eq!(unfitted_text(0, true), pending_text());
+    assert_eq!(
+        unfitted_text(1, true),
+        "Needs 5 upright positions to fit; this take has 1"
+    );
 }
 
 /// The drawn curve passes through the fit: fastest at its peak, and it

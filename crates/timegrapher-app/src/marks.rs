@@ -13,19 +13,19 @@ use eframe::egui::{self, Color32};
 use std::sync::Arc;
 
 /// One row of names in a lane, points tall.
-pub const ROW_H: f32 = 15.0;
+pub const ROW_H: f32 = timegrapher_core::chart_scale::NAME_ROW_H as f32;
 /// A lane of names: two rows.
 pub const LANE: f32 = 2.0 * ROW_H;
 /// The short gap between the plot and its nearest row of names, so each
 /// line or leader shows outside the plot before it reaches its name.
-pub const LANE_GAP: f32 = 6.0;
+pub const LANE_GAP: f32 = timegrapher_core::chart_scale::NAME_LANE_GAP as f32;
 /// The room kept between two names in a row: a word space and more, so
 /// two names side by side never read as one phrase.
-pub const NAME_GAP: f32 = 12.0;
+pub const NAME_GAP: f32 = timegrapher_core::chart_scale::NAME_GAP as f32;
 /// How far an overlap must start or end before a name changes row, or a
 /// plot's height passes a limit before its names move, so they don't hop
 /// between frames.
-pub const HYSTERESIS: f32 = 2.0;
+pub const HYSTERESIS: f32 = timegrapher_core::chart_scale::NAME_HYSTERESIS as f32;
 /// A plot shorter than this takes its names inside, along its top.
 pub const SHORT_PLOT: f32 = 100.0;
 /// Inside a short plot, the row of names' gap below the plot's top.
@@ -42,16 +42,18 @@ pub enum Rank {
     Faint,
 }
 
-/// The order names are placed in: strong first, then faint, each left
-/// to right. `names` are each one's line x, width and rank.
+/// The order names are placed in: core's
+/// ([`timegrapher_core::chart_scale::lane_order`]).
 fn order(names: &[(f32, f32, Rank)]) -> Vec<usize> {
-    let mut o: Vec<usize> = (0..names.len()).collect();
-    o.sort_by(|&a, &b| {
-        (names[a].2 == Rank::Faint)
-            .cmp(&(names[b].2 == Rank::Faint))
-            .then(names[a].0.total_cmp(&names[b].0))
-    });
-    o
+    timegrapher_core::chart_scale::lane_order(&core_names(names))
+}
+
+/// Names as core's lane rules take them: centre, width, whether faint.
+fn core_names(names: &[(f32, f32, Rank)]) -> Vec<(f64, f64, bool)> {
+    names
+        .iter()
+        .map(|&(x, w, r)| (f64::from(x), f64::from(w), r == Rank::Faint))
+        .collect()
 }
 
 /// Where each name in a lane goes: `names` are each one's centre (its
@@ -62,40 +64,12 @@ fn order(names: &[(f32, f32, Rank)]) -> Vec<usize> {
 /// slides right of the name there (drawn with an angled leader). Returns
 /// each name's left edge and row, in the order given.
 pub fn place(names: &[(f32, f32, Rank)], left: f32, right: f32, was: &[u8]) -> Vec<(f32, u8)> {
-    let mut rows: [Vec<(f32, f32)>; 2] = Default::default();
-    let mut out = vec![(0.0, 0); names.len()];
-    for i in order(names) {
-        let (x, w, _) = names[i];
-        let last = (right - w).max(left);
-        let at = (x - w / 2.0).clamp(left, last);
-        // The overlap with a name in the first row, the gap between names
-        // included: a name goes out once it overlaps by the hysteresis,
-        // and comes back once it clears by as much.
-        let overlap = rows[0]
-            .iter()
-            .map(|&(a, b)| (b + NAME_GAP - at).min(at + w + NAME_GAP - a))
-            .fold(f32::NEG_INFINITY, f32::max);
-        let out_row = if was.get(i).copied().unwrap_or(0) == 1 {
-            overlap > -HYSTERESIS
-        } else {
-            overlap > HYSTERESIS
-        };
-        let (at, row) = if out_row {
-            let mut a = at;
-            while let Some(&(_, e)) = rows[1]
-                .iter()
-                .find(|&&(s, e)| a < e + NAME_GAP && a + w + NAME_GAP > s)
-            {
-                a = e + NAME_GAP;
-            }
-            (a.min(last), 1)
-        } else {
-            (at, 0)
-        };
-        rows[row as usize].push((at, at + w));
-        out[i] = (at, row);
-    }
-    out
+    // Core's rule, which the CLI's report draws by too.
+    let names = core_names(names);
+    timegrapher_core::chart_scale::lane_place(&names, f64::from(left), f64::from(right), was)
+        .into_iter()
+        .map(|(a, row)| (a as f32, row))
+        .collect()
 }
 
 /// Where the names in a lane of one row go: `names` are each one's centre
@@ -105,33 +79,12 @@ pub fn place(names: &[(f32, f32, Rank)], left: f32, right: f32, was: &[u8]) -> V
 /// the right where there is room, else to the left. Each name's left
 /// edge, in the order given.
 pub fn place_row(names: &[(f32, f32, Rank)], left: f32, right: f32) -> Vec<f32> {
-    let mut taken: Vec<(f32, f32)> = Vec::new();
-    let mut out = vec![0.0; names.len()];
-    for i in order(names) {
-        let (x, w, _) = names[i];
-        let last = (right - w).max(left);
-        let centred = (x - w / 2.0).clamp(left, last);
-        let hit = |a: f32, taken: &[(f32, f32)]| {
-            taken
-                .iter()
-                .find(|&&(s, e)| a < e + NAME_GAP && a + w + NAME_GAP > s)
-                .copied()
-        };
-        let mut at = centred;
-        while let Some((_, e)) = hit(at, &taken) {
-            at = e + NAME_GAP;
-        }
-        if at > last {
-            at = centred;
-            while let Some((s, _)) = hit(at, &taken) {
-                at = s - NAME_GAP - w;
-            }
-            at = at.max(left);
-        }
-        taken.push((at, at + w));
-        out[i] = at;
-    }
-    out
+    // Core's rule, which the CLI's report draws by too.
+    let names = core_names(names);
+    timegrapher_core::chart_scale::lane_place_row(&names, f64::from(left), f64::from(right))
+        .into_iter()
+        .map(|a| a as f32)
+        .collect()
 }
 
 /// Where the names go inside a short plot, one row along its top: `names`

@@ -110,6 +110,22 @@ pub fn clock(
     )
 }
 
+/// The clock a live reading is put on (#1721): [`clock`] as opening the
+/// take saved now puts it, with no clock log, the recording's USB lines as
+/// `usb` has measured them (on the first sound, as a saved take reads
+/// them) and the correction kept for the input (`correction_ppm`). Before
+/// the lines are measured it is the kept correction alone, or none, and
+/// [`crate::usbclock::LiveClock::not_yet`] says so beside the rate.
+pub fn live_clock(
+    usb: &crate::usbclock::LiveClock,
+    correction_ppm: Option<f64>,
+    duration_s: f64,
+) -> Option<ClockFit> {
+    clock(None, 0, 0, usb.usb_ppm(), correction_ppm, duration_s)
+        .ok()
+        .flatten()
+}
+
 /// Where a take's clock came from, in words, as `from` ([`clock_from`])
 /// picks it: the USB lines' text (`usb`, as
 /// [`crate::usbclock::UsbClock::correction`] words it), the correction's
@@ -1597,6 +1613,42 @@ pub fn whole_take(m: &Manifest) -> Result<RecordingEntry, String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A live reading's clock is the one opening the take saved at that
+    /// moment gives: the measured USB lines over a kept correction, and
+    /// the kept correction alone until the lines are measured (#1721).
+    #[test]
+    fn a_live_reading_takes_the_clock_a_reopened_take_takes() {
+        use crate::usbclock::{LiveClock, UsbClock};
+        let lines = UsbClock {
+            ppm: -19.3,
+            lines: 8,
+            spread_ppm: 0.2,
+        };
+        let measured = LiveClock::Measured {
+            clock: lines,
+            over_s: 60.0,
+        };
+        for kept in [None, Some(-18.0)] {
+            let same =
+                |a: Option<ClockFit>, b: Option<ClockFit>| format!("{a:?}") == format!("{b:?}");
+            assert!(same(
+                live_clock(&measured, kept, 300.0),
+                clock(None, 0, 0, Some(-19.3), kept, 300.0).unwrap()
+            ));
+            for open in [
+                LiveClock::NotMeasured { heard_s: 12.0 },
+                LiveClock::NoLines { over_s: 30.0 },
+            ] {
+                assert!(same(
+                    live_clock(&open, kept, 300.0),
+                    clock(None, 0, 0, None, kept, 300.0).unwrap()
+                ));
+            }
+        }
+        assert!(live_clock(&measured, None, 300.0).is_some());
+        assert!(live_clock(&LiveClock::NotMeasured { heard_s: 1.0 }, None, 300.0).is_none());
+    }
     use super::*;
 
     /// A part of a log takes the reading's amplitude windows: those whose

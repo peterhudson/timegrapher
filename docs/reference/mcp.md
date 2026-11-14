@@ -288,8 +288,32 @@ the timegrapher app draws them:
   app, no reading reaches across the take's breaks, moves, settling ends
   or masks, and the rates are on the take's clock where it corrects them,
   which the rate chart states.
-- `run_session`: each position's readings, the characteristic values, and
-  rate and amplitude by position. It sets no limits: the server does not
+- `run_session`: the characteristic values, then a Positions Test pane
+  for each state of wind, headed in core's words ("Full wind", "24 h
+  after winding", "Wind not given"), laid out as the app's test panes
+  (#1729): the table on the left (each position's rate, amplitude and
+  beat error, then the Average, Vertical and Horizontal rows) and the
+  charts on the right, or under the table where they would be narrower
+  than 320 px; only the table scrolls. Each chart is core's position line
+  for one measure (`report.position_lines`): the value along the axis, a
+  lane per position, Horizontal then Vertical, the three averages as grey
+  dashed lines named in one row above the plot, with leaders, and on a
+  later state each position's full-wind figure as a hollow dot with an
+  arrow to this test's, keyed "This test" and "Full wind test". No
+  position is joined to another. The Rate, Amplitude and Beat Error
+  buttons show or hide each chart, all on at first. One hover: a lane in
+  any chart or a row of the table rings that position in every chart,
+  outlines its row and gives its figures in each chart's title. A
+  session with a Power Reserve run adds a Power Reserve pane in the same
+  layout: the table of each hour's rate, amplitude, beat error and Read %,
+  and a chart per measure of the hourly levels as steps, one line broken
+  only where an hour has no figure; a figure read from too few of its
+  windows is grey. The server gives that pane its figures and words in
+  `_meta["timegrapher/reserve"]`. Each state of wind with a Dynamic
+  Poise fit adds a Dynamic Poise pane: the upright positions' rates and
+  the Mean in the table, and core's picture (`poise[].picture`) beside
+  it, along a line or round a watch face as the Plot and Dial buttons
+  choose, with core's words on the fit and the heavy spot. It sets no limits: the server does not
   judge the readings against a tolerance, so `run_session` takes no
   tolerance class.
 - `tick_tock_profile`: the Tick and Tock profiles with the unlock and drop.

@@ -39,6 +39,17 @@ pub const LONG_TAKE_S: f64 = 6.0 * 3600.0;
 /// far while listening.
 pub const READ_AGAIN_S: f64 = 60.0;
 
+/// The Power Reserve Test's name, as its pane is headed on every surface.
+pub const TEST_TITLE: &str = "Power Reserve";
+/// The hours table's first column: its name and what it holds.
+pub const HOURS_COLUMN: (&str, &str) = ("Hours", "Hours since the first beat heard");
+/// The hours table's last column: its name, unit and what it holds.
+pub const READ_COLUMN: (&str, &str, &str) = (
+    "Read",
+    "%",
+    "How much of the hour its whole 10 s readings cover",
+);
+
 /// How a run ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -261,6 +272,16 @@ pub struct Hour {
     /// Source of the selected beat error; absent in older saved readings.
     #[serde(default)]
     pub beat_error_source: Option<crate::session::BeatErrorSource>,
+    /// Each figure's ±, its standard error in the figure's own unit, as
+    /// the hour's measurement gives it ([`crate::confidence`], the one ±
+    /// every reading carries; #1729). None where the figure has none, and
+    /// in results saved before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_se: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amplitude_se: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beat_error_se: Option<f64>,
     /// Factual conditions carried from the core measurement.
     #[serde(default)]
     pub caveats: Vec<crate::measure::Caveat>,
@@ -282,6 +303,22 @@ impl Hour {
             (self.beat_error_ms?, None),
             self.bph?,
         )
+    }
+
+    /// The caveat saying its `figure` stands on under the share of its
+    /// windows the readings need (#1429, #1439): the figure is drawn grey
+    /// and the caveat is its hover, on every surface. None where it has no
+    /// such figure or it isn't thin.
+    pub fn thin(&self, figure: crate::confidence::Figure) -> Option<&crate::measure::Caveat> {
+        use crate::confidence::Figure;
+        match figure {
+            Figure::Amplitude => self.amplitude_deg?,
+            Figure::BeatError => self.beat_error_ms?,
+            Figure::Rate => self.rate_s_per_day?,
+        };
+        self.caveats.iter().find(|c| {
+            matches!(c, crate::measure::Caveat::ReadingWindows { reading, .. } if *reading == figure)
+        })
     }
 
     /// A whole hour, not the run's last part: its span is 3600 s, within
@@ -446,6 +483,9 @@ pub fn hours_from(
             amplitude_deg: m.as_ref().and_then(|m| m.amplitude_deg),
             beat_error_ms: m.as_ref().and_then(|m| m.beat_error_signed()),
             beat_error_source: m.as_ref().and_then(|m| m.beat_error_source),
+            rate_se: se(m.as_ref(), |c| c.rate.se),
+            amplitude_se: se(m.as_ref(), |c| c.amplitude.se),
+            beat_error_se: se(m.as_ref(), |c| c.beat_error.se),
             caveats: m.as_ref().map(|m| m.caveats.clone()).unwrap_or_default(),
             read_s,
             bph: Some(log.bph),
@@ -453,6 +493,14 @@ pub fn hours_from(
         hour += 1;
     }
     out
+}
+
+/// One figure's ± from an hour's measurement, None where it has none.
+fn se(
+    m: Option<&crate::session::Measurement>,
+    pick: impl Fn(&crate::confidence::Confidence) -> Option<f64>,
+) -> Option<f64> {
+    m.and_then(|m| m.confidence.as_ref()).and_then(pick)
 }
 
 /// The run of a take that wasn't a Power Reserve Test, read as one: its
@@ -697,6 +745,24 @@ mod tests {
                 quality,
             })
             .collect()
+    }
+
+    /// A take of `run_s` of beats at 28,800 bph, each beat a little early
+    /// or late (a fixed pseudo-random spread of about ±0.5 ms), so its
+    /// rate windows scatter as a watch's do.
+    fn jittered(run_s: f64) -> crate::stream::BeatLog {
+        let mut log = take_of(run_s, 0.0);
+        log.bph = 28_800;
+        log.beats = beats(0.0, run_s, 0.125, 1.0)
+            .into_iter()
+            .map(|mut b| {
+                let x = (b.index as f64 * 12.9898).sin() * 43_758.545_3;
+                b.time += (x - x.floor() - 0.5) * 1e-3;
+                b
+            })
+            .collect();
+        log.duration_s = run_s;
+        log
     }
 
     /// A take of `run_s` of beats at 18,000 bph from 5 s in, then
@@ -1098,6 +1164,67 @@ mod tests {
         assert!(h[0].read_s >= h[0].span_s - 50.0, "{h:?}");
     }
 
+    /// Each hour carries the ± its stretch's measurement gives, the same
+    /// standard errors a reading of that stretch carries (#1729), and an
+    /// hour saved before them reads back without one.
+    #[test]
+    fn each_hour_carries_the_plus_minus_its_stretch_gives() {
+        use crate::synth::{generate, SynthConfig};
+        let cfg = SynthConfig {
+            duration_s: 300.0,
+            rate_s_per_day: 6.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 250.0, |_| 0.2);
+        let log = crate::stream::analyze_samples(
+            &audio.samples,
+            audio.sample_rate,
+            &crate::stream::StreamConfig::default(),
+        );
+        let first = log.beats[0].time;
+        let last = log.beats[log.beats.len() - 1].time;
+        let h = hours(&log, None, &[], &[], first, last);
+        let m = crate::session::measure_masked(&log, None, &[], &[], first, last);
+        let c = m.confidence.expect("a five-minute stretch has a ±");
+        assert_eq!(h[0].rate_se, c.rate.se);
+        assert_eq!(h[0].amplitude_se, c.amplitude.se);
+        assert_eq!(h[0].beat_error_se, c.beat_error.se);
+        assert!(
+            h[0].rate_se.is_some() && h[0].amplitude_se.is_some(),
+            "{h:?}"
+        );
+        let json = serde_json::to_string(&h[0]).unwrap();
+        assert!(json.contains("\"rate_se\""), "{json}");
+        let old = json
+            .split(',')
+            .filter(|f| !f.contains("_se\""))
+            .collect::<Vec<_>>()
+            .join(",");
+        let back: Hour = serde_json::from_str(&old).unwrap();
+        assert_eq!(back.rate_se, None);
+        assert_eq!(back.rate_s_per_day, h[0].rate_s_per_day);
+    }
+
+    /// A last part hour too short for its own ± borrows the noise of the
+    /// take around it, as any short stretch does (#1470); one too short
+    /// for even that has none. Either way it is the stretch's own ±.
+    #[test]
+    fn a_short_last_hour_borrows_its_plus_minus_or_has_none() {
+        for (tail_s, has) in [(120.0, true), (30.0, false)] {
+            let log = jittered(3600.0 + tail_s);
+            let last = log.duration_s - 0.2;
+            let h = hours(&log, None, &[], &[], 0.0, last);
+            assert_eq!(h.len(), 2, "{tail_s} s");
+            // The hour starts where the grid's true hour falls in the audio.
+            let a = crate::clean::Cuts::new(None, &[], &[]).audio_time(3600.0, 0.0, last);
+            let m = crate::session::measure_masked(&log, None, &[], &[], a, last);
+            assert!(h[1].rate_s_per_day.is_some(), "{tail_s} s");
+            assert_eq!(h[1].rate_se, m.confidence.and_then(|c| c.rate.se));
+            assert_eq!(h[1].rate_se.is_some(), has, "{tail_s} s: {:?}", h[1]);
+            assert!(h[0].rate_se.is_some(), "a whole hour has its own ±");
+        }
+    }
+
     #[test]
     fn results_keep_true_time_and_read_back() {
         let h = Heard {
@@ -1146,6 +1273,9 @@ mod tests {
             amplitude_deg: None,
             beat_error_ms: None,
             beat_error_source: None,
+            rate_se: None,
+            amplitude_se: None,
+            beat_error_se: None,
             caveats: Vec::new(),
             read_s: 0.0,
             bph: Some(28_800),
@@ -1166,6 +1296,9 @@ mod tests {
             amplitude_deg: None,
             beat_error_ms: None,
             beat_error_source: None,
+            rate_se: None,
+            amplitude_se: None,
+            beat_error_se: None,
             caveats: Vec::new(),
             read_s,
             bph: Some(28_800),

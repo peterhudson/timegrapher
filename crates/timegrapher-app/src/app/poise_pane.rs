@@ -8,6 +8,7 @@ use super::*;
 use crate::fact_box::{FactBox, FACT_INSET};
 use timegrapher_core::chart_scale;
 use timegrapher_core::poise::{self, PoiseFit};
+use timegrapher_core::poise_picture;
 
 /// How the pane draws the rate by the hour at the top: along a line, or
 /// round a watch face. Kept between runs.
@@ -78,22 +79,6 @@ struct Picture<'a> {
     facts: Option<FactBox>,
 }
 
-impl Picture<'_> {
-    /// The rates the picture must hold: each point with its ±, and the
-    /// wave.
-    fn range(&self) -> Option<(f64, f64)> {
-        let mut v: Vec<f64> = Vec::new();
-        for &(_, r, se) in &self.points {
-            let e = se.unwrap_or(0.0);
-            v.extend([r - e, r + e]);
-        }
-        if let Some(f) = self.fit {
-            v.extend(f.curve(DIAL_STEPS as usize).into_iter().map(|(_, r)| r));
-        }
-        chart_scale::data_range(&v)
-    }
-}
-
 impl TimegrapherApp {
     /// The Dynamic Poise test, if that is the guided test on the Bench.
     pub(super) fn poise_test(&self) -> Option<&guided::Test> {
@@ -104,7 +89,7 @@ impl TimegrapherApp {
 
     /// The pane's toolbar: View first (Hugh's spec), New Test or Cancel
     /// Test while none runs, the Settle and Each Position the Positions
-    /// Test shares, and Copy.
+    /// Test shares, Save as Text… and Copy.
     pub(super) fn poise_settings(&mut self, ui: &mut egui::Ui) {
         theme::keep_next(ui);
         theme::tool_field(
@@ -168,6 +153,17 @@ impl TimegrapherApp {
             None => kept.is_none(),
         }
         .then_some("Nothing measured yet");
+        if theme::tool_button(
+            ui,
+            Icon::SaveTable,
+            "Save as Text…",
+            "Save the watch, how it was read, the table, the fit and the notes under it as a \
+             plain-text report to keep, print or send",
+            nothing,
+        ) {
+            let about = self.guided_about();
+            self.save_test_text(&about, guided::Kind::Poise, None, kept.as_deref());
+        }
         if theme::tool_word_button(
             ui,
             Icon::Copy,
@@ -199,7 +195,10 @@ impl TimegrapherApp {
     /// as the Positions pane reads its six, so a saved test's results
     /// come back when its take is opened (#1619). The table and Copy
     /// both read these (#1657).
-    fn poise_kept(&self, ctx: &egui::Context) -> Option<Vec<timegrapher_core::session::Reading>> {
+    pub(super) fn poise_kept(
+        &self,
+        ctx: &egui::Context,
+    ) -> Option<Vec<timegrapher_core::session::Reading>> {
         if self.guided.is_some() {
             return None;
         }
@@ -339,11 +338,7 @@ fn picture_block(
     bottom: f32,
 ) {
     words(ui, fit, unfitted);
-    let points = readings
-        .iter()
-        .filter_map(|r| poise::point(r.position, &r.measurement))
-        .map(|p| (p.angle_deg, p.rate_s_per_day, p.rate_se))
-        .collect();
+    let points = poise_picture::points(readings);
     let facts = fit.map(|f| {
         let name = match view {
             PoiseView::Plot => "plot",
@@ -440,7 +435,7 @@ fn info_panel(ui: &mut egui::Ui, (fit, unfitted): (Option<&PoiseFit>, &str), not
             .wrap()
             .selectable(true)
     };
-    ui.label(theme::caption("Dynamic Poise").color(pal.text_secondary));
+    ui.label(theme::caption(poise_picture::TITLE).color(pal.text_secondary));
     match fit {
         Some(f) => ui.add(text(&f.sentence_beside_note(), pal.text)),
         None => ui.add(text(unfitted, pal.text_secondary)),
@@ -455,8 +450,7 @@ fn info_panel(ui: &mut egui::Ui, (fit, unfitted): (Option<&PoiseFit>, &str), not
 
 /// The rate scale for the picture: round ends round every rate it holds.
 fn rate_scale(pic: &Picture<'_>) -> (f64, f64, f64) {
-    let (lo, hi) = pic.range().unwrap_or((-1.0, 1.0));
-    chart_scale::round_ends(lo, hi)
+    poise_picture::scale(&pic.points, pic.fit)
 }
 
 /// The plot: x the hour at the top, 12H to 12H, a mark every 45°; y the
@@ -524,7 +518,7 @@ fn draw_plot(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
     painter.text(
         egui::pos2(area.center().x, rect.bottom() - 2.0),
         egui::Align2::CENTER_BOTTOM,
-        "Hour at the top",
+        poise_picture::HOUR_AXIS,
         small.clone(),
         pal.text_secondary,
     );
@@ -635,9 +629,9 @@ fn plot_key(
     }
     let small = egui::FontId::proportional(11.0);
     let row = 16.0;
-    let mut rows = vec![format!("Upright positions ({})", pic.points.len())];
+    let mut rows = vec![poise_picture::points_key(pic.points.len())];
     if pic.fit.is_some() {
-        rows.push("Fitted wave".to_string());
+        rows.push(poise_picture::WAVE_KEY.to_string());
     }
     let widest = rows
         .iter()
@@ -720,7 +714,7 @@ fn plot_wave(
         painter.text(
             egui::pos2(x(peak), area.top() - 2.0),
             egui::Align2::CENTER_BOTTOM,
-            format!("Fastest {}", poise::hour_code(peak)),
+            poise_picture::fastest_name(peak),
             small.clone(),
             pal.text,
         );
@@ -833,7 +827,7 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
 }
 
 /// What the dial's top right says.
-const DIAL_KEY: &str = "Further out = faster, s/d";
+const DIAL_KEY: &str = poise_picture::DIAL_KEY;
 
 /// The room the dial takes in `rect`, under the facts box once there is
 /// one, which takes the top left corner (Hugh on #1537), and where the

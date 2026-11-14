@@ -704,7 +704,26 @@ impl LiveAnalyzer {
     }
 
     /// Add audio. Returns true when a pass ran (the readings may have changed).
+    ///
+    /// The passes run at the same points of the sound whatever size of
+    /// block it comes in: a block is cut where a pass is due, so a
+    /// microphone's 100 ms blocks and a file's 20 ms ones find the same
+    /// first template and read the same beats (#1720).
     pub fn push(&mut self, samples: &[f32]) -> bool {
+        let mut ran = false;
+        let mut rest = samples;
+        while !rest.is_empty() {
+            let due = self.next_pass.saturating_sub(self.total).max(1) as usize;
+            let (part, later) = rest.split_at(due.min(rest.len()));
+            ran |= self.push_part(part);
+            rest = later;
+        }
+        ran
+    }
+
+    /// [`Self::push`] for a part of a block that reaches no further than
+    /// the next pass.
+    fn push_part(&mut self, samples: &[f32]) -> bool {
         self.buf.extend_from_slice(samples);
         self.total += samples.len() as u64;
         let keep = (self.cfg.window_s * self.fs).ceil() as usize;

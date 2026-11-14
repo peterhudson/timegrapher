@@ -144,6 +144,68 @@ fn record_files_a_test_under_a_library_watch() {
     let _ = fs::remove_dir_all(&d);
 }
 
+/// A Power Reserve Test filed into a library is one take, as the app
+/// files one: the recording itself, named by its start and "Power
+/// Reserve", with its own session file and the run beside it, so the app
+/// opens it on its run (#1732).
+#[test]
+fn a_power_reserve_test_is_filed_as_the_app_files_one() {
+    let d = scratch("reserve");
+    let wav = synth(&d);
+    let root = d.join("Timegrapher Data");
+    let mut lib = Library::create(&root).unwrap();
+    let mut w = Watch::new("YM42");
+    w.bph = Some(28800);
+    let dir = lib.add(&w).unwrap();
+    drop(lib);
+    let out = bin()
+        .args(["record", "--watch", "YM42", "--library"])
+        .arg(&root)
+        .args(["--position", "CR", "--power-reserve", "--json", "--file"])
+        .arg(&wav)
+        .output()
+        .unwrap();
+    let j = doc(&out);
+    let takes: Vec<PathBuf> = fs::read_dir(dir.join(TAKES))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(takes.len(), 1, "{takes:?}");
+    let take = &takes[0];
+    let name = take.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(name.ends_with(" Power Reserve"), "{name}");
+    assert_eq!(j["take"], take.to_str().unwrap());
+    assert_eq!(
+        j["session_file"],
+        take.join("session.toml").to_str().unwrap()
+    );
+    // One folder: the sound, its session file naming itself, and the run.
+    let manifest = fs::read_to_string(take.join("session.toml")).unwrap();
+    assert!(manifest.contains("file = \".\""), "{manifest}");
+    assert!(take.join("power-reserve.json").is_file());
+    assert!(take.join("session.json").is_file());
+    let inner: Vec<_> = fs::read_dir(take)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .collect();
+    assert!(inner.is_empty(), "{inner:?}");
+    // The library reads it as the app's: a Power Reserve take with its run.
+    let lib = Library::read(&root).unwrap();
+    let t = &lib.find("YM42").unwrap().takes[0];
+    assert!(t.power_reserve.is_some(), "{t:?}");
+    assert_eq!(t.positions, ["CR"]);
+    // And `session` reads the run from it, as from an app-made take.
+    let s = bin()
+        .arg("session")
+        .arg(take)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(doc(&s)["power_reserve"].is_object());
+    let _ = fs::remove_dir_all(&d);
+}
+
 /// While the app has the library open, a take is not recorded into
 /// through a link either: to the take, to its watch, or to the library
 /// (#1641). The take's session file is left as it was.

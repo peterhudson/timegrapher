@@ -549,6 +549,9 @@ pub static DYNAMIC_POISE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
         "- Copy writes the watch, its calibre, the table and the fit in words, with tabs \
      between the columns for a spreadsheet."
             .into(),
+        "- Save as Text… writes the same as a plain-text report, lined up to read, print or \
+     send."
+            .into(),
     ])
 });
 

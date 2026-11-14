@@ -15,12 +15,17 @@ computes:
 ```text
 d[i] = x[i+1] − x[i]
 s = 1.4826 × median(|d − median(d)|) / sqrt(2)
-rho = lag-one correlation of x less its least-squares line, held to 0 … 0.99
+r = lag-one correlation of x less its least-squares line, pooled over the levels
+    (each level's line over all its runs; products only within a run, never across a hole)
+rho = r + 2 × (1 + 3r) / n_bar, held to 0 … 0.99 (n_bar: the levels' mean length)
 n_eff = n × (1 − rho) / (1 + rho)
 SE = 1.2533 × s / sqrt(1 − rho) / sqrt(n_eff)
 ```
 
-Fewer than three values gives no estimate. The constants are Gaussian reference
+Fewer than three values gives no estimate. `rho` is
+[`confidence::corrected_lag_one`](../../crates/timegrapher-core/src/confidence.rs)
+(#1544; levels and holes, #1637): the raw `r` reads low once the line is taken out, by about
+`2 × (1 + 3r) / n` (Marriott and Pope 1954), and that bias is added back. The constants are Gaussian reference
 factors: the MAD estimates a standard deviation, successive differences of
 values with lag-one correlation `rho` have variance `2 × sigma² × (1 − rho)`,
 and the median's asymptotic standard error is about `1.2533 × sigma / sqrt(n)`
