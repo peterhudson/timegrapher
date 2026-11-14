@@ -409,7 +409,7 @@ impl TimegrapherApp {
             );
             guided::free_table(
                 &t,
-                guided::take_readings(&t.rows, log.bph, bph_set),
+                guided::take_readings(&guided::card_rows(&t), log.bph, bph_set),
                 guided::take_readings(&upright, log.bph, bph_set),
             )
         };

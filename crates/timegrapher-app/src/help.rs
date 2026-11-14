@@ -491,7 +491,9 @@ pub static POSITIONS_TEST: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
         "- Save as Text… writes the same as a plain-text report, lined up to read, print or \
      send."
             .into(),
-        "- With no test on the Bench, all three write an opened take's This Take table.".into(),
+        "- With no test on the Bench, all three write an opened take's This Take table, without a \
+     test's start and times."
+            .into(),
     ])
 });
 

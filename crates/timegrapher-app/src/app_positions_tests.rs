@@ -1011,11 +1011,20 @@ fn an_opened_takes_table_can_be_saved_and_copied() {
     let kept = app.positions_kept(&ctx).expect("not Nothing measured yet");
     assert_eq!(guided::TakeReadings(kept.clone()), t.six);
     let about = app.guided_about();
+    // Each row in the order the pane lists it (Hugh on #1705).
+    let in_order = |text: &str| {
+        let at: Vec<usize> = t
+            .rows
+            .iter()
+            .map(|(label, ..)| text.find(label.as_str()).unwrap_or(usize::MAX))
+            .collect();
+        assert!(at[0] < usize::MAX, "{text}");
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "{at:?}: {text}");
+    };
     let csv = guided::kept_rows_text(&kept, guided::Kind::Positions, &about, ',');
-    for (label, ..) in &t.rows {
-        assert!(csv.contains(label.as_str()), "{label}: {csv}");
-    }
+    in_order(&csv);
     assert!(!csv.contains("Test Began"), "{csv}");
+    assert!(!csv.contains("-0.0"), "{csv}");
     let take = app
         .take_on_show()
         .and_then(|p| Some(p.file_name()?.to_string_lossy().into_owned()));
@@ -1032,14 +1041,16 @@ fn an_opened_takes_table_can_be_saved_and_copied() {
         date: take.as_deref().and_then(text_report::take_date),
         calibre: Some(about.calibre.clone()),
         bph: about.bph,
-        lift_angle_deg: app.lift_known().then_some(about.lift_angle_deg),
+        // No calibre gives it, so the lift is in the heading, as in the CSV.
+        lift_angle_deg: Some(about.lift_angle_deg),
         settle_s: None,
         measure_s: None,
     };
-    assert_eq!(text, text_report::positions(&header, &kept, None));
-    for (label, ..) in &t.rows {
-        assert!(text.contains(label.as_str()), "{label}: {text}");
-    }
+    assert!(!about.calibre.contains('°'), "{}", about.calibre);
+    let card = guided::card_order();
+    assert_eq!(text, text_report::positions_in(&header, &kept, None, &card));
+    in_order(&text);
+    assert!(text.contains("Lift Angle"), "{text}");
     assert!(
         !text.contains("Settling") && !text.contains("Measured"),
         "{text}"

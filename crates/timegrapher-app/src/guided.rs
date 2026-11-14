@@ -2139,6 +2139,23 @@ pub fn take_readings(
     )
 }
 
+/// The six in the Current Position card's order, as the free take's
+/// table lists them: DU, DD, CU, CD, CL, CR.
+pub fn card_order() -> Vec<session::Position> {
+    Position::ALL
+        .iter()
+        .filter_map(|p| session::Position::parse(p.code()))
+        .collect()
+}
+
+/// Core's rows of a take's table in the card's order ([`card_order`]).
+pub fn card_rows(t: &session::PositionsTable) -> Vec<session::PositionRow> {
+    card_order()
+        .into_iter()
+        .filter_map(|p| t.rows.iter().find(|r| r.position == p).cloned())
+        .collect()
+}
+
 /// The free take's table from core's, in the Current Position card's
 /// order, with its `six` positions and the take's `upright` stops as
 /// readings.
@@ -2147,11 +2164,9 @@ pub fn free_table(
     six: TakeReadings,
     upright: TakeReadings,
 ) -> FreeTable {
-    let rows: Vec<(String, f64, FreeCell)> = Position::ALL
-        .iter()
-        .filter_map(|p| {
-            let sp = session::Position::parse(p.code())?;
-            let r = t.rows.iter().find(|r| r.position == sp)?;
+    let rows: Vec<(String, f64, FreeCell)> = card_rows(t)
+        .into_iter()
+        .map(|r| {
             let cell = match &r.measurement {
                 Some(m) => match (m.rate_s_per_day, m.amplitude_deg, m.beat_error()) {
                     (None, None, None) => FreeCell::Unread,
@@ -2160,7 +2175,7 @@ pub fn free_table(
                 None if r.duration_s > 0.0 => FreeCell::Short,
                 None => FreeCell::NotMarked,
             };
-            Some((position_label(sp), r.duration_s, cell))
+            (position_label(r.position), r.duration_s, cell)
         })
         .collect();
     let read = rows
@@ -2358,7 +2373,7 @@ pub fn table_text(t: &Table, sep: char, kind: Kind) -> String {
             s.to_string()
         }
     };
-    let num = |v: Option<f64>, d: usize| v.map_or_else(String::new, |x| format!("{x:.d$}"));
+    let num = |v: Option<f64>, d: usize| v.map_or_else(String::new, |x| fixed_text(x, d));
     let line = |cells: &[String]| {
         let mut l = cells
             .iter()
@@ -2433,12 +2448,12 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
         let mut row = vec![position_label(*p)];
         for (i, x) in v.iter().enumerate() {
             let d = if i < 3 { RATE } else { AMPLITUDE };
-            row.push(x.map_or_else(String::new, |x| format!("{x:.d$}")));
+            row.push(x.map_or_else(String::new, |x| fixed_text(x, d)));
         }
         cells.push(row);
     }
     cells.push(Vec::new());
-    let num = |v: Option<f64>| v.map_or_else(String::new, |x| format!("{x:.RATE$}"));
+    let num = |v: Option<f64>| v.map_or_else(String::new, |x| fixed_text(x, RATE));
     cells.push(vec![format!("{}, s/d", session::IM_NAME), num(c.im)]);
     cells.push(vec![format!("{}, s/d", session::IE_NAME), num(c.ie)]);
     let field = |s: &str| {
@@ -2621,14 +2636,22 @@ pub fn kept_report_text(
 ) -> Option<String> {
     let header = report_header(about, lift_known, take, None);
     match kind {
-        Kind::Positions => Some(text_report::positions(&header, readings, None)),
+        Kind::Positions => Some(text_report::positions_in(
+            &header,
+            readings,
+            None,
+            &card_order(),
+        )),
         Kind::Poise => Some(text_report::poise(&header, readings)),
         Kind::Complication => None,
     }
 }
 
 /// The text report's heading: the pane's watch, its calibre, beat rate
-/// and, when `lift_known`, its lift angle; the Date from `take`, the
+/// and its lift angle, which is left out only when it is the default
+/// (`lift_known` false) and the calibre's name already gives it, "Rolex
+/// 3235 (53°)", so the report and the CSV always agree on it (Hugh on
+/// #1705); the Date from `take`, the
 /// take's folder name; the settling and measuring `lengths` when known.
 fn report_header(
     about: &About,
@@ -2641,10 +2664,20 @@ fn report_header(
         date: take.and_then(text_report::take_date),
         calibre: Some(about.calibre.clone()),
         bph: about.bph,
-        lift_angle_deg: lift_known.then_some(about.lift_angle_deg),
+        lift_angle_deg: (lift_known || !calibre_carries_lift(about))
+            .then_some(about.lift_angle_deg),
         settle_s: lengths.map(|l| l.0),
         measure_s: lengths.map(|l| l.1),
     }
+}
+
+/// Whether the calibre's name gives the lift angle as the calibre table
+/// names one, "Rolex 3235 (53°)".
+fn calibre_carries_lift(about: &About) -> bool {
+    about.calibre.contains(&format!(
+        "({}°)",
+        fixed_text(about.lift_angle_deg, AMPLITUDE)
+    ))
 }
 
 /// When the test began in this computer's time, as a take's name starts
