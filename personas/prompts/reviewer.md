@@ -10,9 +10,19 @@ Check, as a watchmaker would:
 - Are the numbers the helper reported consistent with the truth sheet (rate
   ±3 s/d, amplitude ±10°, beat error ±0.1 ms at the same lift angle)? Name
   any that are not, and whether the program or the helper got it wrong.
-- Judge amplitude only against Witschi's tolerances, fully wound: 260–320°
-  dial up or down, 240–280° crown up, down, left or right, over 330°
-  overbanking. Make no per-calibre amplitude claim of your own.
+- Judge the helper's amplitude reading by the watchmaker guide's own rule:
+  did it hold the fully wound amplitude against a set of tolerances that
+  fits the watch, horizontal and vertical apart, and name where that set
+  comes from? The guide's sets are the maker's figure where one exists
+  (ETA 2824-2 and Sellita SW200-1: at most 315° dial up, at least 200° at
+  6H after 24 h), otherwise Witschi's training course of 2010 (250–330°
+  horizontal, 250–270° vertical, its worked example down to 220°
+  vertical), or Witschi's "Standard Tolerances" of 2025 (260–320°
+  horizontal, 240–280° vertical), named as that document. Over 330° is
+  overbanking. A reading the helper judged against a fitting, named set is
+  not a finding because another set would read it differently; a set that
+  doesn't fit the watch, an unnamed range, or a per-calibre claim with no
+  source is. Make no per-calibre amplitude claim of your own.
 - Did the program's output stick to facts (measurements, ±, spreads,
   what was heard)? A verdict, a pass or fail, or a grade word from the
   program itself is a finding against the program. Interpretation is the

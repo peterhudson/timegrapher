@@ -1331,6 +1331,54 @@ fn a_run_on_an_automatic_rate_keeps_its_hours_at_the_stop() {
     assert!(!r.hours.is_empty(), "its hour table");
 }
 
+/// With the window not drawing (minimised, a locked screen), the
+/// listening thread alone ends a Power Reserve Test at the watch's stop:
+/// no frame is drawn, and the test still ends there (#1647, from an
+/// external audit).
+#[test]
+fn the_listening_thread_ends_a_power_reserve_test_without_frames() {
+    let base = std::env::temp_dir().join(format!("tg-app-reserve-pump-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let cfg = SynthConfig {
+        duration_s: 90.0,
+        bph: 21_600,
+        ..Default::default()
+    };
+    let ticks = generate(&cfg, |_| 280.0, |_| 0.0).samples;
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.live = Some(LiveAnalyzer::new(48_000, LiveConfig::default()));
+    let tx = queued_capture(&mut app, &base);
+    app.reserve = Some(reserve::Test::new(
+        Position::DialUp,
+        true,
+        String::new(),
+        0.0,
+    ));
+    app.reserve_read_s = 0.0;
+    let silence = vec![0.0f32; 48_000 * 20];
+    let sound = ticks.chunks(48_000).chain(std::iter::repeat_n(
+        silence.as_slice(),
+        (power_reserve::STOP_AFTER_S / 20.0) as usize + 3,
+    ));
+    for s in sound {
+        app.live.as_mut().unwrap().push(s);
+        // Pushed straight in, so mark it as arrived: otherwise a slow run
+        // finds the input silent for 3 s and stops listening first.
+        app.audio_at = Some(Instant::now());
+        // The listening thread's turn; never a frame's.
+        app.pump();
+        if !app.reserve_running() {
+            break;
+        }
+    }
+    let t = app.reserve.as_ref().unwrap();
+    assert_eq!(t.ending, Some(power_reserve::Ending::Stopped));
+    assert!(t.results.is_some(), "its results");
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// While listening, a long take that isn't a test fills the Power Reserve
 /// pane as an opened one does, read in the background and again a
 /// minute of take later, never written into the take or naming it as a

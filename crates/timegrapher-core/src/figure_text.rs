@@ -60,6 +60,20 @@ pub fn figure_minus(text: &str) -> String {
         .collect()
 }
 
+/// A whole number with a comma between each three digits, "28,800": a
+/// beat rate or a count as text gives it.
+pub fn grouped(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, d) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(d);
+    }
+    out
+}
+
 /// Each figure's base decimals, with no ± to follow (the math guide's
 /// section 11): what [`figure_digits`] starts from.
 pub mod base_digits {
@@ -176,6 +190,15 @@ pub fn derived_digits(x: f64, sig: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_whole_number_is_grouped_by_thousands() {
+        assert_eq!(grouped(28800), "28,800");
+        assert_eq!(grouped(18000), "18,000");
+        assert_eq!(grouped(360000), "360,000");
+        assert_eq!(grouped(1234567), "1,234,567");
+        assert_eq!(grouped(900), "900");
+    }
 
     /// Fixed and signed figures as a screen writes them, held to the
     /// fixture the MCP view's num and signed are tested against too
