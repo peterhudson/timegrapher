@@ -471,13 +471,19 @@ fn the_positions_table_reads_a_free_take() {
         matches!(cu.2, guided::FreeCell::Read(Some(_), Some(_), Some(_))),
         "{t:?}"
     );
-    // A second masked in its middle leaves 11 s with no 10 s clear to
-    // read: the row says so, never a row of dashes.
+    // A second masked in its middle leaves 11 s with no 10 s clear for a
+    // rate. Its regularity is judged as live judges it, looking back to
+    // the mask, where no whole window fits, so the beats' sound says a
+    // watch (Norm on #1688): the row keeps the amplitude and beat error
+    // its shorter windows give, and no rate.
     let end = app.latest_s();
     app.masked.push((end - 7.0, end - 6.0));
     let t = app.free_table(&egui::Context::default()).unwrap();
     let cu = t.rows.iter().find(|r| r.0 == "Crown Up (CU, 3H)").unwrap();
-    assert_eq!(cu.2, guided::FreeCell::Unread, "{t:?}");
+    assert!(
+        matches!(cu.2, guided::FreeCell::Read(None, Some(_), Some(_))),
+        "{t:?}"
+    );
 }
 
 #[test]

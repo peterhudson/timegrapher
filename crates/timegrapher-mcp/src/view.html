@@ -816,6 +816,18 @@ const STEADY_VIEWS = [
   ["stft", "STFT Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from the amplitude spectrum of each 20 minutes of readings, stepped 5 minutes: every period is read over the same window, so this map gives a line's size and shows a line that comes and goes. The rate's map is of the beat timing, in ms. Empty where a window has a reading missing"],
   ["wavelet", "Wavelet Map", "Each series' size at each period (up, on a log scale) and time of the session (across), from a synchrosqueezed wavelet transform: short periods read over short times and long ones over long, each moved to the period its own phase turns at, so a line shows sharply where and when it is; under noise one row reads under the line's size, so read its size from the STFT Map. Each unbroken stretch is read alone, and its ends, which a period's wavelet can't reach, are left empty"],
 ];
+// A spectrum's [period, size] pairs as runs of log10 points: a null size
+// (withheld by core for thin cover, #1638) ends a run, so the line is
+// never bridged across it; a size that is not positive is left out.
+function spectrumRuns(pairs) {
+  const runs = [[]];
+  for (const [t, a] of pairs) {
+    if (a === null || Number.isNaN(a)) runs.push([]);
+    else if (t > 0 && a > 0 && Number.isFinite(a)) runs[runs.length - 1].push([Math.log10(t), Math.log10(a)]);
+  }
+  return runs.filter((r) => r.length);
+}
+
 // A series' amplitude spectrum from the document's spectra[], if any.
 function spectrumOf(doc, s) {
   return (doc.spectra || []).find((x) => x.series === s.series && x.period_s && x.period_s.length > 1) || null;
@@ -1540,9 +1552,10 @@ function steadyPlot(s, view, doc) {
       // works it out (reading_swing).
       const swing = !fftTiming && sp.reading_swing && Array.isArray(sp.reading_swing.period_s) ? sp.reading_swing : null;
       const asRate = !!swing;
-      const pts = (asRate ? swing.period_s.map((t, i) => [t, swing.swing_s_per_day[i]]) : sp.period_s.map((t, i) => [t, sp.amplitude[i]]))
-        .filter(([t, a]) => t > 0 && a > 0 && Number.isFinite(a))
-        .map(([t, a]) => [Math.log10(t), Math.log10(a)]);
+      // A size core withheld for thin cover is null (#1638): it ends a
+      // run, so the line leaves a gap there and is never bridged.
+      const runs = spectrumRuns(asRate ? swing.period_s.map((t, i) => [t, swing.swing_s_per_day[i]]) : sp.period_s.map((t, i) => [t, sp.amplitude[i]]));
+      const pts = runs.flat();
       if (pts.length < 2) return steadyNote("The spectrum needs a longer session.");
       const x = [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0]))];
       const yLo = Math.min(...pts.map((q) => q[1])), yHi = Math.max(...pts.map((q) => q[1]));
@@ -1557,7 +1570,7 @@ function steadyPlot(s, view, doc) {
         title: "FFT", x, y,
         xTicks: periodTicks,
         yTicks: (p, q) => logTicks(p, q, size),
-        vlines: wheelMarks(doc, x), names: showWheels, lines: [{ pts, color, width: 1.5 }],
+        vlines: wheelMarks(doc, x), names: showWheels, lines: runs.map((r) => ({ pts: r, color, width: 1.5 })),
         marks: [{ x: peak[0], y: peak[1], color }],
         noteRoom: true, beside: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}${asRate ? " peak to peak" : ""}` }],
       });
