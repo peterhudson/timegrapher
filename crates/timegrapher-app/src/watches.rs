@@ -869,8 +869,7 @@ pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
 }
 
 /// New Take's buttons (name, hover, caption), equal, each with its caption
-/// under it: in one row where every caption is whole at that width
-/// ([`new_take_fits`]), else in two, the first the longer (#1634); Listen, the default, is the blue
+/// under it, as many to a row as [`new_take_row`] says (#1634); Listen, the default, is the blue
 /// one. Which was pressed, if any. While `why` says so, they are greyed
 /// out with that reason.
 pub fn new_take_buttons(
@@ -881,30 +880,44 @@ pub fn new_take_buttons(
     let mut pressed = None;
     let gap = 10.0;
     let tile = |n: usize| (ui.available_width() - (n as f32 - 1.0) * gap) / n as f32;
-    let row_n = if new_take_fits(ui, names, tile(names.len())) {
-        names.len()
-    } else {
-        names.len().div_ceil(2)
-    }
-    .max(1);
+    let row_n = new_take_row(ui, names, tile);
     let w = tile(row_n).max(80.0);
-    ui.spacing_mut().item_spacing.y = gap;
-    for (row, chunk) in names.chunks(row_n).enumerate() {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap;
-            for (k, &b) in chunk.iter().enumerate() {
-                let i = row * row_n + k;
-                if new_take_button(ui, (i, b), w, why) {
-                    pressed = Some(i);
+    // Its own spacing, so what follows it keeps the page's.
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = gap;
+        for (row, chunk) in names.chunks(row_n).enumerate() {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                for (k, &b) in chunk.iter().enumerate() {
+                    let i = row * row_n + k;
+                    if new_take_button(ui, (i, b), w, why) {
+                        pressed = Some(i);
+                    }
                 }
-            }
-        });
-    }
+            });
+        }
+    });
     pressed
 }
 
-/// Whether every caption of New Take's `names` is whole on one line in a
-/// tile `w` wide, less its panel's margins.
+/// How many of New Take's `names` go in a row, `tile(n)` wide each: all
+/// of them where every name and caption is whole ([`new_take_fits`]),
+/// else as many as fit with the rows as even as can be (3 + 2, then
+/// 2 + 2 + 1), and one where none fits.
+pub fn new_take_row(
+    ui: &egui::Ui,
+    names: &[(&str, &str, &str)],
+    tile: impl Fn(usize) -> f32,
+) -> usize {
+    (1..=names.len())
+        .map(|rows| names.len().div_ceil(rows))
+        .find(|&n| new_take_fits(ui, names, tile(n)))
+        .unwrap_or(1)
+}
+
+/// Whether every button name (with its padding) and caption of New
+/// Take's `names` is whole on one line in a tile `w` wide, less its
+/// panel's margins.
 pub fn new_take_fits(ui: &egui::Ui, names: &[(&str, &str, &str)], w: f32) -> bool {
     let inside = w - 2.0 * f32::from(PANEL_MARGIN);
     let width = |text: &str, style: egui::TextStyle| {
@@ -914,9 +927,11 @@ pub fn new_take_fits(ui: &egui::Ui, names: &[(&str, &str, &str)], w: f32) -> boo
             .size()
             .x
     };
-    names
-        .iter()
-        .all(|(_, _, caption)| width(caption, egui::TextStyle::Small) <= inside)
+    let padding = 2.0 * ui.spacing().button_padding.x;
+    names.iter().all(|(name, _, caption)| {
+        width(name, egui::TextStyle::Button) + padding <= inside
+            && width(caption, egui::TextStyle::Small) <= inside
+    })
 }
 
 /// One of [`new_take_buttons`], the `i`th, `w` wide: whether it was
@@ -2193,26 +2208,6 @@ mod tests {
         std::fs::remove_file(&file).unwrap();
         assert_eq!(take_kept_by_name(&dir), None);
         std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    /// New Take's captions are whole in two rows in an 800
-    /// point window, where the watch's side is narrowest, and in one row
-    /// at 1280 (#1634).
-    #[test]
-    fn new_take_wraps_to_two_rows_at_800_and_one_at_1280() {
-        let ctx = egui::Context::default();
-        crate::theme::install(&ctx);
-        let names = crate::app::new_take_names();
-        // The window less the list, its gap and the margins.
-        let side = |window: f32| window - crate::app::WATCH_LIST_W - 17.0 - 2.0 * 12.0 - 16.0;
-        let tile = |window: f32, n: f32| (side(window) - (n - 1.0) * 10.0) / n;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                assert!(!new_take_fits(ui, &names, tile(800.0, 5.0)), "one row");
-                assert!(new_take_fits(ui, &names, tile(800.0, 3.0)), "two rows");
-                assert!(new_take_fits(ui, &names, tile(1280.0, 5.0)), "1280");
-            });
-        });
     }
 
     /// A watch's Calibre, Lift Angle, Beat Rate and Notes are always in its

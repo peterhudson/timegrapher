@@ -353,3 +353,88 @@ fn new_take_offers_every_take_with_its_own_caption() {
         assert!(drawn.contains(caption), "{caption}");
     }
 }
+
+/// Which of New Take's buttons a click on `name` presses, with the page
+/// `width` wide.
+fn new_take_pressed(width: f32, name: &str) -> Option<usize> {
+    let names: Vec<(&str, &str, &str)> = NEW_TAKES.iter().map(|t| (t.1, t.2, t.3)).collect();
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(width, 600.0));
+    let mut pressed = None;
+    let mut frame = |events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        };
+        ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let spacing = ui.spacing().item_spacing;
+                pressed = pressed.or(watches::new_take_buttons(ui, &names, None));
+                assert_eq!(ui.spacing().item_spacing, spacing, "the page's own spacing");
+            });
+        })
+    };
+    let out = frame(Vec::new());
+    let at = out
+        .shapes
+        .iter()
+        .find_map(|c| match &c.shape {
+            egui::Shape::Text(t) if t.galley.text() == name => {
+                Some(t.visual_bounding_rect().center())
+            }
+            _ => None,
+        })
+        .expect("the button is drawn");
+    let click = |down| egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed: down,
+        modifiers: egui::Modifiers::NONE,
+    };
+    frame(vec![egui::Event::PointerMoved(at)]);
+    frame(vec![click(true)]);
+    frame(vec![click(false)]);
+    pressed
+}
+
+/// A click on New Take's last button starts the last take, whether the
+/// five sit in one row or wrap (#1634), and New Take leaves the page's
+/// spacing as it found it.
+#[test]
+fn new_takes_last_button_starts_the_last_take_in_one_row_or_more() {
+    let last = NEW_TAKES.len() - 1;
+    for width in [1400.0, 420.0] {
+        assert_eq!(
+            new_take_pressed(width, NEW_TAKES[last].1),
+            Some(last),
+            "{width}"
+        );
+    }
+    assert_eq!(new_take_pressed(420.0, NEW_TAKES[1].1), Some(1));
+}
+
+/// New Take's names and captions are whole at every width: in one
+/// row at 1280, and at 800, where the watch's side is narrowest and
+/// "Power Reserve Test" is too wide for a third, two to a row (#1634).
+#[test]
+fn new_take_rows_keep_every_name_and_caption_whole() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let names = new_take_names();
+    // The window less the list, its gap and the margins.
+    let side = |window: f32| window - WATCH_LIST_W - 17.0 - 2.0 * 12.0 - 16.0;
+    let tile = |window: f32| move |n: usize| (side(window) - (n as f32 - 1.0) * 10.0) / n as f32;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            assert_eq!(watches::new_take_row(ui, &names, tile(1280.0)), 5, "1280");
+            assert_eq!(watches::new_take_row(ui, &names, tile(800.0)), 2, "800");
+            assert!(watches::new_take_fits(ui, &names, tile(800.0)(2)));
+            assert!(
+                !watches::new_take_fits(ui, &names, tile(800.0)(3)),
+                "a third"
+            );
+        });
+    });
+}
