@@ -134,15 +134,16 @@ fn measured(name: &str) -> (TimegrapherApp, std::path::PathBuf, impl Sized) {
 
 /// A take still being listened to, with `stops` marked by hand in turn,
 /// `each` s apart, its rate 30 s/d each way round the dial (fastest with
-/// 6H at the top, as `measured`), its sound kept; and its folder.
+/// 6H at the top, as `measured`, and no change dial up or down), its
+/// sound kept; and its folder.
 fn listened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
     let base = std::env::temp_dir().join(format!("tg-app-poise-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let each = 62.0;
-    let tops: Vec<f64> = stops.iter().map(|p| p.core().top_deg().unwrap()).collect();
+    let tops: Vec<Option<f64>> = stops.iter().map(|p| p.core().top_deg()).collect();
     let extra = move |t: f64| {
-        let deg = tops[((t / each).floor() as usize).min(tops.len() - 1)];
-        30.0 * (deg - 180.0).to_radians().cos()
+        let top = tops[((t / each).floor() as usize).min(tops.len() - 1)];
+        top.map_or(0.0, |deg| 30.0 * (deg - 180.0).to_radians().cos())
     };
     let mut app = synthetic_varying(0.0, 0.0, |_| 0.0);
     app.session.listen();
