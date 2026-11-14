@@ -11,11 +11,10 @@ use crate::amplitude::AmplitudeWindow;
 use crate::audio::{self, AudioError};
 use crate::beats::{self, Beat};
 use crate::dsp::envelope;
-use crate::profile::{self, Side, TickProfile};
+use crate::profile::{Side, TickProfile};
 use crate::session::{self, Manifest, ShapeSummary};
 use crate::shape;
 use crate::stream::{self, BeatLog, StreamConfig};
-use crate::usbclock;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
@@ -59,9 +58,6 @@ pub const SHAPE_S: f64 = 60.0;
 /// while bounding a crafted gzip's allocation.
 const MAX_ANALYSIS_FILE: u64 = 512 << 20;
 
-/// Audio either side of a profile's stretch, for its beats' windows, as
-/// the app's profile pane reads it.
-const PROFILE_MARGIN_S: f64 = 0.05;
 /// Kept profile points are this far apart, ms (every second point of the
 /// engine's 0.1 ms profile).
 const PROFILE_POINT_MS: f64 = 0.2;
@@ -115,7 +111,7 @@ pub struct Header {
     pub shape: Vec<StoredShape>,
 }
 
-/// [`usbclock::UsbClock`], as kept.
+/// [`crate::usbclock::UsbClock`], as kept.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StoredUsbClock {
     pub ppm: f64,
@@ -389,10 +385,6 @@ pub fn measure(
 /// [`measure`] of the sound `files` whose beats `log` were already found
 /// with `cfg`: the second reading alone, with `progress` counting on from
 /// the log's length.
-#[expect(
-    clippy::too_many_lines,
-    reason = "over the limit before it was set; split it (architecture guide, section 12)"
-)]
 pub fn measure_from(
     log: BeatLog,
     files: &[&Path],
@@ -404,120 +396,15 @@ pub fn measure_from(
     let bytes_per_frame = audio::info(files[0])?.bytes_per_frame;
     let first = log.duration_s;
     let fs = log.sample_rate as f64;
-    let beat_s = 3600.0 / log.bph.max(1) as f64;
-    let n_total = (log.duration_s * fs).round() as usize;
-    let usb_keep = (usbclock::MAX_DURATION_S * fs) as usize;
-    let mut usb: Vec<f32> = Vec::new();
-    let mut cuts: Vec<(usize, usize, Vec<f32>)> = shapes
-        .iter()
-        .flatten()
-        .map(|&(a, b)| ((a * fs) as usize, (b * fs) as usize, Vec::new()))
-        .collect();
-    let mut profiles = Vec::new();
-    let margin = (PROFILE_MARGIN_S * fs).round() as usize;
-    let step = (PROFILE_EVERY_S * fs).round() as usize;
-    let mut buf: Vec<f32> = Vec::new();
-    let mut buf0 = 0usize;
-    let mut pos = 0usize;
-    let mut k = 0usize;
-    let mut next_beat = 0usize;
-    let stretch = |buf: &[f32], buf0: usize, k: usize, next_beat: &mut usize| {
-        let (a, b) = (k * step, (k + 1) * step);
-        let lo = a.saturating_sub(margin).max(buf0);
-        let hi = (b + margin).min(buf0 + buf.len());
-        let x = &buf[lo - buf0..hi - buf0];
-        let (from, to) = (a as f64 / fs, b as f64 / fs);
-        while log.beats.get(*next_beat).is_some_and(|bt| bt.time < from) {
-            *next_beat += 1;
-        }
-        let x0 = lo as f64 / fs;
-        let local: Vec<Beat> = log.beats[*next_beat..]
-            .iter()
-            .take_while(|bt| bt.time < to)
-            .map(|bt| Beat {
-                time: bt.time - x0,
-                ..*bt
-            })
-            .collect();
-        if local.is_empty() {
-            return None;
-        }
-        let env = envelope(x, fs, &cfg.analysis.envelope);
-        let sides = profile::profiles(
-            &env,
-            fs,
-            &local,
-            2.0 * beat_s,
-            0.0,
-            x.len() as f64 / fs,
-            &cfg.analysis.amplitude,
-        );
-        Some(StretchProfiles {
-            end_s: to.min(log.duration_s),
-            signal: crate::live::signal_figure(&env, fs, &local),
-            sides,
-        })
-    };
+    let mut second = crate::keeper::SecondReading::new(log.sample_rate, shapes);
     for path in files {
         audio::stream(path, 1 << 16, |block| {
-            let (s, e) = (pos, pos + block.len());
-            if usb.len() < usb_keep {
-                let take = (usb_keep - usb.len()).min(block.len());
-                usb.extend_from_slice(&block[..take]);
-            }
-            for (a, b, v) in &mut cuts {
-                if e > *a && s < *b {
-                    v.extend_from_slice(&block[(*a).max(s) - s..(*b).min(e) - s]);
-                }
-            }
-            buf.extend_from_slice(block);
-            pos = e;
-            while buf0 + buf.len() >= (k + 1) * step + margin {
-                profiles.extend(stretch(&buf, buf0, k, &mut next_beat));
-                k += 1;
-                let keep = (k * step).saturating_sub(margin);
-                if keep > buf0 {
-                    buf.drain(..keep - buf0);
-                    buf0 = keep;
-                }
-            }
-            progress(first + pos as f64 / fs);
+            second.audio(block);
+            second.profile_until(&log.beats, log.bph, cfg, (usize::MAX, None));
+            progress(first + second.read() as f64 / fs);
         })?;
     }
-    while k * step < n_total.min(buf0 + buf.len()) {
-        profiles.extend(stretch(&buf, buf0, k, &mut next_beat));
-        k += 1;
-    }
-    let shape = shapes
-        .iter()
-        .enumerate()
-        .filter_map(|(i, s)| Some((i, (*s)?)))
-        .zip(cuts)
-        .filter_map(|((recording, (from_s, to_s)), (_, _, x))| {
-            let summary = measure_shape(&x, fs, log.bph, from_s)?;
-            Some(StoredShape {
-                recording,
-                from_s,
-                to_s,
-                summary,
-            })
-        })
-        .collect();
-    let usb_clock = usbclock::measure(&usb, log.sample_rate).map(|c| StoredUsbClock {
-        ppm: c.ppm,
-        lines: c.lines,
-        spread_ppm: c.spread_ppm,
-    });
-    let mut signals: Vec<f32> = profiles.iter().filter_map(|p| p.signal).collect();
-    let signal_median = (!signals.is_empty()).then(|| crate::dsp::median_f32(&mut signals));
-    // The beats' header, with what the second reading found.
-    let mut stored = from_log(log, cfg, bytes_per_frame, software);
-    stored.header.profiles = profiles.len();
-    stored.header.usb_clock = usb_clock;
-    stored.header.signal_median = signal_median;
-    stored.header.shape = shape;
-    stored.profiles = profiles;
-    Ok(stored)
+    Ok(second.finish(log, cfg, shapes, bytes_per_frame, software))
 }
 
 /// The beat shape of the sound `x`, from `from_s` seconds into the
