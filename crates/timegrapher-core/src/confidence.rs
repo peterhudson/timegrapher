@@ -257,19 +257,39 @@ pub fn lag_one(values: &[f64]) -> Option<f64> {
 /// terms, as [`crate::steadiness::acf`] takes a lag. Stretches of fewer
 /// than three values are passed over.
 pub fn pooled_lag_one<'a>(stretches: impl IntoIterator<Item = &'a [f64]>) -> Option<f64> {
+    pooled_lag_one_levels(&own_levels(stretches))
+}
+
+/// Each of `stretches` a level of its own, of one run ([`Level`]).
+fn own_levels<'a>(stretches: impl IntoIterator<Item = &'a [f64]>) -> Vec<Level> {
+    stretches.into_iter().map(|s| vec![s.to_vec()]).collect()
+}
+
+/// [`pooled_lag_one`] over levels ([`Level`]): each level less its own
+/// least-squares line, fitted over all its runs together in time order, so
+/// a missing window inside a level (a hole) leaves its line and its
+/// variation as they were; the products of neighbours are taken within
+/// each run only, never across a hole or a cut (#1637). Levels of fewer
+/// than three values are passed over.
+fn pooled_lag_one_levels(levels: &[Level]) -> Option<f64> {
     let (mut s0, mut n0, mut s1, mut n1) = (0.0, 0usize, 0.0, 0usize);
-    for values in stretches {
-        if values.len() < 3 {
+    for level in levels {
+        let mut x: Vec<f64> = level.concat();
+        if x.len() < 3 {
             continue;
         }
-        let mut x = values.to_vec();
         crate::dsp::detrend_line(&mut x);
         let m = x.iter().sum::<f64>() / x.len() as f64;
         x.iter_mut().for_each(|v| *v -= m);
         s0 += x.iter().map(|v| v * v).sum::<f64>();
         n0 += x.len();
-        s1 += x.windows(2).map(|w| w[0] * w[1]).sum::<f64>();
-        n1 += x.len() - 1;
+        let mut at = 0;
+        for run in level {
+            let r = &x[at..at + run.len()];
+            s1 += r.windows(2).map(|w| w[0] * w[1]).sum::<f64>();
+            n1 += run.len().saturating_sub(1);
+            at += run.len();
+        }
     }
     let c0 = s0 / n0 as f64;
     (n1 > 0 && c0 > 0.0)
@@ -292,12 +312,18 @@ pub const MAX_RHO: f64 = 0.99;
 /// of 0, 0.5 and 0.9, against the formula's 0.07, 0.17 and 0.25. 0 where
 /// no correlation can be read.
 pub fn corrected_lag_one(stretches: &[&[f64]]) -> f64 {
-    let Some(r) = pooled_lag_one(stretches.iter().copied()) else {
+    corrected_lag_one_levels(&own_levels(stretches.iter().copied()))
+}
+
+/// [`corrected_lag_one`] over levels ([`pooled_lag_one_levels`]), n the
+/// levels' mean length, each line being taken over a whole level.
+fn corrected_lag_one_levels(levels: &[Level]) -> f64 {
+    let Some(r) = pooled_lag_one_levels(levels) else {
         return 0.0;
     };
-    let read: Vec<usize> = stretches
+    let read: Vec<usize> = levels
         .iter()
-        .map(|s| s.len())
+        .map(|l| l.iter().map(Vec::len).sum::<usize>())
         .filter(|&n| n >= 3)
         .collect();
     let n = read.iter().sum::<usize>() as f64 / read.len() as f64;
@@ -533,16 +559,24 @@ impl Noise {
     /// The noise of `stretches`; None with fewer than `min` values or no
     /// difference within a stretch.
     fn of(stretches: &[&[f64]], min: usize) -> Option<Noise> {
-        let d: Vec<f64> = stretches
+        Noise::of_levels(&own_levels(stretches.iter().copied()), min)
+    }
+
+    /// The noise of `levels` ([`Level`]): the scatter from the differences
+    /// within each run, the lag-one correlation over the levels
+    /// ([`corrected_lag_one_levels`]).
+    fn of_levels(levels: &[Level], min: usize) -> Option<Noise> {
+        let d: Vec<f64> = levels
             .iter()
+            .flatten()
             .flat_map(|s| s.windows(2).map(|w| w[1] - w[0]))
             .collect();
-        if count(stretches) < min || d.is_empty() {
+        if level_count(levels) < min || d.is_empty() {
             return None;
         }
         Some(Noise {
             s: crate::dsp::robust_sd(&d) / std::f64::consts::SQRT_2,
-            rho: corrected_lag_one(stretches),
+            rho: corrected_lag_one_levels(levels),
         })
     }
 
@@ -558,23 +592,25 @@ fn count(stretches: &[&[f64]]) -> usize {
     stretches.iter().map(|s| s.len()).sum()
 }
 
+fn level_count(levels: &[Level]) -> usize {
+    levels.iter().flatten().map(Vec::len).sum()
+}
+
 /// [`standard_error_in`] of a reading's own `stretches` with its noise
 /// from at least [`MIN_NOISE_VALUES`] values (#1470): its own when it
 /// holds that many, else `pool`'s, the values nearest it in the take
 /// ([`noise_pool`]). `n` and n_eff are always the reading's own. None
 /// with fewer than [`MIN_VALUES`] values of its own, or with neither
 /// holding [`MIN_NOISE_VALUES`].
-pub fn standard_error_borrowing(stretches: &[Vec<f64>], pool: &[Vec<f64>]) -> Option<f64> {
-    let own: Vec<&[f64]> = stretches.iter().map(Vec::as_slice).collect();
-    let n = count(&own);
+pub fn standard_error_borrowing(own: &[Level], pool: &[Level]) -> Option<f64> {
+    let n = level_count(own);
     if n < MIN_VALUES {
         return None;
     }
     let noise = if n >= MIN_NOISE_VALUES {
-        Noise::of(&own, MIN_NOISE_VALUES)
+        Noise::of_levels(own, MIN_NOISE_VALUES)
     } else {
-        let pool: Vec<&[f64]> = pool.iter().map(Vec::as_slice).collect();
-        Noise::of(&pool, MIN_NOISE_VALUES)
+        Noise::of_levels(pool, MIN_NOISE_VALUES)
     }?;
     Some(noise.standard_error(n))
 }
@@ -604,22 +640,87 @@ pub fn noise_pool<T>(
     stretches(&take[a..=b], |w| span(w), |w| value(w))
 }
 
-/// A series' values in their stretches ([`stretches`]).
-type Stretches = Vec<Vec<f64>>;
+/// [`noise_pool`]'s windows read as levels, split at cuts only, a missing
+/// window being a hole in its level ([`walk_levels`]).
+fn noise_pool_levels<T>(
+    take: &[T],
+    end_s: f64,
+    span: impl Fn(&T) -> (f64, f64),
+    value: impl Fn(&T) -> Option<f64>,
+) -> Vec<Level> {
+    let valued: Vec<usize> = (0..take.len())
+        .filter(|&i| value(&take[i]).is_some_and(f64::is_finite))
+        .collect();
+    let Some(last) = valued.len().checked_sub(MIN_NOISE_VALUES) else {
+        return Vec::new();
+    };
+    let before = valued.partition_point(|&i| span(&take[i]).1 <= end_s + 1e-3);
+    let lo = before.saturating_sub(MIN_NOISE_VALUES).min(last);
+    let (a, b) = (valued[lo], valued[lo + MIN_NOISE_VALUES - 1]);
+    walk_levels(&take[a..=b], span, value, |_, _| false)
+}
 
-/// The values of a reading of `own` windows, and the take's `take`
-/// nearest it ([`noise_pool`]), read in their stretches.
+/// One level of a series ([`walk_levels`]): its values in runs, in time
+/// order, a run ending at each missing window (a hole) inside the level.
+pub type Level = Vec<Vec<f64>>;
+
+/// The values of a reading of `own` windows, read as levels split at
+/// cuts and long dropouts ([`hole_splits`]), and the take's `take`
+/// nearest it ([`noise_pool`]), split at cuts only.
 fn own_and_pool<T>(
     own: &[T],
     take: &[T],
     span: impl Fn(&T) -> (f64, f64),
     value: impl Fn(&T) -> Option<f64>,
-) -> Option<(Stretches, Stretches)> {
+) -> Option<(Vec<Level>, Vec<Level>)> {
     let end = span(own.last()?).1;
+    // The lag-one correlation read with every hole kept in its level
+    // decides which dropouts split ([`hole_splits`]); the levels are then
+    // read again with those split, as a cut splits them.
+    let whole = walk_levels(own, &span, &value, |_, _| false);
+    let rho = corrected_lag_one_levels(&whole);
     Some((
-        stretches(own, |w| span(w), |w| value(w)),
-        noise_pool(take, end, &span, &value),
+        walk_levels(own, &span, &value, |g, gap_s| hole_splits(g, gap_s, rho)),
+        noise_pool_levels(take, end, &span, &value),
     ))
+}
+
+/// The values of `windows` in time order, as levels of runs: a new level
+/// starts at a cut (a window starting after the one before ended: a
+/// break, a mask, a window left out), and at a run of `g` missing windows
+/// spanning `gap_s` from the last value's window end to the next's start
+/// when `splits(g, gap_s)`; a run of missing windows that doesn't split
+/// is a hole, which ends a run in the level, so the values either side
+/// are never read as neighbours.
+fn walk_levels<T>(
+    windows: &[T],
+    span: impl Fn(&T) -> (f64, f64),
+    value: impl Fn(&T) -> Option<f64>,
+    splits: impl Fn(usize, f64) -> bool,
+) -> Vec<Level> {
+    let mut out: Vec<Level> = Vec::new();
+    let (mut end, mut last_valued_end, mut missing, mut cut_seen) =
+        (None::<f64>, f64::NAN, 0usize, false);
+    for w in windows {
+        let (a, b) = span(w);
+        let cut = end.is_none_or(|e| a > e + 1e-3);
+        end = Some(b);
+        let Some(v) = value(w).filter(|v| v.is_finite()) else {
+            missing += 1;
+            cut_seen |= cut;
+            continue;
+        };
+        let hole_splits = missing > 0 && splits(missing, a - last_valued_end);
+        if cut || cut_seen || hole_splits || out.is_empty() {
+            out.push(vec![Vec::new()]);
+        } else if missing > 0 {
+            out.last_mut().expect("a level").push(Vec::new());
+        }
+        (missing, cut_seen, last_valued_end) = (0, false, b);
+        let level = out.last_mut().expect("a level");
+        level.last_mut().expect("a run").push(v);
+    }
+    out
 }
 
 /// The values `value` gives of windows `windows` in time order, in
@@ -631,9 +732,9 @@ fn own_and_pool<T>(
 /// other 10 s window), a window kept with no value and a window left out
 /// give the same stretches (#1637). Where windows overlap, `a > end`
 /// can't see a window left out, so only a kept empty window cuts there.
-/// The levels a ± reads are not the same thing ([`levels`]): a window left
+/// The levels a ± reads are not the same thing ([`walk_levels`]): a window left
 /// out is a cut, a window with no value a hole, which splits a level only
-/// where the series' memory is short.
+/// across a long dropout ([`hole_splits`]).
 pub fn stretches<T>(
     windows: impl IntoIterator<Item = T>,
     span: impl Fn(&T) -> (f64, f64),
@@ -664,7 +765,7 @@ pub fn stretches<T>(
 /// take's amplitude windows in time order, where the reading holds fewer
 /// than [`MIN_NOISE_VALUES`]) and, where two or more stretches of
 /// [`MIN_VALUES`] or more sit at different levels, the spread between
-/// them ([`between_levels`] over [`levels`], the reading's own), added in quadrature
+/// them ([`between_levels`] over [`walk_levels`]' levels, the reading's own), added in quadrature
 /// (#639, #1470).
 pub fn amplitude_windows_se<'a>(
     windows: impl IntoIterator<Item = &'a AmplitudeWindow>,
@@ -673,11 +774,22 @@ pub fn amplitude_windows_se<'a>(
 ) -> Option<f64> {
     let own: Vec<&AmplitudeWindow> = windows.into_iter().collect();
     let span = |w: &&AmplitudeWindow| (w.start_s, w.end_s);
-    let (s, pool) = own_and_pool(&own, take, span, |w| value(w))?;
-    let within = standard_error_borrowing(&s, &pool)?;
-    let runs: Vec<&[f64]> = s.iter().map(Vec::as_slice).collect();
-    let rho = corrected_lag_one(&runs);
-    Some(within.hypot(between_levels(&levels(&own, span, |w| value(w), rho))))
+    let (levels, pool) = own_and_pool(&own, take, span, |w| value(w))?;
+    let within = standard_error_borrowing(&levels, &pool)?;
+    Some(within.hypot(between_levels(&levels)))
+}
+
+/// Whether a run of `g` missing windows spanning `gap_s` splits a series
+/// of lag-one correlation `rho` into two levels: when it lasts
+/// [`crate::measure::SHORT_SPAN_S`] or more, the shortest span a watch's
+/// timing is judged over, so a window or two dropped from a running take
+/// is a hole and not a change of state; and the sides share under
+/// [`HOLE_SHARED_MIN`] of their variation, `rho`^(g + 1), so a dropout in
+/// a slowly wandering series is still one level whose wander `rho`
+/// allows for (#1637).
+fn hole_splits(g: usize, gap_s: f64, rho: f64) -> bool {
+    let g = i32::try_from(g).unwrap_or(i32::MAX).saturating_add(1);
+    gap_s >= crate::measure::SHORT_SPAN_S - 1e-6 && rho.powi(g) < HOLE_SHARED_MIN
 }
 
 /// The least share of their variation the values either side of a run of
@@ -686,52 +798,13 @@ pub fn amplitude_windows_se<'a>(
 /// in a slowly wandering series leaves both sides one level, whose
 /// wander the lag-one correlation already allows for; reading them as
 /// two levels made a 2 h take's amplitude ± twelve times wider for two
-/// missing windows. Across a long dropout, or a short one in a series
-/// with little memory, the sides are levels of their own, as across a
-/// cut. At one half, the sides share more than they don't.
+/// missing windows. Across a dropout of [`crate::measure::SHORT_SPAN_S`]
+/// or more whose sides share less, the sides are levels of their own, as
+/// across a cut ([`hole_splits`]). At one half, the sides share more than
+/// they don't.
 pub const HOLE_SHARED_MIN: f64 = 0.5;
 
-/// The levels of `windows` in time order, each the runs of values it
-/// holds ([`stretches`]' runs): a new level starts across a cut (a window
-/// starting after the one before ended: a break, a mask or a window left
-/// out) and across a run of g windows with no value when `rho`^(g + 1) is
-/// under [`HOLE_SHARED_MIN`]. Within a level a missing window still ends
-/// its run, so its neighbours are never read as neighbours.
-fn levels<T>(
-    windows: &[T],
-    span: impl Fn(&T) -> (f64, f64),
-    value: impl Fn(&T) -> Option<f64>,
-    rho: f64,
-) -> Vec<Vec<Vec<f64>>> {
-    let mut out: Vec<Vec<Vec<f64>>> = Vec::new();
-    let (mut end, mut missing): (Option<f64>, i32) = (None, 0);
-    for w in windows {
-        let (a, b) = span(w);
-        let cut = end.is_none_or(|e| a > e + 1e-3);
-        end = Some(b);
-        let Some(v) = value(w).filter(|v| v.is_finite()) else {
-            if cut {
-                // A cut before a missing window: what follows is a new level.
-                missing = i32::MAX;
-            } else {
-                missing = missing.saturating_add(1);
-            }
-            continue;
-        };
-        let apart = missing > 0 && rho.powi(missing.saturating_add(1)) < HOLE_SHARED_MIN;
-        if cut || apart || out.is_empty() {
-            out.push(vec![Vec::new()]);
-        } else if missing > 0 {
-            out.last_mut().expect("a level").push(Vec::new());
-        }
-        missing = 0;
-        let level = out.last_mut().expect("a level");
-        level.last_mut().expect("a run").push(v);
-    }
-    out
-}
-
-/// How far a median over levels ([`levels`]) is from known, past their
+/// How far a median over levels ([`walk_levels`]) is from known, past their
 /// own noise: over the k levels of [`MIN_VALUES`] or more values, with
 /// medians `m_i` and standard errors `SE_i` (each read over its runs),
 /// `τ² = max(0, var(m_i) − mean(SE_i²))` (sample variance) and the term is
@@ -742,7 +815,8 @@ fn between_levels(levels: &[Vec<Vec<f64>>]) -> f64 {
         .iter()
         .filter(|l| l.iter().map(Vec::len).sum::<usize>() >= MIN_VALUES)
         .filter_map(|l| {
-            let se = standard_error_in(l.iter().map(Vec::as_slice))?;
+            let n = level_count(std::slice::from_ref(l));
+            let se = Noise::of_levels(std::slice::from_ref(l), MIN_VALUES)?.standard_error(n);
             let mut all: Vec<f64> = l.concat();
             Some((crate::dsp::median(&mut all), se * se))
         })
@@ -1065,7 +1139,10 @@ mod tests {
     /// (#1637, the audit's case): 30 windows at 270°, 100 that read
     /// nothing, 30 at 250°. Kept, the empty windows used to make the last
     /// 270° and the first 250° neighbours, and the ± read 0.0°; left out,
-    /// 12.5°. Both now read the level change, and agree on seeded noise.
+    /// 12.5°. Both now read the level change, and agree on seeded noise:
+    /// a 200 s dropout whose sides share nothing splits as a cut does.
+    /// Scattered single dropouts are holes, not cuts: the ± is the take's
+    /// without them, for the values that are left.
     #[test]
     fn a_window_with_no_value_ends_its_stretch_as_one_left_out() {
         let mut rng = Rng::new(1637);
@@ -1089,40 +1166,42 @@ mod tests {
             assert_eq!(a, b, "noise {noise}");
             assert!(a > 10.0, "noise {noise}: the 20° step reads {a}");
         }
-        // Scattered single dropouts on one level: still one level, and the
-        // two ways of writing them agree.
-        let values: Vec<Option<f64>> = (0..300)
-            .map(|i| (i % 7 != 3).then(|| 270.0 + 2.0 * rng.normal()))
-            .collect();
-        let kept = amplitude_windows(&values);
-        let left_out: Vec<AmplitudeWindow> = kept
-            .iter()
-            .filter(|w| w.even_deg.is_some())
-            .cloned()
-            .collect();
-        let a = amplitude_windows_se(&kept, &every(&kept), |w| w.even_deg).unwrap();
-        let b = amplitude_windows_se(&left_out, &every(&left_out), |w| w.even_deg).unwrap();
-        assert_eq!(a, b);
+        // Scattered single dropouts on one level: holes in one level, whose
+        // ± is the whole take's for the fewer values left, √(300/258).
+        let full: Vec<f64> = (0..300).map(|_| 270.0 + 2.0 * rng.normal()).collect();
+        let holed: Vec<Option<f64>> = (0..300).map(|i| (i % 7 != 3).then_some(full[i])).collect();
+        let se = |v: &[Option<f64>]| {
+            let w = amplitude_windows(v);
+            amplitude_windows_se(&w, &every(&w), |w| w.even_deg).unwrap()
+        };
+        let whole = se(&full.iter().copied().map(Some).collect::<Vec<_>>());
+        let a = se(&holed);
+        let expected = whole * (300.0f64 / 258.0).sqrt();
+        assert!((a / expected - 1.0).abs() < 0.1, "{a} against {expected}");
         assert!(a < 1.0, "{a}");
     }
 
-    /// A missing window in a slowly wandering series leaves one level:
-    /// its neighbours are not neighbours, but the two sides are not read as
-    /// two levels, so a hole adds no between-levels term (#1637). Seeded
-    /// AR(1) at ρ 0.98, one hole in the middle: one level, and the ± within
-    /// 20% of the take with no hole (two levels read 1.85° against 0.67°).
-    /// A long dropout in a series with little memory splits the levels.
+    /// A missing window leaves one level (#1637): its neighbours are not
+    /// neighbours, but a hole is not read as a change of state. Seeded
+    /// AR(1) at ρ 0.98, and white noise with a slow drift as YM42's beat
+    /// error has (ρ about 0.01): one hole in the middle leaves the ± within
+    /// 10% of the take with none, where reading two levels gave 1.85°
+    /// against 0.67°, and 16 times on YM42. A dropout of 10 s or more
+    /// whose sides share under half their variation splits.
     #[test]
-    fn a_hole_in_a_wandering_series_is_not_a_new_level() {
+    fn a_hole_is_not_a_new_level() {
         let mut rng = Rng::new(16_372);
         let mut x = 0.0;
-        let base: Vec<f64> = (0..3600)
+        let wander: Vec<f64> = (0..3600)
             .map(|_| {
                 x = 0.98 * x + (1.0f64 - 0.98 * 0.98).sqrt() * 3.0 * rng.normal();
                 250.0 + x
             })
             .collect();
-        let with_holes = |holes: &[usize]| {
+        let drift: Vec<f64> = (0..3600)
+            .map(|i| 0.3 + 0.03 * i as f64 / 3600.0 + 0.003 * rng.normal())
+            .collect();
+        let with_holes = |base: &[f64], holes: &[usize]| {
             let v: Vec<Option<f64>> = (0..base.len())
                 .map(|i| (!holes.contains(&i)).then_some(base[i]))
                 .collect();
@@ -1130,31 +1209,45 @@ mod tests {
         };
         let se =
             |w: &[AmplitudeWindow]| amplitude_windows_se(w, &every(w), |w| w.even_deg).unwrap();
-        let whole = se(&with_holes(&[]));
-        let holed = with_holes(&[1800]);
+        for (name, base) in [("wander", &wander), ("drift", &drift)] {
+            let whole = se(&with_holes(base, &[]));
+            for holes in [vec![8], vec![1800], vec![8, 2403]] {
+                let got = se(&with_holes(base, &holes));
+                assert!(
+                    (got / whole - 1.0).abs() < 0.1,
+                    "{name} {holes:?}: {got} against {whole}"
+                );
+            }
+        }
         let span = |w: &AmplitudeWindow| (w.start_s, w.end_s);
-        let levels_of = |w: &[AmplitudeWindow], rho: f64| levels(w, span, |w| w.even_deg, rho);
-        assert_eq!(levels_of(&holed, 0.98).len(), 1);
+        let split = |w: &[AmplitudeWindow], rho: f64| {
+            walk_levels(w, span, |w| w.even_deg, |g, gap| hole_splits(g, gap, rho)).len()
+        };
+        let holed = with_holes(&wander, &[1800]);
+        assert_eq!(split(&holed, 0.0), 1, "a 2 s hole never splits");
+        let short: Vec<usize> = (1000..1004).collect();
         assert_eq!(
-            levels_of(&holed, 0.98)[0].len(),
-            2,
-            "the hole still ends a run"
+            split(&with_holes(&wander, &short), 0.0),
+            1,
+            "nor an 8 s one"
         );
-        let got = se(&holed);
-        assert!((got / whole - 1.0).abs() < 0.2, "{got} against {whole}");
-        // Under HOLE_SHARED_MIN the sides are levels of their own: one
-        // missing window at ρ 0.7 (0.49), or 100 at ρ 0.99 (0.36).
-        assert_eq!(levels_of(&holed, 0.7).len(), 2);
-        assert_eq!(levels_of(&holed, 0.71).len(), 1);
+        let ten: Vec<usize> = (1000..1005).collect();
+        assert_eq!(
+            split(&with_holes(&wander, &ten), 0.0),
+            2,
+            "10 s splits at ρ 0"
+        );
+        assert_eq!(split(&with_holes(&wander, &ten), 0.88), 2, "0.88⁶ = 0.46");
+        assert_eq!(split(&with_holes(&wander, &ten), 0.9), 1, "0.9⁶ = 0.53");
         let dropout: Vec<usize> = (1000..1100).collect();
-        assert_eq!(levels_of(&with_holes(&dropout), MAX_RHO).len(), 2);
-        // A cut is always a new level, whatever ρ.
+        assert_eq!(split(&with_holes(&wander, &dropout), MAX_RHO), 2, "0.99¹⁰¹");
+        // A cut is always a new level.
         let cut: Vec<AmplitudeWindow> = holed
             .iter()
             .filter(|w| w.even_deg.is_some())
             .cloned()
             .collect();
-        assert_eq!(levels_of(&cut, 0.98).len(), 2);
+        assert_eq!(split(&cut, MAX_RHO), 2);
     }
 
     /// An empty window cuts its stretch. On windows that tile, keeping it
