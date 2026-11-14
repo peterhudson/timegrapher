@@ -2,7 +2,7 @@
 //! tocks, with the band most beats fall in and the marks the engine read
 //! the amplitude and beat error from.
 
-use crate::fact_box::{widest, FactBox};
+use crate::fact_box::{around_plate, widest, FactBox};
 use crate::marks::{self, Rank, LANE, LANE_GAP, ROW_H};
 use crate::strength::{self, Grid, Strength};
 use crate::strip::side_colors;
@@ -230,8 +230,8 @@ pub fn draw(
             )
         });
         if let Some(p) = p {
-            let inside = short.then(|| facts_here.span(&resp.transform));
-            label_marks(ui, &resp.transform, p, &med, &tops, opt, dx, k, inside);
+            let facts = (short, &facts_here);
+            label_marks(ui, &resp.transform, p, (&med, &tops), opt, dx, (k, facts));
         }
     };
     arrange(ui, opt, side);
@@ -609,9 +609,10 @@ impl egui_plot::PlotItem for EdgeNames {
                 }
                 None => frame.top(),
             };
-            if stop > from {
+            // Stopped at the facts box's plate, and on below it (#1633).
+            for (a, b) in around_plate(self.facts.plate(transform), *x, from, stop) {
                 shapes.push(egui::Shape::line_segment(
-                    [egui::pos2(*x, from), egui::pos2(*x, stop)],
+                    [egui::pos2(*x, a), egui::pos2(*x, b)],
                     egui::Stroke::new(1.2_f32, ink),
                 ));
             }
@@ -704,13 +705,15 @@ fn label_marks(
     ui: &egui::Ui,
     t: &egui_plot::PlotTransform,
     p: &TickProfile,
-    med: &[f64],
-    tops: &[[f64; 2]],
+    (med, tops): (&[f64], &[[f64; 2]]),
     opt: Options,
     dx: f64,
-    side: usize,
-    inside: Option<(f32, f32)>,
+    (side, (short, facts)): (usize, (bool, &FactBox)),
 ) {
+    // The span a short plot's names keep off, and the plate a line stops
+    // at (#1633).
+    let inside = short.then(|| facts.span(t));
+    let plate = facts.plate(t);
     let frame = *t.frame();
     let m = Marker {
         ui,
@@ -729,6 +732,7 @@ fn label_marks(
         // the plot.
         r: (frame.height() / 8.0).clamp(2.5, 5.0),
         names_in: std::cell::RefCell::new(Vec::new()),
+        plate,
     };
     if opt.edges {
         m.lane(edge_marks(p), true, inside);
@@ -765,6 +769,8 @@ struct Marker<'a> {
     /// A mark's radius on the trace.
     r: f32,
     names_in: std::cell::RefCell<Vec<egui::Rect>>,
+    /// The facts box's plate, which a line stops at (#1633).
+    plate: Option<egui::Rect>,
 }
 
 /// A mark in a lane: where it is across the plot, its name and its time.
@@ -959,15 +965,18 @@ impl Marker<'_> {
         let stop = on.map_or(frame.bottom(), |y| (y - self.r - 2.0).max(frame.top()));
         // Straight down from its name, or from where the name had to
         // slide to, with a short angled leader back to its line.
-        let mut pts = vec![egui::pos2(centre, end_y)];
+        let stroke = egui::Stroke::new(1.2_f32, self.edge_ink(label));
+        let mut down = end_y;
         if (centre - x).abs() > 1.0 {
-            pts.push(egui::pos2(x, frame.top() - LANE_GAP / 2.0));
+            down = frame.top() - LANE_GAP / 2.0;
+            self.painter
+                .line_segment([egui::pos2(centre, end_y), egui::pos2(x, down)], stroke);
         }
-        pts.push(egui::pos2(x, stop));
-        self.painter.add(egui::Shape::line(
-            pts,
-            egui::Stroke::new(1.2_f32, self.edge_ink(label)),
-        ));
+        // Stopped at the facts box's plate, and on below it.
+        for (a, b) in around_plate(self.plate, x, down, stop) {
+            self.painter
+                .line_segment([egui::pos2(x, a), egui::pos2(x, b)], stroke);
+        }
         if let Some(y) = on {
             self.edge_bar(egui::pos2(x, y));
         }
@@ -1164,6 +1173,33 @@ mod tests {
         );
         // It adds nothing to the plot's bounds.
         assert!(!egui_plot::PlotItem::bounds(&b).is_valid());
+    }
+
+    /// An edge's line stops at the facts box's plate and goes on below
+    /// it, so it never touches the box's text; a line beside the plate,
+    /// or none, runs whole (Hugh, #1633).
+    #[test]
+    fn a_line_stops_at_the_facts_plate() {
+        let plate = egui::Rect::from_min_max(egui::pos2(54.0, 34.0), egui::pos2(220.0, 110.0));
+        assert_eq!(around_plate(None, 215.0, 0.0, 200.0), vec![(0.0, 200.0)]);
+        assert_eq!(
+            around_plate(Some(plate), 215.0, 0.0, 200.0),
+            vec![(0.0, 34.0), (110.0, 200.0)]
+        );
+        // Stopping short of the trace inside the plate: only above it.
+        assert_eq!(
+            around_plate(Some(plate), 215.0, 0.0, 80.0),
+            vec![(0.0, 34.0)]
+        );
+        // From inside the plate down: only below it.
+        assert_eq!(
+            around_plate(Some(plate), 215.0, 50.0, 200.0),
+            vec![(110.0, 200.0)]
+        );
+        assert_eq!(
+            around_plate(Some(plate), 221.0, 0.0, 200.0),
+            vec![(0.0, 200.0)]
+        );
     }
 
     /// A trace on the edge of the box's rows doesn't make it flick from
