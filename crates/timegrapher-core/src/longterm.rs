@@ -182,10 +182,10 @@ pub fn detrend_as(g: &Grid, window_s: f64, slow: Slow) -> Grid {
 /// take's (#1608): on a take of 20 min or more each piece takes the whole
 /// take's running median window, so the search's noise model holds on
 /// each, and a piece shorter than one window is left out (NaN); under
-/// 20 min each piece gets its own quadratic, and a piece with fewer than
-/// [`MIN_QUADRATIC_PIECE_READINGS`] readings is left out. With no
-/// `starts` it is
-/// [`detrend_as`].
+/// 20 min one quadratic in time is shared by every piece, each with its
+/// own level, all fitted together ([`levelled_quadratic_off`]), and a
+/// piece with fewer than [`MIN_LEVELLED_PIECE_READINGS`] readings is left
+/// out. With no `starts` it is [`detrend_as`].
 pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> Grid {
     let n = g.y.len();
     let starts: Vec<usize> = starts.iter().copied().filter(|&i| i > 0 && i < n).collect();
@@ -198,26 +198,21 @@ pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> 
         .chain(starts)
         .chain(std::iter::once(n))
         .collect();
-    for p in bounds.windows(2) {
-        let (a, b) = (p[0], p[1]);
-        let finite = g.y[a..b].iter().filter(|v| v.is_finite()).count();
-        if finite < MIN_PIECE_READINGS {
-            continue;
-        }
-        match plan {
-            SlowOut::Median(w) if b - a >= w => {
+    let finite = |a: usize, b: usize| g.y[a..b].iter().filter(|v| v.is_finite()).count();
+    if let SlowOut::Median(w) = plan {
+        for p in bounds.windows(2) {
+            let (a, b) = (p[0], p[1]);
+            if b - a >= w && finite(a, b) >= MIN_PIECE_READINGS {
                 y[a..b].copy_from_slice(&running_median_off(&g.y[a..b], w, slow));
             }
-            SlowOut::Quadratic if finite >= MIN_QUADRATIC_PIECE_READINGS => {
-                let piece = Grid {
-                    t0: g.time(a) - 0.5 * g.step,
-                    step: g.step,
-                    y: g.y[a..b].to_vec(),
-                };
-                y[a..b].copy_from_slice(&quadratic_off(&piece));
-            }
-            _ => {}
         }
+    } else {
+        let kept: Vec<(usize, usize)> = bounds
+            .windows(2)
+            .map(|p| (p[0], p[1]))
+            .filter(|&(a, b)| finite(a, b) >= MIN_LEVELLED_PIECE_READINGS)
+            .collect();
+        levelled_quadratic_off(g, &kept, &mut y);
     }
     Grid { y, ..g.clone() }
 }
@@ -226,13 +221,69 @@ pub fn detrend_pieces(g: &Grid, window_s: f64, slow: Slow, starts: &[usize]) -> 
 /// terms and one reading over, as [`detrend_as`] asks of a whole take.
 pub const MIN_PIECE_READINGS: usize = 4;
 
-/// The fewest readings a piece takes its own quadratic from, under 20 min
-/// (Norm, #1716). A quadratic fitted to n readings keeps (n - 3)/n of
-/// their noise's variance: 25% at 4 readings. A piece that short would sit
-/// in the spectra beside pieces at nearly their full variance, so it is
-/// left out, as a piece shorter than one window is above 20 min. From 30
-/// readings a piece keeps 90% or more.
-pub const MIN_QUADRATIC_PIECE_READINGS: usize = 30;
+/// The fewest readings a piece is kept from under 20 min, where it costs
+/// the fit its own level (Norm, #1716). A piece of n readings less its
+/// own level keeps (n - 1)/n of its noise's variance, 90% or more from 10
+/// readings. A shorter piece would sit in the spectra beside pieces at
+/// nearly their full variance, so it is left out, as a piece shorter than
+/// one window is above 20 min. Its own quadratic would cost three terms
+/// and need 30 readings for the same 90%: a 60 s stop of a guided test
+/// on a 2 s grid has about 28.
+pub const MIN_LEVELLED_PIECE_READINGS: usize = 10;
+
+/// Under 20 min: `g` on the `pieces` (index ranges, each with enough
+/// readings) less one quadratic in time shared by every piece and a level
+/// for each piece, fitted together by least squares, written into `out`;
+/// the rest of `out` is left as it is. A break's jump goes into the
+/// levels and the take's slow drift into the shared curve, which holds
+/// over a short take: a pause of seconds does not change how the watch
+/// drifts (Norm, #1716). With the levels solved out, the curve is the
+/// least-squares fit of each piece's deviations from its own means.
+fn levelled_quadratic_off(g: &Grid, pieces: &[(usize, usize)], out: &mut [f64]) {
+    let mid = 0.5 * (g.time(0) + g.time(g.y.len().saturating_sub(1)));
+    let scale = g.span().max(g.step);
+    let at = |i: usize| {
+        let u = (g.time(i) - mid) / scale;
+        (u, u * u)
+    };
+    let means: Vec<[f64; 3]> = pieces
+        .iter()
+        .map(|&(a, b)| {
+            let (mut m, mut k) = ([0.0; 3], 0.0);
+            for i in (a..b).filter(|&i| g.y[i].is_finite()) {
+                let (u, w) = at(i);
+                m = [m[0] + g.y[i], m[1] + u, m[2] + w];
+                k += 1.0;
+            }
+            m.map(|v| v / k)
+        })
+        .collect();
+    let (mut suu, mut suw, mut sww, mut suy, mut swy) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    for (&(a, b), m) in pieces.iter().zip(&means) {
+        for i in (a..b).filter(|&i| g.y[i].is_finite()) {
+            let (u, w) = at(i);
+            let (u, w, y) = (u - m[1], w - m[2], g.y[i] - m[0]);
+            suu += u * u;
+            suw += u * w;
+            sww += w * w;
+            suy += u * y;
+            swy += w * y;
+        }
+    }
+    let det = suu * sww - suw * suw;
+    let (b1, b2) = if det.abs() > 1e-12 * (suu * sww).max(f64::MIN_POSITIVE) {
+        ((sww * suy - suw * swy) / det, (suu * swy - suw * suy) / det)
+    } else {
+        (0.0, 0.0)
+    };
+    for (&(a, b), m) in pieces.iter().zip(&means) {
+        let level = m[0] - b1 * m[1] - b2 * m[2];
+        for (i, o) in out.iter_mut().enumerate().take(b).skip(a) {
+            let (u, w) = at(i);
+            *o = g.y[i] - (level + b1 * u + b2 * w);
+        }
+    }
+}
 
 /// `g` less its least-squares quadratic in time.
 fn quadratic_off(g: &Grid) -> Vec<f64> {
@@ -2704,25 +2755,22 @@ mod slow_tests {
         assert!(d.y.iter().all(|v| v.abs() < 1e-9), "{:?}", &d.y[..3]);
     }
 
-    /// Under 20 min each piece takes its own quadratic, whatever the
-    /// pieces' lengths: two unequal pieces, each a different quadratic in
-    /// time, come out flat; a piece one reading short of
-    /// [`MIN_QUADRATIC_PIECE_READINGS`] is left out (NaN), as one shorter
-    /// than a window is above 20 min, and a piece of exactly that many is
-    /// kept.
+    /// Under 20 min the pieces share one quadratic and each takes its own
+    /// level: two unequal pieces on one quadratic in time, the second
+    /// jumped 20° below the first, come out flat; a piece one reading
+    /// short of [`MIN_LEVELLED_PIECE_READINGS`] is left out (NaN), as one
+    /// shorter than a window is above 20 min, and a piece of exactly that
+    /// many is kept.
     #[test]
-    fn short_takes_fit_a_quadratic_to_each_piece() {
+    fn short_takes_share_a_quadratic_and_level_each_piece() {
         let step = 2.0;
         let n = 500;
-        let (b1, b2) = (120, n - (MIN_QUADRATIC_PIECE_READINGS - 1));
+        let (b1, b2) = (120, n - (MIN_LEVELLED_PIECE_READINGS - 1));
         let y: Vec<f64> = (0..n)
             .map(|i| {
                 let t = i as f64 * step;
-                if i < b1 {
-                    270.0 + 0.01 * t - 2e-5 * t * t
-                } else {
-                    250.0 - 0.02 * t + 1e-5 * t * t
-                }
+                let level = if i < b1 { 270.0 } else { 250.0 };
+                level + 0.01 * t - 2e-5 * t * t
             })
             .collect();
         let g = Grid { t0: 0.0, step, y };
@@ -2731,7 +2779,7 @@ mod slow_tests {
         let worst = d.y[..b2].iter().fold(0.0f64, |m, v| m.max(v.abs()));
         assert!(worst < 1e-6, "{worst}");
         assert!(d.y[b2..].iter().all(|v| v.is_nan()));
-        let b2 = n - MIN_QUADRATIC_PIECE_READINGS;
+        let b2 = n - MIN_LEVELLED_PIECE_READINGS;
         let d = detrend_pieces(&g, DETREND_S, Slow::Level, &[b1, b2]);
         let worst = d.y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
         assert!(worst < 1e-6, "{worst}");
