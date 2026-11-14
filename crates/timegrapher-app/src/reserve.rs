@@ -872,15 +872,24 @@ fn title(
         |ui| {
             ui.set_min_width(w);
             ui.spacing_mut().item_spacing.y = 0.0;
-            let n = ui.label(RichText::new(name).strong().color(pal.text_secondary));
+            // Words that take no pointer, so the whole cell, name and unit,
+            // gives the column's hover (Hugh's ruling on #1592).
+            let words = |ui: &mut egui::Ui, t: RichText| {
+                ui.add(egui::Label::new(t).selectable(false))
+                    .rect
+                    .left_top()
+            };
+            let n = words(ui, RichText::new(name).strong().color(pal.text_secondary));
             // An empty line where there is no unit, so every name sits at
             // the cell's top.
-            let u = ui.label(RichText::new(unit).color(pal.text_secondary));
-            (n.rect.left_top(), u.rect.left_top())
+            let u = words(ui, RichText::new(unit).color(pal.text_secondary));
+            (n, u)
         },
     );
     let (name_at, unit_at) = r.inner;
-    let cell = r.response.on_hover_text(hint).rect;
+    let cell = r.response.rect;
+    ui.interact(cell, ui.id().with(("title", name)), egui::Sense::hover())
+        .on_hover_text(hint);
     Title {
         name,
         unit,
@@ -1544,6 +1553,74 @@ mod tests {
                 .collect();
         }
         cells
+    }
+
+    /// A title's hover shows over its name as well as its unit: the whole
+    /// cell gives it (Hugh's ruling on #1592).
+    #[test]
+    fn a_titles_hover_shows_over_its_name_and_its_unit() {
+        let t = finished_run(3);
+        let hint = HOUR_COLUMNS[1].2;
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        ctx.style_mut(|s| {
+            s.interaction.tooltip_delay = 0.0;
+            s.interaction.show_tooltips_only_when_still = false;
+        });
+        let frame = |at: Option<egui::Pos2>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 900.0),
+                )),
+                events: at.map(egui::Event::PointerMoved).into_iter().collect(),
+                ..Default::default()
+            };
+            ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    pane(ui, Some(&t), None, ("Position", "Pepsi"), true, false);
+                });
+            })
+        };
+        let texts = |out: &egui::FullOutput| -> Vec<(String, egui::Rect)> {
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(s) => Some((
+                        s.galley.text().to_string(),
+                        s.galley.rect.translate(s.pos.to_vec2()),
+                    )),
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut out = frame(None);
+        for _ in 0..2 {
+            out = frame(None);
+        }
+        let drawn = texts(&out);
+        // The table's Rate title and the s/d under it: the lowest of each,
+        // as the cards over the table have a Rate too.
+        let lowest = |name: &str| {
+            drawn
+                .iter()
+                .filter(|t| t.0 == name)
+                .map(|t| t.1)
+                .max_by(|a, b| a.top().total_cmp(&b.top()))
+                .unwrap_or_else(|| panic!("no {name}: {drawn:?}"))
+        };
+        let (name, unit) = (lowest("Rate"), lowest("s/d"));
+        assert!(unit.top() >= name.bottom() - 1.0, "{name:?} {unit:?}");
+        for at in [name.center(), unit.center()] {
+            let mut out = frame(Some(at));
+            for _ in 0..2 {
+                out = frame(None);
+            }
+            assert!(
+                texts(&out).iter().any(|t| t.0 == hint),
+                "no hover at {at:?}"
+            );
+        }
     }
 
     /// The run line's parts in their homes (#1528): the run and its

@@ -5,6 +5,7 @@
 //! built from its call cannot drift apart.
 
 use serde_json::{json, Map, Value};
+use timegrapher_core::session::Position;
 
 /// How one parameter reaches the command line.
 #[derive(Clone, Copy)]
@@ -19,8 +20,8 @@ pub enum Arg {
 
 #[derive(Clone, Copy)]
 pub enum Kind {
-    /// One of a fixed list of words.
-    Choice(&'static [&'static str]),
+    /// One of core's position names, `Position::names` (#1492).
+    Position,
     Path,
     Paths,
     /// Positive BPH representable by the CLI's u32.
@@ -94,10 +95,11 @@ const RECORDINGS: Param = p(
     Arg::Positional,
     true,
     "Full paths of the recording: a take's folder (one holding session.toml), read as \
-     saved with its lift angle, beat rate, calibre, masks and clock; or one file, a folder \
-     of segments, or several files read as one continuous recording in the order given. \
-     For a take, give its folder, not a sound file inside it: a file alone is read with \
-     the default lift angle and settings.",
+     saved with its lift angle, beat rate, calibre, masks and clock, or one sound file that \
+     session.toml lists, read the same way; or one file, a folder of segments, or several \
+     files read as one continuous recording in the order given. Give a take's folder to \
+     read the whole take; a file no session.toml lists is read with the default lift angle \
+     and settings.",
 );
 const LIBRARY: Param = p(
     "library",
@@ -189,10 +191,14 @@ pub const TOOLS: &[ToolSpec] = &[
             one Witschi-style report: per-position readings, the characteristic values \
             (mean rate, largest difference, vertical against horizontal). Give a \
             folder holding session.toml, the session.toml itself, or recordings with the \
-            position in each file name (DU, DD, CU, CD, CL, CR). Also writes report.html \
+            position in each file name, one of {positions}. Also writes report.html \
             next to the recordings. The report may name the vertical positions by the \
             hour at the top, with the crown at 3 o'clock: crown up is 3H, crown down 9H, \
-            crown left 6H and crown right 12H. A Power Reserve take's folder (the app's \
+            crown left 6H and crown right 12H. Five or more upright positions, as the \
+            app's Dynamic Poise test's eight (the four 45° stops with 3H, 6H, 9H and 12H), \
+            also give `poise`: the measured rate wave round the dial, its fastest hour \
+            and, where the amplitude allows, the heavy spot, in the app's words. A Power \
+            Reserve take's folder (the app's \
             Power Reserve Test) also gives its run in `power_reserve`: how long the watch \
             ran, how the run ended, the stops on the way and its readings hour by hour. \
             A long take in one position gives its run there too, with \
@@ -544,10 +550,12 @@ pub const TOOLS: &[ToolSpec] = &[
             ),
             p(
                 "position",
-                Kind::Choice(&["DU", "DD", "CU", "CD", "CL", "CR"]),
+                Kind::Position,
                 Arg::Flag("--position"),
                 true,
-                "The position the watch is in.",
+                "The position the watch is in: DU dial up, DD dial down, or standing \
+                 named by the hour at the top, with the crown at 3 o'clock (CU 3H, CL 6H, \
+                 CD 9H, CR 12H) and the 45° stops between them (1H30, 4H30, 7H30, 10H30).",
             ),
             p(
                 "seconds",
@@ -752,6 +760,13 @@ pub fn find(name: &str) -> Option<&'static ToolSpec> {
     TOOLS.iter().find(|t| t.name == name)
 }
 
+/// The tool's description with `{positions}` filled from core's one list
+/// of accepted position names (#1492).
+pub fn description(t: &ToolSpec) -> String {
+    t.description
+        .replace("{positions}", &Position::accepted_names())
+}
+
 /// The tool's definition as MCP lists it.
 pub fn definition(t: &ToolSpec) -> Value {
     let mut props = Map::new();
@@ -759,7 +774,7 @@ pub fn definition(t: &ToolSpec) -> Value {
     for p in t.params {
         let schema = match p.kind {
             Kind::Path | Kind::Text => json!({"type": "string"}),
-            Kind::Choice(words) => json!({"type": "string", "enum": words}),
+            Kind::Position => json!({"type": "string", "enum": Position::names()}),
             Kind::Paths => json!({"type": "array", "items": {"type": "string"}, "minItems": 1}),
             Kind::BeatRate => json!({"type":"integer", "minimum":1, "maximum":u32::MAX}),
             Kind::LiftAngle => json!({
@@ -784,7 +799,7 @@ pub fn definition(t: &ToolSpec) -> Value {
     let mut d = json!({
         "name": t.name,
         "title": t.title,
-        "description": t.description,
+        "description": description(t),
         "inputSchema": {
             "type": "object",
             "properties": props,
@@ -849,7 +864,7 @@ pub fn command_line(t: &ToolSpec, args: &Map<String, Value>) -> Result<Vec<Strin
                 .collect::<Result<_, _>>()?,
             (Kind::Paths, Value::String(s)) => vec![expand_home(s)?],
             (Kind::Text, Value::String(s)) => vec![s.clone()],
-            (Kind::Choice(words), Value::String(s)) if words.contains(&s.as_str()) => {
+            (Kind::Position, Value::String(s)) if Position::names().contains(&s.as_str()) => {
                 vec![s.clone()]
             }
             (Kind::BeatRate, Value::Number(n)) => {
@@ -1153,6 +1168,23 @@ mod tests {
         );
         let bad = args(json!({"folder": full("test"), "position": "up"}));
         assert!(command_line(t, &bad).is_err());
+        // The 45° stops come from core's list too (#1492).
+        let stop = args(json!({"folder": full("test"), "position": "1H30"}));
+        assert_eq!(command_line(t, &stop).unwrap()[1], "--position=1H30");
+        let d = definition(t);
+        let choices = d["inputSchema"]["properties"]["position"]["enum"].clone();
+        assert_eq!(choices, json!(Position::names()));
+    }
+
+    /// run_session names the accepted positions from core (#1492).
+    #[test]
+    fn descriptions_name_positions_from_core() {
+        let d = definition(find("run_session").unwrap());
+        let text = d["description"].as_str().unwrap();
+        assert!(text.contains(&Position::accepted_names()), "{text}");
+        for t in TOOLS {
+            assert!(!description(t).contains('{'), "{}", t.name);
+        }
     }
 
     /// The Claude Desktop bundle lists the tools the server has.

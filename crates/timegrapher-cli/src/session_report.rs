@@ -262,15 +262,7 @@ fn charts(st: &StateIndices, readings: &[&Reading]) -> String {
 fn indices_table(states: &[StateIndices]) -> String {
     let mut s = String::from(r#"<table class="data"><thead><tr><th>Value</th>"#);
     for st in states {
-        let _ = write!(
-            s,
-            r#"<th class="num">{}</th>"#,
-            if st.wind_h <= 0.0 {
-                "full wind".into()
-            } else {
-                format!("{} h after winding", fixed_text(st.wind_h, 0))
-            }
-        );
+        let _ = write!(s, r#"<th class="num">{}</th>"#, wind_words(st.wind_h));
     }
     s.push_str("<th>Meaning</th></tr></thead><tbody>");
     type Row<'a> = (&'a str, &'a dyn Fn(&StateIndices) -> String, &'a str);
@@ -595,6 +587,7 @@ pub fn html(sn: &Session) -> String {
     body.push_str("<h2>Characteristic values</h2>");
     body.push_str(&indices_table(&sn.report.states));
     body.push_str(&isochronism_section(sn));
+    body.push_str(&poise_section(sn));
     body.push_str(&state_charts(sn));
     body.push_str(&reference_table(sn));
     body.push_str(&cycles_table(sn));
@@ -705,6 +698,21 @@ fn isochronism_section(sn: &Session) -> String {
     body
 }
 
+/// The Dynamic Poise fit of each state of wind that gives one, in core's
+/// words ([`timegrapher_core::poise::PoiseFit::text`]).
+fn poise_section(sn: &Session) -> String {
+    let mut body = String::new();
+    for p in &sn.poise {
+        let _ = write!(
+            body,
+            "<h3>Dynamic Poise, {}</h3><p>{}</p>",
+            esc(&wind_words(p.wind_h)),
+            esc(&p.fit.text)
+        );
+    }
+    body
+}
+
 /// The rate and amplitude charts of each state of wind.
 fn state_charts(sn: &Session) -> String {
     let r = &sn.report;
@@ -793,7 +801,7 @@ code {{ font-size: 13px; }}
 
 /// A state of wind in a table cell: "full wind" or "24 h after winding".
 fn wind_words(w: f64) -> String {
-    wind(Some(w))
+    timegrapher_core::reading_text::wind_words(w)
 }
 
 #[cfg(test)]
@@ -875,16 +883,59 @@ mod tests {
             bph: 28800,
             lift_deg: 52.0,
             lift_known: true,
-            readings,
             left_out: Vec::new(),
+            poise: timegrapher_core::poise::by_state(&readings),
             report,
             power_reserve: None,
+            readings,
         }
     }
 
     /// A lift angle that is only the default is said to be the default,
     /// in core's caveat wording, in both the text and the HTML report
     /// (issue #603); one set for the watch is shown plainly.
+    /// Eight upright readings give the Dynamic Poise fit, in core's words,
+    /// as the app's pane does (#1474); six and two flat give none.
+    #[test]
+    fn upright_readings_give_the_poise_fit() {
+        let upright: Vec<Reading> = Position::TEN
+            .iter()
+            .filter_map(|&p| {
+                let deg = p.top_deg()?;
+                let mut r = reading(None, p);
+                r.measurement.rate_s_per_day = Some(4.0 + 6.0 * (deg - 90.0).to_radians().cos());
+                r.measurement.amplitude_deg = Some(180.0);
+                Some(r)
+            })
+            .collect();
+        assert_eq!(upright.len(), 8);
+        let s = session_of(upright);
+        assert_eq!(s.poise.len(), 1);
+        let p = &s.poise[0];
+        assert_eq!(p.wind_h, 0.0);
+        assert!((p.fit.wave.peak_deg.value - 90.0).abs() < 1e-6, "{p:?}");
+        let page = html(&s);
+        assert!(page.contains("<h3>Dynamic Poise, full wind</h3>"), "{page}");
+        assert!(page.contains(&esc(&p.fit.text)));
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["poise"][0]["fit"]["positions"], 8);
+        // 24.0 h and 24.04 h are one state, as the characteristic values
+        // name them (wind to a tenth): one fit, named 24 h, beside them.
+        let mut later = s.readings.clone();
+        for (i, r) in later.iter_mut().enumerate() {
+            r.wind_h = Some(if i % 2 == 0 { 24.0 } else { 24.04 });
+        }
+        let later = session_of(later);
+        assert_eq!(later.report.states.len(), 1);
+        assert_eq!(later.poise.len(), 1);
+        assert_eq!(later.poise[0].wind_h, later.report.states[0].wind_h);
+        assert_eq!(later.poise[0].wind_h, 24.0);
+        assert_eq!(later.poise[0].fit.positions, 8);
+        let six = session_of(Position::ALL.iter().map(|&p| reading(None, p)).collect());
+        assert!(six.poise.is_empty() && !html(&six).contains("Dynamic Poise"));
+        assert!(serde_json::to_value(&six).unwrap().get("poise").is_none());
+    }
+
     #[test]
     fn default_lift_says_so() {
         let known = session_of(vec![reading(Some(0.0), Position::CH)]);

@@ -254,8 +254,9 @@ fn record(o: &Options) -> Result<(Options, Report, serde_json::Value), String> {
     // Checked before anything is made.
     Position::parse(&o.position).ok_or_else(|| {
         format!(
-            "'{}' is not a position; use DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H)",
-            o.position
+            "'{}' is not a position; use {}",
+            o.position,
+            Position::accepted_names()
         )
     })?;
     // A stop file already there would end the take at once.
@@ -280,8 +281,9 @@ fn record_in(
 ) -> Result<(Report, serde_json::Value), String> {
     let pos = Position::parse(&o.position).ok_or_else(|| {
         format!(
-            "'{}' is not a position; use DU, DD, CD, CL, CU or CR (or CH, CB, 9H, 6H, 3H, 12H)",
-            o.position
+            "'{}' is not a position; use {}",
+            o.position,
+            Position::accepted_names()
         )
     })?;
     timegrapher_core::capture::checked_duration(o.seconds).map_err(|e| format!("--seconds {e}"))?;

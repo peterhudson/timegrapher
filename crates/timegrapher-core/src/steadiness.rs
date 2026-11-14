@@ -1333,11 +1333,14 @@ fn search_also(s: &SeriesCheck) -> Option<String> {
             period(p.period_s)
         ));
     }
+    // A line at a whole fraction of a found cycle is that cycle's
+    // harmonic, part of its shape, not a cycle of its own (Norm).
     lines.extend(
         p.other_periods_s
             .iter()
-            .filter(|&&q| !named.iter().any(|&n| near(q, n)))
-            .map(|&q| period(q)),
+            .zip(p.other_harmonic_of.iter().chain(std::iter::repeat(&None)))
+            .filter(|&(&q, h)| h.is_none() && !named.iter().any(|&n| near(q, n)))
+            .map(|(&q, _)| period(q)),
     );
     let list = match lines.as_slice() {
         [] => return None,
@@ -2332,11 +2335,7 @@ pub fn check(
         }
     });
     let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
-    let be_long = {
-        let mut lg = be_grid.clone();
-        lg.t0 = 0.0;
-        longterm::analyse(&lg, long_cfg)
-    };
+    let be_long = beat_error_long(&be_grid, clock, &long.breaks, long_cfg);
     let be_period = period_of(&be_long, SeriesKind::BeatError.unit());
     // The plain spectra of the series the period searches read, with
     // their slow change taken off as the searches take it off.
@@ -2553,6 +2552,24 @@ pub(crate) fn window_grids(
     let amp_grid = grid_of(&|w| w.mean());
     let (be_grid, _) = beat_error::grid(log, clock, breaks, None);
     [amp_grid, be_grid]
+}
+
+/// The beat error's period search over its windows' grid `be`, each
+/// piece between `breaks` detrended on its own ([`longterm::analyse_pieces`]),
+/// on a clock from 0.
+pub(crate) fn beat_error_long(
+    be: &Grid,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    lc: &LongConfig,
+) -> longterm::SeriesReport {
+    let cuts = Cuts::new(clock, breaks, &[]).piece_cuts();
+    let starts = longterm::piece_starts(be, &cuts);
+    let g = Grid {
+        t0: 0.0,
+        ..be.clone()
+    };
+    longterm::analyse_pieces(&g, &starts, lc)
 }
 
 /// Tick's and Tock's amplitudes, each on the amplitude windows' grid as

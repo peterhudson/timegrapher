@@ -2553,18 +2553,9 @@ pub fn poise_mean(readings: &[Reading]) -> Option<(f64, String)> {
     Some((m, format!("Mean {}", signed(Some(m), RATE))))
 }
 
-/// The poise fit of a test's upright readings ([`poise::fit`]), once
-/// [`poise::MIN_SHOWN`] of them are in: before that a pane says
-/// [`poise::pending_text`] in its place.
+/// The poise fit of a test's upright readings ([`poise::shown_fit`]).
 pub fn poise_fit(readings: &[Reading]) -> Option<poise::PoiseFit> {
-    let points: Vec<poise::Point> = readings
-        .iter()
-        .filter_map(|r| poise::point(r.position, &r.measurement))
-        .collect();
-    if points.len() < poise::MIN_SHOWN {
-        return None;
-    }
-    poise::fit(&points, None)
+    poise::shown_fit(readings.iter().map(|r| (r.position, &r.measurement)))
 }
 
 /// The dialog for saving the full-wind results for the 24 hour half,

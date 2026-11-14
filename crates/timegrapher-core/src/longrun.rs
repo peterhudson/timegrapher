@@ -98,13 +98,14 @@ pub struct LongReport {
 /// Grid step for the timing series: fine enough to search the escape
 /// wheel, coarser on longer runs to keep the work bounded. The period
 /// search needs eight steps a turn, so the shortest period searched is
-/// 2 s up to 12 hours and 4 s up to 48 hours: there it reaches a 5 s
-/// escape wheel (20 teeth at 28,800 bph, 15 at 21,600) but not a 3.75 s
-/// one (15 teeth at 28,800 bph).
+/// 2 s up to 12 hours and 4 s up to 80 hours (a full Power Reserve test,
+/// the memory budget's run): there it reaches a 5 s escape wheel (20 teeth
+/// at 28,800 bph, 15 at 21,600) but not a 3.75 s one (15 teeth at 28,800
+/// bph). Past 80 hours, 32 s.
 pub fn timing_step(span_s: f64) -> f64 {
     if span_s <= 12.0 * 3600.0 {
         0.25
-    } else if span_s <= 48.0 * 3600.0 {
+    } else if span_s <= 80.0 * 3600.0 {
         0.5
     } else {
         4.0
@@ -214,7 +215,26 @@ fn analyse_read(
         .filter(|(b, r)| b.is_good() && r.is_finite())
         .map(|(b, &r)| (watch(b), r))
         .unzip();
-    let timing_grid = grid_median(&bw, &br, 0.0, step, n);
+    let mut timing_grid = grid_median(&bw, &br, 0.0, step, n);
+    // Where each piece's timing starts again from its own fit, on the
+    // grid ([`longterm::piece_starts`], the one rule). The grid is on the
+    // watch's clock, a beat count, so a cut is placed at the first beat
+    // after it, not mapped through the true-time clock; and the bin it
+    // falls in holds both pieces' residuals, so it reads nothing.
+    let cuts_on_watch: Vec<f64> = cuts
+        .iter()
+        .filter_map(|&c| beats.get(beats.partition_point(|b| b.time < c)))
+        .map(watch)
+        .collect();
+    for &c in &cuts_on_watch {
+        let at = c / step;
+        if at > at.floor() {
+            if let Some(v) = timing_grid.y.get_mut(at.floor() as usize) {
+                *v = f64::NAN;
+            }
+        }
+    }
+    let piece_starts = longterm::piece_starts(&timing_grid, &cuts_on_watch);
     let amp_w = log
         .amplitude_windows
         .first()
@@ -235,21 +255,21 @@ fn analyse_read(
     let aw: Vec<f64> = at.iter().map(|&t| to_watch(t)).collect();
     let amp_grid = grid_median(&aw, &av, 0.0, astep, (duration / astep).floor() as usize);
 
-    let timing = longterm::analyse_timing(&timing_grid, cfg);
-    let amplitude = longterm::analyse(&amp_grid, cfg);
+    let timing = longterm::analyse_timing_pieces(&timing_grid, &piece_starts, cfg);
+    let amp_cuts: Vec<f64> = cuts.iter().map(|&c| to_watch(c)).collect();
+    let amplitude = longterm::analyse_pieces(
+        &amp_grid,
+        &longterm::piece_starts(&amp_grid, &amp_cuts),
+        cfg,
+    );
     let rate_components = timing
         .components
         .iter()
-        .map(|c| {
-            let rate_shape = longterm::rate_profile(&c.shape, c.period_s);
-            let lo = rate_shape.iter().copied().fold(f64::INFINITY, f64::min);
-            let hi = rate_shape.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            RateComponent {
-                component: c.clone(),
-                rate_swing_s_per_day: hi - lo,
-                timing_swing_ms: c.peak_to_peak * 1000.0,
-                rate_shape,
-            }
+        .map(|c| RateComponent {
+            component: c.clone(),
+            rate_swing_s_per_day: longterm::rate_swing(&c.shape, c.period_s),
+            timing_swing_ms: c.peak_to_peak * 1000.0,
+            rate_shape: longterm::rate_profile(&c.shape, c.period_s),
         })
         .collect();
 
@@ -809,17 +829,17 @@ mod tests {
     }
 
     #[test]
-    fn the_timing_grid_coarsens_at_12_and_48_hours() {
+    fn the_timing_grid_coarsens_at_12_and_80_hours() {
         // The step behind the period search's 2 s and 4 s floors: 0.25 s
-        // up to 12 hours, 0.5 s up to 48, then 4 s.
+        // up to 12 hours, 0.5 s up to 80, then 4 s.
         let h = 3600.0;
         for (span, step) in [
             (11.9, 0.25),
             (12.0, 0.25),
             (12.1, 0.5),
-            (47.9, 0.5),
-            (48.0, 0.5),
-            (48.1, 4.0),
+            (48.1, 0.5),
+            (80.0, 0.5),
+            (80.1, 4.0),
         ] {
             assert_eq!(timing_step(span * h), step, "{span} h");
         }

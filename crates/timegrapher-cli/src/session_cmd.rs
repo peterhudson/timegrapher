@@ -282,8 +282,9 @@ pub(crate) fn position_of(e: &RecordingEntry) -> Result<Position, String> {
     match &e.position {
         Some(p) => Position::parse(p).ok_or_else(|| {
             format!(
-                "{}: unknown position '{p}' (use CH, CB, 3H, 6H, 9H, 12H or DU, DD, CU, CL, CD, CR)",
-                e.file
+                "{}: unknown position '{p}' (use {})",
+                e.file,
+                Position::accepted_names()
             )
         }),
         None => Position::from_file_name(&e.file).ok_or_else(|| {
@@ -345,9 +346,10 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
                 p.code(),
                 p.name()
             )),
-            None => t.push_str(
-                "position = \"\"  # CH, CB, 3H, 6H, 9H, 12H (or DU, DD, CU, CL, CD, CR)\n",
-            ),
+            None => t.push_str(&format!(
+                "position = \"\"  # {}\n",
+                Position::accepted_names()
+            )),
         }
         t.push_str(
             "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the reading is taken as fully wound\n",
@@ -854,6 +856,10 @@ pub struct Session<'a> {
     /// A Power Reserve Test's run, from the folder's `power-reserve.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub power_reserve: Option<timegrapher_core::power_reserve::Results>,
+    /// The Dynamic Poise fit of each state of wind with five or more
+    /// upright readings ([`timegrapher_core::poise::by_state`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub poise: Vec<timegrapher_core::poise::StateFit>,
 }
 
 impl Session<'_> {
@@ -941,6 +947,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         bph,
         lift_deg: o.lift(&m, cal),
         lift_known: lift_known(&ctx, cal),
+        poise: timegrapher_core::poise::by_state(&readings),
         readings,
         left_out,
         report,
@@ -1128,17 +1135,17 @@ pub fn signed(v: Option<f64>, digits: usize) -> String {
 pub fn wind(w: Option<f64>) -> String {
     match w {
         None => "not given".into(),
-        Some(w) if w <= 0.0 => "full wind".into(),
-        Some(w) => format!("{} h after winding", fixed_text(w, 0)),
+        Some(w) => timegrapher_core::reading_text::wind_words(w),
     }
 }
 
 /// A state of wind in a sentence ("at full wind", "24 h after winding").
 fn wind_state(w: f64) -> String {
+    let words = timegrapher_core::reading_text::wind_words(w);
     if w <= 0.0 {
-        "at full wind".into()
+        format!("at {words}")
     } else {
-        format!("{} h after winding", fixed_text(w, 0))
+        words
     }
 }
 
@@ -1188,8 +1195,17 @@ fn print_summary(s: &Session) {
     print_readings(s);
     print_notes(s);
     print_states(s);
+    print_poise(s);
     println!();
     print_findings(&s.report);
+}
+
+/// The Dynamic Poise fit of each state of wind that gives one.
+fn print_poise(s: &Session) {
+    for p in &s.poise {
+        println!();
+        println!("Poise {}: {}", wind_state(p.wind_h), p.fit.text);
+    }
 }
 
 /// The watch, its beat rate and lift, and the power reserve run.
@@ -2123,6 +2139,7 @@ mod tests {
             left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: Some(r),
+            poise: Vec::new(),
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["power_reserve"]["run_s"], 151_200.0);
@@ -2268,6 +2285,7 @@ mod tests {
             left_out: Vec::new(),
             report: session::evaluate(&[]),
             power_reserve: None,
+            poise: Vec::new(),
         };
         let html = crate::session_report::html(&s);
         assert!(html.contains("None kept") && html.contains("timegrapher test (abc)"));
