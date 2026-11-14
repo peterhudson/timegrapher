@@ -269,6 +269,18 @@ impl TimegrapherApp {
         self.reveal_pane(Pane::PowerReserve);
     }
 
+    /// Keep listening while the window isn't drawing: save and read the
+    /// sound that has come in, and follow a Power Reserve Test to its
+    /// end. Called from [`crate::pump`]'s thread.
+    pub(crate) fn pump(&mut self) -> usize {
+        if self.capture.is_none() {
+            return 0;
+        }
+        let taken = self.poll_for(super::PUMP_BUDGET);
+        self.reserve_follow();
+        taken
+    }
+
     /// [`Self::reserve_follow`] from a frame of the window, which draws
     /// again each second while the test runs.
     pub(super) fn reserve_tick(&mut self, ctx: &egui::Context) {
