@@ -9,12 +9,8 @@ use timegrapher_core::library::{fixed_text, signed_text};
 use timegrapher_core::session::{Position, Reading, ReferenceClock, StateIndices};
 use timegrapher_core::twostate;
 
-fn esc(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+/// Text put into the page: core's one escaper (#1649).
+use timegrapher_core::xml::escape as esc;
 
 fn cell(text: String) -> String {
     format!(r#"<td class="num">{text}</td>"#)
