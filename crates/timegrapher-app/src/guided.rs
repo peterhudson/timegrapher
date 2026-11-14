@@ -1618,8 +1618,8 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
                 column_head(ui, WIDE_W, &head, unit, &hint);
             }
             ui.end_row();
-            for (label, v) in &c.rows {
-                ui.label(RichText::new(label).color(pal.text));
+            for (p, v) in &c.rows {
+                ui.label(RichText::new(position_label(*p)).color(pal.text));
                 right_in(ui, WIDE_W, signed(v[0], RATE), false, pal.text);
                 right_in(ui, WIDE_W, signed(v[1], RATE), false, pal.text);
                 right_in(ui, WIDE_W, signed(v[2], RATE), true, pal.text);
@@ -1632,9 +1632,10 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
     ui.add_space(4.0);
     ui.label(
         RichText::new(format!(
-            "Largest change in rate, crown right left out: {} s/d. Change in the mean rate, as \
-             a size: {} s/d.",
+            "{}: {} s/d. {}: {} s/d.",
+            session::IM_NAME,
             signed(c.im, RATE),
+            session::IE_NAME,
             plain(c.ie, RATE)
         ))
         .color(pal.text),
@@ -2298,29 +2299,16 @@ fn largest_label(ui: &mut egui::Ui) {
         );
 }
 
-/// The full-wind test against the 24 hour half, with the figures
-/// `timegrapher session` gives for the two states of wind.
-pub struct Comparison {
-    /// Hours between the two tests' starts.
-    pub hours: f64,
-    /// Each position measured in both: its label, then rate at full wind,
-    /// rate after `hours` and the change (s/d), then the same for
-    /// amplitude (degrees).
-    pub rows: Vec<(String, [Option<f64>; 6])>,
-    /// The largest change in rate over the positions, crown right (12H)
-    /// left out (Im), s/d.
-    pub im: Option<f64>,
-    /// The size of the change in the mean rate over the positions
-    /// measured in both (Ie), s/d.
-    pub ie: Option<f64>,
-}
+/// The full-wind test against the 24 hour half: core's
+/// [`session::Comparison`].
+pub use session::Comparison;
 
 /// Full wind (`full`) against the 24 hour half's `readings`, `hours`
 /// later, read by core `session::evaluate_states` as `session` reads a
 /// file with both. The kept figures stand in for the full-wind
 /// measurements.
 pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<Comparison> {
-    comparison_of(&kept_figures(full), hours, &text_report::figures(readings))
+    session::comparison(&kept_figures(full), hours, &text_report::figures(readings))
 }
 
 /// A saved 24 hour half (`later`) against the full-wind results it was set
@@ -2328,49 +2316,7 @@ pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<C
 /// nothing but its saved rows. None for a full-wind test's results.
 pub fn saved_comparison(later: &FullWind) -> Option<Comparison> {
     let full = later.against.as_deref()?;
-    comparison_of(&kept_figures(full), later.wind_h?, &kept_figures(later))
-}
-
-fn comparison_of(
-    full: &[SourcedFigures],
-    hours: f64,
-    later: &[SourcedFigures],
-) -> Option<Comparison> {
-    if full.is_empty() || later.is_empty() {
-        return None;
-    }
-    let states = vec![
-        session::sourced_indices(0.0, full),
-        session::sourced_indices(hours, later),
-    ];
-    let report = session::evaluate_states(states, Vec::new());
-    let (first, last) = (report.states.first()?, report.states.last()?);
-    let rows = later
-        .iter()
-        .filter_map(|f| {
-            let p = f.0;
-            let a = first.positions.iter().find(|v| v.position == p)?;
-            let b = last.positions.iter().find(|v| v.position == p)?;
-            let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
-            Some((
-                position_label(p),
-                [
-                    a.rate_s_per_day,
-                    b.rate_s_per_day,
-                    change(a.rate_s_per_day, b.rate_s_per_day),
-                    a.amplitude_deg,
-                    b.amplitude_deg,
-                    change(a.amplitude_deg, b.amplitude_deg),
-                ],
-            ))
-        })
-        .collect();
-    Some(Comparison {
-        hours,
-        rows,
-        im: report.im,
-        ie: report.ie,
-    })
+    session::comparison(&kept_figures(full), later.wind_h?, &kept_figures(later))
 }
 
 /// A position as the app names it: "Crown Up (CU, 3H)", the hobby
@@ -2471,8 +2417,8 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
         format!("Amplitude at {h}, °"),
         "Amplitude Change, °".into(),
     ]];
-    for (label, v) in &c.rows {
-        let mut row = vec![label.clone()];
+    for (p, v) in &c.rows {
+        let mut row = vec![position_label(*p)];
         for (i, x) in v.iter().enumerate() {
             let d = if i < 3 { RATE } else { AMPLITUDE };
             row.push(x.map_or_else(String::new, |x| format!("{x:.d$}")));
@@ -2481,14 +2427,8 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
     }
     cells.push(Vec::new());
     let num = |v: Option<f64>| v.map_or_else(String::new, |x| format!("{x:.RATE$}"));
-    cells.push(vec![
-        "Largest change in rate, crown right left out (Im), s/d".into(),
-        num(c.im),
-    ]);
-    cells.push(vec![
-        "Change in the mean rate, a size (Ie), s/d".into(),
-        num(c.ie),
-    ]);
+    cells.push(vec![format!("{}, s/d", session::IM_NAME), num(c.im)]);
+    cells.push(vec![format!("{}, s/d", session::IE_NAME), num(c.ie)]);
     let field = |s: &str| {
         if s.contains(sep) || s.contains('"') {
             format!("\"{}\"", s.replace('"', "\"\""))
@@ -2594,7 +2534,6 @@ pub fn results_dialog(k: &FullWind, dir: &std::path::Path) -> rfd::FileDialog {
     d
 }
 
-/// The dialog for saving the test as a CSV file, starting in `dir`.
 /// The test as the plain-text report core writes ([`text_report`]): the
 /// watch and how it was read, the table, and in the 24 hour half the
 /// full-wind test beside it. The lift angle is left out when
@@ -2667,6 +2606,7 @@ pub fn text_dialog(kind: Kind, watch: &str, dir: &std::path::Path) -> rfd::FileD
     d
 }
 
+/// The dialog for saving the test as a CSV file, starting in `dir`.
 pub fn csv_dialog(dir: &std::path::Path) -> rfd::FileDialog {
     let stamp: String = timegrapher_core::recorder::utc(std::time::SystemTime::now())
         .chars()

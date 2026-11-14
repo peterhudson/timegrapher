@@ -111,14 +111,6 @@ fn a_table_lines_up_its_columns() {
     );
 }
 
-#[test]
-fn a_beat_rate_is_grouped_by_thousands() {
-    assert_eq!(grouped(28800), "28,800");
-    assert_eq!(grouped(18000), "18,000");
-    assert_eq!(grouped(360000), "360,000");
-    assert_eq!(grouped(900), "900");
-}
-
 /// Moved from the app's guided tests with `caveat_condition`.
 #[test]
 fn a_position_says_how_its_beat_error_was_given() {

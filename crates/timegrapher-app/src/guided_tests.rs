@@ -526,7 +526,8 @@ fn six_positions_read_their_own_rates() {
         .collect();
     let c = comparison(&full, 24.0, &later).unwrap();
     assert_eq!(c.rows.len(), 6);
-    for (label, v) in &c.rows {
+    for (p, v) in &c.rows {
+        let label = position_label(*p);
         let up = if label.starts_with("Crown Right") {
             8.0
         } else {

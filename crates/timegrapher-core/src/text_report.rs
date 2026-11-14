@@ -11,7 +11,7 @@
 //! missing figure is a dash, and a missing fact's line is left out.
 //! Sentences wrap at [`WIDTH`] columns, never inside a figure.
 
-use crate::figure_text::{base_digits, fixed_text, signed_text};
+use crate::figure_text::{base_digits, fixed_text, grouped, signed_text};
 use crate::measure::Caveat;
 use crate::poise;
 use crate::reading_text::wind_words;
@@ -156,7 +156,10 @@ fn heading(title: &str, h: &Header) -> String {
     add("Watch", h.watch.clone());
     add("Date", h.date.clone());
     add("Calibre", h.calibre.clone());
-    add("Beat Rate", h.bph.map(|b| format!("{} bph", grouped(b))));
+    add(
+        "Beat Rate",
+        h.bph.map(|b| format!("{} bph", grouped(u64::from(b)))),
+    );
     add(
         "Lift Angle",
         h.lift_angle_deg
@@ -174,19 +177,6 @@ fn heading(title: &str, h: &Header) -> String {
 /// Seconds in each position, "20 s in each position".
 fn each(s: f64) -> String {
     format!("{} s in each position", fixed_text(s, 0))
-}
-
-/// 28800 as "28,800".
-fn grouped(n: u32) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
 }
 
 /// Name and value lines with the values lined up.
@@ -287,17 +277,12 @@ fn table(rows: &[Vec<String>], head: usize, summary: usize) -> String {
     out
 }
 
-/// The 24 hour half set against the full-wind test, as core
-/// `session::evaluate_states` reads a session with both: each position's
+/// The 24 hour half set against the full-wind test
+/// ([`session::comparison`], as the app's pane reads it): each position's
 /// rate and amplitude at full wind and now, and the change, then Im and
 /// Ie. Positions read in only one of the two are left out.
 fn comparison(e: Earlier, later: &[SourcedFigures]) -> String {
-    let states = vec![
-        session::sourced_indices(0.0, e.figures),
-        session::sourced_indices(e.hours, later),
-    ];
-    let report = session::evaluate_states(states, Vec::new());
-    let (Some(first), Some(last)) = (report.states.first(), report.states.last()) else {
+    let Some(c) = session::comparison(e.figures, e.hours, later) else {
         return String::new();
     };
     let now = wind_words(e.hours);
@@ -333,34 +318,24 @@ fn comparison(e: Earlier, later: &[SourcedFigures]) -> String {
             "°".into(),
         ],
     ];
-    for b in &last.positions {
-        let Some(a) = first.positions.iter().find(|a| a.position == b.position) else {
-            continue;
-        };
-        let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
-        let (r, d) = (base_digits::RATE, base_digits::AMPLITUDE);
+    let (r, d) = (base_digits::RATE, base_digits::AMPLITUDE);
+    for (p, v) in &c.rows {
         rows.push(vec![
-            b.position.display_label(),
-            signed(a.rate_s_per_day, r),
-            signed(b.rate_s_per_day, r),
-            signed(change(a.rate_s_per_day, b.rate_s_per_day), r),
-            plain(a.amplitude_deg, d),
-            plain(b.amplitude_deg, d),
-            signed(change(a.amplitude_deg, b.amplitude_deg), d),
+            p.display_label(),
+            signed(v[0], r),
+            signed(v[1], r),
+            signed(v[2], r),
+            plain(v[3], d),
+            plain(v[4], d),
+            signed(v[5], d),
         ]);
     }
     let mut out = format!("\nAgainst the Full-Wind Test, {now}\n\n");
     out += &table(&rows, 3, 0);
     out.push('\n');
     out += &facts(&[
-        (
-            "Largest change in rate, crown right left out (Im)",
-            unit(signed(report.im, base_digits::RATE), " s/d"),
-        ),
-        (
-            "Change in the mean rate, a size (Ie)",
-            unit(plain(report.ie, base_digits::RATE), " s/d"),
-        ),
+        (session::IM_NAME, unit(signed(c.im, r), " s/d")),
+        (session::IE_NAME, unit(plain(c.ie, r), " s/d")),
     ]);
     out
 }

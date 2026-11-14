@@ -22,6 +22,7 @@ use timegrapher_core::calibre_store::{
     Catalog, CustomCalibre, CustomWheel, Entry, Origin, Slot, UserCalibres,
 };
 use timegrapher_core::calibres::{self, Calibre};
+use timegrapher_core::figure_text::grouped;
 use timegrapher_core::input_domain::LIFT_RANGE_DEG;
 use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::train;
@@ -2470,7 +2471,7 @@ fn heading(ui: &mut egui::Ui, text: &str) {
 fn count_words(n: usize) -> String {
     format!(
         "{} {}",
-        grouped(n),
+        grouped(n as u64),
         if n == 1 { "calibre" } else { "calibres" }
     )
 }
@@ -2481,21 +2482,8 @@ fn shown_of(shown: usize, all: usize) -> String {
     if shown == all {
         count_words(all)
     } else {
-        format!("{} of {}", grouped(shown), count_words(all))
+        format!("{} of {}", grouped(shown as u64), count_words(all))
     }
-}
-
-/// `n` with its thousands apart by commas.
-fn grouped(n: usize) -> String {
-    let digits = n.to_string();
-    let mut grouped = String::new();
-    for (i, d) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            grouped.push(',');
-        }
-        grouped.push(d);
-    }
-    grouped
 }
 
 /// A calibre's line in the search results: its name, and "Custom" for one
