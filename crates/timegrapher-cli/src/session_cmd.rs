@@ -860,6 +860,17 @@ pub struct Session<'a> {
     /// upright readings ([`timegrapher_core::poise::by_state`]).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub poise: Vec<timegrapher_core::poise::StateFit>,
+    /// The plain-text reports ([`text_reports`]), each written to its
+    /// `file` beside `report.html`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub text_reports: Vec<TextReport>,
+}
+
+/// A plain-text report and the file it is written to.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TextReport {
+    pub file: &'static str,
+    pub text: String,
 }
 
 impl Session<'_> {
@@ -953,6 +964,11 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         report,
         // A test's kept run, else a long take's read as one.
         power_reserve: power_reserve_of(&base)?.or(long_run),
+        text_reports: Vec::new(),
+    };
+    let s = Session {
+        text_reports: text_reports(&s, &base),
+        ..s
     };
     write_out(&s, o, &base)
 }
@@ -1072,6 +1088,9 @@ fn write_out(s: &Session, o: &Options, base: &Path) -> Result<(), String> {
     w("summary.json", &json)?;
     w("readings.csv", &csv(s))?;
     w("report.html", &crate::session_report::html(s))?;
+    for r in &s.text_reports {
+        w(r.file, &r.text)?;
+    }
     if o.json {
         println!("{json}");
     } else {
@@ -1101,6 +1120,62 @@ fn power_reserve_of(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(format!("{}: {e}", base.join(FILE).display())),
     }
+}
+
+/// The plain-text reports the session's readings make (core
+/// [`text_report`]): the Positions Test's where a horizontal position was
+/// read or no 45° stop was, the Dynamic Poise test's where a 45° stop was.
+/// Each is of the least wound state's readings; the Positions Test's sets
+/// them against the fullest state's when there are two.
+fn text_reports(s: &Session, base: &Path) -> Vec<TextReport> {
+    use timegrapher_core::session::Position;
+    use timegrapher_core::text_report::{self, Earlier};
+    let wind = |r: &Reading| r.wind_h.unwrap_or(0.0);
+    let fullest = s.readings.iter().map(wind).fold(f64::INFINITY, f64::min);
+    let least = s
+        .readings
+        .iter()
+        .map(wind)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let at = |w: f64| -> Vec<Reading> {
+        s.readings
+            .iter()
+            .filter(|r| wind(r) == w)
+            .cloned()
+            .collect()
+    };
+    let readings = at(least);
+    let full = text_report::figures(&at(fullest));
+    let earlier = (least > fullest).then_some(Earlier {
+        figures: &full,
+        hours: least - fullest,
+    });
+    let header = text_report::Header {
+        watch: s.watch.map(str::to_string),
+        date: base
+            .file_name()
+            .and_then(|n| text_report::take_date(&n.to_string_lossy())),
+        calibre: s.calibre.map(str::to_string),
+        bph: Some(s.bph),
+        lift_angle_deg: s.lift_known.then_some(s.lift_deg),
+        ..Default::default()
+    };
+    let any = |set: &[Position]| readings.iter().any(|r| set.contains(&r.position));
+    let mut out = Vec::new();
+    if any(&[Position::CH, Position::CB]) || !any(&Position::HALF_HOURS) {
+        let text = text_report::positions(&header, &readings, earlier);
+        out.push(TextReport {
+            file: text_report::POSITIONS_FILE,
+            text,
+        });
+    }
+    if any(&Position::HALF_HOURS) {
+        out.push(TextReport {
+            file: text_report::POISE_FILE,
+            text: text_report::poise(&header, &readings),
+        });
+    }
+    out
 }
 
 /// For a session file whose take was kept as its analysis alone: the fact,
@@ -2140,6 +2215,7 @@ mod tests {
             report: session::evaluate(&[]),
             power_reserve: Some(r),
             poise: Vec::new(),
+            text_reports: Vec::new(),
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["power_reserve"]["run_s"], 151_200.0);
@@ -2286,6 +2362,7 @@ mod tests {
             report: session::evaluate(&[]),
             power_reserve: None,
             poise: Vec::new(),
+            text_reports: Vec::new(),
         };
         let html = crate::session_report::html(&s);
         assert!(html.contains("None kept") && html.contains("timegrapher test (abc)"));
