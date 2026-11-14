@@ -23,10 +23,10 @@ const context = vm.createContext({
   xyChart: (chart) => { context.last = JSON.parse(JSON.stringify(chart)); return "<svg data-test='FFT'></svg>"; },
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 
-  ["esc", "spectrumOf", "steadyNote", "steadyPlot", "mapNumber"].map(n => definition(n)).join("\n") + "\n" + definition("spectrumSupportText", true), context);
-function render(support, timing = true) {
+  ["esc", "spectrumRuns", "spectrumOf", "steadyNote", "steadyPlot", "mapNumber"].map(n => definition(n)).join("\n") + "\n" + definition("spectrumSupportText", true), context);
+function render(support, timing = true, amplitude = [1, 5, 2]) {
   context.fftTiming = timing;
-  const sp = { series: "rate", unit: "ms", unit_text: " ms", step_s: 1, period_s: [128, 64, 32], amplitude: [1, 5, 2],
+  const sp = { series: "rate", unit: "ms", unit_text: " ms", step_s: 1, period_s: [128, 64, 32], amplitude,
     reading_swing: { reading_s: 10, period_s: [128, 64, 32], swing_s_per_day: [8, 60, 40] } };
   if (support !== undefined) sp.support = support;
   const doc = { spectra: [sp], config: { rate_reading_s: 10 } };
@@ -119,4 +119,9 @@ test("an amplitude spectrum's tallest line is labelled in degrees with no gap, a
   context.steadyPlot({ series: "amplitude" }, "spectrum", { spectra: [sp], config: { rate_reading_s: 10 } });
   const label = context.last.beside[0].text;
   assert.ok(/: 5(\.0+)?°$/.test(label), label);
+});
+test("a size core withheld (null, #1638) leaves a gap: two lines, never bridged", () => {
+  const { chart } = render({ finite_bins: 128, total_bins: 256 }, true, [1, null, 2]);
+  assert.deepEqual(chart.lines.map((l) => l.pts), [[[Math.log10(128), 0]], [[Math.log10(32), Math.log10(2)]]]);
+  assert.ok(chart.lines.flatMap((l) => l.pts).every((p) => p[0] !== Math.log10(64)));
 });
