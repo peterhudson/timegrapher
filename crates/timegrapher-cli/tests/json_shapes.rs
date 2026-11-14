@@ -495,3 +495,31 @@ fn excerpt_keeps_its_fields_and_cuts_across_segments() {
     assert_eq!(std::fs::read(&out).unwrap(), bytes);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A sound file its folder's session file lists is read with the take's
+/// lift angle and beat rate by `analyze`, `profile` and `shape`, as
+/// `series` and the app read it; a file beside it the session file
+/// doesn't list is read at the default 52° (#1573).
+#[test]
+fn analyze_profile_and_shape_read_a_file_in_a_take_with_its_settings() {
+    let dir = scratch("file-in-take");
+    let config = dir.join("config");
+    let take = dir.join("du.wav");
+    let other = dir.join("other.wav");
+    watch_wav(&take, 20.0);
+    watch_wav(&other, 20.0);
+    std::fs::write(
+        dir.join("session.toml"),
+        "bph = 28800\nlift = 47\n\n[[recording]]\nfile = \"du.wav\"\nposition = \"DU\"\n",
+    )
+    .unwrap();
+    for command in ["analyze", "profile", "shape"] {
+        let settings = |file: &Path| {
+            let j = json(&config, &[command, file.to_str().unwrap(), "--json"]);
+            let s = &j["input"]["settings"];
+            (s["lift_deg"].as_f64(), s["bph"].as_u64())
+        };
+        assert_eq!(settings(&take), (Some(47.0), Some(28800)), "{command}");
+        assert_eq!(settings(&other).0, Some(52.0), "{command}");
+    }
+}
