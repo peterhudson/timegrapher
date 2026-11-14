@@ -237,7 +237,10 @@ impl TimegrapherApp {
         let action = poise_body(
             ui,
             (self.poise_test(), phase, live.as_ref()),
-            kept.as_deref().filter(|k| !k.is_empty()),
+            (
+                kept.as_deref().filter(|k| !k.is_empty()),
+                self.guided.is_none() && !self.running(),
+            ),
             amp_now.as_deref(),
             (view, info),
             settle,
@@ -256,7 +259,7 @@ fn poise_body(
         Option<guided::Phase>,
         Option<&guided::FreeCell>,
     ),
-    kept: Option<&[timegrapher_core::session::Reading]>,
+    (kept, done): (Option<&[timegrapher_core::session::Reading]>, bool),
     amp_now: Option<&str>,
     (view, info): (PoiseView, bool),
     (settle_s, measure_s): (f64, f64),
@@ -274,12 +277,13 @@ fn poise_body(
         info_beside_w: INFO_BESIDE_W,
         rule_h: PICTURE_H,
     };
-    // A take opened again, not a test under way: no more stops will come.
+    // A take that is done (no test on the Bench and no sound coming in,
+    // Trevor on #1622): no more stops will come.
     let measured = readings
         .iter()
         .filter(|r| poise::point(r.position, &r.measurement).is_some())
         .count();
-    let unfitted = poise::unfitted_text(measured, test.is_none());
+    let unfitted = poise::unfitted_text(measured, done);
     let picture = |ui: &mut egui::Ui| {
         picture_block(
             ui,

@@ -132,11 +132,10 @@ fn measured(name: &str) -> (TimegrapherApp, std::path::PathBuf, impl Sized) {
     (app, base, tx)
 }
 
-/// A take listened to with `stops` marked by hand in turn, `each` s
-/// apart, its rate 30 s/d each way round the dial (fastest with 6H at
-/// the top, as `measured`), saved, then opened in a fresh app as a saved
-/// take is opened (#1619); and the folder to remove.
-fn saved_and_opened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
+/// A take still being listened to, with `stops` marked by hand in turn,
+/// `each` s apart, its rate 30 s/d each way round the dial (fastest with
+/// 6H at the top, as `measured`), its sound kept; and its folder.
+fn listened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
     let base = std::env::temp_dir().join(format!("tg-app-poise-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let each = 62.0;
@@ -174,6 +173,13 @@ fn saved_and_opened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::pat
             }
         }
     }
+    (app, base)
+}
+
+/// [`listened`], saved, then opened in a fresh app as a saved take is
+/// opened (#1619); and the folder to remove.
+fn saved_and_opened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
+    let (mut app, base) = listened(name, stops);
     app.save_into(&base.join("saved"));
     app.wait_for_save();
     let saved = app.session.saved_to().expect("saved").to_path_buf();
@@ -239,6 +245,29 @@ fn a_saved_take_of_four_stops_says_it_needs_five() {
     assert!(drawn.contains(&lacks), "{drawn}");
     assert!(!drawn.contains(&poise_pending()), "{drawn}");
     assert!(drawn.contains("Crown Left (CL, 6H)"), "{drawn}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The same four stops marked by hand while still listening: more may
+/// come, so the pane waits for five (Trevor on #1622).
+#[test]
+fn a_take_still_listening_with_four_stops_waits_for_five() {
+    let four = [
+        Position::CrownDown,
+        Position::CrownLeft,
+        Position::CrownUp,
+        Position::CrownRight,
+    ];
+    let (mut app, base) = listened("four-live", &four);
+    // Sound still coming in.
+    let tx = queued_capture(&mut app, &base);
+    assert!(app.running() && app.guided.is_none());
+    let t = app.free_table(&egui::Context::default()).expect("a table");
+    assert_eq!(t.upright.0.len(), 4, "{t:?}");
+    let drawn = draw(&mut app, Pane::DynamicPoise);
+    assert!(drawn.contains(&poise_pending()), "{drawn}");
+    assert!(!drawn.contains("this take has"), "{drawn}");
+    drop(tx);
     let _ = std::fs::remove_dir_all(&base);
 }
 
