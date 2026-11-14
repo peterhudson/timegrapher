@@ -437,6 +437,22 @@ pub fn take_name(started: &str, positions: &[Position]) -> String {
     }
 }
 
+/// A Power Reserve Test's take folder's name: the date and time it
+/// started and "Power Reserve" (`2026-10-20 14.32 Power Reserve`).
+pub fn power_reserve_take_name(started: &str) -> String {
+    format!("{started} Power Reserve")
+}
+
+/// Where a Power Reserve Test's take is kept among a watch's `takes`: one
+/// folder named by [`power_reserve_take_name`], holding the recording with
+/// its own session file (`file = "."`) and the run's
+/// `power-reserve.json` beside it, so the app opens the take on its run.
+/// The app and `timegrapher record --power-reserve` both file a test here
+/// (#1732).
+pub fn power_reserve_take_dir(takes: &Path, started: &str) -> PathBuf {
+    unused_dir(takes, &power_reserve_take_name(started))
+}
+
 /// The readings `session.json` keeps from the end of a take, as the app
 /// saw them then.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

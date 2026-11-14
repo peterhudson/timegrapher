@@ -513,7 +513,8 @@ enum Command {
         /// A Power Reserve Test: record until the watch stops (the last
         /// beat heard before 10 minutes with none) or 80 hours pass, in
         /// place of --seconds, and keep the run, hour by hour, in the
-        /// session folder's power-reserve.json.
+        /// session folder's power-reserve.json. Into a library (--watch
+        /// without FOLDER) the test is one take, as the app files it.
         #[arg(long, conflicts_with = "seconds")]
         power_reserve: bool,
         /// Print the result as JSON instead of text.

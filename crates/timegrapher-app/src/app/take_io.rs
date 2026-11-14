@@ -833,7 +833,7 @@ impl TimegrapherApp {
         // A Power Reserve Test's take is named as the test names it at
         // its end, so that save lands in the same folder.
         let name = if test {
-            power_reserve_pane::reserve_take_name(&started)
+            library::power_reserve_take_name(&started)
         } else {
             library::take_name(&started, &positions)
         };
