@@ -93,6 +93,59 @@ class Changes(unittest.TestCase):
     def test_nothing_merged_gives_nothing(self):
         self.assertEqual(rv.changes(""), "")
 
+    def test_squash_merges_are_listed_by_their_subject(self):
+        log = "Paper Strip axis: zero reads 0 s (#1610)\x1f\x1e\n"
+        self.assertEqual(rv.changes(log), "- Paper Strip axis: zero reads 0 s (#1610)\n")
+
+
+class Notes(unittest.TestCase):
+    """The notes read real git history with merge and squash merges mixed."""
+
+    def git(self, *args):
+        import subprocess
+        return subprocess.run(["git", *args], cwd=self.dir, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def commit(self, name, message):
+        (pathlib.Path(self.dir) / name).write_text(name)
+        self.git("add", name)
+        self.git("commit", "-q", "-m", message)
+
+    def setUp(self):
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.name", "t")
+        self.git("config", "user.email", "t@example.invalid")
+        self.git("config", "commit.gpgsign", "false")
+        self.commit("a", "Start")
+        self.start = self.git("rev-parse", "HEAD")
+        # A pull request merged with a merge commit; its branch commits
+        # stay off main's first-parent line.
+        self.git("checkout", "-q", "-b", "feature")
+        self.commit("b", "Work in progress")
+        self.git("checkout", "-q", "main")
+        self.git("merge", "-q", "--no-ff", "feature", "-m",
+                 "Merge pull request #10 from o/feature\n\nWheel lines")
+        # A squash merge: one parent, the number in the subject.
+        self.commit("c", "Strip axis reads 0 s (#11)")
+        # A commit pushed straight to main.
+        self.commit("d", "Fix a typo")
+
+    def test_every_first_parent_change_is_listed(self):
+        out = rv.changes(rv.log_since(self.start, "HEAD", cwd=self.dir))
+        self.assertEqual(out,
+                         "- Fix a typo\n"
+                         "- Strip axis reads 0 s (#11)\n"
+                         "- Wheel lines (#10)\n")
+
+    def test_the_range_starts_after_the_last_release(self):
+        released = self.git("rev-parse", "HEAD~1")
+        out = rv.changes(rv.log_since(released, "HEAD", cwd=self.dir))
+        self.assertEqual(out, "- Fix a typo\n")
+
 
 class Files(unittest.TestCase):
     def test_crlf_files_keep_their_endings(self):
