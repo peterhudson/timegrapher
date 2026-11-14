@@ -691,7 +691,17 @@ mod tests {
                 }
             );
             assert_eq!(s.period_s.len(), s.amplitude.len());
-            assert!(s.amplitude.iter().all(|v| v.is_finite()));
+            // Every size is finite but one: with every other sample kept,
+            // the 4 s period's samples fall only at the top and bottom of
+            // each cycle, so its sine can't be sized and it is a gap (NaN,
+            // #1638; Peter chose this on the thread's card, 14 Nov).
+            for (p, a) in s.period_s.iter().zip(&s.amplitude) {
+                if pattern == "alternating" && *p == 4.0 {
+                    assert!(a.is_nan(), "{pattern}: {p} s read {a}");
+                } else {
+                    assert!(a.is_finite(), "{pattern}: {p} s read {a}");
+                }
+            }
             assert!(s
                 .support
                 .description()
