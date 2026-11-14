@@ -738,7 +738,7 @@ mod tests {
     /// The parts read back, as far as they reach: the take kept, beats,
     /// amplitude windows and profiles, cut there.
     fn assert_parts_are_the_take_so_far(take: &Path, whole: &Stored, to_s: f64) {
-        let parts = checkpoint::read(take).unwrap();
+        let parts = checkpoint::read(take).unwrap().stored;
         assert_eq!(parts.header.duration_s, to_s);
         assert_eq!(parts.log.bph, whole.log.bph);
         // Kept to the µs, as `analysis/` keeps them.
@@ -800,18 +800,116 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// A take whose sides are named only after its first part (its beat
-    /// error grows from 0) reads back from its parts with the first part's
-    /// beats numbered one further and its sides swapped, as the reading
-    /// renumbered them.
+    /// The parts read back are the take kept from its sound cut where they
+    /// reach (Norm on #1711): a take that ended there. The outlier check
+    /// near the cut sees only the windows before it, as that take's does.
+    /// The sound has a wrong-sounding Tick in one window within 30 s of
+    /// each possible cut (8 to 10 s, 28 to 30 s and 48 to 50 s): the
+    /// unlock 1 ms early there, as the seed-1 sound renders it.
+    #[test]
+    fn parts_read_back_as_a_take_that_ended_there() {
+        let dir = scratch("cut");
+        let render = |lead_s: f64| {
+            generate(
+                &SynthConfig {
+                    duration_s: 75.0,
+                    seed: 1,
+                    even_unlock_lead_s: lead_s,
+                    ..Default::default()
+                },
+                |_| 270.0,
+                |_| 0.0,
+            )
+        };
+        let mut audio = render(0.0);
+        let wrong = render(0.001);
+        let fs = audio.sample_rate as usize;
+        for from in [8, 28, 48] {
+            let r = from * fs..(from + 2) * fs;
+            audio.samples[r.clone()].copy_from_slice(&wrong.samples[r]);
+        }
+        let path = dir.join("take_part01-001.wav");
+        audio::write_wav(&path, &audio).unwrap();
+        let cfg = StreamConfig {
+            chunk_s: 10.0,
+            ..Default::default()
+        };
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 20.0,
+        });
+        let (_, status) = kept_with_parts(&[path], &cfg, &[], &[4097], parts);
+        assert_eq!(status.failed, None);
+        let to_s = status.to_s;
+        assert!([20.0, 40.0, 60.0].contains(&to_s), "{to_s}");
+        let cut_dir = dir.join("cut");
+        std::fs::create_dir_all(&cut_dir).unwrap();
+        let cut_path = cut_dir.join("take_part01-001.wav");
+        let cut = Audio {
+            samples: audio.samples[..(to_s as usize) * fs].to_vec(),
+            sample_rate: audio.sample_rate,
+        };
+        audio::write_wav(&cut_path, &cut).unwrap();
+        let ended = kept_live(&[cut_path], &cfg, &[], &[4097]);
+        let parts = checkpoint::read(&dir).unwrap().stored;
+        // The wrong Tick just before the cut is left out, in both.
+        let at = |s: &Stored| {
+            s.log
+                .amplitude_windows
+                .iter()
+                .find(|w| w.start_s == to_s - 12.0)
+                .map(|w| (w.even_deg, w.odd_deg))
+                .unwrap()
+        };
+        let (even, odd) = at(&parts);
+        assert!(even.is_none() != odd.is_none(), "{even:?} {odd:?}");
+        assert_eq!(at(&ended), (even, odd));
+        // The take that ended reads its last chunk with no sound after
+        // it, the parts with the sound after: there alone the beats'
+        // quality (each beat's match, beside its time) differs, a little,
+        // and the last stretch's profiles. Every time, number, window and
+        // culled side is the same.
+        let last_chunk = to_s - cfg.chunk_s;
+        let (a, b) = (&parts.log.beats, &ended.log.beats);
+        assert_eq!(a.len(), b.len());
+        for (x, y) in a.iter().zip(b) {
+            // To the µs, as kept.
+            let us = |t: f64| (t * 1e6).round() as i64;
+            assert_eq!((x.index, us(x.time)), (y.index, us(y.time)));
+            if x.time < last_chunk {
+                assert_eq!(x.quality, y.quality, "{}", x.time);
+            } else {
+                assert!((x.quality / y.quality - 1.0).abs() < 0.01, "{}", x.time);
+            }
+        }
+        for csv in [analysis_take::windows_csv, analysis_take::culled_csv] {
+            assert_eq!(
+                csv(&parts.log.amplitude_windows),
+                csv(&ended.log.amplitude_windows)
+            );
+        }
+        let (p, q) = (&parts.profiles, &ended.profiles);
+        assert_eq!(p.len(), q.len());
+        let n = p.len() - 1;
+        assert_eq!(p[n].end_s, to_s);
+        assert!(analysis_take::profiles_bin(&p[..n]) == analysis_take::profiles_bin(&q[..n]));
+        assert_eq!(parts.log.jumps, ended.log.jumps);
+        assert_eq!(parts.log.sided, ended.log.sided);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A take whose sides are named only well after its first parts (its
+    /// beat error grows slowly from 0, past 0.1 ms only after a minute)
+    /// reads back from its parts with the first parts' beats numbered one
+    /// further and their sides swapped, as the reading renumbered them.
     #[test]
     fn sides_named_after_a_part_read_back_renamed() {
         let dir = scratch("renamed");
         let audio = generate(
             &SynthConfig {
-                duration_s: 90.0,
+                duration_s: 150.0,
                 beat_error_ms: 0.0,
-                beat_error_drift_ms_per_s: 0.004,
+                beat_error_drift_ms_per_s: 0.0015,
                 ..Default::default()
             },
             |_| 280.0,
@@ -820,12 +918,12 @@ mod tests {
         let path = dir.join("take_part01-001.wav");
         audio::write_wav(&path, &audio).unwrap();
         let cfg = StreamConfig {
-            chunk_s: 12.0,
+            chunk_s: 10.0,
             ..Default::default()
         };
         let parts = Some(Checkpoints {
             take: dir.clone(),
-            every_s: 12.0,
+            every_s: 10.0,
         });
         let (kept, status) = kept_with_parts(&[path], &cfg, &[], &[48_000], parts);
         let partial: checkpoint::Partial = serde_json::from_slice(
@@ -833,40 +931,74 @@ mod tests {
         )
         .unwrap();
         let renamed = partial.renamed_before.expect("named after a part");
-        assert!(renamed >= 1 && renamed < partial.parts.len(), "{renamed}");
+        // Named past 0.1 ms, after 67 s: whole parts before, and after.
+        assert!(
+            (3..partial.parts.len()).contains(&renamed),
+            "{renamed} of {}",
+            partial.parts.len()
+        );
         assert_parts_are_the_take_so_far(&dir, &kept, status.to_s);
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// A part changed on the disk, or its list, is refused; a part file
-    /// the list doesn't name is passed over; a take with no parts has
-    /// none to read.
+    /// A part changed on the disk is left out, with every part after
+    /// it, and the take reads up to the part before, saying why; a part
+    /// file the list doesn't name is passed over; a take with no parts,
+    /// or whose first part doesn't read, has none to read.
     #[test]
-    fn parts_not_as_listed_are_refused() {
+    fn parts_not_as_listed_are_left_out() {
         let dir = scratch("tampered");
-        let paths = take(&dir, 40.0, 1);
+        let paths = take(&dir, 50.0, 1);
         let cfg = StreamConfig {
             chunk_s: 12.0,
             ..Default::default()
         };
         let parts = Some(Checkpoints {
             take: dir.clone(),
-            every_s: 12.0,
+            every_s: 8.0,
         });
         let (_, status) = kept_with_parts(&paths, &cfg, &[], &[4097], parts);
-        assert_eq!(status.to_s, 24.0);
+        // The last chunk read starts 48 s in: 6 parts, or fewer while its
+        // windows were still being found.
+        assert!(status.to_s >= 24.0, "{}", status.to_s);
+        let n = (status.to_s / 8.0) as usize;
         let folder = dir.join(checkpoint::DIR);
-        std::fs::write(folder.join("0003-beats.csv.gz"), b"not listed").unwrap();
-        let good = checkpoint::read(&dir).unwrap();
-        assert_eq!(good.header.duration_s, 24.0);
+        let unlisted = format!("{:04}-beats.csv.gz", n + 1);
+        std::fs::write(folder.join(unlisted), b"not listed").unwrap();
+        let all = checkpoint::read(&dir).unwrap();
+        assert_eq!(all.stored.header.duration_s, status.to_s);
+        assert_eq!(all.left_out, None);
         let part = folder.join("0002-windows.csv.gz");
         let mut bytes = std::fs::read(&part).unwrap();
         let last = bytes.len() - 1;
         bytes[last] ^= 1;
         std::fs::write(&part, &bytes).unwrap();
+        let first = checkpoint::read(&dir).unwrap();
+        let h = &first.stored.header;
+        assert_eq!(h.duration_s, 8.0);
+        let rows = (h.beats, h.windows, h.profiles);
+        let log = &first.stored.log;
+        assert_eq!(
+            rows,
+            (
+                log.beats.len(),
+                log.amplitude_windows.len(),
+                first.stored.profiles.len()
+            )
+        );
+        assert!(log.beats.last().unwrap().time < 8.0);
+        assert!(log.amplitude_windows.iter().all(|w| w.start_s < 8.0));
+        let why = first.left_out.unwrap();
+        assert!(
+            why.starts_with(&format!("parts 2 to {n} of {n}, from 8 s: "))
+                && why.contains("0002-windows.csv.gz isn't as partial.json lists it"),
+            "{why}"
+        );
+        // Grown past its listed size: refused by its size alone.
+        std::fs::write(folder.join("0001-beats.csv.gz"), vec![0u8; 1 << 20]).unwrap();
         let e = checkpoint::read(&dir).unwrap_err().to_string();
         assert!(
-            e.contains("0002-windows.csv.gz isn't as partial.json lists it"),
+            e.contains("0001-beats.csv.gz isn't as partial.json lists it"),
             "{e}"
         );
         checkpoint::remove(&dir).unwrap();

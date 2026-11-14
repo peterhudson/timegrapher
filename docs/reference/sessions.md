@@ -384,8 +384,11 @@ from the first, written before the take's sides were named the other
 way round (each take's first steady stretch with a clear beat error
 names them, which may come after a part), whose beats are each numbered
 one further, and whose windows and profiles have Tick and Tock swapped,
-when they are read; null when none. A file not listed is passed over,
-and one whose length or SHA-256 differs from the list is refused.
+when they are read; null when none. A file not listed is passed over.
+A part whose file differs from the list in length or SHA-256, or doesn't
+read, is left out with every part after it: the take reads up to the
+part before, and says which parts were left out and why. A take whose
+`partial.json` or first part doesn't read has nothing to read.
 
 The take's own `analysis/` is written from the reading when the
 recording ends, not from the parts, and the parts are removed once it is

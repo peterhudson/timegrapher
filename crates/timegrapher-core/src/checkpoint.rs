@@ -338,46 +338,54 @@ pub fn exists(take: &Path) -> bool {
     take.join(DIR).join(HEADER).is_file()
 }
 
+/// A take read from its parts ([`read`]).
+#[derive(Debug, Clone)]
+pub struct Recovered {
+    /// The take as far as the parts read reach: its header's
+    /// `duration_s`, jumps and row counts are those of the parts read.
+    pub stored: Stored,
+    /// The parts left out, from the first that didn't read on, and why;
+    /// none when every part listed was read.
+    pub left_out: Option<String>,
+}
+
 /// The take in the folder `take` as far as the parts kept while it was
-/// recorded reach: every part `partial.json` lists, each file checked
-/// against its length and SHA-256, read as `analysis/` would be.
-pub fn read(take: &Path) -> io::Result<Stored> {
+/// recorded reach: each part `partial.json` lists, its files checked
+/// against their length and SHA-256 and read as `analysis/` would be, up
+/// to the first that doesn't read, which with every part after it is
+/// left out ([`Recovered::left_out`]). Refused when `partial.json`
+/// doesn't read, or no part does.
+pub fn read(take: &Path) -> io::Result<Recovered> {
     let dir = take.join(DIR);
     let partial = read_list(&dir)?;
-    let header = partial.header;
+    let mut header = partial.header;
     let mut all = Rows::default();
     let mut end_s = 0.0;
+    let mut left_out = None;
     for (i, part) in partial.parts.iter().enumerate() {
-        if part.from_s != end_s || part.to_s <= part.from_s {
-            return Err(invalid(format!(
-                "{DIR}/{HEADER}: part {} doesn't follow on",
-                i + 1
-            )));
-        }
-        end_s = part.to_s;
         let renamed = partial.renamed_before.is_some_and(|n| i < n);
-        let mut rows = read_part(&dir, i, part, header.bph)?;
-        if let (Some(f), Some(l)) = (rows.beats.first(), all.beats.last()) {
-            if f.time <= l.time || f.index + i64::from(renamed) <= l.index {
-                return Err(invalid(format!(
-                    "{DIR}/{}: its first beat doesn't follow the part before",
-                    part_name(i, analysis_take::BEATS)
-                )));
+        match read_on(&dir, (i, part), end_s, renamed, &all, header.bph) {
+            Ok(mut rows) => {
+                end_s = part.to_s;
+                all.beats.append(&mut rows.beats);
+                all.clipped.append(&mut rows.clipped);
+                all.windows.append(&mut rows.windows);
+                all.profiles.append(&mut rows.profiles);
+            }
+            Err(e) if i == 0 => return Err(e),
+            Err(e) => {
+                let n = partial.parts.len();
+                left_out = Some(format!(
+                    "parts {} to {n} of {n}, from {} s: {e}",
+                    i + 1,
+                    part.from_s
+                ));
+                break;
             }
         }
-        if renamed {
-            rows.beats.iter_mut().for_each(|b| b.index += 1);
-            rows.windows
-                .iter_mut()
-                .for_each(AmplitudeWindow::swap_sides);
-            rows.profiles
-                .iter_mut()
-                .for_each(StretchProfiles::swap_sides);
-        }
-        all.beats.append(&mut rows.beats);
-        all.clipped.append(&mut rows.clipped);
-        all.windows.append(&mut rows.windows);
-        all.profiles.append(&mut rows.profiles);
+    }
+    if partial.parts.is_empty() {
+        return Err(invalid(format!("{DIR}/{HEADER} lists no part")));
     }
     let Rows {
         beats,
@@ -385,21 +393,52 @@ pub fn read(take: &Path) -> io::Result<Stored> {
         mut windows,
         profiles,
     } = all;
-    if end_s != header.duration_s
-        || (beats.len(), windows.len(), profiles.len())
-            != (header.beats, header.windows, header.profiles)
-    {
+    header.duration_s = end_s;
+    header.jumps.retain(|&t| t < end_s);
+    header.sided.retain(|&t| t < end_s);
+    (header.beats, header.windows, header.profiles) = (beats.len(), windows.len(), profiles.len());
+    amplitude::reject_side_outliers(&mut windows, amplitude::OUTLIER_SPAN_S);
+    Ok(Recovered {
+        stored: analysis_take::stored_from(header, (beats, clipped), windows, profiles),
+        left_out,
+    })
+}
+
+/// Part `i`, `part`, read on from the parts read so far, `before`, which
+/// end at `end_s`: its beats numbered one further when `renamed`.
+fn read_on(
+    dir: &Path,
+    (i, part): (usize, &Part),
+    end_s: f64,
+    renamed: bool,
+    before: &Rows,
+    bph: u32,
+) -> io::Result<Rows> {
+    if part.from_s != end_s || part.to_s <= part.from_s {
         return Err(invalid(format!(
-            "{DIR}/{HEADER} doesn't add up to its parts"
+            "{DIR}/{HEADER}: part {} doesn't follow on",
+            i + 1
         )));
     }
-    amplitude::reject_side_outliers(&mut windows, amplitude::OUTLIER_SPAN_S);
-    Ok(analysis_take::stored_from(
-        header,
-        (beats, clipped),
-        windows,
-        profiles,
-    ))
+    let mut rows = read_part(dir, i, part, bph)?;
+    if let (Some(f), Some(l)) = (rows.beats.first(), before.beats.last()) {
+        if f.time <= l.time || f.index + i64::from(renamed) <= l.index {
+            return Err(invalid(format!(
+                "{DIR}/{}: its first beat doesn't follow the part before",
+                part_name(i, analysis_take::BEATS)
+            )));
+        }
+    }
+    if renamed {
+        rows.beats.iter_mut().for_each(|b| b.index += 1);
+        rows.windows
+            .iter_mut()
+            .for_each(AmplitudeWindow::swap_sides);
+        rows.profiles
+            .iter_mut()
+            .for_each(StretchProfiles::swap_sides);
+    }
+    Ok(rows)
 }
 
 /// `partial.json` in the parts' folder `dir`, checked.
@@ -434,10 +473,16 @@ struct Rows {
 fn read_part(dir: &Path, i: usize, part: &Part, bph: u32) -> io::Result<Rows> {
     let at = |kind: &str| format!("{DIR}/{}", part_name(i, kind));
     let load = |kind: &str, f: &PartFile| -> io::Result<Vec<u8>> {
-        let bytes = std::fs::read(dir.join(part_name(i, kind)))
-            .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", at(kind))))?;
+        let path = dir.join(part_name(i, kind));
+        let failed = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", at(kind)));
+        let not_listed = || invalid(format!("{} isn't as {HEADER} lists it", at(kind)));
+        // Its size first, so a large file in its place isn't read.
+        if std::fs::metadata(&path).map_err(failed)?.len() != f.bytes {
+            return Err(not_listed());
+        }
+        let bytes = std::fs::read(&path).map_err(failed)?;
         if bytes.len() as u64 != f.bytes || sha256_hex(&bytes) != f.sha256 {
-            return Err(invalid(format!("{} isn't as {HEADER} lists it", at(kind))));
+            return Err(not_listed());
         }
         let limit = analysis_take::MAX_ANALYSIS_FILE;
         let out = crate::archive::read_limited(GzDecoder::new(&bytes[..]), limit)
