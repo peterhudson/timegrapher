@@ -1715,13 +1715,22 @@ fn series_name(k: SeriesKind) -> &'static str {
 
 /// Periods and sizes as log points, leaving out any that can't be.
 fn log_points(periods: &[f64], sizes: &[f64]) -> Vec<[f64; 2]> {
-    periods
-        .iter()
-        .zip(sizes)
-        .map(|(&p, &a)| (p, a))
-        .filter(|(p, a)| *p > 0.0 && *a > 0.0 && a.is_finite())
-        .map(|(p, a)| [p.log10(), a.log10()])
-        .collect()
+    log_runs(periods, sizes).concat()
+}
+
+/// [`log_points`] in runs: a size core withheld (NaN, #1638) ends one, so
+/// the line leaves a gap there and never bridges it.
+fn log_runs(periods: &[f64], sizes: &[f64]) -> Vec<Vec<[f64; 2]>> {
+    let mut runs: Vec<Vec<[f64; 2]>> = vec![Vec::new()];
+    for (&p, &a) in periods.iter().zip(sizes) {
+        if a.is_nan() {
+            runs.push(Vec::new());
+        } else if p > 0.0 && a > 0.0 && a.is_finite() {
+            runs.last_mut().expect("a run").push([p.log10(), a.log10()]);
+        }
+    }
+    runs.retain(|r| !r.is_empty());
+    runs
 }
 
 /// The lowest and highest of the points on one axis (0 across, 1 up).
@@ -1770,7 +1779,11 @@ fn fft_plot(ui: &mut egui::Ui, r: Row<'_>) {
         steadiness::unit_after(sp.unit)
     };
     let size = move |v: f64| format!("{}{gap}{unit}", timegrapher_core::timefreq::size_number(v));
-    let peak = tallest_peak(&pts);
+    // A peak is read within a run, never across a withheld gap.
+    let peak = log_runs(periods, sizes)
+        .iter()
+        .filter_map(|r| tallest_peak(r.as_slice()))
+        .max_by(|a, b| a[1].total_cmp(&b[1]));
     let lines = wheel_lines(marked(s, opts), (x_lo, x_hi));
     let names = WheelNames::reserve(ui, (i, view), opts.wheels);
     let fill = ui.visuals().extreme_bg_color.gamma_multiply(0.8);
@@ -1809,7 +1822,9 @@ fn fft_plot(ui: &mut egui::Ui, r: Row<'_>) {
             if let Some(n) = &names {
                 n.inside(p, &lines, &tops, fill);
             }
-            p.line(Line::new("spectrum", pts).color(colour).width(DATA_W));
+            for run in log_runs(periods, sizes) {
+                p.line(Line::new("spectrum", run).color(colour).width(DATA_W));
+            }
             if let Some((at, _)) = &tallest {
                 p.points(
                     Points::new("tallest", vec![*at])

@@ -772,8 +772,9 @@ impl TimegrapherApp {
         if let Some(l) = self.live.as_mut() {
             l.set_lift(lift);
         }
-        // Changed by hand: the charts follow at once.
+        // Changed by hand: the charts and the guided test follow at once.
         self.refresh_trend();
+        self.reread_guided();
         self.note_settings();
     }
 
