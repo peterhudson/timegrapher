@@ -333,9 +333,7 @@ pub fn grids_with_breaks(log: &BeatLog, rate_s: f64, breaks: &[crate::breaks::Br
 pub fn searches(grids: &[Grid; 3], long: &LongReport, lc: &LongConfig) -> [Option<Search>; 3] {
     let readings = |g: &Grid| g.y.iter().filter(|v| v.is_finite()).count();
     let be_search = (readings(&grids[2]) >= 30).then(|| {
-        let mut g = grids[2].clone();
-        g.t0 = 0.0;
-        longterm::analyse(&g, lc).search
+        crate::steadiness::beat_error_long(&grids[2], long.clock.as_ref(), &long.breaks, lc).search
     });
     [
         Some(long.timing.search.clone()),
@@ -903,9 +901,8 @@ pub fn views(
         Some(long.timing.search.clone()),
         Some(long.amplitude.search.clone()),
         (readings >= 30).then(|| {
-            let mut g = grids[2].clone();
-            g.t0 = 0.0;
-            longterm::analyse(&g, lc).search
+            crate::steadiness::beat_error_long(&grids[2], long.clock.as_ref(), &long.breaks, lc)
+                .search
         }),
     ];
     let folds = folds(&grids, report, lc);
@@ -1577,9 +1574,8 @@ mod tests {
             .find(|s| s.series == "beat_error")
             .expect("beat error spectrum");
         let tests = serde_json::to_value(tests).unwrap();
-        let spectrum_of = |mut g: Grid| {
-            g.t0 = 0.0;
-            let d = longterm::analyse(&g, &lc).detrended;
+        let spectrum_of = |g: Grid| {
+            let d = steadiness::beat_error_long(&g, None, &paused.breaks, &lc).detrended;
             let s =
                 crate::spectrum::amplitude_spectrum(&d, "beat_error", "ms", 1.0, check.max_points);
             serde_json::to_value(s.expect("spectrum")).unwrap()

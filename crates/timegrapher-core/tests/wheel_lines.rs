@@ -200,3 +200,40 @@ fn a_real_takes_wheel_turns_are_followed() {
         assert!(t.all.turns as f64 <= 7200.0 / t.period_s);
     }
 }
+
+/// A line at a train wheel's period is that wheel's line, never a
+/// harmonic of another found cycle (Norm): on DD3235's 30 min take the
+/// 5 s escape wheel is a 30 s cycle's 6th harmonic, and the Periods pane
+/// still names and lists it.
+#[test]
+fn a_real_takes_escape_wheel_is_listed_beside_a_cycle_it_is_a_harmonic_of() {
+    let Some(log) = corpus_log("dd3235_DU_30min") else {
+        return;
+    };
+    let lc = LongConfig {
+        wheels: standard_wheels(log.bph, 20),
+        ..Default::default()
+    };
+    let long = longrun::analyse(&log, None, &lc);
+    let escape = long
+        .timing
+        .components
+        .iter()
+        .find(|c| (c.period_s - 5.0).abs() < 0.05)
+        .expect("the escape wheel's line");
+    assert_eq!(escape.wheel.as_deref(), Some("escape wheel"));
+    assert!(escape.harmonic_of.is_none(), "{:?}", escape.harmonic_of);
+    let r = timegrapher_core::steadiness::check(
+        &log,
+        None,
+        &long,
+        &lc,
+        &timegrapher_core::steadiness::Config::default(),
+    );
+    let rate = r
+        .series
+        .iter()
+        .find(|s| s.series == timegrapher_core::steadiness::SeriesKind::Rate)
+        .unwrap();
+    assert!(rate.headline.contains("5.0 s"), "{}", rate.headline);
+}
