@@ -262,13 +262,7 @@ pub fn fold_spread(f: &longterm::Fold, columns: &[Option<[f64; 3]>]) -> Option<(
     if shape.len() < 2 || mids.is_empty() {
         return None;
     }
-    mids.sort_by(f64::total_cmp);
-    let n = mids.len();
-    let middle = if n % 2 == 1 {
-        mids[n / 2]
-    } else {
-        (mids[n / 2 - 1] + mids[n / 2]) / 2.0
-    };
+    let middle = crate::dsp::median(&mut mids);
     let hi = shape.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let lo = shape.iter().copied().fold(f64::INFINITY, f64::min);
     Some((hi - lo, middle))

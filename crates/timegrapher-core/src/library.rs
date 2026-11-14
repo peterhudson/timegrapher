@@ -1543,9 +1543,7 @@ impl Library {
                 from.display()
             ));
         }
-        if resolved(from).starts_with(resolved(&self.root)) {
-            return Err(format!("{} is already in your watches", from.display()));
-        }
+        self.not_already_in(from)?;
         if from.join(take::MANIFEST).is_file() {
             // A session file that doesn't read would show as a broken take.
             manifest_of(from).map_err(|e| format!("this take's session file doesn't read: {e}"))?;
@@ -1604,6 +1602,15 @@ impl Library {
         Ok((to, left))
     }
 
+    /// The one guard both imports use (#1656): `from` is refused when it is
+    /// already inside the watches folder.
+    fn not_already_in(&self, from: &Path) -> Result<(), String> {
+        if resolved(from).starts_with(resolved(&self.root)) {
+            return Err(format!("{} is already in your watches", from.display()));
+        }
+        Ok(())
+    }
+
     /// Add a recording from outside the library that has no session file
     /// (a lone WAV or FLAC file, or a folder of them) to a watch (by its
     /// id), as a new take named `name`: the file, or everything in the
@@ -1618,9 +1625,7 @@ impl Library {
         written: &[(&str, String)],
     ) -> Result<PathBuf, String> {
         self.writable()?;
-        if resolved(from).starts_with(resolved(&self.root)) {
-            return Err(format!("{} is already in your watches", from.display()));
-        }
+        self.not_already_in(from)?;
         let to_watch = self
             .watches
             .iter()
