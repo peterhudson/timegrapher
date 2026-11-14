@@ -1129,8 +1129,8 @@ pub fn measure_masked(
 /// (audio seconds, in time order): the stretches its test read, each stop
 /// after its settling. A reading too short for its own ± borrows its
 /// noise only from inside them, never from the turns, settling or
-/// handling between (#1624); with none given (a plain take), from the
-/// take around it.
+/// handling between (#1624); with fewer than two (a plain take, or a
+/// test's first stop alone), from the take around it, as before.
 #[expect(
     clippy::too_many_lines,
     reason = "over the limit before it was set; split it (architecture guide, section 12)"
@@ -1143,7 +1143,9 @@ pub fn measure_reading(
     (from_s, to_s): (f64, f64),
     read: &[(f64, f64)],
 ) -> Measurement {
-    let stops = read;
+    // A test is two or more stops: one stretch alone reads as a plain
+    // take, so every caller passing its own span gets the same figures.
+    let stops: &[(f64, f64)] = if read.len() < 2 { &[] } else { read };
     // A reversed or out-of-range stretch reads as an empty one.
     let to_s = to_s.min(log.duration_s).max(0.0);
     let from_s = from_s.max(0.0).min(to_s);

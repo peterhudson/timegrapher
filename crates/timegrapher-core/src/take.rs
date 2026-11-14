@@ -434,10 +434,8 @@ pub fn reading_window(
 /// The stretches a test take `m` reads in its recording `file` of
 /// `duration_s`: each of its entries there from its settling's end
 /// ([`reading_window`], `given_settle_s` as that takes it), in time
-/// order, where two or more of them read something (a test's stops).
-/// What a stop too short for its own ± borrows its noise from, never the
-/// turns between (#1624). None for a take with one reading in the file,
-/// which borrows from the take around it as before.
+/// order: what [`session::measure_reading`] keeps a test's stops to
+/// (#1624). It reads one stretch alone as a plain take.
 pub fn read_stretches(
     m: &Manifest,
     file: &str,
@@ -451,9 +449,6 @@ pub fn read_stretches(
         .filter_map(|e| reading_window(e, m, given_settle_s, duration_s).ok())
         .map(|w| (w.from_s, w.to_s))
         .collect();
-    if read.len() < 2 {
-        return Vec::new();
-    }
     read.sort_by(|a, b| a.0.total_cmp(&b.0));
     read
 }

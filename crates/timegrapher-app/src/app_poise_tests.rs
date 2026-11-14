@@ -603,6 +603,29 @@ fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) {
 #[test]
 fn a_saved_poise_take_reads_the_same_in_the_app_and_the_cli() {
     let (app, base) = saved_and_opened_each("edge", guided::Kind::Poise.order(), 61.0);
+    assert_eq!(reads_as_the_cli(&app).len(), 8);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// A take of one stop is a plain take, not a test: its edge falls inside
+/// a window, and the app keeps that window by the midpoint rule and
+/// borrows from the take around it, as the CLI does (Norm and Trevor on
+/// #1700).
+#[test]
+fn a_saved_one_stop_take_reads_the_same_in_the_app_and_the_cli() {
+    let one = &guided::Kind::Poise.order()[..1];
+    let (app, base) = saved_and_opened_each("one", one, 61.0);
+    let read = reads_as_the_cli(&app);
+    assert_eq!(read.len(), 1);
+    let c = read[0].confidence.as_ref().expect("a watch heard");
+    assert!(c.amplitude.se.is_some(), "amplitude ± kept");
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// Each stop of the opened take `app` read by the app and by
+/// `take::measure_entry` gives the same figures and ±s; the stops
+/// compared, as the app read them.
+fn reads_as_the_cli(app: &TimegrapherApp) -> Vec<timegrapher_core::session::Measurement> {
     let t = app.free_table(&egui::Context::default()).expect("a table");
     let dir = app.session.saved_to().map(Path::to_path_buf);
     let dir = dir.unwrap_or_else(|| PathBuf::from(&app.opened_path));
@@ -613,7 +636,7 @@ fn a_saved_poise_take_reads_the_same_in_the_app_and_the_cli() {
         card_clock: false,
         settle_s: None,
     };
-    let mut compared = 0;
+    let mut compared = Vec::new();
     for e in &m.recordings {
         let cli = timegrapher_core::take::measure_entry(
             &dir,
@@ -652,8 +675,7 @@ fn a_saved_poise_take_reads_the_same_in_the_app_and_the_cli() {
             "{label} beat error ±"
         );
         assert!(near(ca.rate.se, cb.rate.se, 1e-3), "{label} rate ±");
-        compared += 1;
+        compared.push(a.clone());
     }
-    assert_eq!(compared, 8);
-    let _ = std::fs::remove_dir_all(base);
+    compared
 }

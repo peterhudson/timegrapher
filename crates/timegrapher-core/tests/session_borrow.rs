@@ -91,3 +91,22 @@ fn loud_handling_between_stops_does_not_grow_a_stops_pm() {
     assert!(rate_alone > 1.5 * rate_q, "{rate_alone} vs {rate_q}");
     assert!(amp_alone > 1.5 * amp_q, "{amp_alone} vs {amp_q}");
 }
+
+/// One stretch is a plain take, not a test: a caller passing its own span
+/// as the stops reads exactly what the plain reading gives (Trevor on
+/// #1700), with the midpoint rule and the take around it to borrow from.
+#[test]
+fn one_span_reads_as_a_plain_take() {
+    let log = take(true, "one");
+    let (_, a, b) = stops()[3];
+    let plain = session::measure_masked(&log, None, &[], &[], a, b);
+    // The stop's start falls inside a window (its edges are not on the
+    // window grid), so whole-inside and the midpoint rule would differ.
+    let one = session::measure_reading(&log, None, &[], &[], (a, b), &[(a, b)]);
+    assert_eq!(format!("{one:?}"), format!("{plain:?}"));
+    let span = [(a, b)];
+    let whole = session::measure_together(&log, None, &[], &[], (&span, &span));
+    assert_eq!(format!("{:?}", whole.expect("read")), format!("{plain:?}"));
+    let c = one.confidence.expect("a watch heard");
+    assert!(c.amplitude.se.is_some(), "amplitude ± kept");
+}
