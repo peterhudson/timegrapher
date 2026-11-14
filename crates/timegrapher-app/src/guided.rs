@@ -1691,8 +1691,6 @@ pub fn pane(
     note: Option<&str>,
     (card, info): (&str, bool),
 ) -> Option<Action> {
-    let pal = theme::pal(ui);
-    let mut action = None;
     // When the banner comes or goes (a test starts, stops or finishes),
     // the pane starts again from its top, not where it was scrolled.
     let banner_on = test.is_some() && phase.is_some_and(|ph| ph != Phase::Finished);
@@ -1712,65 +1710,111 @@ pub fn pane(
             h,
         );
     };
+    let body = Body {
+        test,
+        phase,
+        earlier,
+        saved,
+        free,
+        live,
+        watch,
+        note,
+        card,
+    };
+    let mut action = None;
     theme::with_info(ui, info, egui::Id::new("positions info"), panel, |ui| {
-        area.show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 6.0;
-            if let Some(n) = note {
-                ui.label(RichText::new(n).color(pal.text_secondary));
-            }
-            if let (Some(t), Some(ph)) = (test, phase) {
-                if ph != Phase::Finished {
-                    action = banner(ui, t, ph, None);
-                    ui.add_space(6.0);
-                }
-            }
-            if let Some(t) = test {
-                this_test(ui, t, phase, live);
-            }
-            // An opened 24 hour half shows the run as saved, not read again.
-            match (test, saved) {
-                (None, Some(s)) => saved_test(ui, s),
-                (None, None) => {
-                    if let Some(f) = free {
-                        this_take(ui, f, card);
-                    }
-                }
-                _ => {}
-            }
-            let c = match test {
-                Some(t) => t
-                    .full
-                    .as_ref()
-                    .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
-                None => saved.and_then(saved_comparison),
-            };
-            if let Some(c) = &c {
-                ui.add_space(10.0);
-                heading(
-                    ui,
-                    &format!("Full Wind Against {:.1} Hours", c.hours),
-                    "The full-wind test loaded at the start, against this one, run without \
-                     winding or wearing the watch in between",
-                );
-                comparison_grid(ui, c);
-            }
-            if let Some(full) = earlier {
-                ui.add_space(10.0);
-                if earlier_section(ui, full, phase) {
-                    action = Some(Action::ClearEarlier);
-                }
-            }
-            ui.add_space(10.0);
-            let about = about_text(test, earlier, (watch, saved.is_some()));
-            if !about.is_empty() {
-                ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
-            }
-            if let Some(t) = test {
-                test_footer(ui, t);
-            }
-        });
+        area.show(ui, |ui| action = body.show(ui));
     });
     action
+}
+
+/// What the pane's body shows, as [`pane`] was given it.
+struct Body<'a> {
+    test: Option<&'a Test>,
+    phase: Option<Phase>,
+    earlier: Option<&'a FullWind>,
+    saved: Option<&'a FullWind>,
+    free: Option<&'a FreeTable>,
+    live: Option<&'a FreeCell>,
+    watch: bool,
+    note: Option<&'a str>,
+    card: &'a str,
+}
+
+impl Body<'_> {
+    /// The body, top to bottom; what a button asked for.
+    fn show(&self, ui: &mut egui::Ui) -> Option<Action> {
+        let pal = theme::pal(ui);
+        ui.spacing_mut().item_spacing.y = 6.0;
+        if let Some(n) = self.note {
+            ui.label(RichText::new(n).color(pal.text_secondary));
+        }
+        let mut action = self.tables(ui);
+        self.comparison(ui);
+        if let Some(full) = self.earlier {
+            ui.add_space(10.0);
+            if earlier_section(ui, full, self.phase) {
+                action = Some(Action::ClearEarlier);
+            }
+        }
+        ui.add_space(10.0);
+        let about = about_text(self.test, self.earlier, (self.watch, self.saved.is_some()));
+        if !about.is_empty() {
+            ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
+        }
+        if let Some(t) = self.test {
+            test_footer(ui, t);
+        }
+        action
+    }
+
+    /// The banner while a test runs, then this test's table, the saved
+    /// run, or the take's own table; what the banner asked for.
+    fn tables(&self, ui: &mut egui::Ui) -> Option<Action> {
+        let mut action = None;
+        if let (Some(t), Some(ph)) = (self.test, self.phase) {
+            if ph != Phase::Finished {
+                action = banner(ui, t, ph, None);
+                ui.add_space(6.0);
+            }
+        }
+        if let Some(t) = self.test {
+            this_test(ui, t, self.phase, self.live);
+        }
+        // An opened 24 hour half shows the run as saved, not read again.
+        match (self.test, self.saved) {
+            (None, Some(s)) => saved_test(ui, s),
+            (None, None) => {
+                if let Some(f) = self.free {
+                    this_take(ui, f, self.card);
+                }
+            }
+            _ => {}
+        }
+        action
+    }
+
+    /// The full-wind test loaded at the start against this one, when
+    /// there is one.
+    fn comparison(&self, ui: &mut egui::Ui) {
+        let c = match self.test {
+            Some(t) => t
+                .full
+                .as_ref()
+                .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
+            None => self.saved.and_then(saved_comparison),
+        };
+        if let Some(c) = &c {
+            ui.add_space(10.0);
+            heading(
+                ui,
+                &format!("Full Wind Against {:.1} Hours", c.hours),
+                "The full-wind test loaded at the start, against this one, run without \
+                 winding or wearing the watch in between",
+            );
+            comparison_grid(ui, c);
+        }
+    }
 }
 
 /// This test's heading and its table, filling in as each position is
