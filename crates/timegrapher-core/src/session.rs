@@ -657,6 +657,32 @@ pub fn nearest_windows<T>(
     reach(&|on| (a, (to_s + on).min(end_s)), &|on| to_s + on >= end_s).0
 }
 
+/// The parts of the take from `a` to `b` (s) a reading may borrow its
+/// noise from: those inside the take's `read` stretches (#1624), in time
+/// order, or the whole of it where none are given.
+pub fn read_within(read: &[(f64, f64)], a: f64, b: f64) -> Vec<(f64, f64)> {
+    if read.is_empty() {
+        return vec![(a, b)];
+    }
+    read.iter()
+        .map(|&(x, y)| (x.max(a), y.min(b)))
+        .filter(|(x, y)| x < y)
+        .collect()
+}
+
+/// Whether the 2 s window `w` belongs to the stretch from `from_s` to
+/// `to_s` of a take whose test read the stops `stops`: wholly inside it,
+/// since a window over a stop's edge holds the handling between stops
+/// (Norm on #1624, masks cull, never fill); with no stops (a plain take),
+/// by its midpoint ([`window_in`]).
+pub fn stop_window_in(w: &AmplitudeWindow, stops: &[(f64, f64)], from_s: f64, to_s: f64) -> bool {
+    if stops.is_empty() {
+        window_in(w, from_s, to_s)
+    } else {
+        w.start_s >= from_s && w.end_s <= to_s
+    }
+}
+
 /// Whether enough of a figure's values are among `windows` to borrow its
 /// noise from: [`crate::confidence::MIN_NOISE_VALUES`] of each of the
 /// amplitude and the unlock beat error.
@@ -1088,10 +1114,6 @@ pub fn measure_with_breaks(
 /// one; the masks' beats and amplitude windows are left out,
 /// the beats expected and the sound listened to leave out their time, and
 /// the caveats say how much was masked.
-#[expect(
-    clippy::too_many_lines,
-    reason = "over the limit before it was set; split it (architecture guide, section 12)"
-)]
 pub fn measure_masked(
     log: &BeatLog,
     clock: Option<&ClockFit>,
@@ -1100,6 +1122,28 @@ pub fn measure_masked(
     from_s: f64,
     to_s: f64,
 ) -> Measurement {
+    measure_reading(log, clock, breaks, masked, (from_s, to_s), &[])
+}
+
+/// [`measure_masked`] of a stretch of a take whose readings are `read`
+/// (audio seconds, in time order): the stretches its test read, each stop
+/// after its settling. A reading too short for its own ± borrows its
+/// noise only from inside them, never from the turns, settling or
+/// handling between (#1624); with none given (a plain take), from the
+/// take around it.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
+pub fn measure_reading(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[Break],
+    masked: &[(f64, f64)],
+    (from_s, to_s): (f64, f64),
+    read: &[(f64, f64)],
+) -> Measurement {
+    let stops = read;
     // A reversed or out-of-range stretch reads as an empty one.
     let to_s = to_s.min(log.duration_s).max(0.0);
     let from_s = from_s.max(0.0).min(to_s);
@@ -1138,7 +1182,10 @@ pub fn measure_masked(
             ..Default::default()
         })
         .collect();
-    let amp = stretch_windows(&holes, &log.amplitude_windows, from_s, to_s);
+    let mut amp = stretch_windows(&holes, &log.amplitude_windows, from_s, to_s);
+    // A test's stop takes only the windows wholly inside it: one over its
+    // edge holds the handling between stops (#1624).
+    amp.retain(|w| stop_window_in(w, stops, from_s, to_s));
     let StretchFits {
         fit,
         turned,
@@ -1259,12 +1306,18 @@ pub fn measure_masked(
     // The take's windows nearest the stretch, to borrow the ±'s noise
     // from where it holds too few values (#1470).
     let span = (from_s, to_s, log.duration_s);
+    let within = |a: f64, b: f64| read_within(stops, a, b);
     let take_rate = nearest_windows(
         span,
         RATE_FIRST_REACH_S,
         |a, b| {
-            let near = holes.beats(&log.beats[stretch_beats(&log.beats, a, b)]);
-            scatter_windows(&holes, &near, log.bph, map(a), map(b), part)
+            within(a, b)
+                .into_iter()
+                .flat_map(|(a, b)| {
+                    let near = holes.beats(&log.beats[stretch_beats(&log.beats, a, b)]);
+                    scatter_windows(&holes, &near, log.bph, map(a), map(b), part)
+                })
+                .collect()
         },
         rate_noise_enough,
     );
@@ -1272,9 +1325,10 @@ pub fn measure_masked(
         span,
         AMPLITUDE_FIRST_REACH_S,
         |a, b| {
+            let parts = within(a, b);
             log.amplitude_windows
                 .iter()
-                .filter(|w| window_in(w, a, b))
+                .filter(|w| parts.iter().any(|&(a, b)| stop_window_in(w, stops, a, b)))
                 .filter(|w| holes.clear(map(w.start_s), map(w.end_s)))
                 .collect()
         },
@@ -1729,6 +1783,9 @@ fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
     v.max_by(|a, b| a.abs().total_cmp(&b.abs()))
 }
 
+/// Stretches of a take, start and end (s), in time order.
+pub type Spans<'a> = &'a [(f64, f64)];
+
 /// Stretches `spans` of a take (in time order) read together as one
 /// reading, as [`measure_masked`] reads a take: from the first's start to
 /// the last's end, with the time between them and the `masked` stretches
@@ -1736,19 +1793,22 @@ fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
 /// once). Its `masked_s` is all that is left out; its masked caveat says
 /// only the time masked by hand inside the stretches (#1228). None for no
 /// stretches. What a Positions Test table reads each position by, and the
-/// app its whole take.
+/// app its whole take. A reading too short for its own ± borrows its
+/// noise from inside the take's `read` stretches ([`measure_reading`]):
+/// all the stops of its test, other positions' too (#1624).
 pub fn measure_together(
     log: &BeatLog,
     clock: Option<&ClockFit>,
     breaks: &[Break],
     masked: &[(f64, f64)],
-    spans: &[(f64, f64)],
+    (spans, read): (Spans<'_>, Spans<'_>),
 ) -> Option<Measurement> {
     let (&(from, _), &(_, to)) = (spans.first()?, spans.last()?);
     let pairs = |v: &[(f64, f64)]| v.iter().map(|&(a, b)| [a, b]).collect::<Vec<_>>();
     let mut cut = masked.to_vec();
     cut.extend(spans.windows(2).map(|w| (w[0].1, w[1].0)));
-    let mut m = measure_masked(log, clock, breaks, &masked_spans(&pairs(&cut)), from, to);
+    let cut = masked_spans(&pairs(&cut));
+    let mut m = measure_reading(log, clock, breaks, &cut, (from, to), read);
     let hand = masked_spans(&pairs(masked));
     let by_hand: f64 = spans.iter().map(|&(a, b)| masked_within(&hand, a, b)).sum();
     m.caveats

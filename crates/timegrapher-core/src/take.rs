@@ -431,6 +431,33 @@ pub fn reading_window(
     })
 }
 
+/// The stretches a test take `m` reads in its recording `file` of
+/// `duration_s`: each of its entries there from its settling's end
+/// ([`reading_window`], `given_settle_s` as that takes it), in time
+/// order, where two or more of them read something (a test's stops).
+/// What a stop too short for its own ± borrows its noise from, never the
+/// turns between (#1624). None for a take with one reading in the file,
+/// which borrows from the take around it as before.
+pub fn read_stretches(
+    m: &Manifest,
+    file: &str,
+    given_settle_s: Option<f64>,
+    duration_s: f64,
+) -> Vec<(f64, f64)> {
+    let mut read: Vec<(f64, f64)> = m
+        .recordings
+        .iter()
+        .filter(|e| e.file == file)
+        .filter_map(|e| reading_window(e, m, given_settle_s, duration_s).ok())
+        .map(|w| (w.from_s, w.to_s))
+        .collect();
+    if read.len() < 2 {
+        return Vec::new();
+    }
+    read.sort_by(|a, b| a.0.total_cmp(&b.0));
+    read
+}
+
 /// What is opened to read the recording at `path` (a recording or a
 /// take's folder) whole, as `analyze --trend` reads it: the folder its
 /// session file is read from, the session file (an empty one without)
@@ -1481,13 +1508,14 @@ pub fn measure_opened(
     } = reading_window(e, m, s.settle_s, log.duration_s).map_err(EntryError::NoReading)?;
     // A lead of noise before the watch is left out of the reading (#844).
     let lead = session::lead_s(&log, fit.as_ref(), &breaks, &masked, settle_s, end_s);
-    let mut measurement = session::measure_masked(
+    let read = read_stretches(m, &e.file, s.settle_s, log.duration_s);
+    let mut measurement = session::measure_reading(
         &log,
         fit.as_ref(),
         &breaks,
         &masked,
-        lead.unwrap_or(settle_s),
-        end_s,
+        (lead.unwrap_or(settle_s), end_s),
+        &read,
     );
     if let Some(t) = lead {
         let seconds = t - start_s;

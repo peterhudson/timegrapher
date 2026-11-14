@@ -136,9 +136,17 @@ fn measured(name: &str) -> (TimegrapherApp, std::path::PathBuf, impl Sized) {
 /// `each` s apart, its rate 30 s/d each way round the dial (fastest with
 /// 6H at the top, as `measured`), its sound kept; and its folder.
 fn listened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
+    listened_each(name, stops, 62.0)
+}
+
+/// [`listened`] with stops `each` seconds long.
+fn listened_each(
+    name: &str,
+    stops: &[Position],
+    each: f64,
+) -> (TimegrapherApp, std::path::PathBuf) {
     let base = std::env::temp_dir().join(format!("tg-app-poise-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
-    let each = 62.0;
     let tops: Vec<f64> = stops.iter().map(|p| p.core().top_deg().unwrap()).collect();
     let extra = move |t: f64| {
         let deg = tops[((t / each).floor() as usize).min(tops.len() - 1)];
@@ -179,7 +187,16 @@ fn listened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathB
 /// [`listened`], saved, then opened in a fresh app as a saved take is
 /// opened (#1619); and the folder to remove.
 fn saved_and_opened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
-    let (mut app, base) = listened(name, stops);
+    saved_and_opened_each(name, stops, 62.0)
+}
+
+/// [`saved_and_opened`] with stops `each` seconds long.
+fn saved_and_opened_each(
+    name: &str,
+    stops: &[Position],
+    each: f64,
+) -> (TimegrapherApp, std::path::PathBuf) {
+    let (mut app, base) = listened_each(name, stops, each);
     app.save_into(&base.join("saved"));
     app.wait_for_save();
     let saved = app.session.saved_to().expect("saved").to_path_buf();
@@ -575,4 +592,68 @@ fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) {
             });
         });
     }
+}
+
+/// A saved Dynamic Poise take whose stops start between the 2 s windows
+/// of its whole sound (61 s each), so the window over each stop's start
+/// holds the end of the stop before. The app, reading the take's stops,
+/// and `timegrapher session`, reading its whole sound, give each stop
+/// the same figures and ±s: a stop takes only the windows wholly inside
+/// it (Norm on #1624).
+#[test]
+fn a_saved_poise_take_reads_the_same_in_the_app_and_the_cli() {
+    let (app, base) = saved_and_opened_each("edge", guided::Kind::Poise.order(), 61.0);
+    let t = app.free_table(&egui::Context::default()).expect("a table");
+    let dir = app.session.saved_to().map(Path::to_path_buf);
+    let dir = dir.unwrap_or_else(|| PathBuf::from(&app.opened_path));
+    let text = std::fs::read_to_string(dir.join(MANIFEST)).unwrap();
+    let m: timegrapher_core::session::Manifest = toml::from_str(&text).unwrap();
+    let settings = timegrapher_core::take::EntrySettings {
+        stream: timegrapher_core::stream::StreamConfig::default(),
+        card_clock: false,
+        settle_s: None,
+    };
+    let mut compared = 0;
+    for e in &m.recordings {
+        let cli = timegrapher_core::take::measure_entry(
+            &dir,
+            &m,
+            e,
+            &settings,
+            |_| Ok(None),
+            |_| Ok(None),
+        )
+        .expect("read")
+        .measurement;
+        let label = e.position.as_deref().unwrap();
+        let Some(r) = t.upright.0.iter().find(|r| r.position.common() == label) else {
+            continue;
+        };
+        let (a, b) = (&r.measurement, &cli);
+        let near = |x: Option<f64>, y: Option<f64>, tol: f64| match (x, y) {
+            (Some(x), Some(y)) => (x - y).abs() <= tol,
+            (x, y) => x.is_none() && y.is_none(),
+        };
+        assert!(
+            near(a.amplitude_deg, b.amplitude_deg, 1e-6),
+            "{label} amplitude"
+        );
+        assert!(
+            near(a.beat_error_unlock_ms, b.beat_error_unlock_ms, 1e-6),
+            "{label} beat error"
+        );
+        let (ca, cb) = (a.confidence.unwrap(), b.confidence.unwrap());
+        assert!(
+            near(ca.amplitude.se, cb.amplitude.se, 1e-6),
+            "{label} amplitude ±"
+        );
+        assert!(
+            near(ca.beat_error.se, cb.beat_error.se, 1e-6),
+            "{label} beat error ±"
+        );
+        assert!(near(ca.rate.se, cb.rate.se, 1e-3), "{label} rate ±");
+        compared += 1;
+    }
+    assert_eq!(compared, 8);
+    let _ = std::fs::remove_dir_all(base);
 }

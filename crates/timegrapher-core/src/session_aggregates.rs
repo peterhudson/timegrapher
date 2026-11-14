@@ -231,6 +231,14 @@ pub fn position_rows(
     stretches: &[(Position, f64, f64)],
     min_s: f64,
 ) -> Vec<PositionRow> {
+    // Every stop of the test, whatever its position: what a stop too short
+    // for its own ± borrows its noise from (#1624).
+    let mut read: Vec<(f64, f64)> = stretches
+        .iter()
+        .map(|&(_, a, b)| (a.max(0.0), b.min(log.duration_s)))
+        .filter(|(a, b)| a < b)
+        .collect();
+    read.sort_by(|a, b| a.0.total_cmp(&b.0));
     over.iter()
         .map(|&p| {
             let mut spans: Vec<(f64, f64)> = stretches
@@ -246,7 +254,7 @@ pub fn position_rows(
                 .sum::<f64>()
                 .max(0.0);
             let measurement = (duration_s >= min_s)
-                .then(|| measure_together(log, clock, breaks, masked, &spans))
+                .then(|| measure_together(log, clock, breaks, masked, (&spans, &read)))
                 .flatten();
             PositionRow {
                 position: p,

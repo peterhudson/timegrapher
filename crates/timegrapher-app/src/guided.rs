@@ -704,8 +704,15 @@ impl Test {
         // Cut at every jump in the beats, as the whole take is, so no fit
         // runs across one.
         let jumps = crate::steady::reading_breaks(Vec::new(), log);
+        // A stop too short for its own ± borrows its noise only from the
+        // test's stops, never the turns between (core's rule, #1624).
+        let mut stops: Vec<(f64, f64)> = self.spans.iter().map(|&(_, a, b)| (a, b)).collect();
+        if !stops.contains(&(from, to)) {
+            stops.push((from, to));
+        }
+        stops.sort_by(|a, b| a.0.total_cmp(&b.0));
         let measurement: Measurement =
-            session::measure_masked(log, clock, &jumps, masked, from, to);
+            session::measure_reading(log, clock, &jumps, masked, (from, to), &stops);
         Some(Reading {
             bph_set: self.bph_set,
             label: self.step_name(i),
