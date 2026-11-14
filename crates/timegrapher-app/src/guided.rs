@@ -2567,24 +2567,9 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
 /// the table, and in the 24 hour half both tests side by side, fields
 /// split by `sep` as [`table_text`] splits them.
 pub fn export_text(test: &Test, about: &About, sep: char) -> String {
-    let field = |s: &str| {
-        if s.contains(sep) || s.contains('"') {
-            format!("\"{}\"", s.replace('"', "\"\""))
-        } else {
-            s.to_string()
-        }
-    };
     let mut out = String::new();
-    let mut line = |k: &str, v: String| {
-        out += &format!("{}{sep}{}\n", field(k), field(&v));
-    };
-    line("Watch", about.watch.trim().to_string());
-    line("Calibre", about.calibre.clone());
-    line(
-        "Beat Rate, bph",
-        about.bph.map_or_else(String::new, |b| b.to_string()),
-    );
-    line("Lift Angle, °", format!("{:.0}", about.lift_angle_deg));
+    let mut line = |k: &str, v: String| out += &export_line(k, &v, sep);
+    about_lines(about, &mut line);
     line("Test Began, UTC", test.began_utc());
     if let Some((full, h)) = &test.full {
         line("Full-Wind Test Began, UTC", full.began_utc.clone());
@@ -2598,13 +2583,8 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
         out += &complication_text(test, sep);
         return out;
     }
-    out.push('\n');
     let readings = test.readings_so_far();
-    out += &table_text(&table(readings, test.kind), sep, test.kind);
-    if let Some(f) = poise_fit(readings).filter(|_| test.kind == Kind::Poise) {
-        out.push('\n');
-        out += &format!("{}\n", field(&f.text));
-    }
+    out += &rows_text(readings, test.kind, sep);
     if let Some(c) = test
         .full
         .as_ref()
@@ -2612,6 +2592,54 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
     {
         out.push('\n');
         out += &comparison_text(&c, sep);
+    }
+    out
+}
+
+/// A reopened take's Dynamic Poise stops as text, as [`export_text`]
+/// gives a test's: the watch and how it was read, the table and the
+/// fit. The rows are the ones the pane shows (#1657); a take keeps no
+/// test of its own, so there is no settling or start to give.
+pub fn poise_rows_text(readings: &[Reading], about: &About, sep: char) -> String {
+    let mut out = String::new();
+    about_lines(about, &mut |k: &str, v: String| {
+        out += &export_line(k, &v, sep)
+    });
+    out += &rows_text(readings, Kind::Poise, sep);
+    out
+}
+
+/// The watch, its calibre, beat rate and lift, a line each.
+fn about_lines(about: &About, line: &mut impl FnMut(&str, String)) {
+    line("Watch", about.watch.trim().to_string());
+    line("Calibre", about.calibre.clone());
+    line(
+        "Beat Rate, bph",
+        about.bph.map_or_else(String::new, |b| b.to_string()),
+    );
+    line("Lift Angle, °", format!("{:.0}", about.lift_angle_deg));
+}
+
+/// One `key sep value` line, each quoted where it holds `sep` or a quote.
+fn export_line(k: &str, v: &str, sep: char) -> String {
+    format!("{}{sep}{}\n", quoted(k, sep), quoted(v, sep))
+}
+
+/// `s` as one field: quoted where it holds `sep` or a quote.
+fn quoted(s: &str, sep: char) -> String {
+    if s.contains(sep) || s.contains('"') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// The table after a blank line, and for Dynamic Poise the fit in words.
+fn rows_text(readings: &[Reading], kind: Kind, sep: char) -> String {
+    let mut out = String::from("\n");
+    out += &table_text(&table(readings, kind), sep, kind);
+    if let Some(f) = poise_fit(readings).filter(|_| kind == Kind::Poise) {
+        out += &format!("\n{}\n", quoted(&f.text, sep));
     }
     out
 }
