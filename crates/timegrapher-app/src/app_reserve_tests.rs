@@ -994,6 +994,41 @@ fn a_long_take_lands_with_its_run_and_charts_read_in_the_background() {
     assert_eq!(text(&app), text(&here));
 }
 
+/// A long take's run, once it has come, is read again when what it
+/// rests on changes: every beat masked, it goes, as a fresh reading
+/// gives none; unmasked, it comes back (#1644, from an external audit).
+#[test]
+fn a_long_takes_run_is_read_again_when_its_masks_change() {
+    let run = power_reserve::LONG_TAKE_S + 1800.0;
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.land_log(long_log(run), "long".into(), vec![], vec![]);
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let settle = |app: &mut TimegrapherApp, shown: bool| {
+        let start = Instant::now();
+        loop {
+            app.take_reads_shown(&ctx);
+            if app.bg.reserve.is_none() && app.reserve.is_some() == shown {
+                return;
+            }
+            assert!(start.elapsed() < Duration::from_secs(60), "never came");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    let text = |a: &TimegrapherApp| {
+        let r = a.reserve.as_ref().and_then(|t| t.results.as_ref()).unwrap();
+        reserve::results_text(r, "", ',')
+    };
+    settle(&mut app, true);
+    let before = text(&app);
+    app.mask(0.0, run + 60.0);
+    assert!(app.long_take_reader().map(|read| read()).unwrap().is_none());
+    settle(&mut app, false);
+    app.set_masked(Vec::new());
+    settle(&mut app, true);
+    assert_eq!(text(&app), before);
+}
+
 /// An idle window draws only when asked; one listening or reading a
 /// batch draws every 40 ms; work on a thread of its own, each kind on its
 /// own, every 100 ms, so what it gives shows with no input (Trevor's HOLD

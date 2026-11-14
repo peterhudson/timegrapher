@@ -2653,6 +2653,7 @@ impl TimegrapherApp {
         self.refresh_trend();
         self.bg.reserve = None;
         self.reserve_from_long_take();
+        self.bg.reserve_of = Some(self.rev);
     }
 
     /// Show a take's beats, `log`, as an opened take lands whose readings
