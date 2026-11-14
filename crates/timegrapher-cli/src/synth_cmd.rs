@@ -86,6 +86,7 @@ fn session_files(
         bph: Some(scenarios::BPH),
         lift: scenarios::LIFT_DEG,
         lift_known: true,
+        lift_from: timegrapher_core::take::SettingFrom::Given,
         settle_s: None,
     };
     let dial_up = timegrapher_core::session::Position::parse("DU").expect("DU is a position");

@@ -433,10 +433,17 @@ fn recorded_position_by_position(c: &mut Client, dir: &Path) {
         );
         assert!(r.get("isError").is_none(), "{r}");
         assert_eq!(r["structuredContent"]["schema"], "timegrapher.record/2");
-        // The facts in words first: the lift angle is the calibre's.
+        // The facts in words first: the first take's lift angle is the
+        // calibre's, and the next take's the one the session file now
+        // keeps (#1648).
         let said = r["content"][0]["text"].as_str().unwrap();
         assert!(said.starts_with("Recorded "), "{said}");
-        assert!(said.contains("the ETA 2824-2's"), "{said}");
+        let from = if pos == "DU" {
+            "Lift angle 50°: the ETA 2824-2's."
+        } else {
+            "Lift angle 50°: the take's, from its session file."
+        };
+        assert!(said.contains(from), "{said}");
         assert!(said.ends_with("The take was added to the test."), "{said}");
     }
     // A retried take comes back as it was, and is not recorded again.

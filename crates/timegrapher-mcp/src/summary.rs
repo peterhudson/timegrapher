@@ -5,7 +5,7 @@
 //! in the document, or guess which amplitude difference is which. Facts
 //! only: no grades or verdicts.
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 pub(crate) use timegrapher_core::reading_text::position_name;
 use timegrapher_core::reading_text::{figures, values};
@@ -98,13 +98,13 @@ fn watch(doc: &Value) -> String {
 }
 
 /// The lead for `analyze`, `session`, `record` and `series` documents;
-/// `None` for others. `args` are the tool call's, to tell a given lift angle from the
-/// default.
-pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
+/// `None` for others. Where a setting came from is the document's word,
+/// never guessed from the tool call's arguments (#1648).
+pub fn lead(doc: &Value) -> Option<String> {
     let schema = doc["schema"].as_str().unwrap_or("");
     let mut lines = Vec::new();
     if schema.starts_with("timegrapher.record/") {
-        return Some(take(doc, args));
+        return Some(take(doc));
     }
     if schema.starts_with("timegrapher.series/") {
         return with_limits(series(doc).into_iter().collect(), doc);
@@ -286,7 +286,7 @@ fn power_reserve(p: &Value) -> Option<String> {
 /// A recorded take: what was recorded, what its quick check measured, the
 /// lift angle and where it came from, the beats found and clipped, and the
 /// test it joined. Facts only: no grades.
-fn take(doc: &Value, args: &Map<String, Value>) -> String {
+fn take(doc: &Value) -> String {
     let c = &doc["check"];
     let pos = position_name(doc["position"].as_str().unwrap_or(""));
     let mut lines = vec![match doc["seconds"].as_f64() {
@@ -312,15 +312,23 @@ fn take(doc: &Value, args: &Map<String, Value>) -> String {
     }
     let settings = &doc["input"]["settings"];
     if let Some(l) = settings["lift_deg"].as_f64() {
-        let given = |k: &str| args.get(k).is_some_and(|v| !v.is_null());
-        let from = if given("lift_deg") {
-            "as given".to_string()
-        } else if let Some(cal) = settings["calibre"].as_str() {
-            format!("the {cal}'s")
-        } else {
-            "the default, since no calibre or lift angle was given; the amplitude \
-             depends on it"
-                .to_string()
+        // Where `record` says the lift came from, not what this call
+        // passed: a take's session file may give it (#1648).
+        let assumed = "the amplitude depends on it";
+        let from = match settings["lift_from"].as_str() {
+            Some("given") => "as given".to_string(),
+            Some("take") if settings["lift_known"] == true => {
+                "the take's, from its session file".to_string()
+            }
+            Some("take") => format!(
+                "the take's, the default it was first recorded with, not one set for \
+                 the watch; {assumed}"
+            ),
+            Some("calibre") => match settings["calibre"].as_str() {
+                Some(cal) => format!("the {cal}'s"),
+                None => "the calibre's".to_string(),
+            },
+            _ => format!("the default, since no calibre or lift angle was given; {assumed}"),
         };
         lines.push(format!("Lift angle {l}°: {from}."));
     }
@@ -524,7 +532,7 @@ mod tests {
         for case in cases.as_array().unwrap() {
             let doc = case["doc"].clone();
             let before = doc.clone();
-            let lead = lead(&doc, &Map::new()).unwrap();
+            let lead = lead(&doc).unwrap();
             assert!(
                 lead.starts_with(case["expected_lead"].as_str().unwrap()),
                 "{}: {lead}",
@@ -552,7 +560,7 @@ mod tests {
                 c["position_text"].as_str().unwrap(),
                 c["text"].as_str().unwrap()
             );
-            let text = lead(&doc, &Map::new()).unwrap();
+            let text = lead(&doc).unwrap();
             assert!(text.lines().any(|s| s == line), "{text}");
         }
     }
@@ -571,7 +579,7 @@ mod tests {
                             "beat_error": { "se": 0.004 } },
             "caveats": [{ "code": "lift_unknown" }],
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         // Each figure at its place, its ± rounded up there; the rate has
         // no ± (#1470).
         assert!(
@@ -618,7 +626,7 @@ mod tests {
                 "left_out": [{ "position": "CU", "why": "nothing after settling" }],
             },
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert!(
             s.starts_with(
                 "The take's session file lists this file; `session` reads it:\n\
@@ -636,7 +644,7 @@ mod tests {
             "overall": { "rate_s_per_day": 6.01 },
             "take": { "session_file": "take/session.toml", "error": "bad toml" },
         });
-        let s = lead(&unread, &Map::new()).unwrap();
+        let s = lead(&unread).unwrap();
         assert!(
             s.starts_with(
                 "The session file in this file's folder couldn't be read for it (bad toml); \
@@ -668,7 +676,7 @@ mod tests {
             limits[0]["text"].as_str().unwrap().contains("lift angle"),
             "{limits:?}"
         );
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert!(
             s.contains("What limits the take's readings:\n- Dial Up (DU): The lift angle"),
             "{s}"
@@ -685,7 +693,7 @@ mod tests {
             "report": { "states": [{ "wind_h": 0.0, "d_amplitude": 28.4,
                 "dvh_amplitude": -15.6, "x": 2.7, "d_rate": 4.2, "dvh_rate": -1.5 }] },
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert!(s.contains("- Dial Up (DU): rate +6.0 s/d"), "{s}");
         for rate in ["+2.7 s/d (x)", "4.2 s/d (d_rate)", "-1.5 s/d (dvh_rate)"] {
             assert!(s.contains(rate), "{s}");
@@ -703,7 +711,7 @@ mod tests {
                       { "wind_h": 24.0, "fit": { "text": "Fastest at 6H." } },
                       { "fit": { "text": "No state given." } }],
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert!(
             s.contains("Dynamic Poise, full wind (`poise`): Fastest at 3H."),
             "{s}"
@@ -744,7 +752,7 @@ mod tests {
                 "hours": [{ "hour": 0 }, { "hour": 1 }, { "hour": 2 }] },
             "readings": [],
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert!(
             s.starts_with(
                 "Power reserve 42 h 03 min in Dial Up (DU). The watch stopped. The \
@@ -757,7 +765,7 @@ mod tests {
         by_hand["power_reserve"]["ending"] = json!("by_hand");
         by_hand["power_reserve"]["pauses"] = json!([]);
         by_hand["power_reserve"]["hours"] = json!([]);
-        assert!(lead(&by_hand, &Map::new()).unwrap().starts_with(
+        assert!(lead(&by_hand).unwrap().starts_with(
             "Power reserve 42 h 03 min in Dial Up (DU). Stopped by hand while the watch \
              still ran.\nReadings"
         ));
@@ -765,23 +773,22 @@ mod tests {
         let mut long = by_hand.clone();
         long["power_reserve"]["ending"] = json!("take_ended");
         long["power_reserve"]["source"] = json!("long_take");
-        assert!(lead(&long, &Map::new()).unwrap().starts_with(
+        assert!(lead(&long).unwrap().starts_with(
             "Ran at least 42 h 03 min in Dial Up (DU) from the take's start. The take \
              ended while the watch still ran. Read from a long take, not a Power Reserve \
              Test.\nReadings"
         ));
         let mut plain = doc.clone();
         plain.as_object_mut().unwrap().remove("power_reserve");
-        assert!(lead(&plain, &Map::new())
-            .unwrap()
-            .starts_with("Readings by position:"));
+        assert!(lead(&plain).unwrap().starts_with("Readings by position:"));
     }
 
     #[test]
     fn a_take_states_its_facts_and_its_lift_angle() {
         let doc = json!({
             "schema": "timegrapher.record/2",
-            "input": { "settings": { "calibre": null, "lift_deg": 52.0 } },
+            "input": { "settings": { "calibre": null, "lift_deg": 52.0, "lift_known": false,
+                "lift_from": "default" } },
             "position": "DU", "seconds": 30.0,
             "check": { "from_s": 15.0, "to_s": 30.0, "watch_heard": true,
                 "beats_found": 118, "beats_expected": 120, "rate_s_per_day": 3.0,
@@ -789,7 +796,7 @@ mod tests {
                 "clipping": { "beats": 0, "beat_fraction": 0.0 } },
             "session_file": "/tests/ym42/session.toml",
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert_eq!(
             s,
             "Recorded Dial Up (DU) for 30 s. The check from 15 to 30 s measured rate +3.0 \
@@ -799,14 +806,31 @@ mod tests {
         );
         let mut unlock = doc.clone();
         unlock["check"]["beat_error_unlock_ms"] = json!(-0.2);
-        assert!(lead(&unlock, &Map::new())
-            .unwrap()
-            .contains("beat error 0.20 ms"));
+        assert!(lead(&unlock).unwrap().contains("beat error 0.20 ms"));
         assert!(!s.contains("confidence"));
-        let given = json!({ "lift_deg": 50.0 }).as_object().unwrap().clone();
-        assert!(lead(&doc, &given)
-            .unwrap()
-            .contains("Lift angle 52°: as given."));
+        // Where the lift came from is `record`'s word, not this call's
+        // arguments: a take's own lift, extended without `lift_deg`, is
+        // the take's (#1648).
+        let from = |lift_from: &str, known: bool, calibre: Value| {
+            let mut d = doc.clone();
+            d["input"]["settings"]["lift_from"] = json!(lift_from);
+            d["input"]["settings"]["lift_known"] = json!(known);
+            d["input"]["settings"]["calibre"] = calibre;
+            lead(&d).unwrap()
+        };
+        assert!(from("given", true, Value::Null).contains("Lift angle 52°: as given."));
+        let take = from("take", true, Value::Null);
+        assert!(
+            take.contains("Lift angle 52°: the take's, from its session file."),
+            "{take}"
+        );
+        assert!(!take.contains("default"), "{take}");
+        assert!(from("take", false, Value::Null).contains(
+            "Lift angle 52°: the take's, the default it was first recorded with, not one set \
+             for the watch; the amplitude depends on it."
+        ));
+        assert!(from("calibre", true, json!("ETA 2824-2"))
+            .contains("Lift angle 52°: the ETA 2824-2's."));
     }
 
     #[test]
@@ -820,7 +844,7 @@ mod tests {
                 "beats_found": 40, "beats_expected": 120,
                 "clipping": { "beats": 3, "beat_fraction": 0.025 } },
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert_eq!(
             s,
             "Recorded Crown Up (CU, 3H) for 30 s. No regular beat found (timing scatter 8.6 ms, \
@@ -840,7 +864,7 @@ mod tests {
             "check": { "from_s": 15.0, "to_s": 30.0, "watch_heard": false,
                 "beats_found": 0, "beats_expected": 120 },
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert!(
             s.ends_with(
                 "The take was added to the test. The test's folder, made among Pepsi's \
@@ -864,7 +888,7 @@ mod tests {
             "findings": [{ "code": "periodic", "series": "rate",
                 "title": "Rate repeats every 60 min", "evidence": "p < 0.001" }],
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert_eq!(
             s,
             "Series:\n\
@@ -884,7 +908,7 @@ mod tests {
                 "series": [{ "series": "rate", "unit": "s/d", "readings": 360, "step_s": step,
                     "median": 3.1, "sd": 1.24, "short_term_sd": 0.9, "headline": headline }],
             });
-            lead(&doc, &Map::new()).unwrap()
+            lead(&doc).unwrap()
         };
         let figures = "(360 readings of 10 s; median 3.10 s/d; SD 1.24 s/d; reading to \
                        reading 0.90 s/d)";
@@ -991,15 +1015,11 @@ mod tests {
         let said = "What limits these readings:\n- The beat error's sign differs either side of \
                     a cut in the stretch, so it is given as a size.";
         let long = json!({ "schema": "timegrapher.long/1", "caveats": caveats });
-        assert_eq!(lead(&long, &Map::new()).unwrap(), said);
-        assert!(lead(
-            &json!({ "schema": "timegrapher.long/1", "caveats": [] }),
-            &Map::new()
-        )
-        .is_none());
+        assert_eq!(lead(&long).unwrap(), said);
+        assert!(lead(&json!({ "schema": "timegrapher.long/1", "caveats": [] })).is_none());
         let series = json!({ "schema": "timegrapher.series/2", "caveats": caveats,
             "series": [{ "headline": "Rate: too few readings for the tests" }] });
-        let text = lead(&series, &Map::new()).unwrap();
+        let text = lead(&series).unwrap();
         assert!(
             text.starts_with("Series:") && text.ends_with(said),
             "{text}"
@@ -1009,7 +1029,7 @@ mod tests {
     #[test]
     fn fft_support_qualifies_text_without_changing_legacy_series_leads() {
         let mut doc = json!({"schema":"timegrapher.series/2", "series":[{"headline":"Rate: too few readings for the tests"}]});
-        let legacy = lead(&doc, &Map::new()).unwrap();
+        let legacy = lead(&doc).unwrap();
         assert!(!legacy.contains("FFT"));
         for (support, expected) in [
             (
@@ -1027,7 +1047,7 @@ mod tests {
             ),
         ] {
             doc["spectrum_support"] = json!([{"series":"rate","support":support}]);
-            let text = lead(&doc, &Map::new()).unwrap();
+            let text = lead(&doc).unwrap();
             assert!(text.contains(expected), "{text}");
             assert!(text.starts_with(&legacy));
         }
@@ -1039,10 +1059,10 @@ mod tests {
             "schema": "timegrapher.series/2",
             "series": [{ "headline": "Rate: too few readings for the tests" }],
         });
-        let legacy = lead(&doc, &Map::new()).unwrap();
+        let legacy = lead(&doc).unwrap();
         assert_eq!(legacy, "Series:\n- Rate: too few readings for the tests.");
         doc["clock"] = Value::Null;
-        assert_eq!(lead(&doc, &Map::new()).unwrap(), "Series:\nReadings are on the sound card's clock; no correction applied.\n- Rate: too few readings for the tests.");
+        assert_eq!(lead(&doc).unwrap(), "Series:\nReadings are on the sound card's clock; no correction applied.\n- Rate: too few readings for the tests.");
         for (ppm, from, drift) in [
             (12.5, "stored for 'input', 2026-10-15", false),
             (
@@ -1055,7 +1075,7 @@ mod tests {
         ] {
             doc["clock"] = json!({ "ppm": ppm, "rate_error_s_per_day": ppm * 0.0864, "from": from, "tracks_drift": drift });
             let suffix = if drift { "; mapping follows drift" } else { "" };
-            assert_eq!(lead(&doc, &Map::new()).unwrap(), format!("Series:\nReadings use clock correction {ppm:+.3} ppm ({from}{suffix}).\n- Rate: too few readings for the tests."));
+            assert_eq!(lead(&doc).unwrap(), format!("Series:\nReadings use clock correction {ppm:+.3} ppm ({from}{suffix}).\n- Rate: too few readings for the tests."));
         }
     }
 
@@ -1063,10 +1083,8 @@ mod tests {
     fn no_watch_heard_has_no_readings() {
         let doc = json!({ "schema": "timegrapher.analyze/2", "watch_heard": false,
             "caveats": [{ "code": "no_watch" }] });
-        assert!(lead(&doc, &Map::new())
-            .unwrap()
-            .starts_with("No regular beat found"));
-        assert!(lead(&json!({ "schema": "timegrapher.doctor/2" }), &Map::new()).is_none());
+        assert!(lead(&doc).unwrap().starts_with("No regular beat found"));
+        assert!(lead(&json!({ "schema": "timegrapher.doctor/2" })).is_none());
     }
 
     #[test]
@@ -1074,18 +1092,18 @@ mod tests {
         let list = json!({"schema": "timegrapher.watches/1",
             "watches": [{"takes": 3}, {"takes": 1}], "unsorted": 1, "unreadable": ["x"]});
         assert_eq!(
-            lead(&list, &Map::new()).unwrap(),
+            lead(&list).unwrap(),
             "2 watches, 4 takes. 1 take waits in Unsorted, made with Quick Listen. \
              1 folder in the library couldn't be read (`unreadable`)."
         );
         let empty = json!({"schema": "timegrapher.watches/1", "watches": [], "unsorted": 0});
-        assert_eq!(lead(&empty, &Map::new()).unwrap(), "0 watches, 0 takes.");
+        assert_eq!(lead(&empty).unwrap(), "0 watches, 0 takes.");
         let one = json!({"schema": "timegrapher.watch/1", "name": "Pepsi", "unsorted": false,
             "archived": true, "takes": [
                 {"audio": true, "started_utc": "2026-10-20T21:32:00Z"},
                 {"audio": false, "started_utc": "2026-10-19T08:00:00Z"}]});
         assert_eq!(
-            lead(&one, &Map::new()).unwrap(),
+            lead(&one).unwrap(),
             "Pepsi: 2 takes, 1 kept as their analysis only; the newest started \
              2026-10-20T21:32:00Z.",
             "an older app's archived mark is not stated"
@@ -1093,7 +1111,7 @@ mod tests {
         let unsorted = json!({"schema": "timegrapher.watch/1", "name": "Unsorted",
             "unsorted": true, "takes": []});
         assert_eq!(
-            lead(&unsorted, &Map::new()).unwrap(),
+            lead(&unsorted).unwrap(),
             "Unsorted (Quick Listen takes): 0 takes."
         );
     }
