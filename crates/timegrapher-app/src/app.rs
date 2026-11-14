@@ -52,7 +52,7 @@ pub use poise_pane::PoiseView;
 pub use position::Position;
 mod complication_pane;
 #[cfg(test)]
-pub(crate) use new_take::new_take_captions;
+pub(crate) use new_take::new_take_names;
 use new_take::{NewTake, NEW_TAKES};
 mod dialogs;
 mod distributions;

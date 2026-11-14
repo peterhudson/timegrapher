@@ -315,10 +315,21 @@ fn draw_at(app: &mut TimegrapherApp, size: Vec2) -> Vec<(String, egui::Rect)> {
 
 /// The watch page's New Take offers every take, each with its own
 /// caption (#1634): the Complication Test's says off, on, off, and the
-/// Power Reserve Test, fifth since the Complication Test came, is still
-/// offered.
+/// Power Reserve Test is still offered. The tests that were there keep
+/// their order; the Complication Test comes last.
 #[test]
 fn new_take_offers_every_take_with_its_own_caption() {
+    let order: Vec<NewTake> = NEW_TAKES.iter().map(|t| t.0).collect();
+    assert_eq!(
+        order,
+        [
+            NewTake::Listen,
+            NewTake::Positions,
+            NewTake::Poise,
+            NewTake::PowerReserve,
+            NewTake::Complication
+        ]
+    );
     let caption = |k: NewTake| NEW_TAKES.iter().find(|t| t.0 == k).map(|t| t.3);
     assert_eq!(
         caption(NewTake::Complication),

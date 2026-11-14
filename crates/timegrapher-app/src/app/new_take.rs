@@ -67,23 +67,23 @@ pub(super) const NEW_TAKES: [(NewTake, &str, &str, &str); 5] = [
         "Eight upright, 45° apart",
     ),
     (
+        NewTake::PowerReserve,
+        "Power Reserve Test",
+        "Wind the watch fully and listen in one position until it stops, saved into the watch",
+        "From full wind to a stop",
+    ),
+    (
         NewTake::Complication,
         "Complication Test",
         "One position with a complication off, on, then off again, settled and measured in \
          turn: how much it lowers the amplitude, saved into the watch",
         "Off, on, then off again",
     ),
-    (
-        NewTake::PowerReserve,
-        "Power Reserve Test",
-        "Wind the watch fully and listen in one position until it stops, saved into the watch",
-        "From full wind to a stop",
-    ),
 ];
 
-/// New Take's captions, in [`NEW_TAKES`]' order: what each button's
-/// caption under it says.
+/// New Take's buttons as the watch page draws them (name, hover,
+/// caption), in [`NEW_TAKES`]' order.
 #[cfg(test)]
-pub(crate) fn new_take_captions() -> [&'static str; NEW_TAKES.len()] {
-    NEW_TAKES.map(|t| t.3)
+pub(crate) fn new_take_names() -> Vec<(&'static str, &'static str, &'static str)> {
+    NEW_TAKES.iter().map(|t| (t.1, t.2, t.3)).collect()
 }

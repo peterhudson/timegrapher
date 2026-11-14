@@ -31,8 +31,8 @@ pub const HELP: &[&str] = &[
     "- New Watch… adds a watch: only its name is needed.",
     "- Its calibre, lift angle and beat rate set up each new take of it, and can be changed \
      for one take without changing the watch.",
-    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test, Complication Test or \
-     Power Reserve Test: each is a new take on the microphone, saved into the watch when it stops.",
+    "- Pick a watch, then Listen, Positions Test, Dynamic Poise Test, Power Reserve Test or \
+     Complication Test: each is a new take on the microphone, saved into the watch when it stops.",
     "## Photos",
     "- Add Photos… copies photos of the picked watch into its folder, each kept as it is \
      (JPEG, PNG, TIFF, or HEIC as an iPhone takes them).",
@@ -851,13 +851,16 @@ pub fn title_row(
     );
 }
 
+/// A panel's margin inside its edge, points.
+const PANEL_MARGIN: i8 = 8;
+
 /// A rounded panel for a section's content.
 pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let pal = theme::pal(ui);
     egui::Frame::new()
         .fill(pal.raised.gamma_multiply(0.6))
         .corner_radius(egui::CornerRadius::same(theme::CONTROL_RADIUS + 2))
-        .inner_margin(egui::Margin::same(8))
+        .inner_margin(egui::Margin::same(PANEL_MARGIN))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add(ui)
@@ -866,7 +869,8 @@ pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
 }
 
 /// New Take's buttons (name, hover, caption), equal, each with its caption
-/// under it, in two rows, the first the longer (#1634); Listen, the default, is the blue
+/// under it: in one row where every caption is whole at that width
+/// ([`new_take_fits`]), else in two, the first the longer (#1634); Listen, the default, is the blue
 /// one. Which was pressed, if any. While `why` says so, they are greyed
 /// out with that reason.
 pub fn new_take_buttons(
@@ -876,9 +880,14 @@ pub fn new_take_buttons(
 ) -> Option<usize> {
     let mut pressed = None;
     let gap = 10.0;
-    let row_n = names.len().div_ceil(2).max(1);
-    let n = row_n as f32;
-    let w = ((ui.available_width() - (n - 1.0) * gap) / n).max(80.0);
+    let tile = |n: usize| (ui.available_width() - (n as f32 - 1.0) * gap) / n as f32;
+    let row_n = if new_take_fits(ui, names, tile(names.len())) {
+        names.len()
+    } else {
+        names.len().div_ceil(2)
+    }
+    .max(1);
+    let w = tile(row_n).max(80.0);
     ui.spacing_mut().item_spacing.y = gap;
     for (row, chunk) in names.chunks(row_n).enumerate() {
         ui.horizontal(|ui| {
@@ -892,6 +901,22 @@ pub fn new_take_buttons(
         });
     }
     pressed
+}
+
+/// Whether every caption of New Take's `names` is whole on one line in a
+/// tile `w` wide, less its panel's margins.
+pub fn new_take_fits(ui: &egui::Ui, names: &[(&str, &str, &str)], w: f32) -> bool {
+    let inside = w - 2.0 * f32::from(PANEL_MARGIN);
+    let width = |text: &str, style: egui::TextStyle| {
+        let font = style.resolve(ui.style());
+        ui.painter()
+            .layout_no_wrap(text.to_string(), font, egui::Color32::WHITE)
+            .size()
+            .x
+    };
+    names
+        .iter()
+        .all(|(_, _, caption)| width(caption, egui::TextStyle::Small) <= inside)
 }
 
 /// One of [`new_take_buttons`], the `i`th, `w` wide: whether it was
@@ -2170,26 +2195,22 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// New Take's captions are whole under their buttons in an 800 point
-    /// window, where the watch's side is narrowest.
+    /// New Take's captions are whole in two rows in an 800
+    /// point window, where the watch's side is narrowest, and in one row
+    /// at 1280 (#1634).
     #[test]
-    fn the_new_take_captions_fit_an_800_window() {
+    fn new_take_wraps_to_two_rows_at_800_and_one_at_1280() {
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
+        let names = crate::app::new_take_names();
         // The window less the list, its gap and the margins.
-        let side = 800.0 - crate::app::WATCH_LIST_W - 17.0 - 2.0 * 12.0 - 16.0;
-        let tile = (side - 2.0 * 10.0) / 3.0 - 16.0;
+        let side = |window: f32| window - crate::app::WATCH_LIST_W - 17.0 - 2.0 * 12.0 - 16.0;
+        let tile = |window: f32, n: f32| (side(window) - (n - 1.0) * 10.0) / n;
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                for c in crate::app::new_take_captions() {
-                    let font = egui::TextStyle::Small.resolve(ui.style());
-                    let w = ui
-                        .painter()
-                        .layout_no_wrap(c.to_string(), font, egui::Color32::WHITE)
-                        .size()
-                        .x;
-                    assert!(w <= tile, "{c}: {w} in {tile}");
-                }
+                assert!(!new_take_fits(ui, &names, tile(800.0, 5.0)), "one row");
+                assert!(new_take_fits(ui, &names, tile(800.0, 3.0)), "two rows");
+                assert!(new_take_fits(ui, &names, tile(1280.0, 5.0)), "1280");
             });
         });
     }
