@@ -31,6 +31,7 @@ input.settings.reference_lines[].label
 input.settings.reference_lines[].period_s
 input.settings.stretches
 input.settings.take
+input.settings.wheel_marks
 input.settings.wheels
 lift_deg
 overall

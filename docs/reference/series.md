@@ -466,6 +466,13 @@ series, the findings' `severity` and `advice`, and `rate_amplitude`'s
 `moves_with`, and the `rate_moves_with_amplitude` finding with it; the
 headlines state facts. Everything else is as in version 1.
 
+`input.settings` lists the wheels and meshes as `long` does
+([long-runs.md](long-runs.md)): `named_wheels`, `named_meshes`,
+`reference_lines`, and `wheel_marks`, the lines a period chart marks for
+them as core picks them (`period_s`; `turn`: `wheel`, `twice` or `mesh`;
+`name`; `short`; `hover`; #1694). These marks are not the `wheel_lines[]`
+below, which measure each wheel's line size.
+
 | Field | Contents |
 |---|---|
 | `duration_s`, `bph` | the take |
