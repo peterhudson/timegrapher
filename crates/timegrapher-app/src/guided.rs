@@ -360,6 +360,20 @@ impl Test {
         }
     }
 
+    /// A Complication Test kept with a take, at `p`, its Off, On and Off
+    /// stretches `spans` (seconds of the take's sound) as its session file
+    /// lists them (#1620): finished but not yet read ([`Self::finish`]).
+    pub fn saved_complication(p: Position, spans: &[(f64, f64)]) -> Option<Self> {
+        if spans.len() != complication::ORDER.len() {
+            return None;
+        }
+        let mut t = Test::complication(p);
+        t.spans = spans.iter().map(|&(a, b)| (p, a, b)).collect();
+        t.began = spans.first().map(|s| s.0 - t.settle_s);
+        t.step = spans.len() - 1;
+        Some(t)
+    }
+
     /// The positions this test leads the watch through, in order.
     pub fn order(&self) -> &[Position] {
         &self.order

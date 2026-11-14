@@ -72,6 +72,48 @@ impl TimegrapherApp {
             .filter(|t| t.kind == guided::Kind::Complication)
     }
 
+    /// An opened take's Complication Test from its session file at
+    /// `dir`, the stretches core's `complication::saved_stretches` finds
+    /// in it (#1620).
+    pub(super) fn load_saved_complication(&mut self, dir: &std::path::Path) {
+        let m: Option<Manifest> = std::fs::read_to_string(dir.join(MANIFEST))
+            .ok()
+            .and_then(|t| toml::from_str(&t).ok());
+        self.complication_saved = m
+            .as_ref()
+            .and_then(complication::saved_stretches)
+            .and_then(|(p, spans)| Some((Position::of_core(p)?, spans)))
+            .and_then(|(p, spans)| guided::Test::saved_complication(p, &spans));
+        if self.complication_saved.is_some() {
+            self.reveal_pane(Pane::Complication);
+        }
+    }
+
+    /// The opened take's Complication Test, read once its beats are in
+    /// and no test is on the Bench.
+    fn saved_complication_read(&mut self) -> Option<&guided::Test> {
+        if self.guided.is_some() || self.running() {
+            return None;
+        }
+        let unread = self
+            .complication_saved
+            .as_ref()
+            .is_some_and(|t| t.readings.is_none());
+        if unread && self.batch.is_none() {
+            let log = self.live.as_ref().and_then(steady::log_of)?;
+            let clock = self.reading_clock(log.duration_s);
+            let bph = self.live.as_ref().and_then(|l| l.config().analysis.bph);
+            let masked = self.masked.clone();
+            if let Some(t) = self.complication_saved.as_mut() {
+                t.bph_set = bph;
+                t.finish(&log, clock.as_ref(), &masked);
+            }
+        }
+        self.complication_saved
+            .as_ref()
+            .filter(|t| t.readings.is_some())
+    }
+
     /// The pane's toolbar: New Test or Cancel Test while none runs, the
     /// Settle and Each Stretch every guided test shares, and Copy.
     fn complication_settings(&mut self, ui: &mut egui::Ui) {
@@ -153,9 +195,18 @@ impl TimegrapherApp {
             _ => None,
         };
         let lengths = (self.guided_settle_s, self.guided_measure_s);
+        // No test on the Bench: an opened take's own, read again (#1620).
+        if self.complication_test().is_none() {
+            let _ = self.saved_complication_read();
+        }
+        let test = self.complication_test().or_else(|| {
+            self.complication_saved
+                .as_ref()
+                .filter(|t| self.guided.is_none() && t.readings.is_some())
+        });
         let action = complication_body(
             ui,
-            (self.complication_test(), phase, live.as_ref()),
+            (test, phase, live.as_ref()),
             (now, lengths),
             self.complication_info,
         );
