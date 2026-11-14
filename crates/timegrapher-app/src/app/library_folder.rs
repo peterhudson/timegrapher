@@ -40,10 +40,10 @@ impl WavKeep {
     }
 }
 
-/// Why Move Watches… waits while a take is recorded into the library.
-const RECORDING_INSIDE: &str =
-    "The Watches folder moves once the take being recorded into it is stopped: press Stop, then \
-     try again.";
+/// Why Move Watches… waits while a take is recorded or saved into the
+/// library.
+const RECORDING_INSIDE: &str = "The Watches folder moves once the take being recorded or saved \
+     into it is stopped and written: press Stop, wait for the save, then try again.";
 
 /// Move Library… while saved takes are being kept as FLAC.
 pub(super) const WAV_KEEP_WAIT: &str =
@@ -171,15 +171,8 @@ impl TimegrapherApp {
                     self.message = Some((WAV_KEEP_WAIT.into(), false));
                     return;
                 }
-                // A take still growing inside it would be copied half
-                // written.
-                if self.running()
-                    && self
-                        .session
-                        .saved_to()
-                        .is_some_and(|p| p.starts_with(&root))
-                {
-                    self.message = Some((RECORDING_INSIDE.into(), false));
+                if let Some(why) = self.move_refused(&root) {
+                    self.message = Some((why.into(), false));
                     return;
                 }
                 let mut d = rfd::FileDialog::new().set_title("Move the Library Into a Folder");
@@ -294,6 +287,12 @@ impl TimegrapherApp {
     /// Move the library on a thread of its own: a copy onto another disk
     /// can take a while.
     pub(super) fn move_library(&mut self, from: PathBuf, to: PathBuf) {
+        // Asked again here: a take may have started, or a save begun,
+        // while the folder was picked or the move asked about.
+        if let Some(why) = self.move_refused(&from) {
+            self.message = Some((why.into(), false));
+            return;
+        }
         // A library this copy of the app holds can't be moved.
         if let Ok(Some(l)) = &mut self.library {
             l.unlock();
@@ -306,29 +305,15 @@ impl TimegrapherApp {
         self.library_moving = Some((to, rx));
     }
 
-    /// The library moved from `from` to `to`: the take open from it,
-    /// the one saved into it and its next Save Again follow, as they do
-    /// a take moved on its own ([`Self::take_moved`]).
-    pub(super) fn library_moved(&mut self, from: &Path, to: &Path) {
-        let saved = self.session.saved_to().map(Path::to_path_buf);
-        if let Some((take, rest)) = saved
-            .as_ref()
-            .and_then(|t| Some((t, t.strip_prefix(from).ok()?)))
-        {
-            // Its next save goes into the take where it is now.
-            let now = to.join(rest);
-            if let Some(r) = self.session.recorder.as_mut() {
-                r.copy_moved(take, &now);
-            }
-        }
-        // Every save noted, and the recording opened, by their folders.
-        self.session.saved_moved(from, to);
-        if let Ok(rest) = Path::new(&self.opened_path).strip_prefix(from) {
-            self.opened_path = to.join(rest).display().to_string();
-        }
-        if let Ok(rest) = Path::new(self.file_path.trim()).strip_prefix(from) {
-            self.file_path = to.join(rest).display().to_string();
-        }
+    /// Why the library at `root` can't be moved now, if it can't: a take
+    /// still growing inside it, or a save being written, would be copied
+    /// half written, and the save would note the old place after the
+    /// move (Vernon on #1667).
+    fn move_refused(&self, root: &Path) -> Option<&'static str> {
+        let recording =
+            self.running() && self.session.saved_to().is_some_and(|p| p.starts_with(root));
+        let saving = self.saving.is_some() || self.analysis_save.is_some();
+        (recording || saving).then_some(RECORDING_INSIDE)
     }
 
     /// The move's outcome, once it is done.
@@ -344,7 +329,7 @@ impl TimegrapherApp {
                 // there, and so is every take open from it (#1646).
                 self.library_moving = None;
                 if let Some(from) = self.library_root() {
-                    self.library_moved(&from, &to);
+                    self.paths_moved(&from, &to);
                 }
                 self.use_library(Some(to.clone()));
                 match left {

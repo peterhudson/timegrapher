@@ -1026,6 +1026,18 @@ fn save_again_after_move_watches_saves_where_the_take_went() {
     app.wait_for_save();
     let saved = app.session.saved_to().unwrap().to_path_buf();
     assert!(saved.starts_with(&root), "{}", saved.display());
+    // Still recording into it: the move is refused where it starts, not
+    // only where it was asked for (Vernon on #1667).
+    let tx = queued_capture(&mut app, &base);
+    assert!(app.running());
+    app.move_library(root.clone(), base.join("refused"));
+    assert!(app.library_moving.is_none(), "refused while recording");
+    assert!(app
+        .message
+        .as_ref()
+        .is_some_and(|(m, _)| m.contains("Press Stop") || m.contains("press Stop")));
+    drop(tx);
+    app.capture = None;
     app.session
         .pause(app.live.as_ref().unwrap().duration_s())
         .unwrap()
