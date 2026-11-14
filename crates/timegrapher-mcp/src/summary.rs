@@ -710,6 +710,7 @@ mod tests {
             "readings": [],
             "poise": [{ "wind_h": 0.0, "fit": { "text": "Fastest at 3H." } },
                       { "wind_h": 24.0, "fit": { "text": "Fastest at 6H." } },
+                      { "wind_h": 24.5, "fit": { "text": "Fastest at 9H." } },
                       { "fit": { "text": "No state given." } }],
         });
         let s = lead(&doc).unwrap();
@@ -719,6 +720,11 @@ mod tests {
         );
         assert!(
             s.contains("Dynamic Poise, 24 h after winding (`poise`): Fastest at 6H."),
+            "{s}"
+        );
+        // Hours given to a half read as given (#1715).
+        assert!(
+            s.contains("Dynamic Poise, 24.5 h after winding (`poise`): Fastest at 9H."),
             "{s}"
         );
         assert!(!s.contains("No state given"), "{s}");
