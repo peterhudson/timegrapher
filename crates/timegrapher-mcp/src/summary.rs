@@ -733,7 +733,7 @@ mod tests {
             "poise": [{ "wind_h": null, "fit": { "text": "Fastest at 3H." } }],
             "report": { "states": [{ "wind_h": null, "x": 15.0 }] },
         });
-        let s = lead(&doc, &Map::new()).unwrap();
+        let s = lead(&doc).unwrap();
         assert!(
             s.contains("Dynamic Poise, wind not given (`poise`): Fastest at 3H."),
             "{s}"
