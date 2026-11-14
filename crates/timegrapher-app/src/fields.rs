@@ -49,10 +49,12 @@ pub fn parse_duration(s: &str) -> Option<f64> {
     if s.contains(':') {
         let mut total = 0.0;
         for part in s.split(':') {
-            let v: f64 = part.trim().parse().ok()?;
+            // Each part a number as `parse_number` reads one: "nan" and
+            // "inf" parse as f64 but are no time (#1650).
+            let v: f64 = part.trim().parse().ok().filter(|v: &f64| v.is_finite())?;
             total = total * 60.0 + v;
         }
-        return Some(total);
+        return total.is_finite().then_some(total);
     }
     let v = parse_number(&s)?;
     let unit = s.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ' ');
@@ -253,6 +255,9 @@ mod tests {
         assert_eq!(parse_duration("1:30"), Some(90.0));
         assert_eq!(parse_duration("1:02:30"), Some(3750.0));
         assert_eq!(parse_duration("5 fortnights"), None);
+        for bad in ["nan:00", "1:inf", "inf:30", "1e308:0:0"] {
+            assert_eq!(parse_duration(bad), None, "{bad}");
+        }
         assert_eq!(duration(30.0), "30 s");
         assert_eq!(duration(300.0), "5 min");
         assert_eq!(duration(60.0), "1 min");
