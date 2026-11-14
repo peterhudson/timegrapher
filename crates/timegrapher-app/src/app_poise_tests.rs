@@ -243,7 +243,12 @@ fn a_reopened_poise_takes_copy_copies_the_table_it_shows() {
         .iter()
         .find(|(t, _)| t == "Copy")
         .unwrap_or_else(|| panic!("Copy in {drawn:?}"));
-    click(&mut app, Pane::DynamicPoise, size, copy.center());
+    let copied = click(&mut app, Pane::DynamicPoise, size, copy.center());
+    assert_eq!(
+        copied.as_deref(),
+        Some(text.as_str()),
+        "what the table shows"
+    );
     let said = app.message.as_ref().map(|(m, _)| m.as_str());
     assert_eq!(said, Some("Copied the Dynamic Poise table"));
     let _ = std::fs::remove_dir_all(&base);
@@ -571,8 +576,9 @@ fn the_panes_start_button_turns_to_the_next_stop() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// The pane drawn with a press and release at `at`.
-fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) {
+/// The pane drawn with a press and release at `at`; the text it put on
+/// the clipboard, if any.
+fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) -> Option<String> {
     let ctx = themed();
     let screen = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size));
     let press = |pressed| egui::Event::PointerButton {
@@ -587,17 +593,24 @@ fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) {
         vec![press(false)],
         vec![],
     ];
+    let mut copied = None;
     for events in frames {
         let input = egui::RawInput {
             screen_rect: screen,
             events,
             ..Default::default()
         };
-        let _ = ctx.run(input, |ctx| {
+        let out = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 app.pane_tools(ui, pane);
                 app.poise_pane(ui);
             });
         });
+        for c in out.platform_output.commands {
+            if let egui::OutputCommand::CopyText(t) = c {
+                copied = Some(t);
+            }
+        }
     }
+    copied
 }
