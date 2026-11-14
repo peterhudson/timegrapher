@@ -22,7 +22,10 @@
 //! minutes with none, core `power_reserve`) or 80 hours pass, then keeps
 //! the run's results, hour by hour, in the session folder's
 //! `power-reserve.json`, as the app's Power Reserve pane does. In the
-//! library its folder is named by the date and time and "Power Reserve".
+//! library the test is one take, as the app files it (#1732): the
+//! recording itself, in a folder named by the date and time and "Power
+//! Reserve" ([`library::power_reserve_take_dir`]), with its own session
+//! file and `power-reserve.json`.
 
 use crate::long::Train;
 use crate::output;
@@ -152,6 +155,11 @@ struct Placed {
     _library: Option<Library>,
     /// The watch it was made under, without a FOLDER.
     watch: Option<String>,
+    /// A Power Reserve Test filed into a library: the local minute it
+    /// started, which names its take. The take is then one folder, as
+    /// the app keeps one ([`library::power_reserve_take_dir`], #1732),
+    /// and the session folder is the watch's `takes/`.
+    reserve_take: Option<String>,
 }
 
 /// The library holding `folder` as one of a watch's takes, if it is one:
@@ -187,6 +195,7 @@ fn place(o: &mut Options) -> Result<Placed, String> {
         return Ok(Placed {
             _library: held,
             watch: None,
+            reserve_take: None,
         });
     }
     let name = o.watch.clone().ok_or(
@@ -221,16 +230,23 @@ fn place(o: &mut Options) -> Result<Placed, String> {
     }
     o.bph = o.bph.or(w.bph);
     o.lift = o.lift.or(w.lift);
-    let mut started = chrono::Local::now()
+    let started = chrono::Local::now()
         .format(library::TAKE_NAME_TIME)
         .to_string();
-    if o.power_reserve {
-        started.push_str(" Power Reserve");
-    }
-    o.folder = Some(library::unused_dir(&e.dir.join(library::TAKES), &started));
+    let takes = e.dir.join(library::TAKES);
+    // A Power Reserve Test is recorded straight into the watch's takes and
+    // filed as one take, as the app files it; any other test gets a
+    // session folder its positions are added to.
+    let reserve_take = o.power_reserve.then(|| started.clone());
+    o.folder = Some(if o.power_reserve {
+        takes
+    } else {
+        library::unused_dir(&takes, &started)
+    });
     Ok(Placed {
         watch: Some(w.name.clone()),
         _library: Some(lib),
+        reserve_take,
     })
 }
 
@@ -275,13 +291,14 @@ fn record(o: &Options) -> Result<(Options, Report, serde_json::Value), String> {
         ));
     }
     let placed = place(&mut o)?;
-    let (rep, settings) = record_in(&o, placed.watch)?;
+    let (rep, settings) = record_in(&o, placed.watch, placed.reserve_take.as_deref())?;
     Ok((o, rep, settings))
 }
 
 fn record_in(
     o: &Options,
     library_watch: Option<String>,
+    reserve_take: Option<&str>,
 ) -> Result<(Report, serde_json::Value), String> {
     let pos = Position::parse(&o.position).ok_or_else(|| {
         format!(
@@ -304,19 +321,39 @@ fn record_in(
     let dir = rec
         .finish_as_flac(None)
         .map_err(|e| format!("{}: {e}", take.display()))?;
+    // Filed into a library, a Power Reserve Test's recording is its take.
+    let dir = match reserve_take {
+        Some(started) => {
+            let to = library::power_reserve_take_dir(o.dir(), started);
+            fs::rename(&dir, &to).map_err(|e| format!("{}: {e}", to.display()))?;
+            to
+        }
+        None => dir,
+    };
     write_take_manifest(&dir, pos, &set, Some("clock.csv"))?;
+    // The run's results go beside the session file that lists the take:
+    // the take's own when it is the whole test.
+    let results_dir = if reserve_take.is_some() {
+        &dir
+    } else {
+        o.dir()
+    };
     let reserve = if o.power_reserve {
         let ending = ending.unwrap_or(power_reserve::Ending::ByHand);
         let r = reserve_results(&dir, &started, pos, set.bph, ending)?;
-        power_reserve::write(o.dir(), &r)
-            .map_err(|e| format!("{}: {e}", o.dir().join(power_reserve::FILE).display()))?;
+        power_reserve::write(results_dir, &r)
+            .map_err(|e| format!("{}: {e}", results_dir.join(power_reserve::FILE).display()))?;
         Some(r)
     } else {
         None
     };
 
     let check = check(&dir, &set)?;
-    let session_file = add_to_session(o, pos, &set, &dir, &started, &check)?;
+    let session_file = if reserve_take.is_some() {
+        dir.join(MANIFEST)
+    } else {
+        add_to_session(o, pos, &set, &dir, &started, &check)?
+    };
 
     let rep = Report {
         take: dir.display().to_string(),
