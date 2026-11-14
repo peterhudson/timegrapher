@@ -14,7 +14,7 @@
 use crate::figure_text::{base_digits, fixed_text, grouped, signed_text};
 use crate::measure::Caveat;
 use crate::poise;
-use crate::reading_text::wind_words;
+use crate::reading_text::WindHours;
 use crate::session::{self, Measurement, Position, Reading, SourcedFigures, StateIndices};
 
 /// The column the sentences wrap at (Hugh, 2026-11-14): a text file reads
@@ -48,11 +48,12 @@ pub struct Header {
 }
 
 /// An earlier test the report's readings are set against: the full-wind
-/// test's figures, and how many hours after it this one was read.
+/// test's figures, and how many hours after it this one was read, with
+/// the decimals they are known to.
 #[derive(Debug, Clone, Copy)]
 pub struct Earlier<'a> {
     pub figures: &'a [SourcedFigures],
-    pub hours: f64,
+    pub hours: WindHours,
 }
 
 /// When a take began, as its folder's name records it (the app and
@@ -105,9 +106,22 @@ pub fn positions_in(
     earlier: Option<Earlier>,
     order: &[Position],
 ) -> String {
+    positions_of(header, &figures(readings), earlier, order, readings)
+}
+
+/// [`positions_in`] from each position's figures, as a saved test keeps
+/// them (an opened 24 hour half, #1706). `readings` give the notes the
+/// conditions found in the sound; a saved test has none, so its notes say
+/// only how the beat error was given.
+pub fn positions_of(
+    header: &Header,
+    figures: &[SourcedFigures],
+    earlier: Option<Earlier>,
+    order: &[Position],
+    readings: &[Reading],
+) -> String {
     let mut out = heading("Positions Test", header);
-    let figures = figures(readings);
-    let ix = session::sourced_indices_over(None, &figures, order);
+    let ix = session::sourced_indices_over(None, figures, order);
     let mut rows = table_rows(&ix, "From Average");
     rows.push(mean_row("Average", &ix));
     rows.push(vec![
@@ -130,7 +144,7 @@ pub fn positions_in(
         ),
     ]);
     if let Some(e) = earlier {
-        out += &comparison(e, &figures);
+        out += &comparison(e, figures);
     }
     out += &notes(readings, &ix);
     out
@@ -294,13 +308,15 @@ fn table(rows: &[Vec<String>], head: usize, summary: usize) -> String {
 /// rate and amplitude at full wind and now, and the change, then Im and
 /// Ie. Positions read in only one of the two are left out.
 fn comparison(e: Earlier, later: &[SourcedFigures]) -> String {
-    let Some(c) = session::comparison(e.figures, e.hours, later) else {
+    let Some(c) = session::comparison(e.figures, e.hours.hours, later) else {
         return String::new();
     };
-    let now = wind_words(e.hours);
+    // The hours at the precision of their source, as the pane and the CSV
+    // give them (Hugh and Norm on #1713).
+    let now = e.hours.words();
     // Short heads, so the table keeps within the width: the section's
     // heading names both states in full.
-    let later_head = format!("{} h", fixed_text(e.hours, 0));
+    let later_head = e.hours.short();
     let mut rows = vec![
         vec![
             "Position".into(),
