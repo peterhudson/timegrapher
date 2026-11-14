@@ -1655,7 +1655,9 @@ fn print_summary(
         println!("{}", measure::no_watch_text(reason, s.jitter_us, s.bph_set));
         return;
     }
-    if !measure::regularity_assessed(s.duration_s) {
+    // A whole recording read from its start holds a whole scatter
+    // window once it is 10 s long (#1688).
+    if !measure::regularity_assessed(s.duration_s, true) {
         println!(
             "Beat regularity not assessed: {} s of sound, {} s needed",
             fixed_text(s.duration_s, 1),
