@@ -1,7 +1,7 @@
 //! `long` and `series` list the calibre's meshes, as core's
 //! `Catalog::meshes` gives them, in `input.settings.named_meshes`
 //! (#1472), and none with no calibre; and the lines to mark for its
-//! wheels and meshes as core picks them, in `input.settings.wheel_lines`
+//! wheels and meshes as core picks them, in `input.settings.wheel_marks`
 //! (#1694).
 use serde_json::Value;
 use std::path::PathBuf;
@@ -85,7 +85,7 @@ fn long_and_series_list_the_calibres_meshes_from_core() {
 /// The lines to mark are core's, for the wheels and meshes listed beside
 /// them: the view draws them as given (#1694).
 #[test]
-fn long_and_series_give_cores_wheel_lines() {
+fn long_and_series_give_cores_wheel_marks() {
     let f = Fixture::new("lines");
     for command in ["long", "series"] {
         let s = f.settings(command, &["--calibre", "ETA 2824-2"]);
@@ -107,7 +107,7 @@ fn long_and_series_give_cores_wheel_lines() {
                 about: text(m, "about"),
             })
             .collect();
-        let want = serde_json::to_value(timegrapher_core::steady_views::wheel_lines(
+        let want = serde_json::to_value(timegrapher_core::steady_views::wheel_marks(
             &wheels, &meshes,
         ))
         .unwrap();
@@ -115,8 +115,8 @@ fn long_and_series_give_cores_wheel_lines() {
             want.as_array().is_some_and(|a| a.len() > wheels.len()),
             "{want}"
         );
-        assert_eq!(s["wheel_lines"], want, "{command}");
-        let turns: Vec<&str> = s["wheel_lines"]
+        assert_eq!(s["wheel_marks"], want, "{command}");
+        let turns: Vec<&str> = s["wheel_marks"]
             .as_array()
             .unwrap()
             .iter()

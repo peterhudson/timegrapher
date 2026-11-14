@@ -1941,7 +1941,7 @@ impl WheelLine {
 }
 
 /// The lines to mark on a period axis spanning `span`: core's
-/// ([`timegrapher_core::steady_views::wheel_lines`]: each wheel's turn, its
+/// ([`timegrapher_core::steady_views::wheel_marks`]: each wheel's turn, its
 /// ×2 and each mesh, one line where two periods are within 3%) inside the
 /// axis; with no wheels, the reference periods; with `None` (the marks
 /// off), nothing.
@@ -1964,7 +1964,7 @@ pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) ->
             .collect();
     }
     use timegrapher_core::steady_views::{self as views, WheelTurn};
-    views::wheel_lines(wheels, meshes)
+    views::wheel_marks(wheels, meshes)
         .into_iter()
         .map(|l| WheelLine {
             x: l.period_s.log10(),

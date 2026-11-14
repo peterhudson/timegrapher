@@ -2196,9 +2196,9 @@ pub enum WheelTurn {
 }
 
 /// One line across a period axis for a named wheel, its ×2 or a mesh, as
-/// the app's Periods, FFT and maps and the MCP view draw it ([`wheel_lines`]).
+/// the app's Periods, FFT and maps and the MCP view draw it ([`wheel_marks`]).
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct WheelLine {
+pub struct WheelMark {
     pub period_s: f64,
     pub turn: WheelTurn,
     /// Its name over the plot: "Fourth Wheel", "Fourth Wheel ×2",
@@ -2216,15 +2216,15 @@ pub struct WheelLine {
 /// its period. Every period, whatever the axis shows: each side keeps the
 /// lines inside its own axis, and with no wheel named marks the reference
 /// periods ([`crate::periodicity::reference_lines`]) instead.
-pub fn wheel_lines(
+pub fn wheel_marks(
     wheels: &[crate::periodicity::Wheel],
     meshes: &[crate::train::MeshLine],
-) -> Vec<WheelLine> {
+) -> Vec<WheelMark> {
     let mut out = Vec::new();
     for w in wheels {
         let title = title_case(&w.name);
         let short = wheel_short(&w.name);
-        out.push(WheelLine {
+        out.push(WheelMark {
             period_s: w.period_s,
             turn: WheelTurn::Wheel,
             name: title.clone(),
@@ -2233,7 +2233,7 @@ pub fn wheel_lines(
         });
         let half = w.period_s / 2.0;
         if !wheels.iter().any(|o| one_mark(o.period_s, half)) {
-            out.push(WheelLine {
+            out.push(WheelMark {
                 period_s: half,
                 turn: WheelTurn::Twice,
                 name: format!("{title} ×2"),
@@ -2247,7 +2247,7 @@ pub fn wheel_lines(
             continue;
         }
         let title = title_case(&m.name);
-        out.push(WheelLine {
+        out.push(WheelMark {
             period_s: m.period_s,
             turn: WheelTurn::Mesh,
             name: format!("{title} Mesh"),
@@ -2312,7 +2312,7 @@ pub fn mesh_short(pinion: &str) -> String {
 }
 
 #[cfg(test)]
-mod wheel_line_tests {
+mod wheel_mark_tests {
     use super::*;
     use crate::periodicity::Wheel;
     use crate::train::MeshLine;
@@ -2337,7 +2337,7 @@ mod wheel_line_tests {
     /// a mesh within 3% of a marked line is left out (#1694).
     #[test]
     fn the_lines_follow_the_one_mark_rule() {
-        let lines = wheel_lines(
+        let lines = wheel_marks(
             &[wheel("fourth wheel", 60.0), wheel("escape wheel", 30.6)],
             &[mesh("fourth pinion", 7.5), mesh("escape pinion", 30.0)],
         );
