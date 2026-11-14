@@ -77,6 +77,9 @@ pub fn page() -> &'static str {
         let no_beat = serde_json::to_string(timegrapher_core::measure::NO_WATCH_TITLE)
             .expect("the no-beat heading as JSON");
         let minus = serde_json::to_string(&true_minus("-")).expect("the minus sign as JSON");
+        let wind_not_given =
+            serde_json::to_string(timegrapher_core::reading_text::WIND_NOT_GIVEN)
+                .expect("the wind-not-given words as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*BASE_DIGITS*/null", &base_digits())
             .replace("/*VIRIDIS*/null", &viridis)
@@ -92,6 +95,7 @@ pub fn page() -> &'static str {
             .replace("/*PROBABILITY_MARKS*/null", &marks)
             .replace("/*POSITIONS*/null", &positions)
             .replace("/*NO_BEAT_TITLE*/null", &no_beat)
+            .replace("/*WIND_NOT_GIVEN*/null", &wind_not_given)
             .replace("/*MINUS*/null", &minus)
     })
 }
@@ -831,6 +835,15 @@ mod tests {
             b::JITTER,
             b::RATE,
             b::RATE_RANGE
+        )));
+    }
+
+    #[test]
+    fn the_page_carries_cores_wind_not_given() {
+        assert!(!page().contains("/*WIND_NOT_GIVEN*/"));
+        assert!(page().contains(&format!(
+            "const WIND_NOT_GIVEN = \"{}\";",
+            timegrapher_core::reading_text::WIND_NOT_GIVEN
         )));
     }
 

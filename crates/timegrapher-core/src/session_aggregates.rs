@@ -13,7 +13,7 @@ pub type SourcedFigures = (
 /// Position averages and state indices, choosing one known beat-error source.
 /// Values with unknown provenance remain available to callers as individual rows,
 /// but never enter a pooled beat-error figure.
-pub fn sourced_indices(wind_h: f64, figures: &[SourcedFigures]) -> StateIndices {
+pub fn sourced_indices(wind_h: Option<f64>, figures: &[SourcedFigures]) -> StateIndices {
     sourced_indices_over(wind_h, figures, &Position::ALL)
 }
 
@@ -22,7 +22,7 @@ pub fn sourced_indices(wind_h: f64, figures: &[SourcedFigures]) -> StateIndices 
 /// ([`Position::UPRIGHT`]) for a Dynamic Poise test. Figures of other
 /// positions are left out of the means.
 pub fn sourced_indices_over(
-    wind_h: f64,
+    wind_h: Option<f64>,
     figures: &[SourcedFigures],
     over: &[Position],
 ) -> StateIndices {
@@ -207,7 +207,7 @@ pub fn positions_table(
         })
         .collect();
     PositionsTable {
-        indices: sourced_indices(0.0, &figures),
+        indices: sourced_indices(None, &figures),
         rows,
     }
 }
@@ -300,7 +300,10 @@ pub fn comparison(
     if full.is_empty() || later.is_empty() {
         return None;
     }
-    let states = vec![sourced_indices(0.0, full), sourced_indices(hours, later)];
+    let states = vec![
+        sourced_indices(Some(0.0), full),
+        sourced_indices(Some(hours), later),
+    ];
     let report = evaluate_states(states, Vec::new());
     let (first, last) = (report.states.first()?, report.states.last()?);
     let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
@@ -340,7 +343,7 @@ mod tests {
     #[test]
     fn position_and_state_aggregates_never_mix_sources() {
         let s = sourced_indices(
-            0.0,
+            Some(0.0),
             &[
                 row(Position::CH, 0.2, BeatErrorSource::Unlock),
                 row(Position::CH, 0.4, BeatErrorSource::Unlock),
@@ -381,7 +384,7 @@ mod tests {
     #[test]
     fn drop_only_position_statistics_keep_their_source() {
         let s = sourced_indices(
-            0.0,
+            Some(0.0),
             &[
                 row(Position::CH, 0.4, BeatErrorSource::Drop),
                 row(Position::CB, 0.8, BeatErrorSource::Drop),
@@ -401,7 +404,7 @@ mod tests {
             (Position::CH, Some(2.0), Some(280.0), Some(0.4), None),
             (Position::CB, Some(4.0), Some(260.0), Some(0.8), None),
         ];
-        let s = sourced_indices(0.0, &figures);
+        let s = sourced_indices(Some(0.0), &figures);
         assert_eq!(s.beat_error_mean, None);
         assert_eq!(s.d_beat_error, None);
         assert_eq!(s.beat_error_source, None);
@@ -413,7 +416,7 @@ mod tests {
             [crate::measure::Caveat::BeatErrorUnknownSource { readings: 2 }]
         ));
         let mixed = [figures[0], row(Position::CH, 0.2, BeatErrorSource::Unlock)];
-        let s = sourced_indices(0.0, &mixed);
+        let s = sourced_indices(Some(0.0), &mixed);
         assert_eq!(s.beat_error_mean, Some(0.2));
         assert_eq!(s.beat_error_source, Some(BeatErrorSource::Unlock));
         assert!(matches!(
@@ -424,7 +427,7 @@ mod tests {
     #[test]
     fn position_mean_words_count_the_selected_source_and_explain_unknowns() {
         let known = sourced_indices(
-            0.0,
+            Some(0.0),
             &[
                 row(Position::CH, 0.2, BeatErrorSource::Unlock),
                 row(Position::CB, 0.8, BeatErrorSource::Drop),
@@ -435,7 +438,7 @@ mod tests {
             known.beat_error_summary(),
             "Beat Error from the Unlock: mean of 2 of 3 positions."
         );
-        let unknown = sourced_indices(0.0, &[(Position::CH, None, None, Some(0.4), None)]);
+        let unknown = sourced_indices(Some(0.0), &[(Position::CH, None, None, Some(0.4), None)]);
         assert!(unknown.beat_error_summary().contains("source not recorded"));
         assert!(unknown.beat_error_summary().contains("no mean"));
         assert!(unknown
