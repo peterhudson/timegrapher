@@ -146,6 +146,16 @@ struct State {
     /// Each side swap's time, with the number of chunks analysed before
     /// it: it swaps the windows those chunks found from that time on.
     swaps: Vec<(usize, f64)>,
+    /// The amplitude windows found so far, `(chunk, windows)` as they
+    /// come, in any order; put together after the last chunk.
+    found: Vec<(usize, Vec<AmplitudeWindow>)>,
+    /// The amplitude jobs sent and not yet all back, in order: each one's
+    /// chunk and end, seconds.
+    amp_out: std::collections::VecDeque<(usize, f64)>,
+    /// Chunks whose amplitude windows are back, past `amp_out`'s first.
+    amp_back: std::collections::BTreeSet<usize>,
+    /// Every amplitude window starting before this, seconds, is found.
+    amp_found_to_s: f64,
     clipped_beats: Vec<f64>,
     clipped_samples: usize,
     snippets: crate::sound_sample::SoundSample<Vec<f32>>,
@@ -305,6 +315,9 @@ impl State {
         while to < core_b && to + w <= x_end {
             to += w;
         }
+        if to > self.next_amp_s {
+            self.amp_out.push_back((self.chunks - 1, to));
+        }
         (to > self.next_amp_s).then(|| AmpJob {
             chunk: self.chunks - 1,
             numbered,
@@ -319,21 +332,43 @@ impl State {
     /// windows)` in any order: put in chunk order, each swapped by the
     /// side swaps made after its chunk from its start on, as when they
     /// were found in turn.
-    fn put_amplitude_together(&mut self, mut found: Vec<(usize, Vec<AmplitudeWindow>)>) {
+    fn put_amplitude_together(&mut self, found: Vec<(usize, Vec<AmplitudeWindow>)>) {
+        let mut found = std::mem::take(&mut self.found)
+            .into_iter()
+            .chain(found)
+            .collect::<Vec<_>>();
         found.sort_by_key(|f| f.0);
         for (k, wins) in found {
             for mut w in wins {
-                let n = self
-                    .swaps
-                    .iter()
-                    .filter(|&&(after, t)| after > k && w.start_s >= t)
-                    .count();
-                if n % 2 == 1 {
-                    w.swap_sides();
-                }
+                swap_found(&mut w, k, &self.swaps);
                 self.amp.push(w);
             }
         }
+    }
+
+    /// The amplitude windows of chunk `k`, just found.
+    fn windows_found(&mut self, (k, wins): (usize, Vec<AmplitudeWindow>)) {
+        self.found.push((k, wins));
+        self.amp_back.insert(k);
+        while let Some(&(first, to_s)) = self.amp_out.front() {
+            if !self.amp_back.remove(&first) {
+                break;
+            }
+            self.amp_out.pop_front();
+            self.amp_found_to_s = to_s;
+        }
+    }
+}
+
+/// Swap the sides of amplitude window `w`, found in chunk `k`, as the
+/// side `swaps` made after that chunk say ([`State::swaps`]).
+pub(crate) fn swap_found(w: &mut AmplitudeWindow, k: usize, swaps: &[(usize, f64)]) {
+    let n = swaps
+        .iter()
+        .filter(|&&(after, t)| after > k && w.start_s >= t)
+        .count();
+    if n % 2 == 1 {
+        w.swap_sides();
     }
 }
 
@@ -528,6 +563,16 @@ pub(crate) struct Seen<'a> {
     /// Whether the watch has been heard: until it is, the beat rate is
     /// guessed again from each chunk, so `bph` may change.
     pub heard: bool,
+    /// The amplitude windows found so far, `(chunk, windows)` in any
+    /// order, each still to be swapped by the `swaps` made after its chunk
+    /// ([`swap_found`]); every window starting before `windows_to_s` is
+    /// among them.
+    pub windows: &'a [(usize, Vec<AmplitudeWindow>)],
+    pub windows_to_s: f64,
+    pub clipped_beats: &'a [f64],
+    pub clipped_samples: usize,
+    pub jumps: &'a [f64],
+    pub sided: &'a [f64],
 }
 
 /// [`analyze_fed`], with `seen` shown each chunk once it is analysed, in
@@ -570,7 +615,13 @@ pub(crate) fn analyze_fed_seen(
             sc.spawn(move || amplitude_all(&rx, &tx, fs, cfg));
         }
         drop(wins_tx);
-        in_order(&mut st, done_rx, &job_tx, &mut progress, &mut seen);
+        in_order(
+            &mut st,
+            (done_rx, &wins_rx),
+            &job_tx,
+            &mut progress,
+            &mut seen,
+        );
         drop(job_tx);
         cutter.join().expect("the cutting thread panicked")
     })?;
@@ -578,6 +629,9 @@ pub(crate) fn analyze_fed_seen(
     progress(total as f64 / fs);
     Ok(st.finish(sample_rate, total))
 }
+
+/// A chunk's amplitude windows, found: its number, and them.
+type Found = (usize, Vec<AmplitudeWindow>);
 
 /// A queue several threads take from, each item once.
 type Shared<T> = std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<T>>>;
@@ -651,10 +705,14 @@ fn amplitude_all(
 
 /// [`analyze_fed`]'s third stage: the prepared chunks from `rx`, analysed
 /// in the order cut whatever order they come in, each chunk's amplitude
-/// job sent to `jobs`, and `progress` told each chunk's end but the last.
+/// job sent to `jobs` and the windows found taken from `wins` as they
+/// come, and `progress` told each chunk's end but the last.
 fn in_order(
     st: &mut State,
-    rx: std::sync::mpsc::Receiver<(usize, Prepared)>,
+    (rx, wins): (
+        std::sync::mpsc::Receiver<(usize, Prepared)>,
+        &std::sync::mpsc::Receiver<Found>,
+    ),
     jobs: &std::sync::mpsc::SyncSender<(AmpJob, Prepared)>,
     progress: &mut impl FnMut(f64),
     seen: &mut impl FnMut(Seen),
@@ -666,6 +724,9 @@ fn in_order(
         while let Some(c) = ready.remove(&next) {
             let job = st.chunk(&c);
             next += 1;
+            while let Ok(found) = wins.try_recv() {
+                st.windows_found(found);
+            }
             seen(Seen {
                 x: &c.x,
                 x0: c.x0,
@@ -675,6 +736,12 @@ fn in_order(
                 swaps: &st.swaps,
                 pending: st.sides.pending_since(),
                 heard: st.template.is_some(),
+                windows: &st.found,
+                windows_to_s: st.amp_found_to_s,
+                clipped_beats: &st.clipped_beats,
+                clipped_samples: st.clipped_samples,
+                jumps: &st.jumps,
+                sided: st.sides.sided(),
             });
             // The last chunk's end is reported once, by the caller.
             if c.core_b.is_finite() {
@@ -800,6 +867,10 @@ impl State {
             next_amp_s: 0.0,
             chunks: 0,
             swaps: Vec::new(),
+            found: Vec::new(),
+            amp_out: Default::default(),
+            amp_back: Default::default(),
+            amp_found_to_s: 0.0,
             clipped_beats: Vec::new(),
             clipped_samples: 0,
             snippets: Default::default(),

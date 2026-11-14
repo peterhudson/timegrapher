@@ -1562,7 +1562,8 @@ pub struct Reading {
     /// The recording's name, as shown in the report.
     pub label: String,
     pub position: Position,
-    /// Hours since the watch was fully wound (`None`: not given, taken as full).
+    /// Hours since the watch was fully wound (`None`: not given, its own
+    /// state, never taken as full wind).
     pub wind_h: Option<f64>,
     pub date: Option<String>,
     pub notes: Option<String>,
@@ -1596,7 +1597,9 @@ pub struct PositionValue {
 /// Witschi's characteristic values for one state of wind.
 #[derive(Debug, Clone, Serialize)]
 pub struct StateIndices {
-    pub wind_h: f64,
+    /// Hours since the watch was fully wound, 0 at full wind; `None` for
+    /// the readings whose wind was not given, a state of its own.
+    pub wind_h: Option<f64>,
     pub positions: Vec<PositionValue>,
     /// Mean rate over the positions, and over the horizontal and the
     /// vertical ones.
@@ -1682,12 +1685,12 @@ fn spread(v: impl Iterator<Item = f64>) -> Option<f64> {
     Some(hi - lo)
 }
 
-/// Hours after full wind to a tenth: the states of wind's one key.
-pub(crate) fn wind_key(w: Option<f64>) -> i64 {
-    (w.unwrap_or(0.0) * 10.0).round() as i64
-}
+#[path = "session_wind.rs"]
+mod session_wind;
+pub use session_wind::{in_wind_state, report_states};
+pub(crate) use session_wind::{wind_key, wind_keys};
 
-fn state(wind_h: f64, readings: &[&Reading]) -> StateIndices {
+fn state(wind_h: Option<f64>, readings: &[&Reading]) -> StateIndices {
     let figures: Vec<SourcedFigures> = readings
         .iter()
         .map(|r| {
@@ -1758,18 +1761,15 @@ pub fn measure_together(
 /// Witschi's characteristic values for the readings, and the conditions
 /// found in each recording.
 pub fn evaluate(readings: &[Reading]) -> SessionReport {
-    // States of wind, fullest first.
-    let mut keys: Vec<i64> = readings.iter().map(|r| wind_key(r.wind_h)).collect();
-    keys.sort_unstable();
-    keys.dedup();
-    let states: Vec<StateIndices> = keys
-        .iter()
-        .map(|&k| {
+    // States of wind, fullest first, then wind not given.
+    let states: Vec<StateIndices> = wind_keys(readings)
+        .into_iter()
+        .map(|k| {
             let rs: Vec<&Reading> = readings
                 .iter()
                 .filter(|r| wind_key(r.wind_h) == k)
                 .collect();
-            state(k as f64 / 10.0, &rs)
+            state(k.map(|k| k as f64 / 10.0), &rs)
         })
         .collect();
     evaluate_states(states, findings(readings))
@@ -1780,11 +1780,13 @@ pub fn evaluate(readings: &[Reading]) -> SessionReport {
 /// readings, such as a saved Positions Test's.
 pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> SessionReport {
     // Isochronism: each position from the fullest to the least wound
-    // state it was measured in.
+    // state it was measured in, over the states whose wind was given.
+    let given: Vec<&StateIndices> = states.iter().filter(|s| s.wind_h.is_some()).collect();
     let mut isochronism = Vec::new();
     for p in Position::ALL {
-        let at: Vec<(&StateIndices, &PositionValue)> = states
+        let at: Vec<(&StateIndices, &PositionValue)> = given
             .iter()
+            .copied()
             .filter_map(|s| {
                 s.positions
                     .iter()
@@ -1800,8 +1802,8 @@ pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> Ses
                 ]);
                 isochronism.push(Isochronism {
                     position: p,
-                    from_wind_h: a.0.wind_h,
-                    to_wind_h: b.0.wind_h,
+                    from_wind_h: a.0.wind_h.expect("a given state's wind"),
+                    to_wind_h: b.0.wind_h.expect("a given state's wind"),
                     rate_change: b.1.rate_s_per_day.unwrap() - a.1.rate_s_per_day.unwrap(),
                     amplitude_change: b.1.amplitude_deg.zip(a.1.amplitude_deg).map(|(x, y)| x - y),
                     beat_error_change: (selected.values.len() == 2)
@@ -1820,8 +1822,8 @@ pub fn evaluate_states(states: Vec<StateIndices>, findings: Vec<Finding>) -> Ses
             .map(|i| i.rate_change),
     );
     let im_all = largest(isochronism.iter().map(|i| i.rate_change));
-    let ie = match (states.first(), states.last()) {
-        (Some(a), Some(b)) if states.len() >= 2 => {
+    let ie = match (given.first(), given.last()) {
+        (Some(a), Some(b)) if given.len() >= 2 => {
             // The positions with a rate in both states, so each mean is
             // over the same positions.
             let common = |s: &StateIndices, o: &StateIndices| {
@@ -1903,10 +1905,9 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
         })
     };
     let at = |r: &Reading| {
-        let w = r
-            .wind_h
-            .filter(|&w| w > 0.0)
-            .map_or(String::new(), |w| format!(", {w:.0} h after winding"));
+        let w = r.wind_h.filter(|&w| w > 0.0).map_or(String::new(), |w| {
+            format!(", {}", crate::reading_text::wind_words(w))
+        });
         let name = r
             .label
             .rsplit(['/', '\\'])

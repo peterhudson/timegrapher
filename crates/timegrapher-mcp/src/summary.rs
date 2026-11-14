@@ -166,7 +166,8 @@ fn poise_lines(list: &Value) -> Vec<String> {
         .flatten()
         .filter_map(|p| {
             let text = p["fit"]["text"].as_str()?;
-            let when = timegrapher_core::reading_text::wind_words(p["wind_h"].as_f64()?);
+            // `wind_h` null: the wind was not given (#1665).
+            let when = timegrapher_core::reading_text::wind_state_words(p.get("wind_h")?.as_f64());
             Some(format!("Dynamic Poise, {when} (`poise`): {text}"))
         })
         .collect()
@@ -467,7 +468,8 @@ fn series(doc: &Value) -> Option<String> {
 fn characteristic_values(s: &Value) -> String {
     let at = match s["wind_h"].as_f64() {
         Some(h) if h > 0.0 => format!(" after {h} h"),
-        _ => String::new(),
+        Some(_) => String::new(),
+        None => format!(", {}", timegrapher_core::reading_text::WIND_NOT_GIVEN),
     };
     let mut parts = Vec::new();
     let mut say = |key: &str, what: &str, unit: &str, digits: usize, sign: bool| {
@@ -708,6 +710,7 @@ mod tests {
             "readings": [],
             "poise": [{ "wind_h": 0.0, "fit": { "text": "Fastest at 3H." } },
                       { "wind_h": 24.0, "fit": { "text": "Fastest at 6H." } },
+                      { "wind_h": 24.5, "fit": { "text": "Fastest at 9H." } },
                       { "fit": { "text": "No state given." } }],
         });
         let s = lead(&doc).unwrap();
@@ -719,7 +722,31 @@ mod tests {
             s.contains("Dynamic Poise, 24 h after winding (`poise`): Fastest at 6H."),
             "{s}"
         );
+        // Hours given to a half read as given (#1715).
+        assert!(
+            s.contains("Dynamic Poise, 24.5 h after winding (`poise`): Fastest at 9H."),
+            "{s}"
+        );
         assert!(!s.contains("No state given"), "{s}");
+    }
+
+    /// A state whose wind was not given is said so, never as full wind
+    /// (#1665).
+    #[test]
+    fn a_state_with_no_wind_given_is_said_so() {
+        let doc = json!({
+            "schema": "timegrapher.session/3",
+            "readings": [],
+            "poise": [{ "wind_h": null, "fit": { "text": "Fastest at 3H." } }],
+            "report": { "states": [{ "wind_h": null, "x": 15.0 }] },
+        });
+        let s = lead(&doc).unwrap();
+        assert!(
+            s.contains("Dynamic Poise, wind not given (`poise`): Fastest at 3H."),
+            "{s}"
+        );
+        assert!(s.contains("Characteristic values, wind not given:"), "{s}");
+        assert!(!s.contains("full wind"), "{s}");
     }
 
     #[test]

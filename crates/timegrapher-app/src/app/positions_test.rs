@@ -417,19 +417,22 @@ impl TimegrapherApp {
 
     /// The Positions Test settings' Save as CSV…, Save as Text…, Copy and
     /// Save Results for 24 Hours…. The first three write the table the
-    /// pane shows: the test's, or an opened take's This Take (#1660).
+    /// pane shows: the test's, an opened 24 hour half's saved results
+    /// (#1706), or an opened take's This Take (#1660).
     fn positions_results(&mut self, ui: &mut egui::Ui) {
         let kept = self.positions_kept(ui.ctx());
+        let saved = self.positions_saved().cloned();
         let nothing = match self.positions_test() {
             Some(t) => t.readings_so_far().is_empty(),
-            None => kept.is_none(),
+            None => kept.is_none() && saved.is_none(),
         }
         .then_some("Nothing measured yet");
         theme::bar_gap(ui);
         let about = self.guided_about();
-        let text = |t: Option<&guided::Test>, sep: char| match (t, &kept) {
-            (Some(t), _) => Some(guided::export_text(t, &about, sep)),
-            (None, Some(k)) => Some(guided::kept_rows_text(
+        let text = |t: Option<&guided::Test>, sep: char| match (t, &saved, &kept) {
+            (Some(t), ..) => Some(guided::export_text(t, &about, sep)),
+            (None, Some(s), _) => Some(guided::saved_export_text(s, &about, sep)),
+            (None, None, Some(k)) => Some(guided::kept_rows_text(
                 k,
                 guided::Kind::Positions,
                 &about,
@@ -458,7 +461,7 @@ impl TimegrapherApp {
              report to keep, print or send",
             nothing,
         ) {
-            self.save_test_text(&about, kept.as_deref());
+            self.save_test_text(&about, saved.as_ref(), kept.as_deref());
         }
         if theme::tool_word_button(
             ui,
@@ -496,6 +499,12 @@ impl TimegrapherApp {
         }
     }
 
+    /// An opened 24 hour half's saved results, as the pane shows them with
+    /// no test on the Bench (#1706).
+    pub(super) fn positions_saved(&self) -> Option<&guided::FullWind> {
+        self.guided_saved.as_ref().filter(|_| self.guided.is_none())
+    }
+
     /// An opened take's six positions as the pane's This Take shows them,
     /// with no test on the Bench and no saved 24 hour half on show: None
     /// when none was read.
@@ -512,11 +521,12 @@ impl TimegrapherApp {
     }
 
     /// Save as Text…: the plain-text report (core `text_report`) of the
-    /// test, or of an opened take's `kept` positions, to a file the person
-    /// picks.
+    /// test, an opened 24 hour half's `saved_test` results, or an opened
+    /// take's `kept` positions, to a file the person picks.
     fn save_test_text(
         &mut self,
         about: &guided::About,
+        saved_test: Option<&guided::FullWind>,
         kept: Option<&[timegrapher_core::session::Reading]>,
     ) {
         let dir = self.guided_dir();
@@ -530,12 +540,18 @@ impl TimegrapherApp {
             .or_else(|| self.take_on_show())
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
         let lift_known = self.lift_known();
-        let text = match (self.positions_test(), kept) {
-            (Some(t), _) => {
+        let text = match (self.positions_test(), saved_test, kept) {
+            (Some(t), ..) => {
                 let take = saved.unwrap_or_else(|| guided::began_name(t));
                 guided::report_text(t, about, lift_known, Some(&take))
             }
-            (None, Some(k)) => guided::kept_report_text(
+            (None, Some(s), _) => Some(guided::saved_report_text(
+                s,
+                about,
+                lift_known,
+                saved.as_deref(),
+            )),
+            (None, None, Some(k)) => guided::kept_report_text(
                 k,
                 guided::Kind::Positions,
                 about,

@@ -488,7 +488,7 @@ fn sessions_checks_and_mistakes(c: &mut Client, dir: &Path, take: &Path) {
         json!({ "paths": [path(&dir.join("session"))] }),
     );
     assert!(r.get("isError").is_none(), "{r}");
-    assert_eq!(r["structuredContent"]["schema"], "timegrapher.session/2");
+    assert_eq!(r["structuredContent"]["schema"], "timegrapher.session/3");
     assert_eq!(
         r["structuredContent"]["readings"].as_array().unwrap().len(),
         3

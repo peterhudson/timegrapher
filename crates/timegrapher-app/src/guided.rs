@@ -15,6 +15,7 @@ use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
 use timegrapher_core::figure_text::base_digits::{AMPLITUDE, BEAT_ERROR, RATE};
 use timegrapher_core::figure_text::{fixed_text, signed_text, true_minus};
+use timegrapher_core::reading_text::WindHours;
 use timegrapher_core::session::{self, Measurement, Reading, SourcedFigures};
 use timegrapher_core::steadiness::SeriesKind;
 use timegrapher_core::stream::BeatLog;
@@ -2075,7 +2076,7 @@ fn kept_figures(full: &FullWind) -> Vec<SourcedFigures> {
 /// the six, or the Dynamic Poise test's eight upright stops.
 fn table_of(figures: &[SourcedFigures], mut notes: Vec<String>, kind: Kind) -> Table {
     let over: Vec<session::Position> = kind.order().iter().map(|p| p.core()).collect();
-    let ix = session::sourced_indices_over(0.0, figures, &over);
+    let ix = session::sourced_indices_over(None, figures, &over);
     let beat_error_summary = ix.beat_error_summary();
     notes.push(beat_error_summary.clone());
     Table {
@@ -2561,6 +2562,72 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
     out
 }
 
+/// An opened 24 hour half's saved results as text, as [`export_text`]
+/// gives the test's when it ran (#1706): the watch and how it was read as
+/// the results keep them, the table the pane shows, then the full-wind
+/// test against it. A line the results don't keep is left out.
+pub fn saved_export_text(s: &FullWind, about: &About, sep: char) -> String {
+    let mut out = String::new();
+    let mut line = |k: &str, v: String| out += &export_line(k, &v, sep);
+    about_lines(&saved_about(s, about), &mut line);
+    line("Test Began, UTC", s.began_utc.clone());
+    if let (Some(full), Some(h)) = (&s.against, s.wind_h) {
+        line("Full-Wind Test Began, UTC", full.began_utc.clone());
+        line("Hours After Full Wind", format!("{h:.1}"));
+    }
+    if let Some(v) = s.settle_s {
+        line("Settling, s", format!("{v:.0}"));
+    }
+    if let Some(v) = s.measure_s {
+        line("Measured, s", format!("{v:.0}"));
+    }
+    out.push('\n');
+    out += &table_text(&kept_table(s), sep, Kind::Positions);
+    if let Some(c) = saved_comparison(s) {
+        out.push('\n');
+        out += &comparison_text(&c, sep);
+    }
+    out
+}
+
+/// An opened 24 hour half's saved results as the plain-text report, as
+/// [`report_text`] gives the test's (#1706): its rows in the order the
+/// pane shows them, then the full-wind test against it. `take` is the
+/// take's folder name, for the Date.
+pub fn saved_report_text(
+    s: &FullWind,
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+) -> String {
+    let about = saved_about(s, about);
+    let lengths = s.settle_s.zip(s.measure_s);
+    let header = report_header(&about, lift_known, take, lengths);
+    let figures = kept_figures(s);
+    let order: Vec<session::Position> = figures.iter().map(|f| f.0).collect();
+    let full = s
+        .against
+        .as_deref()
+        .zip(s.wind_h)
+        .map(|(f, h)| (kept_figures(f), h));
+    let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
+        figures,
+        hours: WindHours::measured(*hours),
+    });
+    text_report::positions_of(&header, &figures, earlier, &order, &[])
+}
+
+/// The watch as saved results keep it, the pane's where they keep none.
+fn saved_about(s: &FullWind, about: &About) -> About {
+    let or = |kept: &str, now: &str| if kept.trim().is_empty() { now } else { kept }.to_string();
+    About {
+        watch: or(&s.watch, &about.watch),
+        calibre: or(&s.calibre, &about.calibre),
+        bph: s.bph.or(about.bph),
+        lift_angle_deg: s.lift_angle_deg.unwrap_or(about.lift_angle_deg),
+    }
+}
+
 /// A reopened take's table of `kind` as text, as [`export_text`] gives
 /// a test's: the watch and how it was read, the table, and for Dynamic
 /// Poise the fit. The rows are the ones the pane shows (#1657, #1660); a
@@ -2665,7 +2732,7 @@ pub fn report_text(
             let full = test.full.as_ref().map(|(f, h)| (kept_figures(f), *h));
             let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
                 figures,
-                hours: *hours,
+                hours: WindHours::measured(*hours),
             });
             Some(text_report::positions(&header, readings, earlier))
         }
