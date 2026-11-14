@@ -537,6 +537,31 @@ mod tests {
     }
 
     #[test]
+    fn a_windows_correlation_is_corrected_for_its_bias() {
+        // Noise correlating at 0.5 in runs of 30 between missing values
+        // (#1544, Trevor's review): the raw lag-one correlation of 30
+        // values reads about 0.36, short by MP's 2(1 + 3ρ)/n; the window
+        // reads it corrected, near 0.5.
+        let mut rng = Rng::new(900_003);
+        let mut e = 0.0;
+        let g = grid(1.0, 31 * 100, |t| {
+            if (t as usize) % 31 == 30 {
+                return f64::NAN;
+            }
+            e = 0.5 * e + 0.75f64.sqrt() * rng.normal();
+            e
+        });
+        let (.., rho) = fit_line(&g, 0, g.y.len(), std::f64::consts::TAU / 60.0).unwrap();
+        let runs: Vec<&[f64]> =
+            g.y.split(|v| v.is_nan())
+                .filter(|r| !r.is_empty())
+                .collect();
+        let raw = crate::confidence::pooled_lag_one(runs.iter().copied()).unwrap();
+        assert!(raw < 0.42, "raw {raw}");
+        assert!((rho - 0.5).abs() < 0.04, "corrected {rho}");
+    }
+
+    #[test]
     fn a_window_se_allows_for_noise_that_follows_itself() {
         // A 60 s line of 2 ms under noise whose neighbours correlate at
         // 0.8 (0.5 ms in size). One SE should be about the scatter of the

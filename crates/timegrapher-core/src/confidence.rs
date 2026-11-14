@@ -1213,6 +1213,33 @@ mod tests {
     }
 
     #[test]
+    fn the_bias_is_read_at_the_mean_length_of_the_stretches_read() {
+        // Stretches of 10, 50 and 2 values (Trevor's review of #1544):
+        // the bias is MP's at the mean length of those read, 30, the 2
+        // too short to read left out; not at the total, 62 or 60, nor
+        // the shortest, 10 or 2.
+        let mut rng = Rng::new(900_002);
+        let mut x = 0.0;
+        let mut series = |n: usize| -> Vec<f64> {
+            (0..n)
+                .map(|_| {
+                    x = 0.5 * x + 0.75f64.sqrt() * rng.normal();
+                    x
+                })
+                .collect()
+        };
+        let (a, b, c) = (series(10), series(50), series(2));
+        let s = [a.as_slice(), b.as_slice(), c.as_slice()];
+        let r = pooled_lag_one(s.iter().copied()).unwrap();
+        let at = |n: f64| (r + line_lag_one_bias(r, n)).clamp(0.0, MAX_RHO);
+        let got = corrected_lag_one(&s);
+        assert!((got - at(30.0)).abs() < 1e-12, "{got} against {}", at(30.0));
+        for wrong in [62.0, 60.0, 10.0, 2.0, 62.0 / 3.0] {
+            assert!((got - at(wrong)).abs() > 0.01, "n {wrong}: {got}");
+        }
+    }
+
+    #[test]
     fn a_short_readings_borrowed_plus_minus_holds_its_centre() {
         // Five values of their own, their noise from the 30 nearest: one
         // SE either side should still hold the true centre about 68% of
