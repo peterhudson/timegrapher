@@ -1905,10 +1905,9 @@ fn findings(readings: &[Reading]) -> Vec<Finding> {
         })
     };
     let at = |r: &Reading| {
-        let w = r
-            .wind_h
-            .filter(|&w| w > 0.0)
-            .map_or(String::new(), |w| format!(", {w:.0} h after winding"));
+        let w = r.wind_h.filter(|&w| w > 0.0).map_or(String::new(), |w| {
+            format!(", {}", crate::reading_text::wind_words(w))
+        });
         let name = r
             .label
             .rsplit(['/', '\\'])

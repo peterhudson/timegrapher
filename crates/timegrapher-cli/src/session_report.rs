@@ -720,7 +720,7 @@ fn state_charts(sn: &Session) -> String {
                 "<h3>{}</h3>",
                 match st.wind_h {
                     Some(w) if w <= 0.0 => "Fully wound".to_string(),
-                    Some(w) => format!("{} h after winding", fixed_text(w, 0)),
+                    Some(w) => timegrapher_core::reading_text::wind_words(w),
                     None => "Wind not given".to_string(),
                 }
             );

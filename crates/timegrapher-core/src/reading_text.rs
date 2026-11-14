@@ -71,7 +71,7 @@ pub fn position_name(p: &str) -> String {
 }
 
 /// A state of wind as every surface names it: "full wind" at 0 (or less),
-/// "24 h after winding", hours to the whole hour, or "wind not given"
+/// "24 h after winding", the hours as given, or "wind not given"
 /// where the reading carries none (#1665): a reading is never called fully
 /// wound unless that was set.
 pub fn wind_state_words(wind_h: Option<f64>) -> String {
@@ -110,9 +110,10 @@ fn capitalised(s: &str) -> String {
         .map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
 }
 
-/// A state of wind that was given, as [`wind_state_words`] names it.
+/// A state of wind that was given, as [`wind_state_words`] names it:
+/// the hours as given ([`WindHours::given`] from full wind, #1715).
 pub fn wind_words(wind_h: f64) -> String {
-    wind_words_to(wind_h, 0)
+    WindHours::given(0.0, wind_h).words()
 }
 
 /// [`wind_words`] with the hours to `digits` decimals: see [`WindHours`].
@@ -141,8 +142,9 @@ pub struct WindHours {
 /// Decimals of hours a guided test measured: it times them to a tenth.
 const MEASURED_DIGITS: usize = 1;
 
-/// The most decimals hours given by hand are read to.
-const GIVEN_MAX_DIGITS: usize = 3;
+/// The most decimals hours given by hand are read to: a tenth, as states
+/// of wind are told apart (#1665).
+const GIVEN_MAX_DIGITS: usize = 1;
 
 impl WindHours {
     /// Hours a guided test measured, to a tenth.
@@ -159,6 +161,9 @@ impl WindHours {
     /// typed "24.0" reads as whole, as 24: the number keeps no trailing
     /// zero.
     pub fn given(from: f64, to: f64) -> Self {
+        // To the tenth the state of wind is keyed to, rounded as it is.
+        let tenth = |h: f64| (h * 10.0).round() / 10.0;
+        let (from, to) = (tenth(from), tenth(to));
         let digits = if from == 0.0 {
             given_digits(to)
         } else {
@@ -213,6 +218,12 @@ mod tests {
         assert_eq!(WindHours::measured(24.0).words(), "24.0 h after winding");
         assert_eq!(WindHours::measured(24.2).short(), "24.2 h");
         assert_eq!(WindHours::measured(0.0).words(), "full wind");
+        // A state of wind given by hand reads as given (#1715).
+        assert_eq!(wind_words(24.0), "24 h after winding");
+        assert_eq!(wind_words(24.5), "24.5 h after winding");
+        // To the tenth its state is keyed to, rounded as it is (#1665).
+        assert_eq!(wind_words(24.25), "24.3 h after winding");
+        assert_eq!(wind_words(0.0), "full wind");
     }
 
     /// The card and a take's hover say the wind to 0.1 h, or that it was
