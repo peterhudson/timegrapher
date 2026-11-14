@@ -839,18 +839,21 @@ impl TimegrapherApp {
         if self.session.recording_fault().is_some() {
             return;
         }
-        if let Some(r) = self.session.recorder.as_mut() {
-            let info = SessionInfo {
-                watch: self.watch.clone(),
-                position: self.position.code().into(),
-                lift_deg: self.lift_deg,
-                bph: self.bph,
-                device: String::new(),
-                sample_rate: 0,
-                bits: 0,
-                software: String::new(),
-            };
-            let _ = r.set_info(info);
+        let info = SessionInfo {
+            watch: self.watch.clone(),
+            position: self.position.code().into(),
+            lift_deg: self.lift_deg,
+            bph: self.bph,
+            device: String::new(),
+            sample_rate: 0,
+            bits: 0,
+            software: String::new(),
+        };
+        // Kept in memory and written next time if this write fails; the
+        // last good session.json stays as it was (#1639).
+        let written = self.session.recorder.as_mut().map(|r| r.set_info(info));
+        if let Some(Err(e)) = written {
+            self.error(format!("The take's session file couldn't be written: {e}"));
         }
     }
 }
