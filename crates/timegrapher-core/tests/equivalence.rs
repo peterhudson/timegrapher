@@ -682,6 +682,7 @@ fn kept_while_recorded_matches_kept_after_on_real_takes() {
             cfg: cfg.clone(),
             shapes,
             software,
+            checkpoints: None,
         });
         timegrapher_core::audio::stream(&path, 4097, |b| assert!(keeper.push(b))).unwrap();
         let live = keeper.finish().unwrap();
@@ -732,6 +733,7 @@ fn kept_while_recorded_matches_kept_after_where_the_beats_jump() {
         cfg: cfg.clone(),
         shapes,
         software,
+        checkpoints: None,
     });
     timegrapher_core::audio::stream(&path, 4097, |b| assert!(keeper.push(b))).unwrap();
     let live = keeper.finish().unwrap();

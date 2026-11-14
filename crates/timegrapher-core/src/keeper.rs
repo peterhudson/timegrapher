@@ -12,11 +12,13 @@ use crate::analysis_take::{
 };
 use crate::audio::AudioError;
 use crate::beats::Beat;
+use crate::checkpoint::{self, Checkpointed};
 use crate::dsp::envelope;
-use crate::profile::{self, Side};
+use crate::profile;
 use crate::stream::{self, BeatLog, StreamConfig};
 use crate::usbclock;
-use std::sync::mpsc;
+use std::path::PathBuf;
+use std::sync::{mpsc, Arc, Mutex};
 
 /// Audio either side of a profile's stretch, for its beats' windows, as
 /// the app's profile pane reads it.
@@ -116,6 +118,12 @@ impl SecondReading {
     /// Samples read so far.
     pub(crate) fn read(&self) -> usize {
         self.pos
+    }
+
+    /// The stretches profiled so far, and the time, seconds, every
+    /// stretch ending by it is profiled to (one without beats has none).
+    fn profiled(&self) -> (&[StretchProfiles], f64) {
+        (&self.profiles, self.start_s(self.k))
     }
 
     /// Profile every stretch whose sound and margin are in and that ends
@@ -240,13 +248,7 @@ impl SecondReading {
     fn swap_from(&mut self, t: f64, beats: &[Beat], bph: u32, cfg: &StreamConfig) {
         for (i, &k) in self.stretches.iter().enumerate() {
             if self.start_s(k) >= t {
-                let p = &mut self.profiles[i];
-                p.sides.swap(0, 1);
-                for (s, side) in p.sides.iter_mut().zip([Side::A, Side::B]) {
-                    if let Some(s) = s {
-                        s.side = side;
-                    }
-                }
+                self.profiles[i].swap_sides();
             }
         }
         if let Some(h) = self.held.take_if(|h| h.jump_s == t) {
@@ -320,6 +322,7 @@ impl SecondReading {
 pub struct Keeper {
     tx: Option<mpsc::SyncSender<Vec<f32>>>,
     worker: Option<std::thread::JoinHandle<Result<Stored, AudioError>>>,
+    checkpointed: Arc<Mutex<Checkpointed>>,
 }
 
 /// What a [`Keeper`] keeps, besides the sound it is given.
@@ -332,17 +335,39 @@ pub struct KeepAs {
     /// Each recording's shape stretch ([`analysis_take::shape_stretches`]).
     pub shapes: Vec<Option<(f64, f64)>>,
     pub software: serde_json::Value,
+    /// Where to keep the analysis on the disk as it is recorded, if
+    /// anywhere ([`checkpoint`]).
+    pub checkpoints: Option<Checkpoints>,
+}
+
+/// Parts of the analysis kept on the disk as it is recorded
+/// ([`checkpoint`]): in the take folder `take`, one each `every_s` of
+/// sound ([`checkpoint::EVERY_S`]).
+pub struct Checkpoints {
+    pub take: PathBuf,
+    pub every_s: f64,
 }
 
 impl Keeper {
     /// Start keeping a take recorded as `how` says.
     pub fn start(how: KeepAs) -> Keeper {
         let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(QUEUED_BLOCKS);
-        let worker = std::thread::spawn(move || keep(&how, rx));
+        let checkpointed = Arc::new(Mutex::new(Checkpointed::default()));
+        let status = checkpointed.clone();
+        let worker = std::thread::spawn(move || keep(&how, rx, status));
         Keeper {
             tx: Some(tx),
             worker: Some(worker),
+            checkpointed,
         }
+    }
+
+    /// How far the analysis is kept on the disk ([`KeepAs::checkpoints`]).
+    pub fn checkpointed(&self) -> Checkpointed {
+        self.checkpointed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// The next block of sound. False once the reading has stopped (it
@@ -391,10 +416,25 @@ fn profile_bound(core_a: f64, heard: bool, read: usize, fs: f64) -> usize {
 
 /// The Keeper's reading: the blocks from `rx`, until it closes, read as
 /// one recording.
-fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError> {
+fn keep(
+    how: &KeepAs,
+    rx: mpsc::Receiver<Vec<f32>>,
+    status: Arc<Mutex<Checkpointed>>,
+) -> Result<Stored, AudioError> {
     let cfg = &how.cfg;
     let fs = f64::from(how.sample_rate);
     let mut second = SecondReading::new(how.sample_rate, &how.shapes);
+    let mut parts = how.checkpoints.as_ref().map(|c| {
+        checkpoint::Writer::new(checkpoint::Writing {
+            take: &c.take,
+            every_s: c.every_s,
+            sample_rate: how.sample_rate,
+            bytes_per_frame: how.bytes_per_frame,
+            cfg,
+            software: how.software.clone(),
+            status,
+        })
+    });
     let mut swaps = 0;
     let feed = move |push: &mut dyn FnMut(&[f32]) -> bool| {
         for block in rx {
@@ -421,6 +461,10 @@ fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError
             second.release(seen.pending);
             let until = profile_bound(seen.core_a, seen.heard, second.read(), fs);
             second.profile_until(seen.beats, seen.bph, cfg, (until, seen.pending));
+            if let Some(parts) = parts.as_mut() {
+                let (profiles, to_s) = second.profiled();
+                parts.after_chunk(&seen, profiles, to_s);
+            }
         },
     )?;
     Ok(second.finish(
@@ -435,7 +479,7 @@ fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis_take::{files, measure};
+    use crate::analysis_take::{self, files, measure};
     use crate::audio::{self, Audio};
     use crate::synth::{generate, SynthConfig};
     use std::path::{Path, PathBuf};
@@ -515,6 +559,18 @@ mod tests {
         shapes: &[Option<(f64, f64)>],
         sizes: &[usize],
     ) -> Stored {
+        kept_with_parts(paths, cfg, shapes, sizes, None).0
+    }
+
+    /// [`kept_live`], its parts kept on the disk as `checkpoints` says,
+    /// and how far they reached.
+    fn kept_with_parts(
+        paths: &[PathBuf],
+        cfg: &StreamConfig,
+        shapes: &[Option<(f64, f64)>],
+        sizes: &[usize],
+        checkpoints: Option<Checkpoints>,
+    ) -> (Stored, Checkpointed) {
         let info = audio::info(&paths[0]).unwrap();
         let keeper = Keeper::start(KeepAs {
             sample_rate: info.sample_rate,
@@ -522,6 +578,7 @@ mod tests {
             cfg: cfg.clone(),
             shapes: shapes.to_vec(),
             software: software(),
+            checkpoints,
         });
         let mut sound = Vec::new();
         for p in paths {
@@ -536,7 +593,10 @@ mod tests {
             assert!(keeper.push(&sound[at..end]));
             at = end;
         }
-        keeper.finish().unwrap()
+        let status = keeper.checkpointed.clone();
+        let stored = keeper.finish().unwrap();
+        let status = status.lock().unwrap().clone();
+        (stored, status)
     }
 
     /// The files `analysis/` would hold, by name.
@@ -675,6 +735,177 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// The parts read back, as far as they reach: the take kept, beats,
+    /// amplitude windows and profiles, cut there.
+    fn assert_parts_are_the_take_so_far(take: &Path, whole: &Stored, to_s: f64) {
+        let parts = checkpoint::read(take).unwrap();
+        assert_eq!(parts.header.duration_s, to_s);
+        assert_eq!(parts.log.bph, whole.log.bph);
+        // Kept to the µs, as `analysis/` keeps them.
+        let n = whole.log.beats.partition_point(|b| b.time < to_s);
+        assert!(n > 0);
+        let rows = |s: &Stored, n: usize| {
+            analysis_take::beats_rows(&s.log.beats[..n], &s.log.clipped_beats, s.log.bph)
+        };
+        assert_eq!(rows(&parts, parts.log.beats.len()), rows(whole, n));
+        let wins: Vec<_> = whole
+            .log
+            .amplitude_windows
+            .iter()
+            .filter(|w| w.start_s < to_s)
+            .cloned()
+            .collect();
+        assert!(!wins.is_empty());
+        for csv in [analysis_take::windows_csv, analysis_take::culled_csv] {
+            assert_eq!(csv(&parts.log.amplitude_windows), csv(&wins));
+        }
+        let n = whole.profiles.partition_point(|p| p.end_s <= to_s);
+        assert!(n > 0);
+        // Kept as `analysis/` keeps them.
+        assert!(
+            analysis_take::profiles_bin(&parts.profiles)
+                == analysis_take::profiles_bin(&whole.profiles[..n])
+        );
+        let before = |v: &[f64]| v.iter().copied().filter(|&t| t < to_s).collect::<Vec<_>>();
+        assert_eq!(parts.log.jumps, before(&whole.log.jumps));
+        assert_eq!(parts.log.sided, before(&whole.log.sided));
+    }
+
+    /// Kept on the disk as it is recorded, every 20 s here, a take reads
+    /// back from its parts as the take kept up to the last part's end, and
+    /// the take kept is the same, byte for byte, as with no parts.
+    #[test]
+    fn parts_read_back_as_the_take_so_far() {
+        let dir = scratch("parts");
+        let paths = take(&dir, 75.0, 1);
+        let cfg = StreamConfig {
+            chunk_s: 11.5,
+            ..Default::default()
+        };
+        let plain = kept_live(&paths, &cfg, &[], &[4097]);
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 20.0,
+        });
+        let (kept, status) = kept_with_parts(&paths, &cfg, &[], &[4097, 1, 99_999], parts);
+        assert_eq!(kept_files(&kept), kept_files(&plain));
+        // The last chunk read starts 69 s in: everything before is final.
+        assert_eq!(
+            status,
+            Checkpointed {
+                to_s: 60.0,
+                failed: None
+            }
+        );
+        assert_parts_are_the_take_so_far(&dir, &kept, 60.0);
+        checkpoint::remove(&dir).unwrap();
+        assert!(!checkpoint::exists(&dir));
+        checkpoint::remove(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A take whose sides are named only after its first part (its beat
+    /// error grows from 0) reads back from its parts with the first part's
+    /// beats numbered one further and its sides swapped, as the reading
+    /// renumbered them.
+    #[test]
+    fn sides_named_after_a_part_read_back_renamed() {
+        let dir = scratch("renamed");
+        let audio = generate(
+            &SynthConfig {
+                duration_s: 90.0,
+                beat_error_ms: 0.0,
+                beat_error_drift_ms_per_s: 0.004,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        let path = dir.join("take_part01-001.wav");
+        audio::write_wav(&path, &audio).unwrap();
+        let cfg = StreamConfig {
+            chunk_s: 12.0,
+            ..Default::default()
+        };
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 12.0,
+        });
+        let (kept, status) = kept_with_parts(&[path], &cfg, &[], &[48_000], parts);
+        let partial: checkpoint::Partial = serde_json::from_slice(
+            &std::fs::read(dir.join(checkpoint::DIR).join(checkpoint::HEADER)).unwrap(),
+        )
+        .unwrap();
+        let renamed = partial.renamed_before.expect("named after a part");
+        assert!(renamed >= 1 && renamed < partial.parts.len(), "{renamed}");
+        assert_parts_are_the_take_so_far(&dir, &kept, status.to_s);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A part changed on the disk, or its list, is refused; a part file
+    /// the list doesn't name is passed over; a take with no parts has
+    /// none to read.
+    #[test]
+    fn parts_not_as_listed_are_refused() {
+        let dir = scratch("tampered");
+        let paths = take(&dir, 40.0, 1);
+        let cfg = StreamConfig {
+            chunk_s: 12.0,
+            ..Default::default()
+        };
+        let parts = Some(Checkpoints {
+            take: dir.clone(),
+            every_s: 12.0,
+        });
+        let (_, status) = kept_with_parts(&paths, &cfg, &[], &[4097], parts);
+        assert_eq!(status.to_s, 24.0);
+        let folder = dir.join(checkpoint::DIR);
+        std::fs::write(folder.join("0003-beats.csv.gz"), b"not listed").unwrap();
+        let good = checkpoint::read(&dir).unwrap();
+        assert_eq!(good.header.duration_s, 24.0);
+        let part = folder.join("0002-windows.csv.gz");
+        let mut bytes = std::fs::read(&part).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 1;
+        std::fs::write(&part, &bytes).unwrap();
+        let e = checkpoint::read(&dir).unwrap_err().to_string();
+        assert!(
+            e.contains("0002-windows.csv.gz isn't as partial.json lists it"),
+            "{e}"
+        );
+        checkpoint::remove(&dir).unwrap();
+        let e = checkpoint::read(&dir).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Parts that can't be written leave the recording and its reading
+    /// going, say why, and the take is kept all the same.
+    #[test]
+    fn parts_not_written_say_why_and_the_take_is_kept() {
+        let dir = scratch("unwritable");
+        let paths = take(&dir, 40.0, 1);
+        let cfg = StreamConfig {
+            chunk_s: 12.0,
+            ..Default::default()
+        };
+        let plain = kept_live(&paths, &cfg, &[], &[4097]);
+        // A file where the take's folder should be.
+        let blocked = dir.join("a file");
+        std::fs::write(&blocked, b"").unwrap();
+        let parts = Some(Checkpoints {
+            take: blocked,
+            every_s: 12.0,
+        });
+        let (kept, status) = kept_with_parts(&paths, &cfg, &[], &[4097], parts);
+        assert_eq!(kept_files(&kept), kept_files(&plain));
+        assert_eq!(status.to_s, 0.0);
+        assert!(status
+            .failed
+            .is_some_and(|e| e.contains("analysis.partial")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// Nothing pushed keeps an empty take, and a Keeper dropped unfinished
     /// stops its reading.
     #[test]
@@ -685,6 +916,7 @@ mod tests {
             cfg: StreamConfig::default(),
             shapes: Vec::new(),
             software: software(),
+            checkpoints: None,
         };
         let s = Keeper::start(how()).finish().unwrap();
         assert!(s.log.beats.is_empty() && s.profiles.is_empty());
