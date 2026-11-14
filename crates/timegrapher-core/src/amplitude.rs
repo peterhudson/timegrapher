@@ -177,15 +177,18 @@ const UNLOCK_SEARCH_S: f64 = 0.003;
 const UNLOCK_LATE_S: f64 = 0.002;
 
 /// How far apart the two sides' unlocks on their long templates may lie,
-/// seconds, for the sides to be read on long templates ([`Guide::Long`]).
-/// The unlock-to-drop time is the balance crossing the lift, and both
-/// sides cross it at the same amplitude, so the two differ only by the
-/// pallets' lift asymmetry: 2 ms is about 7.5° of balance travel at 150°
-/// and 14° at 280° (28,800 bph), far more than that asymmetry. A Tick at
-/// 158° and a Tock at 119° from one balance cannot both be true: on
-/// Peter's Submariner a faint sound 4 ms before the Tock's unlock was read
-/// as it (#1703, Norm's ruling).
-const SIDES_UNLOCK_AGREE_S: f64 = 0.002;
+/// as a share of their mean distance from the drop, for the sides to be
+/// read on long templates ([`Guide::Long`]). The unlock-to-drop time is
+/// the balance crossing the lift, and both sides cross it at the same
+/// amplitude, so the two differ only by the pallets' lift asymmetry: a few
+/// degrees of a 50–60° lift, under a tenth. A share, not a fixed time,
+/// because that time grows as the amplitude falls (14 ms near 160°, 23 ms
+/// near 110° at 28,800 bph), and the real gap and the template's noise
+/// grow with it: a fixed 2 ms split the sides of Peter's 69 h run-down at
+/// 62 h. On Peter's Submariner at Crown Down a faint sound at 18.4 ms was
+/// read as the Tock's unlock against the Tick's 14 ms, about 27% apart
+/// (#1703, Norm's ruling).
+const SIDES_UNLOCK_AGREE_SHARE: f64 = 0.15;
 
 /// A sound 1 found from the start of a template [`template_pre_s`] long,
 /// earlier than the one found from the guide and at least this share of
@@ -466,8 +469,8 @@ pub fn windows_between(
     // instead (#1623). The balance swings the same arc each way, so a
     // stretch whose unlock lies that far out does so on both sides alike:
     // the sides go long together, when both long unlocks lie beyond the
-    // reach and within [`SIDES_UNLOCK_AGREE_S`] of each other, or not at
-    // all. A faint sound before one side's unlock reads as a long unlock on
+    // reach and within [`SIDES_UNLOCK_AGREE_SHARE`] of their mean of each
+    // other, or not at all. A faint sound before one side's unlock reads as a long unlock on
     // that side alone (#1703).
     let guide = |even: bool| -> Option<(Option<f64>, Option<f64>)> {
         let times = side_times(beats, even);
@@ -489,7 +492,11 @@ pub fn windows_between(
             .filter(|(_, at)| *at < -short_reach_s())
     };
     let long = match (long_s(even_g), long_s(odd_g)) {
-        (Some(e), Some(o)) if (e.1 - o.1).abs() <= SIDES_UNLOCK_AGREE_S => Some([e.0, o.0]),
+        (Some(e), Some(o))
+            if (e.1 - o.1).abs() <= SIDES_UNLOCK_AGREE_SHARE * (e.1 + o.1).abs() / 2.0 =>
+        {
+            Some([e.0, o.0])
+        }
         _ => None,
     };
     let pick = |g: Option<(Option<f64>, Option<f64>)>, k: usize| -> Option<Guide> {
@@ -1064,7 +1071,7 @@ mod tests {
         assert!((heard.even_deg.unwrap() - want).abs() < 3.0, "{heard:?}");
     }
 
-    /// 2 s windows of a 28,800 bph watch at a 53° lift whose unlock sits
+    /// 2 s windows of a 28,800 bph watch at `lift` whose unlock sits
     /// 13 ms before the drop on both sides (0.28 of the drop's height), its
     /// impulse at 0.7 of that (0.06), over a floor with seeded noise, with
     /// a faint bump at a twentieth of the drop's height on the Tick from
@@ -1072,8 +1079,13 @@ mod tests {
     /// drop, start and end), if given. Checks that both sides read the
     /// unlock, within 3°, and that the unlock beat error stays near the
     /// drop's.
-    fn reads_past_bumps(seed: u64, tick_bump: Option<[f64; 2]>, tock_bump: Option<[f64; 2]>) {
-        let (fs, period, lift, secs) = (48_000.0, 0.125, 53.0, 30.0);
+    fn reads_past_bumps(
+        seed: u64,
+        lift: f64,
+        tick_bump: Option<[f64; 2]>,
+        tock_bump: Option<[f64; 2]>,
+    ) {
+        let (fs, period, secs) = (48_000.0, 0.125, 30.0);
         let osc = 2.0 * period;
         let dt = 0.013;
         let mut state = seed;
@@ -1126,16 +1138,17 @@ mod tests {
     /// template sees it.
     #[test]
     fn a_faint_sound_before_one_sides_unlock_is_not_read_as_it() {
-        reads_past_bumps(1705, None, Some([0.022, 0.0205]));
+        reads_past_bumps(1705, 53.0, None, Some([0.022, 0.0205]));
     }
 
     /// Bumps on both sides that the long templates read as unlocks beyond
-    /// the 20 ms template's reach, but more than
-    /// [`SIDES_UNLOCK_AGREE_S`] apart (the Tick's from 23.2 ms, the Tock's
-    /// from 20.9 ms before the drop): one balance can't swing both, so
-    /// neither side goes long (#1703, Trevor's review).
+    /// the 20 ms template's reach, but further apart than
+    /// [`SIDES_UNLOCK_AGREE_SHARE`] of their mean (the Tick's from 25.5 ms,
+    /// the Tock's from 20.9 ms before the drop, about 20%; at a 59° lift
+    /// the long template's floor ends at 25.85 ms): one balance can't swing
+    /// both, so neither side goes long (#1703, Trevor's review).
     #[test]
     fn long_unlocks_that_disagree_keep_both_sides_short() {
-        reads_past_bumps(1706, Some([0.0232, 0.0227]), Some([0.0209, 0.0204]));
+        reads_past_bumps(1706, 59.0, Some([0.0255, 0.025]), Some([0.0209, 0.0204]));
     }
 }
