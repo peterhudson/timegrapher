@@ -33,30 +33,38 @@ use serde::{Deserialize, Serialize};
 /// below which a stretch of beats is named `short_span`.
 pub const SHORT_SPAN_S: f64 = 10.0;
 
-/// Whether `listened_s` seconds of sound are enough to assess whether the
-/// beats are regular (see [`SHORT_SPAN_S`]).
-pub fn regularity_assessed(listened_s: f64) -> bool {
+/// Whether a stretch's beats are judged for regularity: it holds
+/// `listened_s` seconds of sound, at least [`SHORT_SPAN_S`], and
+/// `holds_window`, at least one whole scatter window on the take's grid
+/// lies inside it, clear of its cuts ([`crate::session::holds_scatter_window`],
+/// decided from where the windows fall, not from whether they fit). A
+/// stretch that can hold no window gives no scatter to judge, so it is
+/// read as one under [`SHORT_SPAN_S`]: the beat sound decides (Norm on
+/// #1688). One that holds a window whose beats give no fit, such as
+/// noise, is still judged, and still no watch.
+pub fn regularity_assessed(listened_s: f64, holds_window: bool) -> bool {
     // A tolerance, so a 10 s average reached by subtraction counts.
-    listened_s >= SHORT_SPAN_S - 1e-6
+    holds_window && listened_s >= SHORT_SPAN_S - 1e-6
 }
 
-/// False when a regular beat was looked for and not found: with at least
-/// [`SHORT_SPAN_S`] of sound, the beat timing scatter is at or above
-/// [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a beat. With less sound,
-/// regularity is not assessed and this is true. [`no_watch_reason`] also
-/// looks at the beats' sound.
-pub fn watch_heard(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
-    !regularity_assessed(listened_s) || crate::beats::watch_heard(jitter_us, bph)
+/// False when a regular beat was looked for and not found: where
+/// regularity is `assessed` ([`regularity_assessed`]), the beat timing
+/// scatter is at or above [`crate::beats::NO_WATCH_JITTER_FRACTION`] of a
+/// beat. Where it is not, this is true. [`no_watch_reason`] also looks at
+/// the beats' sound.
+pub fn watch_heard(jitter_us: Option<f64>, bph: u32, assessed: bool) -> bool {
+    !assessed || crate::beats::watch_heard(jitter_us, bph)
 }
 
-/// Whether the beats' averaged sound has a say in [`no_watch_reason`]: on
-/// a stretch under [`SHORT_SPAN_S`], where the timing is not assessed, or
-/// on a longer one whose timing scatter is at or above
-/// [`crate::beats::NOISE_DOUBT_FRACTION`], where noise can still scatter as
-/// little as this (#675). Every reader asks this before working out the
-/// sound ([`stretch_beat_sound`]), so all of them judge a stretch alike.
-pub fn beat_sound_needed(jitter_us: Option<f64>, bph: u32, listened_s: f64) -> bool {
-    !regularity_assessed(listened_s) || in_doubt(jitter_us, bph)
+/// Whether the beats' averaged sound has a say in [`no_watch_reason`]:
+/// where regularity is not `assessed` ([`regularity_assessed`]: under
+/// [`SHORT_SPAN_S`], or no whole scatter window), or where the timing
+/// scatter is at or above [`crate::beats::NOISE_DOUBT_FRACTION`], where
+/// noise can still scatter as little as this (#675). Every reader asks
+/// this before working out the sound ([`stretch_beat_sound`]), so all of
+/// them judge a stretch alike.
+pub fn beat_sound_needed(jitter_us: Option<f64>, bph: u32, assessed: bool) -> bool {
+    !assessed || in_doubt(jitter_us, bph)
 }
 
 /// A timing scatter at or above [`crate::beats::NOISE_DOUBT_FRACTION`].
@@ -68,22 +76,23 @@ fn in_doubt(jitter_us: Option<f64>, bph: u32) -> bool {
 /// Why no regular beat was found, or `None` when one was, from the timing
 /// scatter and the beats' averaged sound (`beat_sound`, from
 /// [`stretch_beat_sound`]: whether either side shows an unlock or a drop):
-/// - under [`SHORT_SPAN_S`], the timing is not assessed, and the sound
-///   decides when it can be judged;
-/// - with more, a scatter at or above [`crate::beats::NO_WATCH_JITTER_FRACTION`]
-///   is no watch;
+/// - where regularity is not `assessed` ([`regularity_assessed`]: under
+///   [`SHORT_SPAN_S`], or no whole scatter window), the timing is not
+///   judged, and the sound decides when it can be judged;
+/// - where it is, a scatter at or above
+///   [`crate::beats::NO_WATCH_JITTER_FRACTION`] is no watch;
 /// - a scatter from [`crate::beats::NOISE_DOUBT_FRACTION`] up to it, where
 ///   noise can still fall (#675) and so can a weak watch about to stop, is
 ///   a watch unless the sound shows none.
 pub fn no_watch_reason(
     jitter_us: Option<f64>,
     bph: u32,
-    listened_s: f64,
+    assessed: bool,
     beat_sound: Option<bool>,
 ) -> Option<NoWatchReason> {
-    if !crate::beats::watch_heard(jitter_us, bph) && regularity_assessed(listened_s) {
+    if !crate::beats::watch_heard(jitter_us, bph) && assessed {
         Some(NoWatchReason::Scatter)
-    } else if beat_sound_needed(jitter_us, bph, listened_s) && beat_sound == Some(false) {
+    } else if beat_sound_needed(jitter_us, bph, assessed) && beat_sound == Some(false) {
         Some(NoWatchReason::NoBeatSound)
     } else {
         None
@@ -1107,18 +1116,22 @@ mod tests {
     /// stay, and the short span is named.
     #[test]
     fn a_stretch_too_short_to_assess_keeps_its_readings() {
-        assert!(!regularity_assessed(8.0));
-        assert!(regularity_assessed(10.0));
+        assert!(!regularity_assessed(8.0, true));
+        assert!(regularity_assessed(10.0, true));
+        // A stretch long enough that holds no whole scatter window is not
+        // assessed either (#1688).
+        assert!(!regularity_assessed(14.0, false));
         // Scatter of 8.6 ms at 21,600 bph: no regular beat over 10 s or
         // more, not assessed under it.
-        assert!(!watch_heard(Some(8600.0), 21_600, 60.0));
-        assert!(watch_heard(Some(8600.0), 21_600, 8.0));
-        assert!(watch_heard(None, 21_600, 8.0));
+        let assessed = |s: f64| regularity_assessed(s, true);
+        assert!(!watch_heard(Some(8600.0), 21_600, assessed(60.0)));
+        assert!(watch_heard(Some(8600.0), 21_600, assessed(8.0)));
+        assert!(watch_heard(None, 21_600, assessed(8.0)));
         let a = assess(
             &[],
             &[],
             &Context {
-                watch_heard: watch_heard(Some(8600.0), 21_600, 8.0),
+                watch_heard: watch_heard(Some(8600.0), 21_600, assessed(8.0)),
                 span_s: 8.0,
                 listened_s: 8.0,
                 ..heard()
@@ -1135,7 +1148,7 @@ mod tests {
     fn in_the_doubt_zone_only_a_silent_beat_sound_is_no_watch() {
         // 1.5% of a beat at 28,800 bph.
         let doubt = Some(0.015 * 125_000.0);
-        let reason = |s, sound| no_watch_reason(doubt, 28_800, s, sound);
+        let reason = |s, sound| no_watch_reason(doubt, 28_800, regularity_assessed(s, true), sound);
         for s in [5.0, 30.0] {
             assert_eq!(reason(s, Some(true)), None);
             assert_eq!(reason(s, None), None);
@@ -1143,7 +1156,7 @@ mod tests {
         }
         // Below the zone the timing alone says a watch, and at the limit
         // no watch, whatever the sound.
-        let at = |f: f64, sound| no_watch_reason(Some(f * 125_000.0), 28_800, 30.0, sound);
+        let at = |f: f64, sound| no_watch_reason(Some(f * 125_000.0), 28_800, true, sound);
         assert_eq!(at(0.005, Some(false)), None);
         assert_eq!(at(0.02, Some(true)), Some(NoWatchReason::Scatter));
     }
