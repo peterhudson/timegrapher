@@ -4,6 +4,7 @@
 
 use super::tests::{queued_capture, synthetic_swinging, themed};
 use super::*;
+use timegrapher_core::synth::{generate, SynthConfig};
 
 /// The Watches view's Complication Test sets the take up on the Bench in
 /// the card's position: its pane shows, and nothing starts until Start
@@ -156,6 +157,114 @@ fn the_pane_draws_the_table_and_three_plots_amplitude_first() {
         "{texts:?}"
     );
     drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A Complication Test saved with its take and the take opened again in
+/// a fresh app (#1620): the session file says which stretch is Off and
+/// which On, the stretches are read again from the sound, and the pane
+/// shows the table and core's On less Off as at the end of the run.
+#[test]
+fn a_saved_complication_take_opened_again_shows_its_results() {
+    use timegrapher_core::complication;
+    use timegrapher_core::steadiness::SeriesKind;
+    let base =
+        std::env::temp_dir().join(format!("tg-app-complication-reopen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let on = |t: f64| (T0 + EACH..T0 + 2.0 * EACH).contains(&t);
+    let amp = move |t: f64| if on(t) { 260.0 } else { 280.0 };
+    let extra = move |t: f64| if on(t) { -10.0 } else { 0.0 };
+    let mut app = synthetic_swinging(0.0, 4.0, |_| 280.0, |_| 0.0);
+    app.session.listen();
+    app.session.recorder =
+        Some(Recorder::start(&base.join("live"), app.info("test", 48000, 16)).unwrap());
+    let cfg = SynthConfig {
+        duration_s: T0 + 3.0 * EACH + 5.0,
+        rate_s_per_day: 4.0,
+        ..Default::default()
+    };
+    let audio = generate(&cfg, amp, extra);
+    // A second at a time, each stamped, so the clock log can be read.
+    for (k, s) in audio.samples.chunks(48_000).enumerate() {
+        let block = timegrapher_core::capture::Block {
+            samples: s.to_vec(),
+            at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000 + k as u64),
+        };
+        app.session
+            .recorder
+            .as_mut()
+            .unwrap()
+            .write(&block)
+            .unwrap();
+        let live = app.live.as_mut().unwrap();
+        for b in s.chunks(960) {
+            live.push(b);
+        }
+    }
+    let tx = queued_capture(&mut app, &base);
+    let mut test = guided::Test::complication(app.position).timed(SETTLE, EACH - SETTLE);
+    let mut t = T0;
+    test.tick(t);
+    for i in 0..3 {
+        t += EACH;
+        assert_eq!(test.tick(t), guided::Phase::Turn, "stretch {i}");
+        if i < 2 {
+            assert!(test.advance(t).is_some());
+        }
+    }
+    app.guided = Some(test);
+    app.guided_tick(&egui::Context::default());
+    let before = app.complication_test().expect("finished");
+    let first: Vec<_> = before
+        .readings
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|r| r.measurement.clone())
+        .collect();
+    app.save_into(&base.join("saved"));
+    app.wait_for_save();
+    let saved = app.session.saved_to().expect("saved").to_path_buf();
+    drop(tx);
+    let text = std::fs::read_to_string(saved.join(MANIFEST)).unwrap();
+    assert_eq!(text.matches("complication = \"off\"").count(), 2, "{text}");
+    assert_eq!(text.matches("complication = \"on\"").count(), 1, "{text}");
+
+    let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+    again.start_batch(&saved);
+    let clock = Instant::now();
+    while again.batch.is_some() && clock.elapsed().as_secs() < 300 {
+        again.poll();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(again.live.is_some(), "{:?}", again.message);
+    assert!(again.guided.is_none(), "no test on the Bench");
+    let drawn = draw_at(&mut again, Vec2::new(1280.0, 900.0));
+    let texts: Vec<&str> = drawn.iter().map(|(t, _)| t.as_str()).collect();
+    assert!(texts.contains(&"On less Off"), "{texts:?}");
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("lower with the complication on")),
+        "{texts:?}"
+    );
+    // The same stretches read the same way as at the end of the run.
+    let kept = again.complication_saved.as_ref().expect("its test");
+    let back: Vec<_> = kept
+        .readings
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|r| r.measurement.clone())
+        .collect();
+    for q in [SeriesKind::Amplitude, SeriesKind::Rate] {
+        let (a, b) = (
+            complication::change(q, &first).unwrap().on_less_off.value,
+            complication::change(q, &back).unwrap().on_less_off.value,
+        );
+        assert!((a - b).abs() < 0.05, "{q:?}: {a} then {b}");
+    }
     let _ = std::fs::remove_dir_all(&base);
 }
 

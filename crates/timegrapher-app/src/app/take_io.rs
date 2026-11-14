@@ -528,6 +528,7 @@ impl TimegrapherApp {
         self.bg.reserve_live_s = 0.0;
         self.positions_take = false;
         self.guided_saved = None;
+        self.complication_saved = None;
         self.test_keep = None;
         self.guided_unused.clear();
         self.guided_measured.clear();
@@ -1458,14 +1459,24 @@ impl TimegrapherApp {
         // measuring time), so `timegrapher session` reads the seconds its
         // table showed.
         let wind_h = self.guided.as_ref().and_then(|t| t.wind_h());
+        // A Complication Test's stretches say which is Off and which On,
+        // so its results come back when the take is opened (#1620).
+        let step = |i: usize| {
+            self.guided
+                .as_ref()
+                .filter(|t| t.kind == guided::Kind::Complication)
+                .map(|t| t.step_code(i).to_lowercase())
+        };
         let test: Vec<RecordingEntry> = self
             .guided
             .as_ref()
             .map_or(&[][..], |t| t.stretches())
             .iter()
-            .filter_map(|&(pos, from, to)| {
+            .enumerate()
+            .filter_map(|(i, &(pos, from, to))| {
                 let (start_s, end_s) = (self.session.audio_of(from)?, self.session.audio_of(to)?);
                 Some(RecordingEntry {
+                    complication: step(i),
                     file: ".".into(),
                     position: Some(pos.code().to_string()),
                     wind_h,
@@ -1522,6 +1533,7 @@ impl TimegrapherApp {
         let dir = take_dir(path).unwrap_or(path);
         self.positions_take = timegrapher_core::library::is_positions_test(dir);
         self.load_saved_test(dir);
+        self.load_saved_complication(dir);
         // A test's take opens on its results.
         if self.positions_take {
             self.reveal_pane(Pane::PositionsTest);
