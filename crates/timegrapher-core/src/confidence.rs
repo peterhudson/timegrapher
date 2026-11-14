@@ -625,7 +625,10 @@ fn own_and_pool<T>(
 /// The values `value` gives of windows `windows` in time order, in
 /// stretches: a new one starts where a window starts later than the one
 /// before ended (`span`, s), as across a break, a mask or a window left
-/// out. A window with no value is passed over and starts none.
+/// out, and after a window with no value. A window kept with no value
+/// and a window left out are the same absence, so the values either side
+/// of one are never neighbours and the ± can't depend on which way the
+/// absence is written (#1637).
 pub fn stretches<T>(
     windows: impl IntoIterator<Item = T>,
     span: impl Fn(&T) -> (f64, f64),
@@ -635,15 +638,16 @@ pub fn stretches<T>(
     let mut end: Option<f64> = None;
     for w in windows {
         let (a, b) = span(&w);
+        let Some(v) = value(&w).filter(|v| v.is_finite()) else {
+            end = None;
+            continue;
+        };
         if end.is_none_or(|e| a > e + 1e-3) {
             out.push(Vec::new());
         }
         end = Some(b);
-        if let (Some(v), Some(last)) = (value(&w).filter(|v| v.is_finite()), out.last_mut()) {
-            last.push(v);
-        }
+        out.last_mut().expect("a stretch").push(v);
     }
-    out.retain(|s| !s.is_empty());
     out
 }
 
@@ -776,8 +780,9 @@ mod tests {
 
     #[test]
     fn beat_error_se_reads_the_unlock_beat_errors() {
-        // Every third window has no unlock beat error and is skipped; 30
-        // are kept, enough for a ± of their own (#1470).
+        // Every third window has no unlock beat error, so the values come
+        // in pairs, each its own stretch: no difference spans a missing
+        // window (#1637). 30 are kept, enough for a ± of their own (#1470).
         let windows: Vec<AmplitudeWindow> = (0..45)
             .map(|i| AmplitudeWindow {
                 start_s: i as f64 * 10.0,
@@ -793,13 +798,15 @@ mod tests {
                 culled_ms: None,
             })
             .collect();
-        let kept: Vec<f64> = windows
-            .iter()
-            .filter_map(|w| w.beat_error_unlock_ms)
+        let pairs: Vec<Vec<f64>> = windows
+            .split(|w| w.beat_error_unlock_ms.is_none())
+            .map(|run| run.iter().filter_map(|w| w.beat_error_unlock_ms).collect())
+            .filter(|run: &Vec<f64>| !run.is_empty())
             .collect();
+        assert!(pairs.iter().all(|p| p.len() == 2), "{pairs:?}");
         let se = beat_error_se(&windows, &every(&windows), false).unwrap();
         assert!(se > 0.0, "{se}");
-        assert_eq!(Some(se), standard_error(&kept));
+        assert_eq!(Some(se), standard_error_in(pairs.iter().map(Vec::as_slice)));
         assert_eq!(
             beat_error_se(&windows[..2], &every(&windows[..2]), false),
             None
@@ -968,6 +975,73 @@ mod tests {
         assert_eq!(standard_error_in([&[1.0][..], &[2.0], &[3.0]]), None);
         let one = [1.0, 3.0, 2.0, 5.0, 4.0];
         assert_eq!(standard_error_in([&one[..]]), standard_error(&one));
+    }
+
+    /// 2 s amplitude windows, `values[i]` the even side's amplitude of the
+    /// i-th, `None` read nothing.
+    fn amplitude_windows(values: &[Option<f64>]) -> Vec<AmplitudeWindow> {
+        values
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| AmplitudeWindow {
+                start_s: i as f64 * 2.0,
+                end_s: i as f64 * 2.0 + 2.0,
+                even_deg: v,
+                odd_deg: None,
+                beat_error_ms: None,
+                beat_error_unlock_ms: None,
+                even_unlock_ms: None,
+                odd_unlock_ms: None,
+                even_drop_ms: None,
+                odd_drop_ms: None,
+                culled_ms: None,
+            })
+            .collect()
+    }
+
+    /// A window kept with no value and a window left out are one absence
+    /// (#1637, the audit's case): 30 windows at 270°, 100 that read
+    /// nothing, 30 at 250°. Kept, the empty windows used to make the last
+    /// 270° and the first 250° neighbours, and the ± read 0.0°; left out,
+    /// 12.5°. Both now read the level change, and agree on seeded noise.
+    #[test]
+    fn a_window_with_no_value_ends_its_stretch_as_one_left_out() {
+        let mut rng = Rng::new(1637);
+        for noise in [0.0, 0.1, 2.0] {
+            let values: Vec<Option<f64>> = (0..160)
+                .map(|i| match i {
+                    0..30 => Some(270.0 + noise * rng.normal()),
+                    30..130 => None,
+                    _ => Some(250.0 + noise * rng.normal()),
+                })
+                .collect();
+            let kept = amplitude_windows(&values);
+            let left_out: Vec<AmplitudeWindow> = kept
+                .iter()
+                .filter(|w| w.even_deg.is_some())
+                .cloned()
+                .collect();
+            let se =
+                |w: &[AmplitudeWindow]| amplitude_windows_se(w, &every(w), |w| w.even_deg).unwrap();
+            let (a, b) = (se(&kept), se(&left_out));
+            assert_eq!(a, b, "noise {noise}");
+            assert!(a > 10.0, "noise {noise}: the 20° step reads {a}");
+        }
+        // Scattered single dropouts on one level: still one level, and the
+        // two ways of writing them agree.
+        let values: Vec<Option<f64>> = (0..300)
+            .map(|i| (i % 7 != 3).then(|| 270.0 + 2.0 * rng.normal()))
+            .collect();
+        let kept = amplitude_windows(&values);
+        let left_out: Vec<AmplitudeWindow> = kept
+            .iter()
+            .filter(|w| w.even_deg.is_some())
+            .cloned()
+            .collect();
+        let a = amplitude_windows_se(&kept, &every(&kept), |w| w.even_deg).unwrap();
+        let b = amplitude_windows_se(&left_out, &every(&left_out), |w| w.even_deg).unwrap();
+        assert_eq!(a, b);
+        assert!(a < 1.0, "{a}");
     }
 
     /// Over independent stretches, each AR(1), the ± of the median covers
