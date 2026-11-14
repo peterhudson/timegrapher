@@ -916,6 +916,25 @@ mod tests {
     }
 
     #[test]
+    fn contributed_puw_360_train_covers_its_series_only_and_leaves_lift_out() {
+        let c = find("PUW 1361").expect("PUW 360 series");
+        assert_eq!(c.calibre, "PUW 360");
+        assert_eq!(c.bph, Some(18000));
+        assert_eq!(c.escape_teeth, Some(15));
+        let period = |n: &str| c.wheels.iter().find(|w| w.name == n).map(|w| w.period_s);
+        assert_eq!(period("escape wheel"), Some(6.0));
+        assert_eq!(period("third wheel"), Some(450.0));
+        assert_eq!(period("barrel"), Some(25800.0));
+        // No published lift angle: the contributor's estimate stays in the notes.
+        assert_eq!(c.lift_angle_deg, None);
+        assert!(c.sources[0].contains("/issues/1611"));
+        // The contributor's 260 and 460 claims are not transferred.
+        assert_eq!(find("PUW 260").map(|c| c.calibre.as_str()), None);
+        assert_eq!(find("PUW 461").map(|c| c.calibre.as_str()), None);
+        assert_eq!(search("Pforzheimer 360")[0].calibre, "PUW 360");
+    }
+
+    #[test]
     fn makers_are_in_the_table_and_their_names_unique() {
         let mut seen = std::collections::HashSet::new();
         for m in makers() {

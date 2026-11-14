@@ -80239,5 +80239,63 @@
     "confidence": "derived from tooth counts",
     "notes": "Made by Shanghai, per the contributor (2026-10-22). Direct counts: barrel 96; second wheel 75 with 15 leaves on the near steel section and 16 on the far section; third 64/10; fourth 72/8; escape 20/8. Peter Hudson corrected the near-section count on 2026-10-21; recount confirms 15. He confirmed the far 16-leaf section meshes with the barrel and the near 15-leaf section meshes with the dial-side motion works. The pinion field records the 16-leaf barrel input; the separate 15-leaf section is documented here. All periods derive from these counts and the contributor-confirmed 21600 vph beat rate. The centre-wheel slot denotes the second wheel; its one-hour period is calculated, not independently timed. Barrel drum period is 21600 s (6 h), not power reserve. Lift angle, seconds-hand arrangement and the exact motion-works mating wheel remain unspecified. Genuine Patek records are outside this contribution.",
     "bph": 21600
+  },
+  {
+    "calibre": "PUW 360",
+    "maker": "PUW",
+    "family": [
+      "PUW 1360",
+      "PUW 361",
+      "PUW 1361",
+      "PUW 362",
+      "PUW 1362",
+      "PUW 363",
+      "PUW 1363",
+      "PUW 364",
+      "PUW 1364"
+    ],
+    "bph": 18000,
+    "escape_teeth": 15,
+    "seconds": "centre, direct",
+    "wheels": [
+      {
+        "name": "barrel",
+        "period_s": 25800.0,
+        "basis": "Contributor's tooth counts, https://github.com/peterhudson/timegrapher/issues/1611 (CC0): period as submitted; the counts themselves were not given."
+      },
+      {
+        "name": "centre wheel",
+        "period_s": 3600.0,
+        "basis": "Contributor's tooth counts, https://github.com/peterhudson/timegrapher/issues/1611 (CC0): period as submitted; the counts themselves were not given. Carries the minute hand."
+      },
+      {
+        "name": "third wheel",
+        "period_s": 450.0,
+        "basis": "Contributor's tooth counts, https://github.com/peterhudson/timegrapher/issues/1611 (CC0): period as submitted; the counts themselves were not given."
+      },
+      {
+        "name": "fourth wheel",
+        "period_s": 60.0,
+        "basis": "Contributor's tooth counts, https://github.com/peterhudson/timegrapher/issues/1611 (CC0): period as submitted; the counts themselves were not given. Carries the centre seconds."
+      },
+      {
+        "name": "escape wheel",
+        "period_s": 6.0,
+        "basis": "Contributor's tooth counts, https://github.com/peterhudson/timegrapher/issues/1611 (CC0): period as submitted; the counts themselves were not given. 6.0 s at 18000 bph is 15 teeth."
+      },
+      {
+        "name": "balance",
+        "period_s": 0.4,
+        "basis": "derived from 18000 bph"
+      }
+    ],
+    "sources": [
+      "https://github.com/peterhudson/timegrapher/issues/1611 (calibre contribution, 2026-11-14, CC0: wheel periods from counted teeth; 18000 bph)",
+      "https://ranfft.org/caliber/9118-PUW-360 (18,000 A/h, 11 1/2''', Swiss lever; series 360 - 1364: 1360, 1361, 1362, 1363, 1364, 361, 362, 363, 364)",
+      "https://17jewels.info/movements/p/puw/puw-360/ (18000 A/h; directly driven centre seconds wheel; centre minute wheel; series differs from 260/1260 in the balance system and main plate)",
+      "https://watch-movements-archive.com/watch-movement/puw-360/ (18,000 bph; 361, 363, 1360, 1361, 1363 listed as variants)"
+    ],
+    "confidence": "derived from tooth counts",
+    "notes": "Train from one contributor's counts (issue #1611); the periods are as submitted, the tooth and leaf counts were not given, so no ratio check is possible here. Escape teeth 15 follow from the 6.0 s escape period at 18,000 bph. Barrel 25,800 s (7 h 10 min) is the drum's turn, not the power reserve. Family: the 360 series as ranfft lists it. The contributor reports the same train for the 260/1260 and 460/1460 series too; not transferred, because 17jewels says the 360 differs from the 260/1260 in the balance system and main plate, and no source confirms the 460 train. Lift angle left out: no published figure found for the 360 series. The contributor estimates 49° from forum information and observed amplitude; mitka.co.uk gives 52° for the earlier PUW 260/1260 (https://mitka.co.uk/review-puw-260-1260-261-1261/)."
   }
 ]
