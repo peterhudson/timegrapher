@@ -1554,3 +1554,52 @@ fn a_failed_atomic_write_leaves_the_file_as_it_was() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A folder that holds the watches folder is refused by both imports
+/// before anything is staged, through a link too: the copy would be made
+/// inside what it copies (#1642). A folder inside it is refused as
+/// before, and the folder is left as it was.
+#[test]
+fn a_folder_holding_the_watches_is_not_added() {
+    let base = scratch("overlap");
+    let outer = base.join("outer");
+    let root = outer.join("Timegrapher Data");
+    let mut lib = Library::create(&root).unwrap();
+    lib.add(&Watch::new("Pepsi")).unwrap();
+    let id = lib.find("Pepsi").unwrap().watch.id.clone();
+    take(&outer, &[("a.wav", "DU")], 1, "2026-10-22T14:30:00Z");
+    let written = [("session.toml", "bph = 28800\n".to_string())];
+    // Both are take folders, so the overlap is what refuses them.
+    take(&base, &[("b.wav", "DD")], 1, "2026-10-22T14:30:00Z");
+    let mut tried = vec![outer.clone(), base.clone()];
+    #[cfg(unix)]
+    {
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&outer, &link).unwrap();
+        tried.push(link);
+    }
+    for from in &tried {
+        let e = lib.add_take(from, &id, true).unwrap_err();
+        assert!(
+            e.contains("holds your watches folder"),
+            "{}: {e}",
+            from.display()
+        );
+        let e = lib.add_recording(from, &id, "x", &written).unwrap_err();
+        assert!(
+            e.contains("holds your watches folder"),
+            "{}: {e}",
+            from.display()
+        );
+    }
+    let pepsi = lib.find("Pepsi").unwrap().dir.clone();
+    let e = lib.add_recording(&pepsi, &id, "x", &written).unwrap_err();
+    assert!(e.contains("already in your watches"), "{e}");
+    let takes = pepsi.join(TAKES);
+    let left: Vec<_> = fs::read_dir(&takes)
+        .map(|d| d.flatten().map(|e| e.file_name()).collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "nothing staged: {left:?}");
+    assert!(outer.join("a.wav").is_file());
+    let _ = fs::remove_dir_all(&base);
+}
