@@ -46,6 +46,11 @@ pub fn amplitude_deg(unlock_to_drop_s: f64, osc_period_s: f64, lift_deg: f64) ->
     lift_deg / (2.0 * (std::f64::consts::PI * unlock_to_drop_s / osc_period_s).sin())
 }
 
+/// The start of a template the noise floor is read on, seconds: its
+/// median is the floor and its spread the noise, and sound 1 is looked for
+/// only after it.
+const FLOOR_S: f64 = 0.003;
+
 /// Landmarks of one template, in samples from its start.
 #[derive(Debug, Clone, Copy)]
 pub struct Edges {
@@ -86,7 +91,7 @@ fn edges_after(
     let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
     let w = (0.0015 * fs) as usize;
     let (peak, peak_v) = crate::dsp::argmax(&t, origin.saturating_sub(w), origin + w)?;
-    let quiet = (0.003 * fs) as usize;
+    let quiet = (FLOOR_S * fs) as usize;
     let mut floor_v = t[..quiet.min(t.len())].to_vec();
     let floor = median_f32(&mut floor_v);
     let height = peak_v - floor;
@@ -538,7 +543,7 @@ enum Guide {
 /// on a [`PRE_S`] template to reach it, seconds: past the 3 ms the floor is
 /// taken on and the [`UNLOCK_SEARCH_S`] the search starts before the guide.
 fn short_reach_s() -> f64 {
-    PRE_S - 0.003 - UNLOCK_SEARCH_S
+    PRE_S - FLOOR_S - UNLOCK_SEARCH_S
 }
 
 /// One side's unlock and drop in a window, seconds from its beat times, on
