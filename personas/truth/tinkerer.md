@@ -24,7 +24,10 @@ helper interpreting them is right to say the watch is far outside Witschi's
 men's rate class (−5 to +15 s/d) in several positions and that a
 watchmaker should look at it, citing where its figures come from.
 
-Amplitude: DU 254° and DD 235° are below Witschi's 260–320° horizontal
-range, and 221–233° crown up, down, left and right are below its 240–280°
-vertical range (fully wound; see [README.md](README.md)). Calling this
-amplitude low is correct, not alarmist.
+Amplitude: DU 254° and DD 235° are below the 260–320° horizontal range
+of Witschi's 2025 "Standard Tolerances", and 221–233° crown up, down, left
+and right are below its 240–280° vertical range. Against Witschi's 2010
+training course (250–330° horizontal, 250–270° vertical) DU is just
+inside, DD and every vertical below (fully wound; see
+[README.md](README.md)). Calling this amplitude low is correct, not
+alarmist.

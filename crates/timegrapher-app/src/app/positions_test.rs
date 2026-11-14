@@ -440,6 +440,16 @@ impl TimegrapherApp {
                 self.save_text_as(d, "the Positions Test", text);
             }
         }
+        if theme::tool_button(
+            ui,
+            Icon::SaveTable,
+            "Save as Text…",
+            "Save the watch, how it was read, the table and the notes under it as a plain-text \
+             report to keep, print or send",
+            nothing,
+        ) {
+            self.save_test_text(&about);
+        }
         if theme::tool_word_button(
             ui,
             Icon::Copy,
@@ -474,6 +484,31 @@ impl TimegrapherApp {
                 self.save_text_as(d, "the Positions Test's results", k.to_json());
             }
         }
+    }
+
+    /// Save as Text…: the test's plain-text report (core `text_report`),
+    /// to a file the person picks.
+    fn save_test_text(&mut self, about: &guided::About) {
+        let dir = self.guided_dir();
+        // The take's name, which starts with when it began; before it is
+        // saved, the test's own start, named the same way.
+        let saved = self
+            .session
+            .saved_to()
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().into_owned());
+        let lift_known = self.lift_known();
+        let Some((kind, text)) = self.positions_test().and_then(|t| {
+            let take = saved.clone().unwrap_or_else(|| guided::began_name(t));
+            Some((
+                t.kind,
+                guided::report_text(t, about, lift_known, Some(&take))?,
+            ))
+        }) else {
+            return;
+        };
+        let d = guided::text_dialog(kind, &about.watch, &dir);
+        self.save_text_as(d, "the text report", text);
     }
 
     /// The Positions Test pane: the banner and the tables, and what its
