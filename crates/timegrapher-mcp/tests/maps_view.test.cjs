@@ -152,7 +152,7 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
       hover: "third pinion Mesh: 46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves." },
   ]);
   assert.equal(context.meshShort("fourth pinion"), "4th Mesh");
-  assert.equal(context.meshShort("centre pinion"), "2nd Mesh");
+  assert.equal(context.meshShort("centre pinion"), "Centre Mesh");
   assert.equal(rows(meshed).match(/stroke-dasharray="10 10"/g).length, 2);
   assert.ok(rows(meshed).includes(">4th Mesh<") && rows(meshed).includes(">3rd Mesh<"));
   // Wheel Periods off: nothing, on the axes or the maps.

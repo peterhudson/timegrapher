@@ -1338,8 +1338,9 @@ function wheelShort(name) {
     "seconds wheel": "Sec Wheel", "intermediate wheel": "Int Wheel" }[name] || wheelTitle(name);
 }
 // marks::mesh_short: a mesh's short name, its pinion by the short name of
-// the wheel on the same arbor ("4th Mesh").
+// the wheel on the same arbor ("4th Mesh"), but "Centre Mesh".
 function meshShort(pinion) {
+  if (pinion === "centre pinion") return "Centre Mesh";
   const w = pinion.endsWith(" pinion") ? wheelShort(pinion.slice(0, -" pinion".length) + " wheel") : "";
   return w.endsWith(" Wheel") ? `${w.slice(0, -" Wheel".length)} Mesh` : `${wheelTitle(pinion)} Mesh`;
 }

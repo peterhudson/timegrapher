@@ -1417,7 +1417,7 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
     assert_eq!(line.width(), 1.0);
     // Core says what it is (`train::Mesh::line`).
     assert_eq!(line.hover, "Fourth Pinion Mesh: about the fourth pinion.");
-    assert_eq!(crate::marks::mesh_short("centre pinion"), "2nd Mesh");
+    assert_eq!(crate::marks::mesh_short("centre pinion"), "Centre Mesh");
     assert!(wheel_lines(None, (0.0, 5.0)).is_empty());
 }
 

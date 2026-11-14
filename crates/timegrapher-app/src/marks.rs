@@ -529,8 +529,13 @@ pub fn wheel_short(name: &str) -> String {
 }
 
 /// A mesh's name in a narrow lane: its pinion by the short name of the
-/// wheel on the same arbor, as [`wheel_short`] gives it ("4th Mesh").
+/// wheel on the same arbor, as [`wheel_short`] gives it ("4th Mesh"),
+/// except the centre pinion, whose "Centre" the plots already say (Hugh,
+/// #1612).
 pub fn mesh_short(pinion: &str) -> String {
+    if pinion == "centre pinion" {
+        return "Centre Mesh".into();
+    }
     let wheel = pinion.strip_suffix(" pinion").map(|a| format!("{a} wheel"));
     match wheel.as_deref().map(wheel_short) {
         Some(w) if w.ends_with(" Wheel") => format!("{} Mesh", w.trim_end_matches(" Wheel")),
