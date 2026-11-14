@@ -188,37 +188,47 @@ impl TimegrapherApp {
     }
 
     /// The wind under the code at `pos`, muted, with `align`; on a card
-    /// where it can be set, a click opens the Wind menu.
+    /// where it can be set, a click opens the Wind menu. Centred under the
+    /// compact card's code, it shrinks to fit as the code does; after the
+    /// codes, where it doesn't fit whole it is in the hover alone, never
+    /// wrapped or pushing the codes (Hugh).
     pub(super) fn wind_line(&mut self, ui: &mut egui::Ui, pos: egui::Pos2, align: egui::Align2) {
         let pal = theme::pal(ui);
         let words = self.wind_words();
         let room = ui.max_rect();
-        // Smaller to fit whole where the card is narrow, as the compact
-        // card's code is.
-        let size = WIND_SIZE;
+        let centred = align == egui::Align2::CENTER_CENTER;
         let wide = ui
             .painter()
-            .layout_no_wrap(words.clone(), egui::FontId::proportional(size), pal.text)
+            .layout_no_wrap(
+                words.clone(),
+                egui::FontId::proportional(WIND_SIZE),
+                pal.text,
+            )
             .size()
             .x;
-        let fits = (room.right() - pos.x).min(room.width());
-        let fits = if align == egui::Align2::CENTER_CENTER {
+        let fits = if centred {
             room.width()
         } else {
-            fits
+            (room.right() - pos.x).min(room.width())
         };
-        let size = if wide > fits {
-            size * (fits - 1.0) / wide
+        let shown = centred || wide <= fits;
+        let size = if wide > fits && centred {
+            WIND_SIZE * (fits - 1.0) / wide
         } else {
-            size
+            WIND_SIZE
         };
-        let rect = ui.painter().with_clip_rect(room).text(
-            pos,
-            align,
-            &words,
-            egui::FontId::proportional(size),
-            pal.text_secondary,
-        );
+        let font = egui::FontId::proportional(size);
+        let galley = ui
+            .painter()
+            .layout_no_wrap(words.clone(), font.clone(), pal.text_secondary);
+        let rect = if shown {
+            align.anchor_size(pos, galley.size())
+        } else {
+            egui::Rect::from_min_max(
+                egui::pos2(pos.x, pos.y - WIND_SIZE / 2.0),
+                egui::pos2(room.right(), pos.y + WIND_SIZE / 2.0),
+            )
+        };
         let settable = self.wind_settable();
         let sense = if settable {
             egui::Sense::click()
@@ -226,11 +236,30 @@ impl TimegrapherApp {
             egui::Sense::hover()
         };
         let resp = ui.interact(rect.intersect(room), ui.id().with("wind line"), sense);
-        let resp = if settable {
-            resp.on_hover_text(WIND_HINT)
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
+        if shown {
+            // Clickable text's hover fill, behind the words.
+            if settable && resp.hovered() {
+                ui.painter().with_clip_rect(room).rect_filled(
+                    rect.expand(2.0),
+                    egui::CornerRadius::same(theme::CONTROL_RADIUS),
+                    pal.control_hover,
+                );
+            }
+            ui.painter()
+                .with_clip_rect(room)
+                .text(pos, align, &words, font, pal.text_secondary);
+        }
+        let hint = if settable { WIND_HINT } else { WIND_SHOWN_HINT };
+        let hover = if shown {
+            hint.to_string()
         } else {
-            resp.on_hover_text(WIND_SHOWN_HINT)
+            format!("{words}. {hint}")
+        };
+        let resp = resp.on_hover_text(hover);
+        let resp = if settable {
+            resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+        } else {
+            resp
         };
         let mut picked = None;
         egui::Popup::menu(&resp).show(|ui| picked = self.wind_menu(ui));
@@ -244,12 +273,12 @@ impl TimegrapherApp {
 const WIND_SIZE: f32 = 11.0;
 
 /// The wind line's hover where it can be set.
-const WIND_HINT: &str = "When the watch was last fully wound: each take is saved with its \
-     hours since then. Click to set it: Full Wind Now, some hours ago, or Not Given.";
+const WIND_HINT: &str = "When the watch was last fully wound. Each take is saved with the \
+     hours since. Click to set it: Full Wind Now, some hours ago, or Not Given.";
 
 /// The wind line's hover for a take on show or a test running.
-const WIND_SHOWN_HINT: &str = "When the watch was last fully wound: a take on show keeps its \
-     own, which Set Wind… on its row in Watches changes; a test running sets it.";
+const WIND_SHOWN_HINT: &str = "When the watch was last fully wound. A take on show keeps its \
+     own: change it with Set Wind… on its row in Watches. A running test sets it.";
 
 /// The Wind part of a Set menu: Full Wind Now, Full Wind [ ] h ago with
 /// its hours typed in `ago`, and Not Given; the one picked.

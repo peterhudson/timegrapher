@@ -42,8 +42,9 @@ pub fn set_wind_menu(ui: &mut egui::Ui, t: &Take, dir: &Path, changes: bool) -> 
         })
         .response
         .on_hover_text(
-            "Give or correct how long before this take began the watch was fully wound: \
-             its readings are grouped by it, and never counted as full wind when not given.",
+            "Give or correct how long before this take began the watch was fully wound. \
+             Its readings are grouped by it, and with none given it's never counted as full \
+             wind.",
         );
     });
     act
