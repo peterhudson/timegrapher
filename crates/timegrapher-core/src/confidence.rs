@@ -615,25 +615,6 @@ pub fn standard_error_borrowing(own: &[Level], pool: &[Level]) -> Option<f64> {
     Some(noise.standard_error(n))
 }
 
-/// The [`MIN_NOISE_VALUES`] values of `take` nearest a reading ending at
-/// `end_s`, to borrow its noise from (#1470): the latest that end by
-/// then, and where the take holds too few before it, the next after it,
-/// in their stretches ([`stretches`]), so no difference is taken across
-/// a cut, a mask or a change of position. `take` is the take's windows in
-/// time order; a window with no value is passed over. Empty when the
-/// whole of `take` holds fewer than [`MIN_NOISE_VALUES`] values.
-pub fn noise_pool<T>(
-    take: &[T],
-    end_s: f64,
-    span: impl Fn(&T) -> (f64, f64),
-    value: impl Fn(&T) -> Option<f64>,
-) -> Vec<Vec<f64>> {
-    let Some((a, b)) = pool_range(take, end_s, &span, &value) else {
-        return Vec::new();
-    };
-    stretches(&take[a..=b], |w| span(w), |w| value(w))
-}
-
 /// The first and last of `take`'s windows [`noise_pool`] reads: the
 /// [`MIN_NOISE_VALUES`] valued ones nearest a reading ending at `end_s`,
 /// before it first; None when the take holds fewer.
@@ -653,9 +634,15 @@ fn pool_range<T>(
     Some((a, b))
 }
 
-/// [`noise_pool`]'s windows read as levels, split at cuts only, a missing
-/// window being a hole in its level ([`walk_levels`]).
-fn noise_pool_levels<T>(
+/// The [`MIN_NOISE_VALUES`] values of `take` nearest a reading ending at
+/// `end_s`, to borrow its noise from (#1470): the latest that end by
+/// then, and where the take holds too few before it, the next after it,
+/// read as levels split at cuts only, a missing window being a hole in its
+/// level ([`walk_levels`]), so no difference is taken across a cut, a
+/// mask, a change of position or a hole. `take` is the take's windows in
+/// time order. Empty when the whole of `take` holds fewer than
+/// [`MIN_NOISE_VALUES`] values.
+pub fn noise_pool<T>(
     take: &[T],
     end_s: f64,
     span: impl Fn(&T) -> (f64, f64),
@@ -688,7 +675,7 @@ fn own_and_pool<T>(
     let rho = corrected_lag_one_levels(&whole);
     Some((
         walk_levels(own, &span, &value, |g, gap_s| hole_splits(g, gap_s, rho)),
-        noise_pool_levels(take, end, &span, &value),
+        noise_pool(take, end, &span, &value),
     ))
 }
 
@@ -730,50 +717,14 @@ fn walk_levels<T>(
     out
 }
 
-/// The values `value` gives of windows `windows` in time order, in
-/// stretches: a new one starts where a window starts later than the one
-/// before ended (`span`, s), as across a break, a mask or a window left
-/// out, and after a window with no value, since the values either side of
-/// it are lag two apart, not neighbours. For windows that tile, as every
-/// caller's do (amplitude and beat error 2 s windows; the rate's every
-/// other 10 s window), a window kept with no value and a window left out
-/// give the same stretches (#1637). Where windows overlap, `a > end`
-/// can't see a window left out, so only a kept empty window cuts there.
-/// The levels a ± reads are not the same thing ([`walk_levels`]): a window left
-/// out is a cut, a window with no value a hole, which splits a level only
-/// across a long dropout ([`hole_splits`]).
-pub fn stretches<T>(
-    windows: impl IntoIterator<Item = T>,
-    span: impl Fn(&T) -> (f64, f64),
-    value: impl Fn(&T) -> Option<f64>,
-) -> Vec<Vec<f64>> {
-    let mut out: Vec<Vec<f64>> = Vec::new();
-    let mut end: Option<f64> = None;
-    for w in windows {
-        let (a, b) = span(&w);
-        // The values either side of an empty window are lag two apart,
-        // never neighbours, so it cuts the stretch (#1637).
-        let Some(v) = value(&w).filter(|v| v.is_finite()) else {
-            end = None;
-            continue;
-        };
-        if end.is_none_or(|e| a > e + 1e-3) {
-            out.push(Vec::new());
-        }
-        end = Some(b);
-        out.last_mut().expect("a stretch").push(v);
-    }
-    out
-}
-
 /// The ± of a median figure (amplitude, beat error) from `value` of
-/// amplitude windows, in their stretches ([`stretches`]): the noise within
-/// the stretches ([`standard_error_borrowing`], borrowed from `take`, the
-/// take's amplitude windows in time order, where the reading holds fewer
-/// than [`MIN_NOISE_VALUES`]) and, where two or more stretches of
-/// [`MIN_VALUES`] or more sit at different levels, the spread between
-/// them ([`between_levels`] over [`walk_levels`]' levels, the reading's own), added in quadrature
-/// (#639, #1470).
+/// amplitude windows, read as levels ([`walk_levels`]): the noise within
+/// the levels' runs ([`standard_error_borrowing`], borrowed from `take`,
+/// the take's amplitude windows in time order, where the reading holds
+/// fewer than [`MIN_NOISE_VALUES`]) and, where two or more levels of
+/// [`MIN_VALUES`] or more sit at different heights, the spread between
+/// them ([`between_levels`], the reading's own levels), added in
+/// quadrature (#639, #1470, #1637).
 pub fn amplitude_windows_se<'a>(
     windows: impl IntoIterator<Item = &'a AmplitudeWindow>,
     take: &[&AmplitudeWindow],
@@ -1112,8 +1063,9 @@ mod tests {
             (45.0, 55.0),
         ];
         let values = [Some(1.0), None, Some(f64::NAN), Some(4.0), Some(5.0)];
-        let s = stretches(spans.iter().zip(values), |(s, _)| **s, |(_, v)| *v);
-        assert_eq!(s, vec![vec![1.0], vec![4.0, 5.0]]);
+        let w: Vec<_> = spans.iter().zip(values).collect();
+        let s = walk_levels(&w, |(s, _)| **s, |(_, v)| *v, |_, _| false);
+        assert_eq!(s, vec![vec![vec![1.0]], vec![vec![4.0, 5.0]]]);
         // One value in each stretch leaves no difference to read.
         assert_eq!(standard_error_in([&[1.0][..], &[2.0], &[3.0]]), None);
         let one = [1.0, 3.0, 2.0, 5.0, 4.0];
@@ -1226,6 +1178,21 @@ mod tests {
                 );
             }
         }
+        // A 10 s dropout mid-way through the wander on a 10° slope: its
+        // sides share 0.98⁶ of their variation, so the ρ read with the
+        // hole kept keeps one level and the ± holds. Read at ρ 0 it would
+        // split there, and the two halves' medians, 5° apart on the slope,
+        // would add a between-levels term.
+        let sloped: Vec<f64> = (0..3600)
+            .map(|i| wander[i] + 10.0 * i as f64 / 3600.0)
+            .collect();
+        let ten: Vec<usize> = (1800..1805).collect();
+        let whole = se(&with_holes(&sloped, &[]));
+        let got = se(&with_holes(&sloped, &ten));
+        assert!(
+            (got / whole - 1.0).abs() < 0.1,
+            "sloped wander, 10 s: {got} against {whole}"
+        );
         let span = |w: &AmplitudeWindow| (w.start_s, w.end_s);
         let split = |w: &[AmplitudeWindow], rho: f64| {
             walk_levels(w, span, |w| w.even_deg, |g, gap| hole_splits(g, gap, rho)).len()
@@ -1257,6 +1224,37 @@ mod tests {
         assert_eq!(split(&cut, MAX_RHO), 2);
     }
 
+    /// No lag-one product is taken across a hole (#1637): runs of three
+    /// close values, each run a step away from the last, a missing window
+    /// between each. Within a run neighbours move together; across a hole
+    /// they move apart. Read with the holes kept, ρ is the runs' own, high,
+    /// and the ± wide; with the same values closed up into one run the
+    /// products across the steps pull ρ down and the ± shrinks.
+    #[test]
+    fn no_lag_one_product_spans_a_hole() {
+        let mut rng = Rng::new(16_373);
+        let runs: Vec<Vec<f64>> = (0..20)
+            .map(|k| {
+                let level = if k % 2 == 0 { 251.0 } else { 249.0 };
+                (0..3).map(|_| level + 0.05 * rng.normal()).collect()
+            })
+            .collect();
+        let holed: Vec<Option<f64>> = runs
+            .iter()
+            .flat_map(|r| r.iter().map(|&v| Some(v)).chain([None]))
+            .collect();
+        let closed: Vec<Option<f64>> = runs.iter().flatten().map(|&v| Some(v)).collect();
+        let se = |v: &[Option<f64>]| {
+            let w = amplitude_windows(v);
+            amplitude_windows_se(&w, &every(&w), |w| w.even_deg).unwrap()
+        };
+        let (with_holes, closed_up) = (se(&holed), se(&closed));
+        assert!(
+            with_holes > 2.0 * closed_up,
+            "{with_holes} against {closed_up}"
+        );
+    }
+
     /// An empty window cuts its stretch. On windows that tile, keeping it
     /// with no value and leaving it out agree; on overlapping windows the
     /// kept empty window still cuts, since the values either side of it
@@ -1264,10 +1262,13 @@ mod tests {
     #[test]
     fn an_empty_window_cuts_its_stretch() {
         type W = (f64, f64, Option<f64>);
-        let kept = |ws: &[W]| stretches(ws.iter(), |w| (w.0, w.1), |w| w.2);
+        // The runs ([`walk_levels`]): a kept empty window is a hole, one
+        // left out a cut; the runs, where differences are taken, agree.
+        let runs = |ws: &[W]| walk_levels(ws, |w| (w.0, w.1), |w| w.2, |_, _| false).concat();
+        let kept = |ws: &[W]| runs(ws);
         let left_out = |ws: &[W]| {
-            let left: Vec<&W> = ws.iter().filter(|w| w.2.is_some()).collect();
-            stretches(left, |w| (w.0, w.1), |w| w.2)
+            let left: Vec<W> = ws.iter().filter(|w| w.2.is_some()).copied().collect();
+            runs(&left)
         };
         // Tiling 2 s windows, one empty: both ways cut.
         let tile = [
@@ -1606,7 +1607,8 @@ mod tests {
             |w| (w.start_s, w.end_s),
             |w| w.beat_error_unlock_ms,
         );
-        assert_eq!(pool.iter().map(Vec::len).collect::<Vec<_>>(), [10, 20]);
+        let lens: Vec<usize> = pool.iter().map(|l| l.concat().len()).collect();
+        assert_eq!(lens, [10, 20]);
         // Its own five alone give none.
         let mine = &stepped[35..];
         assert_eq!(beat_error_se(mine, &every(mine), false), None);
@@ -1624,7 +1626,7 @@ mod tests {
             |w| (w.start_s, w.end_s),
             |w| w.beat_error_unlock_ms,
         );
-        assert_eq!(pool, [values[..30].to_vec()]);
+        assert_eq!(pool, [vec![values[..30].to_vec()]]);
         // A reading ending at 30 takes the 30 ending there.
         let pool = noise_pool(
             &take,
@@ -1632,7 +1634,7 @@ mod tests {
             |w| (w.start_s, w.end_s),
             |w| w.beat_error_unlock_ms,
         );
-        assert_eq!(pool, [values[5..35].to_vec()]);
+        assert_eq!(pool, [vec![values[5..35].to_vec()]]);
         // A take of 29 gives none, and a reading of 30 its own.
         assert!(noise_pool(
             &take[..29],
