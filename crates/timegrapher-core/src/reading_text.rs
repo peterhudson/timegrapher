@@ -70,6 +70,19 @@ pub fn position_name(p: &str) -> String {
     crate::session::Position::parse(p).map_or_else(|| p.to_string(), |p| p.display_label())
 }
 
+/// A state of wind as every surface names it: "full wind" at 0 (or less),
+/// else "24 h after winding", hours to the whole hour.
+pub fn wind_words(wind_h: f64) -> String {
+    if wind_h <= 0.0 {
+        "full wind".into()
+    } else {
+        format!(
+            "{} h after winding",
+            crate::figure_text::fixed_text(wind_h, 0)
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

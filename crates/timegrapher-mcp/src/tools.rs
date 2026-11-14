@@ -194,7 +194,11 @@ pub const TOOLS: &[ToolSpec] = &[
             position in each file name, one of {positions}. Also writes report.html \
             next to the recordings. The report may name the vertical positions by the \
             hour at the top, with the crown at 3 o'clock: crown up is 3H, crown down 9H, \
-            crown left 6H and crown right 12H. A Power Reserve take's folder (the app's \
+            crown left 6H and crown right 12H. Five or more upright positions, as the \
+            app's Dynamic Poise test's eight (the four 45° stops with 3H, 6H, 9H and 12H), \
+            also give `poise`: the measured rate wave round the dial, its fastest hour \
+            and, where the amplitude allows, the heavy spot, in the app's words. A Power \
+            Reserve take's folder (the app's \
             Power Reserve Test) also gives its run in `power_reserve`: how long the watch \
             ran, how the run ended, the stops on the way and its readings hour by hour. \
             A long take in one position gives its run there too, with \
@@ -549,7 +553,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 Kind::Position,
                 Arg::Flag("--position"),
                 true,
-                "The position the watch is in.",
+                "The position the watch is in: DU dial up, DD dial down, or standing \
+                 named by the hour at the top, with the crown at 3 o'clock (CU 3H, CL 6H, \
+                 CD 9H, CR 12H) and the 45° stops between them (1H30, 4H30, 7H30, 10H30).",
             ),
             p(
                 "seconds",

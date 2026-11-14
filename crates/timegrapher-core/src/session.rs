@@ -1693,7 +1693,8 @@ fn spread(v: impl Iterator<Item = f64>) -> Option<f64> {
     Some(hi - lo)
 }
 
-fn wind_key(w: Option<f64>) -> i64 {
+/// Hours after full wind to a tenth: the states of wind's one key.
+pub(crate) fn wind_key(w: Option<f64>) -> i64 {
     (w.unwrap_or(0.0) * 10.0).round() as i64
 }
 

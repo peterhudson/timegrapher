@@ -150,10 +150,25 @@ pub fn lead(doc: &Value, args: &Map<String, Value>) -> Option<String> {
         for s in doc["report"]["states"].as_array().into_iter().flatten() {
             lines.push(characteristic_values(s));
         }
+        lines.extend(poise_lines(&doc["poise"]));
     } else {
         return None;
     }
     with_limits(lines, doc)
+}
+
+/// One line for each state of wind's Dynamic Poise fit, in core's words
+/// (`fit.text`), as the app's pane says it (#1474).
+fn poise_lines(list: &Value) -> Vec<String> {
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| {
+            let text = p["fit"]["text"].as_str()?;
+            let when = timegrapher_core::reading_text::wind_words(p["wind_h"].as_f64()?);
+            Some(format!("Dynamic Poise, {when} (`poise`): {text}"))
+        })
+        .collect()
 }
 
 /// One line for each of `session`'s readings: its position, and its
@@ -675,6 +690,27 @@ mod tests {
         }
         assert!(s.contains("largest amplitude difference between any two positions (not vertical against horizontal): 28.4° (d_amplitude)"), "{s}");
         assert!(s.contains("vertical minus horizontal amplitude (mean of the crown positions minus mean of dial up and dial down): -15.6° (dvh_amplitude)"), "{s}");
+    }
+
+    #[test]
+    fn a_poise_fit_is_said_in_core_s_words() {
+        let doc = json!({
+            "schema": "timegrapher.session/2",
+            "readings": [],
+            "poise": [{ "wind_h": 0.0, "fit": { "text": "Fastest at 3H." } },
+                      { "wind_h": 24.0, "fit": { "text": "Fastest at 6H." } },
+                      { "fit": { "text": "No state given." } }],
+        });
+        let s = lead(&doc, &Map::new()).unwrap();
+        assert!(
+            s.contains("Dynamic Poise, full wind (`poise`): Fastest at 3H."),
+            "{s}"
+        );
+        assert!(
+            s.contains("Dynamic Poise, 24 h after winding (`poise`): Fastest at 6H."),
+            "{s}"
+        );
+        assert!(!s.contains("No state given"), "{s}");
     }
 
     #[test]
