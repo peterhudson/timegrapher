@@ -431,6 +431,28 @@ pub fn reading_window(
     })
 }
 
+/// The stretches a test take `m` reads in its recording `file` of
+/// `duration_s`: each of its entries there from its settling's end
+/// ([`reading_window`], `given_settle_s` as that takes it), in time
+/// order: what [`session::measure_reading`] keeps a test's stops to
+/// (#1624). It reads one stretch alone as a plain take.
+pub fn read_stretches(
+    m: &Manifest,
+    file: &str,
+    given_settle_s: Option<f64>,
+    duration_s: f64,
+) -> Vec<(f64, f64)> {
+    let mut read: Vec<(f64, f64)> = m
+        .recordings
+        .iter()
+        .filter(|e| e.file == file)
+        .filter_map(|e| reading_window(e, m, given_settle_s, duration_s).ok())
+        .map(|w| (w.from_s, w.to_s))
+        .collect();
+    read.sort_by(|a, b| a.0.total_cmp(&b.0));
+    read
+}
+
 /// What is opened to read the recording at `path` (a recording or a
 /// take's folder) whole, as `analyze --trend` reads it: the folder its
 /// session file is read from, the session file (an empty one without)
@@ -763,6 +785,37 @@ pub fn file_lift_known(m: &Manifest, cal: Option<&Calibre>) -> Option<bool> {
         m.lift_known
             .unwrap_or(lift != DEFAULT_LIFT_DEG || cal.is_some_and(|c| c.lift_angle_deg.is_some())),
     )
+}
+
+/// Where a setting such as the lift angle came from, so a surface can say
+/// so without guessing from its own arguments (#1648): given for this
+/// command, the take's session file, the calibre's table entry, or the
+/// default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingFrom {
+    Given,
+    Take,
+    Calibre,
+    Default,
+}
+
+impl SettingFrom {
+    /// Where a value came from: `given` for this command, else what a
+    /// session file `kept`, else a calibre's `table` figure, else the
+    /// default. A given value a session file also keeps is said as given
+    /// (the two must agree).
+    pub fn of<T>(given: Option<T>, kept: Option<T>, table: Option<T>) -> Self {
+        if given.is_some() {
+            Self::Given
+        } else if kept.is_some() {
+            Self::Take
+        } else if table.is_some() {
+            Self::Calibre
+        } else {
+            Self::Default
+        }
+    }
 }
 
 /// The correction stored for the input `file` was recorded on
@@ -1450,13 +1503,14 @@ pub fn measure_opened(
     } = reading_window(e, m, s.settle_s, log.duration_s).map_err(EntryError::NoReading)?;
     // A lead of noise before the watch is left out of the reading (#844).
     let lead = session::lead_s(&log, fit.as_ref(), &breaks, &masked, settle_s, end_s);
-    let mut measurement = session::measure_masked(
+    let read = read_stretches(m, &e.file, s.settle_s, log.duration_s);
+    let mut measurement = session::measure_reading(
         &log,
         fit.as_ref(),
         &breaks,
         &masked,
-        lead.unwrap_or(settle_s),
-        end_s,
+        (lead.unwrap_or(settle_s), end_s),
+        &read,
     );
     if let Some(t) = lead {
         let seconds = t - start_s;

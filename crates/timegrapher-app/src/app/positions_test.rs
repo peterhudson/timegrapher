@@ -415,15 +415,31 @@ impl TimegrapherApp {
         );
     }
 
-    /// The Positions Test settings' Save as CSV…, Copy and Save Results for 24
-    /// Hours….
+    /// The Positions Test settings' Save as CSV…, Save as Text…, Copy and
+    /// Save Results for 24 Hours…. The first three write the table the
+    /// pane shows: the test's, an opened 24 hour half's saved results
+    /// (#1706), or an opened take's This Take (#1660).
     fn positions_results(&mut self, ui: &mut egui::Ui) {
-        let has = self
-            .positions_test()
-            .is_some_and(|t| !t.readings_so_far().is_empty());
-        let nothing = (!has).then_some("Nothing measured yet");
+        let kept = self.positions_kept(ui.ctx());
+        let saved = self.positions_saved().cloned();
+        let nothing = match self.positions_test() {
+            Some(t) => t.readings_so_far().is_empty(),
+            None => kept.is_none() && saved.is_none(),
+        }
+        .then_some("Nothing measured yet");
         theme::bar_gap(ui);
         let about = self.guided_about();
+        let text = |t: Option<&guided::Test>, sep: char| match (t, &saved, &kept) {
+            (Some(t), ..) => Some(guided::export_text(t, &about, sep)),
+            (None, Some(s), _) => Some(guided::saved_export_text(s, &about, sep)),
+            (None, None, Some(k)) => Some(guided::kept_rows_text(
+                k,
+                guided::Kind::Positions,
+                &about,
+                sep,
+            )),
+            _ => None,
+        };
         if theme::tool_button(
             ui,
             Icon::SaveTable,
@@ -432,10 +448,7 @@ impl TimegrapherApp {
              file a spreadsheet opens",
             nothing,
         ) {
-            if let Some(text) = self
-                .positions_test()
-                .map(|t| guided::export_text(t, &about, ','))
-            {
+            if let Some(text) = text(self.positions_test(), ',') {
                 let d = guided::csv_dialog(&self.guided_dir());
                 self.save_text_as(d, "the Positions Test", text);
             }
@@ -448,7 +461,7 @@ impl TimegrapherApp {
              report to keep, print or send",
             nothing,
         ) {
-            self.save_test_text(&about);
+            self.save_test_text(&about, saved.as_ref(), kept.as_deref());
         }
         if theme::tool_word_button(
             ui,
@@ -459,8 +472,8 @@ impl TimegrapherApp {
             false,
             nothing,
         ) {
-            if let Some(t) = self.positions_test() {
-                ui.ctx().copy_text(guided::export_text(t, &about, '\t'));
+            if let Some(text) = text(self.positions_test(), '\t') {
+                ui.ctx().copy_text(text);
                 self.info_msg("Copied the Positions Test table".to_string());
             }
         }
@@ -486,28 +499,69 @@ impl TimegrapherApp {
         }
     }
 
-    /// Save as Text…: the test's plain-text report (core `text_report`),
-    /// to a file the person picks.
-    fn save_test_text(&mut self, about: &guided::About) {
+    /// An opened 24 hour half's saved results, as the pane shows them with
+    /// no test on the Bench (#1706).
+    pub(super) fn positions_saved(&self) -> Option<&guided::FullWind> {
+        self.guided_saved.as_ref().filter(|_| self.guided.is_none())
+    }
+
+    /// An opened take's six positions as the pane's This Take shows them,
+    /// with no test on the Bench and no saved 24 hour half on show: None
+    /// when none was read.
+    pub(super) fn positions_kept(
+        &self,
+        ctx: &egui::Context,
+    ) -> Option<Vec<timegrapher_core::session::Reading>> {
+        if self.guided.is_some() || self.guided_saved.is_some() {
+            return None;
+        }
+        self.free_table_shown(ctx)
+            .map(|t| t.six.0)
+            .filter(|k| !k.is_empty())
+    }
+
+    /// Save as Text…: the plain-text report (core `text_report`) of the
+    /// test, an opened 24 hour half's `saved_test` results, or an opened
+    /// take's `kept` positions, to a file the person picks.
+    fn save_test_text(
+        &mut self,
+        about: &guided::About,
+        saved_test: Option<&guided::FullWind>,
+        kept: Option<&[timegrapher_core::session::Reading]>,
+    ) {
         let dir = self.guided_dir();
-        // The take's name, which starts with when it began; before it is
-        // saved, the test's own start, named the same way.
+        // The take's name, which starts with when it began: as saved, or
+        // as opened; before it is saved, the test's own start, named the
+        // same way.
         let saved = self
             .session
             .saved_to()
-            .and_then(Path::file_name)
-            .map(|n| n.to_string_lossy().into_owned());
+            .map(Path::to_path_buf)
+            .or_else(|| self.take_on_show())
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
         let lift_known = self.lift_known();
-        let Some((kind, text)) = self.positions_test().and_then(|t| {
-            let take = saved.clone().unwrap_or_else(|| guided::began_name(t));
-            Some((
-                t.kind,
-                guided::report_text(t, about, lift_known, Some(&take))?,
-            ))
-        }) else {
-            return;
+        let text = match (self.positions_test(), saved_test, kept) {
+            (Some(t), ..) => {
+                let take = saved.unwrap_or_else(|| guided::began_name(t));
+                guided::report_text(t, about, lift_known, Some(&take))
+            }
+            (None, Some(s), _) => Some(guided::saved_report_text(
+                s,
+                about,
+                lift_known,
+                saved.as_deref(),
+            )),
+            (None, None, Some(k)) => guided::kept_report_text(
+                k,
+                guided::Kind::Positions,
+                about,
+                lift_known,
+                saved.as_deref(),
+            ),
+            _ => None,
         };
-        let d = guided::text_dialog(kind, &about.watch, &dir);
+        let Some(text) = text else { return };
+        let d = guided::text_dialog(guided::Kind::Positions, &about.watch, &dir);
         self.save_text_as(d, "the text report", text);
     }
 

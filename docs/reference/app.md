@@ -294,11 +294,14 @@ under it its calibre, beat rate, lift angle and added fields, with
 **Edit…** and **Add Photos…** at the right. Then, in this order:
 
 - **New Take**: **Listen** (the blue one, the default), **Positions
-  Test** and **Power Reserve Test**, three equal buttons, each with a
-  line under it saying what it does. Each switches to the Bench and
+  Test**, **Dynamic Poise Test**, **Power Reserve Test** and **Complication
+  Test**, five equal buttons, each with a line under it saying what it
+  does: in one row where the window is wide enough for every name and
+  line to show whole, else as few to a row as that takes, the rows as
+  even as can be (three then two, or two, two and one). Each switches to the Bench and
   starts a new take on the microphone there, asked about first when
   there is unsaved sound other than a Quick Listen take's, and saved into
-  the watch when it stops. While a take runs on the Bench, the three are
+  the watch when it stops. While a take runs on the Bench, the five are
   greyed out, and the New Take row says "Stop the take on the Bench
   first." at its right; that row is always there, so nothing moves.
 - **Takes**, with the count, and **Open** and **…** at the right of its
@@ -747,11 +750,20 @@ between the columns. **Save as Text…** saves the plain-text report core
 `text_report::positions` writes, the one `timegrapher session` writes as
 `positions-report.txt`: the watch, the Date (the take's start, from its
 name, or the test's own start before the take is saved), calibre, beat
-rate, lift angle (left out when it is the default), settling and
+rate, lift angle (left out only when it is the default and the calibre's
+name already gives it, as "Rolex 3235 (53°)"), settling and
 measuring times and the software, then the table lined up in columns, the
 vertical less horizontal figures and the notes, wrapped at 72 columns. It
 gives no verdict and no pass or fail: the
-figures are for the watchmaker to judge.
+figures are for the watchmaker to judge. With no test on the Bench, the
+three write the take's **This Take** table the same way (#1660): a take
+opened from Watches has no test of its own, so they leave out when a
+test began and its settling and measuring times, and list the rows in
+the table's own order, the card's. On an opened 24 hour half they write
+its saved results as the pane shows them (#1706): the watch, beat rate,
+lift angle, start and times the results keep, the table, and the
+full-wind test against it. They are greyed with
+"Nothing measured yet" only while the pane's table has no readings.
 
 **Full wind against 24 hours.** After a test run just after winding,
 **Save Results for 24 Hours…** saves its results, and saving the session

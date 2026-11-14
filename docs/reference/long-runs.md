@@ -119,6 +119,14 @@ core's `Catalog::meshes` (#1472):
 marks for a chart, not wheels a cycle is named after, and empty with no
 calibre or none of its tooth and leaf counts.
 
+`input.settings.wheel_marks` gives the lines a period chart marks for
+them, as the app marks them (#1694): each wheel's turn (`turn` `wheel`),
+half of it (`twice`) unless another wheel turns within 3% of that, and
+each mesh (`mesh`) where no wheel or ×2 already marks a period within
+3%, each with its `name`, `short` name and `hover`, from core's
+`steady_views::wheel_marks`. Every period is listed; a chart keeps those
+inside its axis.
+
 ## Calibrating the sound card
 
 A sound card's crystal is typically 10–50 ppm off (1–4 s/d) and drifts
@@ -219,8 +227,13 @@ take with `long`, `series` or `session`.
    read's level and slope), then the plain median of what is left. A
    plain median over a sloping series returns its middle sample, so on a
    long run, where the rate sits tens of s/d from the take's mean, it
-   removed the cycles with the slope. No window crosses a break: each
-   piece between breaks is detrended alone.
+   removed the cycles with the slope. No level is carried across a
+   break: from 20 minutes each piece between breaks is detrended alone.
+   Under 20 minutes the pieces share one quadratic and each gets its own
+   level, so a jump at a break comes out, and a piece of fewer than 10
+   readings is left out. The
+   beat error's wheel lines, the time-frequency maps, the kurtograms and
+   the gappy spectra are detrended the same way.
 3. **Score.** The power spectrum is divided by the shape of AR(1) noise,
    with ρ read as everywhere else, and under the running median by the
    median's own noise shape (#723, #753). What is left is normalized

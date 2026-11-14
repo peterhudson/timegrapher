@@ -15,6 +15,7 @@ use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
 use timegrapher_core::figure_text::base_digits::{AMPLITUDE, BEAT_ERROR, RATE};
 use timegrapher_core::figure_text::{fixed_text, signed_text, true_minus};
+use timegrapher_core::reading_text::WindHours;
 use timegrapher_core::session::{self, Measurement, Reading, SourcedFigures};
 use timegrapher_core::steadiness::SeriesKind;
 use timegrapher_core::stream::BeatLog;
@@ -704,8 +705,15 @@ impl Test {
         // Cut at every jump in the beats, as the whole take is, so no fit
         // runs across one.
         let jumps = crate::steady::reading_breaks(Vec::new(), log);
+        // A stop too short for its own ± borrows its noise only from the
+        // test's stops, never the turns between (core's rule, #1624).
+        let mut stops: Vec<(f64, f64)> = self.spans.iter().map(|&(_, a, b)| (a, b)).collect();
+        if !stops.contains(&(from, to)) {
+            stops.push((from, to));
+        }
+        stops.sort_by(|a, b| a.0.total_cmp(&b.0));
         let measurement: Measurement =
-            session::measure_masked(log, clock, &jumps, masked, from, to);
+            session::measure_reading(log, clock, &jumps, masked, (from, to), &stops);
         Some(Reading {
             bph_set: self.bph_set,
             label: self.step_name(i),
@@ -1684,8 +1692,6 @@ pub fn pane(
     note: Option<&str>,
     (card, info): (&str, bool),
 ) -> Option<Action> {
-    let pal = theme::pal(ui);
-    let mut action = None;
     // When the banner comes or goes (a test starts, stops or finishes),
     // the pane starts again from its top, not where it was scrolled.
     let banner_on = test.is_some() && phase.is_some_and(|ph| ph != Phase::Finished);
@@ -1705,65 +1711,111 @@ pub fn pane(
             h,
         );
     };
+    let body = Body {
+        test,
+        phase,
+        earlier,
+        saved,
+        free,
+        live,
+        watch,
+        note,
+        card,
+    };
+    let mut action = None;
     theme::with_info(ui, info, egui::Id::new("positions info"), panel, |ui| {
-        area.show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 6.0;
-            if let Some(n) = note {
-                ui.label(RichText::new(n).color(pal.text_secondary));
-            }
-            if let (Some(t), Some(ph)) = (test, phase) {
-                if ph != Phase::Finished {
-                    action = banner(ui, t, ph, None);
-                    ui.add_space(6.0);
-                }
-            }
-            if let Some(t) = test {
-                this_test(ui, t, phase, live);
-            }
-            // An opened 24 hour half shows the run as saved, not read again.
-            match (test, saved) {
-                (None, Some(s)) => saved_test(ui, s),
-                (None, None) => {
-                    if let Some(f) = free {
-                        this_take(ui, f, card);
-                    }
-                }
-                _ => {}
-            }
-            let c = match test {
-                Some(t) => t
-                    .full
-                    .as_ref()
-                    .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
-                None => saved.and_then(saved_comparison),
-            };
-            if let Some(c) = &c {
-                ui.add_space(10.0);
-                heading(
-                    ui,
-                    &format!("Full Wind Against {:.1} Hours", c.hours),
-                    "The full-wind test loaded at the start, against this one, run without \
-                     winding or wearing the watch in between",
-                );
-                comparison_grid(ui, c);
-            }
-            if let Some(full) = earlier {
-                ui.add_space(10.0);
-                if earlier_section(ui, full, phase) {
-                    action = Some(Action::ClearEarlier);
-                }
-            }
-            ui.add_space(10.0);
-            let about = about_text(test, earlier, (watch, saved.is_some()));
-            if !about.is_empty() {
-                ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
-            }
-            if let Some(t) = test {
-                test_footer(ui, t);
-            }
-        });
+        area.show(ui, |ui| action = body.show(ui));
     });
     action
+}
+
+/// What the pane's body shows, as [`pane`] was given it.
+struct Body<'a> {
+    test: Option<&'a Test>,
+    phase: Option<Phase>,
+    earlier: Option<&'a FullWind>,
+    saved: Option<&'a FullWind>,
+    free: Option<&'a FreeTable>,
+    live: Option<&'a FreeCell>,
+    watch: bool,
+    note: Option<&'a str>,
+    card: &'a str,
+}
+
+impl Body<'_> {
+    /// The body, top to bottom; what a button asked for.
+    fn show(&self, ui: &mut egui::Ui) -> Option<Action> {
+        let pal = theme::pal(ui);
+        ui.spacing_mut().item_spacing.y = 6.0;
+        if let Some(n) = self.note {
+            ui.label(RichText::new(n).color(pal.text_secondary));
+        }
+        let mut action = self.tables(ui);
+        self.comparison(ui);
+        if let Some(full) = self.earlier {
+            ui.add_space(10.0);
+            if earlier_section(ui, full, self.phase) {
+                action = Some(Action::ClearEarlier);
+            }
+        }
+        ui.add_space(10.0);
+        let about = about_text(self.test, self.earlier, (self.watch, self.saved.is_some()));
+        if !about.is_empty() {
+            ui.add(egui::Label::new(RichText::new(about).color(pal.text_secondary)).wrap());
+        }
+        if let Some(t) = self.test {
+            test_footer(ui, t);
+        }
+        action
+    }
+
+    /// The banner while a test runs, then this test's table, the saved
+    /// run, or the take's own table; what the banner asked for.
+    fn tables(&self, ui: &mut egui::Ui) -> Option<Action> {
+        let mut action = None;
+        if let (Some(t), Some(ph)) = (self.test, self.phase) {
+            if ph != Phase::Finished {
+                action = banner(ui, t, ph, None);
+                ui.add_space(6.0);
+            }
+        }
+        if let Some(t) = self.test {
+            this_test(ui, t, self.phase, self.live);
+        }
+        // An opened 24 hour half shows the run as saved, not read again.
+        match (self.test, self.saved) {
+            (None, Some(s)) => saved_test(ui, s),
+            (None, None) => {
+                if let Some(f) = self.free {
+                    this_take(ui, f, self.card);
+                }
+            }
+            _ => {}
+        }
+        action
+    }
+
+    /// The full-wind test loaded at the start against this one, when
+    /// there is one.
+    fn comparison(&self, ui: &mut egui::Ui) {
+        let c = match self.test {
+            Some(t) => t
+                .full
+                .as_ref()
+                .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
+            None => self.saved.and_then(saved_comparison),
+        };
+        if let Some(c) = &c {
+            ui.add_space(10.0);
+            heading(
+                ui,
+                &format!("Full Wind Against {:.1} Hours", c.hours),
+                "The full-wind test loaded at the start, against this one, run without \
+                 winding or wearing the watch in between",
+            );
+            comparison_grid(ui, c);
+        }
+    }
 }
 
 /// This test's heading and its table, filling in as each position is
@@ -2024,7 +2076,7 @@ fn kept_figures(full: &FullWind) -> Vec<SourcedFigures> {
 /// the six, or the Dynamic Poise test's eight upright stops.
 fn table_of(figures: &[SourcedFigures], mut notes: Vec<String>, kind: Kind) -> Table {
     let over: Vec<session::Position> = kind.order().iter().map(|p| p.core()).collect();
-    let ix = session::sourced_indices_over(0.0, figures, &over);
+    let ix = session::sourced_indices_over(None, figures, &over);
     let beat_error_summary = ix.beat_error_summary();
     notes.push(beat_error_summary.clone());
     Table {
@@ -2087,22 +2139,24 @@ pub struct FreeTable {
     pub largest: [Option<f64>; 3],
     /// How many positions have readings.
     pub read: usize,
+    /// The six positions as readings, for the pane's exports with no test
+    /// on the Bench (#1660).
+    pub six: TakeReadings,
     /// The take's upright stops read the same way, for the Dynamic Poise
     /// pane with no test on the Bench (#1619).
-    pub upright: Upright,
+    pub upright: TakeReadings,
 }
 
-/// A take's upright stops read again, as readings: each stop marked long
-/// enough to read, in [`session::Position::UPRIGHT`]'s order (core
-/// `session::position_rows`).
+/// A take's positions read again, as readings: each position marked long
+/// enough to read, in the order core `session::position_rows` gives.
 #[derive(Debug, Clone, Default)]
-pub struct Upright(pub Vec<Reading>);
+pub struct TakeReadings(pub Vec<Reading>);
 
 /// The same when every reading has the same position, duration and
 /// figures.
-impl PartialEq for Upright {
+impl PartialEq for TakeReadings {
     fn eq(&self, other: &Self) -> bool {
-        let durations = |u: &Upright| u.0.iter().map(|r| r.duration_s).collect::<Vec<_>>();
+        let durations = |u: &TakeReadings| u.0.iter().map(|r| r.duration_s).collect::<Vec<_>>();
         text_report::figures(&self.0) == text_report::figures(&other.0)
             && durations(self) == durations(other)
     }
@@ -2110,8 +2164,12 @@ impl PartialEq for Upright {
 
 /// The readings of core's `rows` that were read, for a take at `bph`,
 /// `bph_set` the beat rate supplied (as a test's readings carry it).
-pub fn upright(rows: &[session::PositionRow], bph: u32, bph_set: Option<u32>) -> Upright {
-    Upright(
+pub fn take_readings(
+    rows: &[session::PositionRow],
+    bph: u32,
+    bph_set: Option<u32>,
+) -> TakeReadings {
+    TakeReadings(
         rows.iter()
             .filter_map(|r| {
                 Some(Reading {
@@ -2133,14 +2191,34 @@ pub fn upright(rows: &[session::PositionRow], bph: u32, bph_set: Option<u32>) ->
     )
 }
 
-/// The free take's table from core's, in the Current Position card's
-/// order, with the take's `upright` stops.
-pub fn free_table(t: &session::PositionsTable, upright: Upright) -> FreeTable {
-    let rows: Vec<(String, f64, FreeCell)> = Position::ALL
+/// The six in the Current Position card's order, as the free take's
+/// table lists them: DU, DD, CU, CD, CL, CR.
+pub fn card_order() -> Vec<session::Position> {
+    Position::ALL
         .iter()
-        .filter_map(|p| {
-            let sp = session::Position::parse(p.code())?;
-            let r = t.rows.iter().find(|r| r.position == sp)?;
+        .filter_map(|p| session::Position::parse(p.code()))
+        .collect()
+}
+
+/// Core's rows of a take's table in the card's order ([`card_order`]).
+pub fn card_rows(t: &session::PositionsTable) -> Vec<session::PositionRow> {
+    card_order()
+        .into_iter()
+        .filter_map(|p| t.rows.iter().find(|r| r.position == p).cloned())
+        .collect()
+}
+
+/// The free take's table from core's, in the Current Position card's
+/// order, with its `six` positions and the take's `upright` stops as
+/// readings.
+pub fn free_table(
+    t: &session::PositionsTable,
+    six: TakeReadings,
+    upright: TakeReadings,
+) -> FreeTable {
+    let rows: Vec<(String, f64, FreeCell)> = card_rows(t)
+        .into_iter()
+        .map(|r| {
             let cell = match &r.measurement {
                 Some(m) => match (m.rate_s_per_day, m.amplitude_deg, m.beat_error()) {
                     (None, None, None) => FreeCell::Unread,
@@ -2149,7 +2227,7 @@ pub fn free_table(t: &session::PositionsTable, upright: Upright) -> FreeTable {
                 None if r.duration_s > 0.0 => FreeCell::Short,
                 None => FreeCell::NotMarked,
             };
-            Some((position_label(sp), r.duration_s, cell))
+            (position_label(r.position), r.duration_s, cell)
         })
         .collect();
     let read = rows
@@ -2169,6 +2247,7 @@ pub fn free_table(t: &session::PositionsTable, upright: Upright) -> FreeTable {
             t.indices.d_beat_error,
         ],
         read,
+        six,
         upright,
     }
 }
@@ -2346,7 +2425,7 @@ pub fn table_text(t: &Table, sep: char, kind: Kind) -> String {
             s.to_string()
         }
     };
-    let num = |v: Option<f64>, d: usize| v.map_or_else(String::new, |x| format!("{x:.d$}"));
+    let num = |v: Option<f64>, d: usize| v.map_or_else(String::new, |x| fixed_text(x, d));
     let line = |cells: &[String]| {
         let mut l = cells
             .iter()
@@ -2421,12 +2500,12 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
         let mut row = vec![position_label(*p)];
         for (i, x) in v.iter().enumerate() {
             let d = if i < 3 { RATE } else { AMPLITUDE };
-            row.push(x.map_or_else(String::new, |x| format!("{x:.d$}")));
+            row.push(x.map_or_else(String::new, |x| fixed_text(x, d)));
         }
         cells.push(row);
     }
     cells.push(Vec::new());
-    let num = |v: Option<f64>| v.map_or_else(String::new, |x| format!("{x:.RATE$}"));
+    let num = |v: Option<f64>| v.map_or_else(String::new, |x| fixed_text(x, RATE));
     cells.push(vec![format!("{}, s/d", session::IM_NAME), num(c.im)]);
     cells.push(vec![format!("{}, s/d", session::IE_NAME), num(c.ie)]);
     let field = |s: &str| {
@@ -2454,24 +2533,9 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
 /// the table, and in the 24 hour half both tests side by side, fields
 /// split by `sep` as [`table_text`] splits them.
 pub fn export_text(test: &Test, about: &About, sep: char) -> String {
-    let field = |s: &str| {
-        if s.contains(sep) || s.contains('"') {
-            format!("\"{}\"", s.replace('"', "\"\""))
-        } else {
-            s.to_string()
-        }
-    };
     let mut out = String::new();
-    let mut line = |k: &str, v: String| {
-        out += &format!("{}{sep}{}\n", field(k), field(&v));
-    };
-    line("Watch", about.watch.trim().to_string());
-    line("Calibre", about.calibre.clone());
-    line(
-        "Beat Rate, bph",
-        about.bph.map_or_else(String::new, |b| b.to_string()),
-    );
-    line("Lift Angle, °", format!("{:.0}", about.lift_angle_deg));
+    let mut line = |k: &str, v: String| out += &export_line(k, &v, sep);
+    about_lines(about, &mut line);
     line("Test Began, UTC", test.began_utc());
     if let Some((full, h)) = &test.full {
         line("Full-Wind Test Began, UTC", full.began_utc.clone());
@@ -2485,13 +2549,8 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
         out += &complication_text(test, sep);
         return out;
     }
-    out.push('\n');
     let readings = test.readings_so_far();
-    out += &table_text(&table(readings, test.kind), sep, test.kind);
-    if let Some(f) = poise_fit(readings).filter(|_| test.kind == Kind::Poise) {
-        out.push('\n');
-        out += &format!("{}\n", field(&f.text));
-    }
+    out += &rows_text(readings, test.kind, sep);
     if let Some(c) = test
         .full
         .as_ref()
@@ -2499,6 +2558,121 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
     {
         out.push('\n');
         out += &comparison_text(&c, sep);
+    }
+    out
+}
+
+/// An opened 24 hour half's saved results as text, as [`export_text`]
+/// gives the test's when it ran (#1706): the watch and how it was read as
+/// the results keep them, the table the pane shows, then the full-wind
+/// test against it. A line the results don't keep is left out.
+pub fn saved_export_text(s: &FullWind, about: &About, sep: char) -> String {
+    let mut out = String::new();
+    let mut line = |k: &str, v: String| out += &export_line(k, &v, sep);
+    about_lines(&saved_about(s, about), &mut line);
+    line("Test Began, UTC", s.began_utc.clone());
+    if let (Some(full), Some(h)) = (&s.against, s.wind_h) {
+        line("Full-Wind Test Began, UTC", full.began_utc.clone());
+        line("Hours After Full Wind", format!("{h:.1}"));
+    }
+    if let Some(v) = s.settle_s {
+        line("Settling, s", format!("{v:.0}"));
+    }
+    if let Some(v) = s.measure_s {
+        line("Measured, s", format!("{v:.0}"));
+    }
+    out.push('\n');
+    out += &table_text(&kept_table(s), sep, Kind::Positions);
+    if let Some(c) = saved_comparison(s) {
+        out.push('\n');
+        out += &comparison_text(&c, sep);
+    }
+    out
+}
+
+/// An opened 24 hour half's saved results as the plain-text report, as
+/// [`report_text`] gives the test's (#1706): its rows in the order the
+/// pane shows them, then the full-wind test against it. `take` is the
+/// take's folder name, for the Date.
+pub fn saved_report_text(
+    s: &FullWind,
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+) -> String {
+    let about = saved_about(s, about);
+    let lengths = s.settle_s.zip(s.measure_s);
+    let header = report_header(&about, lift_known, take, lengths);
+    let figures = kept_figures(s);
+    let order: Vec<session::Position> = figures.iter().map(|f| f.0).collect();
+    let full = s
+        .against
+        .as_deref()
+        .zip(s.wind_h)
+        .map(|(f, h)| (kept_figures(f), h));
+    let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
+        figures,
+        hours: WindHours::measured(*hours),
+    });
+    text_report::positions_of(&header, &figures, earlier, &order, &[])
+}
+
+/// The watch as saved results keep it, the pane's where they keep none.
+fn saved_about(s: &FullWind, about: &About) -> About {
+    let or = |kept: &str, now: &str| if kept.trim().is_empty() { now } else { kept }.to_string();
+    About {
+        watch: or(&s.watch, &about.watch),
+        calibre: or(&s.calibre, &about.calibre),
+        bph: s.bph.or(about.bph),
+        lift_angle_deg: s.lift_angle_deg.unwrap_or(about.lift_angle_deg),
+    }
+}
+
+/// A reopened take's table of `kind` as text, as [`export_text`] gives
+/// a test's: the watch and how it was read, the table, and for Dynamic
+/// Poise the fit. The rows are the ones the pane shows (#1657, #1660); a
+/// take keeps no test of its own, so there is no settling or start to
+/// give.
+pub fn kept_rows_text(readings: &[Reading], kind: Kind, about: &About, sep: char) -> String {
+    let mut out = String::new();
+    about_lines(about, &mut |k: &str, v: String| {
+        out += &export_line(k, &v, sep)
+    });
+    out += &rows_text(readings, kind, sep);
+    out
+}
+
+/// The watch, its calibre, beat rate and lift, a line each.
+fn about_lines(about: &About, line: &mut impl FnMut(&str, String)) {
+    line("Watch", about.watch.trim().to_string());
+    line("Calibre", about.calibre.clone());
+    line(
+        "Beat Rate, bph",
+        about.bph.map_or_else(String::new, |b| b.to_string()),
+    );
+    line("Lift Angle, °", format!("{:.0}", about.lift_angle_deg));
+}
+
+/// One `key sep value` line, each quoted where it holds `sep` or a quote.
+fn export_line(k: &str, v: &str, sep: char) -> String {
+    format!("{}{sep}{}\n", quoted(k, sep), quoted(v, sep))
+}
+
+/// `s` as one field: quoted where it holds `sep` or a quote.
+fn quoted(s: &str, sep: char) -> String {
+    if s.contains(sep) || s.contains('"') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// The table after a blank line, and for Dynamic Poise the fit in words.
+fn rows_text(readings: &[Reading], kind: Kind, sep: char) -> String {
+    let mut out = String::from("\n");
+    out += &table_text(&table(readings, kind), sep, kind);
+    if let Some(f) = poise_fit(readings).filter(|_| kind == Kind::Poise) {
+        out += &format!("\n{}\n", quoted(&f.text, sep));
     }
     out
 }
@@ -2546,28 +2720,82 @@ pub fn report_text(
     lift_known: bool,
     take: Option<&str>,
 ) -> Option<String> {
-    let header = text_report::Header {
-        watch: Some(about.watch.clone()),
-        date: take.and_then(text_report::take_date),
-        calibre: Some(about.calibre.clone()),
-        bph: about.bph,
-        lift_angle_deg: lift_known.then_some(about.lift_angle_deg),
-        settle_s: Some(test.settle_s),
-        measure_s: Some(test.measure_s),
-    };
+    let header = report_header(
+        about,
+        lift_known,
+        take,
+        Some((test.settle_s, test.measure_s)),
+    );
     let readings = test.readings_so_far();
     match test.kind {
         Kind::Positions => {
             let full = test.full.as_ref().map(|(f, h)| (kept_figures(f), *h));
             let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
                 figures,
-                hours: *hours,
+                hours: WindHours::measured(*hours),
             });
             Some(text_report::positions(&header, readings, earlier))
         }
         Kind::Poise => Some(text_report::poise(&header, readings)),
         Kind::Complication => None,
     }
+}
+
+/// A reopened take's table of `kind` as the plain-text report, as
+/// [`report_text`] gives a test's (#1660). A take keeps no test of its
+/// own, so the settling and measuring lines are left out, as `timegrapher
+/// session` leaves them out for a take. None for a Complication Test.
+pub fn kept_report_text(
+    readings: &[Reading],
+    kind: Kind,
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+) -> Option<String> {
+    let header = report_header(about, lift_known, take, None);
+    match kind {
+        Kind::Positions => Some(text_report::positions_in(
+            &header,
+            readings,
+            None,
+            &card_order(),
+        )),
+        Kind::Poise => Some(text_report::poise(&header, readings)),
+        Kind::Complication => None,
+    }
+}
+
+/// The text report's heading: the pane's watch, its calibre, beat rate
+/// and its lift angle, which is left out only when it is the default
+/// (`lift_known` false) and the calibre's name already gives it, "Rolex
+/// 3235 (53°)", so the report and the CSV always agree on it (Hugh on
+/// #1705); the Date from `take`, the
+/// take's folder name; the settling and measuring `lengths` when known.
+fn report_header(
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+    lengths: Option<(f64, f64)>,
+) -> text_report::Header {
+    text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: take.and_then(text_report::take_date),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        lift_angle_deg: (lift_known || !calibre_carries_lift(about))
+            .then_some(about.lift_angle_deg),
+        settle_s: lengths.map(|l| l.0),
+        measure_s: lengths.map(|l| l.1),
+    }
+}
+
+/// Whether the calibre's name gives the lift angle as the calibre table
+/// names one, "Rolex 3235 (53°)".
+fn calibre_carries_lift(about: &About) -> bool {
+    about.calibre.contains(&format!(
+        "({}°)",
+        fixed_text(about.lift_angle_deg, AMPLITUDE)
+    ))
 }
 
 /// When the test began in this computer's time, as a take's name starts

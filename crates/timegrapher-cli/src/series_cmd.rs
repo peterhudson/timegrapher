@@ -102,6 +102,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "escape_teeth": escape_teeth,
             "named_wheels": lc.wheels,
             "named_meshes": meshes,
+            "wheel_marks": timegrapher_core::steady_views::wheel_marks(&lc.wheels, &meshes),
             "reference_lines": crate::long::reference_lines(&lc.wheels),
             "wheels": o.wheels,
             "reading_s": o.check.rate_reading_s,

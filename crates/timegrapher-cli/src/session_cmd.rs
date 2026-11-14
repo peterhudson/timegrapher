@@ -352,7 +352,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
             )),
         }
         t.push_str(
-            "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the reading is taken as fully wound\n",
+            "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the wind is not given: its own state, never fully wound\n",
         );
         if f.is_dir() {
             if let Some(log) = ["clocklog.txt", "clock.csv", "clock.log"]
@@ -1130,25 +1130,17 @@ fn power_reserve_of(
 fn text_reports(s: &Session, base: &Path) -> Vec<TextReport> {
     use timegrapher_core::session::Position;
     use timegrapher_core::text_report::{self, Earlier};
-    let wind = |r: &Reading| r.wind_h.unwrap_or(0.0);
-    let fullest = s.readings.iter().map(wind).fold(f64::INFINITY, f64::min);
-    let least = s
-        .readings
-        .iter()
-        .map(wind)
-        .fold(f64::NEG_INFINITY, f64::max);
-    let at = |w: f64| -> Vec<Reading> {
-        s.readings
-            .iter()
-            .filter(|r| wind(r) == w)
-            .cloned()
-            .collect()
-    };
-    let readings = at(least);
-    let full = text_report::figures(&at(fullest));
-    let earlier = (least > fullest).then_some(Earlier {
-        figures: &full,
-        hours: least - fullest,
+    // Core picks the state the report is of, and the one it is set
+    // against: wind not given is never pooled with a given state (#1665).
+    let (shown, against) = timegrapher_core::session::report_states(&s.readings);
+    let readings: Vec<Reading> = shown.into_iter().cloned().collect();
+    let full = against.as_ref().map(|(full, hours)| {
+        let full: Vec<Reading> = full.iter().map(|r| (*r).clone()).collect();
+        (text_report::figures(&full), *hours)
+    });
+    let earlier = full.as_ref().map(|(figures, hours)| Earlier {
+        figures,
+        hours: timegrapher_core::reading_text::WindHours::given(0.0, *hours),
     });
     let header = text_report::Header {
         watch: s.watch.map(str::to_string),
@@ -1206,7 +1198,7 @@ pub fn signed(v: Option<f64>, digits: usize) -> String {
 }
 
 /// The state of wind in words: `wind_h` is hours since the watch was
-/// fully wound. A reading without it is taken as fully wound.
+/// fully wound. A reading without it is "not given", never fully wound.
 pub fn wind(w: Option<f64>) -> String {
     match w {
         None => "not given".into(),
@@ -1214,10 +1206,11 @@ pub fn wind(w: Option<f64>) -> String {
     }
 }
 
-/// A state of wind in a sentence ("at full wind", "24 h after winding").
-fn wind_state(w: f64) -> String {
-    let words = timegrapher_core::reading_text::wind_words(w);
-    if w <= 0.0 {
+/// A state of wind in a sentence ("at full wind", "24 h after winding",
+/// "wind not given").
+fn wind_state(w: Option<f64>) -> String {
+    let words = timegrapher_core::reading_text::wind_state_words(w);
+    if w.is_some_and(|w| w <= 0.0) {
         format!("at {words}")
     } else {
         words
@@ -1391,7 +1384,7 @@ fn print_notes(s: &Session) {
     }
     if s.readings.iter().any(|r| r.wind_h.is_none()) {
         println!(
-            "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are taken as fully wound."
+            "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are their own state, never taken as fully wound, and are left out of the isochronism and Ie."
         );
     }
     println!();
@@ -1432,8 +1425,8 @@ fn print_states(s: &Session) {
             "Isochronism  {} {} s/d from {} to {} ({} deg, beat error {} ms)",
             i.position.display_label(),
             signed(Some(i.rate_change), 1),
-            wind_state(i.from_wind_h).trim_start_matches("at "),
-            wind_state(i.to_wind_h).trim_start_matches("at "),
+            wind_state(Some(i.from_wind_h)).trim_start_matches("at "),
+            wind_state(Some(i.to_wind_h)).trim_start_matches("at "),
             signed(i.amplitude_change, 0),
             signed(i.beat_error_change, 2)
         );

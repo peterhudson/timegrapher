@@ -181,7 +181,7 @@ jobs:
         with:
           node-version: '24.22.1'
       - run: node --test crates/timegrapher-mcp/tests/*.test.cjs
-      # Copied product blocks may not rise (.github/ci/literal_ratchet.py;
+      # Copied product blocks must match the baseline (.github/ci/literal_ratchet.py;
       # architecture guide, section 12). Uses this job's Node for jscpd.
       - name: Copied code
         run: python3 .github/ci/literal_ratchet.py copies

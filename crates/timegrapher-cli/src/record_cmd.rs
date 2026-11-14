@@ -131,6 +131,8 @@ pub(crate) struct Settings {
     pub(crate) bph: Option<u32>,
     pub(crate) lift: f64,
     pub(crate) lift_known: bool,
+    /// Where the lift angle came from (#1648).
+    pub(crate) lift_from: take::SettingFrom,
     /// Seconds `session` skips at the start of each take: the session
     /// file's, none when it gives none ([`take::measured`]'s default).
     pub(crate) settle_s: Option<f64>,
@@ -152,9 +154,11 @@ struct Placed {
     watch: Option<String>,
 }
 
-/// The library holding `folder` as one of a watch's takes, if it is one.
+/// The library holding `folder` as one of a watch's takes, if it is one:
+/// where it really is, so a link to the take, its watch or the library
+/// holds the library's lock too (#1641).
 fn library_of(folder: &Path) -> Option<PathBuf> {
-    let abs = std::path::absolute(folder).ok()?;
+    let abs = library::resolved(&std::path::absolute(folder).ok()?);
     let takes = abs.parent()?;
     let root = takes.parent()?.parent()?;
     (takes.file_name()? == library::TAKES && Library::is_library(root)).then(|| root.to_path_buf())
@@ -328,7 +332,8 @@ fn record_in(
         power_reserve: reserve,
     };
     let settings = json!({
-        "bph": set.bph, "lift_deg": set.lift, "calibre": set.calibre,
+        "bph": set.bph, "lift_deg": set.lift, "lift_known": set.lift_known,
+        "lift_from": set.lift_from, "calibre": set.calibre,
         "device": o.device, "seconds": o.seconds,
     });
     Ok((rep, settings))
@@ -392,6 +397,7 @@ fn settings_with(
             bph,
             lift: lift.unwrap_or(take::DEFAULT_LIFT_DEG),
             lift_known: lift.is_some(),
+            lift_from: take::SettingFrom::of(o.lift, None, table.and_then(|c| c.lift_angle_deg)),
             settle_s: None,
         });
     };
@@ -441,6 +447,7 @@ fn settings_with(
         bph: m.bph.or(bph),
         lift: m.lift.or(lift).unwrap_or(take::DEFAULT_LIFT_DEG),
         lift_known,
+        lift_from: take::SettingFrom::of(o.lift, m.lift, table.and_then(|c| c.lift_angle_deg)),
         settle_s: m.settle_s,
     })
 }
@@ -1235,6 +1242,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
+            lift_from: take::SettingFrom::Given,
             settle_s: None,
         };
         let mut feed = Feed::new(&path, Position::CH, 20.0, 48000, &set);
@@ -1324,6 +1332,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
+            lift_from: take::SettingFrom::Given,
             settle_s: None,
         };
         let text = format!(
@@ -1367,6 +1376,7 @@ mod tests {
                 bph,
                 lift: 52.0,
                 lift_known: true,
+                lift_from: take::SettingFrom::Given,
                 settle_s: Some(0.0),
             };
             let c = check_saved(&dir, &set).unwrap();
@@ -1490,6 +1500,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
+            lift_from: take::SettingFrom::Given,
             settle_s: Some(0.0),
         };
         let c = check_saved(&dir, &set).unwrap();
@@ -1537,6 +1548,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
+            lift_from: take::SettingFrom::Given,
             settle_s: None,
         };
         let c = check_saved(&dir, &set).unwrap();
@@ -1579,6 +1591,7 @@ mod tests {
             bph: Some(28800),
             lift: 52.0,
             lift_known: true,
+            lift_from: take::SettingFrom::Given,
             settle_s: None,
         };
         let check = || Check {
@@ -1777,6 +1790,35 @@ mod tests {
         assert!(e.contains("already there"), "{e}");
         assert!(!folder.exists());
         let _ = fs::remove_dir_all(&base);
+    }
+
+    /// Where the lift came from, as `record`'s JSON says it (#1648): a
+    /// session file's own, given, a calibre's, or the default.
+    #[test]
+    fn the_lift_says_where_it_came_from() {
+        use timegrapher_core::take::SettingFrom;
+        let user = UserCalibres::default();
+        let mut o = options(PathBuf::from("unused-settings-folder"));
+        let kept = || toml::from_str::<Manifest>("lift = 60\nlift_known = true\n").unwrap();
+        let from = |o: &Options, m: Option<Manifest>| {
+            let s = settings_with(o, m, &user).unwrap();
+            (s.lift, s.lift_known, s.lift_from)
+        };
+        assert_eq!(from(&o, Some(kept())), (60.0, true, SettingFrom::Take));
+        assert_eq!(from(&o, None), (52.0, false, SettingFrom::Default));
+        o.lift = Some(60.0);
+        assert_eq!(from(&o, Some(kept())), (60.0, true, SettingFrom::Given));
+        assert_eq!(from(&o, None), (60.0, true, SettingFrom::Given));
+        o.lift = None;
+        o.calibre = Some("ETA 2824-2".into());
+        assert_eq!(from(&o, None).2, SettingFrom::Calibre);
+        // A second take of an ETA 2824-2 whose session file keeps its own
+        // lift: the take's, though the table gives one too.
+        o.calibre = None;
+        let eta =
+            toml::from_str::<Manifest>("calibre = \"ETA 2824-2\"\nlift = 48\nlift_known = true\n")
+                .unwrap();
+        assert_eq!(from(&o, Some(eta)), (48.0, true, SettingFrom::Take));
     }
 
     #[test]

@@ -25,6 +25,25 @@ fn a_spectrum_climbing_at_its_end_labels_its_own_peak_not_the_end() {
     );
 }
 
+/// A size core withheld for thin cover (NaN, #1638) leaves the FFT's line
+/// open there: the runs either side are drawn apart, never bridged, and
+/// no peak is read across the gap (Norm: masks cull, never fill).
+#[test]
+fn a_withheld_size_leaves_a_gap_in_the_spectrum() {
+    let periods = [1000.0, 320.0, 100.0, 10.0, 5.0];
+    let sizes = [1.0, f64::NAN, 2.0, 0.5, 1.0];
+    let runs = super::log_runs(&periods, &sizes);
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0], vec![[3.0, 0.0]]);
+    assert_eq!(runs[1].len(), 3);
+    assert!(runs.concat().iter().all(|q| q[0] != 320f64.log10()));
+    // Unread sizes (0, infinite) are left out without opening a gap.
+    assert_eq!(
+        super::log_runs(&[10.0, 5.0, 4.0], &[1.0, 0.0, 2.0]).len(),
+        1
+    );
+}
+
 #[test]
 fn the_cycle_columns_give_their_quartiles_and_the_line_its_swing() {
     let nan = f64::NAN;
@@ -572,7 +591,9 @@ fn fft_renderer_paints_input_availability_in_both_rate_displays() {
                 "{text}"
             );
             assert_eq!(
-                text.contains("each size is a sine fitted to the samples present"),
+                text.contains(
+                    "each size is a sine and a constant fitted together to the samples present"
+                ),
                 missing && info
             );
         }
@@ -1417,7 +1438,10 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
     assert_eq!(line.width(), 1.0);
     // Core says what it is (`train::Mesh::line`).
     assert_eq!(line.hover, "Fourth Pinion Mesh: about the fourth pinion.");
-    assert_eq!(crate::marks::mesh_short("centre pinion"), "Centre Mesh");
+    assert_eq!(
+        timegrapher_core::steady_views::mesh_short("centre pinion"),
+        "Centre Mesh"
+    );
     assert!(wheel_lines(None, (0.0, 5.0)).is_empty());
 }
 
