@@ -1,7 +1,9 @@
 //! Opening a closed hour of a recording for a save, as its WAV or its
-//! FLAC, without a look before the open that the FLAC thread can race.
+//! FLAC, without a look before the open that the FLAC thread can race;
+//! and opening a saved copy's hour to grow it in place, never through a
+//! link (#1640).
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -30,6 +32,30 @@ pub(super) fn open_closed_hour(path: &Path) -> io::Result<(PathBuf, File, u64)> 
             Ok((flac, f, len))
         }
     }
+}
+
+/// The saved copy's hour `to`, opened to be written in place: refused
+/// (InvalidInput) unless it is a regular file of its own, never a link,
+/// whose write would land on the file it points at (#1640). On unix the
+/// file opened must be the very one looked at, with no other name, since
+/// a hard link would carry the write to that name too.
+pub(super) fn open_in_place(to: &Path) -> io::Result<File> {
+    let seen = super::regular_file(to)?;
+    let out = OpenOptions::new().write(true).open(to)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let got = out.metadata()?;
+        if (got.dev(), got.ino()) != (seen.dev(), seen.ino()) || got.nlink() != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("{} is not a file of its own", to.display()),
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = seen;
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -89,5 +115,45 @@ mod tests {
             assert_eq!(len, if at == wav { 9 } else { 4 });
         }
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Only a regular file of its own is opened to grow in place: a link,
+    /// to a file or a folder, and on unix a second name for a file, are
+    /// refused, and the file they lead to is left as it was (#1640).
+    #[test]
+    fn only_a_file_of_its_own_is_opened_to_grow() {
+        let dir = std::env::temp_dir().join(format!("tg-in-place-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let own = dir.join("audio-001.wav");
+        fs::write(&own, b"sound").unwrap();
+        assert!(open_in_place(&own).is_ok());
+        assert_eq!(
+            open_in_place(&dir.join("gone.wav")).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+        assert_eq!(
+            open_in_place(&dir).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        #[cfg(unix)]
+        {
+            let other = dir.join("other.wav");
+            fs::write(&other, b"another take").unwrap();
+            let link = dir.join("link.wav");
+            std::os::unix::fs::symlink(&other, &link).unwrap();
+            assert_eq!(
+                open_in_place(&link).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput
+            );
+            let hard = dir.join("hard.wav");
+            fs::hard_link(&other, &hard).unwrap();
+            assert_eq!(
+                open_in_place(&hard).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput
+            );
+            assert_eq!(fs::read(&other).unwrap(), b"another take");
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 }
