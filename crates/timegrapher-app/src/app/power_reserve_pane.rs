@@ -113,8 +113,8 @@ impl TimegrapherApp {
                         "Analysis Only",
                         "Keep the take as its analysis only, tens of MB: every pane still \
                          reads it, but it can't be measured again. The sound is never \
-                         written: it is read as it comes, and the analysis so far is kept on \
-                         the disk every 10 minutes.",
+                         saved: it is analysed as it comes in, and the analysis so far is \
+                         kept on the disk every 10 minutes.",
                     ),
                 ],
             );

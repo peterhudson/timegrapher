@@ -239,7 +239,7 @@ impl TimegrapherApp {
         match written {
             (Ok(dir), Some(u)) => {
                 self.info_msg(format!(
-                    "Kept the analysis of {} of sound in {}, without the sound ({}).",
+                    "Kept {} of analysis in {} ({}), without the sound.",
                     length_text(u.total_s),
                     dir.display(),
                     size_text(folder_size(&dir))
@@ -261,8 +261,8 @@ impl TimegrapherApp {
             }
             (Err(e), Some(u)) => {
                 self.error(format!(
-                    "The test's take couldn't be written in {} ({e}). Its analysis is kept \
-                     here, and written again in a minute.",
+                    "The test's take couldn't be written in {} ({e}). Its analysis is held in \
+                     the app and written again in a minute: keep the app open until it's kept.",
                     u.dest.display()
                 ));
                 self.kept_live.unwritten = Some((u, Instant::now()));
