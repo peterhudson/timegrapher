@@ -37,6 +37,33 @@ impl fmt::Display for AudioError {
 
 impl std::error::Error for AudioError {}
 
+/// The sample rates a recording may have. No tick can be heard below
+/// 100 Hz (the floor keeps the quick silent files tests write), and a
+/// header past 768 kHz is broken, not a sound card's.
+const RATES: std::ops::RangeInclusive<u32> = 100..=768_000;
+
+/// A header's format, refused unless it can be read: a rate of 0 made
+/// every chunk 0 samples long, a panic in `analyze` and a hang in the
+/// streamed reading (#1643); no channels or bits, or more than 32 bits,
+/// would divide by zero or shift past an integer.
+fn readable(sample_rate: u32, channels: u32, bits: u32) -> Result<(), AudioError> {
+    let bad = |what: String| Err(AudioError::Unsupported(what));
+    if !RATES.contains(&sample_rate) {
+        return bad(format!(
+            "a sample rate of {sample_rate} Hz (this reads {} to {} Hz)",
+            RATES.start(),
+            RATES.end()
+        ));
+    }
+    if channels == 0 {
+        return bad("no channels".into());
+    }
+    if !(1..=32).contains(&bits) {
+        return bad(format!("{bits} bits a sample"));
+    }
+    Ok(())
+}
+
 /// Load a WAV or FLAC file (chosen by extension), averaging channels to mono
 /// and scaling integers to [-1, 1).
 pub fn load(path: &Path) -> Result<Audio, AudioError> {
@@ -98,6 +125,11 @@ fn to_mono(interleaved: Vec<f32>, channels: usize) -> Vec<f32> {
 fn load_wav(path: &Path) -> Result<Audio, AudioError> {
     let mut reader = hound::WavReader::open(path).map_err(AudioError::Wav)?;
     let spec = reader.spec();
+    readable(
+        spec.sample_rate,
+        spec.channels.into(),
+        spec.bits_per_sample.into(),
+    )?;
     let samples: Vec<f32> = match spec.sample_format {
         hound::SampleFormat::Float => reader
             .samples::<f32>()
@@ -121,6 +153,7 @@ fn load_wav(path: &Path) -> Result<Audio, AudioError> {
 fn load_flac(path: &Path) -> Result<Audio, AudioError> {
     let mut reader = claxon::FlacReader::open(path).map_err(AudioError::Flac)?;
     let info = reader.streaminfo();
+    readable(info.sample_rate, info.channels, info.bits_per_sample)?;
     let scale = 1.0 / (1u64 << (info.bits_per_sample - 1)) as f32;
     let samples: Vec<f32> = reader
         .samples()
@@ -159,6 +192,11 @@ fn info_of(path: &Path) -> Result<AudioInfo, AudioError> {
         "wav" => {
             let r = hound::WavReader::open(path).map_err(AudioError::Wav)?;
             let spec = r.spec();
+            readable(
+                spec.sample_rate,
+                spec.channels.into(),
+                spec.bits_per_sample.into(),
+            )?;
             Ok(AudioInfo {
                 sample_rate: spec.sample_rate,
                 frames: Some(r.duration() as u64),
@@ -168,6 +206,7 @@ fn info_of(path: &Path) -> Result<AudioInfo, AudioError> {
         "flac" => {
             let r = claxon::FlacReader::open(path).map_err(AudioError::Flac)?;
             let i = r.streaminfo();
+            readable(i.sample_rate, i.channels, i.bits_per_sample)?;
             Ok(AudioInfo {
                 sample_rate: i.sample_rate,
                 frames: i.samples,
@@ -344,6 +383,52 @@ mod tests {
             std::fs::write(&cut, &bytes[..bytes.len() * 3 / 4]).unwrap();
             (p, cut)
         })
+    }
+
+    /// A WAV whose header says 0 Hz, or 2 GHz, is refused with a plain
+    /// error by every reader, the streamed analysis too, where it made
+    /// `analyze` panic and the stream hang (#1643).
+    #[test]
+    fn a_header_with_no_sample_rate_is_refused_by_every_reader() {
+        let dir = std::env::temp_dir().join(format!("tg-audio-rate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let good = dir.join("good.wav");
+        let audio = Audio {
+            samples: vec![0.25; 8000],
+            sample_rate: 8000,
+        };
+        write_wav(&good, &audio).unwrap();
+        let bytes = std::fs::read(&good).unwrap();
+        assert_eq!(&bytes[24..28], &8000u32.to_le_bytes(), "the rate's place");
+        for rate in [0u32, 99, 2_000_000_000] {
+            let mut b = bytes.clone();
+            b[24..28].copy_from_slice(&rate.to_le_bytes());
+            b[28..32].copy_from_slice(&rate.wrapping_mul(2).to_le_bytes());
+            let p = dir.join(format!("rate-{rate}.wav"));
+            std::fs::write(&p, &b).unwrap();
+            let want = format!("{rate} Hz");
+            let says = |e: AudioError| {
+                let e = e.to_string();
+                assert!(e.contains(&want), "{rate}: {e}");
+            };
+            says(info(&p).unwrap_err());
+            says(load(&p).unwrap_err());
+            says(stream(&p, 1000, |_| panic!("no samples from a broken header")).unwrap_err());
+            let cfg = crate::stream::StreamConfig::default();
+            says(crate::stream::analyze_file(&p, &cfg, |_| {}).unwrap_err());
+        }
+        // The edges read.
+        for rate in [100u32, 768_000] {
+            let p = dir.join(format!("edge-{rate}.wav"));
+            let a = Audio {
+                samples: vec![0.0; 10],
+                sample_rate: rate,
+            };
+            write_wav(&p, &a).unwrap();
+            assert_eq!(info(&p).unwrap().sample_rate, rate);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

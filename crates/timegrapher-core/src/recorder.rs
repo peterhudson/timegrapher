@@ -32,8 +32,10 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod closed_hour;
+#[cfg(test)]
+mod session_file_tests;
 mod settle;
-use closed_hour::open_closed_hour;
+use closed_hour::{open_closed_hour, open_in_place};
 use settle::{held_open, settled};
 pub use settle::{read_settled, rename_settled, sync_file, sync_folder};
 
@@ -523,15 +525,16 @@ impl Recorder {
         self.write_session(None, None)
     }
 
+    /// `session.json` replaced whole (#1639): a failed write leaves the
+    /// last good one, never an empty file.
     fn write_session(
         &self,
         ended: Option<String>,
         result: Option<&serde_json::Value>,
     ) -> io::Result<()> {
-        fs::write(
-            self.dir.join(take::RECORD),
-            self.session_text(ended, result, false)?,
-        )
+        let text = self.session_text(ended, result, false)?;
+        crate::library::write_atomic(&self.dir.join(take::RECORD), text.as_bytes())
+            .map_err(io::Error::other)
     }
 
     /// `session.json`'s text; for a saved copy (`copy`), naming every
@@ -1195,7 +1198,7 @@ impl PendingSave {
 /// hour again every few seconds. Stopped part way, the copy's header still
 /// gives the length before, so it reads as it did.
 fn grow_in_place(f: &PendingFile, from: u64, to: &Path) -> io::Result<bool> {
-    let mut out = fs::OpenOptions::new().write(true).open(to)?;
+    let mut out = open_in_place(to)?;
     if out.metadata()?.len() != from {
         return Ok(false);
     }
@@ -1735,7 +1738,7 @@ mod tests {
         fs::remove_dir_all(&parent).unwrap();
     }
 
-    fn save_fixture(name: &str) -> (Recorder, PathBuf) {
+    pub(super) fn save_fixture(name: &str) -> (Recorder, PathBuf) {
         let base = std::env::temp_dir().join(format!("tg-save-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         let info = SessionInfo {
@@ -1761,7 +1764,7 @@ mod tests {
         }
     }
 
-    fn append_second(r: &mut Recorder, second: u64) {
+    pub(super) fn append_second(r: &mut Recorder, second: u64) {
         r.write(&Block {
             samples: vec![0.1; 8000],
             at: UNIX_EPOCH + Duration::from_secs(second),

@@ -424,7 +424,7 @@ fn new_takes_last_button_starts_the_last_take_in_one_row_or_more() {
 fn new_take_rows_keep_every_name_and_caption_whole() {
     let ctx = egui::Context::default();
     theme::install(&ctx);
-    let names = new_take_names();
+    let names = super::new_take::new_take_names();
     // The window less its margins and the scroll bar's room; from
     // WATCHES_SIDE_BY_SIDE on, less the list and its gap too.
     let side = |window: f32| {
