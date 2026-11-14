@@ -884,6 +884,7 @@ mod tests {
             lift_known: true,
             left_out: Vec::new(),
             poise: timegrapher_core::poise::by_state(&readings),
+            text_reports: Vec::new(),
             report,
             power_reserve: None,
             readings,

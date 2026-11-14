@@ -257,6 +257,75 @@ pub fn position_rows(
         .collect()
 }
 
+/// What Im is called wherever a comparison names it: the app's table,
+/// its CSV and the text report.
+pub const IM_NAME: &str = "Largest change in rate, crown right left out (Im)";
+/// What Ie is called, likewise.
+pub const IE_NAME: &str = "Change in the mean rate, a size (Ie)";
+
+/// The full-wind test against a later one, `hours` on: the figures
+/// `session` gives for the two states of wind.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comparison {
+    /// Hours between the two tests' starts.
+    pub hours: f64,
+    /// Each position of the later test measured in both: rate at full
+    /// wind, rate after `hours` and the change (s/d), then the same for
+    /// amplitude (degrees).
+    pub rows: Vec<(Position, [Option<f64>; 6])>,
+    /// The largest change in rate over the positions, crown right (12H)
+    /// left out ([`IM_NAME`]), s/d.
+    pub im: Option<f64>,
+    /// The size of the change in the mean rate over the positions
+    /// measured in both ([`IE_NAME`]), s/d.
+    pub ie: Option<f64>,
+}
+
+/// Full wind (`full`) against `later`, `hours` on, read by
+/// [`evaluate_states`] as `session` reads a file with both. None when
+/// either is empty.
+pub fn comparison(
+    full: &[SourcedFigures],
+    hours: f64,
+    later: &[SourcedFigures],
+) -> Option<Comparison> {
+    if full.is_empty() || later.is_empty() {
+        return None;
+    }
+    let states = vec![
+        sourced_indices(Some(0.0), full),
+        sourced_indices(Some(hours), later),
+    ];
+    let report = evaluate_states(states, Vec::new());
+    let (first, last) = (report.states.first()?, report.states.last()?);
+    let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
+    let rows = later
+        .iter()
+        .filter_map(|f| {
+            let p = f.0;
+            let a = first.positions.iter().find(|v| v.position == p)?;
+            let b = last.positions.iter().find(|v| v.position == p)?;
+            Some((
+                p,
+                [
+                    a.rate_s_per_day,
+                    b.rate_s_per_day,
+                    change(a.rate_s_per_day, b.rate_s_per_day),
+                    a.amplitude_deg,
+                    b.amplitude_deg,
+                    change(a.amplitude_deg, b.amplitude_deg),
+                ],
+            ))
+        })
+        .collect();
+    Some(Comparison {
+        hours,
+        rows,
+        im: report.im,
+        ie: report.ie,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

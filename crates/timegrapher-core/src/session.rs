@@ -1742,8 +1742,8 @@ fn state(wind_h: Option<f64>, readings: &[&Reading]) -> StateIndices {
 #[path = "session_aggregates.rs"]
 mod session_aggregates;
 pub use session_aggregates::{
-    position_rows, positions_table, sourced_indices, sourced_indices_over, PositionRow,
-    PositionsTable, SourcedFigures, TakeRead, POSITION_MIN_S,
+    comparison, position_rows, positions_table, sourced_indices, sourced_indices_over, Comparison,
+    PositionRow, PositionsTable, SourcedFigures, TakeRead, IE_NAME, IM_NAME, POSITION_MIN_S,
 };
 
 fn largest(v: impl Iterator<Item = f64>) -> Option<f64> {
