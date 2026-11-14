@@ -84,7 +84,7 @@ from its saved positions.
 | 6 | The mean | A dotted line in Plot, a dotted ring in Dial, named with its rate. |
 | 5 | The fitted wave | Once five positions are in, the wave the rate makes once round, in grey, with a line to its fastest hour. Until then, while a test runs, the space reads "Fitted once 5 positions are measured". A take opened again with fewer upright positions, such as a Positions Test's four, reads "Needs 5 upright positions to fit; this take has 4". |
 | 3 | The line over the picture | The wave in one line: its size each way from the mean with its ±, and its fastest hour, then the amplitudes it was measured at. Where the wave isn't clear of its ± (by 2 standard errors), no fastest hour is named. |
-| 4 | The heavy spot | A box on the picture: the hour at the top when it hangs lowest, with its ± in degrees, or **Not stated**. In Plot it sits in a top corner clear of the wave and the points, and is left out where they cover both; Info always gives it. |
+| 4 | The heavy spot | A box on the picture: the hour at the top when it hangs lowest, with its ± in degrees, or **Not stated**. In Plot it sits in the emptiest corner, clear of the wave and the points where a corner is clear, and over them where none is. Info gives it too. |
 
 **Measured and inferred.** The wave and its fastest hour are what the
 watch did: a fact, with its ±. The heavy spot is worked out from that
