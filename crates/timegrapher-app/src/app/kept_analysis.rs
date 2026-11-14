@@ -42,8 +42,9 @@ pub(super) struct Kept {
     /// The last failure to keep the analysis on the disk that was said,
     /// so each is said once.
     said: Option<String>,
-    /// The take being written, once the recording has ended.
-    writing: Option<std::sync::mpsc::Receiver<Written>>,
+    /// The take being written, once the recording has ended, and the
+    /// recording's folder.
+    writing: Option<(std::sync::mpsc::Receiver<Written>, PathBuf)>,
     /// The take whose write failed, kept here and written again a minute
     /// after.
     unwritten: Option<(Unwritten, Instant)>,
@@ -52,6 +53,9 @@ pub(super) struct Kept {
 /// What a take kept as its analysis alone is written from, kept to write
 /// it again when a write fails.
 struct Unwritten {
+    /// The folder it was recorded in, holding its analysis kept as it
+    /// went: never the session's once a new one has begun.
+    recording: PathBuf,
     stored: Box<Stored>,
     companions: NamedFiles,
     dest: PathBuf,
@@ -132,7 +136,8 @@ impl TimegrapherApp {
             .is_some_and(|(_, at)| at.elapsed() >= STREAM_RETRY);
         if again {
             if let Some((u, _)) = self.kept_live.unwritten.take() {
-                self.write_kept(Box::new(move || Ok(u)));
+                let at = u.recording.clone();
+                self.write_kept(at, Box::new(move || Ok(u)));
             }
         }
     }
@@ -158,26 +163,45 @@ impl TimegrapherApp {
             .recorder
             .as_ref()
             .map_or(0.0, |r| r.duration_s());
+        let Some(recording) = self
+            .session
+            .recorder
+            .as_ref()
+            .map(|r| r.dir().to_path_buf())
+        else {
+            return;
+        };
         let companions = match prepared {
             Ok(c) => c,
             Err(e) => {
-                self.error(format!("The test's take couldn't be kept: {e}"));
-                Vec::new()
+                // No take without its session file and results: the
+                // analysis kept as it went stays in the recording's folder.
+                drop(keeper);
+                return self.error(format!(
+                    "The test's take couldn't be kept ({e}). Its analysis up to the last 10 \
+                     minutes is kept in {}.",
+                    recording.display()
+                ));
             }
         };
         if let Some(t) = self.reserve.as_mut() {
             t.saving = true;
         }
-        self.write_kept(Box::new(move || {
-            let stored = keeper.finish().map_err(|e| e.to_string())?;
-            Ok(Unwritten {
-                stored: Box::new(stored),
-                companions,
-                dest,
-                total_s,
-                metadata,
-            })
-        }));
+        let at = recording.clone();
+        self.write_kept(
+            at,
+            Box::new(move || {
+                let stored = keeper.finish().map_err(|e| e.to_string())?;
+                Ok(Unwritten {
+                    recording,
+                    stored: Box::new(stored),
+                    companions,
+                    dest,
+                    total_s,
+                    metadata,
+                })
+            }),
+        );
     }
 
     /// Every file of the recording but its sound, as the take keeps them:
@@ -208,7 +232,11 @@ impl TimegrapherApp {
     }
 
     /// Write the take `from` gives, on a thread of its own.
-    fn write_kept(&mut self, from: Box<dyn FnOnce() -> Result<Unwritten, String> + Send>) {
+    fn write_kept(
+        &mut self,
+        recording: PathBuf,
+        from: Box<dyn FnOnce() -> Result<Unwritten, String> + Send>,
+    ) {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let written = match from() {
@@ -220,16 +248,17 @@ impl TimegrapherApp {
             };
             let _ = tx.send(written);
         });
-        self.kept_live.writing = Some(rx);
+        self.kept_live.writing = Some((rx, recording));
     }
 
     /// The take written, once it is: the session saved there, and the
     /// analysis kept on the disk as it went let go; or, when it couldn't
     /// be, kept to write again.
     fn kept_written(&mut self) {
-        let Some(rx) = &self.kept_live.writing else {
+        let Some((rx, recording)) = &self.kept_live.writing else {
             return;
         };
+        let recording = recording.clone();
         let written = match rx.try_recv() {
             Ok(w) => w,
             Err(TryRecvError::Empty) => return,
@@ -244,17 +273,7 @@ impl TimegrapherApp {
                     dir.display(),
                     size_text(folder_size(&dir))
                 ));
-                self.session.mark_saved(u.total_s, dir.clone(), u.metadata);
-                // Its parts go once the take is in place.
-                if let Some(r) = self.session.recorder.as_ref() {
-                    if let Err(e) = timegrapher_core::checkpoint::remove(r.dir()) {
-                        applog::warn(&format!("the analysis kept as it went stays: {e}"));
-                    }
-                }
-                if let Some(t) = self.reserve.as_mut() {
-                    t.saving = false;
-                    t.saved = Some(dir);
-                }
+                self.kept_in_place(u, dir);
                 if let Ok(Some(l)) = &mut self.library {
                     l.scan();
                 }
@@ -269,21 +288,75 @@ impl TimegrapherApp {
             }
             (r, None) => {
                 let e = r.err().unwrap_or_default();
-                let at = self
-                    .session
-                    .recorder
-                    .as_ref()
-                    .map(|r| r.dir().display().to_string())
-                    .unwrap_or_default();
                 self.error(format!(
                     "The test's analysis couldn't be finished ({e}). What was kept as it \
-                     went is in {at}."
+                     went is in {}.",
+                    recording.display()
                 ));
-                if let Some(t) = self.reserve.as_mut() {
-                    t.saving = false;
+                if self.is_recording(&recording) {
+                    if let Some(t) = self.reserve.as_mut() {
+                        t.saving = false;
+                    }
                 }
             }
         }
+    }
+}
+
+impl TimegrapherApp {
+    /// Whether `dir` is the folder the session records into now.
+    fn is_recording(&self, dir: &Path) -> bool {
+        self.session
+            .recorder
+            .as_ref()
+            .is_some_and(|r| r.dir() == dir)
+    }
+
+    /// The take written from `u` in `dir`: the session saved there while it
+    /// is still the one recorded in `u`'s folder, and that folder's
+    /// analysis kept as it went let go; the whole folder, once a new
+    /// session has left it behind for its parts.
+    fn kept_in_place(&mut self, u: Unwritten, dir: PathBuf) {
+        if !self.is_recording(&u.recording) {
+            // Already gone when it held no parts yet.
+            let gone = std::fs::remove_dir_all(&u.recording);
+            if let (Err(e), true) = (gone, u.recording.exists()) {
+                applog::warn(&format!("the recording kept for its analysis stays: {e}"));
+            }
+            return;
+        }
+        self.session.mark_saved(u.total_s, dir.clone(), u.metadata);
+        if let Err(e) = timegrapher_core::checkpoint::remove(&u.recording) {
+            applog::warn(&format!("the analysis kept as it went stays: {e}"));
+        }
+        if let Some(t) = self.reserve.as_mut() {
+            t.saving = false;
+            t.saved = Some(dir);
+        }
+    }
+
+    /// A failed write tried again at the next follow, as a minute on.
+    #[cfg(test)]
+    pub(super) fn kept_write_now(&mut self) {
+        if let Some((_, at)) = self.kept_live.unwritten.as_mut() {
+            *at -= STREAM_RETRY;
+        }
+    }
+
+    /// Whether a take kept as its analysis alone is being written, for
+    /// the window to draw until it is and show it saved.
+    pub(super) fn kept_writing(&self) -> bool {
+        self.kept_live.writing.is_some()
+    }
+
+    /// Whether a take kept as its analysis alone is being written: what
+    /// would begin a new session waits until it is, and says so.
+    pub(super) fn kept_writing_busy(&mut self) -> bool {
+        if self.kept_live.writing.is_none() {
+            return false;
+        }
+        self.info_msg("Writing the test's take: wait until it is kept.".into());
+        true
     }
 }
 

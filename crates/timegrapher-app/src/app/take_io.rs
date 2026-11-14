@@ -1022,7 +1022,8 @@ impl TimegrapherApp {
             || self.steady_job.is_some()
             || self.saving.is_some()
             || self.take_keep.is_some()
-            || self.analysis_save.is_some();
+            || self.analysis_save.is_some()
+            || self.kept_writing();
         if self.running() || self.batch.is_some() {
             Some(std::time::Duration::from_millis(40))
         } else {
@@ -1158,7 +1159,7 @@ impl TimegrapherApp {
     /// refuse what would throw its sound away or add to it.
     pub(super) fn analysis_save_busy(&mut self) -> bool {
         if self.analysis_save.is_none() {
-            return false;
+            return self.kept_writing_busy();
         }
         self.info_msg(
             "Keeping the analysis of this session: it is reading the session's sound and \
