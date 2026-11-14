@@ -79,6 +79,7 @@ pub mod usbclock;
 pub mod user_dirs;
 pub mod walk;
 pub mod wheel_lines;
+pub mod xml;
 
 pub use analysis::{analyze, Analysis, AnalysisConfig, Summary};
 pub use audio::{load, Audio};
