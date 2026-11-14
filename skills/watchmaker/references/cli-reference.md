@@ -210,7 +210,9 @@ given), `session_file`, `position`, `wind_h`,
 `seconds`, `source`, `sample_rate`, `check` (`watch_heard`,
 `timing_scatter_ms`, `timing_scatter_fraction`, `bph`, `beats_found`,
 `beats_expected`, `rate_s_per_day`, `amplitude_deg`, `beat_error_ms`,
-`clipping`). When no regular beat was found or the ticks clipped, record
+`clipping`), and `input.settings.lift_from` says where the lift angle
+came from: `given`, `take` (the session file's, for a later take),
+`calibre` or `default`. When no regular beat was found or the ticks clipped, record
 that position again. `--bph` or `--lift` that disagree with the
 folder's session file are an error. `--file` reads a recording instead of
 the microphone.
