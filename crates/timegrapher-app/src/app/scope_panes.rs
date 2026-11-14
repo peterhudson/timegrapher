@@ -485,25 +485,52 @@ impl TimegrapherApp {
     }
 
     /// Read the sound from `lo` to `hi` seconds (and two seconds either
-    /// side) from the recording open.
+    /// side) from the recording open, or while listening from the take
+    /// being recorded ([`Self::heard_files`]).
     /// False when there is no recording to read it from.
-    fn start_scope_job(&mut self, lo: f64, hi: f64) -> bool {
+    pub(super) fn start_scope_job(&mut self, lo: f64, hi: f64) -> bool {
         if self.scope_job.is_some() {
             return true;
         }
-        if self.input != Input::File || self.session.mic() {
-            return false;
-        }
-        let Ok(files) = recordings_in(&PathBuf::from(self.file_path.trim())) else {
+        let (files, shift) = if self.session.mic() {
+            match self.heard_files(lo, hi) {
+                Some(heard) => heard,
+                None => return false,
+            }
+        } else if self.input == Input::File {
+            match recordings_in(&PathBuf::from(self.file_path.trim())) {
+                Ok(files) => (files, 0.0),
+                Err(_) => return false,
+            }
+        } else {
             return false;
         };
         let (a, b) = ((lo - 2.0).max(0.0), hi + 2.0);
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send((a, b, crate::span::read(&files, a, b - a)));
+            // Read in the sound's own seconds, kept in the take's.
+            let got = crate::span::read(&files, (a - shift).max(0.0), b - a).map(|mut sp| {
+                sp.t0 += shift;
+                sp
+            });
+            let _ = tx.send((a, b, got));
         });
         self.scope_job = Some(rx);
         true
+    }
+
+    /// While listening, the sound files recorded so far, written out so
+    /// they can be read, and how far the take's time from `lo` to `hi`
+    /// runs ahead of the sound kept (the pauses and breaks before it).
+    /// The engine holds only the last few seconds, so a moment further
+    /// back is read from these. None with no recording, or with a pause
+    /// or break between `lo` and `hi`: the sound either side of it isn't
+    /// one stretch.
+    fn heard_files(&mut self, lo: f64, hi: f64) -> Option<(Vec<PathBuf>, f64)> {
+        let shift = self.session.sound_shift(lo, hi)?;
+        let r = self.session.recorder.as_mut()?;
+        r.flush().ok()?;
+        Some((r.segment_paths(), shift))
     }
 
     /// Start working out the sound at `end` from the file, unless one is

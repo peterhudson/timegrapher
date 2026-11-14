@@ -1054,6 +1054,23 @@ impl Session {
         Some(audio_s.clamp(0.0, r.duration_s()))
     }
 
+    /// How far the session's time runs ahead of the sound kept (the
+    /// pauses and breaks before it), when one stretch of sound covers
+    /// `from` to `to`: none across a pause or break, or with no recording.
+    pub fn sound_shift(&self, from: f64, to: f64) -> Option<f64> {
+        self.recorder.as_ref()?;
+        let anchor = |t: f64| self.audio_timeline.iter().rposition(|a| a.at_s <= t);
+        let i = anchor(from);
+        if anchor(to) != i {
+            return None;
+        }
+        match i.map(|i| &self.audio_timeline[i]) {
+            Some(a) if a.advancing => Some(a.at_s - a.audio_s),
+            Some(_) => None,
+            None => Some(0.0),
+        }
+    }
+
     /// The saved take's positions in its sound's own seconds (which leave
     /// out the pauses): start, end and position code. Each later position
     /// starts once it has settled; one entry with no times while the watch
