@@ -149,8 +149,8 @@ fn mean_between(g: &Grid, a: f64, b: f64) -> Option<f64> {
 /// Least squares of `y = m + s t + a cos wt + b sin wt` over the finite
 /// values of `g.y[i0..i1]`: `(a, b, residual sd, readings, lag-one
 /// correlation of the residuals)`, the last pooled over the runs of
-/// readings between missing ones ([`crate::confidence::pooled_lag_one`]),
-/// negative or unknown taken as 0.
+/// readings between missing ones and corrected for its bias
+/// ([`crate::confidence::corrected_lag_one`]).
 fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, usize, f64)> {
     let tm = g.time((i0 + i1) / 2);
     let mut rows = Vec::new();
