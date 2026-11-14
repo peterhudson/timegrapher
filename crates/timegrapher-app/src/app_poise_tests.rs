@@ -734,3 +734,105 @@ fn a_take_with_no_stops_says_how_the_test_fits() {
     );
     assert!(!drawn.contains("Needs 5"), "{drawn}");
 }
+
+/// A Dynamic Poise test run live with the pane's Next on one continuous
+/// sound (no handling between stops), settling 5 s and measuring 30 s at
+/// each, saved and opened again: every stop reads the same live as
+/// reopened (#1720, Norm: the reopened table is right).
+#[test]
+fn a_poise_test_reads_the_same_live_as_reopened() {
+    let base = std::env::temp_dir().join(format!("tg-app-poise-live1720-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let (settle, measure) = (5.0, 30.0);
+    let mut app = synthetic_varying(0.0, 0.0, |_| 0.0);
+    app.session.listen();
+    app.session.recorder =
+        Some(Recorder::start(&base.join("live"), app.info("test", 48000, 16)).unwrap());
+    let cfg = SynthConfig {
+        duration_s: 8.0 * (settle + measure) + 1.0,
+        snr_db: 30.0,
+        rate_s_per_day: 9.0,
+        seed: 1720,
+        ..Default::default()
+    };
+    let audio = generate(&cfg, |_| 310.0, |_| 0.0);
+    let tx = queued_capture(&mut app, &base);
+    app.guided = Some(guided::Test::poise().timed(settle, measure));
+    // The pane's Settle and Each Position, as each frame gives the session.
+    (app.guided_settle_s, app.guided_measure_s) = (settle, measure);
+    app.session.set_settle_s(settle);
+    app.session.set_state(session::State::Listening);
+    let ctx = egui::Context::default();
+    let mut k = 0u64;
+    for s in audio.samples.chunks(48_000) {
+        // The 20 ms blocks a microphone sends, taken as listening takes
+        // them (saved, read, settling and stretches as the app goes).
+        for b in s.chunks(960) {
+            tx.send(Event::Audio(timegrapher_core::capture::Block {
+                samples: b.to_vec(),
+                at: std::time::UNIX_EPOCH
+                    + std::time::Duration::from_millis(1_700_000_000_000 + 20 * k),
+            }))
+            .unwrap();
+            k += 1;
+        }
+        let want = k as f64 * 0.02;
+        let t = Instant::now();
+        while app.live.as_ref().unwrap().duration_s() < want - 1e-6 && t.elapsed().as_secs() < 30 {
+            app.poll();
+        }
+        let now = app.live.as_ref().unwrap().duration_s();
+        app.guided_tick(&ctx);
+        // Next, as the pane's button gives it, once the stop is read.
+        let next = app.guided.as_mut().is_some_and(|t| {
+            t.tick(now) == guided::Phase::Turn && !t.needs_reading() && t.next_position().is_some()
+        });
+        if next {
+            app.apply_guided_action(guided::Action::Next, now);
+        }
+    }
+    let live = app
+        .poise_test()
+        .and_then(|t| t.readings.clone())
+        .expect("finished live");
+    assert_eq!(live.len(), 8);
+    app.save_into(&base.join("saved"));
+    app.wait_for_save();
+    let saved = app.session.saved_to().expect("saved").to_path_buf();
+    let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+    again.start_batch(&saved);
+    let t = Instant::now();
+    while again.batch.is_some() && t.elapsed().as_secs() < 300 {
+        again.poll();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let table = again.free_table(&ctx).expect("a table");
+    let reopened = &table.upright.0;
+    assert_eq!(reopened.len(), 8);
+    for (l, r) in live.iter().zip(reopened) {
+        let (a, b) = (&l.measurement, &r.measurement);
+        // Read whole both ways: no settling or turn culls part of a stop.
+        assert!(
+            a.beats.abs_diff(b.beats) <= 8,
+            "{} beats {} live, {} reopened",
+            l.label,
+            a.beats,
+            b.beats
+        );
+        let (ra, rb) = (a.rate_s_per_day.unwrap(), b.rate_s_per_day.unwrap());
+        let (aa, ab) = (a.amplitude_deg.unwrap(), b.amplitude_deg.unwrap());
+        assert!(
+            (ra - rb).abs() < 0.01,
+            "{} rate {ra} live, {rb} reopened",
+            l.label
+        );
+        assert!(
+            (aa - ab).abs() < 1.0,
+            "{} amplitude {aa} live, {ab} reopened",
+            l.label
+        );
+    }
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
