@@ -277,6 +277,38 @@ pub fn pooled_lag_one<'a>(stretches: impl IntoIterator<Item = &'a [f64]>) -> Opt
         .filter(|r| r.is_finite())
 }
 
+/// The largest lag-one correlation a ± allows for. Past it the inflation
+/// √((1 + ρ)/(1 − ρ)) cannot be read from about [`MIN_NOISE_VALUES`]
+/// values, so a ± held here says so by being wide (Norm, #1544). From 30
+/// AR(1) values at ρ 0.9 with their line taken out, [`corrected_lag_one`]
+/// reaches it about 21% of the time (seeded, 20,000 series).
+pub const MAX_RHO: f64 = 0.99;
+
+/// The lag-one correlation every ± allows for (#1544): [`pooled_lag_one`]
+/// plus its bias downwards with each stretch's line taken out,
+/// 2(1 + 3ρ)/n (Marriott and Pope 1954, as [`long_run_rho`] adds it), n
+/// the stretches' mean length, held to 0 ..= [`MAX_RHO`]. Read from 30
+/// values, the raw estimate falls 0.07, 0.15 and 0.26 short of a true ρ
+/// of 0, 0.5 and 0.9, against the formula's 0.07, 0.17 and 0.25. 0 where
+/// no correlation can be read.
+pub fn corrected_lag_one(stretches: &[&[f64]]) -> f64 {
+    let Some(r) = pooled_lag_one(stretches.iter().copied()) else {
+        return 0.0;
+    };
+    let read: Vec<usize> = stretches
+        .iter()
+        .map(|s| s.len())
+        .filter(|&n| n >= 3)
+        .collect();
+    let n = read.iter().sum::<usize>() as f64 / read.len() as f64;
+    let r = r + line_lag_one_bias(r, n);
+    if r.is_finite() {
+        r.clamp(0.0, MAX_RHO)
+    } else {
+        0.0
+    }
+}
+
 /// What [`long_run_sd`] takes out of the values before it reads their
 /// lag-one correlation, so slow change is not counted as memory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -313,7 +345,7 @@ pub fn long_run_sd(values: &[f64], short_sd: f64, slow: Slow) -> f64 {
 /// [`pooled_lag_one`] reads it), plus 2(1 + 3ρ)/n for its bias downwards
 /// with two parameters taken out (Marriott and Pope 1954), n one more than
 /// the neighbouring pairs read (the values' count when none is missing),
-/// held to 0 ..= 0.99. [`Slow::ChosenStep`] adds [`STEP_CHOICE_BIAS`]/n
+/// held to 0 ..= [`MAX_RHO`]. [`Slow::ChosenStep`] adds [`STEP_CHOICE_BIAS`]/n
 /// too (#917). On a seeded test of 360 AR(1)
 /// readings this keeps the CUSUM's false alarms at 4-6% from ρ 0 to 0.9,
 /// and under 8% at ρ 0.9 with block gaps or scattered dropouts (#647).
@@ -347,7 +379,7 @@ pub fn long_run_rho(values: &[f64], slow: Slow) -> f64 {
     };
     let r = r + line_lag_one_bias(r, n) + chosen;
     if r.is_finite() {
-        r.clamp(0.0, 0.99)
+        r.clamp(0.0, MAX_RHO)
     } else {
         0.0
     }
@@ -489,7 +521,8 @@ pub const MIN_NOISE_VALUES: usize = 30;
 
 /// The noise of one series read in stretches: its scatter `s` from the
 /// successive differences within each stretch, 1.4826 MAD / √2, and its
-/// lag-one correlation `rho` pooled over them, held to 0 ..= 0.99.
+/// lag-one correlation `rho` pooled over them, corrected for its bias
+/// ([`corrected_lag_one`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Noise {
     pub s: f64,
@@ -509,9 +542,7 @@ impl Noise {
         }
         Some(Noise {
             s: crate::dsp::robust_sd(&d) / std::f64::consts::SQRT_2,
-            rho: pooled_lag_one(stretches.iter().copied())
-                .unwrap_or(0.0)
-                .clamp(0.0, 0.99),
+            rho: corrected_lag_one(stretches),
         })
     }
 
@@ -1133,6 +1164,79 @@ mod tests {
             }
         }
         within as f64 / repeats as f64
+    }
+
+    #[test]
+    fn a_borrowed_plus_minus_holds_its_centre_at_high_correlation() {
+        // At ρ 0.9 the lag-one correlation read from 30 values is biased
+        // low, so the ± under-covered: 48.4% on seed 20261114 (#1544),
+        // kept as a regression seed. The others are fresh, run once, with
+        // the bands set before any result: 0.55 ..= 0.90 at ρ 0.9, and
+        // 0.55 ..= 0.85 at ρ 0 and 0.5, so the correction does not widen
+        // every watch's ± past what it promises.
+        for seed in [20261114, ACCEPTANCE_SEED] {
+            let c = borrowed_coverage(0.9, 5, 2000, seed);
+            assert!((0.55..=0.90).contains(&c), "seed {seed}: {c}");
+        }
+        for rho in [0.0, 0.5] {
+            let c = borrowed_coverage(rho, 5, 2000, ACCEPTANCE_SEED);
+            assert!((0.55..=0.85).contains(&c), "ρ {rho}: {c}");
+        }
+    }
+
+    /// #1544's fresh seed, run once.
+    const ACCEPTANCE_SEED: u64 = 20261131;
+
+    #[test]
+    fn the_corrected_lag_one_reads_the_true_one_from_30_values() {
+        // Development seed, not the acceptance one: over 4,000 series of
+        // 30, the raw mean falls short by about MP's 2(1 + 3ρ)/n; the
+        // corrected one is near ρ 0.5 and most of the way to 0.9, the
+        // first-order term evaluated at the low raw value.
+        let mut rng = Rng::new(900_001);
+        for (rho, short) in [(0.5, 0.05), (0.9, 0.1)] {
+            let (mut raw, mut cor) = (0.0, 0.0);
+            for _ in 0..4000 {
+                let mut x = rng.normal();
+                let v: Vec<f64> = (0..30)
+                    .map(|_| {
+                        x = rho * x + (1.0 - rho * rho).sqrt() * rng.normal();
+                        x
+                    })
+                    .collect();
+                raw += pooled_lag_one([v.as_slice()]).unwrap() / 4000.0;
+                cor += corrected_lag_one(&[v.as_slice()]) / 4000.0;
+            }
+            assert!(raw < rho - 0.1, "ρ {rho}: raw {raw}");
+            assert!((cor - rho).abs() < short, "ρ {rho}: corrected {cor}");
+        }
+    }
+
+    #[test]
+    fn the_bias_is_read_at_the_mean_length_of_the_stretches_read() {
+        // Stretches of 10, 50 and 2 values (Trevor's review of #1544):
+        // the bias is MP's at the mean length of those read, 30, the 2
+        // too short to read left out; not at the total, 62 or 60, nor
+        // the shortest, 10 or 2.
+        let mut rng = Rng::new(900_002);
+        let mut x = 0.0;
+        let mut series = |n: usize| -> Vec<f64> {
+            (0..n)
+                .map(|_| {
+                    x = 0.5 * x + 0.75f64.sqrt() * rng.normal();
+                    x
+                })
+                .collect()
+        };
+        let (a, b, c) = (series(10), series(50), series(2));
+        let s = [a.as_slice(), b.as_slice(), c.as_slice()];
+        let r = pooled_lag_one(s.iter().copied()).unwrap();
+        let at = |n: f64| (r + line_lag_one_bias(r, n)).clamp(0.0, MAX_RHO);
+        let got = corrected_lag_one(&s);
+        assert!((got - at(30.0)).abs() < 1e-12, "{got} against {}", at(30.0));
+        for wrong in [62.0, 60.0, 10.0, 2.0, 62.0 / 3.0] {
+            assert!((got - at(wrong)).abs() > 0.01, "n {wrong}: {got}");
+        }
     }
 
     #[test]

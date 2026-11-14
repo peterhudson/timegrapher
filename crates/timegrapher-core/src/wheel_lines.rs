@@ -149,8 +149,8 @@ fn mean_between(g: &Grid, a: f64, b: f64) -> Option<f64> {
 /// Least squares of `y = m + s t + a cos wt + b sin wt` over the finite
 /// values of `g.y[i0..i1]`: `(a, b, residual sd, readings, lag-one
 /// correlation of the residuals)`, the last pooled over the runs of
-/// readings between missing ones ([`crate::confidence::pooled_lag_one`]),
-/// negative or unknown taken as 0.
+/// readings between missing ones and corrected for its bias
+/// ([`crate::confidence::corrected_lag_one`]).
 fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, usize, f64)> {
     let tm = g.time((i0 + i1) / 2);
     let mut rows = Vec::new();
@@ -183,9 +183,8 @@ fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64, us
         }
         runs.last_mut().expect("a run").push(r);
     }
-    let rho = crate::confidence::pooled_lag_one(runs.iter().map(Vec::as_slice))
-        .unwrap_or(0.0)
-        .clamp(0.0, 0.99);
+    let runs: Vec<&[f64]> = runs.iter().map(Vec::as_slice).collect();
+    let rho = crate::confidence::corrected_lag_one(&runs);
     Some((p[2], p[3], (rss / (n - 4) as f64).sqrt(), n, rho))
 }
 
@@ -535,6 +534,31 @@ mod tests {
     /// 10 h of 2 s amplitude readings, falling from 300° to 200°.
     fn amp() -> Grid {
         grid(2.0, 18000, |t| 300.0 - 100.0 * t / 36000.0)
+    }
+
+    #[test]
+    fn a_windows_correlation_is_corrected_for_its_bias() {
+        // Noise correlating at 0.5 in runs of 30 between missing values
+        // (#1544, Trevor's review): the raw lag-one correlation of 30
+        // values reads about 0.36, short by MP's 2(1 + 3ρ)/n; the window
+        // reads it corrected, near 0.5.
+        let mut rng = Rng::new(900_003);
+        let mut e = 0.0;
+        let g = grid(1.0, 31 * 100, |t| {
+            if (t as usize) % 31 == 30 {
+                return f64::NAN;
+            }
+            e = 0.5 * e + 0.75f64.sqrt() * rng.normal();
+            e
+        });
+        let (.., rho) = fit_line(&g, 0, g.y.len(), std::f64::consts::TAU / 60.0).unwrap();
+        let runs: Vec<&[f64]> =
+            g.y.split(|v| v.is_nan())
+                .filter(|r| !r.is_empty())
+                .collect();
+        let raw = crate::confidence::pooled_lag_one(runs.iter().copied()).unwrap();
+        assert!(raw < 0.42, "raw {raw}");
+        assert!((rho - 0.5).abs() < 0.04, "corrected {rho}");
     }
 
     #[test]
