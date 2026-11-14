@@ -2165,3 +2165,204 @@ mod tests {
         assert!(iso_facts(&c).is_empty());
     }
 }
+
+/// How near two periods may be (as a share of the second) to share one
+/// line on a period axis, which keeps the first one marked there (#1612,
+/// #1694).
+pub const ONE_MARK_REL: f64 = 0.03;
+
+/// Whether two periods are near enough ([`ONE_MARK_REL`]) to share one
+/// line on a period axis.
+pub fn one_mark(a_s: f64, b_s: f64) -> bool {
+    (a_s / b_s - 1.0).abs() < ONE_MARK_REL
+}
+
+/// What a line across a period axis marks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WheelTurn {
+    /// A wheel's turn.
+    Wheel,
+    /// Half a wheel's turn: a wheel off centre shows twice a turn.
+    Twice,
+    /// A pinion's mesh: one tooth of the wheel driving it passing through.
+    Mesh,
+}
+
+/// One line across a period axis for a named wheel, its ×2 or a mesh, as
+/// the app's Periods, FFT and maps and the MCP view draw it ([`wheel_marks`]).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WheelMark {
+    pub period_s: f64,
+    pub turn: WheelTurn,
+    /// Its name over the plot: "Fourth Wheel", "Fourth Wheel ×2",
+    /// "Fourth Pinion Mesh".
+    pub name: String,
+    /// Its name in a narrow lane: "4th Wheel", "4th Wheel ×2", "4th Mesh".
+    pub short: String,
+    /// Its hover: the name and the period, or a mesh's own words.
+    pub hover: String,
+}
+
+/// The lines to mark on a period axis for `wheels` and `meshes` (#1694):
+/// each wheel's turn, and half of it (×2) unless a wheel turns within
+/// [`ONE_MARK_REL`] of it; then each mesh where no wheel or ×2 already marks
+/// its period. Every period, whatever the axis shows: each side keeps the
+/// lines inside its own axis, and with no wheel named marks the reference
+/// periods ([`crate::periodicity::reference_lines`]) instead.
+pub fn wheel_marks(
+    wheels: &[crate::periodicity::Wheel],
+    meshes: &[crate::train::MeshLine],
+) -> Vec<WheelMark> {
+    let mut out = Vec::new();
+    for w in wheels {
+        let title = title_case(&w.name);
+        let short = wheel_short(&w.name);
+        out.push(WheelMark {
+            period_s: w.period_s,
+            turn: WheelTurn::Wheel,
+            name: title.clone(),
+            short: short.clone(),
+            hover: format!("{title}: {}", period_words(w.period_s)),
+        });
+        let half = w.period_s / 2.0;
+        if !wheels.iter().any(|o| one_mark(o.period_s, half)) {
+            out.push(WheelMark {
+                period_s: half,
+                turn: WheelTurn::Twice,
+                name: format!("{title} ×2"),
+                short: format!("{short} ×2"),
+                hover: format!("{title} ×2: {}", period_words(half)),
+            });
+        }
+    }
+    for m in meshes {
+        if out.iter().any(|l| one_mark(l.period_s, m.period_s)) {
+            continue;
+        }
+        let title = title_case(&m.name);
+        out.push(WheelMark {
+            period_s: m.period_s,
+            turn: WheelTurn::Mesh,
+            name: format!("{title} Mesh"),
+            short: mesh_short(&m.name),
+            hover: format!("{title} Mesh: {}.", m.about),
+        });
+    }
+    out
+}
+
+/// A period in a hover's words: whole seconds under two minutes, whole
+/// minutes under two hours, then hours to a tenth.
+pub fn period_words(s: f64) -> String {
+    if s < 120.0 {
+        format!("{s:.0} s")
+    } else if s < 7200.0 {
+        format!("{:.0} min", s / 60.0)
+    } else {
+        format!("{:.1} h", s / 3600.0)
+    }
+}
+
+/// A name in title case: "escape wheel" as "Escape Wheel".
+pub fn title_case(name: &str) -> String {
+    name.split(' ')
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A wheel's short name, for the narrow lane beside a map: "fourth wheel"
+/// as "4th Wheel". A name with no short form is shown whole.
+pub fn wheel_short(name: &str) -> String {
+    match name {
+        "centre wheel" => "2nd Wheel".into(),
+        "third wheel" => "3rd Wheel".into(),
+        "fourth wheel" => "4th Wheel".into(),
+        "escape wheel" => "Esc Wheel".into(),
+        "seconds wheel" => "Sec Wheel".into(),
+        "intermediate wheel" => "Int Wheel".into(),
+        _ => title_case(name),
+    }
+}
+
+/// A mesh's name in a narrow lane: its pinion by the short name of the
+/// wheel on the same arbor, as [`wheel_short`] gives it ("4th Mesh"),
+/// except the centre pinion, whose "Centre" the plots already say (Hugh,
+/// #1612).
+pub fn mesh_short(pinion: &str) -> String {
+    if pinion == "centre pinion" {
+        return "Centre Mesh".into();
+    }
+    let wheel = pinion.strip_suffix(" pinion").map(|a| format!("{a} wheel"));
+    match wheel.as_deref().map(wheel_short) {
+        Some(w) if w.ends_with(" Wheel") => format!("{} Mesh", w.trim_end_matches(" Wheel")),
+        _ => format!("{} Mesh", title_case(pinion)),
+    }
+}
+
+#[cfg(test)]
+mod wheel_mark_tests {
+    use super::*;
+    use crate::periodicity::Wheel;
+    use crate::train::MeshLine;
+
+    fn wheel(name: &str, period_s: f64) -> Wheel {
+        Wheel {
+            name: name.into(),
+            period_s,
+        }
+    }
+
+    fn mesh(name: &str, period_s: f64) -> MeshLine {
+        MeshLine {
+            name: name.into(),
+            wheel: String::new(),
+            period_s,
+            about: format!("{period_s} s"),
+        }
+    }
+
+    /// Each wheel and its ×2; no ×2 where another wheel turns within 3%;
+    /// a mesh within 3% of a marked line is left out (#1694).
+    #[test]
+    fn the_lines_follow_the_one_mark_rule() {
+        let lines = wheel_marks(
+            &[wheel("fourth wheel", 60.0), wheel("escape wheel", 30.6)],
+            &[mesh("fourth pinion", 7.5), mesh("escape pinion", 30.0)],
+        );
+        let got: Vec<(f64, WheelTurn, &str)> = lines
+            .iter()
+            .map(|l| (l.period_s, l.turn, l.short.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                (60.0, WheelTurn::Wheel, "4th Wheel"),
+                (30.6, WheelTurn::Wheel, "Esc Wheel"),
+                (15.3, WheelTurn::Twice, "Esc Wheel ×2"),
+                (7.5, WheelTurn::Mesh, "4th Mesh"),
+            ]
+        );
+        assert_eq!(lines[0].hover, "Fourth Wheel: 60 s");
+        assert_eq!(lines[3].name, "Fourth Pinion Mesh");
+        assert_eq!(lines[3].hover, "Fourth Pinion Mesh: 7.5 s.");
+        // The 3% is a bound: 2.9% apart share a line, 3.1% don't.
+        assert!(one_mark(103.0 - 0.1, 100.0) && !one_mark(103.1, 100.0));
+    }
+
+    #[test]
+    fn short_names() {
+        assert_eq!(title_case("escape wheel"), "Escape Wheel");
+        assert_eq!(wheel_short("centre wheel"), "2nd Wheel");
+        assert_eq!(wheel_short("barrel"), "Barrel");
+        assert_eq!(mesh_short("centre pinion"), "Centre Mesh");
+        assert_eq!(mesh_short("third pinion"), "3rd Mesh");
+        assert_eq!(mesh_short("odd arbor"), "Odd Arbor Mesh");
+        assert_eq!(period_words(7200.0), "2.0 h");
+    }
+}

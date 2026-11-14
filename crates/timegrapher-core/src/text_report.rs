@@ -121,7 +121,7 @@ pub fn positions_of(
     readings: &[Reading],
 ) -> String {
     let mut out = heading("Positions Test", header);
-    let ix = session::sourced_indices_over(0.0, figures, order);
+    let ix = session::sourced_indices_over(None, figures, order);
     let mut rows = table_rows(&ix, "From Average");
     rows.push(mean_row("Average", &ix));
     rows.push(vec![
@@ -158,7 +158,7 @@ pub fn positions_of(
 pub fn poise(header: &Header, readings: &[Reading]) -> String {
     let mut out = heading("Dynamic Poise Test", header);
     let figures = figures(readings);
-    let ix = session::sourced_indices_over(0.0, &figures, &Position::UPRIGHT);
+    let ix = session::sourced_indices_over(None, &figures, &Position::UPRIGHT);
     let mut rows = table_rows(&ix, "From Mean");
     rows.push(mean_row("Mean", &ix));
     out += &table(&rows, 2, 1);

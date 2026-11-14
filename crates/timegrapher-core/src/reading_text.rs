@@ -71,7 +71,46 @@ pub fn position_name(p: &str) -> String {
 }
 
 /// A state of wind as every surface names it: "full wind" at 0 (or less),
-/// else "24 h after winding", hours to the whole hour.
+/// "24 h after winding", hours to the whole hour, or "wind not given"
+/// where the reading carries none (#1665): a reading is never called fully
+/// wound unless that was set.
+pub fn wind_state_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(|| WIND_NOT_GIVEN.to_string(), wind_words)
+}
+
+/// The words for a state of wind that was not given.
+pub const WIND_NOT_GIVEN: &str = "wind not given";
+
+/// The wind on the Position card, to 0.1 h: "Full wind 2.0 h ago", or
+/// "Wind not given" until it is set (#1665).
+pub fn wind_since_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(
+        || capitalised(WIND_NOT_GIVEN),
+        |h| format!("Full wind {} h ago", crate::figure_text::fixed_text(h, 1)),
+    )
+}
+
+/// A saved take's wind, to 0.1 h: "Full wind 2.0 h before it began", or
+/// "Wind not given" (#1665).
+pub fn wind_before_take_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(
+        || capitalised(WIND_NOT_GIVEN),
+        |h| {
+            format!(
+                "Full wind {} h before it began",
+                crate::figure_text::fixed_text(h, 1)
+            )
+        },
+    )
+}
+
+fn capitalised(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
+}
+
+/// A state of wind that was given, as [`wind_state_words`] names it.
 pub fn wind_words(wind_h: f64) -> String {
     wind_words_to(wind_h, 0)
 }
@@ -174,6 +213,20 @@ mod tests {
         assert_eq!(WindHours::measured(24.0).words(), "24.0 h after winding");
         assert_eq!(WindHours::measured(24.2).short(), "24.2 h");
         assert_eq!(WindHours::measured(0.0).words(), "full wind");
+    }
+
+    /// The card and a take's hover say the wind to 0.1 h, or that it was
+    /// not given (#1665).
+    #[test]
+    fn the_wind_since_full_wind_is_said_to_a_tenth() {
+        assert_eq!(wind_since_words(Some(2.0)), "Full wind 2.0 h ago");
+        assert_eq!(wind_since_words(Some(0.04)), "Full wind 0.0 h ago");
+        assert_eq!(wind_since_words(None), "Wind not given");
+        assert_eq!(
+            wind_before_take_words(Some(2.0)),
+            "Full wind 2.0 h before it began"
+        );
+        assert_eq!(wind_before_take_words(None), "Wind not given");
     }
 
     #[test]

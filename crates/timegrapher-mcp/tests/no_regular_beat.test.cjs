@@ -17,7 +17,7 @@ function definition(name) {
 const NO_BEAT_TITLE = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/measure.rs"), "utf8")
   .match(/pub const NO_WATCH_TITLE: &str = "([^"]+)";/)[1];
 const context = vm.createContext({ MINUS,
-  NO_BEAT_TITLE,
+  NO_BEAT_TITLE, WIND_NOT_GIVEN: "wind not given",
   fileName: () => "take.flac", timeLabel: String, positionName: String,
   liveStrip: () => "", stripCards: () => "", trendStrip: () => "",
 });

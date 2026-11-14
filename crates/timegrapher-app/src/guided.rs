@@ -705,8 +705,15 @@ impl Test {
         // Cut at every jump in the beats, as the whole take is, so no fit
         // runs across one.
         let jumps = crate::steady::reading_breaks(Vec::new(), log);
+        // A stop too short for its own ± borrows its noise only from the
+        // test's stops, never the turns between (core's rule, #1624).
+        let mut stops: Vec<(f64, f64)> = self.spans.iter().map(|&(_, a, b)| (a, b)).collect();
+        if !stops.contains(&(from, to)) {
+            stops.push((from, to));
+        }
+        stops.sort_by(|a, b| a.0.total_cmp(&b.0));
         let measurement: Measurement =
-            session::measure_masked(log, clock, &jumps, masked, from, to);
+            session::measure_reading(log, clock, &jumps, masked, (from, to), &stops);
         Some(Reading {
             bph_set: self.bph_set,
             label: self.step_name(i),
@@ -2025,7 +2032,7 @@ fn kept_figures(full: &FullWind) -> Vec<SourcedFigures> {
 /// the six, or the Dynamic Poise test's eight upright stops.
 fn table_of(figures: &[SourcedFigures], mut notes: Vec<String>, kind: Kind) -> Table {
     let over: Vec<session::Position> = kind.order().iter().map(|p| p.core()).collect();
-    let ix = session::sourced_indices_over(0.0, figures, &over);
+    let ix = session::sourced_indices_over(None, figures, &over);
     let beat_error_summary = ix.beat_error_summary();
     notes.push(beat_error_summary.clone());
     Table {
