@@ -591,7 +591,9 @@ fn fft_renderer_paints_input_availability_in_both_rate_displays() {
                 "{text}"
             );
             assert_eq!(
-                text.contains("each size is a sine fitted to the samples present"),
+                text.contains(
+                    "each size is a sine and a constant fitted together to the samples present"
+                ),
                 missing && info
             );
         }
