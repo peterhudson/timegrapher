@@ -278,7 +278,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
 /// Whether a second read of a recording (`again`, at another rate) is
 /// kept over the first (#1423): when it hears a watch and the first does
 /// not. When both do: the read that kept the larger share of the beats
-/// its span holds ([`kept_share`]), by more than 2 standard errors of the
+/// its span holds (`kept_of`), by more than 2 standard errors of the
 /// difference; within that, at exactly 2:1, the higher rate, as a read at
 /// half the watch's rate keeps every other beat at a full share; else the
 /// one whose rate fit's residuals (robust SD, seconds, over the beats
@@ -303,13 +303,6 @@ pub fn reads_better(again: &Summary, first: &Summary) -> bool {
     }
     let sd = |s: &Summary| s.overall.map_or(f64::INFINITY, |f| f.jitter_us);
     sd(again) < sd(first)
-}
-
-/// The share of the beats a read's span holds at its rate that its rate
-/// fit kept: kept beats over the span after any lead times `bph`/3600,
-/// plus 1 for the beats at both ends, at most 1.
-pub fn kept_share(s: &Summary) -> Option<f64> {
-    kept_of(s).map(|(k, n)| k / n)
 }
 
 /// A read's beats kept by its rate fit (at most as many as it holds), and
@@ -361,7 +354,7 @@ fn analyze_read(
     let se = |f: &dyn Fn(&AmplitudeWindow) -> Option<f64>| {
         crate::confidence::amplitude_windows_se(take.iter().copied(), &take, f)
     };
-    let heard = hear(audio, &beats, bph, &fits.rate_windows, from_s, beat_sound);
+    let heard = hear(audio, &beats, bph, &fits, from_s, beat_sound);
     let watch_heard = heard.no_watch.is_none();
     // A withheld figure has no ± (#1429).
     let f = &fits.figures;
@@ -458,16 +451,17 @@ fn hear(
     audio: &Audio,
     beats: &[Beat],
     bph: u32,
-    rate_windows: &[WindowFit],
+    fits: &Fits,
     from_s: f64,
     beat_sound: Option<bool>,
 ) -> Heard {
     let fs = audio.sample_rate as f64;
     let listened_s = audio.duration() - from_s;
-    let jitter_us = crate::session::scatter_jitter_us(rate_windows);
+    let jitter_us = crate::session::scatter_jitter_us(&fits.rate_windows);
+    let assessed = crate::measure::regularity_assessed(listened_s, fits.holds_window);
     Heard {
         jitter_us,
-        no_watch: crate::measure::no_watch_reason(jitter_us, bph, listened_s, beat_sound),
+        no_watch: crate::measure::no_watch_reason(jitter_us, bph, assessed, beat_sound),
         listened_s,
         expected: crate::beats::expected_beats(listened_s, bph),
         clipping: Clipping::measure(&audio.samples, fs, beats),
@@ -533,6 +527,10 @@ struct Fits {
     residuals: Vec<f64>,
     /// The rate windows from `from_s` on.
     rate_windows: Vec<WindowFit>,
+    /// Whether a whole rate window fits from `from_s` on, clear of the
+    /// jumps ([`crate::session::holds_scatter_window`]), so regularity is
+    /// judged (#1688).
+    holds_window: bool,
 }
 
 impl Fits {
@@ -591,6 +589,13 @@ fn fit_take(
         cfg.rate_window_s / 2.0,
         part,
     );
+    let holds_window = crate::session::holds_scatter_window(
+        &holes,
+        from_s,
+        duration,
+        cfg.rate_window_s,
+        cfg.rate_window_s / 2.0,
+    );
     Fits {
         clear,
         overall,
@@ -598,6 +603,7 @@ fn fit_take(
         figures,
         residuals,
         rate_windows,
+        holds_window,
     }
 }
 

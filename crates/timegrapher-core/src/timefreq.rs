@@ -992,7 +992,7 @@ pub fn for_take(
     lc: &crate::longterm::LongConfig,
 ) -> Vec<TimeFrequency> {
     let [_, be] = crate::steadiness::window_grids(log, clock, &long.breaks);
-    let be = crate::longterm::detrend(&be, lc.detrend_s);
+    let be = crate::steadiness::level_by_piece(&be, clock, &long.breaks, lc);
     let inputs = [
         (&long.timing.detrended, "rate", "ms", 1000.0),
         (&long.amplitude.detrended, "amplitude", "deg", 1.0),
@@ -1037,7 +1037,7 @@ pub fn kurtograms_for_take(
     lc: &crate::longterm::LongConfig,
 ) -> Vec<Kurtogram> {
     let [_, be] = crate::steadiness::window_grids(log, clock, &long.breaks);
-    let be = crate::longterm::detrend(&be, lc.detrend_s);
+    let be = crate::steadiness::level_by_piece(&be, clock, &long.breaks, lc);
     [
         (&long.timing.detrended, "rate"),
         (&long.amplitude.detrended, "amplitude"),
