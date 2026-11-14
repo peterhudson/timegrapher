@@ -372,3 +372,41 @@ fn listening_carries_on_when_the_first_chunk_read_again_takes_over() {
     drop(tx);
     let _ = std::fs::remove_dir_all(base);
 }
+
+/// While listening, the Scope reads a moment further back than the
+/// engine holds from the take being recorded, at the take's own time
+/// across a break: the sound kept leaves the break's gap out. It once
+/// said "No sound kept" for anything but the last few seconds, though
+/// the take held it.
+#[test]
+fn the_scope_reads_the_take_being_recorded_across_a_break() {
+    let (mut app, base, tx, heard) = listened("scope-heard");
+    // A second's stall, then 10 s whose blocks each carry their number.
+    let woke = 2000 + 20 * 49 + 1000;
+    for k in 0..500u64 {
+        tx.send(Event::Audio(timegrapher_core::capture::Block {
+            samples: vec![k as f32 / 1000.0; 960],
+            at: std::time::UNIX_EPOCH + Duration::from_millis(woke + 20 * k),
+        }))
+        .unwrap();
+    }
+    while app.poll_for(Duration::from_secs(60)) > 0 {}
+    assert_eq!(app.session.recorder.as_ref().unwrap().breaks().len(), 1);
+    assert!(app.session.mic());
+    // Block 250 by the take's time, which runs on across the gap.
+    let resumed = heard + 1.0;
+    let lo = resumed + 0.02 * 250.0 + 0.005;
+    assert!(app.start_scope_job(lo, lo + 0.01), "a job to read the take");
+    let (a, b, got) = app
+        .scope_job
+        .take()
+        .unwrap()
+        .recv_timeout(Duration::from_secs(30))
+        .unwrap();
+    assert!(a <= lo && b >= lo + 0.01);
+    let sp = got.unwrap();
+    let i = ((lo - sp.t0) * sp.rate).round() as usize;
+    assert!((sp.mono[i] - 0.25).abs() < 2e-3, "{} at {lo}", sp.mono[i]);
+    drop(tx);
+    let _ = std::fs::remove_dir_all(base);
+}
