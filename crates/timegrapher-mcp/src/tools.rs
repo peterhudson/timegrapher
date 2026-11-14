@@ -192,7 +192,9 @@ pub const TOOLS: &[ToolSpec] = &[
             (mean rate, largest difference, vertical against horizontal). Give a \
             folder holding session.toml, the session.toml itself, or recordings with the \
             position in each file name, one of {positions}. Also writes report.html \
-            next to the recordings. The report may name the vertical positions by the \
+            next to the recordings, with the plain-text Positions Test and Dynamic \
+            Poise reports the app saves (positions-report.txt, poise-report.txt), also \
+            given whole in `text_reports` (`file`, `text`). The report may name the vertical positions by the \
             hour at the top, with the crown at 3 o'clock: crown up is 3H, crown down 9H, \
             crown left 6H and crown right 12H. Five or more upright positions, as the \
             app's Dynamic Poise test's eight (the four 45° stops with 3H, 6H, 9H and 12H), \

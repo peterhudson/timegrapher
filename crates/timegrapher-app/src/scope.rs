@@ -387,11 +387,14 @@ fn draw_trace(
             let (lo, hi) = t[j0..j1]
                 .iter()
                 .fold((f32::MAX, f32::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
-            let x = r.left() + col as f32 + 0.5;
-            painter.line_segment(
-                [egui::pos2(x, y(hi)), egui::pos2(x, y(lo) + 0.5)],
-                egui::Stroke::new(1.0_f32, c),
+            // A filled column, never a line piece: a piece under a point
+            // long, where the sound is still, was rounded to nothing.
+            let x = r.left() + col as f32;
+            let column = egui::Rect::from_min_max(
+                egui::pos2(x, y(hi) - 0.5),
+                egui::pos2(x + 1.0, y(lo) + 0.5),
             );
+            painter.rect_filled(column, 0.0, c);
         }
     }
 }

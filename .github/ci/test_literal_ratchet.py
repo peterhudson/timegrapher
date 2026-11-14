@@ -71,11 +71,17 @@ class Ratchet(unittest.TestCase):
                     for c in r.CRATES}
         self.lists = {c: [("a::b", "why")] for c in r.CRATES}
 
-    def test_at_or_under_the_baseline_passes(self):
+    def test_at_the_baseline_passes(self):
         self.assertEqual(r.problems(self.now, {"crates": self.now}, self.lists), [])
+
+    def test_under_the_baseline_fails_until_it_is_lowered(self):
+        # A stale baseline would let the next PR grow back unseen (#1658).
         lower = copy.deepcopy(self.now)
         lower["timegrapher-app"]["total"]["comparisons"] = 0
-        self.assertEqual(r.problems(lower, {"crates": self.now}, self.lists), [])
+        bad = r.problems(lower, {"crates": self.now}, self.lists)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("timegrapher-app: 0 comparisons, under its baseline 1", bad[0])
+        self.assertEqual(r.problems(lower, {"crates": lower}, self.lists), [])
 
     def test_a_rise_fails_and_names_the_file(self):
         more = copy.deepcopy(self.now)
@@ -97,10 +103,21 @@ class Ratchet(unittest.TestCase):
 class FileLength(unittest.TestCase):
     def test_a_long_file_may_shrink_but_not_grow(self):
         base = {"long_files": {"crates/a/src/app.rs": 27946}}
-        self.assertEqual(r.problems({}, base, {c: [] for c in r.CRATES}, {"crates/a/src/app.rs": 27900}), [])
-        bad = r.problems({}, base, {c: [] for c in r.CRATES}, {"crates/a/src/app.rs": 27950})
+        lists = {c: [] for c in r.CRATES}
+        self.assertEqual(r.problems({}, base, lists, {"crates/a/src/app.rs": 27946}), [])
+        bad = r.problems({}, base, lists, {"crates/a/src/app.rs": 27950})
         self.assertEqual(len(bad), 1)
         self.assertIn("27950 lines, over its baseline 27946", bad[0])
+
+    def test_a_shrunk_long_file_lowers_its_baseline_in_the_same_pr(self):
+        base = {"long_files": {"crates/a/src/app.rs": 27946}}
+        lists = {c: [] for c in r.CRATES}
+        bad = r.problems({}, base, lists, {"crates/a/src/app.rs": 27900})
+        self.assertEqual(len(bad), 1)
+        self.assertIn("27900 lines, under its baseline 27946", bad[0])
+        bad = r.problems({}, base, lists, {})
+        self.assertEqual(len(bad), 1)
+        self.assertIn("no longer over 3000 lines", bad[0])
 
     def test_no_other_file_may_pass_the_limit(self):
         bad = r.problems({}, {"long_files": {}}, {c: [] for c in r.CRATES}, {"crates/a/src/new.rs": 3001})
@@ -138,7 +155,7 @@ class Copies(unittest.TestCase):
 class Tree(unittest.TestCase):
     """The guard itself: this tree against the checked-in baseline."""
 
-    def test_no_surface_crate_types_more_numbers_than_its_baseline(self):
+    def test_every_count_equals_its_baseline(self):
         import json
         baseline = json.loads(r.BASELINE.read_text(encoding="utf-8"))
         self.assertEqual(r.problems(r.scan(), baseline, r.clippy_lists(), r.long_files()), [])

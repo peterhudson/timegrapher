@@ -488,6 +488,9 @@ pub static POSITIONS_TEST: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
         "- In the 24 hour half they write both tests side by side. Copy puts tabs between \
      the columns, for a spreadsheet."
             .into(),
+        "- Save as Text… writes the same as a plain-text report, lined up to read, print or \
+     send."
+            .into(),
     ])
 });
 
