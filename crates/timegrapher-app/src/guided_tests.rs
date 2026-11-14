@@ -1244,7 +1244,7 @@ fn an_opened_24_hour_halfs_results_are_saved_as_the_pane_shows_them() {
     let live = export_text(&half, &about, ',');
     let heading = |t: &str| t.split("\n\n").next().unwrap_or_default().to_string();
     assert_eq!(heading(&csv), heading(&live));
-    assert!(csv.contains("Settling, s,"), "{csv}");
+    assert!(csv.contains("\"Settling, s\",20\n"), "{csv}");
     let table = table_text(&kept_table(&s), ',', Kind::Positions);
     let c = saved_comparison(&s).expect("the full-wind test against it");
     assert!(
