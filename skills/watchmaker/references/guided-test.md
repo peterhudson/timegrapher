@@ -335,7 +335,7 @@ listing. Say plainly what that can and can't support.
 
 - **It supports**: that the watch runs and was heard cleanly; its
   amplitude dial up, fully wound or not (say which), at a named lift
-  angle; its beat error (the unlock figure); and its dial-up rate at that
+  angle; its beat error (the one core chose, with its source); and its dial-up rate at that
   state of wind.
 - **It doesn't support**: how it keeps time on the wrist, its rate in
   other positions or the spread between them, how it holds up at 24

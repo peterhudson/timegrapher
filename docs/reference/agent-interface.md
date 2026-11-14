@@ -116,7 +116,9 @@ beat error; the separate raw unlock and drop fields retain their meanings.
 The choice and all measured figures are unchanged.
 
 A drop-derived reading carries `{"code":"beat_error_from_drop"}` in
-`caveats[]`. Library readings and Power Reserve hours now carry the core
+`caveats[]`, with `"why":"unlock_inconsistent"` added when the unlock was
+found but its 2 s windows disagree on its sign, so it is not used (#1439);
+with no `why`, the unlock was not found. Library readings and Power Reserve hours now carry the core
 measurement's caveats as well as its source. Older saved versions of those
 two types can lack these additive fields; they read as a null source and an
 empty caveat list, without guessing provenance for an old value. Withheld

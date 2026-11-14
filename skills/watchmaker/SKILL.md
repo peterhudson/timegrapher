@@ -187,13 +187,33 @@ Work through them in this order. The reasons are in
    5 of set-up). Look up the calibre in the table; if unknown, use 52,
    say so, and give the range the likely lift angles would give, worked
    out the same way, rather than a stock ±.
-4. **Beat error.** Quote the unlock figure, `beat_error_unlock_ms`
-   (as a positive number): this project's headline beat error is the
-   unlock figure. `overall.beat_error_ms` is measured from the drop; the two
-   differ when Tick and Tock take different times from unlock to drop.
-   Where they disagree, treat the drop figure as unreliable: it can
-   swing between stretches of one file (docs/research/validation.md has the
-   case).
+4. **Beat error.** Quote the beat error core chose, and say where it
+   came from. Each reading carries `beat_error_source`: `"unlock"`,
+   `"drop"` or `null`. Core reads the unlock where it finds one and falls
+   back to the drop where it doesn't; it never mixes them in one figure.
+   Give the size (a positive number); the sign only names the side.
+   - `"unlock"`: quote it as the beat error, from the unlock
+     (`beat_error_unlock_ms` on `analyze`, `beat_error_ms` on a session
+     or Watches reading). Example: "Beat error 0.4 ms (from the unlock)."
+   - `"drop"`: quote it (`overall.beat_error_ms` on `analyze`, the
+     reading's `beat_error_ms` elsewhere), and say it is from the drop, as the caveat
+     `beat_error_from_drop` says. Core uses the drop when the unlock
+     wasn't found, or when the caveat's `why` is `unlock_inconsistent`:
+     the unlock was found but its windows disagreed on which side is late,
+     so core judged it unfit to quote. Either way, don't quote
+     `beat_error_unlock_ms` over it. The drop can read differently from
+     the unlock where Tick and Tock take different times from unlock to
+     drop. Example: "Beat error 0.7 ms, read from the drop because the
+     unlock wasn't found (or: wasn't steady enough to use); a drop figure
+     can differ from an unlock one."
+   - `null`: no beat error was read. Say so and don't quote one, or work
+     one out from other fields. Example: "No beat error could be read
+     from this take."
+   On averages over positions or states, `beat_error_sources` counts each
+   source, and the caveat `beat_error_source_readings` says how many
+   readings of the other source were left out; say so when it is there.
+   Where both raw figures are shown and differ, don't pick one yourself:
+   the chosen one is the one to quote, with its source.
    Witschi's training course gives 0.0–0.5 ms as acceptable; ETA's
    2824-2 sheet 0.8 ms (Standard, Elaboré) or 0.6 ms (Top, Chronometer)
    dial up fully wound; 2 ms or more is the project's rule of thumb for
