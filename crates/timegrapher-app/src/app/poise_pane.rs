@@ -104,7 +104,7 @@ impl TimegrapherApp {
 
     /// The pane's toolbar: View first (Hugh's spec), New Test or Cancel
     /// Test while none runs, the Settle and Each Position the Positions
-    /// Test shares, and Copy.
+    /// Test shares, Save as Text… and Copy.
     pub(super) fn poise_settings(&mut self, ui: &mut egui::Ui) {
         theme::keep_next(ui);
         theme::tool_field(
@@ -168,6 +168,17 @@ impl TimegrapherApp {
             None => kept.is_none(),
         }
         .then_some("Nothing measured yet");
+        if theme::tool_button(
+            ui,
+            Icon::SaveTable,
+            "Save as Text…",
+            "Save the watch, how it was read, the table, the fit and the notes under it as a \
+             plain-text report to keep, print or send",
+            nothing,
+        ) {
+            let about = self.guided_about();
+            self.save_test_text(&about, guided::Kind::Poise, None, kept.as_deref());
+        }
         if theme::tool_word_button(
             ui,
             Icon::Copy,
@@ -199,7 +210,10 @@ impl TimegrapherApp {
     /// as the Positions pane reads its six, so a saved test's results
     /// come back when its take is opened (#1619). The table and Copy
     /// both read these (#1657).
-    fn poise_kept(&self, ctx: &egui::Context) -> Option<Vec<timegrapher_core::session::Reading>> {
+    pub(super) fn poise_kept(
+        &self,
+        ctx: &egui::Context,
+    ) -> Option<Vec<timegrapher_core::session::Reading>> {
         if self.guided.is_some() {
             return None;
         }

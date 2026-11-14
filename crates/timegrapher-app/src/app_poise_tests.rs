@@ -721,3 +721,125 @@ fn reads_as_the_cli(app: &TimegrapherApp) -> Vec<timegrapher_core::session::Meas
     }
     compared
 }
+
+/// Press the Dynamic Poise pane's Save as Text…, found where the
+/// toolbar drew it, then pick `path` as the dialog would: what it wrote.
+fn press_save_as_text(mut app: TimegrapherApp, path: &std::path::Path) -> String {
+    let ctx = themed();
+    let size = Vec2::new(1280.0, 820.0);
+    let run = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.pane_tools(ui, Pane::DynamicPoise);
+                app.poise_pane(ui);
+            });
+        });
+    };
+    run(&mut app, vec![]);
+    run(&mut app, vec![]);
+    let tools = theme::tools_drawn_at(&ctx);
+    let at = tools
+        .iter()
+        .find(|(k, _)| k.ends_with("/Save as Text…"))
+        .unwrap_or_else(|| panic!("Save as Text… in {tools:?}"))
+        .1
+        .center();
+    let press = |pressed| egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    run(&mut app, vec![egui::Event::PointerMoved(at)]);
+    run(&mut app, vec![press(true)]);
+    run(&mut app, vec![press(false)]);
+    assert!(app.picking(), "Save as Text… asks where");
+    saved_text(app, path).1
+}
+
+/// What Save as Text… writes, picked to `path` as the dialog would.
+fn saved_text(app: TimegrapherApp, path: &std::path::Path) -> (TimegrapherApp, String) {
+    let app = std::sync::Mutex::new(app);
+    assert!(crate::pick::answer(&app, |_, pick| {
+        assert_eq!(pick, crate::pick::Pick::Save);
+        vec![path.to_path_buf()]
+    }));
+    let text = std::fs::read_to_string(path).expect("the report written");
+    (app.into_inner().unwrap(), text)
+}
+
+/// Save as Text… on the Dynamic Poise pane, pressed with its test on the
+/// Bench, writes core's poise report of the test (#1509): the watch, how
+/// it was read with Settle and Each Position, the table and the fit. The
+/// Positions Test's Save as Text… asks nothing for it.
+#[test]
+fn save_as_text_writes_the_poise_tests_report() {
+    let (mut app, base, tx) = measured("save-text");
+    let about = app.guided_about();
+    app.save_test_text(&about, guided::Kind::Positions, None, None);
+    assert!(!app.picking(), "no Positions Test on the Bench");
+    let t = app.poise_test().expect("the test");
+    let take = guided::began_name(t);
+    let readings = t.readings_so_far().to_vec();
+    let header = timegrapher_core::text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: timegrapher_core::text_report::take_date(&take),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        // No calibre gives it, so the lift is in the heading.
+        lift_angle_deg: Some(about.lift_angle_deg),
+        settle_s: Some(t.settle_s),
+        measure_s: Some(t.measure_s),
+    };
+    assert!(!about.calibre.contains('°'), "{}", about.calibre);
+    let text = press_save_as_text(app, &base.join("poise.txt"));
+    assert_eq!(readings.len(), 8);
+    assert_eq!(
+        text,
+        timegrapher_core::text_report::poise(&header, &readings)
+    );
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Save as Text… on the Dynamic Poise pane, pressed for a take opened
+/// again with no test on the Bench, writes core's poise report of the upright stops
+/// the pane shows, with no Settle or Each Position (#1509).
+#[test]
+fn save_as_text_writes_an_opened_poise_takes_report() {
+    let (app, base) = saved_and_opened("save-text-kept", guided::Kind::Poise.order());
+    // The pane's table is read off the window's thread: wait for it.
+    let ctx = egui::Context::default();
+    let start = Instant::now();
+    let kept = loop {
+        if let Some(k) = app.poise_kept(&ctx) {
+            break k;
+        }
+        assert!(start.elapsed().as_secs() < 300, "never read");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(kept.len(), 8);
+    let about = app.guided_about();
+    let take = app
+        .take_on_show()
+        .and_then(|p| Some(p.file_name()?.to_string_lossy().into_owned()));
+    let header = timegrapher_core::text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: take
+            .as_deref()
+            .and_then(timegrapher_core::text_report::take_date),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        lift_angle_deg: Some(about.lift_angle_deg),
+        settle_s: None,
+        measure_s: None,
+    };
+    let text = press_save_as_text(app, &base.join("kept.txt"));
+    assert_eq!(text, timegrapher_core::text_report::poise(&header, &kept));
+    let _ = std::fs::remove_dir_all(&base);
+}

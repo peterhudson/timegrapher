@@ -461,7 +461,12 @@ impl TimegrapherApp {
              report to keep, print or send",
             nothing,
         ) {
-            self.save_test_text(&about, saved.as_ref(), kept.as_deref());
+            self.save_test_text(
+                &about,
+                guided::Kind::Positions,
+                saved.as_ref(),
+                kept.as_deref(),
+            );
         }
         if theme::tool_word_button(
             ui,
@@ -521,11 +526,13 @@ impl TimegrapherApp {
     }
 
     /// Save as Text…: the plain-text report (core `text_report`) of the
-    /// test, an opened 24 hour half's `saved_test` results, or an opened
-    /// take's `kept` positions, to a file the person picks.
-    fn save_test_text(
+    /// test of this `kind`, an opened 24 hour half's `saved_test` results,
+    /// or an opened take's `kept` readings, to a file the person picks:
+    /// the Positions Test's and Dynamic Poise's.
+    pub(super) fn save_test_text(
         &mut self,
         about: &guided::About,
+        kind: guided::Kind,
         saved_test: Option<&guided::FullWind>,
         kept: Option<&[timegrapher_core::session::Reading]>,
     ) {
@@ -540,7 +547,8 @@ impl TimegrapherApp {
             .or_else(|| self.take_on_show())
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
         let lift_known = self.lift_known();
-        let text = match (self.positions_test(), saved_test, kept) {
+        let test = self.guided.as_ref().filter(|t| t.kind == kind);
+        let text = match (test, saved_test, kept) {
             (Some(t), ..) => {
                 let take = saved.unwrap_or_else(|| guided::began_name(t));
                 guided::report_text(t, about, lift_known, Some(&take))
@@ -551,17 +559,13 @@ impl TimegrapherApp {
                 lift_known,
                 saved.as_deref(),
             )),
-            (None, None, Some(k)) => guided::kept_report_text(
-                k,
-                guided::Kind::Positions,
-                about,
-                lift_known,
-                saved.as_deref(),
-            ),
+            (None, None, Some(k)) => {
+                guided::kept_report_text(k, kind, about, lift_known, saved.as_deref())
+            }
             _ => None,
         };
         let Some(text) = text else { return };
-        let d = guided::text_dialog(guided::Kind::Positions, &about.watch, &dir);
+        let d = guided::text_dialog(kind, &about.watch, &dir);
         self.save_text_as(d, "the text report", text);
     }
 
