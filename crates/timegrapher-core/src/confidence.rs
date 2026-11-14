@@ -628,16 +628,29 @@ pub fn noise_pool<T>(
     span: impl Fn(&T) -> (f64, f64),
     value: impl Fn(&T) -> Option<f64>,
 ) -> Vec<Vec<f64>> {
+    let Some((a, b)) = pool_range(take, end_s, &span, &value) else {
+        return Vec::new();
+    };
+    stretches(&take[a..=b], |w| span(w), |w| value(w))
+}
+
+/// The first and last of `take`'s windows [`noise_pool`] reads: the
+/// [`MIN_NOISE_VALUES`] valued ones nearest a reading ending at `end_s`,
+/// before it first; None when the take holds fewer.
+fn pool_range<T>(
+    take: &[T],
+    end_s: f64,
+    span: impl Fn(&T) -> (f64, f64),
+    value: impl Fn(&T) -> Option<f64>,
+) -> Option<(usize, usize)> {
     let valued: Vec<usize> = (0..take.len())
         .filter(|&i| value(&take[i]).is_some_and(f64::is_finite))
         .collect();
-    let Some(last) = valued.len().checked_sub(MIN_NOISE_VALUES) else {
-        return Vec::new();
-    };
+    let last = valued.len().checked_sub(MIN_NOISE_VALUES)?;
     let before = valued.partition_point(|&i| span(&take[i]).1 <= end_s + 1e-3);
     let lo = before.saturating_sub(MIN_NOISE_VALUES).min(last);
     let (a, b) = (valued[lo], valued[lo + MIN_NOISE_VALUES - 1]);
-    stretches(&take[a..=b], |w| span(w), |w| value(w))
+    Some((a, b))
 }
 
 /// [`noise_pool`]'s windows read as levels, split at cuts only, a missing
@@ -648,15 +661,9 @@ fn noise_pool_levels<T>(
     span: impl Fn(&T) -> (f64, f64),
     value: impl Fn(&T) -> Option<f64>,
 ) -> Vec<Level> {
-    let valued: Vec<usize> = (0..take.len())
-        .filter(|&i| value(&take[i]).is_some_and(f64::is_finite))
-        .collect();
-    let Some(last) = valued.len().checked_sub(MIN_NOISE_VALUES) else {
+    let Some((a, b)) = pool_range(take, end_s, &span, &value) else {
         return Vec::new();
     };
-    let before = valued.partition_point(|&i| span(&take[i]).1 <= end_s + 1e-3);
-    let lo = before.saturating_sub(MIN_NOISE_VALUES).min(last);
-    let (a, b) = (valued[lo], valued[lo + MIN_NOISE_VALUES - 1]);
     walk_levels(&take[a..=b], span, value, |_, _| false)
 }
 
