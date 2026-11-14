@@ -1627,7 +1627,7 @@ impl TimegrapherApp {
             let noted = r.note(&format!("position {}", pos.code()));
             self.session.note_metadata_change();
             if let Err(e) = noted {
-                self.error(format!("The take's session file couldn't be written: {e}"));
+                self.session_write_failed(&e);
             }
         }
         self.note_settings();

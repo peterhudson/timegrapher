@@ -853,7 +853,7 @@ impl TimegrapherApp {
         // last good session.json stays as it was (#1639).
         let written = self.session.recorder.as_mut().map(|r| r.set_info(info));
         if let Some(Err(e)) = written {
-            self.error(format!("The take's session file couldn't be written: {e}"));
+            self.session_write_failed(&e);
         }
     }
 }
