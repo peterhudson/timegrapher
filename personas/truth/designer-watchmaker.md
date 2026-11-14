@@ -19,8 +19,9 @@ live reading anywhere in the ranges on [tinkerer.md](tinkerer.md) is
 consistent with the file. Positional spread is about 86 s/d and the rate is
 far fast in several positions. The app should show those facts plainly and
 grade nothing: no verdicts, no pass or fail colours, no confidence words
-(project decision, 2026-10-11). Its amplitude is below Witschi's ranges in every
-position (horizontal 260–320°, vertical 240–280°; see [README.md](README.md)).
+(project decision, 2026-10-11). Its amplitude is below Witschi's 2025 ranges in every
+position (horizontal 260–320°, vertical 240–280°) and below the 2010
+course's (250–330°, 250–270°) in all but dial up; see [README.md](README.md).
 
 `~/Recordings/eta_movement_DU.flac` = corpus `eta2824_holder_DU_30min` file
 take_part01-001: ETA 2824-2 clone ("bench watch 5"), uncased in a plastic holder, 28,800

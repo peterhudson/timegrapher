@@ -23,8 +23,13 @@ use timegrapher_core::library::length_text;
 pub use timegrapher_core::timing::Anchor;
 
 mod axis;
+mod lines;
+#[cfg(test)]
+use lines::joined;
 #[cfg(test)]
 mod key_tests;
+#[cfg(test)]
+mod overlay_tests;
 #[cfg(test)]
 mod still_tests;
 mod sweep;
@@ -249,18 +254,6 @@ pub fn gap_before(points: &[[f64; 2]], i: usize) -> bool {
         .flatten()
         .reduce(f64::max)
         .is_some_and(|usual| step(i) > 1.5 * usual)
-}
-
-/// The pairs of neighbouring `points` from `from_s` to `to_s` joined by a
-/// line: those with no gap ([`gap_before`]) between them.
-fn joined(points: &[[f64; 2]], from_s: f64, to_s: f64) -> Vec<([f64; 2], [f64; 2])> {
-    let lo = points.partition_point(|p| p[0] < from_s);
-    let hi = points.partition_point(|p| p[0] <= to_s);
-    (lo.max(1)..hi)
-        .filter(|&i| !gap_before(points, i))
-        .map(|i| (points[i - 1], points[i]))
-        .filter(|(a, b)| a[0] >= from_s && a[1].is_finite() && b[1].is_finite())
-        .collect()
 }
 
 impl Overlay {
@@ -2011,11 +2004,9 @@ impl Frame<'_> {
         let painter = self.painter.with_clip_rect(g.r);
         for (o, s) in overlays {
             let across = |v: f64| scale_ms(*s, v, half);
-            for (a, b) in joined(&o.points, self.oldest - 2.0, g.end) {
-                painter.line_segment(
-                    [g.pos(across(a[1]), a[0]), g.pos(across(b[1]), b[0])],
-                    Stroke::new(1.6_f32, o.color),
-                );
+            for run in lines::runs(&o.points, self.oldest - 2.0, g.end) {
+                let at = run.iter().map(|p| g.pos(across(p[1]), p[0])).collect();
+                painter.add(egui::Shape::line(at, Stroke::new(1.6_f32, o.color)));
             }
         }
     }

@@ -64,6 +64,24 @@ fn parse_card_ppm(text: &str) -> Result<f64, String> {
     )
 }
 
+/// A number from the command line: NaN, "inf" and their kin parse as
+/// numbers, so each flag is held to its domain here (#1650).
+fn number(text: &str) -> Result<f64, String> {
+    text.parse().map_err(|_| "must be a number".to_string())
+}
+/// A frequency or a length of time: finite and above 0.
+fn parse_positive(text: &str) -> Result<f64, String> {
+    timegrapher_core::input_domain::above(number(text)?, 0.0)
+}
+/// A start, a time since winding or a margin: finite and 0 or more.
+fn parse_non_negative(text: &str) -> Result<f64, String> {
+    timegrapher_core::input_domain::at_least(number(text)?, 0.0)
+}
+/// A signed figure: finite.
+fn parse_finite(text: &str) -> Result<f64, String> {
+    timegrapher_core::input_domain::finite(number(text)?)
+}
+
 #[derive(Parser)]
 #[command(
     name = "timegrapher",
@@ -101,10 +119,10 @@ enum Command {
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz (e.g. 5000,6000,7000).
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', value_parser = parse_positive)]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
-        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ)]
+        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ, value_parser = parse_positive)]
         highpass: f64,
         /// Escape wheel teeth, used to name periodic components (default:
         /// the calibre's, or 15).
@@ -150,10 +168,10 @@ enum Command {
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', value_parser = parse_positive)]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
-        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ)]
+        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ, value_parser = parse_positive)]
         highpass: f64,
         /// Print the measurements as JSON instead of text.
         #[arg(long)]
@@ -169,10 +187,10 @@ enum Command {
     Profile {
         file: PathBuf,
         /// Start of the stretch, seconds from the start of the recording.
-        #[arg(long, default_value_t = 0.0)]
+        #[arg(long, default_value_t = 0.0, value_parser = parse_non_negative)]
         at: f64,
         /// Length of the stretch, seconds.
-        #[arg(long, default_value_t = 10.0)]
+        #[arg(long, default_value_t = 10.0, value_parser = parse_positive)]
         span: f64,
         /// Beat rate in beats per hour (default: the take's, for a sound
         /// file its folder's session.toml lists; else guessed).
@@ -183,10 +201,10 @@ enum Command {
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', value_parser = parse_positive)]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
-        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ)]
+        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ, value_parser = parse_positive)]
         highpass: f64,
         /// Print the profiles (envelopes and marks) as JSON instead of text.
         #[arg(long)]
@@ -224,10 +242,10 @@ enum Command {
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', value_parser = parse_positive)]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
-        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ)]
+        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ, value_parser = parse_positive)]
         highpass: f64,
         /// The movement, to name periodic components after its wheels and
         /// take its lift angle from the table (e.g. "ETA 2824-2", "Rolex
@@ -274,10 +292,10 @@ enum Command {
         #[arg(long, value_parser = parse_lift)]
         lift: Option<f64>,
         /// Comma-separated steady tones to notch out, Hz.
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', value_parser = parse_positive)]
         notch: Vec<f64>,
         /// High-pass corner, Hz.
-        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ)]
+        #[arg(long, default_value_t = timegrapher_core::dsp::DEFAULT_HIGHPASS_HZ, value_parser = parse_positive)]
         highpass: f64,
         /// The movement, to name periodic components after its wheels and
         /// take its lift angle from the table (e.g. "ETA 2824-2", "Rolex
@@ -293,15 +311,15 @@ enum Command {
         #[arg(long)]
         wheel: Vec<String>,
         /// Length of each rate reading, seconds.
-        #[arg(long, default_value_t = 10.0)]
+        #[arg(long, default_value_t = 10.0, value_parser = parse_positive)]
         reading: f64,
         /// Hours since the watch was last fully wound when the take
         /// started (for the 0 h / 24 h comparison).
-        #[arg(long, default_value_t = 0.0)]
+        #[arg(long, default_value_t = 0.0, value_parser = parse_non_negative)]
         wind_h: f64,
         /// Count the distributions over stretches of this many minutes as
         /// well as over the whole take (0: the whole take only).
-        #[arg(long, default_value_t = 60.0)]
+        #[arg(long, default_value_t = 60.0, value_parser = parse_non_negative)]
         stretch_min: f64,
         /// Print the result as JSON instead of text.
         #[arg(long)]
@@ -578,13 +596,13 @@ enum Command {
         #[arg(long)]
         jobs: Option<usize>,
         /// Margin for rate, s/d.
-        #[arg(long, default_value_t = 0.3)]
+        #[arg(long, default_value_t = 0.3, value_parser = parse_non_negative)]
         rate_margin: f64,
         /// Margin for amplitude, degrees.
-        #[arg(long, default_value_t = 1.5)]
+        #[arg(long, default_value_t = 1.5, value_parser = parse_non_negative)]
         amplitude_margin: f64,
         /// Margin for beat error, ms.
-        #[arg(long, default_value_t = 0.03)]
+        #[arg(long, default_value_t = 0.03, value_parser = parse_non_negative)]
         beat_error_margin: f64,
         /// List every value, not only those that moved.
         #[arg(long)]
@@ -622,11 +640,11 @@ enum Command {
         /// is about one.
         recording: Vec<PathBuf>,
         /// Start of the excerpt, seconds into the recording.
-        #[arg(long, default_value_t = 0.0)]
+        #[arg(long, default_value_t = 0.0, value_parser = parse_non_negative)]
         at: f64,
         /// Length of the excerpt, seconds (5 minutes of FLAC is about 18 MB;
         /// GitHub takes attachments up to 25 MB).
-        #[arg(long, default_value_t = 300.0)]
+        #[arg(long, default_value_t = 300.0, value_parser = parse_positive)]
         span: f64,
         /// Leave the audio out.
         #[arg(long)]
@@ -717,29 +735,29 @@ enum Command {
         /// The noise and beat-to-beat variation of a scenario take.
         #[arg(long, default_value_t = 1, requires = "scenario")]
         seed: u64,
-        #[arg(long, default_value_t = 60.0)]
+        #[arg(long, default_value_t = 60.0, value_parser = parse_positive)]
         duration: f64,
         #[arg(long, default_value_t = 28800, value_parser = parse_bph)]
         bph: u32,
-        #[arg(long, default_value_t = 270.0)]
+        #[arg(long, default_value_t = 270.0, value_parser = parse_positive)]
         amplitude: f64,
-        #[arg(long, default_value_t = 5.0)]
+        #[arg(long, default_value_t = 5.0, value_parser = parse_finite)]
         rate: f64,
-        #[arg(long, default_value_t = 0.4)]
+        #[arg(long, default_value_t = 0.4, value_parser = parse_finite)]
         beat_error: f64,
-        #[arg(long, default_value_t = 30.0)]
+        #[arg(long, default_value_t = 30.0, value_parser = parse_finite)]
         snr: f64,
         /// Add a fault that repeats every this many seconds (like a bad
         /// tooth on a wheel), lasting --fault-length seconds each time.
-        #[arg(long)]
+        #[arg(long, value_parser = parse_positive)]
         fault_period: Option<f64>,
-        #[arg(long, default_value_t = 8.0)]
+        #[arg(long, default_value_t = 8.0, value_parser = parse_positive)]
         fault_length: f64,
         /// Rate change during the fault, s/d.
-        #[arg(long, default_value_t = -30.0)]
+        #[arg(long, default_value_t = -30.0, value_parser = parse_finite)]
         fault_rate: f64,
         /// Amplitude change during the fault, degrees.
-        #[arg(long, default_value_t = -15.0)]
+        #[arg(long, default_value_t = -15.0, value_parser = parse_finite)]
         fault_amplitude: f64,
     },
 }
@@ -1437,7 +1455,7 @@ fn run_analyze(
 
 /// The line between a listed file's take readings and the whole file's.
 const WHOLE_FILE: &str =
-    "Whole file   read alone, with no settling and none of the take's settings:";
+    "Whole file   read alone, with no settling, at the take's beat rate and lift angle:";
 
 /// What `session` reads of a take's file ([`session_cmd::take_of`]), one
 /// line for each entry naming it ([`take_lines`]).
@@ -1655,7 +1673,9 @@ fn print_summary(
         println!("{}", measure::no_watch_text(reason, s.jitter_us, s.bph_set));
         return;
     }
-    if !measure::regularity_assessed(s.duration_s) {
+    // A whole recording read from its start holds a whole scatter
+    // window once it is 10 s long (#1688).
+    if !measure::regularity_assessed(s.duration_s, true) {
         println!(
             "Beat regularity not assessed: {} s of sound, {} s needed",
             fixed_text(s.duration_s, 1),

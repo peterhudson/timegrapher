@@ -134,15 +134,16 @@ fn measured(name: &str) -> (TimegrapherApp, std::path::PathBuf, impl Sized) {
 
 /// A take still being listened to, with `stops` marked by hand in turn,
 /// `each` s apart, its rate 30 s/d each way round the dial (fastest with
-/// 6H at the top, as `measured`), its sound kept; and its folder.
+/// 6H at the top, as `measured`, and no change dial up or down), its
+/// sound kept; and its folder.
 fn listened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
     let base = std::env::temp_dir().join(format!("tg-app-poise-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let each = 62.0;
-    let tops: Vec<f64> = stops.iter().map(|p| p.core().top_deg().unwrap()).collect();
+    let tops: Vec<Option<f64>> = stops.iter().map(|p| p.core().top_deg()).collect();
     let extra = move |t: f64| {
-        let deg = tops[((t / each).floor() as usize).min(tops.len() - 1)];
-        30.0 * (deg - 180.0).to_radians().cos()
+        let top = tops[((t / each).floor() as usize).min(tops.len() - 1)];
+        top.map_or(0.0, |deg| 30.0 * (deg - 180.0).to_radians().cos())
     };
     let mut app = synthetic_varying(0.0, 0.0, |_| 0.0);
     app.session.listen();
@@ -178,7 +179,10 @@ fn listened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathB
 
 /// [`listened`], saved, then opened in a fresh app as a saved take is
 /// opened (#1619); and the folder to remove.
-fn saved_and_opened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
+pub(super) fn saved_and_opened(
+    name: &str,
+    stops: &[Position],
+) -> (TimegrapherApp, std::path::PathBuf) {
     let (mut app, base) = listened(name, stops);
     app.save_into(&base.join("saved"));
     app.wait_for_save();
@@ -221,6 +225,36 @@ fn a_saved_poise_take_opened_again_shows_its_stops_and_fit() {
     }
     assert!(drawn.contains(&fit.short_text), "{drawn}");
     assert!(!drawn.contains(&poise_pending()), "{drawn}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A reopened Dynamic Poise take's Copy copies the rows its table
+/// shows: it is not greyed out as "Nothing measured yet", and the text
+/// has the eight stops and the fit (#1657, from an external audit).
+#[test]
+fn a_reopened_poise_takes_copy_copies_the_table_it_shows() {
+    let (mut app, base) = saved_and_opened("copy", guided::Kind::Poise.order());
+    let t = app.free_table(&egui::Context::default()).expect("a table");
+    let fit = guided::poise_fit(&t.upright.0).expect("fitted from eight");
+    let text = guided::kept_rows_text(&t.upright.0, guided::Kind::Poise, &app.guided_about(), '\t');
+    for label in ["Crown Down (CD, 9H)", "7:30 Up (7H30)", "10:30 Up (10H30)"] {
+        assert!(text.contains(label), "{label}: {text}");
+    }
+    assert!(text.contains(&fit.text), "{text}");
+    let size = Vec2::new(1280.0, 820.0);
+    let drawn = draw_at(&mut app, Pane::DynamicPoise, size);
+    let (_, copy) = drawn
+        .iter()
+        .find(|(t, _)| t == "Copy")
+        .unwrap_or_else(|| panic!("Copy in {drawn:?}"));
+    let copied = click(&mut app, Pane::DynamicPoise, size, copy.center());
+    assert_eq!(
+        copied.as_deref(),
+        Some(text.as_str()),
+        "what the table shows"
+    );
+    let said = app.message.as_ref().map(|(m, _)| m.as_str());
+    assert_eq!(said, Some("Copied the Dynamic Poise table"));
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -546,8 +580,9 @@ fn the_panes_start_button_turns_to_the_next_stop() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// The pane drawn with a press and release at `at`.
-fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) {
+/// The pane drawn with a press and release at `at`; the text it put on
+/// the clipboard, if any.
+fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) -> Option<String> {
     let ctx = themed();
     let screen = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size));
     let press = |pressed| egui::Event::PointerButton {
@@ -562,17 +597,24 @@ fn click(app: &mut TimegrapherApp, pane: Pane, size: Vec2, at: egui::Pos2) {
         vec![press(false)],
         vec![],
     ];
+    let mut copied = None;
     for events in frames {
         let input = egui::RawInput {
             screen_rect: screen,
             events,
             ..Default::default()
         };
-        let _ = ctx.run(input, |ctx| {
+        let out = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 app.pane_tools(ui, pane);
                 app.poise_pane(ui);
             });
         });
+        for c in out.platform_output.commands {
+            if let egui::OutputCommand::CopyText(t) = c {
+                copied = Some(t);
+            }
+        }
     }
+    copied
 }

@@ -308,3 +308,37 @@ fn settings_must_agree_with_the_session() {
     assert_eq!(out.status.code(), Some(1));
     let _ = fs::remove_dir_all(&d);
 }
+
+/// A take added to a session whose file keeps a lift angle, without
+/// `--lift`, is measured with that lift and says it is the take's, not the
+/// default (#1648); the first take says its lift was given.
+#[test]
+fn a_takes_own_lift_is_said_to_be_the_takes() {
+    let d = scratch("lift-from");
+    let wav = synth(&d);
+    let sess = d.join("sess");
+    let first = doc(&record(&sess, &wav, &["--position", "DU", "--lift", "60"]));
+    let set = &first["input"]["settings"];
+    assert_eq!(
+        (&set["lift_deg"], &set["lift_known"], &set["lift_from"]),
+        (
+            &serde_json::json!(60.0),
+            &serde_json::json!(true),
+            &serde_json::json!("given")
+        )
+    );
+    let next = doc(&record(&sess, &wav, &["--position", "DD"]));
+    let set = &next["input"]["settings"];
+    assert_eq!(
+        (&set["lift_deg"], &set["lift_known"], &set["lift_from"]),
+        (
+            &serde_json::json!(60.0),
+            &serde_json::json!(true),
+            &serde_json::json!("take")
+        )
+    );
+    let plain = doc(&record(&d.join("plain"), &wav, &["--position", "DU"]));
+    assert_eq!(plain["input"]["settings"]["lift_from"], "default");
+    assert_eq!(plain["input"]["settings"]["lift_known"], false);
+    let _ = fs::remove_dir_all(&d);
+}
