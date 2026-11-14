@@ -625,10 +625,13 @@ fn own_and_pool<T>(
 /// The values `value` gives of windows `windows` in time order, in
 /// stretches: a new one starts where a window starts later than the one
 /// before ended (`span`, s), as across a break, a mask or a window left
-/// out, and after a window with no value. A window kept with no value
-/// and a window left out are the same absence, so the values either side
-/// of one are never neighbours and the ± can't depend on which way the
-/// absence is written (#1637).
+/// out, and after a window with no value, since the values either side of
+/// it are lag two apart, not neighbours. For windows that tile, as every
+/// caller's do (amplitude and beat error 2 s windows; the rate's every
+/// other 10 s window), a window kept with no value and a window left out
+/// give the same stretches, so the ± can't depend on which way the
+/// absence is written (#1637). Where windows overlap, `a > end` can't see
+/// a window left out, so only a kept empty window cuts there.
 pub fn stretches<T>(
     windows: impl IntoIterator<Item = T>,
     span: impl Fn(&T) -> (f64, f64),
@@ -638,6 +641,8 @@ pub fn stretches<T>(
     let mut end: Option<f64> = None;
     for w in windows {
         let (a, b) = span(&w);
+        // The values either side of an empty window are lag two apart,
+        // never neighbours, so it cuts the stretch (#1637).
         let Some(v) = value(&w).filter(|v| v.is_finite()) else {
             end = None;
             continue;
@@ -1042,6 +1047,45 @@ mod tests {
         let b = amplitude_windows_se(&left_out, &every(&left_out), |w| w.even_deg).unwrap();
         assert_eq!(a, b);
         assert!(a < 1.0, "{a}");
+    }
+
+    /// An empty window cuts its stretch. On windows that tile, keeping it
+    /// with no value and leaving it out agree; on overlapping windows the
+    /// kept empty window still cuts, since the values either side of it
+    /// are lag two apart (#1637).
+    #[test]
+    fn an_empty_window_cuts_its_stretch() {
+        type W = (f64, f64, Option<f64>);
+        let kept = |ws: &[W]| stretches(ws.iter(), |w| (w.0, w.1), |w| w.2);
+        let left_out = |ws: &[W]| {
+            let left: Vec<&W> = ws.iter().filter(|w| w.2.is_some()).collect();
+            stretches(left, |w| (w.0, w.1), |w| w.2)
+        };
+        // Tiling 2 s windows, one empty: both ways cut.
+        let tile = [
+            (0.0, 2.0, Some(1.0)),
+            (2.0, 4.0, None),
+            (4.0, 6.0, Some(2.0)),
+        ];
+        assert_eq!(kept(&tile), vec![vec![1.0], vec![2.0]]);
+        assert_eq!(kept(&tile), left_out(&tile));
+        // The rate's every other 10 s window, which tile, two empty in a row.
+        let rate: Vec<W> = (0..8)
+            .map(|i| {
+                let a = 10.0 * i as f64;
+                (a, a + 10.0, (!(3..5).contains(&i)).then_some(i as f64))
+            })
+            .collect();
+        assert_eq!(kept(&rate), vec![vec![0.0, 1.0, 2.0], vec![5.0, 6.0, 7.0]]);
+        assert_eq!(kept(&rate), left_out(&rate));
+        // 2 s windows every 1 s, the middle one empty: 1.0 and 2.0 are lag
+        // two apart, so the kept form cuts.
+        let overlap = [
+            (0.0, 2.0, Some(1.0)),
+            (1.0, 3.0, None),
+            (2.0, 4.0, Some(2.0)),
+        ];
+        assert_eq!(kept(&overlap), vec![vec![1.0], vec![2.0]]);
     }
 
     /// Over independent stretches, each AR(1), the ± of the median covers
