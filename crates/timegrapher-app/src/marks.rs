@@ -502,7 +502,7 @@ impl egui_plot::PlotItem for InsideNames {
     }
 }
 
-pub use timegrapher_core::steady_views::{mesh_short, title_case, wheel_short};
+pub use timegrapher_core::steady_views::title_case;
 
 /// The length of the tick that joins a line across a map to its name.
 const TICK: f32 = 4.0;
@@ -794,6 +794,7 @@ pub fn beside(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use timegrapher_core::steady_views::wheel_short;
 
     const S: Rank = Rank::Strong;
     const F: Rank = Rank::Faint;
