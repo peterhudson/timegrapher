@@ -308,7 +308,30 @@ fn new_id() -> String {
 /// ([`new_id`]), so two writes at once can't write into each other's,
 /// and one that fails removes only its own (#872).
 pub fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
-    use std::io::Write;
+    write_atomic_with(p, bytes, &ON_DISK)
+}
+
+/// [`write_atomic`]'s steps after the new file is made: its bytes, onto
+/// the disk, and into place; a test makes any one fail (#1639).
+pub(crate) struct AtomicSteps {
+    pub write: fn(&mut fs::File, &[u8]) -> std::io::Result<()>,
+    pub sync: fn(&fs::File) -> std::io::Result<()>,
+    pub rename: fn(&Path, &Path) -> std::io::Result<()>,
+}
+
+const ON_DISK: AtomicSteps = AtomicSteps {
+    write: write_all,
+    sync: fs::File::sync_all,
+    rename: crate::recorder::rename_settled,
+};
+
+fn write_all(f: &mut fs::File, bytes: &[u8]) -> std::io::Result<()> {
+    std::io::Write::write_all(f, bytes)
+}
+
+/// [`write_atomic`] with `steps`: whichever fails, `p` is as it was and
+/// the new file is gone.
+pub(crate) fn write_atomic_with(p: &Path, bytes: &[u8], steps: &AtomicSteps) -> Result<(), String> {
     let name = p
         .file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
@@ -319,14 +342,12 @@ pub fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
         .create_new(true)
         .open(&tmp)
         .map_err(failed)?;
-    let written = f.write_all(bytes).and_then(|_| f.sync_all());
+    let written = (steps.write)(&mut f, bytes).and_then(|_| (steps.sync)(&f));
     drop(f);
-    written
-        .and_then(|_| crate::recorder::rename_settled(&tmp, p))
-        .map_err(|e| {
-            let _ = fs::remove_file(&tmp);
-            failed(e)
-        })
+    written.and_then(|_| (steps.rename)(&tmp, p)).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        failed(e)
+    })
 }
 
 /// A folder name for `name` that every system accepts: the characters
