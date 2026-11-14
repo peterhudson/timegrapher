@@ -597,6 +597,17 @@ fn the_sentence_states_the_wave_then_the_heavy_spot() {
     assert_eq!(pending_text(), "Fitted once 5 positions are measured");
 }
 
+#[test]
+fn a_done_take_with_too_few_positions_says_what_it_lacks() {
+    assert_eq!(
+        unfitted_text(4, true),
+        "Needs 5 upright positions to fit; this take has 4"
+    );
+    // A test under way, or a take with five or more, waits as before.
+    assert_eq!(unfitted_text(4, false), pending_text());
+    assert_eq!(unfitted_text(5, true), pending_text());
+}
+
 /// The drawn curve passes through the fit: fastest at its peak, and it
 /// closes on itself.
 #[test]
