@@ -160,6 +160,29 @@ fn the_pane_draws_the_table_and_three_plots_amplitude_first() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// A new lift reads an opened take's Complication stretches again
+/// (#1645): each amplitude the pane shows scales with it.
+fn a_new_lift_rereads_it(again: &mut TimegrapherApp) {
+    let amps = |app: &TimegrapherApp| -> Vec<f64> {
+        let kept = app.complication_saved.as_ref().expect("its test");
+        kept.readings
+            .as_ref()
+            .expect("read")
+            .iter()
+            .map(|r| r.measurement.amplitude_deg.unwrap())
+            .collect()
+    };
+    let was = amps(again);
+    let k = 60.0 / again.lift_deg;
+    again.set_lift(60.0);
+    draw_at(again, Vec2::new(1280.0, 900.0));
+    let now = amps(again);
+    assert_eq!(now.len(), was.len());
+    for (a, b) in was.iter().zip(&now) {
+        assert!((b - a * k).abs() < 0.05, "{a} then {b}");
+    }
+}
+
 /// A Complication Test saved with its take and the take opened again in
 /// a fresh app (#1620): the session file says which stretch is Off and
 /// which On, the stretches are read again from the sound, and the pane
@@ -265,6 +288,7 @@ fn a_saved_complication_take_opened_again_shows_its_results() {
         );
         assert!((a - b).abs() < 0.05, "{q:?}: {a} then {b}");
     }
+    a_new_lift_rereads_it(&mut again);
     let _ = std::fs::remove_dir_all(&base);
 }
 
