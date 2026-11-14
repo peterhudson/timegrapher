@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use timegrapher_core::longrun;
 use timegrapher_core::longrun::LongReport;
 use timegrapher_core::longterm::LongConfig;
-use timegrapher_core::periodicity::standard_wheels;
+use timegrapher_core::periodicity::{standard_wheels, Wheel};
 use timegrapher_core::session::Manifest;
 use timegrapher_core::stream::{self, BeatLog};
 use timegrapher_core::take;
@@ -124,6 +124,46 @@ fn a_real_takes_fourth_wheel_shows_in_its_rate() {
         "{} ms against {rms_ms} ms rms",
         most.size
     );
+}
+
+/// At periods no wheel turns at, a real take's windows read noise as
+/// noise: a window's size over its SE spreads as a Rayleigh does, with an
+/// rms of √2, in the timing on its 0.25 s grid as in the amplitude and
+/// beat error. With the SE read from a lag-one ρ̂ held at 0.99, the
+/// timing's read 0.59, its SE 2.4 times too wide (#1618).
+#[test]
+fn a_real_takes_lines_at_no_wheel_read_as_noise() {
+    let Some(log) = corpus_log("ym42_DU_2h") else {
+        return;
+    };
+    let periods = [
+        4.3, 6.1, 7.7, 11.3, 13.9, 17.1, 23.7, 29.3, 37.1, 41.9, 53.3, 71.3, 83.9, 97.1,
+    ];
+    let lc = LongConfig {
+        wheels: periods
+            .iter()
+            .map(|&p| Wheel {
+                name: format!("no wheel at {p} s"),
+                period_s: p,
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let long = longrun::analyse(&log, None, &lc);
+    for series in ["rate", "amplitude", "beat_error"] {
+        let z2: Vec<f64> = lines_for_take(&log, None, &long, &lc, true)
+            .iter()
+            .filter(|l| l.series == series)
+            .flat_map(|l| l.windows.clone().unwrap())
+            .map(|w| (w.size / w.se).powi(2))
+            .collect();
+        let rms = (z2.iter().sum::<f64>() / z2.len() as f64).sqrt();
+        assert!(z2.len() >= 100, "{series}: {} windows", z2.len());
+        assert!(
+            (1.1..1.7).contains(&rms),
+            "{series}: rms size over SE {rms}"
+        );
+    }
 }
 
 #[test]

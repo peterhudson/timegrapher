@@ -136,7 +136,7 @@ Still to build in core: the take context and its revision (#294), one writer per
 | G8 | Silent fallbacks | A fallback that changes a figure adds a caveat; a test with an unreadable `session.json` gets it. |
 | G9 | Several writers of one file | One core writer per take file, with a round-trip test. |
 | G10 | Rules restated in words | A test over help and hint strings fails on a number with a unit typed in a surface. |
-| G11 | Copied defaults and thresholds | A CI count of number comparisons and unround literals in surface code that may not rise; the three `clippy.toml` lists stay identical. |
+| G11 | Copied defaults and thresholds | A CI count of number comparisons and unround literals in surface code that may not rise, and whose baseline is lowered in the same PR when it falls; the three `clippy.toml` lists stay identical. |
 | G12 | A second way a thing can happen | A code-path review of every PR that changes how a figure is made (section 10). |
 
 ---
@@ -177,7 +177,7 @@ A long function is where a second rule hides: of the 23 longest app functions on
 ### Limits
 
 - **A function:** at most 100 lines and a cognitive complexity of at most 25, as Clippy counts them (`too_many_lines`, `cognitive_complexity`).
-- **A file:** at most 3,000 lines. A file over that today may only shrink.
+- **A file:** at most 3,000 lines. A file over that today may only shrink, and its baseline shrinks with it in the same PR.
 - **One file, one concern:** a pane, a sheet, a command or a core module.
 - **Today's long functions** each carry `#[expect(clippy::too_many_lines)]` or `#[expect(clippy::cognitive_complexity)]`. Once a split makes the mark untrue, Clippy fails until it is removed, so the list only shrinks.
 - **A fix may add a mark** when it tips a function over a limit, with a reason that names an issue. The fix lands first, and the split follows in the next PR. The hygiene audit counts open marks.
