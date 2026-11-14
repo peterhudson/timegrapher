@@ -1810,6 +1810,13 @@ mod tests {
         o.lift = None;
         o.calibre = Some("ETA 2824-2".into());
         assert_eq!(from(&o, None).2, SettingFrom::Calibre);
+        // A second take of an ETA 2824-2 whose session file keeps its own
+        // lift: the take's, though the table gives one too.
+        o.calibre = None;
+        let eta =
+            toml::from_str::<Manifest>("calibre = \"ETA 2824-2\"\nlift = 48\nlift_known = true\n")
+                .unwrap();
+        assert_eq!(from(&o, Some(eta)), (48.0, true, SettingFrom::Take));
     }
 
     #[test]
