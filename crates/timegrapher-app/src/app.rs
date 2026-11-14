@@ -1890,6 +1890,9 @@ pub struct TimegrapherApp {
     guided_earlier: Option<guided::FullWind>,
     /// An opened 24 hour half's saved results, which the pane shows again.
     guided_saved: Option<guided::FullWind>,
+    /// An opened take's Complication Test, its three stretches from the
+    /// session file, read again once the take's beats are in (#1620).
+    complication_saved: Option<guided::Test>,
     /// For a watch set up for 24 Hours After, its full-wind tests from 12
     /// to 36 hours ago, newest first, for Compare With to pick from.
     guided_choices: Vec<guided::FullWind>,
@@ -2543,6 +2546,7 @@ impl TimegrapherApp {
             guided_measured: Vec::new(),
             guided_earlier: None,
             guided_saved: None,
+            complication_saved: None,
             guided_choices: Vec::new(),
             guided_earlier_file: false,
             guided_earlier_for: None,
@@ -2739,15 +2743,6 @@ impl TimegrapherApp {
 
     pub(crate) fn running(&self) -> bool {
         self.capture.is_some()
-    }
-
-    /// Keep listening while the window isn't drawing: save and read the
-    /// sound that has come in. Called from [`crate::pump`]'s thread.
-    pub(crate) fn pump(&mut self) -> usize {
-        if self.capture.is_none() {
-            return 0;
-        }
-        self.poll_for(PUMP_BUDGET)
     }
 
     /// Whether to hold the computer awake now: listening to the
@@ -3118,6 +3113,18 @@ impl TimegrapherApp {
         true
     }
 
+    /// The watch the take is of, as the Calibre card's title and the
+    /// status bar name it: the one open in Watches, else the one the take
+    /// names itself (its session file's), which isn't in Watches (false);
+    /// none for No Watch.
+    fn named_watch(&self) -> Option<(String, bool)> {
+        self.open_watch()
+            .map(|e| e.watch.name.clone())
+            .filter(|n| !n.is_empty())
+            .map(|n| (n, true))
+            .or_else(|| (!self.watch.is_empty()).then(|| (self.watch.clone(), false)))
+    }
+
     /// What the strip shows, for the status line: the take's name, its
     /// watch and its state.
     fn status_words(&self) -> String {
@@ -3134,12 +3141,7 @@ impl TimegrapherApp {
         } else {
             None
         };
-        // The watch the Calibre card names, else the take's own.
-        let named = self
-            .open_watch()
-            .map(|e| e.watch.name.clone())
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| self.watch.clone());
+        let named = self.named_watch().map_or_else(String::new, |w| w.0);
         let quick = self.quick_listen || file.is_none() && named.is_empty();
         let name =
             file.unwrap_or_else(|| if quick { "Quick Listen" } else { "New Take" }.to_string());

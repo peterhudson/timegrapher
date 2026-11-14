@@ -765,6 +765,37 @@ pub fn file_lift_known(m: &Manifest, cal: Option<&Calibre>) -> Option<bool> {
     )
 }
 
+/// Where a setting such as the lift angle came from, so a surface can say
+/// so without guessing from its own arguments (#1648): given for this
+/// command, the take's session file, the calibre's table entry, or the
+/// default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingFrom {
+    Given,
+    Take,
+    Calibre,
+    Default,
+}
+
+impl SettingFrom {
+    /// Where a value came from: `given` for this command, else what a
+    /// session file `kept`, else a calibre's `table` figure, else the
+    /// default. A given value a session file also keeps is said as given
+    /// (the two must agree).
+    pub fn of<T>(given: Option<T>, kept: Option<T>, table: Option<T>) -> Self {
+        if given.is_some() {
+            Self::Given
+        } else if kept.is_some() {
+            Self::Take
+        } else if table.is_some() {
+            Self::Calibre
+        } else {
+            Self::Default
+        }
+    }
+}
+
 /// The correction stored for the input `file` was recorded on
 /// ([`crate::clockstore::recorded_device`]), from the user's store; `None`
 /// when the recording names no input or none is stored for it.

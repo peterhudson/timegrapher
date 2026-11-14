@@ -25,19 +25,23 @@ the surfaces call it. This counts, in each surface crate's product code
                (`10.0..=90.0`, `5..600`), `clamp(10.0, 90.0)`, `.max(80.0)`
                or `.min(36.0)`. 0, 1 and 2 are left out.
 
-A crate's count may not rise above BASELINE. A PR that must add one (a
-layout constant that is the app's alone, say) raises the baseline in the
-same PR with `update`, so the reviewer sees it; a PR that removes some
-lowers it. Counts are per crate, so moving code between files is free;
-the per-file counts are kept only to say where a rise came from.
+A crate's count must equal BASELINE. A PR that must add one (a layout
+constant that is the app's alone, say) raises the baseline in the same PR
+with `update`, so the reviewer sees it; a PR that removes some must lower
+it in the same PR, or the check fails. A baseline left above the count
+would let the next PR grow back into the gap unseen (#1658). Counts are
+per crate, so moving code between files is free; the per-file counts are
+kept only to say where a rise came from.
 
 The check also fails when the three crates' clippy.toml disallowed-methods
 lists (guard G1) are not identical, and when a Rust file in crates/ is
 longer than MAX_FILE_LINES: a file over it today is listed in the baseline
-with its length, which may only fall (the architecture guide's code shape).
+with its length, which may only fall (the architecture guide's code shape),
+and the baseline falls with it in the same PR.
 
 `copies` runs jscpd over crates/ and counts the copied blocks that are not
-test code on both sides. The count may not rise above the baseline's.
+test code on both sides. The count must equal the baseline's: a rise fails,
+and so does a fall the baseline wasn't lowered for.
 """
 
 import json
@@ -303,6 +307,13 @@ def problems(now, baseline, lists, long=None):
             limit = f"its baseline {allowed[f]}" if f in allowed else f"{MAX_FILE_LINES}"
             out.append(f"{f}: {n} lines, over {limit}. Split it by concern; a file over "
                        f"{MAX_FILE_LINES} lines may only shrink.")
+        elif f in allowed and n < allowed[f]:
+            out.append(f"{f}: {n} lines, under its baseline {allowed[f]}. Lower the baseline "
+                       f"with `update` in this PR.")
+    for f, n in allowed.items():
+        if long is not None and f not in long:
+            out.append(f"{f}: no longer over {MAX_FILE_LINES} lines (baseline {n}). Drop it "
+                       f"from the baseline with `update` in this PR.")
     for crate in (c for c in CRATES if c in now):
         base = baseline.get("crates", {}).get(crate, {"total": {}, "files": {}})
         for k in KINDS:
@@ -314,6 +325,9 @@ def problems(now, baseline, lists, long=None):
                 out.append(f"{crate}: {have} {k}, baseline {allowed}. Take the number from core, "
                            f"or raise the baseline in this PR with a reason. More than before in: "
                            + (", ".join(where) or "(moved between files)"))
+            elif have < allowed:
+                out.append(f"{crate}: {have} {k}, under its baseline {allowed}. Lower the "
+                           f"baseline with `update` in this PR.")
     first, *rest = CRATES
     for crate in rest:
         if lists[crate] != lists[first]:
@@ -346,7 +360,9 @@ def main(argv):
                   "or raise the baseline in this PR with a reason")
             return 1
         if len(found) < allowed:
-            print("  below the baseline: lower it with `update` in this PR")
+            print(f"FAIL fewer copied product blocks than the baseline {allowed}: lower it "
+                  "with `update` in this PR")
+            return 1
         return 0
     if cmd != "check":
         print(__doc__)
@@ -356,8 +372,6 @@ def main(argv):
     for crate in CRATES:
         t, b = now[crate]["total"], baseline.get("crates", {}).get(crate, {}).get("total", {})
         print(crate + ": " + ", ".join(f"{k} {t[k]} (baseline {b.get(k, 0)})" for k in KINDS))
-        if any(t[k] < b.get(k, 0) for k in KINDS):
-            print(f"  {crate} is below its baseline: lower it with `update` in this PR")
     for f, n in long.items():
         print(f"{f}: {n} lines (baseline {baseline.get('long_files', {}).get(f, MAX_FILE_LINES)})")
     for line in bad:

@@ -115,6 +115,10 @@ pub(super) struct Background {
     pub(super) reserve_live: Option<Job<f64, Option<reserve::Test>>>,
     /// The take's second the run so far was last asked for at.
     pub(super) reserve_live_s: f64,
+    /// What the run on show from a long take was read from, so it is
+    /// read again when the take, its masks or its settings change after
+    /// it came (#1644).
+    pub(super) reserve_of: Option<Revision>,
 }
 
 /// A Positions Test table being read in the background, and what from.
@@ -284,8 +288,14 @@ impl TimegrapherApp {
 
     /// Each position's settled stretches, in the table's order.
     fn free_stretches(&self) -> Vec<(core_session::Position, f64, f64)> {
+        // The six, then the upright stops between them, for the Dynamic
+        // Poise pane (#1619).
+        let between = guided::POISE_ORDER
+            .iter()
+            .filter(|p| !guided::ORDER.contains(p));
         guided::ORDER
             .iter()
+            .chain(between)
             .filter_map(|&p| Some((p, core_session::Position::parse(p.code())?)))
             .flat_map(|(p, sp)| {
                 self.session
@@ -379,6 +389,7 @@ impl TimegrapherApp {
             self.take_breaks.clone(),
             self.clock.as_ref().map(|c| c.ppm),
         );
+        let bph_set = live.config().analysis.bph;
         let read = move |log: BeatLog| {
             let clock = reading_clock(take_clock.as_ref(), opened.is_some(), ppm, log.duration_s);
             let breaks = steady::reading_breaks(opened.unwrap_or_default(), &log);
@@ -390,7 +401,13 @@ impl TimegrapherApp {
                 &stretches,
                 core_session::POSITION_MIN_S,
             );
-            guided::free_table(&t)
+            let upright = core_session::position_rows(
+                &core_session::Position::UPRIGHT,
+                (&log, clock.as_ref(), &breaks, &masked),
+                &stretches,
+                core_session::POSITION_MIN_S,
+            );
+            guided::free_table(&t, guided::upright(&upright, log.bph, bph_set))
         };
         let log = steady::log_of(live);
         let shown = self.free_table.borrow().as_ref().map(|(_, t)| t.clone());
@@ -459,14 +476,15 @@ impl TimegrapherApp {
     /// [`Self::reserve_from_long_take`] for the window, read in the
     /// background once a take has opened, so a take of many hours doesn't
     /// hold the window as it lands (#1014). It is read again if what it
-    /// rests on changes before it comes, and let go when the pane gets a
-    /// test of its own. While listening, the run so far is read once a
+    /// rests on changes before it comes, and again if it changes after
+    /// (#1644), and let go when the pane gets a test of its own. While listening, the run so far is read once a
     /// minute ([`Self::long_reserve_listening`]), and once more where
     /// listening stops.
     fn long_reserve_shown(&mut self, ctx: &egui::Context) {
         if self.reserve_is_test() {
             self.bg.reserve = None;
             self.bg.reserve_live = None;
+            self.bg.reserve_of = None;
             return;
         }
         if self.running() {
@@ -474,14 +492,18 @@ impl TimegrapherApp {
             return;
         }
         self.bg.reserve_live = None;
+        let key = self.rev;
+        if self.bg.reserve.is_none() && self.bg.reserve_of.is_some_and(|of| of != key) {
+            self.bg.reserve = Some(None);
+        }
         let Some(wanted) = &self.bg.reserve else {
             return;
         };
-        let key = self.rev;
         match wanted.as_ref().filter(|j| j.key == key).map(Job::done) {
             Some(Ok(t)) => {
                 self.reserve = t;
                 self.bg.reserve = None;
+                self.bg.reserve_of = Some(key);
             }
             Some(Err(true)) => {}
             Some(Err(false)) => self.bg.reserve = None,

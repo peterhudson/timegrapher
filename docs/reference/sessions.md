@@ -13,7 +13,14 @@ timegrapher session recordings/dandong-3235/
 
 The command prints a summary and writes `session_report/` next to the
 session file: `report.html` (self-contained), `summary.json` (every number
-in the report) and `readings.csv` (one row per recording). The summary
+in the report) and `readings.csv` (one row per recording), and the
+plain-text reports the app's **Save as Text…** saves (core
+`text_report`): `positions-report.txt` when a horizontal position was
+read or no 45° stop was, and `poise-report.txt` when a 45° stop was
+(the eight upright stops' table, then the Dynamic Poise fit in words).
+Each reports the least wound state of wind's readings; with two states
+the Positions Test report sets them against the fullest, with Im and
+Ie. The JSON gives both whole in `text_reports`. The summary
 ends with the report's full path. `report.html` is one page in English:
 open it in any web browser, or attach it to an email to send it.
 
@@ -194,6 +201,13 @@ lists every masked stretch on every recording; each counts only the part
 inside its own stretch. Overlapping pairs are joined; a pair whose end
 is not after its start is ignored. Builds from before `masked` refuse a
 session file that has it, as they refuse any field they don't know.
+
+A Complication Test's take lists its three stretches as recordings in one
+position, each with `complication = "off"` or `complication = "on"`, in
+the order Off, On, Off (#1620). The app reads them again when the take is
+opened, so its Complication pane shows the table and On less Off as at the
+end of the run. `session` reads them as it reads any recording. Builds
+from before it refuse a session file that has it.
 
 Where the app's Position Brush painted over the positions recorded, the
 session file also lists what was recorded, so the app can bring it back:

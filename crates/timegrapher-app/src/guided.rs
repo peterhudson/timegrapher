@@ -18,7 +18,7 @@ use timegrapher_core::figure_text::{fixed_text, signed_text, true_minus};
 use timegrapher_core::session::{self, Measurement, Reading, SourcedFigures};
 use timegrapher_core::steadiness::SeriesKind;
 use timegrapher_core::stream::BeatLog;
-use timegrapher_core::{complication, poise};
+use timegrapher_core::{complication, poise, text_report};
 
 /// The file a finished test just after winding is saved to, from the
 /// pane or beside a saved take, for the same six positions 24
@@ -358,6 +358,20 @@ impl Test {
             order: vec![p; complication::ORDER.len()],
             ..Test::new()
         }
+    }
+
+    /// A Complication Test kept with a take, at `p`, its Off, On and Off
+    /// stretches `spans` (seconds of the take's sound) as its session file
+    /// lists them (#1620): finished but not yet read ([`Self::finish`]).
+    pub fn saved_complication(p: Position, spans: &[(f64, f64)]) -> Option<Self> {
+        if spans.len() != complication::ORDER.len() {
+            return None;
+        }
+        let mut t = Test::complication(p);
+        t.spans = spans.iter().map(|&(a, b)| (p, a, b)).collect();
+        t.began = spans.first().map(|s| s.0 - t.settle_s);
+        t.step = spans.len() - 1;
+        Some(t)
     }
 
     /// The positions this test leads the watch through, in order.
@@ -1604,8 +1618,8 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
                 column_head(ui, WIDE_W, &head, unit, &hint);
             }
             ui.end_row();
-            for (label, v) in &c.rows {
-                ui.label(RichText::new(label).color(pal.text));
+            for (p, v) in &c.rows {
+                ui.label(RichText::new(position_label(*p)).color(pal.text));
                 right_in(ui, WIDE_W, signed(v[0], RATE), false, pal.text);
                 right_in(ui, WIDE_W, signed(v[1], RATE), false, pal.text);
                 right_in(ui, WIDE_W, signed(v[2], RATE), true, pal.text);
@@ -1618,9 +1632,10 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
     ui.add_space(4.0);
     ui.label(
         RichText::new(format!(
-            "Largest change in rate, crown right left out: {} s/d. Change in the mean rate, as \
-             a size: {} s/d.",
+            "{}: {} s/d. {}: {} s/d.",
+            session::IM_NAME,
             signed(c.im, RATE),
+            session::IE_NAME,
             plain(c.ie, RATE)
         ))
         .color(pal.text),
@@ -1781,6 +1796,18 @@ fn saved_test(ui: &mut egui::Ui, s: &FullWind) {
         ui,
         ("positions", Kind::Positions),
         &kept_table(s),
+        None,
+        None,
+    );
+}
+
+/// A Dynamic Poise table of a take's `readings` with no test on the
+/// Bench: its upright stops read again (#1619).
+pub(crate) fn poise_table(ui: &mut egui::Ui, readings: &[Reading]) {
+    table_grid(
+        ui,
+        ("poise", Kind::Poise),
+        &table(readings, Kind::Poise),
         None,
         None,
     );
@@ -1957,52 +1984,15 @@ pub struct Table {
     pub notes: Vec<String>,
 }
 
-/// The conditions found in one position's measurement, as plain facts.
-fn conditions(label: &str, bph_set: Option<u32>, m: &Measurement) -> Vec<String> {
-    let mut out = Vec::new();
-    if !m.watch_heard {
-        out.push(format!(
-            "{label}: {}",
-            session::no_regular_beat_in(m, bph_set)
-        ));
-    }
-    if m.clipped_beats > 0 {
-        let pct = m.clipped_fraction * 100.0;
-        out.push(if pct < 0.5 {
-            format!("{label}: clipping on under 1% of beats")
-        } else {
-            format!("{label}: clipping on {pct:.0}% of beats")
-        });
-    }
-    out.extend(m.caveats.iter().filter_map(|c| caveat_condition(label, c)));
-    out
-}
-
-/// The line for a caveat a position's reading carries, where the table
-/// says it.
-fn caveat_condition(label: &str, c: &timegrapher_core::measure::Caveat) -> Option<String> {
-    use timegrapher_core::measure::Caveat;
-    match c {
-        Caveat::ShortSpan { span_s } => Some(format!("{label}: {span_s:.0} s of beats")),
-        Caveat::BeatErrorAsSize => Some(format!(
-            "{label}: beat error given as a size, its sign differs either side of a cut"
-        )),
-        Caveat::SidesByCount { count } => Some(format!(
-            "{label}: Tick and Tock named by the beat count across {count} break{}, \
-             not told apart by their sound",
-            timegrapher_core::measure::plural(*count)
-        )),
-        _ => None,
-    }
-}
-
 /// The table from the readings, with the figures `timegrapher session`
 /// prints for the same stretches and its position names.
 pub fn table(readings: &[Reading], kind: Kind) -> Table {
-    let figures = reading_figures(readings);
+    let figures = text_report::figures(readings);
     let notes = readings
         .iter()
-        .flat_map(|r| conditions(&position_label(r.position), r.bph_set, &r.measurement))
+        .flat_map(|r| {
+            text_report::conditions(&position_label(r.position), r.bph_set, &r.measurement)
+        })
         .collect();
     table_of(&figures, notes, kind)
 }
@@ -2010,23 +2000,6 @@ pub fn table(readings: &[Reading], kind: Kind) -> Table {
 /// The table of an earlier test's saved results.
 pub fn kept_table(full: &FullWind) -> Table {
     table_of(&kept_figures(full), Vec::new(), Kind::Positions)
-}
-
-/// Each reading's figures, as core reads them.
-fn reading_figures(readings: &[Reading]) -> Vec<SourcedFigures> {
-    readings
-        .iter()
-        .map(|r| {
-            let m = &r.measurement;
-            (
-                r.position,
-                m.rate_s_per_day,
-                m.amplitude_deg,
-                m.beat_error(),
-                m.beat_error_source,
-            )
-        })
-        .collect()
 }
 
 /// A saved test's figures, as core reads them.
@@ -2114,11 +2087,55 @@ pub struct FreeTable {
     pub largest: [Option<f64>; 3],
     /// How many positions have readings.
     pub read: usize,
+    /// The take's upright stops read the same way, for the Dynamic Poise
+    /// pane with no test on the Bench (#1619).
+    pub upright: Upright,
+}
+
+/// A take's upright stops read again, as readings: each stop marked long
+/// enough to read, in [`session::Position::UPRIGHT`]'s order (core
+/// `session::position_rows`).
+#[derive(Debug, Clone, Default)]
+pub struct Upright(pub Vec<Reading>);
+
+/// The same when every reading has the same position, duration and
+/// figures.
+impl PartialEq for Upright {
+    fn eq(&self, other: &Self) -> bool {
+        let durations = |u: &Upright| u.0.iter().map(|r| r.duration_s).collect::<Vec<_>>();
+        text_report::figures(&self.0) == text_report::figures(&other.0)
+            && durations(self) == durations(other)
+    }
+}
+
+/// The readings of core's `rows` that were read, for a take at `bph`,
+/// `bph_set` the beat rate supplied (as a test's readings carry it).
+pub fn upright(rows: &[session::PositionRow], bph: u32, bph_set: Option<u32>) -> Upright {
+    Upright(
+        rows.iter()
+            .filter_map(|r| {
+                Some(Reading {
+                    label: position_label(r.position),
+                    position: r.position,
+                    wind_h: None,
+                    date: None,
+                    notes: None,
+                    duration_s: r.duration_s,
+                    bph,
+                    bph_set,
+                    measurement: r.measurement.clone()?,
+                    cycles: Vec::new(),
+                    shape: None,
+                    reference: None,
+                })
+            })
+            .collect(),
+    )
 }
 
 /// The free take's table from core's, in the Current Position card's
-/// order.
-pub fn free_table(t: &session::PositionsTable) -> FreeTable {
+/// order, with the take's `upright` stops.
+pub fn free_table(t: &session::PositionsTable, upright: Upright) -> FreeTable {
     let rows: Vec<(String, f64, FreeCell)> = Position::ALL
         .iter()
         .filter_map(|p| {
@@ -2152,6 +2169,7 @@ pub fn free_table(t: &session::PositionsTable) -> FreeTable {
             t.indices.d_beat_error,
         ],
         read,
+        upright,
     }
 }
 
@@ -2281,29 +2299,16 @@ fn largest_label(ui: &mut egui::Ui) {
         );
 }
 
-/// The full-wind test against the 24 hour half, with the figures
-/// `timegrapher session` gives for the two states of wind.
-pub struct Comparison {
-    /// Hours between the two tests' starts.
-    pub hours: f64,
-    /// Each position measured in both: its label, then rate at full wind,
-    /// rate after `hours` and the change (s/d), then the same for
-    /// amplitude (degrees).
-    pub rows: Vec<(String, [Option<f64>; 6])>,
-    /// The largest change in rate over the positions, crown right (12H)
-    /// left out (Im), s/d.
-    pub im: Option<f64>,
-    /// The size of the change in the mean rate over the positions
-    /// measured in both (Ie), s/d.
-    pub ie: Option<f64>,
-}
+/// The full-wind test against the 24 hour half: core's
+/// [`session::Comparison`].
+pub use session::Comparison;
 
 /// Full wind (`full`) against the 24 hour half's `readings`, `hours`
 /// later, read by core `session::evaluate_states` as `session` reads a
 /// file with both. The kept figures stand in for the full-wind
 /// measurements.
 pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<Comparison> {
-    comparison_of(&kept_figures(full), hours, &reading_figures(readings))
+    session::comparison(&kept_figures(full), hours, &text_report::figures(readings))
 }
 
 /// A saved 24 hour half (`later`) against the full-wind results it was set
@@ -2311,49 +2316,7 @@ pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<C
 /// nothing but its saved rows. None for a full-wind test's results.
 pub fn saved_comparison(later: &FullWind) -> Option<Comparison> {
     let full = later.against.as_deref()?;
-    comparison_of(&kept_figures(full), later.wind_h?, &kept_figures(later))
-}
-
-fn comparison_of(
-    full: &[SourcedFigures],
-    hours: f64,
-    later: &[SourcedFigures],
-) -> Option<Comparison> {
-    if full.is_empty() || later.is_empty() {
-        return None;
-    }
-    let states = vec![
-        session::sourced_indices(0.0, full),
-        session::sourced_indices(hours, later),
-    ];
-    let report = session::evaluate_states(states, Vec::new());
-    let (first, last) = (report.states.first()?, report.states.last()?);
-    let rows = later
-        .iter()
-        .filter_map(|f| {
-            let p = f.0;
-            let a = first.positions.iter().find(|v| v.position == p)?;
-            let b = last.positions.iter().find(|v| v.position == p)?;
-            let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
-            Some((
-                position_label(p),
-                [
-                    a.rate_s_per_day,
-                    b.rate_s_per_day,
-                    change(a.rate_s_per_day, b.rate_s_per_day),
-                    a.amplitude_deg,
-                    b.amplitude_deg,
-                    change(a.amplitude_deg, b.amplitude_deg),
-                ],
-            ))
-        })
-        .collect();
-    Some(Comparison {
-        hours,
-        rows,
-        im: report.im,
-        ie: report.ie,
-    })
+    session::comparison(&kept_figures(full), later.wind_h?, &kept_figures(later))
 }
 
 /// A position as the app names it: "Crown Up (CU, 3H)", the hobby
@@ -2454,8 +2417,8 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
         format!("Amplitude at {h}, °"),
         "Amplitude Change, °".into(),
     ]];
-    for (label, v) in &c.rows {
-        let mut row = vec![label.clone()];
+    for (p, v) in &c.rows {
+        let mut row = vec![position_label(*p)];
         for (i, x) in v.iter().enumerate() {
             let d = if i < 3 { RATE } else { AMPLITUDE };
             row.push(x.map_or_else(String::new, |x| format!("{x:.d$}")));
@@ -2464,14 +2427,8 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
     }
     cells.push(Vec::new());
     let num = |v: Option<f64>| v.map_or_else(String::new, |x| format!("{x:.RATE$}"));
-    cells.push(vec![
-        "Largest change in rate, crown right left out (Im), s/d".into(),
-        num(c.im),
-    ]);
-    cells.push(vec![
-        "Change in the mean rate, a size (Ie), s/d".into(),
-        num(c.ie),
-    ]);
+    cells.push(vec![format!("{}, s/d", session::IM_NAME), num(c.im)]);
+    cells.push(vec![format!("{}, s/d", session::IE_NAME), num(c.ie)]);
     let field = |s: &str| {
         if s.contains(sep) || s.contains('"') {
             format!("\"{}\"", s.replace('"', "\"\""))
@@ -2571,6 +2528,78 @@ pub fn results_dialog(k: &FullWind, dir: &std::path::Path) -> rfd::FileDialog {
         .set_title("Save the Results for the Test 24 Hours Later")
         .set_file_name(format!("positions-test-{stamp}Z.json"))
         .add_filter("Positions Test Results", &["json"]);
+    if dir.is_dir() {
+        d = d.set_directory(dir);
+    }
+    d
+}
+
+/// The test as the plain-text report core writes ([`text_report`]): the
+/// watch and how it was read, the table, and in the 24 hour half the
+/// full-wind test beside it. The lift angle is left out when
+/// `lift_known` is false (the default, not set for the watch), and `take`
+/// is the take's folder name, whose start is the report's Date. None for
+/// a Complication Test, which has no text report.
+pub fn report_text(
+    test: &Test,
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+) -> Option<String> {
+    let header = text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: take.and_then(text_report::take_date),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        lift_angle_deg: lift_known.then_some(about.lift_angle_deg),
+        settle_s: Some(test.settle_s),
+        measure_s: Some(test.measure_s),
+    };
+    let readings = test.readings_so_far();
+    match test.kind {
+        Kind::Positions => {
+            let full = test.full.as_ref().map(|(f, h)| (kept_figures(f), *h));
+            let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
+                figures,
+                hours: *hours,
+            });
+            Some(text_report::positions(&header, readings, earlier))
+        }
+        Kind::Poise => Some(text_report::poise(&header, readings)),
+        Kind::Complication => None,
+    }
+}
+
+/// When the test began in this computer's time, as a take's name starts
+/// ([`timegrapher_core::library::TAKE_NAME_TIME`]): "2026-11-13 19.17".
+pub fn began_name(test: &Test) -> String {
+    let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(test.began_unix);
+    chrono::DateTime::<chrono::Local>::from(at)
+        .format(timegrapher_core::library::TAKE_NAME_TIME)
+        .to_string()
+}
+
+/// The dialog for saving a test's text report, starting in `dir`:
+/// "Test Watch Positions Test 2026-11-13 19.17.txt", the watch's name
+/// as a file name allows, the test, and when it was saved.
+pub fn text_dialog(kind: Kind, watch: &str, dir: &std::path::Path) -> rfd::FileDialog {
+    let stamp = chrono::Local::now()
+        .format(timegrapher_core::library::TAKE_NAME_TIME)
+        .to_string();
+    let name = [
+        timegrapher_core::library::folder_name(watch.trim()),
+        kind.name().to_string(),
+        stamp,
+    ]
+    .iter()
+    .filter(|s| !s.is_empty())
+    .cloned()
+    .collect::<Vec<_>>()
+    .join(" ");
+    let mut d = rfd::FileDialog::new()
+        .set_title(format!("Save the {} as Text", kind.name()))
+        .set_file_name(format!("{name}.txt"))
+        .add_filter("Text", &["txt"]);
     if dir.is_dir() {
         d = d.set_directory(dir);
     }

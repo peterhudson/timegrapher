@@ -24,6 +24,9 @@ pub(super) struct Layout {
 /// in its place before a test, its result, and its Info panel.
 pub(super) struct Parts<'a> {
     pub about: String,
+    /// With no test on the Bench, the take's own table read again, drawn
+    /// in `about`'s place (#1619).
+    pub kept: Option<&'a dyn Fn(&mut egui::Ui)>,
     pub result: &'a dyn Fn(&mut egui::Ui),
     pub info: &'a dyn Fn(&mut egui::Ui),
 }
@@ -50,9 +53,12 @@ pub(super) fn test_body(
     let mut action = None;
     let table = |ui: &mut egui::Ui| match test {
         Some(t) => guided::test_table(ui, t, phase, live),
-        None => {
-            ui.label(RichText::new(&parts.about).color(pal.text_secondary));
-        }
+        None => match parts.kept {
+            Some(kept) => kept(ui),
+            None => {
+                ui.label(RichText::new(&parts.about).color(pal.text_secondary));
+            }
+        },
     };
     let full = ui.available_rect_before_wrap();
     let beside = info && full.width() >= layout.info_beside_w;

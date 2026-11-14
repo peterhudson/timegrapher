@@ -19,11 +19,11 @@ pub(crate) struct FactBox {
     /// there.
     pub(crate) tops: Vec<[f64; 2]>,
     /// Where `held` keeps the rows and corner last drawn, and those rows'
-    /// count and whether in the right corner: another layout must clear
-    /// the trace by `FACT_HOLD` more, so a trace on the edge doesn't make
-    /// the box flick between two from frame to frame.
+    /// count and corner ([`Corner`]): another layout must clear the trace
+    /// by `FACT_HOLD` more, so a trace on the edge doesn't make the box
+    /// flick between two from frame to frame.
     pub(crate) held: egui::Id,
-    pub(crate) was: Option<(usize, bool)>,
+    pub(crate) was: Option<(usize, Corner)>,
     /// The values' column, right-aligned, as wide as the widest value on
     /// either side; and the names' column likewise.
     pub(crate) name_w: f32,
@@ -47,6 +47,15 @@ pub(crate) struct FactBox {
     /// them into two, side by side, before shedding any (Hugh, #1528):
     /// for a wide, short plot.
     pub(crate) flow: bool,
+}
+
+/// The plot's corner a facts box sits in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Corner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
 }
 
 /// The box's distance from the plot's corner, points.
@@ -226,11 +235,27 @@ impl FactBox {
         rows: usize,
         cols: usize,
     ) -> (egui::Rect, egui::Rect) {
+        let (left, right, _, _) = self.four(t, rows, cols);
+        (left, right)
+    }
+
+    /// The box of `rows` in `cols` columns in each of the plot's corners:
+    /// top left, top right, bottom left, bottom right.
+    fn four(
+        &self,
+        t: &egui_plot::PlotTransform,
+        rows: usize,
+        cols: usize,
+    ) -> (egui::Rect, egui::Rect, egui::Rect, egui::Rect) {
         let frame = *t.frame();
         let r = self.rect_in(frame, rows, cols);
+        let right = egui::vec2(frame.right() - FACT_INSET - r.right(), 0.0);
+        let down = egui::vec2(0.0, frame.bottom() - FACT_INSET - r.bottom());
         (
             r,
-            r.translate(egui::vec2(frame.right() - FACT_INSET - r.right(), 0.0)),
+            r.translate(right),
+            r.translate(down),
+            r.translate(right + down),
         )
     }
 
@@ -247,49 +272,96 @@ impl FactBox {
 
     /// The rows drawn and where: those [`Self::shown`] keeps, in the top
     /// left corner, or the top right where the trace runs under the left
-    /// and not the right. Where the trace runs under both corners the
-    /// box keeps fewer rows, Unlock to Drop last, and none where even one row
-    /// would sit on it: the picture comes first, and the box's hover has
-    /// all four. A layout other than the one last drawn must clear the
-    /// trace by [`FACT_HOLD`] more.
+    /// and not the right. Where the trace runs under both top corners the
+    /// box keeps fewer rows, Unlock to Drop last. Where even one row would
+    /// sit on it in both, all the rows go in the bottom corner the trace
+    /// leaves clear, the emptier of two ([`emptiest`]), or else top left
+    /// anyway, on the box's plate: a fact is never dropped (Hugh, #1626).
+    /// A layout other than the one last drawn must clear the trace by
+    /// [`FACT_HOLD`] more.
     pub(crate) fn layout(&self, t: &egui_plot::PlotTransform) -> (Vec<usize>, egui::Rect) {
         let (shown, r, _) = self.placed(t);
         (shown, r)
+    }
+
+    /// The box's plate as `t` draws it, if it shows any row: what an
+    /// edge's line stops at ([`around_plate`]).
+    pub(crate) fn plate(&self, t: &egui_plot::PlotTransform) -> Option<egui::Rect> {
+        let (shown, r) = self.layout(t);
+        (!shown.is_empty()).then_some(r)
     }
 
     /// As [`Self::layout`], with the columns the rows take: before
     /// shedding a row, a box that flows tries its rows in two columns,
     /// half as tall, in either corner.
     fn placed(&self, t: &egui_plot::PlotTransform) -> (Vec<usize>, egui::Rect, usize) {
+        let (shown, r, cols, _) = self.placed_in(t);
+        (shown, r, cols)
+    }
+
+    /// As [`Self::placed`], with the corner taken.
+    fn placed_in(&self, t: &egui_plot::PlotTransform) -> (Vec<usize>, egui::Rect, usize, Corner) {
         let frame = *t.frame();
         let shown = self.shown(t);
+        let all = shown.len();
+        let first_cols = self.columns(frame, all.max(1));
         if self.tops.is_empty() || shown.is_empty() {
-            let n = shown.len().max(1);
-            let cols = self.columns(frame, n);
-            let r = self.corners(t, n, cols).0;
-            return (shown, r, cols);
+            let r = self.corners(t, all.max(1), first_cols).0;
+            return (shown, r, first_cols, Corner::TopLeft);
         }
-        for n in (1..=shown.len()).rev() {
+        let hold = |n: usize, at: Corner| {
+            if self.was.is_none_or(|w| w == (n, at)) {
+                0.0
+            } else {
+                FACT_HOLD
+            }
+        };
+        for n in (1..=all).rev() {
             for cols in self.column_tries(frame, n) {
                 let (left, right) = self.corners(t, n, cols);
-                for (r, right) in [(left, false), (right, true)] {
-                    let more = if self.was.is_none_or(|w| w == (n, right)) {
-                        0.0
-                    } else {
-                        FACT_HOLD
-                    };
-                    if !self.covers(t, r, more) {
+                for (r, at) in [(left, Corner::TopLeft), (right, Corner::TopRight)] {
+                    if !self.covers(t, r, hold(n, at)) {
                         let kept = if self.keep.is_some() {
                             shown[shown.len() - n..].to_vec()
                         } else {
                             self.kept(n)
                         };
-                        return (kept, r, cols);
+                        return (kept, r, cols, at);
                     }
                 }
             }
         }
-        (Vec::new(), self.corners(t, 1, 1).0, 1)
+        let trace: Vec<egui::Pos2> = self
+            .tops
+            .iter()
+            .map(|p| egui::pos2(t.position_from_point_x(p[0]), t.position_from_point_y(p[1])))
+            .collect();
+        for cols in self.column_tries(frame, all) {
+            let (_, _, left, right) = self.four(t, all, cols);
+            let clear: Vec<(egui::Rect, Corner)> =
+                [(left, Corner::BottomLeft), (right, Corner::BottomRight)]
+                    .into_iter()
+                    .filter(|&(r, at)| !self.covers_from(t, r, hold(all, at)))
+                    .collect();
+            if let Some(&(r, at)) = emptiest(&clear, |c| c.0, &trace) {
+                return (shown, r, cols, at);
+            }
+        }
+        let r = self.corners(t, all, first_cols).0;
+        (shown, r, first_cols, Corner::TopLeft)
+    }
+
+    /// Whether the trace runs through `r` in a bottom corner, or within
+    /// `more` points above it: a point of the trace within `r`'s span of
+    /// x from `r`'s top down to its bottom, the plot's foot below it
+    /// aside, where a trace at rest lies.
+    fn covers_from(&self, t: &egui_plot::PlotTransform, r: egui::Rect, more: f32) -> bool {
+        let (top, bottom) = (r.top() - 2.0 - more, r.bottom() + 2.0);
+        self.tops.iter().any(|p| {
+            let x = t.position_from_point_x(p[0]);
+            let y = t.position_from_point_y(p[1]);
+            x >= r.left() && x <= r.right() && y >= top && y < bottom
+        })
     }
 
     /// The span of x the box takes, as `t` draws it, its sides 0 wide at
@@ -342,27 +414,34 @@ impl FactBox {
     }
 
     /// The box drawn by `painter` on a picture that isn't a plot, all its
-    /// rows in one column, at the first of `places` (each its top left
-    /// corner) where no point of `trace` falls under it, or nowhere when
-    /// each would cover the trace; where it went. The Dynamic Poise
-    /// pane's (#1537): the plot items' box, drawn the same way.
+    /// rows in one column; where it went. It takes the first of `tops`
+    /// (each its top left corner) where no point of `trace` falls under
+    /// it; else the one of `bottoms` farthest from the trace of those it
+    /// keeps clear of ([`emptiest`]); else the first of `tops` anyway, on its plate: a
+    /// fact is never dropped (Hugh, #1626). The Dynamic Poise pane's
+    /// (#1537): the plot items' box, drawn the same way.
     pub(crate) fn paint(
         &self,
         ui: &egui::Ui,
         painter: &egui::Painter,
-        places: &[egui::Pos2],
+        (tops, bottoms): (&[egui::Pos2], &[egui::Pos2]),
         trace: &[egui::Pos2],
-    ) -> Option<egui::Rect> {
+    ) -> egui::Rect {
         let size = self.size();
-        let r = places
+        let at = |p: &egui::Pos2| egui::Rect::from_min_size(*p, size);
+        let clear = |r: &egui::Rect| !trace.iter().any(|p| r.expand(2.0).contains(*p));
+        let clear_bottoms: Vec<egui::Rect> = bottoms.iter().map(at).filter(clear).collect();
+        let r = tops
             .iter()
-            .map(|p| egui::Rect::from_min_size(*p, size))
-            .find(|r| !trace.iter().any(|p| r.expand(2.0).contains(*p)))?;
+            .map(at)
+            .find(clear)
+            .or_else(|| emptiest(&clear_bottoms, |r| *r, trace).copied())
+            .unwrap_or_else(|| at(&tops[0]));
         let all: Vec<usize> = (0..self.rows.len()).collect();
         let mut shapes = Vec::new();
         self.rows_shapes(ui, &all, (r, 1), &mut shapes);
         painter.extend(shapes);
-        Some(r)
+        r
     }
 }
 
@@ -373,11 +452,10 @@ impl egui_plot::PlotItem for FactBox {
         transform: &egui_plot::PlotTransform,
         shapes: &mut Vec<egui::Shape>,
     ) {
-        let (shown, r, cols) = self.placed(transform);
+        let (shown, r, cols, at) = self.placed_in(transform);
         // Kept for the next frame's layout, as `held` reads it.
-        let right = r.right() >= transform.frame().right() - FACT_INSET - 0.5;
         ui.ctx()
-            .data_mut(|d| d.insert_temp(self.held, (shown.len(), right)));
+            .data_mut(|d| d.insert_temp(self.held, (shown.len(), at)));
         if shown.is_empty() {
             return;
         }
@@ -404,6 +482,40 @@ impl egui_plot::PlotItem for FactBox {
 
     fn base_mut(&mut self) -> &mut egui_plot::PlotItemBase {
         &mut self.base
+    }
+}
+
+/// Of the bottom corners a facts box keeps clear of the trace, left to
+/// right, the emptiest: the one farthest from the nearest point of
+/// `trace` (screen points), the right one when they're as far (Hugh,
+/// #1626: on the Submariner plot, bottom right). The one rule for a
+/// plot's box and a painted one.
+fn emptiest<'a, T>(
+    clear: &'a [T],
+    rect: impl Fn(&T) -> egui::Rect,
+    trace: &[egui::Pos2],
+) -> Option<&'a T> {
+    let gap = |c: &T| {
+        let r = rect(c);
+        trace
+            .iter()
+            .map(|p| r.distance_to_pos(*p))
+            .fold(f32::INFINITY, f32::min)
+    };
+    clear.iter().max_by(|a, b| gap(a).total_cmp(&gap(b)))
+}
+
+/// The stretches of a vertical line at `x` from `a` down to `b` (screen
+/// points) left showing when the facts box's `plate` covers it: a line
+/// stops at the plate's edge and goes on below it, never touching the
+/// box's text (Hugh, #1633).
+pub(crate) fn around_plate(plate: Option<egui::Rect>, x: f32, a: f32, b: f32) -> Vec<(f32, f32)> {
+    match plate.filter(|p| x >= p.left() && x <= p.right() && a < p.bottom() && b > p.top()) {
+        None => vec![(a, b)],
+        Some(p) => [(a, b.min(p.top())), (a.max(p.bottom()), b)]
+            .into_iter()
+            .filter(|(a, b)| b > a)
+            .collect(),
     }
 }
 

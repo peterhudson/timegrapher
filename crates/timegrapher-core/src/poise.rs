@@ -52,6 +52,18 @@ pub fn pending_text() -> String {
     format!("Fitted once {MIN_SHOWN} positions are measured")
 }
 
+/// What a pane says with no fit: on a take that is done (`done`, opened
+/// again and not being recorded) with fewer than [`MIN_SHOWN`] of its
+/// `measured` upright positions, what it lacks, as no more will come
+/// (Hugh on #1622); else [`pending_text`].
+pub fn unfitted_text(measured: usize, done: bool) -> String {
+    if done && measured < MIN_SHOWN {
+        format!("Needs {MIN_SHOWN} upright positions to fit; this take has {measured}")
+    } else {
+        pending_text()
+    }
+}
+
 /// The share of each amplitude added either side of its 2 SE before asking
 /// whether it reaches [`NULL_AMPLITUDE_DEG`]. Amplitude scales with the
 /// lift angle, and a catalogue lift can be several percent out: the one

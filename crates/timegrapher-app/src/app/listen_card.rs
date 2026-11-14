@@ -806,12 +806,20 @@ impl TimegrapherApp {
                 // only the title row's height, not a control's.
                 ui.spacing_mut().button_padding = Vec2::new(0.0, 0.0);
                 ui.spacing_mut().interact_size.y = theme::TITLE_ROW_H;
-                let name = self
-                    .open_watch()
-                    .map_or_else(|| NO_WATCH.to_string(), |e| e.watch.name.clone());
-                let title = match self.open_watch() {
+                // The take's own watch where it isn't in Watches, as the
+                // status bar names it (Hugh).
+                let named = self.named_watch();
+                let name = named
+                    .as_ref()
+                    .map_or_else(|| NO_WATCH.to_string(), |w| w.0.clone());
+                let title = match named {
                     None if narrow => NO_WATCH_SHORT,
                     _ => name.as_str(),
+                };
+                let not_kept = if named.as_ref().is_some_and(|w| !w.1) {
+                    "\n\nNamed in this take; not in your Watches"
+                } else {
+                    ""
                 };
                 // The name is cut, never the ⏷.
                 let font = theme::semibold(if narrow { 12.0 } else { 13.0 });
@@ -825,7 +833,8 @@ impl TimegrapherApp {
                     )
                     .on_hover_text(format!(
                         "Calibre: the watch on the microphone, {name}. Click to pick \
-                         another, No Watch for a Quick Listen, or find one in Watches."
+                         another, No Watch for a Quick Listen, or find one in Watches.\
+                         {not_kept}"
                     ));
                 egui::Popup::menu(&button)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
@@ -888,7 +897,8 @@ impl TimegrapherApp {
                 .color(pal.text_tertiary),
             );
         }
-        let none = self.open_watch().is_none();
+        // Not ticked for a take's own watch that isn't in Watches.
+        let none = self.named_watch().is_none();
         if ui
             .add_enabled_ui(free, |ui| theme::menu_item(ui, none, NO_WATCH))
             .inner
@@ -1611,10 +1621,14 @@ impl TimegrapherApp {
         // A 45° stop turns the card to 10, so it has a button for it.
         self.ten_positions |= pos.is_half_hour();
         if let Some(r) = self.session.recorder.as_mut() {
-            // note appends in memory before writing scratch metadata, so the
-            // edit remains unsaved even if that scratch write fails.
-            let _ = r.note(&format!("position {}", pos.code()));
+            // note appends in memory before writing session.json, so the
+            // change is kept and written next time even if this write
+            // fails; the last good file stays as it was (#1639).
+            let noted = r.note(&format!("position {}", pos.code()));
             self.session.note_metadata_change();
+            if let Err(e) = noted {
+                self.session_write_failed(&e);
+            }
         }
         self.note_settings();
     }

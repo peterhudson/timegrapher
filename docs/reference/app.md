@@ -294,11 +294,14 @@ under it its calibre, beat rate, lift angle and added fields, with
 **Edit…** and **Add Photos…** at the right. Then, in this order:
 
 - **New Take**: **Listen** (the blue one, the default), **Positions
-  Test** and **Power Reserve Test**, three equal buttons, each with a
-  line under it saying what it does. Each switches to the Bench and
+  Test**, **Dynamic Poise Test**, **Power Reserve Test** and **Complication
+  Test**, five equal buttons, each with a line under it saying what it
+  does: in one row where the window is wide enough for every name and
+  line to show whole, else as few to a row as that takes, the rows as
+  even as can be (three then two, or two, two and one). Each switches to the Bench and
   starts a new take on the microphone there, asked about first when
   there is unsaved sound other than a Quick Listen take's, and saved into
-  the watch when it stops. While a take runs on the Bench, the three are
+  the watch when it stops. While a take runs on the Bench, the five are
   greyed out, and the New Take row says "Stop the take on the Bench
   first." at its right; that row is always there, so nothing moves.
 - **Takes**, with the count, and **Open** and **…** at the right of its
@@ -659,7 +662,7 @@ otherwise, kept between runs, 5 to 600 s and 20 to 3600 s; each is a
 field to type in with a menu of common times beside it, 10, 20, 30 and
 60 s for Settle and 30 s to 5 min for Each Position, which only the
 guided test uses), and **Save
-as CSV…**, **Copy** and, after a test just after winding, **Save
+as CSV…**, **Save as Text…**, **Copy** and, after a test just after winding, **Save
 Results for 24 Hours…**. The pane can be shown with nothing listened
 to yet.
 Start Test starts listening and brings the pane to the front. While it
@@ -743,7 +746,14 @@ CSV…** saves the watch's name, its calibre, beat rate and lift angle,
 when the test began and its settling and measuring times, then the
 table, the averages, the largest differences and those lines, as a CSV file a
 spreadsheet opens; **Copy** puts the same on the clipboard with tabs
-between the columns. It gives no verdict and no pass or fail: the
+between the columns. **Save as Text…** saves the plain-text report core
+`text_report::positions` writes, the one `timegrapher session` writes as
+`positions-report.txt`: the watch, the Date (the take's start, from its
+name, or the test's own start before the take is saved), calibre, beat
+rate, lift angle (left out when it is the default), settling and
+measuring times and the software, then the table lined up in columns, the
+vertical less horizontal figures and the notes, wrapped at 72 columns. It
+gives no verdict and no pass or fail: the
 figures are for the watchmaker to judge.
 
 **Full wind against 24 hours.** After a test run just after winding,
@@ -761,7 +771,8 @@ the largest change in rate with crown right left out (Im, as NIHS 93-10
 takes it) and the size of the change in the mean rate (Ie), all from
 core `session::evaluate` as `timegrapher session` reads the two
 together. Its CSV and Copy add the full-wind test's start, the hours
-since and that table, and the session file marks its stretches with
+since and that table, its text report adds the table under "Against the
+Full-Wind Test", and the session file marks its stretches with
 `wind_h`, the hours since full wind. Saving the session keeps this
 test's results as `positions-test.json` too, with `wind_h` and `against`
 (below), so the take opens on This Test, N h After Full Wind and the

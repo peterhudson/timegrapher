@@ -223,12 +223,24 @@ impl TimegrapherApp {
                     r.amplitude_error_deg,
                 ))
             });
+        // No test on the Bench: the take's own upright stops, read again
+        // as the Positions pane reads its six, so a saved test's results
+        // come back when its take is opened (#1619).
+        let kept = if self.guided.is_none() {
+            self.free_table_shown(ui.ctx()).map(|t| t.upright.0)
+        } else {
+            None
+        };
         let info = self.poise_info;
         let view = self.poise_view;
         let settle = (self.guided_settle_s, self.guided_measure_s);
         let action = poise_body(
             ui,
             (self.poise_test(), phase, live.as_ref()),
+            (
+                kept.as_deref().filter(|k| !k.is_empty()),
+                self.guided.is_none() && !self.running(),
+            ),
             amp_now.as_deref(),
             (view, info),
             settle,
@@ -247,11 +259,15 @@ fn poise_body(
         Option<guided::Phase>,
         Option<&guided::FreeCell>,
     ),
+    (kept, done): (Option<&[timegrapher_core::session::Reading]>, bool),
     amp_now: Option<&str>,
     (view, info): (PoiseView, bool),
     (settle_s, measure_s): (f64, f64),
 ) -> Option<guided::Action> {
-    let readings = test.map_or(&[][..], |t| t.readings_so_far());
+    let readings = match test {
+        Some(t) => t.readings_so_far(),
+        None => kept.unwrap_or_default(),
+    };
     let fit = guided::poise_fit(readings);
     let mean = guided::poise_mean(readings);
     let bottom = ui.available_rect_before_wrap().bottom();
@@ -261,11 +277,24 @@ fn poise_body(
         info_beside_w: INFO_BESIDE_W,
         rule_h: PICTURE_H,
     };
+    // A take that is done (no test on the Bench and no sound coming in,
+    // Trevor on #1622): no more stops will come.
+    let measured = readings
+        .iter()
+        .filter(|r| poise::point(r.position, &r.measurement).is_some())
+        .count();
+    let unfitted = poise::unfitted_text(measured, done);
     let picture = |ui: &mut egui::Ui| {
-        picture_block(ui, (readings, fit.as_ref(), &mean), view, bottom);
+        picture_block(
+            ui,
+            (readings, fit.as_ref(), &mean),
+            (view, &unfitted),
+            bottom,
+        );
     };
     let notes = guided::poise_table_notes(readings);
-    let info_part = |ui: &mut egui::Ui| info_panel(ui, fit.as_ref(), &notes);
+    let info_part = |ui: &mut egui::Ui| info_panel(ui, (fit.as_ref(), &unfitted), &notes);
+    let kept_table = |ui: &mut egui::Ui| guided::poise_table(ui, readings);
     test_body::test_body(
         ui,
         ("poise pane", &layout),
@@ -273,6 +302,9 @@ fn poise_body(
         info,
         &test_body::Parts {
             about: about_text(settle_s, measure_s),
+            kept: kept
+                .is_some()
+                .then_some(&kept_table as &dyn Fn(&mut egui::Ui)),
             result: &picture,
             info: &info_part,
         },
@@ -287,10 +319,10 @@ fn picture_block(
         Option<&PoiseFit>,
         &Option<(f64, String)>,
     ),
-    view: PoiseView,
+    (view, unfitted): (PoiseView, &str),
     bottom: f32,
 ) {
-    words(ui, fit);
+    words(ui, fit, unfitted);
     let points = readings
         .iter()
         .filter_map(|r| poise::point(r.position, &r.measurement))
@@ -346,17 +378,17 @@ fn about_text(settle_s: f64, measure_s: f64) -> String {
 
 /// The title line over the picture (core's short sentence, measured
 /// facts) and, where the amplitude is near 220°, a grey chip under it;
-/// or core's words for a fit still to come. The heavy spot is in the
+/// or core's words for a fit still to come, or one a take lacks. The heavy spot is in the
 /// picture's facts box, and why it isn't stated and any caveat in Info
 /// (Hugh on #1537). The room is kept from the start, so nothing moves
 /// when they come.
-fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
+fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>, unfitted: &str) {
     let pal = theme::pal(ui);
     let line_h = ui.text_style_height(&egui::TextStyle::Body);
     ui.allocate_ui(Vec2::new(ui.available_width(), 2.0 * line_h + 8.0), |ui| {
         ui.spacing_mut().item_spacing.y = 3.0;
         let Some(f) = fit else {
-            ui.label(RichText::new(poise::pending_text()).color(pal.text_secondary));
+            ui.label(RichText::new(unfitted).color(pal.text_secondary));
             return;
         };
         ui.add(egui::Label::new(RichText::new(&f.short_text).color(pal.text)).wrap());
@@ -384,7 +416,7 @@ fn words(ui: &mut egui::Ui, fit: Option<&PoiseFit>) {
 /// the amplitude, the heavy spot or why it isn't stated, and its
 /// caveats), the note on the band near 220°, which alone says why 219.5°
 /// matters, then the table's `notes` (Hugh on #1537).
-fn info_panel(ui: &mut egui::Ui, fit: Option<&PoiseFit>, notes: &[String]) {
+fn info_panel(ui: &mut egui::Ui, (fit, unfitted): (Option<&PoiseFit>, &str), notes: &[String]) {
     let pal = theme::pal(ui);
     ui.spacing_mut().item_spacing.y = 4.0;
     let text = |t: &str, c: egui::Color32| {
@@ -395,7 +427,7 @@ fn info_panel(ui: &mut egui::Ui, fit: Option<&PoiseFit>, notes: &[String]) {
     ui.label(theme::caption("Dynamic Poise").color(pal.text_secondary));
     match fit {
         Some(f) => ui.add(text(&f.sentence_beside_note(), pal.text)),
-        None => ui.add(text(&poise::pending_text(), pal.text_secondary)),
+        None => ui.add(text(unfitted, pal.text_secondary)),
     };
     ui.add_space(6.0);
     ui.add(text(&poise::null_band_note(), pal.text_secondary));
@@ -533,11 +565,20 @@ fn plot_facts(
         }
     }
     let inset = Vec2::splat(FACT_INSET);
-    let right_top = egui::pos2(
-        area.right() - FACT_INSET - facts.size().x,
-        key.map_or(area.top(), |k| k.bottom()) + FACT_INSET,
+    let size = facts.size();
+    let right = area.right() - FACT_INSET - size.x;
+    let right_top = egui::pos2(right, key.map_or(area.top(), |k| k.bottom()) + FACT_INSET);
+    let bottom = area.bottom() - FACT_INSET - size.y;
+    let bottoms = [
+        egui::pos2(area.left() + FACT_INSET, bottom),
+        egui::pos2(right, bottom),
+    ];
+    facts.paint(
+        ui,
+        painter,
+        (&[area.left_top() + inset, right_top], &bottoms),
+        &trace,
     );
-    facts.paint(ui, painter, &[area.left_top() + inset, right_top], &trace);
 }
 
 /// The measured points on the plot; 12H is at both ends, so its point is
@@ -740,7 +781,7 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
         facts.paint(
             ui,
             &painter,
-            &[whole.left_top() + Vec2::splat(FACT_INSET)],
+            (&[whole.left_top() + Vec2::splat(FACT_INSET)], &[]),
             &[],
         );
     }
@@ -1061,10 +1102,13 @@ mod tests {
         assert!(clear_of(dial.at(0.0, dial.radius(10.0)), number, &names));
     }
 
-    /// The painted facts box takes the first place clear of the trace,
-    /// and none where every place would cover it (#1537).
+    /// The painted facts box takes the first top place clear of the
+    /// trace; with both covered, the bottom place farther from it (the
+    /// right when they're as far); with
+    /// all four covered, the first top place anyway: a fact is never
+    /// dropped (Hugh, #1626).
     #[test]
-    fn a_painted_facts_box_keeps_clear_of_the_trace() {
+    fn a_painted_facts_box_keeps_clear_of_the_trace_and_is_never_dropped() {
         let ctx = egui::Context::default();
         let mut placed = Vec::new();
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
@@ -1072,21 +1116,39 @@ mod tests {
                 let rows = vec![("Heavy spot".to_string(), "6H at the top, 180°".to_string())];
                 let facts = FactBox::plain(ui, "test facts", "box", rows, Vec::new());
                 let p = ui.painter();
-                let places = [egui::pos2(10.0, 10.0), egui::pos2(300.0, 10.0)];
+                let tops = [egui::pos2(10.0, 10.0), egui::pos2(300.0, 10.0)];
+                let bottoms = [egui::pos2(10.0, 300.0), egui::pos2(300.0, 300.0)];
                 let size = facts.size();
-                let under_left = [egui::pos2(10.0, 10.0) + size / 2.0];
-                let under_both = [under_left[0], places[1] + size / 2.0];
-                for trace in [&[][..], &under_left[..], &under_both[..]] {
-                    placed.push(facts.paint(ui, p, &places, trace).map(|r| r.min));
+                let mid = |at: egui::Pos2| at + size / 2.0;
+                let under_left = [mid(tops[0])];
+                let under_top = [mid(tops[0]), mid(tops[1])];
+                // Both tops covered, and a point just past the bottom
+                // right's corner: the bottom left is farther from it.
+                let near_right = [
+                    mid(tops[0]),
+                    mid(tops[1]),
+                    bottoms[1] - egui::vec2(8.0, 8.0),
+                ];
+                let under_all = [mid(tops[0]), mid(tops[1]), mid(bottoms[0]), mid(bottoms[1])];
+                for trace in [
+                    &[][..],
+                    &under_left[..],
+                    &under_top[..],
+                    &near_right[..],
+                    &under_all[..],
+                ] {
+                    placed.push(facts.paint(ui, p, (&tops, &bottoms), trace).min);
                 }
             });
         });
         assert_eq!(
             placed,
             [
-                Some(egui::pos2(10.0, 10.0)),
-                Some(egui::pos2(300.0, 10.0)),
-                None
+                egui::pos2(10.0, 10.0),
+                egui::pos2(300.0, 10.0),
+                egui::pos2(300.0, 300.0),
+                egui::pos2(10.0, 300.0),
+                egui::pos2(10.0, 10.0),
             ]
         );
     }
