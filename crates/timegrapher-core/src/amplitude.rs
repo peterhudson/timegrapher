@@ -176,6 +176,17 @@ const UNLOCK_SEARCH_S: f64 = 0.003;
 /// after the unlock at 28,800 bph (#1623).
 const UNLOCK_LATE_S: f64 = 0.002;
 
+/// How far apart the two sides' unlocks on their long templates may lie,
+/// seconds, for the sides to be read on long templates ([`Guide::Long`]).
+/// The unlock-to-drop time is the balance crossing the lift, and both
+/// sides cross it at the same amplitude, so the two differ only by the
+/// pallets' lift asymmetry: 2 ms is about 7.5° of balance travel at 150°
+/// and 14° at 280° (28,800 bph), far more than that asymmetry. A Tick at
+/// 158° and a Tock at 119° from one balance cannot both be true: on
+/// Peter's Submariner a faint sound 4 ms before the Tock's unlock was read
+/// as it (#1703, Norm's ruling).
+const SIDES_UNLOCK_AGREE_S: f64 = 0.002;
+
 /// A sound 1 found from the start of a template [`template_pre_s`] long,
 /// earlier than the one found from the guide and at least this share of
 /// its height, is taken instead: the unlock lay before the search from the
@@ -278,26 +289,13 @@ pub fn relift(wins: &mut [AmplitudeWindow], osc_period_s: f64, from_lift: f64, t
     reject_side_outliers(wins, OUTLIER_SPAN_S);
 }
 
-/// The lift the unlock search is sized for, degrees: the largest lift in
-/// the calibre table ([`crate::calibres::all`], 70°). The search and its
-/// floor are the same at every lift, so the unlock, and the beat error
-/// from it, are too; the lift enters only in turning the unlock-to-drop
-/// time into degrees (#1695). Sizing for the largest lift a take can be
-/// read at (90°, [`crate::input_domain::LIFT_RANGE_DEG`]) starts the
-/// search 42 ms before the drop at 28,800 bph, where it found an earlier
-/// sound on the ETA 2824 holder take and lost its amplitude and beat
-/// error. At a lift over 70° the search reaches the unlock down to about
-/// 100° × lift / 70.
-pub const SEARCH_LIFT_DEG: f64 = 70.0;
-
 /// Seconds before the drop a template must start for sound 1 to be found
-/// at [`MIN_AMPLITUDE_DEG`] at this oscillation period and the
-/// [`SEARCH_LIFT_DEG`] lift: the unlock, after the 3 ms the floor is taken
-/// on and a margin for its edge; never less than [`PRE_S`]. At 18,000 bph
-/// and a 52° lift, 180° puts the unlock 18.5 ms before the drop, inside
-/// the floor of a 20 ms template.
-pub fn template_pre_s(osc_period_s: f64) -> f64 {
-    let s = (SEARCH_LIFT_DEG / (2.0 * MIN_AMPLITUDE_DEG)).clamp(0.0, 1.0);
+/// at [`MIN_AMPLITUDE_DEG`] at this oscillation period and lift: the unlock,
+/// after the 3 ms the floor is taken on and a margin for its edge; never
+/// less than [`PRE_S`]. At 18,000 bph and a 52° lift, 180° puts the unlock
+/// 18.5 ms before the drop, inside the floor of a 20 ms template.
+pub fn template_pre_s(osc_period_s: f64, lift_deg: f64) -> f64 {
+    let s = (lift_deg / (2.0 * MIN_AMPLITUDE_DEG)).clamp(0.0, 1.0);
     let unlock_s = osc_period_s / std::f64::consts::PI * s.asin();
     (unlock_s + 0.005).max(PRE_S)
 }
@@ -447,7 +445,7 @@ pub fn windows_between(
     cfg: &AmplitudeConfig,
 ) -> Vec<AmplitudeWindow> {
     let mut out = Vec::new();
-    let long_pre_s = template_pre_s(osc_period_s);
+    let long_pre_s = template_pre_s(osc_period_s, cfg.lift_deg);
     let long_origin = (long_pre_s * fs).round() as usize;
     let side_times = |win: &[Beat], even: bool| -> Vec<f64> {
         win.iter()
@@ -465,8 +463,13 @@ pub fn windows_between(
     // ([`template_pre_s`]); where that unlock lies beyond a PRE_S
     // template's search ([`Guide::Long`]), the side is read on long
     // templates throughout, as one of PRE_S finds the impulse there
-    // instead (#1623).
-    let guide = |even: bool| -> Option<Guide> {
+    // instead (#1623). The balance swings the same arc each way, so a
+    // stretch whose unlock lies that far out does so on both sides alike:
+    // the sides go long together, when both long unlocks lie beyond the
+    // reach and within [`SIDES_UNLOCK_AGREE_S`] of each other, or not at
+    // all. A faint sound before one side's unlock reads as a long unlock on
+    // that side alone (#1703).
+    let guide = |even: bool| -> Option<(Option<f64>, Option<f64>)> {
         let times = side_times(beats, even);
         if times.len() < 3 {
             return None;
@@ -477,14 +480,25 @@ pub fn windows_between(
                 .and_then(|t| edges(&t, fs, origin, cfg.onset_fraction))
                 .map(|e| e.unlock)
         };
-        match unlock(long_pre_s) {
-            Some(long) if (long - long_origin as f64) / fs < -short_reach_s() => {
-                Some(Guide::Long(long))
-            }
-            _ => unlock(PRE_S).map(Guide::Short),
+        Some((unlock(long_pre_s), unlock(PRE_S)))
+    };
+    let (even_g, odd_g) = (guide(true), guide(false));
+    let long_s = |g: Option<(Option<f64>, Option<f64>)>| {
+        g.and_then(|g| g.0)
+            .map(|l| (l, (l - long_origin as f64) / fs))
+            .filter(|(_, at)| *at < -short_reach_s())
+    };
+    let long = match (long_s(even_g), long_s(odd_g)) {
+        (Some(e), Some(o)) if (e.1 - o.1).abs() <= SIDES_UNLOCK_AGREE_S => Some([e.0, o.0]),
+        _ => None,
+    };
+    let pick = |g: Option<(Option<f64>, Option<f64>)>, k: usize| -> Option<Guide> {
+        match long {
+            Some(l) => Some(Guide::Long(l[k])),
+            None => g?.1.map(Guide::Short),
         }
     };
-    let from = [guide(true), guide(false)];
+    let from = [pick(even_g, 0), pick(odd_g, 1)];
     let mut start = from_s;
     let mut lo = 0usize;
     while start + window_s <= to_s + 1e-9 {
@@ -1050,83 +1064,59 @@ mod tests {
         assert!((heard.even_deg.unwrap() - want).abs() < 3.0, "{heard:?}");
     }
 
-    /// The unlock is found the same way at every lift: the lift enters
-    /// only the conversion to degrees (Norm's rule, #1695). A 28,800 bph
-    /// watch whose unlock sits 16 ms before the drop (past a 20 ms
-    /// template's search, so on long templates) and whose sides differ by
-    /// 0.4 ms, with sounds that rise over 1 ms from a floor with seeded
-    /// noise: its unlock beat error is bit-identical at 44°, 52° and 60°,
-    /// and each side's amplitude scales with the lift.
+    /// A faint sound before one side's unlock is not read as its unlock:
+    /// the sides go on long templates together or not at all (#1703, as on
+    /// Peter's Submariner at Crown Down, whose Tock read 119° and its beat
+    /// error 4.7 ms). A 28,800 bph watch at a 53° lift whose unlock sits
+    /// 13 ms before the drop on both sides, with a bump at a twentieth of
+    /// the drop's height from 22 to 20.5 ms before the drop on the Tock
+    /// only: before a 20 ms template starts, so only the long template
+    /// sees it, over a floor with seeded noise. Both sides read the unlock,
+    /// within 3°, and the unlock beat error stays near the drop's.
     #[test]
-    fn the_unlock_beat_error_does_not_depend_on_the_lift() {
-        let (fs, period, secs) = (48_000.0, 0.125, 30.0);
+    fn a_faint_sound_before_one_sides_unlock_is_not_read_as_it() {
+        let (fs, period, lift, secs) = (48_000.0, 0.125, 53.0, 30.0);
         let osc = 2.0 * period;
-        let mut state = 7u64;
+        let dt = 0.013;
+        let mut state = 1705u64;
         let mut env: Vec<f32> = (0..((secs + 0.5) * fs) as usize)
             .map(|_| {
                 state = state
                     .wrapping_mul(6_364_136_223_846_793_005)
                     .wrapping_add(1_442_695_040_888_963_407);
-                0.01 + 0.01 * ((state >> 40) as f32 / (1u64 << 24) as f32 - 0.5)
+                0.016 + 0.004 * ((state >> 40) as f32 / (1u64 << 24) as f32 - 0.5)
             })
             .collect();
         let at = |t: f64| (t * fs).round() as usize;
-        let mut rise = |t: f64, peak: f32| {
-            let n = at(0.001);
-            for (i, v) in env[at(t)..at(t) + n].iter_mut().enumerate() {
-                *v += peak * (i + 1) as f32 / n as f32;
-            }
-        };
         let mut beats = Vec::new();
         for k in 0..(secs / period) as i64 - 2 {
             let t = 0.1 + k as f64 * period;
-            let dt = if k % 2 == 0 { 0.0162 } else { 0.0158 };
-            rise(t - dt, 0.3);
-            rise(t - 0.6 * dt, 0.4);
-            rise(t, 1.0);
+            if k % 2 == 1 {
+                env[at(t - 0.022)..at(t - 0.0205)].fill(0.05);
+            }
+            env[at(t - dt)..at(t - dt + 0.0003)].fill(0.28);
+            env[at(t - 0.7 * dt)..at(t - 0.7 * dt + 0.0003)].fill(0.06);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
             beats.push(Beat {
                 index: k,
                 time: t,
                 quality: 1.0,
             });
         }
-        let read = |lift: f64| {
-            let cfg = AmplitudeConfig {
-                lift_deg: lift,
-                ..Default::default()
-            };
-            windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg)
+        let cfg = AmplitudeConfig {
+            lift_deg: lift,
+            ..Default::default()
         };
-        let at52 = read(52.0);
-        assert!(at52.iter().all(|w| w.beat_error_unlock_ms.is_some()));
-        for lift in [44.0, 60.0] {
-            let w = read(lift);
-            assert_eq!(w.len(), at52.len());
-            for (w, b) in w.iter().zip(&at52) {
-                assert_eq!(
-                    w.beat_error_unlock_ms.map(f64::to_bits),
-                    b.beat_error_unlock_ms.map(f64::to_bits),
-                    "{lift}°: {w:?} against 52°: {b:?}"
-                );
-                for (a, b) in [(w.even_deg, b.even_deg), (w.odd_deg, b.odd_deg)] {
-                    let (a, b) = (a.unwrap(), b.unwrap());
-                    assert!(
-                        (a / b - lift / 52.0).abs() < 1e-12,
-                        "{lift}°: {a}° and {b}°"
-                    );
-                }
+        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        let want = amplitude_deg(dt, osc, lift);
+        assert!(!w.is_empty());
+        for w in &w {
+            for a in [w.even_deg, w.odd_deg] {
+                let a = a.unwrap_or_else(|| panic!("a side withheld: {w:?}"));
+                assert!((a - want).abs() < 3.0, "{a}° read at {want}°: {w:?}");
             }
+            let be = w.beat_error_unlock_ms.unwrap() - w.beat_error_ms.unwrap();
+            assert!(be.abs() < 0.1, "unlock beat error {be} ms off: {w:?}");
         }
-    }
-
-    /// [`SEARCH_LIFT_DEG`] is the calibre table's largest lift, so the
-    /// unlock search reaches [`MIN_AMPLITUDE_DEG`] at every calibre's lift.
-    #[test]
-    fn the_search_lift_is_the_calibre_tables_largest() {
-        let largest = crate::calibres::all()
-            .iter()
-            .filter_map(|c| c.lift_angle_deg)
-            .fold(f64::MIN, f64::max);
-        assert_eq!(largest, SEARCH_LIFT_DEG);
     }
 }
