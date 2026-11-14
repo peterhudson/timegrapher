@@ -2229,6 +2229,11 @@ pub struct RecordingEntry {
     pub masked: Vec<[f64; 2]>,
     pub notes: Option<String>,
     pub reference: Option<Reference>,
+    /// The Complication Test's stretch this entry is, `"off"` or `"on"`
+    /// (#1620): a take keeps its test's three stretches so they are read
+    /// again when it is opened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complication: Option<String>,
     /// A fault confirmed at the bench, on a corpus holdout take:
     /// `fault = { id = "unlock_too_strong", side = "Tick", source = "bench: ..." }`.
     /// Left out, the recording is of a healthy watch.
