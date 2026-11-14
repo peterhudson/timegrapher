@@ -18,8 +18,8 @@ ends with the report's full path. `report.html` is one page in English:
 open it in any web browser, or attach it to an email to send it.
 
 Without a session file, `timegrapher session a.flac b.flac ...` (or a
-folder) takes each recording's position from its file name and assumes
-full wind.
+folder) takes each recording's position from its file name; the state
+of wind is then not given.
 
 ## Session file
 
@@ -264,9 +264,12 @@ Im line ("excluding 12H") show Witschi's codes.
 
 `wind_h` is the hours since the watch was fully wound: 0 just after
 winding, 24 a day later. The report says it in words ("full wind", "24 h
-after winding"). A reading without it shows "not given" and is taken as
-fully wound; `session --init` leaves it commented out, so a take whose
-winding is unknown is not logged as freshly wound.
+after winding"). A reading without it shows "not given" and is a state
+of its own, "wind not given", listed after the others: it is never taken
+as fully wound, and it takes no part in the isochronism, Im or Ie. In the
+JSON its state's `wind_h` is null. `session --init` leaves it commented
+out, so a take whose winding is unknown is not logged as freshly
+wound.
 
 ## A take kept as its analysis alone
 
@@ -468,7 +471,8 @@ the reader; the watchmaker skill discusses it.
 
 ## Characteristic values
 
-Per state of wind (readings with the same `wind_h`), following Witschi:
+Per state of wind (readings with the same `wind_h` to a tenth of an
+hour, and those with none as one state of their own), following Witschi:
 
 | Value | Meaning |
 | --- | --- |
@@ -478,7 +482,8 @@ Per state of wind (readings with the same `wind_h`), following Witschi:
 | Di | 6H minus CH |
 
 Across states of wind: isochronism per position (the change in rate,
-amplitude and beat error from the fullest to the least wound reading;
+amplitude and beat error from the fullest to the least wound reading
+whose wind was given;
 `rate_change`, `amplitude_change` and `beat_error_change` in the JSON),
 Im (the largest, excluding 12H, as in NIHS 93-10), Im\* (over all
 positions), Ie (change in X over the positions measured in both).
@@ -517,7 +522,7 @@ state it; longer ones are in s/d. Each cycle in `summary.json` carries its
 ## For programs and agents
 
 `summary.json` (and `--json`, which prints the same) carries every value
-in the report, with `"schema": "timegrapher.session/2"`; the name changes
+in the report, with `"schema": "timegrapher.session/3"`; the name changes
 when a field changes meaning. Each finding has a stable `code` (the table
 above), the `recording` it is about (an index into `readings`), a `title`
 and its `evidence` as text. `watch_heard` in a measurement is false when

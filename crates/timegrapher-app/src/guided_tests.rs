@@ -811,7 +811,7 @@ fn the_table_summary_is_the_session_values() {
         ),
     ];
     let t = table_of(&figures, Vec::new(), Kind::Positions);
-    let ix = session::sourced_indices(0.0, &figures);
+    let ix = session::sourced_indices(None, &figures);
     // Dial Up averages to 15 s/d before the mean and the difference.
     assert_eq!(t.mean_rate, Some(7.5));
     assert_eq!(t.largest_difference, Some(15.0));

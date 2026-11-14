@@ -2077,7 +2077,7 @@ fn kept_figures(full: &FullWind) -> Vec<SourcedFigures> {
 /// the six, or the Dynamic Poise test's eight upright stops.
 fn table_of(figures: &[SourcedFigures], mut notes: Vec<String>, kind: Kind) -> Table {
     let over: Vec<session::Position> = kind.order().iter().map(|p| p.core()).collect();
-    let ix = session::sourced_indices_over(0.0, figures, &over);
+    let ix = session::sourced_indices_over(None, figures, &over);
     let beat_error_summary = ix.beat_error_summary();
     notes.push(beat_error_summary.clone());
     Table {
@@ -2393,8 +2393,8 @@ fn comparison_of(
         return None;
     }
     let states = vec![
-        session::sourced_indices(0.0, full),
-        session::sourced_indices(hours, later),
+        session::sourced_indices(Some(0.0), full),
+        session::sourced_indices(Some(hours), later),
     ];
     let report = session::evaluate_states(states, Vec::new());
     let (first, last) = (report.states.first()?, report.states.last()?);

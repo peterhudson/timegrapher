@@ -352,7 +352,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
             )),
         }
         t.push_str(
-            "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the reading is taken as fully wound\n",
+            "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the wind is not given: its own state, never fully wound\n",
         );
         if f.is_dir() {
             if let Some(log) = ["clocklog.txt", "clock.csv", "clock.log"]
@@ -1131,7 +1131,7 @@ pub fn signed(v: Option<f64>, digits: usize) -> String {
 }
 
 /// The state of wind in words: `wind_h` is hours since the watch was
-/// fully wound. A reading without it is taken as fully wound.
+/// fully wound. A reading without it is "not given", never fully wound.
 pub fn wind(w: Option<f64>) -> String {
     match w {
         None => "not given".into(),
@@ -1139,10 +1139,11 @@ pub fn wind(w: Option<f64>) -> String {
     }
 }
 
-/// A state of wind in a sentence ("at full wind", "24 h after winding").
-fn wind_state(w: f64) -> String {
-    let words = timegrapher_core::reading_text::wind_words(w);
-    if w <= 0.0 {
+/// A state of wind in a sentence ("at full wind", "24 h after winding",
+/// "wind not given").
+fn wind_state(w: Option<f64>) -> String {
+    let words = timegrapher_core::reading_text::wind_state_words(w);
+    if w.is_some_and(|w| w <= 0.0) {
         format!("at {words}")
     } else {
         words
@@ -1316,7 +1317,7 @@ fn print_notes(s: &Session) {
     }
     if s.readings.iter().any(|r| r.wind_h.is_none()) {
         println!(
-            "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are taken as fully wound."
+            "Wind is the hours since the watch was fully wound (wind_h in the session file); readings where it is not given are their own state, never taken as fully wound, and are left out of the isochronism and Ie."
         );
     }
     println!();
@@ -1357,8 +1358,8 @@ fn print_states(s: &Session) {
             "Isochronism  {} {} s/d from {} to {} ({} deg, beat error {} ms)",
             i.position.display_label(),
             signed(Some(i.rate_change), 1),
-            wind_state(i.from_wind_h).trim_start_matches("at "),
-            wind_state(i.to_wind_h).trim_start_matches("at "),
+            wind_state(Some(i.from_wind_h)).trim_start_matches("at "),
+            wind_state(Some(i.to_wind_h)).trim_start_matches("at "),
             signed(i.amplitude_change, 0),
             signed(i.beat_error_change, 2)
         );

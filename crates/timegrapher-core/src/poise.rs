@@ -297,27 +297,25 @@ pub fn shown_fit<'a>(
 /// The poise fit of one state of wind in a session ([`by_state`]).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StateFit {
-    /// Hours after full wind, 0 at full wind (or not given), as the
-    /// session report's states name them.
-    pub wind_h: f64,
+    /// Hours after full wind, 0 at full wind; `None` where the wind was
+    /// not given, as the session report's states name them.
+    pub wind_h: Option<f64>,
     pub fit: PoiseFit,
 }
 
 /// The [`shown_fit`] of each state of wind whose upright readings give
-/// one, fullest first, the states grouped as the session report's are
-/// (hours to a tenth): what a session's report says of poise, in the CLI
-/// and MCP as in the app (#1473, #1474).
+/// one, fullest first and wind not given last, the states grouped as the
+/// session report's are (hours to a tenth): what a session's report says
+/// of poise, in the CLI and MCP as in the app (#1473, #1474).
 pub fn by_state(readings: &[crate::session::Reading]) -> Vec<StateFit> {
-    use crate::session::wind_key;
-    let mut keys: Vec<i64> = readings.iter().map(|r| wind_key(r.wind_h)).collect();
-    keys.sort_unstable();
-    keys.dedup();
-    keys.into_iter()
+    use crate::session::{wind_key, wind_keys};
+    wind_keys(readings)
+        .into_iter()
         .filter_map(|k| {
             let at = readings.iter().filter(|r| wind_key(r.wind_h) == k);
             let fit = shown_fit(at.map(|r| (r.position, &r.measurement)))?;
             Some(StateFit {
-                wind_h: k as f64 / 10.0,
+                wind_h: k.map(|k| k as f64 / 10.0),
                 fit,
             })
         })

@@ -1494,8 +1494,8 @@ fn states_of_wind_a_tenth_of_an_hour_apart_are_kept_apart() {
         ..a.clone()
     };
     let rep = evaluate(&[a, b]);
-    let winds: Vec<f64> = rep.states.iter().map(|s| s.wind_h).collect();
-    assert_eq!(winds, vec![0.0, 0.1]);
+    let winds: Vec<Option<f64>> = rep.states.iter().map(|s| s.wind_h).collect();
+    assert_eq!(winds, vec![Some(0.0), Some(0.1)]);
 }
 
 /// The largest isochronism leaves crown right (12H) out (NIHS 93-10);
@@ -1633,4 +1633,59 @@ fn a_position_marked_past_the_end_is_read_to_it() {
         "{}",
         du.duration_s
     );
+}
+
+/// A reading whose wind was not given is a state of its own, listed after
+/// the given ones, and never pooled with full wind (#1665): full wind at
+/// +5 s/d and not given at +25 s/d were one "full wind" state of +15 s/d.
+#[test]
+fn a_reading_with_no_wind_given_is_never_taken_as_full_wind() {
+    let full = reading(Position::CH, 0.0, 5.0, 280.0, 0.1);
+    let unset = Reading {
+        wind_h: None,
+        ..reading(Position::CH, 0.0, 25.0, 280.0, 0.1)
+    };
+    let rep = evaluate(&[unset, full]);
+    let winds: Vec<Option<f64>> = rep.states.iter().map(|s| s.wind_h).collect();
+    assert_eq!(winds, vec![Some(0.0), None]);
+    assert!(close(rep.states[0].x, 5.0, 0.5), "{:?}", rep.states[0].x);
+    assert!(close(rep.states[1].x, 25.0, 0.5), "{:?}", rep.states[1].x);
+}
+
+/// The isochronism and Ie run from the fullest to the least wound state
+/// whose wind was given; the readings with no wind given take no part.
+#[test]
+fn the_isochronism_and_ie_leave_out_wind_not_given() {
+    let unset = Reading {
+        wind_h: None,
+        ..reading(Position::CH, 0.0, 50.0, 280.0, 0.1)
+    };
+    let rep = evaluate(&[
+        reading(Position::CH, 0.0, 5.0, 280.0, 0.1),
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+        unset,
+    ]);
+    assert_eq!(rep.states.len(), 3);
+    let ch = &rep.isochronism[0];
+    assert_eq!((ch.from_wind_h, ch.to_wind_h), (0.0, 24.0));
+    assert!((ch.rate_change - 5.0).abs() < 0.5, "{ch:?}");
+    assert!(close(rep.ie, 5.0, 0.5), "{:?}", rep.ie);
+    // Wind not given alone: no isochronism, no Ie.
+    let alone = evaluate(&[
+        Reading {
+            wind_h: None,
+            ..reading(Position::CH, 0.0, 5.0, 280.0, 0.1)
+        },
+        reading(Position::CH, 24.0, 10.0, 260.0, 0.1),
+    ]);
+    assert!(alone.isochronism.is_empty() && alone.ie.is_none());
+}
+
+/// Every surface names a state of wind the same way, wind not given too.
+#[test]
+fn a_state_of_wind_not_given_is_named_so() {
+    use timegrapher_core::reading_text::wind_state_words;
+    assert_eq!(wind_state_words(None), "wind not given");
+    assert_eq!(wind_state_words(Some(0.0)), "full wind");
+    assert_eq!(wind_state_words(Some(24.0)), "24 h after winding");
 }

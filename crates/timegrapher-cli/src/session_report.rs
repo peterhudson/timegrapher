@@ -337,7 +337,7 @@ fn indices_table(states: &[StateIndices]) -> String {
 
 fn readings_table(sn: &Session) -> String {
     let mut s = String::from(
-        r#"<table class="data"><thead><tr><th>Position</th><th title="Hours since the watch was fully wound (wind_h in the session file). Where it is not given, the reading is taken as fully wound.">Wind</th><th class="num" title="Fitted over every beat: the average the hands keep.">Rate<br>s/d</th><th class="num" title="Median of the 10 s rates. Where the rate wanders with dips, as tg's median reading does, it sits above the fitted rate.">10 s median<br>s/d</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num" title="The size of the difference between Tick and Tock, from the unlock where it was found. Which beat is longer is not shown: it depends on the beat the analysis locked on first, so it can change from one run to the next.">Beat error<br>ms</th><th class="num" title="The same size, measured from the drop.">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. A noisy recording raises it too.">Jitter<br>µs</th><th class="num">10 s rates<br>s/d</th><th class="num" title="Share of the 2 s windows that found the unlock on both sides. Amplitude and the beat error from the unlock rest on those windows.">Unlock<br>found</th><th class="num" title="Share of the beats with a clipped sample. Clipping flattens the loudest part of the tick.">Clipped</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
+        r#"<table class="data"><thead><tr><th>Position</th><th title="Hours since the watch was fully wound (wind_h in the session file). Where it is not given, the reading is its own state, never taken as fully wound.">Wind</th><th class="num" title="Fitted over every beat: the average the hands keep.">Rate<br>s/d</th><th class="num" title="Median of the 10 s rates. Where the rate wanders with dips, as tg's median reading does, it sits above the fitted rate.">10 s median<br>s/d</th><th class="num">Amplitude<br>deg</th><th class="num">Tick / Tock<br>deg</th><th class="num" title="The size of the difference between Tick and Tock, from the unlock where it was found. Which beat is longer is not shown: it depends on the beat the analysis locked on first, so it can change from one run to the next.">Beat error<br>ms</th><th class="num" title="The same size, measured from the drop.">from the drop<br>ms</th><th class="num" title="How much each beat strays from a steady rhythm: the median beat-to-beat timing scatter over 10 s, in millionths of a second. A noisy recording raises it too.">Jitter<br>µs</th><th class="num">10 s rates<br>s/d</th><th class="num" title="Share of the 2 s windows that found the unlock on both sides. Amplitude and the beat error from the unlock rest on those windows.">Unlock<br>found</th><th class="num" title="Share of the beats with a clipped sample. Clipping flattens the loudest part of the tick.">Clipped</th><th class="num">Measured</th><th>Recording</th></tr></thead><tbody>"#,
     );
     for r in &sn.readings {
         let m = &r.measurement;
@@ -680,8 +680,8 @@ fn isochronism_section(sn: &Session) -> String {
                 body,
                 r#"<tr><th>{}</th><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td><td class="num">{}</td></tr>"#,
                 i.position.display_label(),
-                wind_words(i.from_wind_h),
-                wind_words(i.to_wind_h),
+                wind_words(Some(i.from_wind_h)),
+                wind_words(Some(i.to_wind_h)),
                 signed(Some(i.rate_change), 1),
                 signed(i.amplitude_change, 0),
                 signed(i.beat_error_change, 2)
@@ -722,19 +722,17 @@ fn state_charts(sn: &Session) -> String {
             let _ = write!(
                 body,
                 "<h3>{}</h3>",
-                if st.wind_h <= 0.0 {
-                    "Fully wound".to_string()
-                } else {
-                    format!("{} h after winding", fixed_text(st.wind_h, 0))
+                match st.wind_h {
+                    Some(w) if w <= 0.0 => "Fully wound".to_string(),
+                    Some(w) => format!("{} h after winding", fixed_text(w, 0)),
+                    None => "Wind not given".to_string(),
                 }
             );
         }
         let rs: Vec<&Reading> = sn
             .readings
             .iter()
-            .filter(|rd| {
-                ((rd.wind_h.unwrap_or(0.0) * 10.0).round() / 10.0 - st.wind_h).abs() < 0.05
-            })
+            .filter(|rd| timegrapher_core::session::in_wind_state(rd.wind_h, st.wind_h))
             .collect();
         body.push_str(&charts(st, &rs));
     }
@@ -799,9 +797,10 @@ code {{ font-size: 13px; }}
     )
 }
 
-/// A state of wind in a table cell: "full wind" or "24 h after winding".
-fn wind_words(w: f64) -> String {
-    timegrapher_core::reading_text::wind_words(w)
+/// A state of wind in a table cell: "full wind", "24 h after winding" or
+/// "wind not given".
+fn wind_words(w: Option<f64>) -> String {
+    timegrapher_core::reading_text::wind_state_words(w)
 }
 
 #[cfg(test)]
@@ -873,7 +872,7 @@ mod tests {
     fn session_of(readings: Vec<Reading>) -> Session<'static> {
         let report = session::evaluate(&readings);
         Session {
-            schema: "timegrapher.session/2".into(),
+            schema: "timegrapher.session/3".into(),
             software: serde_json::json!({}),
             input: serde_json::json!({}),
             watch: None,
@@ -903,6 +902,7 @@ mod tests {
             .filter_map(|&p| {
                 let deg = p.top_deg()?;
                 let mut r = reading(None, p);
+                r.wind_h = Some(0.0);
                 r.measurement.rate_s_per_day = Some(4.0 + 6.0 * (deg - 90.0).to_radians().cos());
                 r.measurement.amplitude_deg = Some(180.0);
                 Some(r)
@@ -912,7 +912,7 @@ mod tests {
         let s = session_of(upright);
         assert_eq!(s.poise.len(), 1);
         let p = &s.poise[0];
-        assert_eq!(p.wind_h, 0.0);
+        assert_eq!(p.wind_h, Some(0.0));
         assert!((p.fit.wave.peak_deg.value - 90.0).abs() < 1e-6, "{p:?}");
         let page = html(&s);
         assert!(page.contains("<h3>Dynamic Poise, full wind</h3>"), "{page}");
@@ -929,7 +929,7 @@ mod tests {
         assert_eq!(later.report.states.len(), 1);
         assert_eq!(later.poise.len(), 1);
         assert_eq!(later.poise[0].wind_h, later.report.states[0].wind_h);
-        assert_eq!(later.poise[0].wind_h, 24.0);
+        assert_eq!(later.poise[0].wind_h, Some(24.0));
         assert_eq!(later.poise[0].fit.positions, 8);
         let six = session_of(Position::ALL.iter().map(|&p| reading(None, p)).collect());
         assert!(six.poise.is_empty() && !html(&six).contains("Dynamic Poise"));
