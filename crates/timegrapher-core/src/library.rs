@@ -1747,8 +1747,10 @@ fn unsorted_name(name: &str) -> Result<(), String> {
 
 /// `p` with links followed: the nearest folder of it that exists,
 /// resolved, with the rest of `p` after it. A `..` in the part that
-/// doesn't exist is left as it is (no caller passes one).
-fn resolved(p: &Path) -> PathBuf {
+/// doesn't exist is left as it is (no caller passes one). The command
+/// line's `record` decides by it whether a folder is a library's take
+/// (#1641).
+pub fn resolved(p: &Path) -> PathBuf {
     let mut rest = Vec::new();
     let mut at = p;
     loop {
