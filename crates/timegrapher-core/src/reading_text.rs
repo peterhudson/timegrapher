@@ -142,8 +142,9 @@ pub struct WindHours {
 /// Decimals of hours a guided test measured: it times them to a tenth.
 const MEASURED_DIGITS: usize = 1;
 
-/// The most decimals hours given by hand are read to.
-const GIVEN_MAX_DIGITS: usize = 3;
+/// The most decimals hours given by hand are read to: a tenth, as states
+/// of wind are told apart (#1665).
+const GIVEN_MAX_DIGITS: usize = 1;
 
 impl WindHours {
     /// Hours a guided test measured, to a tenth.
@@ -160,6 +161,9 @@ impl WindHours {
     /// typed "24.0" reads as whole, as 24: the number keeps no trailing
     /// zero.
     pub fn given(from: f64, to: f64) -> Self {
+        // To the tenth the state of wind is keyed to, rounded as it is.
+        let tenth = |h: f64| (h * 10.0).round() / 10.0;
+        let (from, to) = (tenth(from), tenth(to));
         let digits = if from == 0.0 {
             given_digits(to)
         } else {
@@ -217,6 +221,8 @@ mod tests {
         // A state of wind given by hand reads as given (#1715).
         assert_eq!(wind_words(24.0), "24 h after winding");
         assert_eq!(wind_words(24.5), "24.5 h after winding");
+        // To the tenth its state is keyed to, rounded as it is (#1665).
+        assert_eq!(wind_words(24.25), "24.3 h after winding");
         assert_eq!(wind_words(0.0), "full wind");
     }
 
