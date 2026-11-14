@@ -153,7 +153,7 @@ fn keep_analysis_only_reads_the_lift_by_core_rule() {
 /// external audit).
 #[test]
 fn a_new_lift_rereads_every_guided_tests_amplitudes() {
-    let each = 12.0;
+    let each = 20.0;
     for kind in [
         guided::Kind::Positions,
         guided::Kind::Complication,
@@ -178,19 +178,26 @@ fn a_new_lift_rereads_every_guided_tests_amplitudes() {
         let log = app.live.as_ref().and_then(steady::log_of).unwrap();
         test.finish(&log, None, &app.masked);
         app.guided = Some(test);
-        let amps = |app: &TimegrapherApp| -> Vec<f64> {
+        // A stretch whose amplitude core withholds stays withheld.
+        let amps = |app: &TimegrapherApp| -> Vec<Option<f64>> {
             let readings = app.guided.as_ref().unwrap().readings.as_ref().unwrap();
             readings
                 .iter()
-                .map(|r| r.measurement.amplitude_deg.unwrap())
+                .map(|r| r.measurement.amplitude_deg)
                 .collect()
         };
         let before = amps(&app);
-        assert!(before.len() >= 2, "{kind:?}: {before:?}");
+        let read = before.iter().flatten().count();
+        assert!(read >= 2, "{kind:?}: {before:?}");
         let k = 60.0 / app.lift_deg;
         app.set_lift(60.0);
-        for (a, b) in before.iter().zip(amps(&app)) {
-            assert!((b - a * k).abs() < 0.05, "{kind:?}: {a} then {b}");
+        let after = amps(&app);
+        assert_eq!(after.len(), before.len(), "{kind:?}");
+        for (a, b) in before.iter().zip(&after) {
+            match (a, b) {
+                (Some(a), Some(b)) => assert!((b - a * k).abs() < 0.05, "{kind:?}: {a} then {b}"),
+                _ => assert_eq!(a.is_some(), b.is_some(), "{kind:?}: {before:?} {after:?}"),
+            }
         }
     }
 }
