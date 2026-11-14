@@ -326,6 +326,28 @@ fn steadiness_now(app: &mut TimegrapherApp, ctx: &egui::Context) -> String {
     }
 }
 
+/// The steadiness job the panes start marks the picked calibre's meshes,
+/// core's `Catalog::meshes` (#1472).
+#[test]
+fn the_steadiness_job_carries_the_calibres_meshes() {
+    let ctx = egui::Context::default();
+    let mut app = synthetic(320.0, 12.0);
+    app.set_calibre("ETA 2824-2".into());
+    steadiness_now(&mut app, &ctx);
+    let meshes = &app.steady.as_ref().expect("the tests ran").1.meshes;
+    let names: Vec<&str> = meshes.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "escape pinion",
+            "fourth pinion",
+            "third pinion",
+            "centre pinion"
+        ]
+    );
+    assert_eq!(*meshes, app.calibre_meshes());
+}
+
 /// Every pane's figures: the whole take, the charts' run of readings, the
 /// Positions table and the steadiness tests.
 fn panes(app: &mut TimegrapherApp, ctx: &egui::Context) -> [String; 4] {
