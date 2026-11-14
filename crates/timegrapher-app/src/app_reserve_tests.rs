@@ -1486,3 +1486,352 @@ fn the_reserve_info_is_kept_in_the_settings() {
     back.apply_settings(app.settings());
     assert!(back.positions_info && !back.reserve_info);
 }
+
+/// A Power Reserve Test with Analysis Only picked, its 28 s of a ticking
+/// watch sent from the microphone, then `end` (Stop, or the recording
+/// failing): the take it keeps in the watch's takes.
+fn analysis_only_run(tag: &str, end: fn(&mut TimegrapherApp)) -> (PathBuf, PathBuf, PathBuf) {
+    let (mut app, base, recording, tx) = analysis_only_heard(tag);
+    end(&mut app);
+    let take = kept_take(&mut app);
+    assert_eq!(app.session.saved_to(), Some(take.as_path()));
+    assert_eq!(app.unsaved_s(), 0.0);
+    // A quit that can't ask leaves no recording behind (Walter's find): it
+    // has no sound to offer back. A failed one stays for recovery.
+    let failed = app.session.recording_fault().is_some();
+    app.session.keep_recording();
+    assert_eq!(recording.exists(), failed);
+    drop(tx);
+    (base, recording, take)
+}
+
+/// A Power Reserve Test with Analysis Only picked in a new library, and
+/// 28 s of a ticking watch heard from the microphone: the app, its
+/// folder, the recording's folder and the microphone.
+fn analysis_only_heard(
+    tag: &str,
+) -> (
+    TimegrapherApp,
+    PathBuf,
+    PathBuf,
+    std::sync::mpsc::Sender<Event>,
+) {
+    analysis_only_heard_with(tag, 28.0, |_| {})
+}
+
+/// [`analysis_only_heard`], `secs` of sound, with `before` done to the
+/// recording's folder before the test starts.
+fn analysis_only_heard_with(
+    tag: &str,
+    secs: f64,
+    before: fn(&Path),
+) -> (
+    TimegrapherApp,
+    PathBuf,
+    PathBuf,
+    std::sync::mpsc::Sender<Event>,
+) {
+    let base = std::env::temp_dir().join(format!("tg-app-reserve-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let root = base.join("Timegrapher Data");
+    let mut lib = library::Library::create(&root).unwrap();
+    lib.add(&library::Watch::new("Pepsi")).unwrap();
+    let pepsi = lib.find("Pepsi").unwrap().watch.id.clone();
+    drop(lib);
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.use_library(Some(root.clone()));
+    app.pick_watch(&pepsi);
+    app.reset_session(48000, "test".into());
+    app.session.listen();
+    let info = app.info("", 48000, 16);
+    let r = Recorder::start(&base.join("unsaved"), info).unwrap();
+    let recording = r.dir().to_path_buf();
+    app.session.recorder = Some(r);
+    before(&recording);
+    let tx = queued_capture(&mut app, &base);
+    app.position = Position::CrownLeft;
+    app.reserve_keep_sound = false;
+    app.begin_reserve();
+    assert!(app.kept_running(), "{:?}", app.message);
+    assert!(!app.reserve.as_ref().unwrap().keep_sound);
+    assert!(!app.streams(), "no sound goes into the take's folder");
+    let cfg = SynthConfig {
+        duration_s: secs,
+        ..Default::default()
+    };
+    let ticks = generate(&cfg, |_| 280.0, |_| 0.0).samples;
+    // In the 20 ms blocks a microphone sends.
+    for (k, s) in ticks.chunks(960).enumerate() {
+        tx.send(Event::Audio(timegrapher_core::capture::Block {
+            samples: s.to_vec(),
+            at: std::time::UNIX_EPOCH + std::time::Duration::from_millis(2000 + 20 * k as u64),
+        }))
+        .unwrap();
+    }
+    for _ in 0..3000 {
+        app.poll_for(std::time::Duration::from_millis(200));
+        // The test reads its beats as the window's frames would.
+        app.reserve_follow();
+        if app.heard_s() >= secs - 0.1 {
+            break;
+        }
+    }
+    assert!(
+        app.heard_s() >= secs - 0.1,
+        "{} {:?}",
+        app.heard_s(),
+        app.message
+    );
+    (app, base, recording, tx)
+}
+
+/// The ended test's take, once written.
+fn kept_take(app: &mut TimegrapherApp) -> PathBuf {
+    assert!(
+        app.repaint_every().is_some(),
+        "an idle window draws again to collect the write (Walter's find)"
+    );
+    for _ in 0..3000 {
+        app.reserve_follow();
+        if app.reserve.as_ref().is_some_and(|t| t.saved.is_some()) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let take = app
+        .reserve
+        .as_ref()
+        .and_then(|t| t.saved.clone())
+        .unwrap_or_else(|| panic!("its take kept, {:?}", app.message));
+    assert!(!app.kept_running());
+    take
+}
+
+/// Every file under `dir` that is sound.
+fn sound_files(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for e in std::fs::read_dir(dir).unwrap() {
+        let p = e.unwrap().path();
+        if p.is_dir() {
+            found.extend(sound_files(&p));
+        } else if timegrapher_core::take::is_sound(&p)
+            || p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("audio-")
+        {
+            found.push(p);
+        }
+    }
+    found
+}
+
+/// A Power Reserve Test kept as its analysis only reads its sound as it
+/// comes and never writes it: stopped, its take holds its analysis, its
+/// results and a session file saying it keeps no sound, and no sound is
+/// written anywhere; opened again, it brings its run back (#1514).
+#[test]
+fn a_power_reserve_test_kept_as_analysis_only_never_writes_its_sound() {
+    let (base, recording, take) = analysis_only_run("ao-live", TimegrapherApp::stop_listening);
+    assert!(take
+        .join(analysis_take::DIR)
+        .join(analysis_take::HEADER)
+        .is_file());
+    assert!(take.join(power_reserve::FILE).is_file());
+    let manifest = std::fs::read_to_string(take.join(MANIFEST)).unwrap();
+    assert!(manifest.contains("audio = false"), "{manifest}");
+    assert_eq!(sound_files(&take), Vec::<PathBuf>::new());
+    assert!(!recording.exists(), "its recording let go once quit");
+    assert!(!timegrapher_core::checkpoint::exists(&recording));
+    let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+    again.start_batch(&take);
+    let back = again.reserve.as_ref().expect("its results");
+    assert!(!back.results.as_ref().unwrap().sound_kept);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A Power Reserve Test kept as its analysis only whose recording fails
+/// still keeps its take as its analysis, read to the failure, not its
+/// sound (#1514).
+#[test]
+fn a_failed_analysis_only_test_still_keeps_its_analysis() {
+    let (base, _, take) = analysis_only_run("ao-fail", |a| {
+        a.recording_failed("No space left on device (os error 28)".into());
+    });
+    assert!(take
+        .join(analysis_take::DIR)
+        .join(analysis_take::HEADER)
+        .is_file());
+    let kept = power_reserve::Results::from_json(
+        &std::fs::read_to_string(take.join(power_reserve::FILE)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(kept.ending, power_reserve::Ending::RecordingFailed);
+    assert!(!kept.sound_kept);
+    assert_eq!(sound_files(&take), Vec::<PathBuf>::new());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A Power Reserve Test kept as its analysis only whose take can't be
+/// written holds it in the app and writes it again; written once a new
+/// session has begun, it leaves the new session's recording alone and
+/// lets its own recording's folder go (#1514, Felix's HOLD).
+#[test]
+fn an_analysis_only_take_written_again_leaves_a_new_session_alone() {
+    let (mut app, base, recording, tx) = analysis_only_heard("ao-again");
+    // Its watch's takes can't be written into.
+    let takes = app.open_watch().unwrap().dir.join(library::TAKES);
+    let _ = std::fs::remove_dir_all(&takes);
+    std::fs::write(&takes, b"").unwrap();
+    app.stop_listening();
+    for _ in 0..3000 {
+        app.reserve_follow();
+        if app.kept_retry_in().is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(app.kept_retry_in().is_some(), "{:?}", app.message);
+    assert!(
+        app.message
+            .as_ref()
+            .is_some_and(|(m, _)| m.ends_with("keep the app open until it's kept.")),
+        "{:?}",
+        app.message
+    );
+    assert!(app.session.saved_to().is_none());
+    // Its recording holds its analysis kept as it went, so New Session
+    // leaves it, and the write lets it go once the take is in place.
+    let parts = recording.join(timegrapher_core::checkpoint::DIR);
+    std::fs::create_dir_all(&parts).unwrap();
+    std::fs::write(parts.join(timegrapher_core::checkpoint::HEADER), b"{}").unwrap();
+    // A new session, recording into a folder of its own.
+    app.new_session();
+    assert!(recording.is_dir(), "kept for its parts");
+    let info = app.info("", 48000, 16);
+    let r = Recorder::start(&base.join("next"), info).unwrap();
+    let next = r.dir().to_path_buf();
+    app.session.recorder = Some(r);
+    std::fs::remove_file(&takes).unwrap();
+    std::fs::create_dir(&takes).unwrap();
+    app.kept_write_now();
+    for _ in 0..3000 {
+        app.reserve_follow();
+        if app.kept_retry_in().is_none() && !app.kept_writing() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let written: Vec<_> = std::fs::read_dir(&takes)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(written.len(), 1, "{:?}", app.message);
+    assert!(written[0]
+        .join(analysis_take::DIR)
+        .join(analysis_take::HEADER)
+        .is_file());
+    assert!(
+        app.session.saved_to().is_none(),
+        "the new session isn't saved"
+    );
+    assert!(next.is_dir(), "the new session's recording stays");
+    assert!(!recording.exists(), "the test's own recording goes");
+    drop(tx);
+    app.session.discard_recording();
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A recording whose folder holds its analysis kept as it went is never
+/// deleted with the session: its take isn't written yet (#1514, Felix).
+#[test]
+fn a_recording_holding_its_analysis_parts_is_never_discarded() {
+    let base = std::env::temp_dir().join(format!("tg-app-reserve-parts-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    let info = app.info("", 48000, 16);
+    let r = Recorder::start(&base.join("unsaved"), info).unwrap();
+    let recording = r.dir().to_path_buf();
+    app.session.recorder = Some(r);
+    let parts = recording.join(timegrapher_core::checkpoint::DIR);
+    std::fs::create_dir_all(&parts).unwrap();
+    std::fs::write(parts.join(timegrapher_core::checkpoint::HEADER), b"{}").unwrap();
+    app.session.discard_recording();
+    assert!(timegrapher_core::checkpoint::exists(&recording));
+    // Without its parts, it goes as before.
+    let info = app.info("", 48000, 16);
+    let r = Recorder::start(&base.join("other"), info).unwrap();
+    let other = r.dir().to_path_buf();
+    app.session.recorder = Some(r);
+    app.session.discard_recording();
+    assert!(!other.exists());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// New Session waits while an Analysis Only test's take is being written,
+/// and says so (#1514, Trevor's mutant).
+#[test]
+fn new_session_waits_while_an_analysis_only_take_is_written() {
+    let (mut app, base, recording, tx) = analysis_only_heard("ao-busy");
+    app.stop_listening();
+    // Not yet collected: the write is under way.
+    assert!(app.kept_writing());
+    app.new_session();
+    assert_eq!(
+        app.session.recorder.as_ref().map(|r| r.dir().to_path_buf()),
+        Some(recording.clone()),
+        "the session is still the test's"
+    );
+    assert_eq!(
+        app.message.as_ref().map(|(m, _)| m.as_str()),
+        Some("Writing the test's take: wait until it is kept.")
+    );
+    let take = kept_take(&mut app);
+    assert!(take.join(power_reserve::FILE).is_file());
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// An Analysis Only test whose analysis can't be kept on the disk as it
+/// goes says so once and carries on to keep its take (#1514, Trevor's
+/// mutant).
+#[test]
+fn a_failed_checkpoint_is_said_once_and_the_test_carries_on() {
+    // Its analysis kept every 20 s, over 2 min: kept as each of the
+    // reading's chunks ends.
+    super::kept_analysis::EVERY_S.with(|e| e.set(Some(20.0)));
+    let (mut app, base, recording, tx) = analysis_only_heard_with("ao-cp", 120.0, |recording| {
+        // Where its parts go is taken by a file.
+        std::fs::write(recording.join(timegrapher_core::checkpoint::DIR), b"").unwrap();
+    });
+    super::kept_analysis::EVERY_S.with(|e| e.set(None));
+    let said = |m: &Option<(String, bool)>| {
+        m.as_ref()
+            .is_some_and(|(m, _)| m.starts_with("The test's analysis couldn't be kept on the disk"))
+    };
+    // Its parts are written on a thread of their own.
+    for _ in 0..1000 {
+        app.reserve_follow();
+        if said(&app.message) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(said(&app.message), "{:?}", app.message);
+    // Said once: following on doesn't say it again.
+    app.message = None;
+    for _ in 0..20 {
+        app.reserve_follow();
+    }
+    assert!(!said(&app.message), "{:?}", app.message);
+    app.stop_listening();
+    let take = kept_take(&mut app);
+    assert!(take
+        .join(analysis_take::DIR)
+        .join(analysis_take::HEADER)
+        .is_file());
+    drop(tx);
+    let _ = recording;
+    let _ = std::fs::remove_dir_all(&base);
+}

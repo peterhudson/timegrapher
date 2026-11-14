@@ -55,6 +55,7 @@ use new_take::{NewTake, NEW_TAKES};
 mod dialogs;
 mod distributions;
 mod dock;
+mod kept_analysis;
 mod library_folder;
 mod listen_card;
 #[cfg(target_os = "macos")]
@@ -1703,18 +1704,6 @@ struct Batch {
     order_note: Option<String>,
 }
 
-/// The session being kept as its analysis alone
-/// ([`timegrapher_core::analysis_take`]): its sound read again in the
-/// background, then the new take written.
-struct AnalysisSave {
-    rx: std::sync::mpsc::Receiver<Result<PathBuf, String>>,
-    /// Seconds of sound read so far, over both readings of it.
-    progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// The take's length, seconds.
-    total_s: f64,
-}
-
 /// A copy of the session's sound being written on a thread of its own,
 /// so the window and listening carry on meanwhile.
 struct Saving {
@@ -1741,19 +1730,8 @@ enum Streamed {
     Yes,
 }
 
+use kept_analysis::AnalysisSave;
 use timegrapher_core::recorder::{STREAM_EVERY_S, STREAM_RETRY};
-
-impl Drop for AnalysisSave {
-    fn drop(&mut self) {
-        self.cancel
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        // Cancelled just as it finished: the folder it wrote, never
-        // reported, goes, so Cancel leaves nothing written.
-        if let Ok(Ok(dir)) = self.rx.try_recv() {
-            let _ = std::fs::remove_dir_all(dir);
-        }
-    }
-}
 
 impl Drop for Batch {
     fn drop(&mut self) {
@@ -2239,6 +2217,8 @@ pub struct TimegrapherApp {
     sound_at: Option<(f64, u64, Profiles)>,
     /// Keeping the session as its analysis alone, while that is worked out.
     analysis_save: Option<AnalysisSave>,
+    /// A take kept as its analysis alone as it records (#1514).
+    kept_live: kept_analysis::Kept,
     /// Saving the session's sound, while the copy is written.
     saving: Option<Saving>,
     /// When a save of a take recording into its folder last failed, until
@@ -2718,6 +2698,7 @@ impl TimegrapherApp {
             sound_history: Vec::new(),
             sound_at: None,
             analysis_save: None,
+            kept_live: Default::default(),
             saving: None,
             stream_wait: None,
             close_after_save: false,

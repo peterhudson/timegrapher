@@ -33,9 +33,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod closed_hour;
 #[cfg(test)]
+mod no_sound_tests;
+mod saved_flac;
+#[cfg(test)]
 mod session_file_tests;
 mod settle;
 use closed_hour::{open_closed_hour, open_in_place};
+pub use saved_flac::{holding_wav, keep_saved_as_flac, keep_saved_as_flac_unless};
 use settle::{held_open, settled};
 pub use settle::{read_settled, rename_settled, sync_file, sync_folder};
 
@@ -190,6 +194,8 @@ pub struct Recorder {
     converting: Vec<(String, Converting)>,
     /// Whether closed hours are kept as FLAC; only a test keeps them WAVs.
     keep_flac: bool,
+    /// Whether the sound is written at all ([`Recorder::without_sound`]).
+    sound: bool,
     seg_frames: u64,
     frames: u64,
     clock: BufWriter<File>,
@@ -293,6 +299,7 @@ impl Recorder {
             segments: Vec::new(),
             converting: Vec::new(),
             keep_flac: true,
+            sound: true,
             seg_frames: 0,
             frames: 0,
             clock,
@@ -314,6 +321,31 @@ impl Recorder {
 
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    /// Write none of the sound from the start: the recording keeps its
+    /// clock log, session file and breaks, and its sound goes to a
+    /// [`crate::keeper::Keeper`] instead, for a take kept as its analysis
+    /// alone (#1514). Refused once any sound is written. Such a recording
+    /// is never saved with its sound ([`Recorder::begin_save`] refuses).
+    pub fn without_sound(&mut self) -> io::Result<()> {
+        if self.frames > 0 {
+            return Err(io::Error::other(
+                "the recording already holds sound, so it can't go without",
+            ));
+        }
+        self.sound = false;
+        Ok(())
+    }
+
+    /// Whether the sound is written ([`Recorder::without_sound`]).
+    pub fn keeps_sound(&self) -> bool {
+        self.sound
+    }
+
+    /// Bytes a frame of the sound takes in its files, written or not.
+    pub fn bytes_per_frame(&self) -> u32 {
+        u32::from(STORED_BITS / 8)
     }
 
     /// What was known when the recording started.
@@ -342,8 +374,10 @@ impl Recorder {
         if self.frames == 0 {
             return Ok(());
         }
-        self.close_segment()?;
-        self.open_segment()?;
+        if self.sound {
+            self.close_segment()?;
+            self.open_segment()?;
+        }
         let fs = self.info.sample_rate as f64;
         // A block arrives with its last frame; its first came earlier.
         let first =
@@ -444,7 +478,8 @@ impl Recorder {
                 .unwrap_or_else(|| self.info.device.clone());
             self.start_break(b, before, device)?;
         }
-        for &s in &b.samples {
+        let sound = self.sound;
+        for &s in b.samples.iter().filter(|_| sound) {
             if self.writer.is_none() || self.seg_frames >= SEGMENT_S * fs {
                 self.close_segment()?;
                 self.open_segment()?;
@@ -756,14 +791,15 @@ impl Recorder {
         self.begin_save_ending(parent, calibre, result, required_files, false)
     }
 
-    fn begin_save_ending(
-        &mut self,
-        parent: &Path,
-        calibre: &str,
-        result: Option<&serde_json::Value>,
-        required_files: &[(&str, &[u8])],
-        log_end: bool,
-    ) -> io::Result<PendingSave> {
+    /// Refuse a save of this recording with `required_files` beside it:
+    /// one keeping no sound, or a companion name that is invalid, reserved
+    /// or already taken.
+    fn check_save(&self, required_files: &[(&str, &[u8])]) -> io::Result<()> {
+        if !self.sound {
+            return Err(io::Error::other(
+                "this recording keeps no sound: it is kept as its analysis alone",
+            ));
+        }
         let mut names = std::collections::BTreeSet::new();
         for &(name, _) in required_files {
             let mut parts = Path::new(name).components();
@@ -783,6 +819,18 @@ impl Recorder {
                 ));
             }
         }
+        Ok(())
+    }
+
+    fn begin_save_ending(
+        &mut self,
+        parent: &Path,
+        calibre: &str,
+        result: Option<&serde_json::Value>,
+        required_files: &[(&str, &[u8])],
+        log_end: bool,
+    ) -> io::Result<PendingSave> {
+        self.check_save(required_files)?;
         // The copy's clock log ends where its sound does.
         if log_end {
             self.log_last_block()?;
@@ -1364,102 +1412,6 @@ impl Drop for SaveUpdate {
             let _ = fs::remove_dir_all(&self.root);
         }
     }
-}
-
-/// The recordings in `take` whose `session.json` lists an hour still
-/// kept as a WAV, or kept as a [`crate::flac::bloated`] FLAC: `take`
-/// itself, and the takes a session folder holds (`timegrapher record`
-/// makes one per position). These were saved before hours were kept as
-/// FLAC (#503), stopped before one was converted, or converted before
-/// each block's size was checked. A recording being made ([`in_use`]) is
-/// never listed.
-pub fn holding_wav(take: &Path) -> Vec<PathBuf> {
-    let mut dirs = vec![take.to_path_buf()];
-    if let Ok(entries) = fs::read_dir(take) {
-        let mut inner: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-            .map(|e| e.path())
-            .collect();
-        inner.sort();
-        dirs.extend(inner);
-    }
-    dirs.retain(|d| !hours_to_keep(d).is_empty());
-    dirs
-}
-
-/// The hours `session.json` in `dir` lists that are WAVs there now, or
-/// [`crate::flac::bloated`] FLACs. None while it is being recorded
-/// ([`in_use`]): its open hour is a WAV the recorder is still writing, and
-/// its closed ones the recorder converts.
-fn hours_to_keep(dir: &Path) -> Vec<String> {
-    if in_use(dir) {
-        return Vec::new();
-    }
-    let Ok(text) = fs::read_to_string(dir.join(take::RECORD)) else {
-        return Vec::new();
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return Vec::new();
-    };
-    v["segments"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|s| s.as_str())
-        .filter(|n| is_sound(n) && Path::new(n).components().count() == 1)
-        .filter(|n| {
-            let p = dir.join(n);
-            p.is_file() && (crate::flac::is_wav(&p) || crate::flac::bloated(&p))
-        })
-        .map(str::to_string)
-        .collect()
-}
-
-/// Keep each hour of the saved recording in `dir` that is still a WAV as
-/// FLAC, one at a time ([`crate::flac::keep_as_flac`]: encoded, checked
-/// sample for sample, then the WAV deleted), and name the FLAC in
-/// `session.json` (its `segments` and breaks) after each. An hour kept as
-/// a [`crate::flac::bloated`] FLAC is written again
-/// ([`crate::flac::shrink`]), under its own name. An hour that cannot be
-/// converted stays as it was, whole, and the error says which. A
-/// recording being made ([`in_use`]) is left alone. Returns how many hours
-/// were converted.
-pub fn keep_saved_as_flac(dir: &Path) -> Result<usize, String> {
-    keep_saved_as_flac_unless(dir, &|| false)
-}
-
-/// [`keep_saved_as_flac`], asking `stop` before each hour: when it says
-/// so, the hours not yet converted are left as WAVs, for another time (a
-/// take opened in the app while its hours are kept, #503).
-pub fn keep_saved_as_flac_unless(dir: &Path, stop: &dyn Fn() -> bool) -> Result<usize, String> {
-    let record = dir.join(take::RECORD);
-    let mut done = 0;
-    for wav in hours_to_keep(dir) {
-        if stop() {
-            break;
-        }
-        let path = dir.join(&wav);
-        if !crate::flac::is_wav(&path) {
-            crate::flac::shrink(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            done += 1;
-            continue;
-        }
-        let flac =
-            crate::flac::keep_as_flac(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let flac = flac
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        // Only the names change: the file is otherwise as it was written.
-        let text = fs::read_to_string(&record).map_err(|e| format!("{}: {e}", record.display()))?;
-        let quoted = |n: &str| serde_json::Value::from(n).to_string();
-        let text = text.replace(&quoted(&wav), &quoted(&flac));
-        crate::library::write_atomic(&record, text.as_bytes())?;
-        done += 1;
-    }
-    Ok(done)
 }
 
 /// A new folder `name` under `parent`, or `name_2`, `name_3` and on when

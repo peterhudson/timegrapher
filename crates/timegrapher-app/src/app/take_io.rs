@@ -376,6 +376,7 @@ impl TimegrapherApp {
             && self.session.state() == session::State::Listening
             && self.session.recording_fault().is_none()
             && self.kept_take()
+            && !self.kept_running()
     }
 
     /// A save the user asked for being written: one of a take recording
@@ -1021,13 +1022,14 @@ impl TimegrapherApp {
             || self.steady_job.is_some()
             || self.saving.is_some()
             || self.take_keep.is_some()
-            || self.analysis_save.is_some();
+            || self.analysis_save.is_some()
+            || self.kept_writing();
         if self.running() || self.batch.is_some() {
             Some(std::time::Duration::from_millis(40))
         } else {
             working
                 .then_some(std::time::Duration::from_millis(100))
-                .or_else(|| self.reserve_retry_in())
+                .or_else(|| self.reserve_retry_in().or(self.kept_retry_in()))
         }
     }
 
@@ -1157,7 +1159,7 @@ impl TimegrapherApp {
     /// refuse what would throw its sound away or add to it.
     pub(super) fn analysis_save_busy(&mut self) -> bool {
         if self.analysis_save.is_none() {
-            return false;
+            return self.kept_writing_busy();
         }
         self.info_msg(
             "Keeping the analysis of this session: it is reading the session's sound and \
@@ -2307,12 +2309,7 @@ impl TimegrapherApp {
                 return Ok(());
             }
         };
-        if let Some(r) = self.session.recorder.as_mut() {
-            // An error stops the queued sound being processed, and no
-            // later input error replaces it.
-            r.write(&b)
-                .map_err(|e| CaptureFailure::Recording(e.to_string()))?;
-        }
+        kept_analysis::keep_block(&mut self.session, &self.kept_live, &b)?;
         if let Some(t) = self.clock_track.as_mut() {
             t.push(b.samples.len(), b.at);
         }
