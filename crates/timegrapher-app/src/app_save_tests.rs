@@ -1035,7 +1035,7 @@ fn save_again_after_move_watches_saves_where_the_take_went() {
     assert!(app
         .message
         .as_ref()
-        .is_some_and(|(m, _)| m.contains("Press Stop") || m.contains("press Stop")));
+        .is_some_and(|(m, _)| m.contains("can't move while a take is being recorded")));
     drop(tx);
     app.capture = None;
     app.session

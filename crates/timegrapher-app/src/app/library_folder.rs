@@ -42,8 +42,9 @@ impl WavKeep {
 
 /// Why Move Watches… waits while a take is recorded or saved into the
 /// library.
-const RECORDING_INSIDE: &str = "The Watches folder moves once the take being recorded or saved \
-     into it is stopped and written: press Stop, wait for the save, then try again.";
+const RECORDING_INSIDE: &str = "The Watches folder can't move while a take is being recorded \
+     or saved into it. Stop the take if it's recording, let its save finish, then choose Move \
+     Watches… again.";
 
 /// Move Library… while saved takes are being kept as FLAC.
 pub(super) const WAV_KEEP_WAIT: &str =
