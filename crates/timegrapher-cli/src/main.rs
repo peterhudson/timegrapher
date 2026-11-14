@@ -1455,7 +1455,7 @@ fn run_analyze(
 
 /// The line between a listed file's take readings and the whole file's.
 const WHOLE_FILE: &str =
-    "Whole file   read alone, with no settling and none of the take's settings:";
+    "Whole file   read alone, with no settling, at the take's beat rate and lift angle:";
 
 /// What `session` reads of a take's file ([`session_cmd::take_of`]), one
 /// line for each entry naming it ([`take_lines`]).

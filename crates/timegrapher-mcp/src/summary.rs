@@ -123,7 +123,8 @@ pub fn lead(doc: &Value) -> Option<String> {
         lines.extend(take_lines(&doc["take"]));
         if doc["take"]["readings"].is_array() {
             lines.push(
-                "The whole file read alone (no settling, none of the take's settings):".to_string(),
+                "The whole file read alone (no settling, at the take's beat rate and lift angle):"
+                    .to_string(),
             );
         }
         if doc["watch_heard"] == false {
@@ -630,7 +631,7 @@ mod tests {
                 "The take's session file lists this file; `session` reads it:\n\
                  - Dial Up (DU): rate +5.2 s/d, amplitude 281°, beat error 0.30 ms\n\
                  - Crown Up (CU, 3H): left out, nothing after settling\n\
-                 The whole file read alone (no settling, none of the take's settings):\n\
+                 The whole file read alone (no settling, at the take's beat rate and lift angle):\n\
                  Readings: rate +6.0 s/d, amplitude 270°, beat error 0.39 ms."
             ),
             "{s}"
