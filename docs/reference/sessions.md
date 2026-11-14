@@ -350,6 +350,50 @@ when none), then the median, 10th and 90th percentile curves, a byte a
 point: the level in quarter-dB steps above 63.75 dB below the top (0 for
 anything lower, read back as 0). Stretches with no beats are left out.
 
+### Parts kept while a take is recorded
+
+A take kept as its analysis while it is recorded (#1514) is also kept on
+the disk as it goes, so a crash or a power cut loses at most the last
+10 minutes: an `analysis.partial/` folder in the take's folder holds one
+part for each 10 minutes of sound, and `partial.json` lists them. A part
+holds only what the reading can no longer change: it is written once the
+watch is heard, and only up to the start of the chunk read last, to a
+jump whose sides are still to be told apart, and to where every
+amplitude window and profile is in. A part is never rewritten.
+
+Part `n` (from `0001`) is four files, each in the layout of the file
+of the same name in `analysis/`, for its 10 minutes alone:
+`n-beats.csv.gz` (its first row's step and residual counted from 0, so
+the row reads as the beat's number and time), `n-windows.csv.gz` (the
+windows starting in it, as found: the outlier check runs when the parts
+are read, over them all), `n-culled.csv.gz` (those windows' sides the
+amplitude gate left out, by their row in the part) and
+`n-profiles.bin.gz` (the stretches ending in it). Each file is written beside its name, put on
+the disk and moved into place, and the folder put on the disk, before
+`partial.json` lists it.
+
+`partial.json` holds `format` (`"timegrapher.analysis.partial/1"`),
+`header` (as `analysis.json`, for the parts together: `duration_s` is
+the last part's end, the jumps are those before it, the row counts are
+the parts' together, and `usb_clock`, `signal_median` and `shape` are
+null or empty, as they are measured when the take is saved;
+`clipped_samples` counts up to the chunk read last), `parts` (each
+part's `from_s` and `to_s`, and for each of its files the `rows`, the
+`bytes` and their `sha256`) and `renamed_before`: the number of parts,
+from the first, written before the take's sides were named the other
+way round (each take's first steady stretch with a clear beat error
+names them, which may come after a part), whose beats are each numbered
+one further, and whose windows and profiles have Tick and Tock swapped,
+when they are read; null when none. A file not listed is passed over.
+A part whose file differs from the list in length or SHA-256, or doesn't
+read, is left out with every part after it: the take reads up to the
+part before, and says which parts were left out and why. A take whose
+`partial.json` or first part doesn't read has nothing to read.
+
+The take's own `analysis/` is written from the reading when the
+recording ends, not from the parts, and the parts are removed once it is
+in place.
+
 ## What each reading is
 
 After `settle_s` (default 20 s: the "20 s stabilisation time" of Witschi's
