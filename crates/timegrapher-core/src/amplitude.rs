@@ -469,8 +469,8 @@ pub fn windows_between(
     // instead (#1623). The balance swings the same arc each way, so a
     // stretch whose unlock lies that far out does so on both sides alike:
     // the sides go long together, when both long unlocks lie beyond the
-    // reach and within [`SIDES_UNLOCK_AGREE_SHARE`] of their mean of each
-    // other, or not at all. A faint sound before one side's unlock reads as a long unlock on
+    // reach and within [`SIDES_UNLOCK_AGREE_SHARE`] of their mean distance
+    // from the drop of each other, or not at all. A faint sound before one side's unlock reads as a long unlock on
     // that side alone (#1703).
     let guide = |even: bool| -> Option<(Option<f64>, Option<f64>)> {
         let times = side_times(beats, even);
@@ -1150,5 +1150,56 @@ mod tests {
     #[test]
     fn long_unlocks_that_disagree_keep_both_sides_short() {
         reads_past_bumps(1706, 59.0, Some([0.0255, 0.025]), Some([0.0209, 0.0204]));
+    }
+
+    /// Near stopping the sides' faint unlocks lie far out and apart in time
+    /// by a share of it, not a fixed time: they still go long together
+    /// (#1703; a fixed 2 ms split the sides of Peter's 69 h run-down at
+    /// 62 h, Trevor's review). A 28,800 bph watch at a 59° lift, its Tick's
+    /// unlock 23 ms and its Tock's 20.5 ms before the drop (2.5 ms, about
+    /// 11% of their mean), each at a twentieth of the drop's height, its
+    /// impulse at a quarter, 0.72 of the way back, over a floor with seeded
+    /// noise. Each side reads its own unlock, within 3°, in every window.
+    #[test]
+    fn faint_unlocks_more_than_2_ms_apart_but_within_the_share_go_long() {
+        let (fs, period, lift, secs) = (48_000.0, 0.125, 59.0, 30.0);
+        let osc = 2.0 * period;
+        let dts = [0.023, 0.0205];
+        let mut state = 1710u64;
+        let mut env: Vec<f32> = (0..((secs + 0.5) * fs) as usize)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                0.01 + 0.004 * ((state >> 40) as f32 / (1u64 << 24) as f32 - 0.5)
+            })
+            .collect();
+        let at = |t: f64| (t * fs).round() as usize;
+        let mut beats = Vec::new();
+        for k in 0..(secs / period) as i64 - 2 {
+            let t = 0.1 + k as f64 * period;
+            let dt = dts[(k % 2) as usize];
+            env[at(t - dt)..at(t - dt + 0.0003)].fill(0.06);
+            env[at(t - 0.72 * dt)..at(t - 0.72 * dt + 0.0003)].fill(0.26);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let cfg = AmplitudeConfig {
+            lift_deg: lift,
+            ..Default::default()
+        };
+        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        let want = dts.map(|dt| amplitude_deg(dt, osc, lift));
+        assert!(!w.is_empty());
+        for w in &w {
+            for (a, want) in [w.even_deg, w.odd_deg].into_iter().zip(want) {
+                let a = a.unwrap_or_else(|| panic!("a side withheld: {w:?}"));
+                assert!((a - want).abs() < 3.0, "{a}° read at {want}°: {w:?}");
+            }
+        }
     }
 }
