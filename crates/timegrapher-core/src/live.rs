@@ -1277,9 +1277,7 @@ impl LiveAnalyzer {
         // Within that of a break, before a window can be whole, regularity
         // is not assessed; past it, no whole window is noise.
         let heard_since = self.heard_cuts().stretch_from(end_s).max(0.0);
-        let step = crate::measure::RATE_WINDOW_STEP_S;
-        let look_back = ((end_s - SCATTER_LOOKBACK_S) / step).floor() * step;
-        let scatter_from = window_from.min(look_back).max(heard_since).max(0.0);
+        let scatter_from = crate::session::scatter_look_back(window_from, end_s, heard_since);
         let scatter = bph.map_or_else(Vec::new, |b| {
             crate::session::scatter_windows(
                 holes,
@@ -1292,6 +1290,9 @@ impl LiveAnalyzer {
         });
         let jitter_us = crate::session::scatter_jitter_us(&scatter);
         let judged_s = judged_s(!scatter.is_empty(), end_s, window_from, heard_since, holes);
+        // Its look back always holds a whole window past a cut's first
+        // SCATTER_LOOKBACK_S, before which `judged_s` is 0 (#1688).
+        let assessed = measure::regularity_assessed(judged_s, true);
         let timing_scatter_fraction =
             bph.and_then(|b| crate::beats::timing_scatter_fraction(jitter_us, b));
         // Where the timing can't say, the beats' averaged sound, from the
@@ -1300,7 +1301,7 @@ impl LiveAnalyzer {
         // its stretch's ([`BeatLog::beat_sound`]), not the latest run's.
         let sound_beats = crate::session::stretch_beats(&self.beats, scatter_from, end_s);
         let beat_sound = match (bph, &self.beats[sound_beats]) {
-            (Some(b), [first, .., last]) if measure::beat_sound_needed(jitter_us, b, judged_s) => {
+            (Some(b), [first, .., last]) if measure::beat_sound_needed(jitter_us, b, assessed) => {
                 let snips: Vec<(f64, bool, &[f32])> = self
                     .sample
                     .items()
@@ -1320,8 +1321,10 @@ impl LiveAnalyzer {
             _ => None,
         };
         let no_watch = match bph {
-            Some(b) => measure::no_watch_reason(jitter_us, b, judged_s, beat_sound),
-            None => measure::regularity_assessed(listened_s).then_some(NoWatchReason::Scatter),
+            Some(b) => measure::no_watch_reason(jitter_us, b, assessed, beat_sound),
+            None => {
+                measure::regularity_assessed(listened_s, true).then_some(NoWatchReason::Scatter)
+            }
         };
         Verdict {
             jitter_us,
