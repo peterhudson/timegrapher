@@ -479,6 +479,7 @@ fn keep(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::amplitude::AmplitudeWindow;
     use crate::analysis_take::{self, files, measure};
     use crate::audio::{self, Audio};
     use crate::synth::{generate, SynthConfig};
@@ -735,6 +736,129 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Tolerances, 1e-4 of each reporting step (1°, 0.1 s/d, 0.01 ms).
+    const DEG_TOL: f64 = 1e-4;
+    const RATE_TOL: f64 = 1e-5;
+    const MS_TOL: f64 = 1e-6;
+
+    /// Both none, or both numbers within `tol`.
+    fn close(pair: (Option<f64>, Option<f64>), tol: f64) -> bool {
+        match pair {
+            (Some(a), Some(b)) => (a - b).abs() <= tol,
+            (a, b) => a == b,
+        }
+    }
+
+    /// The tolerance a measurement's figure at `path` is held to: its
+    /// rate, amplitude and beat error figures and their ±; none for
+    /// anything else, held exactly.
+    fn figure_tol(path: &str) -> Option<f64> {
+        let (head, leaf) = (
+            path.split('.').nth(1).unwrap_or(""),
+            path.rsplit('.').next().unwrap_or(""),
+        );
+        let level = matches!(leaf, "low" | "high");
+        if head.starts_with("beat_error")
+            || leaf.starts_with("beat_error")
+            || path == ".confidence.beat_error.se"
+        {
+            Some(MS_TOL)
+        } else if path == ".confidence.rate.se"
+            || (head.starts_with("rate") && (head != "rate_states" || level))
+        {
+            Some(RATE_TOL)
+        } else if path == ".confidence.amplitude.se"
+            || (head.starts_with("amplitude_")
+                && head != "amplitude_windows"
+                && (head != "amplitude_states" || level))
+        {
+            Some(DEG_TOL)
+        } else {
+            None
+        }
+    }
+
+    /// The windows `a` and `b` the same: exactly before `last_chunk`
+    /// seconds, and within [`DEG_TOL`] and [`MS_TOL`] from there.
+    fn assert_windows_agree(a: &[AmplitudeWindow], b: &[AmplitudeWindow], last_chunk: f64) {
+        assert_eq!(a.len(), b.len());
+        let k = a.partition_point(|w| w.start_s < last_chunk);
+        for csv in [analysis_take::windows_csv, analysis_take::culled_csv] {
+            assert_eq!(csv(&a[..k]), csv(&b[..k]));
+        }
+        for (x, y) in a[k..].iter().zip(&b[k..]) {
+            let ms = |w: &AmplitudeWindow| {
+                [
+                    w.beat_error_ms,
+                    w.beat_error_unlock_ms,
+                    w.even_unlock_ms,
+                    w.odd_unlock_ms,
+                    w.even_drop_ms,
+                    w.odd_drop_ms,
+                ]
+            };
+            let pairs = [x.even_deg, x.odd_deg]
+                .into_iter()
+                .zip([y.even_deg, y.odd_deg])
+                .map(|p| (p, DEG_TOL))
+                .chain(ms(x).into_iter().zip(ms(y)).map(|p| (p, MS_TOL)));
+            assert_eq!(
+                (x.start_s, x.end_s, x.culled()),
+                (y.start_s, y.end_s, y.culled())
+            );
+            for (pair, tol) in pairs {
+                assert!(close(pair, tol), "window {} {pair:?}", x.start_s);
+            }
+        }
+    }
+
+    /// Which of a measurement's figures [`figure_tol`] holds to what.
+    #[test]
+    fn figure_tolerances_are_those_of_the_reported_figures() {
+        for (path, tol) in [
+            (".rate_s_per_day", Some(RATE_TOL)),
+            (".rate_p95", Some(RATE_TOL)),
+            (".rate_states.low", Some(RATE_TOL)),
+            (".rate_states.delta_bic", None),
+            (".confidence.rate.se", Some(RATE_TOL)),
+            (".amplitude_deg", Some(DEG_TOL)),
+            (".amplitude_states.high", Some(DEG_TOL)),
+            (".amplitude_windows", None),
+            (".confidence.amplitude.se", Some(DEG_TOL)),
+            (".beat_error_unlock_ms", Some(MS_TOL)),
+            (".amplitude_states.beat_error_drop_ms", Some(MS_TOL)),
+            (".confidence.beat_error.se", Some(MS_TOL)),
+            (".jitter_us", None),
+            (".beats", None),
+            (".coverage.rate.windows_used", None),
+        ] {
+            assert_eq!(figure_tol(path), tol, "{path}");
+        }
+    }
+
+    /// Two measurements, as JSON, the same: each figure [`figure_tol`]
+    /// names within its tolerance, everything else exactly.
+    fn assert_same_figures(a: &serde_json::Value, b: &serde_json::Value, path: &str) {
+        use serde_json::Value;
+        match (a, b) {
+            (Value::Object(x), Value::Object(y)) => {
+                assert_eq!(
+                    x.keys().collect::<Vec<_>>(),
+                    y.keys().collect::<Vec<_>>(),
+                    "{path}"
+                );
+                for (k, v) in x {
+                    assert_same_figures(v, &y[k], &format!("{path}.{k}"));
+                }
+            }
+            (Value::Number(x), Value::Number(y)) if figure_tol(path).is_some() => {
+                let tol = figure_tol(path).unwrap_or_default();
+                assert!(close((x.as_f64(), y.as_f64()), tol), "{path}: {x} {y}");
+            }
+            _ => assert_eq!(a, b, "{path}"),
+        }
+    }
+
     /// The parts read back, as far as they reach: the take kept, beats,
     /// amplitude windows and profiles, cut there.
     fn assert_parts_are_the_take_so_far(take: &Path, whole: &Stored, to_s: f64) {
@@ -886,21 +1010,26 @@ mod tests {
                 assert!((x.quality / y.quality - 1.0).abs() < 0.01, "{}", x.time);
             }
         }
-        for csv in [analysis_take::windows_csv, analysis_take::culled_csv] {
-            assert_eq!(
-                csv(&parts.log.amplitude_windows),
-                csv(&ended.log.amplitude_windows)
-            );
-        }
+        // In the last chunk the order of float sums differs across
+        // platforms, a take cut there having no sound after it: there the
+        // windows, and the figures read from them, agree to 1e-4 of each
+        // reporting step (Norm on #1711), 10,000 times below any digit
+        // reported. Before it, and everything else, exactly.
+        assert_windows_agree(
+            &parts.log.amplitude_windows,
+            &ended.log.amplitude_windows,
+            last_chunk,
+        );
         // No reported figure moves (Norm on #1711): the whole measurement,
-        // rate, amplitude, beat error, their ±, the watch heard and the
-        // caveats. Only beat quality and the last stretch's profiles, left
+        // rate, amplitude, beat error and their ± to those tolerances,
+        // every count, the watch heard, the caveats, coverage and sources
+        // exactly. Only beat quality and the last stretch's profiles, left
         // out above, differ, for the reason given there.
         let measured = |s: &Stored| {
             let m = crate::session::measure(&s.log, None, 0.0, f64::INFINITY);
-            serde_json::to_string_pretty(&m).unwrap()
+            serde_json::to_value(&m).unwrap()
         };
-        assert_eq!(measured(&parts), measured(&ended));
+        assert_same_figures(&measured(&parts), &measured(&ended), "");
         let (p, q) = (&parts.profiles, &ended.profiles);
         assert_eq!(p.len(), q.len());
         let n = p.len() - 1;
