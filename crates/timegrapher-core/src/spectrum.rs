@@ -23,7 +23,9 @@ pub struct AmplitudeSpectrum {
     /// Periods, seconds, longest first, and the size of the sine fitted
     /// at each (half its peak to peak). Each point is the largest in its
     /// slice of a log-spaced period axis, so narrow lines survive the
-    /// thinning.
+    /// thinning. A slice whose every period is withheld for thin cover
+    /// ([`MIN_PHASE_COVER`]) has NaN (`null` in JSON): a gap, which every
+    /// chart leaves open, never a size.
     pub period_s: Vec<f64>,
     pub amplitude: Vec<f64>,
     /// Every size is read the one way, a sine fitted to the readings
@@ -359,10 +361,12 @@ pub fn amplitude_spectrum(
     let mut best: Vec<Option<(f64, f64)>> = vec![None; slices];
     for j in jmin..=jmax {
         let p = 1.0 / (j as f64 * df);
-        let Some(a) = size(j) else { continue };
         let k = (((hi - p.ln()) / (hi - lo)) * (slices - 1) as f64).round() as usize;
         let k = k.min(slices - 1);
-        if best[k].is_none_or(|(_, b)| a > b) {
+        // A withheld bin is a gap (NaN), never a size: it holds its slice
+        // only while no bin there is read (#1638).
+        let a = size(j).unwrap_or(f64::NAN);
+        if best[k].is_none_or(|(_, b)| a > b || (b.is_nan() && !a.is_nan())) {
             best[k] = Some((p, a));
         }
     }
@@ -448,6 +452,7 @@ mod tests {
             .iter()
             .position(|&p| (p - period_s).abs() < 1e-9)
             .map(|k| s.amplitude[k])
+            .filter(|a| !a.is_nan())
     }
 
     #[test]
@@ -517,15 +522,37 @@ mod tests {
     #[test]
     fn a_bin_whose_cycle_is_barely_covered_is_withheld() {
         // Two phases of 32 kept: the cosine and sine cannot be told from
-        // the constant, so the 320 s bin is left out, not read low.
+        // the constant, so the 320 s bin is a gap, not read low, and not
+        // filled: NaN, null in JSON, and the app and the MCP view break
+        // their line there (Norm: masks cull, never fill).
         let g = phase_gapped(250.0, 0.3, 2);
-        assert_eq!(size_at(&g, 320.0), None);
+        let s = amplitude_spectrum(&g, "amplitude", "deg", 1.0, 100_000).unwrap();
+        let k = s
+            .period_s
+            .iter()
+            .position(|&p| (p - 320.0).abs() < 1e-9)
+            .expect("the 320 s period is listed");
+        assert!(s.amplitude[k].is_nan(), "{}", s.amplitude[k]);
+        let json = serde_json::to_value(&s).unwrap();
+        assert!(json["amplitude"][k].is_null());
+        // The sixteenth-cover case keeps its gap however the chart thins:
+        // the slice holding 320 s is NaN or a period read elsewhere in it,
+        // never 320 s with a size.
+        for points in [600, 100] {
+            let s = amplitude_spectrum(&g, "amplitude", "deg", 1.0, points).unwrap();
+            for (p, a) in s.period_s.iter().zip(&s.amplitude) {
+                if (p - 320.0).abs() < 1e-9 {
+                    assert!(a.is_nan(), "{points} points: 320 s read {a}");
+                }
+            }
+        }
         // The full grid withholds nothing.
         let g = phase_gapped(250.0, 0.3, 32);
         let s = amplitude_spectrum(&g, "amplitude", "deg", 1.0, 100_000).unwrap();
         let df = 1.0 / (2048.0 * 10.0);
         let (jmin, jmax) = ((1.0 / (g.span() / 2.0) / df).ceil() as usize, 2048 / 4);
         assert_eq!(s.period_s.len(), jmax - jmin + 1);
+        assert!(s.amplitude.iter().all(|a| a.is_finite()));
     }
 
     #[test]
