@@ -178,26 +178,24 @@ fn a_new_lift_rereads_every_guided_tests_amplitudes() {
         let log = app.live.as_ref().and_then(steady::log_of).unwrap();
         test.finish(&log, None, &app.masked);
         app.guided = Some(test);
-        // A stretch whose amplitude core withholds stays withheld.
-        let amps = |app: &TimegrapherApp| -> Vec<Option<f64>> {
+        // 18 s measured per step: a 10 s step can hold no whole 10 s
+        // scatter window and read as no watch (#1688), and every step
+        // here must give its amplitude.
+        let amps = |app: &TimegrapherApp| -> Vec<f64> {
             let readings = app.guided.as_ref().unwrap().readings.as_ref().unwrap();
             readings
                 .iter()
-                .map(|r| r.measurement.amplitude_deg)
+                .map(|r| r.measurement.amplitude_deg.unwrap())
                 .collect()
         };
         let before = amps(&app);
-        let read = before.iter().flatten().count();
-        assert!(read >= 2, "{kind:?}: {before:?}");
+        assert!(before.len() >= 2, "{kind:?}: {before:?}");
         let k = 60.0 / app.lift_deg;
         app.set_lift(60.0);
         let after = amps(&app);
         assert_eq!(after.len(), before.len(), "{kind:?}");
         for (a, b) in before.iter().zip(&after) {
-            match (a, b) {
-                (Some(a), Some(b)) => assert!((b - a * k).abs() < 0.05, "{kind:?}: {a} then {b}"),
-                _ => assert_eq!(a.is_some(), b.is_some(), "{kind:?}: {before:?} {after:?}"),
-            }
+            assert!((b - a * k).abs() < 0.05, "{kind:?}: {a} then {b}");
         }
     }
 }
