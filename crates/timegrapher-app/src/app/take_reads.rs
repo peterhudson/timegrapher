@@ -507,16 +507,11 @@ impl TimegrapherApp {
             }
             Some(Err(true)) => {}
             Some(Err(false)) => self.bg.reserve = None,
-            None => match self.long_take_reader() {
-                Some(read) => self.bg.reserve = Some(Some(Job::start(key, ctx, read))),
-                // Nothing left to read it from: a run read before goes.
-                None => {
-                    self.bg.reserve = None;
-                    if self.bg.reserve_of.take().is_some() {
-                        self.reserve = None;
-                    }
-                }
-            },
+            None => {
+                self.bg.reserve = self
+                    .long_take_reader()
+                    .map(|read| Some(Job::start(key, ctx, read)));
+            }
         }
     }
 
