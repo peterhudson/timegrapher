@@ -210,7 +210,10 @@ impl TimegrapherApp {
     /// as the Positions pane reads its six, so a saved test's results
     /// come back when its take is opened (#1619). The table and Copy
     /// both read these (#1657).
-    fn poise_kept(&self, ctx: &egui::Context) -> Option<Vec<timegrapher_core::session::Reading>> {
+    pub(super) fn poise_kept(
+        &self,
+        ctx: &egui::Context,
+    ) -> Option<Vec<timegrapher_core::session::Reading>> {
         if self.guided.is_some() {
             return None;
         }
