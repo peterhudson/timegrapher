@@ -40,6 +40,11 @@ impl WavKeep {
     }
 }
 
+/// Why Move Watches… waits while a take is recorded into the library.
+const RECORDING_INSIDE: &str =
+    "The Watches folder moves once the take being recorded into it is stopped: press Stop, then \
+     try again.";
+
 /// Move Library… while saved takes are being kept as FLAC.
 pub(super) const WAV_KEEP_WAIT: &str =
     "The library moves once its saved takes are kept as FLAC: try again when the status bar \
@@ -166,6 +171,17 @@ impl TimegrapherApp {
                     self.message = Some((WAV_KEEP_WAIT.into(), false));
                     return;
                 }
+                // A take still growing inside it would be copied half
+                // written.
+                if self.running()
+                    && self
+                        .session
+                        .saved_to()
+                        .is_some_and(|p| p.starts_with(&root))
+                {
+                    self.message = Some((RECORDING_INSIDE.into(), false));
+                    return;
+                }
                 let mut d = rfd::FileDialog::new().set_title("Move the Library Into a Folder");
                 if let Some(parent) = root.parent() {
                     d = d.set_directory(parent);
@@ -290,6 +306,31 @@ impl TimegrapherApp {
         self.library_moving = Some((to, rx));
     }
 
+    /// The library moved from `from` to `to`: the take open from it,
+    /// the one saved into it and its next Save Again follow, as they do
+    /// a take moved on its own ([`Self::take_moved`]).
+    pub(super) fn library_moved(&mut self, from: &Path, to: &Path) {
+        let saved = self.session.saved_to().map(Path::to_path_buf);
+        if let Some((take, rest)) = saved
+            .as_ref()
+            .and_then(|t| Some((t, t.strip_prefix(from).ok()?)))
+        {
+            // Its next save goes into the take where it is now.
+            let now = to.join(rest);
+            if let Some(r) = self.session.recorder.as_mut() {
+                r.copy_moved(take, &now);
+            }
+        }
+        // Every save noted, and the recording opened, by their folders.
+        self.session.saved_moved(from, to);
+        if let Ok(rest) = Path::new(&self.opened_path).strip_prefix(from) {
+            self.opened_path = to.join(rest).display().to_string();
+        }
+        if let Ok(rest) = Path::new(self.file_path.trim()).strip_prefix(from) {
+            self.file_path = to.join(rest).display().to_string();
+        }
+    }
+
     /// The move's outcome, once it is done.
     pub(super) fn poll_library_move(&mut self, ctx: &egui::Context) {
         let Some((to, rx)) = &self.library_moving else {
@@ -299,8 +340,12 @@ impl TimegrapherApp {
         match rx.try_recv() {
             Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(200)),
             Ok(Ok(left)) => {
-                // The whole library is at `to` either way, so it is used there.
+                // The whole library is at `to` either way, so it is used
+                // there, and so is every take open from it (#1646).
                 self.library_moving = None;
+                if let Some(from) = self.library_root() {
+                    self.library_moved(&from, &to);
+                }
                 self.use_library(Some(to.clone()));
                 match left {
                     None => self.info_msg(format!("Moved your watches to {}.", to.display())),

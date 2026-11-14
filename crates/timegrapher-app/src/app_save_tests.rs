@@ -1012,3 +1012,42 @@ fn the_command_set_runs_on_the_saved_take() {
     app.session.discard_recording();
     std::fs::remove_dir_all(base).unwrap();
 }
+
+/// A take saved into the Watches folder, then the folder moved: Save
+/// Again saves into the take where it went, and the old folder isn't
+/// made again (#1646, from an external audit).
+#[test]
+fn save_again_after_move_watches_saves_where_the_take_went() {
+    let (mut app, base) = save_failure_fixture("library-move");
+    let root = base.join("before").join("Timegrapher Data");
+    drop(library::Library::create(&root).unwrap());
+    app.use_library(Some(root.clone()));
+    app.save_into(&root.join("takes"));
+    app.wait_for_save();
+    let saved = app.session.saved_to().unwrap().to_path_buf();
+    assert!(saved.starts_with(&root), "{}", saved.display());
+    app.session
+        .pause(app.live.as_ref().unwrap().duration_s())
+        .unwrap()
+        .unwrap();
+    let to = base.join("after").join("Timegrapher Data");
+    app.move_library(root.clone(), to.clone());
+    let ctx = egui::Context::default();
+    let t = Instant::now();
+    while app.library_moving.is_some() && t.elapsed().as_secs() < 30 {
+        app.poll_library_move(&ctx);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!root.exists() && library::Library::is_library(&to));
+    let now = to.join(saved.strip_prefix(&root).unwrap());
+    assert_eq!(app.session.saved_to(), Some(now.as_path()));
+    app.watch = "Saved again".into();
+    app.save_again();
+    app.wait_for_save();
+    assert!(!app.needs_save_confirmation(), "{:?}", app.message);
+    assert!(!root.exists(), "the old Watches folder came back");
+    let manifest = std::fs::read_to_string(now.join(MANIFEST)).unwrap();
+    assert!(manifest.contains("Saved again"), "{manifest}");
+    app.session.discard_recording();
+    std::fs::remove_dir_all(base).unwrap();
+}
