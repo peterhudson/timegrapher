@@ -415,9 +415,10 @@ fn new_takes_last_button_starts_the_last_take_in_one_row_or_more() {
     assert_eq!(new_take_pressed(420.0, NEW_TAKES[1].1), Some(1));
 }
 
-/// New Take's names and captions are whole at every width: in one
-/// row at 1280, and at 800, where the watch's side is narrowest and
-/// "Power Reserve Test" is too wide for a third, two to a row (#1634).
+/// New Take's names and captions are whole at every width: in one row
+/// at 1280, three then two at 1000, and at 800, where the watch's side
+/// is narrowest and "Power Reserve Test" is too wide for a third, two to
+/// a row (#1634).
 #[test]
 fn new_take_rows_keep_every_name_and_caption_whole() {
     let ctx = egui::Context::default();
@@ -430,6 +431,8 @@ fn new_take_rows_keep_every_name_and_caption_whole() {
         egui::CentralPanel::default().show(ctx, |ui| {
             assert_eq!(watches::new_take_row(ui, &names, tile(1280.0)), 5, "1280");
             assert_eq!(watches::new_take_row(ui, &names, tile(800.0)), 2, "800");
+            // Wide enough for three, not five: three then two.
+            assert_eq!(watches::new_take_row(ui, &names, tile(1000.0)), 3, "1000");
             assert!(watches::new_take_fits(ui, &names, tile(800.0)(2)));
             assert!(
                 !watches::new_take_fits(ui, &names, tile(800.0)(3)),
