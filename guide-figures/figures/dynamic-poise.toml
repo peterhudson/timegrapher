@@ -1,0 +1,21 @@
+# Chapter 20b, Dynamic Poise Test: a saved take of a Rolex 3235 turned
+# through the eight upright stops, 45° apart, 60 s each, reopened and
+# shown in Dial view.
+output = "dynamic-poise.png"
+actions = [["sleep", 20], ["click", 117, 479], ["sleep", 2]]
+
+marks = [[1, 140, 568], [2, 350, 890], [3, 1258, 579], [4, 935, 614], [5, 1352, 679],
+         [6, 1288, 917], [7, 1758, 545], [8, 1100, 322, 1041, 350]]
+
+layout = ["column", [0.3, "Strip"], [0.7, "DynamicPoise"]]
+
+[data]
+path = "~/takes/2026-11-13 19.17 Dynamic Poise"
+source = "not yet in timegrapher-corpus; ask the maintainer for the take"
+
+[wait]
+at_least = 20
+at_most = 120
+
+[window]
+size = [1800, 1000]

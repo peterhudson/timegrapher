@@ -52,7 +52,8 @@ DISPLAY = ":42"
 # exactly once, or the app sets it aside for its starting one, so the
 # panes a figure leaves out are kept in a hidden tab bar.
 PANES = [
-    "PositionsTest", "PowerReserve", "Strip", "Sound", "Scope", "Isochronism",
+    "PositionsTest", "DynamicPoise", "Complication", "PowerReserve", "Strip",
+    "Sound", "Scope", "Isochronism",
     "Charts", "Distributions", "SteadyReadings", "SteadyPeriods", "SteadyCycle",
     "SteadyAutocorrelation", "SteadyAllan", "SteadyCusum", "SteadyFft",
     "SteadyStft", "SteadyWavelet",

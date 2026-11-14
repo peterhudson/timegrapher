@@ -1,5 +1,7 @@
 # 20b. Dynamic Poise Test
 
+![A saved Dynamic Poise Test in Dial view, marks 1 to 8](images/dynamic-poise.png)
+
 **What it shows:** the rate in the eight upright positions, 45° apart, as
 the watch is turned once round in its own plane; the wave that rate makes
 once round, with its size and its fastest hour; and, where the amplitude
@@ -19,16 +21,24 @@ icon a Ferris wheel (each seat comes to the top in turn), under **Tests**
 in the icon bar and the View menu. It needs a stand that holds the watch
 upright at 45° steps.
 
+The picture is a saved test of a calibre 3235 (28,800 beats an hour, lift
+angle 53°), part let down, at 156° to 176° amplitude, with **Each
+Position** at 60 s, opened again from its folder and shown in Dial view.
+Its wave is 6.9 ± 0.4 s/d each way, fastest near 12H30 at the top. With
+the amplitude below 219.5°, the heavy spot hangs lowest at about the same
+hour, 12H (M13). The amplitude also changes once round, by about 10° each
+way, so Info adds that part of the wave may be isochronism.
+
 ## The Toolbar
 
-| Control | What it does | Why you'd use it |
-| --- | --- | --- |
-| **View** | **Plot** or **Dial**: the rate along a line, the hour at the top across it, or round a watch face with 12H at the top, further out when faster. The same points, wave and words. Kept between runs. | Plot to read the numbers; Dial to see at a glance which side of the watch is fast. |
-| **New Test** | Sets the test up on a clear Bench at 9H at the top, and starts nothing; **Start Test** on the Listen card starts it. **Cancel Test** takes its place until then. | To begin. |
-| **Settle** and **Each Position** | The seconds the watch settles after each turn, and the seconds each position is measured. Every guided test shares these two (chapter 20): changing them here changes them in the Positions Test and the Complication Test too. | Longer gives a smaller ± (M7), which the fit needs. |
-| **Copy** | The watch, its calibre, the table, and the fit in words, with tabs between the columns. | To paste into a spreadsheet or a message. |
-| **Export…** | Saves the pane as a picture, PNG or SVG. | For a service record or a report. |
-| **Info** (i, at the right) | The fit in full, with its twice-round terms, and the amplitudes at which the heavy spot can be stated. | To read everything the fit found. |
+| Mark | Control | What it does | Why you'd use it |
+| --- | --- | --- | --- |
+| 1 | **View** | **Plot** or **Dial**: the rate along a line, the hour at the top across it, or round a watch face with 12H at the top, further out when faster. The same points, wave and words. Kept between runs. | Plot to read the numbers; Dial to see at a glance which side of the watch is fast. |
+| | **New Test** | Sets the test up on a clear Bench at 9H at the top, and starts nothing; **Start Test** on the Listen card starts it. **Cancel Test** takes its place until then. | To begin. |
+| | **Settle** and **Each Position** | The seconds the watch settles after each turn, and the seconds each position is measured. Every guided test shares these two (chapter 20): changing them here changes them in the Positions Test and the Complication Test too. | Longer gives a smaller ± (M7), which the fit needs. |
+| | **Copy** | The watch, its calibre, the table, and the fit in words, with tabs between the columns. | To paste into a spreadsheet or a message. |
+| | **Export…** | Saves the pane as a picture, PNG or SVG. | For a service record or a report. |
+| 7 | **Info** (i, at the right) | The fit in full in one paragraph, with its twice-round terms, the heavy spot or why it isn't stated, and any caveat; then a note on the band near 219.5°, and the table's notes. | To read everything the fit found. |
 
 **Dynamic Poise Test**, under **New Take** in the Watches view, sets the
 same test up for the watch picked there, and saves the take into it
@@ -52,6 +62,9 @@ same test up for the watch picked there, and saves the take into it
 6. After the eighth, the test reads the eight together and stops
    listening, as Stop does.
 
+On the Paper Strip (mark 8), each position's name sits over the stretch
+it was measured in, with **Settling** over the time after each turn.
+
 **Pause**, **Restart** and the bar work as in the Positions Test
 (chapter 20). On the Paper Strip, the time the test doesn't use is
 marked **Not Used for Dynamic Poise Test**.
@@ -61,13 +74,14 @@ results for 24 hours later: it is one state of wind.
 
 ## The Results
 
-| Part | What it shows |
-| --- | --- |
-| The table | The eight positions in the stand's order, each with its **Rate** (s/d), **From Mean** (its rate less the mean), **Amplitude** (°) and **Beat Error** (ms), then a **Mean** row. There is no Largest Difference: that is the six positions' figure (M8). |
-| The picture | Each rate at the hour that was at the top, with its ± (one standard error), in magenta. In Plot, along a line from 12H to 12H with a mark every 45° ("Hour at the top"), the mean as a dotted line. In Dial, round a watch face, the mean as a dotted ring. |
-| The fitted wave | Once five positions are in, the wave the rate makes once round, in grey, with a line to its fastest hour. Until then the space reads "Fitted once 5 positions are measured". |
-| The line over the picture | The wave in one line: its size each way from the mean with its ±, and its fastest hour, then the amplitudes it was measured at. Where the wave isn't clear of its ± (by 2 standard errors), no fastest hour is named. |
-| The line under it | The heavy spot: the hour at the top when it hangs lowest, with its ± in degrees. Or why it isn't stated (below): in a grey chip near 219.5°, as a plain grey line for the other reasons. A caveat on the amplitude round the dial is a plain grey line too. |
+| Mark | Part | What it shows |
+| --- | --- | --- |
+| 2 | The table | The eight positions in the stand's order, each with its **Rate** (s/d), **From Mean** (its rate less the mean), **Amplitude** (°) and **Beat Error** (ms), then a **Mean** row. There is no Largest Difference: that is the six positions' figure (M8). |
+| | The picture | Each rate at the hour that was at the top, with its ± (one standard error), in magenta. In Plot, along a line from 12H to 12H with a mark every 45° ("Hour at the top"). In Dial, round a watch face with 12H at the top, further out when faster. |
+| 6 | The mean | A dotted line in Plot, a dotted ring in Dial, named with its rate. |
+| 5 | The fitted wave | Once five positions are in, the wave the rate makes once round, in grey, with a line to its fastest hour. Until then the space reads "Fitted once 5 positions are measured". |
+| 3 | The line over the picture | The wave in one line: its size each way from the mean with its ±, and its fastest hour, then the amplitudes it was measured at. Where the wave isn't clear of its ± (by 2 standard errors), no fastest hour is named. |
+| 4 | The heavy spot | A box on the picture: the hour at the top when it hangs lowest, with its ± in degrees, or **Not stated**. In Plot it sits in a top corner clear of the wave and the points, and is left out where they cover both; Info always gives it. |
 
 **Measured and inferred.** The wave and its fastest hour are what the
 watch did: a fact, with its ±. The heavy spot is worked out from that
@@ -80,15 +94,17 @@ which.
 - **Near 219.5° amplitude.** Poise moves the rate least at 219.5°, and
   the other way above it (M13). Where any position's amplitude may be
   near it, from about 203° to 239° allowing for its ± and for a lift
-  angle a few percent out, the line says "Heavy spot not stated". The
-  wave is still shown, but poise moves the rate least there, and the
+  angle a few percent out, the box reads **Not stated** and a grey chip
+  under the line over the picture says why. The wave is still shown, but poise moves the rate least there, and the
   wave may come mostly from other causes.
 - **The wave is within its noise.** The fit can't tell its direction
   from the ±.
 - **A position has no amplitude,** or **the readings have no ±.**
 
+For these, Info says which.
+
 **Amplitude round the dial.** Where the amplitude itself changes once
-round, clear of its ±, the line adds that part of the wave may be the
+round, clear of its ±, Info adds that part of the wave may be the
 watch's isochronism (chapter 19): a lower amplitude at some hours moves
 the rate there too, in the same once-round pattern.
 
