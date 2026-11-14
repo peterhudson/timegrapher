@@ -112,8 +112,9 @@ impl TimegrapherApp {
                         Icon::Sheet,
                         "Analysis Only",
                         "Keep the take as its analysis only, tens of MB: every pane still \
-                         reads it, but it can't be measured again. The sound is still written \
-                         while the test runs and is deleted once the analysis is written.",
+                         reads it, but it can't be measured again. The sound is never \
+                         written: it is read as it comes, and the analysis so far is kept on \
+                         the disk every 10 minutes.",
                     ),
                 ],
             );
@@ -249,18 +250,16 @@ impl TimegrapherApp {
             let n = l.config().max_beats.max(reserve::RUN_BEATS_KEPT);
             l.set_max_beats(n);
         }
-        self.reserve = Some(reserve::Test::new(
-            pos,
-            self.reserve_keep_sound,
-            started,
-            now,
-        ));
+        // Analysis Only reads the sound as it comes and never writes it
+        // (#1514); when it can't, the sound is kept, and that is said.
+        let keep_sound = self.reserve_keep_sound || !self.start_kept();
+        self.reserve = Some(reserve::Test::new(pos, keep_sound, started, now));
         self.reserve_read_s = now;
         self.reserve_hours_s = f64::NEG_INFINITY;
         applog::info(&format!(
             "power reserve test started in {}, {}",
             pos.code(),
-            if self.reserve_keep_sound {
+            if keep_sound {
                 "keeping the sound"
             } else {
                 "keeping the analysis only"
@@ -297,6 +296,7 @@ impl TimegrapherApp {
     /// (minimised, a locked screen) still ends the test (#1647).
     pub(super) fn reserve_follow(&mut self) {
         self.reserve_write_again();
+        self.kept_follow();
         if !self.reserve_running() {
             return;
         }
@@ -520,15 +520,20 @@ impl TimegrapherApp {
         if let (Some(live), Some(t)) = (self.live.as_ref(), self.reserve.as_mut()) {
             t.update(live.beats(), beat_s, live.duration_s());
         }
+        let kept = self.kept_running();
         if let Some(t) = self.reserve.as_mut() {
             if t.running() {
                 t.ending = Some(power_reserve::Ending::RecordingFailed);
             }
             // Nothing follows to keep it as its analysis alone: the take
-            // keeps its sound, and says so.
-            t.keep_sound = true;
+            // keeps its sound, and says so; read as it came, its analysis
+            // is kept all the same.
+            t.keep_sound = !kept;
         }
         self.finish_reserve();
+        if self.kept_running() {
+            return self.save_reserve_kept();
+        }
         if let Some(take) = self.session.saved_to().map(Path::to_path_buf) {
             self.write_reserve_into(take);
         }
@@ -583,6 +588,9 @@ impl TimegrapherApp {
     /// Save the ended Power Reserve Test's take, with its results, into
     /// the picked watch's takes or Unsorted.
     pub(super) fn save_reserve(&mut self) {
+        if self.kept_running() {
+            return self.save_reserve_kept();
+        }
         let takes = match self.reserve_takes_dir() {
             Ok(d) => d,
             Err(e) => return self.error(format!("The test's take couldn't be kept: {e}")),
@@ -601,6 +609,21 @@ impl TimegrapherApp {
             t.saving = self.saving.is_some();
         }
         self.reserve_saved();
+    }
+
+    /// Save the ended test read as it came as its analysis alone, in a
+    /// new folder of the picked watch's takes or Unsorted.
+    fn save_reserve_kept(&mut self) {
+        let takes = match self.reserve_takes_dir() {
+            Ok(d) => d,
+            Err(e) => return self.error(format!("The test's take couldn't be kept: {e}")),
+        };
+        let Some(r) = self.session.recorder.as_ref() else {
+            return;
+        };
+        let started = watches::local_minute(r.started_utc())
+            .unwrap_or_else(|| r.started_utc().replace(':', "."));
+        self.save_kept(library::unused_dir(&takes, &reserve_take_name(&started)));
     }
 
     /// Once the test's take is written: note where, and keep it as its
