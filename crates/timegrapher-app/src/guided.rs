@@ -2087,22 +2087,24 @@ pub struct FreeTable {
     pub largest: [Option<f64>; 3],
     /// How many positions have readings.
     pub read: usize,
+    /// The six positions as readings, for the pane's exports with no test
+    /// on the Bench (#1660).
+    pub six: TakeReadings,
     /// The take's upright stops read the same way, for the Dynamic Poise
     /// pane with no test on the Bench (#1619).
-    pub upright: Upright,
+    pub upright: TakeReadings,
 }
 
-/// A take's upright stops read again, as readings: each stop marked long
-/// enough to read, in [`session::Position::UPRIGHT`]'s order (core
-/// `session::position_rows`).
+/// A take's positions read again, as readings: each position marked long
+/// enough to read, in the order core `session::position_rows` gives.
 #[derive(Debug, Clone, Default)]
-pub struct Upright(pub Vec<Reading>);
+pub struct TakeReadings(pub Vec<Reading>);
 
 /// The same when every reading has the same position, duration and
 /// figures.
-impl PartialEq for Upright {
+impl PartialEq for TakeReadings {
     fn eq(&self, other: &Self) -> bool {
-        let durations = |u: &Upright| u.0.iter().map(|r| r.duration_s).collect::<Vec<_>>();
+        let durations = |u: &TakeReadings| u.0.iter().map(|r| r.duration_s).collect::<Vec<_>>();
         text_report::figures(&self.0) == text_report::figures(&other.0)
             && durations(self) == durations(other)
     }
@@ -2110,8 +2112,12 @@ impl PartialEq for Upright {
 
 /// The readings of core's `rows` that were read, for a take at `bph`,
 /// `bph_set` the beat rate supplied (as a test's readings carry it).
-pub fn upright(rows: &[session::PositionRow], bph: u32, bph_set: Option<u32>) -> Upright {
-    Upright(
+pub fn take_readings(
+    rows: &[session::PositionRow],
+    bph: u32,
+    bph_set: Option<u32>,
+) -> TakeReadings {
+    TakeReadings(
         rows.iter()
             .filter_map(|r| {
                 Some(Reading {
@@ -2134,8 +2140,13 @@ pub fn upright(rows: &[session::PositionRow], bph: u32, bph_set: Option<u32>) ->
 }
 
 /// The free take's table from core's, in the Current Position card's
-/// order, with the take's `upright` stops.
-pub fn free_table(t: &session::PositionsTable, upright: Upright) -> FreeTable {
+/// order, with its `six` positions and the take's `upright` stops as
+/// readings.
+pub fn free_table(
+    t: &session::PositionsTable,
+    six: TakeReadings,
+    upright: TakeReadings,
+) -> FreeTable {
     let rows: Vec<(String, f64, FreeCell)> = Position::ALL
         .iter()
         .filter_map(|p| {
@@ -2169,6 +2180,7 @@ pub fn free_table(t: &session::PositionsTable, upright: Upright) -> FreeTable {
             t.indices.d_beat_error,
         ],
         read,
+        six,
         upright,
     }
 }
@@ -2483,16 +2495,17 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
     out
 }
 
-/// A reopened take's Dynamic Poise stops as text, as [`export_text`]
-/// gives a test's: the watch and how it was read, the table and the
-/// fit. The rows are the ones the pane shows (#1657); a take keeps no
-/// test of its own, so there is no settling or start to give.
-pub fn poise_rows_text(readings: &[Reading], about: &About, sep: char) -> String {
+/// A reopened take's table of `kind` as text, as [`export_text`] gives
+/// a test's: the watch and how it was read, the table, and for Dynamic
+/// Poise the fit. The rows are the ones the pane shows (#1657, #1660); a
+/// take keeps no test of its own, so there is no settling or start to
+/// give.
+pub fn kept_rows_text(readings: &[Reading], kind: Kind, about: &About, sep: char) -> String {
     let mut out = String::new();
     about_lines(about, &mut |k: &str, v: String| {
         out += &export_line(k, &v, sep)
     });
-    out += &rows_text(readings, Kind::Poise, sep);
+    out += &rows_text(readings, kind, sep);
     out
 }
 
@@ -2574,15 +2587,12 @@ pub fn report_text(
     lift_known: bool,
     take: Option<&str>,
 ) -> Option<String> {
-    let header = text_report::Header {
-        watch: Some(about.watch.clone()),
-        date: take.and_then(text_report::take_date),
-        calibre: Some(about.calibre.clone()),
-        bph: about.bph,
-        lift_angle_deg: lift_known.then_some(about.lift_angle_deg),
-        settle_s: Some(test.settle_s),
-        measure_s: Some(test.measure_s),
-    };
+    let header = report_header(
+        about,
+        lift_known,
+        take,
+        Some((test.settle_s, test.measure_s)),
+    );
     let readings = test.readings_so_far();
     match test.kind {
         Kind::Positions => {
@@ -2595,6 +2605,45 @@ pub fn report_text(
         }
         Kind::Poise => Some(text_report::poise(&header, readings)),
         Kind::Complication => None,
+    }
+}
+
+/// A reopened take's table of `kind` as the plain-text report, as
+/// [`report_text`] gives a test's (#1660). A take keeps no test of its
+/// own, so the settling and measuring lines are left out, as `timegrapher
+/// session` leaves them out for a take. None for a Complication Test.
+pub fn kept_report_text(
+    readings: &[Reading],
+    kind: Kind,
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+) -> Option<String> {
+    let header = report_header(about, lift_known, take, None);
+    match kind {
+        Kind::Positions => Some(text_report::positions(&header, readings, None)),
+        Kind::Poise => Some(text_report::poise(&header, readings)),
+        Kind::Complication => None,
+    }
+}
+
+/// The text report's heading: the pane's watch, its calibre, beat rate
+/// and, when `lift_known`, its lift angle; the Date from `take`, the
+/// take's folder name; the settling and measuring `lengths` when known.
+fn report_header(
+    about: &About,
+    lift_known: bool,
+    take: Option<&str>,
+    lengths: Option<(f64, f64)>,
+) -> text_report::Header {
+    text_report::Header {
+        watch: Some(about.watch.clone()),
+        date: take.and_then(text_report::take_date),
+        calibre: Some(about.calibre.clone()),
+        bph: about.bph,
+        lift_angle_deg: lift_known.then_some(about.lift_angle_deg),
+        settle_s: lengths.map(|l| l.0),
+        measure_s: lengths.map(|l| l.1),
     }
 }
 

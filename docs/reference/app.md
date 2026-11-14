@@ -754,7 +754,11 @@ rate, lift angle (left out when it is the default), settling and
 measuring times and the software, then the table lined up in columns, the
 vertical less horizontal figures and the notes, wrapped at 72 columns. It
 gives no verdict and no pass or fail: the
-figures are for the watchmaker to judge.
+figures are for the watchmaker to judge. With no test on the Bench, the
+three write the take's **This Take** table the same way (#1660): a take
+opened from Watches has no test of its own, so they leave out when a
+test began and its settling and measuring times. They are greyed with
+"Nothing measured yet" only while the pane's table has no readings.
 
 **Full wind against 24 hours.** After a test run just after winding,
 **Save Results for 24 Hours…** saves its results, and saving the session

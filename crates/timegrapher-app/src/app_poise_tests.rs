@@ -178,7 +178,10 @@ fn listened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathB
 
 /// [`listened`], saved, then opened in a fresh app as a saved take is
 /// opened (#1619); and the folder to remove.
-fn saved_and_opened(name: &str, stops: &[Position]) -> (TimegrapherApp, std::path::PathBuf) {
+pub(super) fn saved_and_opened(
+    name: &str,
+    stops: &[Position],
+) -> (TimegrapherApp, std::path::PathBuf) {
     let (mut app, base) = listened(name, stops);
     app.save_into(&base.join("saved"));
     app.wait_for_save();
@@ -232,7 +235,7 @@ fn a_reopened_poise_takes_copy_copies_the_table_it_shows() {
     let (mut app, base) = saved_and_opened("copy", guided::Kind::Poise.order());
     let t = app.free_table(&egui::Context::default()).expect("a table");
     let fit = guided::poise_fit(&t.upright.0).expect("fitted from eight");
-    let text = guided::poise_rows_text(&t.upright.0, &app.guided_about(), '\t');
+    let text = guided::kept_rows_text(&t.upright.0, guided::Kind::Poise, &app.guided_about(), '\t');
     for label in ["Crown Down (CD, 9H)", "7:30 Up (7H30)", "10:30 Up (10H30)"] {
         assert!(text.contains(label), "{label}: {text}");
     }
