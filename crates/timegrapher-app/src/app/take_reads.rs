@@ -407,7 +407,11 @@ impl TimegrapherApp {
                 &stretches,
                 core_session::POSITION_MIN_S,
             );
-            guided::free_table(&t, guided::upright(&upright, log.bph, bph_set))
+            guided::free_table(
+                &t,
+                guided::take_readings(&guided::card_rows(&t), log.bph, bph_set),
+                guided::take_readings(&upright, log.bph, bph_set),
+            )
         };
         let log = steady::log_of(live);
         let shown = self.free_table.borrow().as_ref().map(|(_, t)| t.clone());

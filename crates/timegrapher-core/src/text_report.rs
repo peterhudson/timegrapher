@@ -88,14 +88,26 @@ pub fn figures(readings: &[Reading]) -> Vec<SourcedFigures> {
 }
 
 /// The Positions Test report: the heading, the six positions in the
-/// pane's order ([`Position::ALL`]) with their rate, rate less the
+/// test's order ([`Position::ALL`]) with their rate, rate less the
 /// average, amplitude and beat error, then Average, Largest Difference,
 /// vertical less horizontal, the comparison with the full-wind test when
 /// `earlier` gives one, and the conditions found in the sound.
 pub fn positions(header: &Header, readings: &[Reading], earlier: Option<Earlier>) -> String {
+    positions_in(header, readings, earlier, &Position::ALL)
+}
+
+/// [`positions`] with the six rows in `order`, the order of the table the
+/// report is of (an opened take's, in the card's order, #1705). `order`
+/// holds the six; the figures under the rows don't depend on it.
+pub fn positions_in(
+    header: &Header,
+    readings: &[Reading],
+    earlier: Option<Earlier>,
+    order: &[Position],
+) -> String {
     let mut out = heading("Positions Test", header);
     let figures = figures(readings);
-    let ix = session::sourced_indices_over(None, &figures, &Position::ALL);
+    let ix = session::sourced_indices_over(None, &figures, order);
     let mut rows = table_rows(&ix, "From Average");
     rows.push(mean_row("Average", &ix));
     rows.push(vec![

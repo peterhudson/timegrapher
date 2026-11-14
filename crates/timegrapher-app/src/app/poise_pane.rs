@@ -180,7 +180,12 @@ impl TimegrapherApp {
             let about = self.guided_about();
             let text = match (self.poise_test(), kept) {
                 (Some(t), _) => Some(guided::export_text(t, &about, '\t')),
-                (None, Some(k)) => Some(guided::poise_rows_text(&k, &about, '\t')),
+                (None, Some(k)) => Some(guided::kept_rows_text(
+                    &k,
+                    guided::Kind::Poise,
+                    &about,
+                    '\t',
+                )),
                 _ => None,
             };
             if let Some(text) = text {

@@ -1171,7 +1171,8 @@ fn six_readings() -> Vec<Reading> {
 /// Save as Text… writes core's report of the test (#1508): the watch
 /// and how it was read, its Date from the take's name, the table as
 /// core writes it, and in the 24 hour half the full-wind test beside
-/// it. The lift angle is left out when it is the default.
+/// it. The lift angle is left out only when it is the default and the
+/// calibre's name gives it (Hugh on #1705).
 #[test]
 fn the_text_report_is_cores() {
     let about = About {
@@ -1195,11 +1196,19 @@ fn the_text_report_is_cores() {
     };
     assert_eq!(text, text_report::positions(&header, &readings, None));
     assert!(text.contains("Date        2026-11-13 19:17\n"), "{text}");
-    let unset = report_text(&t, &about, false, None).unwrap();
+    let named = About {
+        calibre: "Test 2824 (52°)".into(),
+        ..about.clone()
+    };
+    let unset = report_text(&t, &named, false, None).unwrap();
     assert!(
         !unset.contains("Lift Angle") && !unset.contains("Date"),
         "{unset}"
     );
+    // A calibre whose name doesn't give the lift: the lift is in the
+    // heading, as it is in the CSV.
+    let unnamed = report_text(&t, &about, false, None).unwrap();
+    assert!(unnamed.contains("Lift Angle  52°\n"), "{unnamed}");
     // The 24 hour half carries the full-wind test beside it.
     let mut half = Test::after(t.kept(&about).unwrap());
     half.readings = Some(readings);
