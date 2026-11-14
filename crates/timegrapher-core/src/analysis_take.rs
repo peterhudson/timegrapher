@@ -2110,6 +2110,31 @@ mod tests {
         };
         assert_eq!(shape_stretches(&off, 300.0), vec![None, None]);
     }
+
+    /// Keep Analysis Only removes a take's sound only when its session file
+    /// names the whole folder, as the app writes it (#1731): one naming
+    /// sound files, one mixing the two, and one with no recordings at all
+    /// are refused, with the reason the menu and the CLI show.
+    #[test]
+    fn only_a_session_naming_the_whole_folder_may_lose_its_sound() {
+        let listing = |files: &[&str]| Manifest {
+            recordings: files
+                .iter()
+                .map(|f| session::RecordingEntry {
+                    file: (*f).into(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        assert_eq!(sound_kept_by_name(&listing(&["."])), None);
+        assert_eq!(sound_kept_by_name(&listing(&[".", "."])), None);
+        for files in [&["take.flac"][..], &[".", "b.wav"], &[]] {
+            let why = sound_kept_by_name(&listing(files));
+            let why = why.unwrap_or_else(|| panic!("{files:?} may lose its sound"));
+            assert!(why.contains("by name"), "{why}");
+        }
+    }
 }
 
 #[cfg(test)]

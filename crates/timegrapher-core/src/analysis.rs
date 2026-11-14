@@ -278,7 +278,7 @@ pub fn analyze(audio: &Audio, cfg: &AnalysisConfig) -> Analysis {
 /// Whether a second read of a recording (`again`, at another rate) is
 /// kept over the first (#1423): when it hears a watch and the first does
 /// not. When both do: the read that kept the larger share of the beats
-/// its span holds ([`kept_share`]), by more than 2 standard errors of the
+/// its span holds (`kept_of`), by more than 2 standard errors of the
 /// difference; within that, at exactly 2:1, the higher rate, as a read at
 /// half the watch's rate keeps every other beat at a full share; else the
 /// one whose rate fit's residuals (robust SD, seconds, over the beats
@@ -303,13 +303,6 @@ pub fn reads_better(again: &Summary, first: &Summary) -> bool {
     }
     let sd = |s: &Summary| s.overall.map_or(f64::INFINITY, |f| f.jitter_us);
     sd(again) < sd(first)
-}
-
-/// The share of the beats a read's span holds at its rate that its rate
-/// fit kept: kept beats over the span after any lead times `bph`/3600,
-/// plus 1 for the beats at both ends, at most 1.
-pub fn kept_share(s: &Summary) -> Option<f64> {
-    kept_of(s).map(|(k, n)| k / n)
 }
 
 /// A read's beats kept by its rate fit (at most as many as it holds), and
