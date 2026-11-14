@@ -26,8 +26,8 @@ angle 53°), part let down, at 156° to 176° amplitude, with **Each
 Position** at 60 s, opened again from its folder and shown in Dial view.
 Its wave is 6.9 ± 0.4 s/d each way, fastest near 12H30 at the top. With
 the amplitude below 219.5°, the heavy spot hangs lowest at about the same
-hour, 12H (M13). The amplitude also changes once round, by about 10° each
-way, so Info adds that part of the wave may be isochronism.
+hour: "12H at the top, 7 ± 3°" (M13). Info adds "Amplitude also changes
+once round, 7 ± 1° each way, so part of the wave may be isochronism."
 
 ## The Toolbar
 
@@ -74,12 +74,15 @@ results for 24 hours later: it is one state of wind.
 
 ## The Results
 
+A saved test opened again shows its table, picture and fit again, read
+from its saved positions.
+
 | Mark | Part | What it shows |
 | --- | --- | --- |
 | 2 | The table | The eight positions in the stand's order, each with its **Rate** (s/d), **From Mean** (its rate less the mean), **Amplitude** (°) and **Beat Error** (ms), then a **Mean** row. There is no Largest Difference: that is the six positions' figure (M8). |
 | | The picture | Each rate at the hour that was at the top, with its ± (one standard error), in magenta. In Plot, along a line from 12H to 12H with a mark every 45° ("Hour at the top"). In Dial, round a watch face with 12H at the top, further out when faster. |
 | 6 | The mean | A dotted line in Plot, a dotted ring in Dial, named with its rate. |
-| 5 | The fitted wave | Once five positions are in, the wave the rate makes once round, in grey, with a line to its fastest hour. Until then the space reads "Fitted once 5 positions are measured". |
+| 5 | The fitted wave | Once five positions are in, the wave the rate makes once round, in grey, with a line to its fastest hour. Until then, while a test runs, the space reads "Fitted once 5 positions are measured". A take opened again with fewer upright positions, such as a Positions Test's four, reads "Needs 5 upright positions to fit; this take has 4". |
 | 3 | The line over the picture | The wave in one line: its size each way from the mean with its ±, and its fastest hour, then the amplitudes it was measured at. Where the wave isn't clear of its ± (by 2 standard errors), no fastest hour is named. |
 | 4 | The heavy spot | A box on the picture: the hour at the top when it hangs lowest, with its ± in degrees, or **Not stated**. In Plot it sits in a top corner clear of the wave and the points, and is left out where they cover both; Info always gives it. |
 
