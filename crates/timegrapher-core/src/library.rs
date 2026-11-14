@@ -1623,11 +1623,20 @@ impl Library {
         Ok((to, left))
     }
 
-    /// The one guard both imports use (#1656): `from` is refused when it is
-    /// already inside the watches folder.
+    /// The one guard both imports use (#1656), before anything is staged:
+    /// `from` is refused when it is already inside the watches folder, or
+    /// holds it, where the copy would be made inside what it copies and
+    /// copy itself again and again (#1642).
     fn not_already_in(&self, from: &Path) -> Result<(), String> {
-        if resolved(from).starts_with(resolved(&self.root)) {
+        let (from_at, root) = (resolved(from), resolved(&self.root));
+        if from_at.starts_with(&root) {
             return Err(format!("{} is already in your watches", from.display()));
+        }
+        if root.starts_with(&from_at) {
+            return Err(format!(
+                "{} holds your watches folder: add the take's own folder instead",
+                from.display()
+            ));
         }
         Ok(())
     }

@@ -255,7 +255,7 @@ impl TimegrapherApp {
                 clock.as_ref(),
                 &breaks,
                 &masks,
-                &spans,
+                (&spans, &spans),
             )?;
             m.take_doubts(lift_known, unlisted);
             Some(WholeTake { m, span })
