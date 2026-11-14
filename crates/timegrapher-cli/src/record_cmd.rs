@@ -323,11 +323,7 @@ fn record_in(
         .map_err(|e| format!("{}: {e}", take.display()))?;
     // Filed into a library, a Power Reserve Test's recording is its take.
     let dir = match reserve_take {
-        Some(started) => {
-            let to = library::power_reserve_take_dir(o.dir(), started);
-            fs::rename(&dir, &to).map_err(|e| format!("{}: {e}", to.display()))?;
-            to
-        }
+        Some(started) => file_reserve_take(dir, &library::power_reserve_take_dir(o.dir(), started)),
         None => dir,
     };
     write_take_manifest(&dir, pos, &set, Some("clock.csv"))?;
@@ -1047,6 +1043,26 @@ fn header(set: &Settings) -> String {
         set.lift_known
     );
     t
+}
+
+/// Rename the finished recording `dir` to its Power Reserve take folder
+/// `to`, waiting as every save does for a file another program has open
+/// ([`recorder::rename_settled`]). Should it still be refused, the
+/// recording stays where it is, under its own name, and is the take: its
+/// session file and run are written there all the same, so a run of up to
+/// 80 h is never lost to a rename (Felix on #1734).
+fn file_reserve_take(dir: PathBuf, to: &Path) -> PathBuf {
+    match recorder::rename_settled(&dir, to) {
+        Ok(()) => to.to_path_buf(),
+        Err(e) => {
+            eprintln!(
+                "warning: the take couldn't be renamed to {} ({e}); it is kept as {}",
+                to.display(),
+                dir.display()
+            );
+            dir
+        }
+    }
 }
 
 /// The app's session file inside the take, so the app opens the take with
@@ -1808,6 +1824,24 @@ mod tests {
         // The take is in the session file, as any other is.
         let listed = fs::read_to_string(folder.join(MANIFEST)).unwrap();
         assert_eq!(listed.matches("[[recording]]").count(), 1, "{listed}");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// A Power Reserve take that can't be renamed stays a take under its
+    /// recording's own name, so its run is still written (#1734).
+    #[test]
+    fn a_reserve_take_that_cant_be_renamed_is_kept_where_it_is() {
+        let base = std::env::temp_dir().join(format!("tg-record-rename-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let rec = base.join("2026-11-14T17-18-10_YM42_CR");
+        fs::create_dir_all(&rec).unwrap();
+        // A folder that isn't there can't take the recording.
+        let to = base.join("missing").join("2026-11-14 17.18 Power Reserve");
+        assert_eq!(file_reserve_take(rec.clone(), &to), rec);
+        assert!(rec.is_dir());
+        let free = base.join("2026-11-14 17.18 Power Reserve");
+        assert_eq!(file_reserve_take(rec.clone(), &free), free);
+        assert!(free.is_dir() && !rec.exists());
         let _ = fs::remove_dir_all(&base);
     }
 
