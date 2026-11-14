@@ -178,8 +178,8 @@ impl TimegrapherApp {
                 // analysis kept as it went stays in the recording's folder.
                 drop(keeper);
                 return self.error(format!(
-                    "The test's take couldn't be kept ({e}). Its analysis up to the last 10 \
-                     minutes is kept in {}.",
+                    "The test's take couldn't be kept ({e}). Its analysis, up to its last save \
+                     at most 10 minutes before the end, is kept in {}.",
                     recording.display()
                 ));
             }
