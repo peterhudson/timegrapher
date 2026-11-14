@@ -15,6 +15,7 @@ use eframe::egui::{self, RichText, Vec2};
 use timegrapher_core::clock::ClockFit;
 use timegrapher_core::figure_text::base_digits::{AMPLITUDE, BEAT_ERROR, RATE};
 use timegrapher_core::figure_text::{fixed_text, signed_text, true_minus};
+use timegrapher_core::reading_text::WindHours;
 use timegrapher_core::session::{self, Measurement, Reading, SourcedFigures};
 use timegrapher_core::steadiness::SeriesKind;
 use timegrapher_core::stream::BeatLog;
@@ -2560,7 +2561,7 @@ pub fn saved_report_text(
         .map(|(f, h)| (kept_figures(f), h));
     let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
         figures,
-        hours: *hours,
+        hours: WindHours::measured(*hours),
     });
     text_report::positions_of(&header, &figures, earlier, &order, &[])
 }
@@ -2680,7 +2681,7 @@ pub fn report_text(
             let full = test.full.as_ref().map(|(f, h)| (kept_figures(f), *h));
             let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
                 figures,
-                hours: *hours,
+                hours: WindHours::measured(*hours),
             });
             Some(text_report::positions(&header, readings, earlier))
         }

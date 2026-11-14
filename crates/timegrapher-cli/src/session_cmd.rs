@@ -1148,7 +1148,7 @@ fn text_reports(s: &Session, base: &Path) -> Vec<TextReport> {
     let full = text_report::figures(&at(fullest));
     let earlier = (least > fullest).then_some(Earlier {
         figures: &full,
-        hours: least - fullest,
+        hours: timegrapher_core::reading_text::WindHours::given(fullest, least),
     });
     let header = text_report::Header {
         watch: s.watch.map(str::to_string),
