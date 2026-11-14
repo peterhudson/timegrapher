@@ -65,9 +65,55 @@ pub fn average_s(value: f64) -> Result<f64, String> {
     }
 }
 
+/// `value` if it is a finite number above `min`: a filter's frequency,
+/// a length of time, a synthetic watch's amplitude (#1650). NaN and the
+/// infinities pass no comparison a flag can be checked by, so they are
+/// refused here, before any analysis reads them.
+pub fn above(value: f64, min: f64) -> Result<f64, String> {
+    if value.is_finite() && value > min {
+        Ok(value)
+    } else {
+        Err(format!("must be a finite number above {min}"))
+    }
+}
+
+/// `value` if it is a finite number of at least `min`: a start time, a
+/// time since winding, a margin (#1650).
+pub fn at_least(value: f64, min: f64) -> Result<f64, String> {
+    if value.is_finite() && value >= min {
+        Ok(value)
+    } else {
+        Err(format!("must be a finite number of at least {min}"))
+    }
+}
+
+/// `value` if it is finite: a signed figure such as a synthetic watch's
+/// rate (#1650).
+pub fn finite(value: f64) -> Result<f64, String> {
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err("must be a finite number".into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn numbers_from_flags_are_finite() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(above(bad, 0.0).is_err());
+            assert!(at_least(bad, 0.0).is_err());
+            assert!(finite(bad).is_err());
+        }
+        assert!(above(0.0, 0.0).is_err());
+        assert_eq!(above(1500.0, 0.0), Ok(1500.0));
+        assert_eq!(at_least(0.0, 0.0), Ok(0.0));
+        assert!(at_least(-1.0, 0.0).is_err());
+        assert_eq!(finite(-30.0), Ok(-30.0));
+    }
+
     #[test]
     fn explicit_scalar_domains_have_no_empirical_operating_limits_but_lift() {
         assert!(bph(0).is_err());

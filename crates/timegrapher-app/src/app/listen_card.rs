@@ -1621,10 +1621,14 @@ impl TimegrapherApp {
         // A 45° stop turns the card to 10, so it has a button for it.
         self.ten_positions |= pos.is_half_hour();
         if let Some(r) = self.session.recorder.as_mut() {
-            // note appends in memory before writing scratch metadata, so the
-            // edit remains unsaved even if that scratch write fails.
-            let _ = r.note(&format!("position {}", pos.code()));
+            // note appends in memory before writing session.json, so the
+            // change is kept and written next time even if this write
+            // fails; the last good file stays as it was (#1639).
+            let noted = r.note(&format!("position {}", pos.code()));
             self.session.note_metadata_change();
+            if let Err(e) = noted {
+                self.session_write_failed(&e);
+            }
         }
         self.note_settings();
     }

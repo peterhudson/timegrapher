@@ -1504,3 +1504,53 @@ fn the_engine_is_this_versions_and_a_short_source_hash() {
     assert!(source.chars().all(|c| c.is_ascii_hexdigit()), "{source}");
     assert!(super::ENGINE.starts_with(&format!("{version}+{source}")));
 }
+
+/// Whichever step of an atomic write fails (the bytes, onto the disk, or
+/// into place), the file is as it was and no new file is left beside it
+/// (#1639).
+#[test]
+fn a_failed_atomic_write_leaves_the_file_as_it_was() {
+    use super::{write_atomic_with, AtomicSteps};
+    let dir = std::env::temp_dir().join(format!("tg-write-fails-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("session.json");
+    write_atomic(&p, b"{\"before\": true}\n").unwrap();
+    let fail_write = AtomicSteps {
+        write: |f, b| {
+            std::io::Write::write_all(f, &b[..b.len() / 2])?;
+            Err(std::io::Error::new(
+                std::io::ErrorKind::FileTooLarge,
+                "full",
+            ))
+        },
+        sync: fs::File::sync_all,
+        rename: crate::recorder::rename_settled,
+    };
+    let fail_sync = AtomicSteps {
+        write: |f, b| std::io::Write::write_all(f, b),
+        sync: |_| Err(std::io::Error::other("no sync")),
+        rename: crate::recorder::rename_settled,
+    };
+    let fail_rename = AtomicSteps {
+        write: |f, b| std::io::Write::write_all(f, b),
+        sync: fs::File::sync_all,
+        rename: |_, _| Err(std::io::Error::other("no rename")),
+    };
+    for (what, steps) in [
+        ("write", &fail_write),
+        ("sync", &fail_sync),
+        ("rename", &fail_rename),
+    ] {
+        let e = write_atomic_with(&p, b"{\"after\": true}\n", steps).unwrap_err();
+        assert!(e.contains("session.json"), "{what}: {e}");
+        assert_eq!(fs::read(&p).unwrap(), b"{\"before\": true}\n", "{what}");
+        let left: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, ["session.json"], "{what}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
