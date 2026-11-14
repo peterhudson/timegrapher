@@ -1215,3 +1215,63 @@ fn the_text_report_is_cores() {
     let text = report_text(&half, &about, true, None).unwrap();
     assert!(text.contains("Against the Full-Wind Test"), "{text}");
 }
+
+/// Save as Text… on the Dynamic Poise pane writes core's poise report
+/// (#1509): the table in the pane's order and the fit in full, never the
+/// Positions Test's report of the same readings.
+#[test]
+fn the_poise_text_report_is_cores() {
+    let about = About {
+        watch: "Test Watch".into(),
+        calibre: "ETA 2824-2".into(),
+        bph: Some(28800),
+        lift_angle_deg: 52.0,
+    };
+    let readings = six_readings();
+    let mut t = Test::poise();
+    t.readings = Some(readings.clone());
+    let text = report_text(&t, &about, true, Some("2026-11-13 19.17")).unwrap();
+    let header = text_report::Header {
+        watch: Some("Test Watch".into()),
+        date: Some("2026-11-13 19:17".into()),
+        calibre: Some("ETA 2824-2".into()),
+        bph: Some(28800),
+        lift_angle_deg: Some(52.0),
+        settle_s: Some(t.settle_s),
+        measure_s: Some(t.measure_s),
+    };
+    assert_eq!(text, text_report::poise(&header, &readings));
+    assert_ne!(text, text_report::positions(&header, &readings, None));
+}
+
+/// A saved Dynamic Poise test opened again has no test on the Bench:
+/// Save as Text… writes core's poise report of the stops the pane shows,
+/// with no Settle or Each Position, as `timegrapher session` does (#1509).
+#[test]
+fn a_reopened_poise_take_reports_as_the_cli_does() {
+    let about = About {
+        watch: "Test Watch".into(),
+        calibre: "ETA 2824-2".into(),
+        bph: Some(28800),
+        lift_angle_deg: 52.0,
+    };
+    let readings = six_readings();
+    let text = kept_report_text(
+        &readings,
+        Kind::Poise,
+        &about,
+        true,
+        Some("2026-11-13 19.17"),
+    )
+    .unwrap();
+    let header = text_report::Header {
+        watch: Some("Test Watch".into()),
+        date: Some("2026-11-13 19:17".into()),
+        calibre: Some("ETA 2824-2".into()),
+        bph: Some(28800),
+        lift_angle_deg: Some(52.0),
+        settle_s: None,
+        measure_s: None,
+    };
+    assert_eq!(text, text_report::poise(&header, &readings));
+}
