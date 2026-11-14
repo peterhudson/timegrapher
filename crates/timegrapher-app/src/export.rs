@@ -348,21 +348,6 @@ fn outline_fill(closed: bool, fill: Color32) -> String {
     }
 }
 
-fn escape(s: &str) -> String {
-    let mut o = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => o.push_str("&amp;"),
-            '<' => o.push_str("&lt;"),
-            '>' => o.push_str("&gt;"),
-            '"' => o.push_str("&quot;"),
-            c if (c as u32) < 0x20 => {}
-            c => o.push(c),
-        }
-    }
-    o
-}
-
 /// The font a section asks for, as SVG font attributes.
 fn font_attrs(f: &egui::FontId) -> String {
     let family = match &f.family {
@@ -448,7 +433,9 @@ fn text(out: &mut String, t: &TextShape) {
                 n(pos.y),
                 font_attrs(&f.font_id),
                 paint("fill", color),
-                escape(&txt),
+                // A glyph row's line breaks and tabs are left out, as the
+                // row's own place says where it goes.
+                timegrapher_core::xml::escape(&txt.replace(['\t', '\n', '\r'], "")),
             );
             out.push('\n');
         }
