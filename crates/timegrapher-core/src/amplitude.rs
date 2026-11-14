@@ -166,8 +166,9 @@ const UNLOCK_SEARCH_S: f64 = 0.003;
 /// How much later than the unlock on a template of every beat given a
 /// window's sound 1 may sit before the window is taken to have found a
 /// later sound, seconds. The beats given are one chunk of a stream (47 s):
-/// in that time a run-down's unlock barely moves, and even a fall from 300° to 250° moves it 1.3 ms. Near stopping, the
-/// impulse sits 6 ms after the unlock at 28,800 bph (#1623).
+/// in that time a run-down's unlock barely moves, and even a fall from
+/// 300° to 250° moves it 1.3 ms. Near stopping, the impulse sits 6 ms
+/// after the unlock at 28,800 bph (#1623).
 const UNLOCK_LATE_S: f64 = 0.002;
 
 /// A sound 1 found from the start of a template [`template_pre_s`] long,
