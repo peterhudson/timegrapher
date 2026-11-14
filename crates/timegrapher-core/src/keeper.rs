@@ -22,14 +22,12 @@ use std::sync::mpsc;
 /// the app's profile pane reads it.
 const PROFILE_MARGIN_S: f64 = 0.05;
 
-/// The most sound, seconds, held back unprofiled: while a jump's sides
-/// are still to be told apart ([`stream::Seen::pending`]), and before the
-/// watch is first heard, when the beat rate may still change
-/// ([`stream::Seen::heard`]). Past it the profiles are read on, so neither
-/// can hold back the whole take: a jump's stretch is kept to be read
-/// again if its sides swap ([`SecondReading::swap_from`]), but stretches
-/// read before a watch heard only after 10 min of sound are read at the
-/// rate guessed then.
+/// The most sound, seconds, held back unprofiled before the watch is
+/// first heard, when the beat rate may still change
+/// ([`stream::Seen::heard`]). Past it the profiles are read on, so a watch
+/// never heard can't hold back the whole take; but stretches read before
+/// a watch heard only after 10 min of sound are read at the rate guessed
+/// then, which can differ from the rate the whole reading settles on.
 const MAX_HELD_S: f64 = 600.0;
 
 /// Blocks of sound waiting for the Keeper's reading: enough to ride out a
@@ -378,6 +376,21 @@ impl Drop for Keeper {
 
 /// The Keeper's reading: the blocks from `rx`, until it closes, read as
 /// one recording.
+/// The sample the Keeper may profile up to, once it has `read` samples
+/// and the chunk just read starts `core_a` seconds in. Up to that chunk's
+/// start: its beats from there on may still change with the next chunk's
+/// (a beat is only ever kept at or after a chunk's start,
+/// [`beats::anchor_of`]); before it every beat is kept for good, but for
+/// a side swap, which [`SecondReading::swap_from`] makes on the profiles.
+/// Nothing before the watch is `heard`, while its rate may change, unless
+/// that would hold back more than [`MAX_HELD_S`] of sound.
+fn profile_bound(core_a: f64, heard: bool, read: usize, fs: f64) -> usize {
+    let behind = (core_a * fs).max(0.0) as usize;
+    let held_to = read.saturating_sub((MAX_HELD_S * fs) as usize);
+    let wait = if heard { usize::MAX } else { 0 };
+    behind.min(wait.max(held_to))
+}
+
 fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError> {
     let cfg = &how.cfg;
     let fs = f64::from(how.sample_rate);
@@ -406,22 +419,8 @@ fn keep(how: &KeepAs, rx: mpsc::Receiver<Vec<f32>>) -> Result<Stored, AudioError
             }
             swaps = seen.swaps.len();
             second.release(seen.pending);
-            // Up to the chunk just read, whose beats from its start on may
-            // still change with the next chunk's (a beat is only ever kept
-            // at or after a chunk's start, `beats::anchor_of`); before
-            // that, every beat is kept for good, but for a side swap, which
-            // `swap_from` makes on the profiles. Not before the watch is
-            // heard, while its rate may change, unless that would hold
-            // back too much sound.
-            let behind = (seen.core_a * fs).max(0.0) as usize;
-            let held_to = second.read().saturating_sub((MAX_HELD_S * fs) as usize);
-            let wait = if seen.heard { usize::MAX } else { 0 };
-            second.profile_until(
-                seen.beats,
-                seen.bph,
-                cfg,
-                (behind.min(wait.max(held_to)), seen.pending),
-            );
+            let until = profile_bound(seen.core_a, seen.heard, second.read(), fs);
+            second.profile_until(seen.beats, seen.bph, cfg, (until, seen.pending));
         },
     )?;
     Ok(second.finish(
@@ -543,6 +542,23 @@ mod tests {
     /// The files `analysis/` would hold, by name.
     fn kept_files(s: &Stored) -> Vec<(&'static str, Vec<u8>)> {
         files(s).unwrap()
+    }
+
+    /// The Keeper profiles up to the start of the chunk just read once the
+    /// watch is heard; before, nothing, until more than 600 s of sound
+    /// would be held, then all but the latest 600 s (never past the
+    /// chunk's start).
+    #[test]
+    fn profiles_wait_for_the_chunk_and_for_the_watch() {
+        let fs = 48_000.0;
+        let at = |s: f64| (s * fs) as usize;
+        assert_eq!(profile_bound(94.0, true, at(142.0), fs), at(94.0));
+        assert_eq!(profile_bound(0.0, true, at(48.0), fs), 0);
+        assert_eq!(profile_bound(94.0, false, at(142.0), fs), 0);
+        assert_eq!(profile_bound(542.0, false, at(590.0), fs), 0);
+        assert_eq!(profile_bound(601.0, false, at(649.0), fs), at(49.0));
+        assert_eq!(profile_bound(658.0, false, at(706.0), fs), at(106.0));
+        assert_eq!(profile_bound(658.0, false, at(1400.0), fs), at(658.0));
     }
 
     /// Kept while it is recorded, a take's analysis is the same, byte for
