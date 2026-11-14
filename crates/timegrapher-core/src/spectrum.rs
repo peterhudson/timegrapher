@@ -8,7 +8,7 @@
 //! [`longterm`]: crate::longterm
 
 use crate::longterm::Grid;
-use realfft::RealFftPlanner;
+use realfft::{num_complex::Complex, RealFftPlanner};
 use serde::Serialize;
 
 /// The spectrum, thinned for drawing.
@@ -23,7 +23,9 @@ pub struct AmplitudeSpectrum {
     /// Periods, seconds, longest first, and the size of the sine fitted
     /// at each (half its peak to peak). Each point is the largest in its
     /// slice of a log-spaced period axis, so narrow lines survive the
-    /// thinning.
+    /// thinning. A slice whose every period is withheld for thin cover
+    /// ([`MIN_PHASE_COVER`]) has NaN (`null` in JSON): a gap, which every
+    /// chart leaves open, never a size.
     pub period_s: Vec<f64>,
     pub amplitude: Vec<f64>,
     /// Every size is read the one way, a sine fitted to the readings
@@ -225,17 +227,71 @@ impl SpectrumSupport {
             self.finite_bins, self.total_bins
         );
         if self.finite_bins < self.total_bins {
-            text.push_str(" With samples missing, each size is a sine fitted to the samples present, weighted by the Hann window (Lomb–Scargle); nothing is filled in.");
+            text.push_str(" With samples missing, each size is a sine and a constant fitted together to the samples present, weighted by the Hann window (Lomb–Scargle with a floating mean); nothing is filled in, and a period whose cycle the samples cover too thinly is left out.");
         }
         text
     }
 }
 
+/// The least share of a full cycle's cover a size is read from: the
+/// smaller eigenvalue of the cosine and sine sums, once the constant is
+/// fitted, over Σw/2, what the full cover gives each. Below it the size's
+/// ± would be over √10 ≈ 3.2× its full-cover value, so the line can't be
+/// sized and the bin is withheld (#1638). Half of each cycle kept reads
+/// 0.19 and is kept; a sixteenth reads 0.003 and is withheld. A kept bin's
+/// size is solved through that same block, so thin cover moves no size;
+/// the spectrum shows no ± and no false-alarm level.
+pub const MIN_PHASE_COVER: f64 = 0.1;
+
+/// A real FFT's value at bin `k` of `l`, any k: real input repeats with
+/// period l and its upper half is the conjugate of the lower.
+fn bin(x: &[Complex<f64>], k: usize, l: usize) -> Complex<f64> {
+    let k = k % l;
+    if k <= l / 2 {
+        x[k]
+    } else {
+        x[l - k].conj()
+    }
+}
+
+/// The size at bin `j` of c + a·cos ωt + b·sin ωt, fitted together by
+/// weighted least squares (#1638), from the FFT `spec` of the weighted
+/// values (zero where missing) and `mask` of the weights of those present,
+/// both of length `l`. Every sum is read off them: Σw = W(0), Σw·cos =
+/// Re W(ω), Σw·sin = −Im W(ω), Σw·cos² and Σw·sin² = (Σw ± Re W(2ω))/2,
+/// Σw·cos·sin = −Im W(2ω)/2, and the same for the values from `spec`.
+/// The constant is taken out (a Schur complement) and the 2×2 left is
+/// solved. None when its smaller eigenvalue is under [`MIN_PHASE_COVER`]
+/// of Σw/2.
+fn joint_size(spec: &[Complex<f64>], mask: &[Complex<f64>], j: usize, l: usize) -> Option<f64> {
+    let (w0, w1, w2) = (bin(mask, 0, l).re, bin(mask, j, l), bin(mask, 2 * j, l));
+    let (y0, y1) = (bin(spec, 0, l).re, bin(spec, j, l));
+    if w0 <= 0.0 {
+        return None;
+    }
+    let (sc, ss) = (w1.re, -w1.im);
+    let cc = 0.5 * (w0 + w2.re) - sc * sc / w0;
+    let nn = 0.5 * (w0 - w2.re) - ss * ss / w0;
+    let cs = -0.5 * w2.im - sc * ss / w0;
+    let rc = y1.re - sc * y0 / w0;
+    let rs = -y1.im - ss * y0 / w0;
+    let (half, gap) = (0.5 * (cc + nn), (0.25 * (cc - nn).powi(2) + cs * cs).sqrt());
+    if half - gap < MIN_PHASE_COVER * 0.5 * w0 {
+        return None;
+    }
+    let det = cc * nn - cs * cs;
+    let a = (nn * rc - cs * rs) / det;
+    let b = (cc * rs - cs * rc) / det;
+    Some(a.hypot(b))
+}
+
 /// The amplitude spectrum of `g` between `4 × step` and half the span,
 /// as the size of the sine at each period (half its peak to peak): the
-/// sine fitted by least squares to the readings present, each weighted by
-/// a Hann window over the whole grid, less their weighted mean
-/// (Lomb–Scargle with weights), nothing filled in. With every reading
+/// sine and a constant fitted together by least squares to the readings
+/// present, each weighted by a Hann window over the whole grid (#1638;
+/// Lomb–Scargle with weights and a floating mean), nothing filled in; a
+/// period whose cycle the readings cover too thinly is withheld
+/// ([`MIN_PHASE_COVER`]). With every reading
 /// present this is the Hann-windowed FFT's size, the window keeping a
 /// strong line from spreading over the whole axis; with readings missing
 /// a line keeps its size, and one reading out leaves the spectrum as it
@@ -285,21 +341,10 @@ pub fn amplitude_spectrum(
     }
     let spec = transform(buf)?;
     let mask = transform(present)?;
-    // The size at bin j: the Hann-weighted Lomb–Scargle fit from the sums
-    // at ω and 2ω (bin 2j). With every reading present it is the Hann
-    // FFT's own size, 2|X|/Σw, but for the 2ω term near 0.
-    let size = |j: usize| -> f64 {
-        let m = mask.get(2 * j).copied().unwrap_or_default();
-        crate::periodicity::LsSums {
-            yc: spec[j].re,
-            ys: -spec[j].im,
-            c2: m.re,
-            s2: -m.im,
-            n: sw,
-        }
-        .fit()
-        .amplitude()
-    };
+    // The size at bin j: c + a·cos + b·sin fitted together, Hann-weighted
+    // (#1638). With every reading present it is the Hann FFT's own size,
+    // 2|X|/Σw; a bin whose cover of its cycle is too thin is withheld.
+    let size = |j: usize| joint_size(&spec, &mask, j, l);
     let df = 1.0 / (l as f64 * g.step);
     let (min_p, max_p) = (4.0 * g.step, g.span() / 2.0);
     let jmin = ((1.0 / max_p) / df).ceil().max(1.0) as usize;
@@ -316,10 +361,12 @@ pub fn amplitude_spectrum(
     let mut best: Vec<Option<(f64, f64)>> = vec![None; slices];
     for j in jmin..=jmax {
         let p = 1.0 / (j as f64 * df);
-        let a = size(j);
         let k = (((hi - p.ln()) / (hi - lo)) * (slices - 1) as f64).round() as usize;
         let k = k.min(slices - 1);
-        if best[k].is_none_or(|(_, b)| a > b) {
+        // A withheld bin is a gap (NaN), never a size: it holds its slice
+        // only while no bin there is read (#1638).
+        let a = size(j).unwrap_or(f64::NAN);
+        if best[k].is_none_or(|(_, b)| a > b || (b.is_nan() && !a.is_nan())) {
             best[k] = Some((p, a));
         }
     }
@@ -344,6 +391,169 @@ pub fn amplitude_spectrum(
 mod tests {
     use super::*;
     use crate::beats::Beat;
+
+    /// An independent reference for #1638: c + a·cos + b·sin fitted by
+    /// weighted least squares, summed sample by sample in the time domain
+    /// and solved as a 3×3 by Cramer's rule; the size √(a² + b²).
+    fn reference_size(y: &[f64], period_samples: f64, w: impl Fn(usize) -> f64) -> f64 {
+        let mut m = [[0.0f64; 3]; 3];
+        let mut r = [0.0f64; 3];
+        for (i, &v) in y.iter().enumerate() {
+            if !v.is_finite() {
+                continue;
+            }
+            let th = std::f64::consts::TAU * i as f64 / period_samples;
+            let f = [1.0, th.cos(), th.sin()];
+            for p in 0..3 {
+                r[p] += w(i) * f[p] * v;
+                for q in 0..3 {
+                    m[p][q] += w(i) * f[p] * f[q];
+                }
+            }
+        }
+        let det = |a: &[[f64; 3]; 3]| {
+            a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+                - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+                + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])
+        };
+        let d = det(&m);
+        let col = |k: usize| {
+            let mut a = m;
+            for p in 0..3 {
+                a[p][k] = r[p];
+            }
+            det(&a) / d
+        };
+        col(1).hypot(col(2))
+    }
+
+    /// The audit's case (#1638): 2048 samples at 10 s, `offset` + 2·sin at
+    /// 320 s (32 samples) and phase `phase`, keeping only the samples in
+    /// the first `kept` of each cycle's 32 phases.
+    fn phase_gapped(offset: f64, phase: f64, kept: usize) -> Grid {
+        Grid {
+            t0: 0.0,
+            step: 10.0,
+            y: (0..2048)
+                .map(|i| {
+                    if i % 32 < kept {
+                        offset + 2.0 * (std::f64::consts::TAU * i as f64 / 32.0 + phase).sin()
+                    } else {
+                        f64::NAN
+                    }
+                })
+                .collect(),
+        }
+    }
+
+    fn size_at(g: &Grid, period_s: f64) -> Option<f64> {
+        let s = amplitude_spectrum(g, "amplitude", "deg", 1.0, 100_000).unwrap();
+        s.period_s
+            .iter()
+            .position(|&p| (p - period_s).abs() < 1e-9)
+            .map(|k| s.amplitude[k])
+            .filter(|a| !a.is_nan())
+    }
+
+    #[test]
+    fn a_line_keeps_its_size_when_gaps_fall_in_one_part_of_its_cycle() {
+        // Before #1638 the mean was taken out first: 2.000, 1.740, 1.051
+        // and 0.420 for 32, 24, 20 and 16 phases of 32 kept.
+        let hann = |i: usize| 0.5 - 0.5 * (std::f64::consts::TAU * (i as f64 + 0.5) / 2048.0).cos();
+        for kept in [32, 24, 20, 16] {
+            for offset in [0.0, 250.0, -40.0] {
+                for phase in [0.0, 0.7, 2.0] {
+                    let g = phase_gapped(offset, phase, kept);
+                    let got = size_at(&g, 320.0).expect("the 320 s bin is read");
+                    let want = reference_size(&g.y, 32.0, hann);
+                    assert!(
+                        (got - 2.0).abs() < 1e-6 && (got - want).abs() < 1e-6,
+                        "{kept} phases, offset {offset}, phase {phase}: {got} against {want}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_bin_matches_an_independent_weighted_fit() {
+        // Mask invariance: a noisy series with random gaps and a block out;
+        // each bin read is the time-domain fit's size, at any offset.
+        let mut x = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut rnd = || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x >> 11) as f64 / (1u64 << 53) as f64
+        };
+        let n: usize = 1000;
+        let base: Vec<f64> = (0..n)
+            .map(|i| {
+                let t = i as f64;
+                if rnd() < 0.2 || (300..380).contains(&i) {
+                    f64::NAN
+                } else {
+                    0.8 * (std::f64::consts::TAU * t / 37.0).sin() + rnd() - 0.5
+                }
+            })
+            .collect();
+        let hann =
+            |i: usize| 0.5 - 0.5 * (std::f64::consts::TAU * (i as f64 + 0.5) / n as f64).cos();
+        let l = n.next_power_of_two() as f64;
+        for offset in [0.0, 1e3] {
+            let g = Grid {
+                t0: 0.0,
+                step: 1.0,
+                y: base.iter().map(|v| v + offset).collect(),
+            };
+            let s = amplitude_spectrum(&g, "amplitude", "deg", 1.0, 100_000).unwrap();
+            assert!(s.period_s.len() > 100);
+            for (&p, &a) in s.period_s.iter().zip(&s.amplitude) {
+                let want = reference_size(&g.y, p, hann);
+                assert!(
+                    (a - want).abs() < 1e-7 * (1.0 + want),
+                    "offset {offset}, {p} s (bin {}): {a} against {want}",
+                    l / p
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_bin_whose_cycle_is_barely_covered_is_withheld() {
+        // Two phases of 32 kept: the cosine and sine cannot be told from
+        // the constant, so the 320 s bin is a gap, not read low, and not
+        // filled: NaN, null in JSON, and the app and the MCP view break
+        // their line there (Norm: masks cull, never fill).
+        let g = phase_gapped(250.0, 0.3, 2);
+        let s = amplitude_spectrum(&g, "amplitude", "deg", 1.0, 100_000).unwrap();
+        let k = s
+            .period_s
+            .iter()
+            .position(|&p| (p - 320.0).abs() < 1e-9)
+            .expect("the 320 s period is listed");
+        assert!(s.amplitude[k].is_nan(), "{}", s.amplitude[k]);
+        let json = serde_json::to_value(&s).unwrap();
+        assert!(json["amplitude"][k].is_null());
+        // The sixteenth-cover case keeps its gap however the chart thins:
+        // the slice holding 320 s is NaN or a period read elsewhere in it,
+        // never 320 s with a size.
+        for points in [600, 100] {
+            let s = amplitude_spectrum(&g, "amplitude", "deg", 1.0, points).unwrap();
+            for (p, a) in s.period_s.iter().zip(&s.amplitude) {
+                if (p - 320.0).abs() < 1e-9 {
+                    assert!(a.is_nan(), "{points} points: 320 s read {a}");
+                }
+            }
+        }
+        // The full grid withholds nothing.
+        let g = phase_gapped(250.0, 0.3, 32);
+        let s = amplitude_spectrum(&g, "amplitude", "deg", 1.0, 100_000).unwrap();
+        let df = 1.0 / (2048.0 * 10.0);
+        let (jmin, jmax) = ((1.0 / (g.span() / 2.0) / df).ceil() as usize, 2048 / 4);
+        assert_eq!(s.period_s.len(), jmax - jmin + 1);
+        assert!(s.amplitude.iter().all(|a| a.is_finite()));
+    }
 
     #[test]
     fn a_timing_wave_is_drawn_as_the_swing_in_rate_readings() {
@@ -481,7 +691,17 @@ mod tests {
                 }
             );
             assert_eq!(s.period_s.len(), s.amplitude.len());
-            assert!(s.amplitude.iter().all(|v| v.is_finite()));
+            // Every size is finite but one: with every other sample kept,
+            // the 4 s period's samples fall only at the top and bottom of
+            // each cycle, so its sine can't be sized and it is a gap (NaN,
+            // #1638; Peter chose this on the thread's card, 14 Nov).
+            for (p, a) in s.period_s.iter().zip(&s.amplitude) {
+                if pattern == "alternating" && *p == 4.0 {
+                    assert!(a.is_nan(), "{pattern}: {p} s read {a}");
+                } else {
+                    assert!(a.is_finite(), "{pattern}: {p} s read {a}");
+                }
+            }
             assert!(s
                 .support
                 .description()
