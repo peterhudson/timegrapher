@@ -3122,6 +3122,18 @@ impl TimegrapherApp {
         true
     }
 
+    /// The watch the take is of, as the Calibre card's title and the
+    /// status bar name it: the one open in Watches, else the one the take
+    /// names itself (its session file's), which isn't in Watches (false);
+    /// none for No Watch.
+    fn named_watch(&self) -> Option<(String, bool)> {
+        self.open_watch()
+            .map(|e| e.watch.name.clone())
+            .filter(|n| !n.is_empty())
+            .map(|n| (n, true))
+            .or_else(|| (!self.watch.is_empty()).then(|| (self.watch.clone(), false)))
+    }
+
     /// What the strip shows, for the status line: the take's name, its
     /// watch and its state.
     fn status_words(&self) -> String {
@@ -3138,12 +3150,7 @@ impl TimegrapherApp {
         } else {
             None
         };
-        // The watch the Calibre card names, else the take's own.
-        let named = self
-            .open_watch()
-            .map(|e| e.watch.name.clone())
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| self.watch.clone());
+        let named = self.named_watch().map_or_else(String::new, |w| w.0);
         let quick = self.quick_listen || file.is_none() && named.is_empty();
         let name =
             file.unwrap_or_else(|| if quick { "Quick Listen" } else { "New Take" }.to_string());

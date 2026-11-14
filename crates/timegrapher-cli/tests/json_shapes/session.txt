@@ -212,4 +212,7 @@ software.git_hash
 software.name
 software.os
 software.version
+text_reports
+text_reports[].file
+text_reports[].text
 watch
