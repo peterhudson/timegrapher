@@ -322,10 +322,105 @@ fn a_chat_app_reads_a_watch() {
     analyze_gives_the_clis_document(&mut c, &take);
     sessions_checks_and_mistakes(&mut c, &dir, &take);
     recorded_position_by_position(&mut c, &dir);
+    the_compact_series_says_how_it_differs(&mut c, &cli, &take);
     the_view_skill_and_prompt(&mut c, &tools);
 
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `check_steadiness` gives a compact series document. Its `projection`
+/// names it and lists every path it took out, replaced or added, checked
+/// here against the CLI's own document for the same take (#1651).
+fn the_compact_series_says_how_it_differs(c: &mut Client, cli: &Path, take: &Path) {
+    let r = c.call("check_steadiness", json!({ "recordings": [path(take)] }));
+    assert!(r.get("isError").is_none(), "{r}");
+    let compact = &r["structuredContent"];
+    let out = Command::new(cli)
+        .arg("series")
+        .arg(take)
+        .args(["--views", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let full: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let p = &compact["projection"];
+    assert_eq!(p["schema"], "timegrapher.mcp.series_compact/1");
+    assert_eq!(p["of"], full["schema"]);
+    assert_eq!(
+        compact["schema"], full["schema"],
+        "readers keep the CLI's schema"
+    );
+    let listed = |key: &str| -> Vec<String> {
+        p[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    };
+    let (removed, replaced, added) = (listed("removed"), listed("replaced"), listed("added"));
+    let under = |path: &str, roots: &[&Vec<String>]| {
+        roots.iter().any(|list| {
+            list.iter().any(|r| {
+                path == r
+                    || path.starts_with(&format!("{r}."))
+                    || path.starts_with(&format!("{r}[]"))
+            })
+        })
+    };
+    let (full_paths, compact_paths) = (key_paths(&full), key_paths(compact));
+    let gone: Vec<&String> = full_paths
+        .iter()
+        .filter(|k| !compact_paths.contains(*k) && !under(k, &[&removed, &replaced]))
+        .collect();
+    assert!(gone.is_empty(), "taken out but not listed: {gone:?}");
+    let new: Vec<&String> = compact_paths
+        .iter()
+        .filter(|k| !full_paths.contains(*k) && !under(k, &[&added, &replaced]))
+        .collect();
+    assert!(new.is_empty(), "added but not listed: {new:?}");
+    // What is listed as taken out is out; this take has some of each.
+    for r in &removed {
+        assert!(!compact_paths.contains(r), "{r} is still there");
+    }
+    assert!(
+        removed.iter().any(|r| full_paths.contains(r)),
+        "{full_paths:?}"
+    );
+}
+
+/// Every object key in a document, as a path: `a.b`, with `[]` for every
+/// item of an array.
+fn key_paths(v: &Value) -> std::collections::BTreeSet<String> {
+    fn walk(v: &Value, at: &str, out: &mut std::collections::BTreeSet<String>) {
+        match v {
+            Value::Object(o) => {
+                for (k, v) in o {
+                    let p = if at.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{at}.{k}")
+                    };
+                    out.insert(p.clone());
+                    walk(v, &p, out);
+                }
+            }
+            Value::Array(a) => {
+                for v in a {
+                    walk(v, &format!("{at}[]"), out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = std::collections::BTreeSet::new();
+    walk(v, "", &mut out);
+    out
 }
 
 /// A path as the tools take it.
