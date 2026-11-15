@@ -1077,3 +1077,60 @@ mod fixture_validation {
         }
     }
 }
+
+// 4. The faint-side rule, live and saved.
+
+/// A watch whose amplitude swings 140° to 260° inside each 2 s window for
+/// a stretch, which smears those windows' sound 1 so the faint-side rule
+/// withholds some of their sides (#1738), steady at 270° around it.
+fn smeared(seed: u64) -> Audio {
+    let swung = |t: f64| (60.0..150.0).contains(&t);
+    generate(
+        &SynthConfig {
+            duration_s: 240.0,
+            snr_db: 26.0,
+            seed,
+            ..Default::default()
+        },
+        move |t| {
+            if swung(t) {
+                200.0 + 60.0 * (t * 1.7).sin()
+            } else {
+                270.0
+            }
+        },
+        |_| 0.0,
+    )
+}
+
+/// Saved and live withhold the same sides as too faint to read, judged
+/// on one chunk grid ([`timegrapher_core::stream::amplitude_chunk_of`],
+/// Norm on #1800): every chunk live has settled, the last open one
+/// waiting for the rest of its windows.
+#[test]
+fn saved_and_live_withhold_the_same_faint_sides() {
+    let a = smeared(1738);
+    let path = on_disk(&a, "faint");
+    let saved = stream(&path, 47.0);
+    std::fs::remove_file(&path).ok();
+    let live = pushed(&a, 4_800);
+    let sc = StreamConfig::default();
+    let w = AnalysisConfig::default().amplitude_window_s;
+    let chunk_of =
+        |s: f64| timegrapher_core::stream::amplitude_chunk_of(s, sc.chunk_s, sc.margin_s, w);
+    let wins = live.amplitude_windows();
+    let open = chunk_of(wins.last().expect("live windows").start_s);
+    let held = |ws: &[timegrapher_core::amplitude::AmplitudeWindow]| -> Vec<(i64, usize)> {
+        ws.iter()
+            .filter(|w| chunk_of(w.start_s) < open)
+            .flat_map(|w| {
+                (0..2)
+                    .filter(|&k| w.faint_withheld[k])
+                    .map(move |k| ((w.start_s * 1000.0).round() as i64, k))
+            })
+            .collect()
+    };
+    let (s, l) = (held(&saved.amplitude_windows), held(wins));
+    assert!(!s.is_empty(), "the smear withholds sides");
+    assert_eq!(s, l);
+}

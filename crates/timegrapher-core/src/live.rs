@@ -993,10 +993,23 @@ impl LiveAnalyzer {
         let fs = self.fs;
         let a = &self.cfg.analysis;
         let w = a.amplitude_window_s;
-        let start = self
-            .next_amp_s
-            .unwrap_or(from)
-            .max(off + beats::PRE_S + 0.01);
+        // On the saved read's grid of windows from the take's start, so
+        // live and saved read the same windows (#1738). The first may
+        // start with the take, as a saved read's does; a later one needs
+        // a beat's guard of the sound kept before it.
+        let floor = if off <= 0.0 {
+            0.0
+        } else {
+            off + beats::PRE_S + 0.01
+        };
+        // A grid not yet started takes the window that holds `from`; one
+        // already running (or restarted at a break) takes the next.
+        let on_grid = |t: f64| (t / w - 1e-9).ceil() * w;
+        let start = match self.next_amp_s {
+            Some(s) => on_grid(s),
+            None => (from / w + 1e-9).floor() * w,
+        }
+        .max(on_grid(floor));
         let mut stop = start;
         while stop + w <= to {
             stop += w;
@@ -1017,6 +1030,18 @@ impl LiveAnalyzer {
                 win.end_s += off;
                 win
             }));
+            // A side too faint against the same side's in its chunk is
+            // withheld once the chunk has settled, on the grid a saved read
+            // groups by: the newest window's chunk waits for the rest of
+            // its windows (#1738).
+            let sc = crate::stream::StreamConfig::default();
+            let chunk_of =
+                |s: f64| crate::stream::amplitude_chunk_of(s, sc.chunk_s, sc.margin_s, w);
+            let open = chunk_of(stop - w);
+            let first = chunk_of(start).saturating_sub(1);
+            let lo = self.amp.partition_point(|x| chunk_of(x.start_s) < first);
+            let hi = self.amp.partition_point(|x| chunk_of(x.start_s) < open);
+            amplitude::withhold_faint_by_chunk(&mut self.amp[lo..hi], chunk_of);
             // A side's edge marked on the wrong sound, as in a whole file;
             // only the latest windows can change.
             let span = amplitude::OUTLIER_SPAN_S;

@@ -371,11 +371,16 @@ pub struct AmplitudeWindow {
     #[serde(skip)]
     pub culled_ms: Option<Box<Culled>>,
     /// Each side withheld because its sound 1 was too faint against the
-    /// same side's in its chunk ([`FAINT_SOUND_MAX_SHARE`], #1738): it
+    /// same side's in its chunk ([`withhold_faint_by_chunk`], #1738): it
     /// keeps no edges and no amplitude, and is named in the caveats. Even
     /// side first. Not in the JSON.
     #[serde(skip)]
     pub faint_withheld: [bool; 2],
+    /// Each side's sound 1, its height over the floor, as read in this
+    /// window, for [`withhold_faint_by_chunk`]; None where none was found.
+    /// Even side first. Not in the JSON or the beat cache.
+    #[serde(skip)]
+    pub sound_1: [Option<f32>; 2],
 }
 
 /// Each side's culled unlock and drop, ms from the beat time: even, odd.
@@ -393,8 +398,34 @@ impl AmplitudeWindow {
             c.swap(0, 1);
         }
         self.faint_withheld.swap(0, 1);
+        self.sound_1.swap(0, 1);
         self.beat_error_ms = self.beat_error_ms.map(|v| -v);
         self.beat_error_unlock_ms = self.beat_error_unlock_ms.map(|v| -v);
+    }
+
+    /// Withhold side `k` (0 even, 1 odd) as too faint to read: no
+    /// amplitude, no edges, culled or kept, and so no unlock beat error
+    /// (#1738).
+    fn withhold_side(&mut self, k: usize) {
+        let [deg, unlock, drop] = if k == 0 {
+            [
+                &mut self.even_deg,
+                &mut self.even_unlock_ms,
+                &mut self.even_drop_ms,
+            ]
+        } else {
+            [
+                &mut self.odd_deg,
+                &mut self.odd_unlock_ms,
+                &mut self.odd_drop_ms,
+            ]
+        };
+        (*deg, *unlock, *drop) = (None, None, None);
+        let mut c = self.culled();
+        c[k] = None;
+        self.set_culled(c);
+        self.beat_error_unlock_ms = None;
+        self.faint_withheld[k] = true;
     }
 
     /// Each side's culled edges (see [`AmplitudeWindow::culled_ms`]).
@@ -578,23 +609,11 @@ pub fn windows_between(
         reads.push((start, lo..hi, [side(true), side(false)]));
         start += window_s;
     }
-    // A side whose sound 1 is faint against the same side's in the chunk
-    // is withheld, edges and all (#1738).
-    let faint = [0, 1].map(|k| {
-        faint_sides(
-            &reads
-                .iter()
-                .map(|r| r.2[k].as_ref().map(|s| s.sound_1))
-                .collect::<Vec<_>>(),
-        )
-    });
-    for (i, (start, span, sides)) in reads.into_iter().enumerate() {
-        let faint_withheld = [faint[0][i], faint[1][i]];
+    for (start, span, sides) in reads {
         out.push(window_of(
             &beats[span],
             (start, start + window_s),
             &sides,
-            faint_withheld,
             osc_period_s,
             cfg,
         ));
@@ -602,23 +621,46 @@ pub fn windows_between(
     out
 }
 
+/// Withhold, edges and all, each side whose sound 1 stands under
+/// [`FAINT_SOUND_MAX_SHARE`] of the median of the same side's in its
+/// chunk (#1738): `chunk_of` names a window's chunk from its start,
+/// seconds, as [`crate::stream::amplitude_chunk_of`] does, the one grid
+/// a saved read and live both group by. `wins` in time order. A side
+/// withheld keeps its sound 1, so a second call withholds the same.
+pub fn withhold_faint_by_chunk(wins: &mut [AmplitudeWindow], chunk_of: impl Fn(f64) -> usize) {
+    let mut a = 0;
+    while a < wins.len() {
+        let k = chunk_of(wins[a].start_s);
+        let b = a + wins[a..].partition_point(|w| chunk_of(w.start_s) == k);
+        withhold_faint(&mut wins[a..b]);
+        a = b;
+    }
+}
+
+/// [`withhold_faint_by_chunk`] for the windows of one chunk.
+fn withhold_faint(wins: &mut [AmplitudeWindow]) {
+    for k in 0..2 {
+        let heights: Vec<Option<f32>> = wins.iter().map(|w| w.sound_1[k]).collect();
+        for (w, faint) in wins.iter_mut().zip(faint_sides(&heights)) {
+            if faint {
+                w.withhold_side(k);
+            }
+        }
+    }
+}
+
 /// One window of [`windows_between`] from its beats `win`, its start and
-/// end, seconds, and each side's read in it, `sides`; a side in
-/// `faint_withheld` keeps nothing (#1738).
+/// end, seconds, and each side's read in it, `sides`.
 fn window_of(
     win: &[Beat],
     span_s: (f64, f64),
     sides: &[Option<SideEdges>; 2],
-    faint_withheld: [bool; 2],
     osc_period_s: f64,
     cfg: &AmplitudeConfig,
 ) -> AmplitudeWindow {
     // The unlock's and drop's offsets from the beat times, seconds,
     // and the amplitude when it passes the gate.
     let side = |k: usize| -> Option<(Option<f64>, f64, f64)> {
-        if faint_withheld[k] {
-            return None;
-        }
         let (unlock, drop) = sides[k].as_ref()?.edges?;
         let a = side_deg(drop - unlock, osc_period_s, cfg.lift_deg);
         Some((a, unlock, drop))
@@ -652,7 +694,8 @@ fn window_of(
         even_drop_ms: even.map(|s| s.2 * 1000.0),
         odd_drop_ms: odd.map(|s| s.2 * 1000.0),
         culled_ms,
-        faint_withheld,
+        faint_withheld: [false; 2],
+        sound_1: [0, 1].map(|k| sides[k].as_ref().map(|s| s.sound_1)),
     }
 }
 
@@ -778,6 +821,7 @@ mod tests {
                 odd_drop_ms: None,
                 culled_ms: None,
                 faint_withheld: [false; 2],
+                sound_1: [None; 2],
             })
             .collect();
         // Window 30's Tock edge lands on the wrong sound.
@@ -1027,6 +1071,7 @@ mod tests {
             odd_drop_ms: Some(0.0),
             culled_ms: None,
             faint_withheld: [false; 2],
+            sound_1: [None; 2],
         };
         w.set_culled([Some([-5.0, 0.0]), None]);
         w.swap_sides();
@@ -1053,6 +1098,7 @@ mod tests {
             odd_drop_ms: None,
             culled_ms: None,
             faint_withheld: [false; 2],
+            sound_1: [None; 2],
         };
         at_lift(&mut w, 0.25, 52.0, 56.0);
         let again = side_deg(0.007, 0.25, 56.0);
@@ -1296,7 +1342,9 @@ mod tests {
             });
         }
         let cfg = AmplitudeConfig::default();
-        let w = windows_between(&env, fs, &beats, 2.0 * period, 2.0, 0.0, secs - 0.5, &cfg);
+        let mut w = windows_between(&env, fs, &beats, 2.0 * period, 2.0, 0.0, secs - 0.5, &cfg);
+        // The 60 s as one chunk, as the run pinned below was read.
+        withhold_faint_by_chunk(&mut w, |_| 0);
         assert_eq!(w.len(), noise.len());
         // A side read an edge when it kept them, was culled at the gate or
         // withheld as faint.

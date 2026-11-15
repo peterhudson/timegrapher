@@ -243,6 +243,15 @@ pub fn encode(log: &BeatLog, peak: f32) -> Vec<u8> {
         }
         let [e, d] = w.faint_withheld;
         o.push(u8::from(e) | u8::from(d) << 1);
+        for h in w.sound_1 {
+            match h {
+                Some(h) => {
+                    o.push(1);
+                    o.extend_from_slice(&h.to_le_bytes());
+                }
+                None => o.push(0),
+            }
+        }
     }
     for times in [&log.clipped_beats, &log.jumps, &log.sided, &log.by_count] {
         len(&mut o, times.len());
@@ -406,6 +415,14 @@ fn read_window(r: &mut Bytes) -> Option<AmplitudeWindow> {
     if faint > 3 {
         return None;
     }
+    let mut sound_1 = [None; 2];
+    for h in &mut sound_1 {
+        *h = match r.u8()? {
+            0 => None,
+            1 => Some(r.f32()?),
+            _ => return None,
+        };
+    }
     let mut w = AmplitudeWindow {
         start_s,
         end_s,
@@ -419,6 +436,7 @@ fn read_window(r: &mut Bytes) -> Option<AmplitudeWindow> {
         odd_drop_ms,
         culled_ms: None,
         faint_withheld: [faint & 1 != 0, faint & 2 != 0],
+        sound_1,
     };
     w.set_culled([
         eu.zip(ed).map(|(u, d)| [u, d]),

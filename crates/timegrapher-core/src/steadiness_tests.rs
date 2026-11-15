@@ -1765,6 +1765,7 @@ fn a_window_goes_in_the_cell_its_middle_lies_in() {
         odd_drop_ms: None,
         culled_ms: None,
         faint_withheld: [false; 2],
+        sound_1: [None; 2],
     };
     let log = BeatLog {
         lock_template_kept: false,

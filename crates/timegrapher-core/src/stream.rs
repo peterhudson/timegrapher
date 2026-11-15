@@ -434,6 +434,18 @@ pub(crate) fn swap_found(w: &mut AmplitudeWindow, k: usize, swaps: &[(usize, f64
     }
 }
 
+/// The chunk, counted from 0, whose amplitude job reads the window of
+/// `window_s` starting at `start_s` ([`State::amplitude_job`]): the first
+/// whose own stretch of `chunk_s` ends after it starts, with room for the
+/// window in its `margin_s`. The one grid a saved read and live both
+/// group the windows by for [`amplitude::withhold_faint_by_chunk`]
+/// (#1738).
+pub fn amplitude_chunk_of(start_s: f64, chunk_s: f64, margin_s: f64, window_s: f64) -> usize {
+    let k = (start_s / chunk_s).floor().max(0.0) as usize;
+    let core_b = (k + 1) as f64 * chunk_s;
+    k + usize::from(start_s + window_s > core_b + margin_s + 1e-9)
+}
+
 /// The amplitude windows starting in one chunk, from `from_s` to `to_s`
 /// seconds, and what finding them needs besides the chunk's envelope:
 /// its numbered beats, which the in-order analysis gives
@@ -954,6 +966,10 @@ impl State {
             beats: self.beats,
             amplitude_windows: {
                 let mut amp = self.amp;
+                let (c, w) = (&self.cfg, self.cfg.analysis.amplitude_window_s);
+                amplitude::withhold_faint_by_chunk(&mut amp, |s| {
+                    amplitude_chunk_of(s, c.chunk_s, c.margin_s, w)
+                });
                 amplitude::reject_side_outliers(&mut amp, amplitude::OUTLIER_SPAN_S);
                 amp
             },

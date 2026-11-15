@@ -167,6 +167,7 @@ mod tests {
             odd_drop_ms: None,
             culled_ms: None,
             faint_withheld: [false; 2],
+            sound_1: [None; 2],
         };
         let windows = [
             window(Some(0.3), Some(8.0)),

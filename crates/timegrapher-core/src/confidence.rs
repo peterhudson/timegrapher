@@ -891,6 +891,7 @@ mod tests {
                 odd_drop_ms: None,
                 culled_ms: None,
                 faint_withheld: [false; 2],
+                sound_1: [None; 2],
             })
             .collect();
         let pairs: Vec<Vec<f64>> = windows
@@ -926,6 +927,7 @@ mod tests {
                 odd_drop_ms: None,
                 culled_ms: None,
                 faint_withheld: [false; 2],
+                sound_1: [None; 2],
             })
             .collect()
     }
@@ -1093,6 +1095,7 @@ mod tests {
                 odd_drop_ms: None,
                 culled_ms: None,
                 faint_withheld: [false; 2],
+                sound_1: [None; 2],
             })
             .collect()
     }
