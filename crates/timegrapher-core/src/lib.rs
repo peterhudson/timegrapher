@@ -54,6 +54,7 @@ pub mod palette;
 pub mod period_ticks;
 pub mod periodicity;
 pub mod poise;
+pub mod poise_case;
 pub mod poise_picture;
 pub mod position_line;
 pub mod power_reserve;

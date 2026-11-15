@@ -17,6 +17,13 @@ const MARK_ROOM_PX = +ticksRs.match(/pub const MARK_ROOM_PX: f64 = ([\d.]+);/)[1
 // What each reference line says on hover, from core steady_views::reference_hover.
 const viewsRs = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/steady_views.rs"), "utf8");
 const hoverText = viewsRs.match(/pub fn reference_hover[\s\S]*?format!\("([^"]*)"\)/)[1];
+// The switches' hints and a name's line height in a narrow lane, as the
+// server fills them in from core (#1764).
+const coreText = (name) => viewsRs.match(new RegExp(`pub const ${name}: &str = "([\\s\\S]*?)";`))[1].replace(/\\\n\s*/g, "");
+const scaleRs = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/chart_scale.rs"), "utf8");
+const WHEEL_WORDS = { wheels_hint: coreText("WHEELS_HINT"), mesh_hint: coreText("MESH_HINT"),
+  name_line_h: +scaleRs.match(/pub const NAME_LINE_H: f64 = ([\d.]+);/)[1],
+  strong_hold: +scaleRs.match(/pub const STRONG_HOLD: f64 = ([\d.]+);/)[1] };
 const REFERENCE_HOVER = Object.fromEntries(["1 min", "1 h"].map((l) => [l, hoverText.replace("{label}", l)]));
 function definition(name) {
   const match = html.match(new RegExp(`^function ${name}\\([^\\n]*\\{[\\s\\S]*?^\\}`, "m"));
@@ -24,16 +31,16 @@ function definition(name) {
   return match[0];
 }
 const context = vm.createContext({
-  VIRIDIS, PERIOD_TICKS, MARK_ROOM_PX, REFERENCE_HOVER, mapPaints: [], mapsLog: false, showWheels: true, Uint8ClampedArray,
+  VIRIDIS, PERIOD_TICKS, MARK_ROOM_PX, REFERENCE_HOVER, WHEEL_WORDS, mapPaints: [], mapsLog: false, showWheels: true, showMesh: true, Uint8ClampedArray,
   steadyView: "periods", fftTiming: false,
   chartWidth: () => 600, logTicks: () => [], linTicks: () => [], fmtTime: (t) => `t${t}`, TIME_STEPS: [],
   plotArea: () => ({ id: "c", svg: "" }), gridDown: () => "", gridAcross: () => "", CHAR_W: 6.6, secs: (t) => `${t} s`, wheelTitle: String,
 });
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
 assert.ok(html.includes("const MARK_ROOM_PX = /*MARK_ROOM_PX*/null;"), "the server fills the mark room in");
-vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const MARKS = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0] + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 
-  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "oneMark", "wheelShort", "meshShort", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markStack", "markWidth", "markText", "laneRight", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
-    .map(definition).join("\n") + "\nthis.mapPaints = mapPaints; this.WHEELS_HINT = WHEELS_HINT;", context);
+vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const MARKS = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0].replace(/^const WHEELS_HINT/, "var WHEELS_HINT").replace(/, MESH_HINT/, ", MESH_HINT") + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 
+  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "oneMark", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markPlaceRow", "markWidth", "markText", "laneRight", "laneRightAt", "markStackNames", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
+    .map(definition).join("\n") + "\nthis.mapPaints = mapPaints; this.WHEELS_HINT = WHEELS_HINT; this.MESH_HINT = MESH_HINT;", context);
 
 // Values made in the renderer's context, as plain ones.
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -89,7 +96,7 @@ test("the STFT and Wavelet Maps draw each series' map or say why not", () => {
   // The readout's size, the unit as core writes it: degrees with no gap (#1428).
   assert.equal(context.mapSize({ unit_text: "°" }, 3.1), "3.1°");
   assert.equal(context.mapSize({ unit_text: " ms" }, 0.12), "0.12 ms");
-  assert.ok(drawn.includes(">4th Wheel<"), "named by its short name");
+  assert.ok(drawn.includes(">fourth<") && drawn.includes(">wheel<"), "named a word to a line");
   assert.equal(context.mapPaints.length, 1);
   assert.ok(context.steadyPlot({ series: "amplitude" }, "wavelet", doc).includes("needs a longer stretch of unbroken readings"));
   assert.ok(context.steadyPlot({ series: "rate" }, "stft", doc).includes("needs 20 minutes of readings"));
@@ -115,8 +122,8 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
     { label: "1 min", period_s: 60 }, { label: "1 h", period_s: 3600 }] } } };
   context.showWheels = true;
   assert.deepEqual(plain(context.wheelMarks(plainDoc, [0, 5])), [
-    { x: Math.log10(60), color: "--callout", width: 1, name: "1 min", rank: "faint", ink: "--callout", hover: "Reference period, 1 min. This calibre's wheels aren't known." },
-    { x: Math.log10(3600), color: "--callout", width: 1, name: "1 h", rank: "faint", ink: "--callout", hover: "Reference period, 1 h. This calibre's wheels aren't known." },
+    { x: Math.log10(60), color: "--callout", width: 1, name: "1 min", rank: "faint", ink: "--callout", hover: "Reference period, 1 min. This calibre's wheels aren't known.", below: false },
+    { x: Math.log10(3600), color: "--callout", width: 1, name: "1 h", rank: "faint", ink: "--callout", hover: "Reference period, 1 h. This calibre's wheels aren't known.", below: false },
   ]);
   assert.ok(html.includes("const REFERENCE_HOVER = /*REFERENCE_HOVER*/null;"), "the server fills the hovers in");
   // Only those inside the axis.
@@ -125,18 +132,18 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   // the call-out grey; series gives no reference lines then.
   const named = { input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }], reference_lines: [] } } };
   assert.deepEqual(plain(context.wheelMarks(named, [0, 5])), [
-    { x: Math.log10(60), color: "--callout", width: 1.2, dash: "dense", name: "fourth wheel", rank: "strong", ink: "--callout", hover: "fourth wheel: 60 s" },
-    { x: Math.log10(30), color: "--callout", width: 1, dash: "sparse", name: "fourth wheel ×2", rank: "faint", ink: "--callout", hover: "fourth wheel ×2: 30 s" },
+    { x: Math.log10(60), color: "--callout", width: 1.2, dash: "dense", name: "fourth wheel", rank: "strong", ink: "--callout", hover: "fourth wheel: 60 s", below: false },
+    { x: Math.log10(30), color: "--callout", width: 1, dash: "sparse", name: "fourth wheel ×2", rank: "faint", ink: "--callout", hover: "fourth wheel ×2: 30 s", below: false },
   ]);
   // On a map (1 to 100 s here), a dotted row at each one inside its
-  // periods, named by its short name in the lane right of the map, joined
+  // periods, named a word to a line in the lane right of the map, joined
   // by a tick; a wheel's ×2 isn't marked there.
   context.mapPaints.length = 0;
   const rows = (doc) => context.steadyPlot({ series: "amplitude" }, "stft", { duration_s: 1800, time_frequency: [map], ...doc })
     .split("map-layer")[1];
   assert.match(rows(plainDoc), /<line[^>]*stroke="var\(--callout\)"[^>]*stroke-dasharray="0 5"[^>]*\/><polyline[^>]*stroke="var\(--callout\)"[^>]*\/><text[^>]*>1 min</s);
   assert.ok(!rows(plainDoc).includes(">1 h<"));
-  assert.match(rows(named), /<line[^>]*stroke="var\(--callout\)"[^>]*\/><polyline[^>]*\/><text[^>]*font-weight:600[^>]*>4th Wheel</s);
+  assert.match(rows(named), /<line[^>]*stroke="var\(--callout\)"[^>]*\/><polyline[^>]*\/><text[^>]*font-weight:600[^>]*>fourth<\/text><text[^>]*font-weight:600[^>]*>wheel</s);
   assert.ok(!rows(named).includes("×2"));
   // A calibre's meshes (#1472): faint and loosely dashed, named by their
   // pinion, on the axes and the maps; one at a wheel's or a ×2's period
@@ -147,20 +154,25 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
       { name: "centre pinion", period_s: 30.2, about: "30.2 s" }] } } };
   assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).slice(2), [
     { x: Math.log10(20 / 3), color: "--callout", width: 1, dash: "mesh", name: "fourth pinion Mesh", rank: "faint", ink: "--callout",
-      hover: "fourth pinion Mesh: 6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves." },
+      hover: "fourth pinion Mesh: 6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves.", below: true },
     { x: Math.log10(600 / 13), color: "--callout", width: 1, dash: "mesh", name: "third pinion Mesh", rank: "faint", ink: "--callout",
-      hover: "third pinion Mesh: 46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves." },
+      hover: "third pinion Mesh: 46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves.", below: true },
   ]);
-  assert.equal(context.meshShort("fourth pinion"), "4th Mesh");
-  assert.equal(context.meshShort("centre pinion"), "Centre Mesh");
   assert.equal(rows(meshed).match(/stroke-dasharray="10 10"/g).length, 2);
-  assert.ok(rows(meshed).includes(">4th Mesh<") && rows(meshed).includes(">3rd Mesh<"));
-  // Wheel Periods off: nothing, on the axes or the maps.
+  assert.equal(rows(meshed).match(/>Mesh</g).length, 2, "each mesh named a word to a line");
+  assert.ok(rows(meshed).includes(">pinion<"));
+  // Wheel Periods off: no wheel, ×2 or reference, on the axes or the maps;
+  // the meshes have their own switch (#1764).
   context.showWheels = false;
   assert.deepEqual(plain(context.wheelMarks(named, [0, 5])), []);
   assert.deepEqual(plain(context.wheelMarks(plainDoc, [0, 5])), []);
   assert.ok(!rows(named).includes("<line") && !rows(plainDoc).includes("<line"));
+  assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).map((m) => m.name), ["fourth pinion Mesh", "third pinion Mesh"]);
   context.showWheels = true;
+  context.showMesh = false;
+  assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).map((m) => m.name), ["fourth wheel", "fourth wheel ×2"]);
+  assert.ok(!rows(meshed).includes("10 10"));
+  context.showMesh = true;
 });
 
 test("Wheel Periods sits beside each period view's own switch, with the app's hint", () => {
@@ -173,11 +185,11 @@ test("Wheel Periods sits beside each period view's own switch, with the app's hi
     else assert.ok(!bar.includes('data-switch="log"'), bar);
     assert.ok(bar.includes('data-switch="wheels" aria-pressed="true"'), bar);
     assert.ok(bar.includes("one minute and one hour are marked in grey"), bar);
+    assert.ok(bar.includes('data-switch="mesh" aria-pressed="true"') && bar.includes("each pinion&#39;s mesh"), bar);
   }
-  // The app's own words (steady::WHEELS_HINT), its line breaks joined.
-  const steady = fs.readFileSync(path.join(__dirname, "../../timegrapher-app/src/steady.rs"), "utf8");
-  const app = steady.match(/pub const WHEELS_HINT: &str = "([\s\S]*?)";/)[1].replace(/\\\n\s*/g, "");
-  assert.equal(context.WHEELS_HINT, app);
+  // Core's words (steady_views::WHEELS_HINT and MESH_HINT).
+  assert.equal(context.WHEELS_HINT, WHEEL_WORDS.wheels_hint);
+  assert.equal(context.MESH_HINT, WHEEL_WORDS.mesh_hint);
   context.steadyView = "readings";
   assert.equal(context.steadySwitch(), "");
 });

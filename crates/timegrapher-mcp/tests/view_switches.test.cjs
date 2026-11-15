@@ -14,23 +14,23 @@ const pick = (re, what) => {
   if (!m) throw new Error(`Missing ${what}`);
   return m[0];
 };
-const context = vm.createContext({ steadyView: "periods", fftTiming: false, mapsLog: false, showWheels: true, showInfo: false });
+const context = vm.createContext({ steadyView: "periods", fftTiming: false, mapsLog: false, showWheels: true, showMesh: true, showInfo: false });
 vm.runInContext([
   pick(/^const SWITCH_DEFAULTS = [^\n]*;/m, "SWITCH_DEFAULTS"),
   pick(/^const viewSwitches = \{\};/m, "viewSwitches"),
   pick(/^function switchView\([^\n]*\{[\s\S]*?^\}/m, "switchView"),
 ].join("\n"), context);
-const now = () => JSON.parse(vm.runInContext("JSON.stringify({ fftTiming, mapsLog, showWheels, showInfo, steadyView })", context));
+const now = () => JSON.parse(vm.runInContext("JSON.stringify({ fftTiming, mapsLog, showWheels, showMesh, showInfo, steadyView })", context));
 
 test("a view's switches stay with it, and a view not yet shown starts from the defaults", () => {
-  vm.runInContext("showWheels = false; showInfo = true;", context);
+  vm.runInContext("showWheels = false; showMesh = false; showInfo = true;", context);
   vm.runInContext("switchView('stft')", context);
-  assert.deepEqual(now(), { fftTiming: false, mapsLog: false, showWheels: true, showInfo: false, steadyView: "stft" });
+  assert.deepEqual(now(), { fftTiming: false, mapsLog: false, showWheels: true, showMesh: true, showInfo: false, steadyView: "stft" });
   vm.runInContext("mapsLog = true;", context);
   vm.runInContext("switchView('wavelet')", context);
   assert.equal(now().mapsLog, false, "the STFT's Log Scale is not the Wavelet's");
   vm.runInContext("switchView('periods')", context);
-  assert.deepEqual(now(), { fftTiming: false, mapsLog: false, showWheels: false, showInfo: true, steadyView: "periods" });
+  assert.deepEqual(now(), { fftTiming: false, mapsLog: false, showWheels: false, showMesh: false, showInfo: true, steadyView: "periods" });
   vm.runInContext("switchView('stft')", context);
   assert.equal(now().mapsLog, true);
 });

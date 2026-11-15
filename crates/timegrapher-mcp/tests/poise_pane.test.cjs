@@ -17,10 +17,10 @@ function constant(name) {
   if (!match) throw new Error(`Missing ${name}`);
   return match[0].replace(/^(?:const|let) /, "var ");
 }
-const context = vm.createContext({ MINUS: "−", CHAR_W: 6.6, ICONS: null, paneWs: {}, chartWidth: () => 1240 });
+const context = vm.createContext({ MINUS: "−", CHAR_W: 6.6, ICONS: null, POISE_CASE: null, paneWs: {}, chartWidth: () => 1240 });
 vm.runInContext(["PANE_MIN_CHART", "PANE_CHAR_W", "poiseShown"].map(constant).join("\n"), context);
 vm.runInContext(["esc", "fixedDigits", "axisLabel", "gridAcross", "valueTick", "testPane",
-  "icon", "columnHead", "paneChartWidth", "plHead", "poisePane", "poiseDots", "poisePlot", "poiseDial", "poiseKey"].map(definition).join("\n"), context);
+  "icon", "columnHead", "paneChartWidth", "plHead", "poisePane", "poiseDots", "poisePlot", "poiseDial", "poiseCase", "poiseKey"].map(definition).join("\n"), context);
 
 const hours = [[0, "12H"], [45, "1H30"], [90, "3H"], [135, "4H30"], [180, "6H"], [225, "7H30"], [270, "9H"], [315, "10H30"]];
 const dot = (angle_deg, code, rate) => ({ angle_deg, code, rate_s_per_day: rate, rate_se: 0.2, text: `${rate} s/d`, figure: `${rate}` });
@@ -114,4 +114,39 @@ test("no ring number sits on a point or its ± bar", () => {
   const labels = [...svg.matchAll(/<text x="([\d.]+)" y="([\d.]+)" text-anchor="middle" style="fill:var\(--text3\)">([^<]*)</g)].map((m) => m[3]);
   assert.ok(labels.length, svg);
   for (const v of ["+2", "+4"]) assert.ok(!labels.includes(v), `${v} on the point: ${labels}`);
+});
+
+// A case like core's: a body, a crown out to 1.2 at 3H, one knurl line, its
+// names moved out at 3H and the 45° stops (#1762).
+const square = (r) => [[r, 0], [0, r], [-r, 0], [0, -r]];
+const watchCase = {
+  case: { shapes: [square(0.97), [[0.97, -0.1], [1.2, -0.1], [1.2, 0.1], [0.97, 0.1]]], knurl: [[[1.05, 0], [1.18, 0]]], bezel_r: 1.012 },
+  reach: 1.2, case_line: 1, bezel_line: 0.8, knurl_line: 0.8,
+  labels: hours.map(([d]) => [d, d === 90 ? 1.34 : d % 90 === 45 ? 1.29 : null]),
+};
+
+test("Dial draws the watch case first, fainter than the grid, and moves the names it covers", () => {
+  const plain = context.poiseDial(picture, 400);
+  assert.ok(!plain.includes("poise-case"), "no case without core's");
+  context.POISE_CASE = watchCase;
+  try {
+    const svg = context.poiseDial(picture, 400);
+    const at = svg.indexOf('class="poise-case"');
+    assert.ok(at > 0, svg);
+    const kase = svg.slice(at, svg.indexOf("/></g>", svg.indexOf('fill="var(--card)"', at)));
+    assert.ok(!/<(line|text|circle|path|polyline)\b/.test(svg.slice(0, at)), "the case drawn before the grid and the points");
+    assert.ok(kase.includes('fill="var(--case-line)"') && kase.includes('fill="var(--case-face)"'), "outline under the face");
+    assert.equal((kase.match(/<polygon /g) || []).length, 4, "each shape outlined, then filled");
+    assert.ok(kase.includes('fill="var(--card)" stroke="var(--case-line)"'), "the bezel in the pane's colour");
+    // Fits: the 3H name at 1.34 of the ring stays inside the drawing, 14 px in.
+    const S = 400, outer = (S / 2 - 14) / 1.34;
+    const x3 = Number(svg.match(/<text x="([\d.]+)" y="[\d.]+" text-anchor="middle">3H</)[1]);
+    assert.ok(Math.abs(x3 - (S / 2 + 1.34 * outer)) < 0.2, `${x3}`);
+    const x12 = svg.match(/<text x="([\d.]+)" y="([\d.]+)" text-anchor="middle">12H</);
+    assert.ok(Math.abs(Number(x12[2]) - (S / 2 - outer - 16 + 4)) < 0.2, "12H keeps its place just outside the ring");
+    const b = svg.match(/<circle cx="200" cy="200" r="([\d.]+)" fill="var\(--card\)"/);
+    assert.ok(b && Math.abs(Number(b[1]) - 1.012 * outer) < 0.1, "the bezel just outside the ring");
+  } finally {
+    context.POISE_CASE = null;
+  }
 });

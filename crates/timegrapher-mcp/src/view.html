@@ -221,6 +221,10 @@ const GROUP_NAMES = /*GROUP_NAMES*/null;
 // The app's icons, core's drawings (core `icons`): each series' by its
 // name, the "i", and their line width. The server fills them in.
 const ICONS = /*ICONS*/null;
+// The watch case behind the poise dial (core `poise_case`, #1762) at an
+// outer ring of radius 1: its shapes, knurl and bezel, its reach, its
+// line widths and where each hour name it would cover goes instead.
+const POISE_CASE = /*POISE_CASE*/null;
 // Each figure's decimals: core's library::base_digits (rate 1, amplitude
 // 0, beat error 2, jitter 0), filled in by the server. A figure with a ±
 // takes the decimals the server gives beside it (library::figure_digits),
@@ -1018,13 +1022,23 @@ function poisePlot(pic, width) {
 // ends at the inner and outer rings; the mean a dotted ring, the wave grey.
 function poiseDial(pic, width) {
   const [lo, hi, step] = pic.axis;
-  const S = Math.min(width || 400, 420), c = S / 2, outer = c - 40, inner = outer * 0.15;
+  const S = Math.min(width || 400, 420), c = S / 2;
+  // Room round the ring for the hour names, moved out past the case.
+  const far = Math.max(1, ...((POISE_CASE || {}).labels || []).map(([, f]) => f || 0));
+  const outer = Math.min(c - 40, (c - 14) / far), inner = outer * 0.15;
+  // Each hour name's place: past the case where core moves it, else just
+  // outside the ring.
+  const nameAt = (deg) => {
+    const f = (((POISE_CASE || {}).labels || []).find(([d]) => Math.abs(d - deg) < 1e-6) || [])[1];
+    const r = f ? f * outer : outer + 16, a = (deg - 90) * Math.PI / 180;
+    return [c + r * Math.cos(a), c + r * Math.sin(a)];
+  };
   const rad = (r) => inner + (r - lo) / (hi - lo) * (outer - inner);
   const xy = (deg, r) => {
     const a = (deg - 90) * Math.PI / 180, q = rad(r);
     return [+(c + q * Math.cos(a)).toFixed(1), +(c + q * Math.sin(a)).toFixed(1)];
   };
-  let g = "";
+  let g = poiseCase(c, outer);
   const n = Math.round((hi - lo) / step);
   // The ring numbers half way between two stops from the slowest hour, so
   // they keep off the spokes, the points and the mean's name there.
@@ -1048,7 +1062,6 @@ function poiseDial(pic, width) {
       };
       if (pic.points.some(covers)) continue;
       // Nor on an hour's name round the face.
-      const nameAt = (deg) => { const a = (deg - 90) * Math.PI / 180; return [c + (outer + 16) * Math.cos(a), c + (outer + 16) * Math.sin(a)]; };
       if (pic.hours.some(([deg]) => near(nameAt(deg), 34))) continue;
       if (pic.mean && pic.slowest_deg != null && near(xy(pic.slowest_deg, pic.mean.rate_s_per_day), 20 + pic.mean.name.length * 3.5)) continue;
       g += `<text x="${x}" y="${y + 4}" text-anchor="middle" style="fill:var(--text3)">${esc(valueTick({ series: "rate", unit: "s/d" }, v, step, false))}</text>`;
@@ -1057,8 +1070,8 @@ function poiseDial(pic, width) {
   for (const [deg, code] of pic.hours) {
     const [x0, y0] = xy(deg, lo), [x1, y1] = xy(deg, hi);
     g += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" class="grid"/>`;
-    const a = (deg - 90) * Math.PI / 180;
-    g += `<text x="${(c + (outer + 16) * Math.cos(a)).toFixed(1)}" y="${(c + (outer + 16) * Math.sin(a) + 4).toFixed(1)}" text-anchor="middle">${esc(code)}</text>`;
+    const [lx, ly] = nameAt(deg);
+    g += `<text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle">${esc(code)}</text>`;
   }
   if (pic.mean) g += `<circle cx="${c}" cy="${c}" r="${rad(pic.mean.rate_s_per_day).toFixed(1)}" fill="none" stroke="var(--text2)" stroke-dasharray="3 3"/>`;
   if (pic.wave.length) g += `<path d="${pic.wave.map(([d, r], i) => `${i ? "L" : "M"}${xy(d, r).join(" ")}`).join(" ")}" fill="none" stroke="var(--text2)" stroke-width="1.5"/>`;
@@ -1069,6 +1082,22 @@ function poiseDial(pic, width) {
   g += poiseDots(pic, { plot: false, xy });
   g += `<text x="${S - 4}" y="14" text-anchor="end">${esc(pic.dial_key)}</text>`;
   return `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" style="margin:auto" role="img" aria-label="${esc(pic.dial_key)}">${g}</svg>`;
+}
+
+// The watch case behind the dial, centred at (c, c) round an outer ring of
+// radius `outer`, fainter than the grid and drawn before it (#1762): every
+// shape outlined, then every shape's face over that so only the union's
+// outline shows, the crown's knurl, and the bezel last in the pane's colour.
+function poiseCase(c, outer) {
+  if (!POISE_CASE) return "";
+  const k = POISE_CASE.case;
+  const pts = (s) => s.map(([x, y]) => `${(c + x * outer).toFixed(1)},${(c + y * outer).toFixed(1)}`).join(" ");
+  const shapes = k.shapes.map((s) => `<polygon points="${pts(s)}"/>`).join("");
+  const knurl = k.knurl.map(([[x1, y1], [x2, y2]]) =>
+    `<line x1="${(c + x1 * outer).toFixed(1)}" y1="${(c + y1 * outer).toFixed(1)}" x2="${(c + x2 * outer).toFixed(1)}" y2="${(c + y2 * outer).toFixed(1)}"/>`).join("");
+  return `<g class="poise-case" aria-hidden="true"><g fill="var(--case-line)" stroke="var(--case-line)" stroke-width="${2 * POISE_CASE.case_line}" stroke-linejoin="round">${shapes}</g>`
+    + `<g fill="var(--case-face)">${shapes}</g><g stroke="var(--case-line)" stroke-width="${POISE_CASE.knurl_line}">${knurl}</g>`
+    + `<circle cx="${c}" cy="${c}" r="${(k.bezel_r * outer).toFixed(1)}" fill="var(--card)" stroke="var(--case-line)" stroke-width="${POISE_CASE.bezel_line}"/></g>`;
 }
 
 // The key over the picture: the points, then the wave once it is fitted.
@@ -1268,13 +1297,13 @@ let steadyView = null;
 const TIME_BANDS = 12;
 // A switch in a view's toolbar changes only that view (Hugh, 11-05), as
 // the app's panes do: each view keeps its own, from these at first.
-const SWITCH_DEFAULTS = { fftTiming: false, mapsLog: false, showWheels: true, showInfo: false };
-let { fftTiming, mapsLog, showWheels, showInfo } = SWITCH_DEFAULTS;
+const SWITCH_DEFAULTS = { fftTiming: false, mapsLog: false, showWheels: true, showMesh: true, showInfo: false };
+let { fftTiming, mapsLog, showWheels, showMesh, showInfo } = SWITCH_DEFAULTS;
 const viewSwitches = {};
 // Put the switches the current view shows away, and take out `view`'s.
 function switchView(view) {
-  viewSwitches[steadyView] = { fftTiming, mapsLog, showWheels, showInfo };
-  ({ fftTiming, mapsLog, showWheels, showInfo } = viewSwitches[view] || SWITCH_DEFAULTS);
+  viewSwitches[steadyView] = { fftTiming, mapsLog, showWheels, showMesh, showInfo };
+  ({ fftTiming, mapsLog, showWheels, showMesh, showInfo } = viewSwitches[view] || SWITCH_DEFAULTS);
   steadyView = view;
 }
 
@@ -1366,10 +1395,14 @@ function scoreTicks(lo, hi, px, minPx) {
 const NAME_CLEAR = 8;
 function xyChart(o) {
   // An x axis' name gets a row of its own under the tick labels.
-  const W = chartWidth(), B = o.xName ? 34 : 20, R = 6;
+  const W = chartWidth(), R = 6;
   // With its lines named, a plot keeps the lane's room above it, so it
   // never jumps as they come and go; a short one names them inside.
-  const short = o.names && (o.height || 150) - 4 - B < MARKS.SHORT_PLOT;
+  const short = o.names && (o.height || 150) - 4 - (o.xName ? 34 : 20) < MARKS.SHORT_PLOT;
+  // A mesh is named in a lane of one row under the tick labels (Peter on
+  // #1764), its room kept while any is marked.
+  const under = o.names && !short && (o.vlines || []).some((v) => v.name && v.below);
+  const B = (o.xName ? 34 : 20) + (under ? MARKS.ROW_H + MARKS.LANE_GAP : 0);
   const room = o.names && !short ? MARKS.LANE + MARKS.LANE_GAP : 0;
   // A y axis' name sits above its top tick, left of the plot: in the lane's
   // room when there is one (the lane's names stay over the plot), else in a
@@ -1432,7 +1465,8 @@ function xyChart(o) {
     const tops = (o.lines || []).flatMap((l) => l.pts).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y)).map(([x, y]) => [sx(x), sy(y)]);
     inside += namesInside(named, sx, L, T, plotW, tops);
   } else if (o.names) {
-    g += laneAbove(named, sx, L, T, plotW);
+    g += laneAbove(named.filter((v) => !v.below), sx, L, T, plotW);
+    if (under) g += laneBelow(named.filter((v) => v.below), sx, L, T + plotH, plotW);
   }
   for (const r of o.rects || []) {
     const [a, b] = [sx(r.x0), sx(r.x1)], [c, d] = [sy(r.y1), sy(r.y0)];
@@ -1613,33 +1647,6 @@ function markInside(names, left, right, facts, clear) {
   return out;
 }
 
-// marks::stack: names level with lines across a plot, in a column beside
-// it: each centred on its line; names that would touch spread evenly about
-// their lines' middle, within `top..bottom`. Each name's centre.
-function markStack(ys, top, bottom) {
-  const { ROW_H } = MARKS;
-  const o = ys.map((_, i) => i).sort((a, b) => ys[a] - ys[b]);
-  const first = ([s, n]) => {
-    const mid = o.slice(s, s + n).reduce((t, i) => t + ys[i], 0) / n;
-    return Math.max(Math.min(mid - (n - 1) * ROW_H / 2, bottom - ROW_H / 2 - (n - 1) * ROW_H), top + ROW_H / 2);
-  };
-  const runs = [];
-  for (let k = 0; k < o.length; k++) {
-    let run = [k, 1];
-    while (runs.length) {
-      const above = runs[runs.length - 1];
-      if (first(run) < first(above) + above[1] * ROW_H) { runs.pop(); run = [above[0], above[1] + run[1]]; } else break;
-    }
-    runs.push(run);
-  }
-  const out = ys.map(() => 0);
-  for (const run of runs) {
-    const y0 = first(run);
-    o.slice(run[0], run[0] + run[1]).forEach((i, j) => { out[i] = y0 + j * ROW_H; });
-  }
-  return out;
-}
-
 // marks::beside_spots: the places a note [w, h] big may take beside a point
 // (`dot`, [x, y] screen), in the order they are tried: above right, above
 // left, below right, below left, then up a row at a time, right and left,
@@ -1726,6 +1733,27 @@ function laneAbove(lines, sx, L, T, plotW, one) {
   return strokes + boxes;
 }
 
+// marks::lane_below: lines down a plot whose names go under it, a mesh's
+// (Peter on #1764), in a lane of one row under the tick labels from the
+// plot's foot at `foot`, by the one-row rule (markPlaceRow): each line runs
+// on down to its name, angled where the name slid.
+function laneBelow(lines, sx, L, foot, plotW) {
+  const { ROW_H, LANE_GAP } = MARKS;
+  const seen = lines.filter((l) => sx(l.x) >= L && sx(l.x) <= L + plotW);
+  const names = seen.map((l) => [sx(l.x), markWidth(l.name, l.rank), l.rank]);
+  const placed = markPlaceRow(names, L + 2, L + plotW - 2);
+  // Under the tick labels' row.
+  const top = foot + 20 + LANE_GAP / 2;
+  let strokes = "", boxes = "";
+  seen.forEach((l, i) => {
+    const [x, w] = names[i], left = placed[i], centre = left + w / 2;
+    const pts = [[x, foot], [x, foot + 4], [centre, top - 1]];
+    strokes += `<polyline points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${l.ink})"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-width="1"/>`;
+    boxes += `<g><title>${esc(l.hover)}</title><rect x="${(left - 2).toFixed(1)}" y="${(top - 2).toFixed(1)}" width="${(w + 4).toFixed(1)}" height="${ROW_H + 4}" rx="2" fill="var(--card)"/>${markText(left, top + 11.5, l.name, l.rank)}</g>`;
+  });
+  return strokes + boxes;
+}
+
 // marks::InsideNames: on a short plot, the names inside along its top, on
 // boxes of 80% of the plot's colour, clear of the trace (`tops`, screen).
 function namesInside(lines, sx, L, T, plotW, tops) {
@@ -1745,40 +1773,75 @@ function namesInside(lines, sx, L, T, plotW, tops) {
 }
 
 // marks::lane_right: lines across a plot, named in a column right of it
-// (from `right`, between `top` and `bottom`), as markStack places them:
-// each name joined to its line by a short tick of the line's colour, with
-// an angled leader where it had to slide.
+// (from `right`, between `top` and `bottom`), a word to a line where a
+// line gives its `words`: each name centred on its line, a strong one
+// placed first, one that would come within NAME_GAP of a name already
+// placed making way in its lines' order (core's lane_stack),
+// so two names never read as one (Peter on #1764). Each name is joined to
+// its line by a short tick of the line's colour, with an angled leader
+// where it had to slide.
 function laneRight(lines, right, top, bottom) {
-  const { ROW_H, TICK, SIDE_GAP } = MARKS;
+  const { TICK, SIDE_GAP } = MARKS;
   const seen = lines.filter((l) => l.y >= top && l.y <= bottom);
-  const at = markStack(seen.map((l) => l.y), top - ROW_H / 2, bottom + ROW_H / 2);
+  const rows = seen.map((l) => l.words || [l.name]);
+  const tall = rows.map((r) => r.length * NAME_LINE_H);
+  const at = laneRightAt(seen, top - NAME_LINE_H, bottom + NAME_LINE_H);
   let out = "";
   seen.forEach((l, i) => {
-    const pts = [[right, l.y], [right + TICK, l.y], [right + SIDE_GAP - 2, at[i]]];
+    const mid = at[i] + tall[i] / 2;
+    const pts = [[right, l.y], [right + TICK, l.y], [right + SIDE_GAP - 2, mid]];
     out += `<polyline points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${l.ink})"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-width="1"/>`;
-    out += markText(right + SIDE_GAP, at[i] + 4, l.name, l.rank);
+    out += rows[i].map((w, j) => markText(right + SIDE_GAP, at[i] + 9.5 + j * NAME_LINE_H, w, l.rank)).join("");
   });
   return out;
 }
+// Each name's top in a column right of a plot, between `top` and `bottom`,
+// as laneRight places them (a word to a line where a line gives its words).
+function laneRightAt(lines, top, bottom) {
+  return markStackNames(lines.map((l) => [l.y, (l.words || [l.name]).length * NAME_LINE_H, l.rank]), top, bottom);
+}
+// chart_scale::lane_stack: names in a column beside a plot, in their
+// lines' order with NAME_GAP clear between any two; each run of names that
+// would touch sits where its names are nearest their lines, a strong one
+// holding its line STRONG_HOLD times as much as a faint one, within
+// `top..bottom`. Each name's top.
+function markStackNames(names, top, bottom) {
+  const { NAME_GAP } = MARKS, STRONG_HOLD = (WHEEL_WORDS || {}).strong_hold;
+  const o = names.map((_, i) => i).sort((a, b) => names[a][0] - names[b][0]);
+  const hold = (i) => (names[i][2] === "faint" ? 1 : STRONG_HOLD);
+  const height = ([s, n]) => o.slice(s, s + n).reduce((t, i) => t + names[i][1], 0) + (n - 1) * NAME_GAP;
+  const first = ([s, n]) => {
+    let off = 0, sum = 0, weight = 0;
+    for (const i of o.slice(s, s + n)) {
+      const [y, h] = names[i];
+      sum += hold(i) * (y - h / 2 - off);
+      weight += hold(i);
+      off += h + NAME_GAP;
+    }
+    return Math.max(Math.min(sum / weight, bottom - height([s, n])), top);
+  };
+  const runs = [];
+  for (let k = 0; k < o.length; k++) {
+    let run = [k, 1];
+    while (runs.length) {
+      const above = runs[runs.length - 1];
+      if (first(run) < first(above) + height(above) + NAME_GAP) { runs.pop(); run = [above[0], above[1] + run[1]]; } else break;
+    }
+    runs.push(run);
+  }
+  const out = names.map(() => 0);
+  for (const run of runs) {
+    let at = first(run);
+    for (const i of o.slice(run[0], run[0] + run[1])) { out[i] = at; at += names[i][1] + NAME_GAP; }
+  }
+  return out;
+}
 // marks::side_width: the room the names take beside a plot, the tick and
-// the widest name, whatever stretch it shows.
+// the widest name, or word where a name goes a word to a line, whatever
+// stretch it shows.
 function sideWidth(lines) {
-  const widest = Math.max(0, ...lines.map((l) => markWidth(l.name, l.rank)));
+  const widest = Math.max(0, ...lines.flatMap((l) => (l.words || [l.name]).map((w) => markWidth(w, l.rank))));
   return widest > 0 ? MARKS.SIDE_GAP + widest + 4 : 0;
-}
-
-// marks::wheel_short: a wheel's short name, for the narrow lane beside a
-// map.
-function wheelShort(name) {
-  return { "centre wheel": "2nd Wheel", "third wheel": "3rd Wheel", "fourth wheel": "4th Wheel", "escape wheel": "Esc Wheel",
-    "seconds wheel": "Sec Wheel", "intermediate wheel": "Int Wheel" }[name] || wheelTitle(name);
-}
-// marks::mesh_short: a mesh's short name, its pinion by the short name of
-// the wheel on the same arbor ("4th Mesh"), but "Centre Mesh".
-function meshShort(pinion) {
-  if (pinion === "centre pinion") return "Centre Mesh";
-  const w = pinion.endsWith(" pinion") ? wheelShort(pinion.slice(0, -" pinion".length) + " wheel") : "";
-  return w.endsWith(" Wheel") ? `${w.slice(0, -" Wheel".length)} Mesh` : `${wheelTitle(pinion)} Mesh`;
 }
 
 // steady::one_mark: two periods near enough (3%) to share one line.
@@ -1786,34 +1849,36 @@ function oneMark(a, b) { return Math.abs(a / b - 1) < 0.03; }
 // steady::wheel_lines: the lines to mark on a period axis spanning `span`
 // (log10 s): each wheel's turn, and half of it ("×2", where a wheel that is
 // off centre shows twice a turn) unless another wheel turns there; with no
-// wheel named, the reference periods; with Wheel Periods off, nothing.
-// Then each pinion's mesh (input.settings.named_meshes, its hover core's
-// `about`) where no wheel or ×2 already marks its period. Each line's x, turn ("wheel", "twice",
-// "mesh" or "reference"), name, short name and hover.
+// wheel named, the reference periods; with Wheel Periods off, none of
+// those. Then, with Mesh on, each pinion's mesh (input.settings.named_meshes,
+// its hover core's `about`) where no wheel or ×2 marks its period, shown or
+// not. Each line's x, turn ("wheel", "twice", "mesh" or "reference"), name,
+// name a word to a line (core's `words`) and hover.
 function wheelLines(doc, span) {
-  if (!showWheels) return [];
   const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
   const meshes = (doc.input && doc.input.settings && doc.input.settings.named_meshes) || [];
   const inside = (l) => l.x > span[0] && l.x < span[1];
+  const words = (name) => name.split(" ");
   if (!wheels.length) {
-    return referenceLines(doc).map((r) => ({ x: Math.log10(r.period_s), turn: "reference", name: r.label, short: r.label, hover: (REFERENCE_HOVER || {})[r.label] || r.label })).filter(inside);
+    if (!showWheels) return [];
+    return referenceLines(doc).map((r) => ({ x: Math.log10(r.period_s), turn: "reference", name: r.label, words: [r.label], hover: (REFERENCE_HOVER || {})[r.label] || r.label })).filter(inside);
   }
   const out = [];
   for (const w of wheels) {
-    const title = wheelTitle(w.name), short = wheelShort(w.name);
-    out.push({ x: Math.log10(w.period_s), turn: "wheel", name: title, short, hover: `${title}: ${secs(w.period_s)}` });
+    const title = wheelTitle(w.name);
+    out.push({ x: Math.log10(w.period_s), turn: "wheel", name: title, words: words(title), hover: `${title}: ${secs(w.period_s)}` });
     const half = w.period_s / 2;
     if (!wheels.some((o) => oneMark(o.period_s, half))) {
-      out.push({ x: Math.log10(half), turn: "twice", name: `${title} ×2`, short: `${short} ×2`, hover: `${title} ×2: ${secs(half)}` });
+      out.push({ x: Math.log10(half), turn: "twice", name: `${title} ×2`, words: words(`${title} ×2`), hover: `${title} ×2: ${secs(half)}` });
     }
   }
   for (const m of meshes) {
     if (out.some((l) => oneMark(Math.pow(10, l.x), m.period_s))) continue;
     const title = wheelTitle(m.name);
-    out.push({ x: Math.log10(m.period_s), turn: "mesh", name: `${title} Mesh`, short: meshShort(m.name),
-      hover: `${title} Mesh: ${m.about}.` });
+    out.push({ x: Math.log10(m.period_s), turn: "mesh", name: `${title} Mesh`,
+      words: words(`${title} Mesh`), hover: `${title} Mesh: ${m.about}.` });
   }
-  return out.filter(inside);
+  return out.filter((l) => (l.turn === "mesh" ? showMesh : showWheels) && inside(l));
 }
 // steady::WheelLine::rank and ink: a wheel's name is strong, a ×2's or a
 // reference's faint; every line is a call-out, so the call-out grey, and
@@ -1826,13 +1891,13 @@ function wheelWidth(l) { return l.turn === "wheel" ? CALL_OUT_W : FAINT_CALL_OUT
 
 // steady::wheel_marks: the lines down a period plot, under its trace, all
 // call-outs: a wheel's dotted, a ×2's looser, a mesh's loosely dashed, a
-// reference's solid; named
-// above the plot by the lane rules.
+// reference's solid; named above the plot by the lane rules, but a mesh's
+// under it, `below` (Peter on #1764).
 function wheelMarks(doc, span) {
   return wheelLines(doc, span).map((l) => {
     const { ink } = wheelInk(l);
     const style = l.turn === "wheel" ? { dash: "dense" } : l.turn === "twice" ? { dash: "sparse" } : l.turn === "mesh" ? { dash: "mesh" } : {};
-    return { x: l.x, color: ink, width: wheelWidth(l), ...style, name: l.name, rank: wheelRank(l), ink, hover: l.hover };
+    return { x: l.x, color: ink, width: wheelWidth(l), ...style, name: l.name, rank: wheelRank(l), ink, hover: l.hover, below: l.turn === "mesh" };
   });
 }
 
@@ -2089,7 +2154,8 @@ function steadinessCard(doc) {
 }
 
 // The current view's switches, as in the app's toolbar: Timing for the
-// FFT, Log Scale for the maps, and Wheel Periods on those and on Periods.
+// FFT, Log Scale for the maps, and Wheel Periods and Mesh on those and on
+// Periods.
 function steadySwitch() {
   // Each with the app's hover hint.
   // Periods has no scale switch: its score is already the log of a chance.
@@ -2100,15 +2166,20 @@ function steadySwitch() {
       : null;
   if (!sw && steadyView !== "periods") return "";
   const wheels = ["wheels", "Wheel Periods", showWheels, WHEELS_HINT];
+  // The meshes have a switch of their own (Peter on #1764).
+  const mesh = ["mesh", "Mesh", showMesh, MESH_HINT];
   // Each a switch of its own, side by side.
-  return [sw, wheels].filter(Boolean).map((b) => `<button data-switch="${b[0]}" aria-pressed="${b[2]}" title="${esc(b[3])}">${b[1]}</button>`).join("");
+  return [sw, wheels, mesh].filter(Boolean).map((b) => `<button data-switch="${b[0]}" aria-pressed="${b[2]}" title="${esc(b[3])}">${b[1]}</button>`).join("");
 }
 
 // The app's Info button hint.
 const INFO_HINT = "Info: what this view shows, and each reading's findings and statistics, in full.";
 
-// steady::WHEELS_HINT.
-const WHEELS_HINT = "Mark the period each of the calibre's wheels turns in, in a grey dotted line named above the plot, and half of it more loosely dotted, where a wheel that is off centre shows twice a turn. Where the calibre's tooth and leaf counts give them, each pinion's mesh is marked too, faintly dashed: the time one tooth of the wheel driving it takes to engage, drive and leave, where amplitude can step. With no calibre picked, or none of its wheels known, one minute and one hour are marked in grey instead: periods alone, named after no wheel.";
+// Core steady_views::WHEELS_HINT and MESH_HINT, the two switches' hints,
+// and chart_scale::NAME_LINE_H, a name's line to its next in a narrow lane
+// (#1764).
+const WHEEL_WORDS = /*WHEEL_WORDS*/null;
+const WHEELS_HINT = (WHEEL_WORDS || {}).wheels_hint, MESH_HINT = (WHEEL_WORDS || {}).mesh_hint, NAME_LINE_H = (WHEEL_WORDS || {}).name_line_h;
 
 function wireSteadiness(root) {
   for (const b of root.querySelectorAll("button[data-steady]")) {
@@ -2118,6 +2189,7 @@ function wireSteadiness(root) {
     b.addEventListener("click", () => {
       if (b.dataset.switch === "mapslog") mapsLog = !mapsLog;
       else if (b.dataset.switch === "wheels") showWheels = !showWheels;
+      else if (b.dataset.switch === "mesh") showMesh = !showMesh;
       else if (b.dataset.switch === "info") showInfo = !showInfo;
       else fftTiming = !fftTiming;
       redraw();
@@ -2216,17 +2288,24 @@ function mapChart(m, doc, log) {
   const top = Math.log10(p[0]) + half, bottom = Math.log10(p[h - 1]) - half;
   const left = t0 - dt / 2, width = dt * w;
   const x0 = Math.min(0, left), x1 = Math.max(doc.duration_s || 0, left + width);
-  // T leaves room for a name level with a line at the map's top.
-  const W = chartWidth(), H = 170, T = 8, B = 20, R = 6, plotH = H - T - B;
+  // The map's own height; the chart grows above and below it where the
+  // names beside it need the room (the vertical room Peter gives them on
+  // #1764), T leaving room for a name level with a line at the map's top.
+  const W = chartWidth(), B = 20, R = 6, plotH = 142;
   const yt = periodTicks(bottom, top, plotH);
   const L = Math.max(54, Math.ceil(10 + CHAR_W * Math.max(3, ...yt.map(([, t]) => t.length))));
-  // tfmap: the wheels' lines, named by their short names in a narrow lane
-  // right of the map, whose room is kept whatever stretch it shows; a
-  // wheel's ×2 isn't marked on a map.
+  // tfmap: the wheels' lines, named a word to a line in a narrow lane
+  // right of the map (Peter on #1764), whose room is kept whatever stretch
+  // it shows; a wheel's ×2 isn't marked on a map.
   const lines = wheelLines(doc, [bottom, top]).filter((l) => l.turn !== "twice")
-    .map((l) => ({ ...l, ...wheelInk(l), name: l.short, rank: wheelRank(l) }));
+    .map((l) => ({ ...l, ...wheelInk(l), rank: wheelRank(l) }));
   const side = sideWidth(lines);
   const plotW = W - L - (side || R);
+  const at0 = (y) => (top - y) / (top - bottom) * plotH;
+  const tops = laneRightAt(lines.map((l) => ({ ...l, y: at0(l.x) })), -1e6, 1e6);
+  const ends = tops.map((t, i) => t + (lines[i].words || [lines[i].name]).length * NAME_LINE_H);
+  const T = 8 + Math.max(0, -Math.min(0, ...tops));
+  const H = T + plotH + B + Math.max(0, Math.max(plotH, ...ends) - plotH - B + 4);
   const xt = linTicks(x0, x1, plotW, Math.min(80, plotW / 4), (t) => fmtTime(t), TIME_STEPS);
   const sx = (x) => L + (x - x0) / (x1 - x0) * plotW;
   const sy = (y) => T + (top - y) / (top - bottom) * plotH;
@@ -2239,7 +2318,7 @@ function mapChart(m, doc, log) {
   }
   for (const [v, t] of xt) {
     const anchor = sx(v) - t.length * CHAR_W / 2 < L - 8 ? "start" : sx(v) + t.length * CHAR_W / 2 > W ? "end" : "middle";
-    g += `<text x="${sx(v)}" y="${H - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
+    g += `<text x="${sx(v)}" y="${T + plotH + B - 5}" text-anchor="${anchor}">${esc(t)}</text>`;
   }
   // tfmap::wheel_rows: the wheels' turns across the map, dotted; their
   // names are in the lane beside it, so nothing else is drawn over the
@@ -2249,7 +2328,7 @@ function mapChart(m, doc, log) {
   for (const l of lines) {
     over += `<line x1="${L}" x2="${L + plotW}" y1="${sy(l.x)}" y2="${sy(l.x)}" stroke="var(${l.ink})" stroke-width="${wheelWidth(l)}" stroke-dasharray="${l.turn === "mesh" ? DASH.mesh : DASH.dense}" stroke-linecap="round"/>`;
   }
-  over += laneRight(lines.map((l) => ({ ...l, y: sy(l.x) })), L + plotW, T, T + plotH);
+  over += laneRight(lines.map((l) => ({ ...l, y: sy(l.x) })), L + plotW, T - 1e6, T + plotH + 1e6);
   const k = mapPaints.length;
   const box = { left: sx(left), top: sy(top), width: sx(left + width) - sx(left), height: sy(bottom) - sy(top) };
   mapPaints.push({ m, sc, t0, dt, w });
