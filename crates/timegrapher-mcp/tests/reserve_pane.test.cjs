@@ -72,10 +72,18 @@ test("a measure's toggle hides its chart, and one not measured has none", () => 
   }
 });
 
-test("the rate's ticks carry their sign, the unit after the last", () => {
+test("the rate's ticks carry their sign and are bare numbers, the unit on its own line over them", () => {
   const chart = context.stepChart(reserve.series[0], reserve.hours, "r-rate");
-  const ticks = [...chart.matchAll(/text-anchor="end">([^<]*)<\/text>/g)].map((m) => m[1]);
-  assert.deepEqual(ticks.slice(0, 4), ["−2", "0", "+2", "+4 s/d"]);
+  const ticks = [...chart.matchAll(/<text x="46" y="([\d.]+)" text-anchor="end">([^<]*)<\/text>/g)].map((m) => [+m[1], m[2]]);
+  assert.deepEqual(ticks.map(([, t]) => t).slice(0, 4), ["−2", "0", "+2", "+4"]);
+  const unit = chart.match(/<text class="unit-line" x="46" y="([\d.]+)" text-anchor="end">s\/d<\/text>/);
+  assert.ok(unit, chart);
+  // The unit over the top tick's label, a whole 11 px label and more
+  // between their baselines, so they never touch.
+  const top = Math.min(...ticks.map(([y]) => y));
+  assert.ok(top - +unit[1] > 11, `${unit[1]} ${top}`);
+  const deg = context.stepChart(reserve.series[1], reserve.hours, "r-amplitude");
+  assert.ok(/class="unit-line"[^>]*>°<\/text>/.test(deg), "the amplitude's degree sign on its own line");
 });
 
 test("no two hour labels touch, at the narrowest chart", () => {
@@ -83,8 +91,8 @@ test("no two hour labels touch, at the narrowest chart", () => {
   try {
     const hours = Array.from({ length: 5 }, (_, hour) => ({ hour, span_h: hour === 4 ? 0.55 : 1, read: "90" }));
     const chart = context.stepChart({ ...reserve.series[1], steps: hours.map(() => step(280, "280°")) }, hours, "r-amplitude");
-    // The hours' labels sit under the plot (T 8 + 140 + 15).
-    const xs = [...chart.matchAll(/<text x="([\d.]+)" y="163" text-anchor="(middle|end)">([^<]*)<\/text>/g)]
+    // The hours' labels sit under the plot (T 28 + 140 + 15).
+    const xs = [...chart.matchAll(/<text x="([\d.]+)" y="183" text-anchor="(middle|end)">([^<]*)<\/text>/g)]
       .map((m) => ({ x: +m[1], end: m[2] === "end", text: m[3] }));
     assert.ok(xs.length >= 2 && xs[xs.length - 1].text.endsWith(" h"), "the last carries the unit");
     const cw = context.PANE_CHAR_W;
@@ -100,7 +108,7 @@ test("no two hour labels touch, at the narrowest chart", () => {
 
 test("the first hour's label starts at the axis, clear of the lowest value's", () => {
   const chart = context.stepChart(reserve.series[0], reserve.hours, "r-rate");
-  assert.ok(/<text x="52" y="163" text-anchor="start">0<\/text>/.test(chart), chart);
+  assert.ok(/<text x="52" y="183" text-anchor="start">0<\/text>/.test(chart), chart);
 });
 
 test("the grey key shows under the table only when core sends it", () => {
@@ -117,8 +125,8 @@ test("each hour's ± band lies under its step, in its line's colour or grey with
   // Hour 1 has no figure and hour 3 no band: hour 0's band in the line's
   // colour, hour 2's grey, each ink one path.
   assert.deepEqual(washes.map((w) => w[2]), ["var(--rate)", "var(--text3)"], chart);
-  // Axis −2 to 4 over 140 px from y 8: −0.5 is at 113.0, −1.5 at 136.3.
-  assert.match(washes[0][1], /^M52\.0 113\.0H[\d.]+V136\.3H52\.0Z$/);
+  // Axis −2 to 4 over 140 px from y 28: −0.5 is at 133.0, −1.5 at 156.3.
+  assert.match(washes[0][1], /^M52\.0 133\.0H[\d.]+V156\.3H52\.0Z$/);
   assert.equal((washes[1][1].match(/M/g) || []).length, 1);
   assert.ok(washes.every((w) => +w[3] === BAND_FILL));
   assert.ok(chart.indexOf('class="band"') < chart.indexOf('<path d='), "under the line");

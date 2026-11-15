@@ -63,7 +63,7 @@ labelled **INFERRED family transfer** in each wheel's basis; they are not
 claims that every factory's wheels have been photographed or that the
 linked manuals publish these tooth counts. The complete list of 39
 updated or added rows and their lookup aliases is in
-[coverage.json](assets/train-wheels/2824/coverage.json).
+[coverage.json](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/2824/coverage.json).
 
 | Group | Covered entries | Basis beyond the photographs |
 | --- | --- | --- |
@@ -127,36 +127,36 @@ that figure, and STP1-11 keeps its own 52°.
 
 ## Original photographs and numbered evidence
 
-The six [original JPEGs](assets/train-wheels/2824/originals/) are unchanged
-2592 × 1944 files. The [manifest](assets/train-wheels/2824/originals/manifest.json)
+The six [original JPEGs](https://github.com/peterhudson/timegrapher-corpus/tree/main/research/train-wheels/2824/originals/) are unchanged
+2592 × 1944 files. The [manifest](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/2824/originals/manifest.json)
 records source names and SHA-256 hashes. Eleven numbered figures preserve
 the photograph pixels, resized or cropped for inspection, with one marker
 per tooth. Perimeter detection was checked visually; pinions and escape
 teeth were marked manually. The 101-tooth barrel was independently checked
 using its annular colour signal. All eleven final figures were inspected.
-[Coordinates](assets/train-wheels/2824/tooth-tip-coordinates.json) use a
+[Coordinates](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/2824/tooth-tip-coordinates.json) use a
 1824 × 1368 rendition before any crop or added title band. No teeth were
 reconstructed or generated.
 
-![barrel 101 teeth](assets/train-wheels/2824/barrel-101-teeth.png)
+![barrel 101 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/barrel-101-teeth.png)
 
-![cannon wheel 78 teeth](assets/train-wheels/2824/cannon-wheel-78-teeth.png)
+![cannon wheel 78 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/cannon-wheel-78-teeth.png)
 
-![second wheel 77 teeth](assets/train-wheels/2824/second-wheel-77-teeth.png)
+![second wheel 77 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/second-wheel-77-teeth.png)
 
-![third wheel 90 teeth](assets/train-wheels/2824/third-wheel-90-teeth.png)
+![third wheel 90 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/third-wheel-90-teeth.png)
 
-![fourth wheel 108 teeth](assets/train-wheels/2824/fourth-wheel-108-teeth.png)
+![fourth wheel 108 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/fourth-wheel-108-teeth.png)
 
-![second pinion 17 leaves](assets/train-wheels/2824/second-pinion-17-leaves.png)
+![second pinion 17 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/second-pinion-17-leaves.png)
 
-![third pinion 13 leaves](assets/train-wheels/2824/third-pinion-13-leaves.png)
+![third pinion 13 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/third-pinion-13-leaves.png)
 
-![fourth pinion 9 leaves](assets/train-wheels/2824/fourth-pinion-9-leaves.png)
+![fourth pinion 9 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/fourth-pinion-9-leaves.png)
 
-![escape pinion 9 leaves](assets/train-wheels/2824/escape-pinion-9-leaves.png)
+![escape pinion 9 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/escape-pinion-9-leaves.png)
 
-![cannon pinion 16 leaves](assets/train-wheels/2824/cannon-pinion-16-leaves.png)
+![cannon pinion 16 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/cannon-pinion-16-leaves.png)
 
-![escape wheel 20 teeth](assets/train-wheels/2824/escape-wheel-20-teeth.png)
+![escape wheel 20 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/2824/escape-wheel-20-teeth.png)
 

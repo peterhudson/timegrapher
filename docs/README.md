@@ -49,4 +49,4 @@ not needed to use the software.
 - Train-wheel counts: [2824](research/2824-train-wheel-counts.md), [31xx](research/31xx-train-wheel-counts.md), [32xx](research/32xx-train-wheel-counts.md), [VR32xx](research/vr32xx-train-wheel-counts.md), [4130](research/4130-train-wheel-counts.md), [AP3120 clone](research/ap3120-clone-train-wheel-counts.md), [Patek 240 clone](research/pp240-clone-train-wheel-counts.md), [Dandong 324 SC and Peacock SL1258](research/dd324-train-wheel-counts.md)
 - [Seiko and Miyota train-period research](research/seiko-miyota-train-research.md)
 - [Archived model probes](research/model-probes/README.md)
-- `assets/`: the photographs and data these pages cite
+- [Research photographs and data](https://github.com/peterhudson/timegrapher-corpus/tree/main/research): the photographs and data these pages cite, kept in the corpus repo

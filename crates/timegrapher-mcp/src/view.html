@@ -1165,15 +1165,19 @@ function reservePane(r, id) {
 function stepChart(s, hours, id) {
   const [lo, hi, step] = s.axis;
   const end = hours.length ? hours[hours.length - 1].hour + hours[hours.length - 1].span_h : 1;
-  const W = paneChartWidth(id.split("-")[0]), L = 52, R = 14, T = 8, plotH = 140;
+  // The unit on a line of its own over the value axis, the ticks bare
+  // numbers, as the app has it (Hugh on #1761, #1775): the plot starts
+  // half a label under the unit's line, so the top tick's label, centred
+  // on the plot's top, just clears it.
+  const W = paneChartWidth(id.split("-")[0]), L = 52, R = 14, UNIT_H = 14, T = 8 + UNIT_H + 6, plotH = 140;
   const plotW = W - L - R, H = T + plotH + 22;
   const sx = (h) => L + h / end * plotW;
   const sy = (v) => T + (hi - v) / (hi - lo) * plotH;
-  let g = `<rect class="plot" x="${L}" y="${T}" width="${plotW}" height="${plotH}"/>`;
+  let g = `<rect class="plot" x="${L}" y="${T}" width="${plotW}" height="${plotH}"/><text class="unit-line" x="${L - 6}" y="${8 + UNIT_H / 2 + 4}" text-anchor="end">${esc(s.unit)}</text>`;
   const yticks = Math.round((hi - lo) / step);
   for (let i = 0; i <= yticks; i++) {
     const v = lo + i * step;
-    g += `${gridAcross(sy(v), L, plotW, T + plotH)}<text x="${L - 6}" y="${sy(v) + 4}" text-anchor="end">${esc(valueTick(s, v, step, i === yticks))}</text>`;
+    g += `${gridAcross(sy(v), L, plotW, T + plotH)}<text x="${L - 6}" y="${sy(v) + 4}" text-anchor="end">${esc(valueTick(s, v, step, false))}</text>`;
   }
   // The hours' labels, none touching the next (Hugh on #1747).
   const xs = gridFor(0, end, plotW, 60);

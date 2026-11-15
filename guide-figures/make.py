@@ -566,8 +566,8 @@ def shoot(name, fig, work, home, args, data, keep):
 
 def start_stand(work, env):
     """A PulseAudio server of the figure's own, with a null sink "stand"
-    whose monitor is the default input, "USB_Stand_Mic" (as the persona
-    harness's stand): what plays into the sink, the app hears."""
+    whose monitor is the default input, "USB_Stand_Mic": what plays into
+    the sink, the app hears."""
     pulse = os.path.join(work, "pulse")
     os.makedirs(pulse, exist_ok=True)
     # A run killed part way leaves its server and its player behind; the

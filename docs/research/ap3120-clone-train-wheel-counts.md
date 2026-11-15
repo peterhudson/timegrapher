@@ -74,37 +74,37 @@ Rim counts were obtained from radial silhouette peaks, then checked against
 numbered photographs. Pinion tips were individually identified and checked
 in enlarged views. Ratios provide a separate consistency check.
 
-- [Unchanged originals and SHA-256 manifest](assets/train-wheels/ap3120-clone/originals/manifest.json)
-- [Numbered tip coordinates and counting metadata](assets/train-wheels/ap3120-clone/tooth-tip-coordinates.json)
+- [Unchanged originals and SHA-256 manifest](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/ap3120-clone/originals/manifest.json)
+- [Numbered tip coordinates and counting metadata](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/ap3120-clone/tooth-tip-coordinates.json)
 
 Coordinates use a 1824 × 1368 analysis frame; originals retain 2592 × 1944
 pixels. The analysis views are resized and annotated; originals are not edited.
 
 ### Barrel: 104
 
-![104 barrel teeth](assets/train-wheels/ap3120-clone/barrel-rim-104.jpg)
+![104 barrel teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/barrel-rim-104.jpg)
 
 ### Intermediate: 40; minutes pinion: 13
 
-![40 intermediate teeth](assets/train-wheels/ap3120-clone/second-wheel-and-cannon-pinion-rim-40.jpg)
-![13 minutes-pinion leaves](assets/train-wheels/ap3120-clone/second-wheel-and-cannon-pinion-minutes-pinion-13.jpg)
+![40 intermediate teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/second-wheel-and-cannon-pinion-rim-40.jpg)
+![13 minutes-pinion leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/second-wheel-and-cannon-pinion-minutes-pinion-13.jpg)
 
 ### Centre / second wheel: 80 / 13
 
-![80 centre teeth](assets/train-wheels/ap3120-clone/third-wheel-rim-80.jpg)
-![13 centre-pinion leaves](assets/train-wheels/ap3120-clone/third-wheel-pinion-13.jpg)
+![80 centre teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/third-wheel-rim-80.jpg)
+![13 centre-pinion leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/third-wheel-pinion-13.jpg)
 
 ### Third wheel: 75 / 10
 
-![75 third teeth](assets/train-wheels/ap3120-clone/fourth-wheel-rim-75.jpg)
-![10 third-pinion leaves](assets/train-wheels/ap3120-clone/fourth-wheel-pinion-10.jpg)
+![75 third teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/fourth-wheel-rim-75.jpg)
+![10 third-pinion leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/fourth-wheel-pinion-10.jpg)
 
 ### Fourth wheel / centre seconds: 81 / 10
 
-![81 fourth teeth](assets/train-wheels/ap3120-clone/fifth-wheel-rim-81.jpg)
-![10 fourth-pinion leaves](assets/train-wheels/ap3120-clone/fifth-wheel-pinion-10.jpg)
+![81 fourth teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/fifth-wheel-rim-81.jpg)
+![10 fourth-pinion leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/fifth-wheel-pinion-10.jpg)
 
 ### Escape wheel: 20 / 9
 
-![20 escape teeth](assets/train-wheels/ap3120-clone/escape-wheel-rim-20.jpg)
-![9 escape-pinion leaves](assets/train-wheels/ap3120-clone/escape-wheel-pinion-9.jpg)
+![20 escape teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/escape-wheel-rim-20.jpg)
+![9 escape-pinion leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/ap3120-clone/escape-wheel-pinion-9.jpg)

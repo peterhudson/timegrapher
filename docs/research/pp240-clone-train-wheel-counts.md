@@ -72,9 +72,9 @@ specifications were not used as the time anchor.
 
 ## Recountable evidence
 
-The six [original photographs](assets/train-wheels/pp240-clone/originals/manifest.json)
+The six [original photographs](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/originals/manifest.json)
 are preserved byte for byte, with supplied filenames and SHA-256 hashes.
-[Tooth-tip coordinates](assets/train-wheels/pp240-clone/tooth-tip-coordinates.json)
+[Tooth-tip coordinates](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/tooth-tip-coordinates.json)
 use a 1824 × 1368 display of each original. Outer silhouettes were sampled in
 polar coordinates, then every proposed tooth was checked against the numbered
 image. Pinion tips were counted individually. Labels and crops are analytical
@@ -82,9 +82,9 @@ overlays; the original photographs remain unchanged.
 
 | Photograph | Numbered evidence |
 | --- | --- |
-| Barrel | [96 teeth](assets/train-wheels/pp240-clone/barrel-rim-96.jpg) |
-| Second wheel | [75 teeth](assets/train-wheels/pp240-clone/second-wheel-rim-75.jpg), [near section 15](assets/train-wheels/pp240-clone/second-wheel-near-section-15.jpg), [far section 16](assets/train-wheels/pp240-clone/second-wheel-far-section-16.jpg) |
-| Second wheel profile | [Unmodified profile](assets/train-wheels/pp240-clone/originals/second-wheel-profile.jpg) |
-| Third wheel | [64 teeth](assets/train-wheels/pp240-clone/third-wheel-rim-64.jpg), [10 leaves](assets/train-wheels/pp240-clone/third-wheel-pinion-10.jpg) |
-| Fourth wheel | [72 teeth](assets/train-wheels/pp240-clone/fourth-wheel-rim-72.jpg), [8 leaves](assets/train-wheels/pp240-clone/fourth-wheel-pinion-8.jpg) |
-| Escape wheel | [20 teeth](assets/train-wheels/pp240-clone/escape-wheel-rim-20.jpg), [8 leaves](assets/train-wheels/pp240-clone/escape-wheel-pinion-8.jpg) |
+| Barrel | [96 teeth](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/barrel-rim-96.jpg) |
+| Second wheel | [75 teeth](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/second-wheel-rim-75.jpg), [near section 15](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/second-wheel-near-section-15.jpg), [far section 16](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/second-wheel-far-section-16.jpg) |
+| Second wheel profile | [Unmodified profile](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/originals/second-wheel-profile.jpg) |
+| Third wheel | [64 teeth](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/third-wheel-rim-64.jpg), [10 leaves](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/third-wheel-pinion-10.jpg) |
+| Fourth wheel | [72 teeth](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/fourth-wheel-rim-72.jpg), [8 leaves](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/fourth-wheel-pinion-8.jpg) |
+| Escape wheel | [20 teeth](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/escape-wheel-rim-20.jpg), [8 leaves](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/pp240-clone/escape-wheel-pinion-8.jpg) |

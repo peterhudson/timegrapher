@@ -119,48 +119,48 @@ The labels are measurement annotations on the supplied pixels, with no
 reconstruction of teeth. Whole-wheel figures use 1824 × 1368 renditions
 of the 2592 × 1944 originals; pinion figures are enlarged crops. Numbering
 runs clockwise from an arbitrary tooth and does not indicate running
-direction. [Tooth-tip coordinates](assets/train-wheels/31xx/tooth-tip-coordinates.json)
+direction. [Tooth-tip coordinates](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/31xx/tooth-tip-coordinates.json)
 use the 1824 × 1368 coordinate system.
 
 All five original JPEGs are retained byte-for-byte. The
-[manifest](assets/train-wheels/31xx/originals/manifest.json) records original
+[manifest](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/31xx/originals/manifest.json) records original
 filenames, dimensions and SHA-256 checksums. The Rolex manual is linked,
 not redistributed.
 
 | Supplied filename | Original repository copy |
 | --- | --- |
-| Barrel.JPG | [Barrel](assets/train-wheels/31xx/originals/barrel.jpg) |
-| Second Wheel.JPG | [Second wheel](assets/train-wheels/31xx/originals/second-wheel.jpg) |
-| Thrid Wheel.JPG (original spelling) | [Third wheel](assets/train-wheels/31xx/originals/third-wheel.jpg) |
-| Fourth Wheel.JPG | [Fourth wheel](assets/train-wheels/31xx/originals/fourth-wheel.jpg) |
-| Escape Wheel.JPG | [Escape wheel](assets/train-wheels/31xx/originals/escape-wheel.jpg) |
+| Barrel.JPG | [Barrel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/31xx/originals/barrel.jpg) |
+| Second Wheel.JPG | [Second wheel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/31xx/originals/second-wheel.jpg) |
+| Thrid Wheel.JPG (original spelling) | [Third wheel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/31xx/originals/third-wheel.jpg) |
+| Fourth Wheel.JPG | [Fourth wheel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/31xx/originals/fourth-wheel.jpg) |
+| Escape Wheel.JPG | [Escape wheel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/31xx/originals/escape-wheel.jpg) |
 
 ## Numbered photographs
 
 ### Barrel: 100 teeth
 
-![Barrel with 100 teeth numbered](assets/train-wheels/31xx/barrel-100-teeth.png)
+![Barrel with 100 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/barrel-100-teeth.png)
 
 ### Second wheel: 81 teeth and 12 pinion leaves
 
-![Second wheel with 81 teeth numbered](assets/train-wheels/31xx/second-wheel-81-teeth.png)
+![Second wheel with 81 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/second-wheel-81-teeth.png)
 
-![Second pinion with 12 leaves numbered](assets/train-wheels/31xx/second-pinion-12-leaves.png)
+![Second pinion with 12 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/second-pinion-12-leaves.png)
 
 ### Third wheel: 96 teeth and 12 pinion leaves
 
-![Third wheel with 96 teeth numbered](assets/train-wheels/31xx/third-wheel-96-teeth.png)
+![Third wheel with 96 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/third-wheel-96-teeth.png)
 
-![Third pinion with 12 leaves numbered](assets/train-wheels/31xx/third-pinion-12-leaves.png)
+![Third pinion with 12 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/third-pinion-12-leaves.png)
 
 ### Fourth wheel: 120 teeth and 18 pinion leaves
 
-![Fourth wheel with 120 teeth numbered](assets/train-wheels/31xx/fourth-wheel-120-teeth.png)
+![Fourth wheel with 120 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/fourth-wheel-120-teeth.png)
 
-![Fourth pinion with 18 leaves numbered](assets/train-wheels/31xx/fourth-pinion-18-leaves.png)
+![Fourth pinion with 18 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/fourth-pinion-18-leaves.png)
 
 ### Escape wheel: 20 teeth and 10 pinion leaves
 
-![Escape wheel with 20 teeth numbered](assets/train-wheels/31xx/escape-wheel-20-teeth.png)
+![Escape wheel with 20 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/escape-wheel-20-teeth.png)
 
-![Escape pinion with 10 leaves numbered](assets/train-wheels/31xx/escape-pinion-10-leaves.png)
+![Escape pinion with 10 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/31xx/escape-pinion-10-leaves.png)

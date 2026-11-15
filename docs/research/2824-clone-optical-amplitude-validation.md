@@ -32,7 +32,7 @@ checking sound-event selection; it does not by itself establish a software fault
 or a wrong lift angle. The saved app summary covers a different interval and is
 not substituted for these matched windows.
 
-![Matched measurements](assets/amplitude-validation/2824-clone/2026-11-03/audio-video-comparison.png)
+![Matched measurements](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/amplitude-validation/2824-clone/2026-11-03/audio-video-comparison.png)
 
 ## Capture and synchronization
 
@@ -94,7 +94,7 @@ retained for replay, not claimed as physical precision. In the middle excerpt,
 the two boundaries average 234.420° and 235.683°. In the late excerpt they average
 237.327° and 240.399°, which is why its allowance is wider.
 
-![Endpoint evidence](assets/amplitude-validation/2824-clone/2026-11-03/endpoint-result.png)
+![Endpoint evidence](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/amplitude-validation/2824-clone/2026-11-03/endpoint-result.png)
 
 The **±3°/±4° values are investigator-assigned practical allowances**, based on
 boundary disagreement, repeatability and geometry/radius sensitivity checks.
@@ -109,10 +109,10 @@ one constant value with a narrow band cannot describe every interval.
 
 ## Evidence and replay
 
-The [evidence folder](assets/amplitude-validation/2824-clone/2026-11-03/) contains
+The [evidence folder](https://github.com/peterhudson/timegrapher-corpus/tree/main/research/amplitude-validation/2824-clone/2026-11-03/) contains
 frozen blind results, individual boundary measurements, selected unscaled frame
 crops, matched acoustic windows, analyzer provenance and the comparison figures.
-[Replay instructions](assets/amplitude-validation/2824-clone/2026-11-03/analysis/README.md)
+[Replay instructions](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/amplitude-validation/2824-clone/2026-11-03/analysis/README.md)
 describe the standalone experiment script. It changes no engine computation,
 calibre record, corpus baseline, or user-facing application behavior.
 
