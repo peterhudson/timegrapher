@@ -265,15 +265,21 @@ impl DropWhy {
     }
 }
 
-/// [`Caveat::FaintSidesWithheld`] as a sentence, for `windows` windows
-/// (Hugh's words on #1800).
-fn faint_sides_text(windows: usize) -> String {
+/// [`Caveat::FaintSidesWithheld`] as a sentence, for `sides` sides in
+/// `windows` windows (Hugh's words on #1800).
+fn faint_sides_text(sides: usize, windows: usize) -> String {
     let share = crate::amplitude::FAINT_SOUND_MAX_SHARE;
-    let whose = if windows == 1 { "window's" } else { "windows'" };
+    let they = if sides == 1 { "It is" } else { "They are" };
+    let whose = if windows == 1 {
+        "that window's"
+    } else {
+        "those windows'"
+    };
     format!(
-        "In {windows} window{} one side's unlock sound was too faint to tell from noise: \
-         under {share:.2} of that side's usual level nearby. That side is left out of the \
+        "{sides} side{} in {windows} window{} had an unlock sound too faint to tell from \
+         noise: under {share:.2} of that side's usual level nearby. {they} left out of \
          {whose} amplitude and beat error.",
+        plural(sides),
         plural(windows),
     )
 }
@@ -513,7 +519,7 @@ impl Caveat {
             Caveat::BeatErrorUnknownSource { readings } =>
                 format!("The beat-error aggregate leaves out {readings} reading{} whose source was not recorded.", plural(*readings)),
             Caveat::BeatErrorFromDrop { why } => why.sentence().to_string(),
-            Caveat::FaintSidesWithheld { windows, .. } => faint_sides_text(*windows),
+            Caveat::FaintSidesWithheld { sides, windows } => faint_sides_text(*sides, *windows),
             Caveat::SetRateDisagrees { heard } => {
                 format!("The beat rate set differs from the {heard} bph heard.")
             }
@@ -966,16 +972,18 @@ mod tests {
         assert_eq!(
             one.long(None).as_deref(),
             Some(
-                "In 1 window one side's unlock sound was too faint to tell from noise: under \
-                 0.28 of that side's usual level nearby. That side is left out of the window's \
+                "1 side in 1 window had an unlock sound too faint to tell from noise: under \
+                 0.28 of that side's usual level nearby. It is left out of that window's \
                  amplitude and beat error."
             )
         );
-        let long = three.long(None).unwrap();
-        assert!(long.starts_with("In 2 windows one side's"), "{long}");
-        assert!(
-            long.ends_with("of the windows' amplitude and beat error."),
-            "{long}"
+        assert_eq!(
+            three.long(None).as_deref(),
+            Some(
+                "3 sides in 2 windows had an unlock sound too faint to tell from noise: under \
+                 0.28 of that side's usual level nearby. They are left out of those windows' \
+                 amplitude and beat error."
+            )
         );
     }
 
