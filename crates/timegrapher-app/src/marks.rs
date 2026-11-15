@@ -598,17 +598,13 @@ pub fn side_width(ui: &egui::Ui, names: &[(String, Rank)]) -> f32 {
 /// line and its name together. Whether the pointer is on one, so the plot
 /// can leave out its own hover there.
 pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::Id) -> bool {
-    let lines: Vec<&Across> = lines
+    // Each line on the map with its name laid out.
+    let (lines, galleys): (Vec<&Across>, Vec<_>) = lines
         .iter()
-        .filter(|l| l.y >= frame.top() && l.y <= frame.bottom())
-        .collect();
-    let galleys: Vec<_> = lines
-        .iter()
-        .map(|l| galley(ui, &l.name, l.rank, false))
-        .collect();
-    let names: Vec<(f32, f32, Rank)> = lines
-        .iter()
-        .zip(&galleys)
+        .filter(|l| (frame.top()..=frame.bottom()).contains(&l.y))
+        .map(|l| (l, galley(ui, &l.name, l.rank, false)))
+        .unzip();
+    let names: Vec<_> = (lines.iter().zip(&galleys))
         .map(|(l, g)| (l.y, g.size().y, l.rank))
         .collect();
     let mut on = false;
