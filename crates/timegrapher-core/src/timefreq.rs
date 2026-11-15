@@ -1050,6 +1050,41 @@ pub fn kurtograms_for_take(
 
 #[cfg(test)]
 mod tests {
+
+    /// The beat error's maps and kurtogram are read from its windows
+    /// levelled piece by piece between the take's breaks, not across them
+    /// (#1608, #1723).
+    #[test]
+    fn the_beat_errors_maps_and_kurtogram_read_it_by_piece() {
+        fn json<T: serde::Serialize>(v: &T) -> serde_json::Value {
+            serde_json::to_value(v).unwrap()
+        }
+        let (log, long, lc) = crate::break_fixture::a_take_with_a_break();
+        let (by_piece, across) = crate::break_fixture::its_beat_error(&log, &long, &lc);
+        let maps: Vec<TimeFrequency> = for_take(&log, long.clock.as_ref(), &long, &lc)
+            .into_iter()
+            .filter(|m| m.series == "beat_error")
+            .collect();
+        let on = |g: &crate::longterm::Grid| -> Vec<TimeFrequency> {
+            stft(g, "beat_error", "ms", 1.0, STFT_WINDOW_S, STFT_HOP_S)
+                .into_iter()
+                .chain(sst(g, "beat_error", "ms", 1.0))
+                .collect()
+        };
+        assert!(!maps.is_empty());
+        assert_eq!(json(&maps), json(&on(&by_piece)));
+        assert_ne!(json(&maps), json(&on(&across)));
+        let k: Vec<Kurtogram> = kurtograms_for_take(&log, long.clock.as_ref(), &long, &lc)
+            .into_iter()
+            .filter(|k| k.series == "beat_error")
+            .collect();
+        let kon = |g: &crate::longterm::Grid| -> Vec<Kurtogram> {
+            kurtogram(g, "beat_error").into_iter().collect()
+        };
+        assert!(!k.is_empty());
+        assert_eq!(json(&k), json(&kon(&by_piece)));
+        assert_ne!(json(&k), json(&kon(&across)));
+    }
     use super::*;
 
     /// The size rule, held to the fixture the MCP view's copy is tested

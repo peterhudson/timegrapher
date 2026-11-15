@@ -530,6 +530,28 @@ fn scaled(g: &Grid, k: f64) -> Grid {
 
 #[cfg(test)]
 mod tests {
+
+    /// The beat error's lines are read from its windows levelled piece by
+    /// piece between the take's breaks, not across them (#1608, #1723).
+    #[test]
+    fn the_beat_errors_lines_read_it_by_piece() {
+        let (log, long, lc) = crate::break_fixture::a_take_with_a_break();
+        let (by_piece, across) = crate::break_fixture::its_beat_error(&log, &long, &lc);
+        let amp = &long.amplitude.grid;
+        let got: Vec<WheelLine> = lines_for_take(&log, long.clock.as_ref(), &long, &lc, false)
+            .into_iter()
+            .filter(|l| l.series == "beat_error")
+            .collect();
+        let on = |g: &crate::longterm::Grid| -> Vec<WheelLine> {
+            followed(&lc.wheels, lc.detrend_s)
+                .filter_map(|w| line(g, amp, w, "beat_error", "ms", false))
+                .collect()
+        };
+        let js = |v: &Vec<WheelLine>| serde_json::to_value(v).unwrap();
+        assert!(!got.is_empty());
+        assert_eq!(js(&got), js(&on(&by_piece)));
+        assert_ne!(js(&got), js(&on(&across)));
+    }
     use super::*;
     use crate::synth::Rng;
 

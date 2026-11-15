@@ -2571,8 +2571,7 @@ pub(crate) fn beat_error_long(
     breaks: &[crate::breaks::Break],
     lc: &LongConfig,
 ) -> longterm::SeriesReport {
-    let cuts = Cuts::new(clock, breaks, &[]).piece_cuts();
-    let starts = longterm::piece_starts(be, &cuts);
+    let starts = piece_starts(be, clock, breaks);
     let g = Grid {
         t0: 0.0,
         ..be.clone()
@@ -2589,9 +2588,14 @@ pub(crate) fn level_by_piece(
     breaks: &[crate::breaks::Break],
     lc: &LongConfig,
 ) -> Grid {
-    let cuts = Cuts::new(clock, breaks, &[]).piece_cuts();
-    let starts = longterm::piece_starts(g, &cuts);
+    let starts = piece_starts(g, clock, breaks);
     longterm::detrend_pieces(g, lc.detrend_s, longterm::Slow::Level, &starts)
+}
+
+/// Where each piece of `g` starts, between the take's cuts: found once
+/// here for [`beat_error_long`]'s searches and [`level_by_piece`]'s views.
+fn piece_starts(g: &Grid, clock: Option<&ClockFit>, breaks: &[crate::breaks::Break]) -> Vec<usize> {
+    longterm::piece_starts(g, &Cuts::new(clock, breaks, &[]).piece_cuts())
 }
 
 /// Tick's and Tock's amplitudes, each on the amplitude windows' grid as
