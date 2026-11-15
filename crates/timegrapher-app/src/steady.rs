@@ -1906,18 +1906,6 @@ pub struct Opts {
     pub joined_in: Option<&'static str>,
 }
 
-/// What Wheel Periods does, for its hint.
-pub const WHEELS_HINT: &str = "Mark the period each of the calibre's wheels turns in, in \
-     a grey dotted line named above the plot, and half of it more loosely dotted, where a \
-     wheel that is off centre shows twice a turn. With no calibre picked, or none of its \
-     wheels known, one minute and one hour are marked in grey instead: periods alone, \
-     named after no wheel.";
-
-/// What Mesh does, for its hint.
-pub const MESH_HINT: &str = "Mark each pinion's mesh, faintly dashed and named under the \
-     plot: the time one tooth of the wheel driving it takes to engage, drive and leave, \
-     where amplitude can step. Shown where the calibre's tooth and leaf counts give them.";
-
 /// What the period axis marks: the calibre's wheels, and its meshes
 /// ([`timegrapher_core::calibre_store::Catalog::meshes`]), each where its
 /// switch is on; `wheels_on` says whether Wheel Periods is, so that with
@@ -2028,7 +2016,7 @@ pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) ->
                 WheelTurn::Twice => Turn::Twice,
                 WheelTurn::Mesh => Turn::Mesh,
             },
-            side: views::word_lines(&l.name),
+            side: l.words.join("\n"),
             name: l.name,
             hover: l.hover,
         })

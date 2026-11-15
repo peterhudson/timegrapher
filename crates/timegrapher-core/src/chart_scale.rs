@@ -164,14 +164,6 @@ pub const NAME_LINE_H: f64 = 13.0;
 /// How far an overlap must start or end before a name changes row, so
 /// names don't hop between frames.
 pub const NAME_HYSTERESIS: f64 = 2.0;
-/// The clear space kept between two names one above the other (a name a
-/// row out over the one under it, or names stacked beside a map): a full
-/// line, so two names never read as one (Peter on #1764). Within a name of
-/// several lines, the lines sit at the normal line spacing.
-pub const NAME_CLEAR: f64 = 11.0;
-/// The pitch of a lane's second row: a row and the clear space, so a name
-/// a row out never reads as part of the name under it (#1764).
-pub const NAME_ROW_OUT: f64 = NAME_ROW_H + NAME_CLEAR;
 
 /// The order names in a lane are placed in: strong first, then faint,
 /// each left to right. `names` are each one's centre, width and whether

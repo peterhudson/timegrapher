@@ -86,7 +86,7 @@ impl TimegrapherApp {
                 accent,
                 "Wheel Periods",
                 &mut wheels,
-                steady::WHEELS_HINT,
+                timegrapher_core::steady_views::WHEELS_HINT,
             );
             marks.wheels.set(view, wheels);
             // The meshes, a switch of their own (#1764).
@@ -97,7 +97,7 @@ impl TimegrapherApp {
                 accent,
                 "Mesh",
                 &mut meshes,
-                steady::MESH_HINT,
+                timegrapher_core::steady_views::MESH_HINT,
             );
             marks.meshes.set(view, meshes);
         }

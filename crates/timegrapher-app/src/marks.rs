@@ -14,11 +14,10 @@ use std::sync::Arc;
 
 /// One row of names in a lane, points tall.
 pub const ROW_H: f32 = timegrapher_core::chart_scale::NAME_ROW_H as f32;
-/// The clear space between two names one above the other: a full line,
-/// so two names never read as one (#1764).
-pub const CLEAR: f32 = timegrapher_core::chart_scale::NAME_CLEAR as f32;
-/// The pitch of a lane's second row: a row and the clear space.
-pub const ROW_OUT: f32 = timegrapher_core::chart_scale::NAME_ROW_OUT as f32;
+/// The pitch of a lane's second row: a row and the gap kept between two
+/// names, so a name a row out never reads as part of the name under it
+/// (#1764).
+pub const ROW_OUT: f32 = ROW_H + NAME_GAP;
 /// A lane of names at its fullest: two rows.
 pub const LANE: f32 = ROW_H + ROW_OUT;
 /// The short gap between the plot and its nearest row of names, so each
@@ -37,6 +36,9 @@ pub const SHORT_PLOT: f32 = 100.0;
 pub const INSIDE_TOP: f32 = 4.0;
 /// The names' type size.
 const NAME_SIZE: f32 = 11.5;
+/// From one line of a name to the next, where a name is broken a word to
+/// a line.
+const NAME_LINE_H: f32 = timegrapher_core::chart_scale::NAME_LINE_H as f32;
 
 /// How strongly a line is named: a wheel or an edge is strong, a wheel's
 /// ×2 or a reference period faint. Strong names are placed first, and are
@@ -222,6 +224,8 @@ pub fn galley(ui: &egui::Ui, name: &str, rank: Rank, italic: bool) -> Arc<egui::
             font_id,
             color,
             italics: italic,
+            // A name a word to a line keeps its lines close (#1764).
+            line_height: Some(NAME_LINE_H),
             ..Default::default()
         },
     );
@@ -546,59 +550,20 @@ const TICK: f32 = 4.0;
 /// takes to reach a name that slid.
 const SIDE_GAP: f32 = TICK + 8.0;
 
-/// Where names of one row each, level with lines across a plot, go in a
-/// column beside it, touching where they must ([`stack_spaced`] with
-/// every name [`ROW_H`] tall and no space between): the cases the MCP
-/// view's copy is held to.
-#[cfg(test)]
-pub fn stack(ys: &[f32], top: f32, bottom: f32) -> Vec<f32> {
-    stack_spaced(ys, &vec![ROW_H; ys.len()], 0.0, top, bottom)
-}
-
-/// Where names level with lines across a plot go, in a column beside it:
-/// `ys` are the lines' screen y and `hs` the names' heights. Each is
-/// centred on its line; names that would come within `gap` of each other
-/// slide apart, each run of them centred on its lines' middle with `gap`
-/// between names, and the column is kept within `top..bottom`. Each
-/// name's centre, in the order given.
-pub fn stack_spaced(ys: &[f32], hs: &[f32], gap: f32, top: f32, bottom: f32) -> Vec<f32> {
-    let mut o: Vec<usize> = (0..ys.len()).collect();
-    o.sort_by(|&a, &b| ys[a].total_cmp(&ys[b]));
-    // Runs of names that would come too near, each as its first name and
-    // its size; a run is centred on its lines' middle, and joins the run
-    // above where they would come within `gap`.
-    let tall = |(s, n): (usize, usize)| {
-        o[s..s + n].iter().map(|&i| hs[i]).sum::<f32>() + gap * n.saturating_sub(1) as f32
-    };
-    // The top of a run: its lines' middle less half the run, kept within
-    // the column.
-    let first = |run: (usize, usize)| {
-        let (s, n) = run;
-        let mid = o[s..s + n].iter().map(|&i| ys[i]).sum::<f32>() / n as f32;
-        (mid - tall(run) / 2.0).min(bottom - tall(run)).max(top)
-    };
-    let mut runs: Vec<(usize, usize)> = Vec::new();
-    for k in 0..o.len() {
-        let mut run = (k, 1);
-        while let Some(&above) = runs.last() {
-            if first(run) < first(above) + tall(above) + gap {
-                runs.pop();
-                run = (above.0, above.1 + run.1);
-            } else {
-                break;
-            }
-        }
-        runs.push(run);
-    }
-    let mut out = vec![0.0; ys.len()];
-    for &run in &runs {
-        let mut y = first(run);
-        for &i in &o[run.0..run.0 + run.1] {
-            out[i] = y + hs[i] / 2.0;
-            y += hs[i] + gap;
-        }
-    }
-    out
+/// Where names level with lines across a plot go, in a column beside it
+/// (core's [`timegrapher_core::chart_scale::lane_stack`], #1764): `names`
+/// are each one's line's y, its height and rank. They keep their lines'
+/// order with [`NAME_GAP`] clear between any two, a strong name holding
+/// its line, within `top..bottom`. Each name's top, in the order given.
+pub fn stack(names: &[(f32, f32, Rank)], top: f32, bottom: f32) -> Vec<f32> {
+    let names: Vec<(f64, f64, bool)> = names
+        .iter()
+        .map(|&(y, h, r)| (f64::from(y), f64::from(h), r == Rank::Faint))
+        .collect();
+    timegrapher_core::chart_scale::lane_stack(&names, f64::from(top), f64::from(bottom))
+        .into_iter()
+        .map(|y| y as f32)
+        .collect()
 }
 
 /// A line across a plot, named: where it runs (screen y), its short
@@ -637,18 +602,19 @@ pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::
         .iter()
         .filter(|l| l.y >= frame.top() && l.y <= frame.bottom())
         .collect();
-    let ys: Vec<f32> = lines.iter().map(|l| l.y).collect();
     let galleys: Vec<_> = lines
         .iter()
         .map(|l| galley(ui, &l.name, l.rank, false))
         .collect();
-    let hs: Vec<f32> = galleys.iter().map(|g| g.size().y).collect();
+    let names: Vec<(f32, f32, Rank)> = lines
+        .iter()
+        .zip(&galleys)
+        .map(|(l, g)| (l.y, g.size().y, l.rank))
+        .collect();
     let mut on = false;
-    // Names of several lines, a full line clear of each other (#1764).
-    let at = stack_spaced(
-        &ys,
-        &hs,
-        CLEAR,
+    // Names of several lines, the gap between names clear (#1764).
+    let tops = stack(
+        &names,
         frame.top() - ROW_H / 2.0,
         frame.bottom() + ROW_H / 2.0,
     );
@@ -657,12 +623,12 @@ pub fn lane_right(ui: &egui::Ui, frame: egui::Rect, lines: &[Across], id: egui::
         egui::pos2(right, frame.top() - ROW_H),
         egui::pos2(ui.max_rect().right(), frame.bottom() + ROW_H),
     ));
-    for ((l, &y), g) in lines.iter().zip(&at).zip(galleys) {
+    for ((l, &top), g) in lines.iter().zip(&tops).zip(galleys) {
+        let y = top + g.size().y / 2.0;
         let mut pts = vec![egui::pos2(right, l.y), egui::pos2(right + TICK, l.y)];
         pts.push(egui::pos2(right + SIDE_GAP - 2.0, y));
         painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0_f32, l.ink)));
-        let rect =
-            egui::Rect::from_min_size(egui::pos2(right + SIDE_GAP, y - g.size().y / 2.0), g.size());
+        let rect = egui::Rect::from_min_size(egui::pos2(right + SIDE_GAP, top), g.size());
         painter.galley(rect.min, g, Color32::PLACEHOLDER);
         // The line runs the map's width, so its hover opens by the pointer
         // rather than under the target's left end.
@@ -940,33 +906,6 @@ mod tests {
                 c["case"]
             );
         }
-        for c in list("stack") {
-            let ys: Vec<f32> = c["ys"].as_array().expect("ys").iter().map(f).collect();
-            let got = stack(&ys, f(&c["top"]), f(&c["bottom"]));
-            let want: Vec<f32> = c["at"].as_array().expect("at").iter().map(f).collect();
-            assert!(
-                got.len() == want.len() && got.iter().zip(&want).all(|(g, w)| close(*g, *w)),
-                "{}: {got:?}",
-                c["case"]
-            );
-        }
-        for c in list("stack_spaced") {
-            let floats =
-                |k: &str| -> Vec<f32> { c[k].as_array().expect(k).iter().map(f).collect() };
-            let got = stack_spaced(
-                &floats("ys"),
-                &floats("hs"),
-                f(&c["gap"]),
-                f(&c["top"]),
-                f(&c["bottom"]),
-            );
-            let want = floats("at");
-            assert!(
-                got.len() == want.len() && got.iter().zip(&want).all(|(g, w)| close(*g, *w)),
-                "{}: {got:?}",
-                c["case"]
-            );
-        }
         // A note beside a point: places as [left, top, right, bottom].
         let pos = |v: &serde_json::Value| egui::pos2(f(&v[0]), f(&v[1]));
         let rect = |v: &serde_json::Value| {
@@ -1207,24 +1146,21 @@ mod tests {
     fn a_second_row_stands_a_full_line_clear() {
         assert_eq!(lane_h(1), ROW_H);
         assert_eq!(lane_h(2), LANE);
-        assert_eq!(row_off(1) - row_off(0) - ROW_H, CLEAR);
-        assert!(CLEAR >= 11.0);
+        assert_eq!(row_off(1) - row_off(0) - ROW_H, NAME_GAP);
     }
 
-    /// Names beside a map: level with their lines where they have room;
-    /// names that would touch spread evenly about their lines' middle;
-    /// the column kept inside the map.
+    /// Names beside a map go where core's column rule puts them: a
+    /// wheel's on its line, a mesh's making way with the gap clear, in
+    /// their lines' order (#1764).
     #[test]
-    fn names_beside_a_map_slide_apart_where_they_would_touch() {
-        // Apart: each level with its line.
-        assert_eq!(stack(&[100.0, 40.0], 0.0, 300.0), vec![100.0, 40.0]);
-        // Two lines 5 pt apart: a row apart, about their middle.
-        assert_eq!(stack(&[100.0, 105.0], 0.0, 300.0), vec![95.0, 110.0]);
-        // A third touching the pair joins its run, spread about all three.
-        let y = stack(&[98.0, 104.0, 119.0], 0.0, 300.0);
-        assert_eq!(y, vec![92.0, 107.0, 122.0]);
-        // At the bottom edge the run rises to stay inside.
-        assert_eq!(stack(&[298.0, 296.0], 0.0, 300.0), vec![292.5, 277.5]);
+    fn names_beside_a_map_keep_a_clear_gap() {
+        let at = stack(
+            &[(100.0, 26.0, Rank::Strong), (110.0, 39.0, Rank::Faint)],
+            0.0,
+            400.0,
+        );
+        assert!((at[0] - 87.0).abs() < 1.0, "{at:?}");
+        assert!((at[1] - (at[0] + 26.0 + NAME_GAP)).abs() < 1e-3, "{at:?}");
     }
 
     #[test]
