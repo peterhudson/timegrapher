@@ -2307,6 +2307,7 @@ pub enum Icon {
     Export,
     Bucket,
     Wheel,
+    Mesh,
     Copy,
     SaveTable,
     Calipers,

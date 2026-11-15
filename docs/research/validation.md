@@ -166,9 +166,7 @@ The re-read does not take over when it reads both sides in a share of its
 2 s windows lower, by more than 2 standard errors, than live's first template
 did over the same stretch (`confidence::share_differs`, the test #1423 uses for
 a second read's kept beats). Live then keeps its first template, the app logs
-why, and the reading carries the caveat `lock_template_kept`, since a saved
-take of the same sound may read differently (#1503 proposes the same choice in
-the file read). Walter's live walks of #1500 played the ETA 2824 holder take
+why, and the reading carries the caveat `lock_template_kept`. Walter's live walks of #1500 played the ETA 2824 holder take
 through a resampling sound server, which roughly doubled the timing scatter
 (1,090 µs against 420 µs from the file itself, run 11). In three of six runs
 the live amplitude went to "—" at the takeover; on run 11, from 41 s to the
@@ -179,6 +177,19 @@ damaged sound worse. With the guard, live keeps the lock's template on runs 3,
 11, 14 and 15 and takes over on runs 4 and 5 and on the source file; after
 66 s the amplitude is shown at every 2 s check but two on run 14, where the
 lock template's own reading drops it. No corpus take used by the test above trips the guard.
+
+A file's reading makes the same choice (#1503). The chunk the watch is first
+heard in is read with its own template, as before, and again with the
+template the first 4 s of its sound give, as live locks on. The short
+window's template is kept when the chunk's reads both sides in fewer of its
+2 s windows by the same test, and the reading carries `lock_template_kept`
+too. On the saved captures of runs 11, 14 and 15, `timegrapher analyze`
+gave no whole-take amplitude before the change: Tick 307° and Tock 358° on
+run 11, and Tock alone on runs 14 and 15, where run 14 also read the rate at
+−37.5 s/d. With the change, all three keep the short window's template and
+read 332° ± 3°, 331° and 331°, with rates of +9.6, +9.1 and +9.1 s/d. That is
+the live reading of the same sound. Analysis Only keeps the choice in
+`analysis.json`.
 
 The test compares live with `session::measure` over the same interval, from
 the latest cut either reading has to live's last settled beat. It uses the

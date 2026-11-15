@@ -346,8 +346,7 @@ enum Confirm {
     /// while a take is on show: the take is put away.
     PickWatch(Option<String>),
     Quit,
-    /// Start listening to the microphone, over a recording whose masks
-    /// changed.
+    /// Start listening to the microphone, over a recording whose masks changed.
     Microphone,
     /// Quick Listen: a new session on the microphone, with no watch.
     QuickListen,
@@ -2045,8 +2044,9 @@ pub struct TimegrapherApp {
     chart_series: [bool; 3],
     /// The readings the Distributions pane draws.
     dist_series: [bool; 3],
-    /// The charts the Power Reserve pane draws (#1729).
+    /// The charts the Power Reserve and Positions Test panes draw (#1729).
     reserve_series: [bool; 3],
+    positions_series: [bool; 3],
     /// The charts drawn last frame: those turned on that had room. The
     /// key names only these.
     charts_drawn: [bool; 3],
@@ -2063,12 +2063,10 @@ pub struct TimegrapherApp {
     pane_top: f32,
     /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
-    /// The Power Reserve and Positions Test panes' Info panels open
-    /// (#1528).
+    /// The Power Reserve and Positions Test panes' Info panels open (#1528).
     reserve_info: bool,
     positions_info: bool,
-    /// The histograms count the readings rather than each 2 seconds of
-    /// beats.
+    /// The histograms count the readings rather than each 2 seconds of beats.
     hist_readings: bool,
     iso_view: isochronism::View,
     /// The rate over each 2 seconds of beats, for the rate's distribution.
@@ -2085,8 +2083,8 @@ pub struct TimegrapherApp {
     fft_timing: bool,
     /// Each STFT and Wavelet Map pane's colours in dB.
     maps_db: steady::PerPane,
-    /// The calibre's wheels marked on each pane's period axes.
-    show_wheels: steady::PerPane,
+    /// The calibre's wheels and meshes marked on each pane's period axes.
+    show_marks: steady::MarkSwitches,
     /// Each Steadiness pane's Info panel open.
     steady_info: steady::PerPane,
     scope_view: scope::View,
@@ -2300,6 +2298,7 @@ impl TimegrapherApp {
             chart_series: self.chart_series,
             dist_series: self.dist_series,
             reserve_series: self.reserve_series,
+            positions_series: self.positions_series,
             hist_cumulative: self.hist_cumulative,
             reserve_info: self.reserve_info,
             positions_info: self.positions_info,
@@ -2314,8 +2313,7 @@ impl TimegrapherApp {
             fft_timing: self.fft_timing,
             maps_db: self.maps_db.unset,
             maps_db_set: self.maps_db.saved(),
-            show_wheels: self.show_wheels.unset,
-            show_wheels_set: self.show_wheels.saved(),
+            marks: self.show_marks.saved(),
             steady_info: self.steady_info.unset,
             steady_info_set: self.steady_info.saved(),
             positions_settle_s: self.guided_settle_s,
@@ -2363,6 +2361,7 @@ impl TimegrapherApp {
             chart_series,
             dist_series,
             reserve_series,
+            positions_series,
             hist_cumulative,
             reserve_info,
             positions_info,
@@ -2377,8 +2376,7 @@ impl TimegrapherApp {
             fft_timing,
             maps_db,
             maps_db_set,
-            show_wheels,
-            show_wheels_set,
+            marks,
             steady_info,
             steady_info_set,
             positions_settle_s,
@@ -2434,17 +2432,16 @@ impl TimegrapherApp {
         (self.rate_line, self.rate_guides) = (rate_line, rate_guides);
         (self.overlays, self.follow) = (overlays, follow);
         // One left on is kept: a pane with none shown would be empty.
-        let some = |s: [bool; 3]| if s.contains(&true) { s } else { RATE_ONLY };
-        (self.chart_series, self.dist_series, self.reserve_series) =
-            (some(chart_series), some(dist_series), some(reserve_series));
+        let on = |s: [bool; 3]| if s.contains(&true) { s } else { RATE_ONLY };
+        (self.chart_series, self.dist_series) = (on(chart_series), on(dist_series));
+        (self.reserve_series, self.positions_series) = (on(reserve_series), on(positions_series));
         (self.hist_cumulative, self.reserve_info) = (hist_cumulative, reserve_info);
         (self.positions_info, self.sound_opts) = (positions_info, sound);
         (self.hist_readings, self.iso_view) = (hist_readings, iso_view);
-        self.folded = folded.into_iter().collect();
-        self.theme = theme;
+        (self.folded, self.theme) = (folded.into_iter().collect(), theme);
         (self.periods_db, self.fft_timing) = (periods_db, fft_timing);
         self.maps_db = steady::PerPane::new(maps_db_set, maps_db);
-        self.show_wheels = steady::PerPane::new(show_wheels_set, show_wheels);
+        self.show_marks = steady::MarkSwitches::new(marks);
         self.steady_info = steady::PerPane::new(steady_info_set, steady_info);
         self.set_positions_times(positions_settle_s, positions_measure_s);
         self.steady_series = steady_series_from(steady_shown, steady_series);
@@ -2620,6 +2617,7 @@ impl TimegrapherApp {
             chart_series: RATE_ONLY,
             dist_series: RATE_ONLY,
             reserve_series: [true; 3],
+            positions_series: [true; 3],
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
             panes_dragged: std::collections::HashSet::new(),
@@ -2632,7 +2630,7 @@ impl TimegrapherApp {
             periods_db: false,
             fft_timing: false,
             maps_db: steady::PerPane::new(Vec::new(), false),
-            show_wheels: steady::PerPane::new(Vec::new(), true),
+            show_marks: steady::MarkSwitches::new(Default::default()),
             steady_info: steady::PerPane::new(Vec::new(), false),
             scope_view: scope::View::default(),
             scope_audio: None,

@@ -187,6 +187,34 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   assert.ok(rows(teeth).includes(">(20 Teeth)<"));
 });
 
+// Core's shown_marks: a mesh within 3% of a wheel is left out only while
+// that wheel shows; with Wheel Periods off the view draws core's
+// mesh_marks, every mesh under its own name (Hugh's ruling on #1764).
+test("with Wheel Periods off, a mesh beside a wheel comes back under its own name", () => {
+  const fourth = mark(7.5, "mesh", "Fourth Pinion Mesh", "x");
+  const escape = mark(30, "mesh", "Escape Pinion Mesh", "y");
+  const settings = {
+    wheel_marks: [mark(60, "wheel", "Fourth Wheel", "a"), mark(30.6, "wheel", "Escape Wheel", "b"), mark(15.3, "twice", "Escape Wheel ×2", "c"), fourth],
+    mesh_marks: [fourth, escape],
+  };
+  const names = (doc) => plain(context.wheelLines(doc, [0, 5])).map((l) => l.name);
+  const doc = { input: { settings } };
+  try {
+    context.showWheels = true;
+    assert.deepEqual(names(doc), ["Fourth Wheel", "Escape Wheel", "Escape Wheel ×2", "Fourth Pinion Mesh"]);
+    context.showWheels = false;
+    assert.deepEqual(names(doc), ["Fourth Pinion Mesh", "Escape Pinion Mesh"]);
+    context.showMesh = false;
+    assert.deepEqual(names(doc), []);
+    // A document written before mesh_marks: its meshes as wheel_marks has them.
+    context.showMesh = true;
+    assert.deepEqual(names({ input: { settings: { wheel_marks: settings.wheel_marks } } }), ["Fourth Pinion Mesh"]);
+  } finally {
+    context.showWheels = true;
+    context.showMesh = true;
+  }
+});
+
 test("Wheel Periods sits beside each period view's own switch, with the app's hint", () => {
   for (const [view, other] of [["periods", null], ["spectrum", "timing"], ["stft", "mapslog"], ["wavelet", "mapslog"]]) {
     context.steadyView = view;

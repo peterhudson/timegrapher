@@ -975,6 +975,7 @@ mod tests {
     /// `after_s` of silence.
     fn take_of(run_s: f64, after_s: f64) -> crate::stream::BeatLog {
         crate::stream::BeatLog {
+            lock_template_kept: false,
             sample_rate: 48_000,
             duration_s: 5.0 + run_s + after_s,
             bph: 18_000,
@@ -1230,6 +1231,7 @@ mod tests {
     fn hours_are_cut_on_true_time_across_a_pause() {
         let p = 0.125;
         let log = crate::stream::BeatLog {
+            lock_template_kept: false,
             sample_rate: 48_000,
             duration_s: 5400.0,
             bph: 28_800,
@@ -1259,6 +1261,7 @@ mod tests {
     /// A run of `duration_s` seconds of beats, every one heard.
     fn steady_log(duration_s: f64) -> crate::stream::BeatLog {
         crate::stream::BeatLog {
+            lock_template_kept: false,
             sample_rate: 48_000,
             duration_s,
             bph: 28_800,

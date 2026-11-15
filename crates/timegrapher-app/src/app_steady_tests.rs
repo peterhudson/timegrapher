@@ -36,6 +36,7 @@ fn moving_steadiness_out_leaves_the_profile_showing() {
 fn steadiness_stops_at_a_takes_breaks_with_their_gaps() {
     use timegrapher_core::breaks::Break;
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 600.0,
         bph: 28800,
@@ -281,8 +282,8 @@ fn a_panes_wheel_periods_switch_changes_that_pane_only() {
             .map(|(_, r)| r)
     };
     let (fft, periods) = (
-        app.show_wheels.on(View::Fft),
-        app.show_wheels.on(View::Periods),
+        app.show_marks.wheels.on(View::Fft),
+        app.show_marks.wheels.on(View::Periods),
     );
     pass(&mut app, Vec::new());
     let at = pass(&mut app, Vec::new())
@@ -299,30 +300,46 @@ fn a_panes_wheel_periods_switch_changes_that_pane_only() {
         vec![egui::Event::PointerMoved(at), button(true), button(false)],
     );
     pass(&mut app, Vec::new());
-    assert_eq!(app.show_wheels.on(View::Fft), !fft);
-    assert_eq!(app.show_wheels.on(View::Periods), periods);
+    assert_eq!(app.show_marks.wheels.on(View::Fft), !fft);
+    assert_eq!(app.show_marks.wheels.on(View::Periods), periods);
     // Only the pane switched is noted: Periods, drawn too, keeps the
     // default, as do the panes' Info and dB Scale.
-    assert_eq!(app.show_wheels.saved(), vec![(View::Fft, !fft)]);
+    assert_eq!(app.show_marks.wheels.saved(), vec![(View::Fft, !fft)]);
     assert!(app.steady_info.saved().is_empty() && app.maps_db.saved().is_empty());
+    // Mesh is its own switch: Wheel Periods leaves it as it was (#1764).
+    assert!(app.show_marks.meshes.saved().is_empty());
+    app.show_marks.meshes.set(View::Stft, false);
     app.maps_db.set(View::Wavelet, true);
     app.steady_info.set(View::Cusum, true);
 
     let mut back = TimegrapherApp::with_devices(Vec::new(), None);
     back.apply_settings(app.settings());
     for (switch, on, off) in [
-        (&back.show_wheels, View::Periods, View::Fft),
+        (&back.show_marks.wheels, View::Periods, View::Fft),
         (&back.maps_db, View::Wavelet, View::Stft),
         (&back.steady_info, View::Cusum, View::Allan),
+        (&back.show_marks.meshes, View::Wavelet, View::Stft),
     ] {
         assert!(switch.on(on) && !switch.on(off), "{switch:?}");
     }
 
     let mut older = app.settings();
-    older.show_wheels = false;
-    older.show_wheels_set.clear();
+    older.marks.show_wheels = false;
+    older.marks.show_wheels_set.clear();
     back.apply_settings(older);
     for p in Pane::STEADY {
-        assert!(!back.show_wheels.on(p.steady_view().unwrap()), "{p:?}");
+        assert!(
+            !back.show_marks.wheels.on(p.steady_view().unwrap()),
+            "{p:?}"
+        );
     }
+    // Settings kept before Mesh had a switch mark the meshes, as the app
+    // did then, and keep their Wheel Periods as they were.
+    let mut v = serde_json::to_value(app.settings()).unwrap();
+    let kept = v.as_object_mut().unwrap();
+    kept.remove("show_meshes");
+    kept.remove("show_meshes_set");
+    let s: crate::settings::Settings = serde_json::from_value(v).unwrap();
+    assert!(s.marks.show_meshes && s.marks.show_meshes_set.is_empty());
+    assert_eq!(s.marks.show_wheels_set, vec![(View::Fft, !fft)]);
 }

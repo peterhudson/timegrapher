@@ -42,7 +42,8 @@ struct Shadow {
 const CATCH_UP: usize = 4;
 
 /// Why the template was not built again when the first chunk's template
-/// read both sides in fewer windows ([`reads_fewer_sides`]).
+/// read both sides in fewer windows
+/// ([`crate::amplitude::reads_fewer_sides`]).
 const KEPT_LOCK: &str = "the first chunk's template read both sides in fewer windows";
 
 impl LiveAnalyzer {
@@ -249,7 +250,7 @@ impl LiveAnalyzer {
             return;
         };
         let mut l = sh.live;
-        if reads_fewer_sides(&self.amp, &l.amp) {
+        if crate::amplitude::reads_fewer_sides(&self.amp, &l.amp) {
             // The shadow is gone and the template stays as first built.
             self.rebuild.given_up = Some(KEPT_LOCK);
             return;
@@ -258,24 +259,6 @@ impl LiveAnalyzer {
         l.rebuild.shift = moved(&self.beats, &l.beats);
         *self = l;
     }
-}
-
-/// Whether `new`'s windows read both sides in a lower share of its 2 s
-/// windows than `old`'s did over the stretch `new` read again, by more
-/// than 2 standard errors ([`crate::confidence::share_differs`], #1500):
-/// on a sound the first chunk's template reads worse than the lock's, the
-/// takeover would lose a live amplitude the listener was being shown.
-fn reads_fewer_sides(old: &[AmplitudeWindow], new: &[AmplitudeWindow]) -> bool {
-    let Some(from) = new.first().map(|w| w.start_s) else {
-        return false;
-    };
-    let count = |ws: &[AmplitudeWindow]| {
-        let ws: Vec<_> = ws.iter().filter(|w| w.start_s >= from - 1e-6).collect();
-        let both = ws.iter().filter(|w| w.mean().is_some()).count();
-        (both as f64, ws.len() as f64)
-    };
-    let ((k1, n1), (k2, n2)) = (count(old), count(new));
-    crate::confidence::share_differs(k1, n1, k2, n2) == Some(false)
 }
 
 /// The median move of the beats from `old` to `new`, seconds, over the
@@ -525,9 +508,15 @@ mod tests {
         // Windows before the stretch read again don't count.
         let mut old = run(0.0, 20, 0);
         old.extend(run(40.0, 10, 7));
-        assert!(reads_fewer_sides(&old, &run(41.0, 11, 1)));
-        assert!(!reads_fewer_sides(&old, &run(41.0, 11, 5)));
-        assert!(!reads_fewer_sides(&old, &run(41.0, 10, 10)));
-        assert!(!reads_fewer_sides(&old, &[]));
+        assert!(crate::amplitude::reads_fewer_sides(&old, &run(41.0, 11, 1)));
+        assert!(!crate::amplitude::reads_fewer_sides(
+            &old,
+            &run(41.0, 11, 5)
+        ));
+        assert!(!crate::amplitude::reads_fewer_sides(
+            &old,
+            &run(41.0, 10, 10)
+        ));
+        assert!(!crate::amplitude::reads_fewer_sides(&old, &[]));
     }
 }

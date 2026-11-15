@@ -2880,6 +2880,7 @@ mod window_grid_tests {
 
     fn log_of(windows: usize) -> BeatLog {
         BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: windows as f64 * 2.0,
             bph: 18000,

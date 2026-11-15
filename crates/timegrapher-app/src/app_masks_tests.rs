@@ -880,6 +880,7 @@ fn masked_stretches_are_saved_with_the_take() {
 pub(super) fn long_log(hours: f64) -> BeatLog {
     let duration_s = hours * 3600.0;
     BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s,
         bph: 28800,

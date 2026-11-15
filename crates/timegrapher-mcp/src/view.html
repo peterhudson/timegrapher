@@ -1880,16 +1880,19 @@ function sideWidth(lines) {
 }
 
 // steady::wheel_lines: the lines to mark on a period axis spanning `span`
-// (log10 s), core's `wheel_marks` as the document carries them
-// (input.settings.wheel_marks: each wheel's turn, its ×2 unless another
-// wheel turns there, each mesh no wheel or ×2 marks, with core's name,
-// words and hover); with no wheel named, the reference periods. Wheel
-// Periods shows the wheels, ×2s and references, Mesh the meshes. Each
-// line's x, turn ("wheel", "twice", "mesh" or "reference"), name, name a
-// word to a line and hover.
+// (log10 s), core's marks as the document carries them, picked as core
+// `shown_marks` picks them: with Wheel Periods on, `wheel_marks` (each
+// wheel's turn, its ×2 unless another wheel turns there, each mesh no
+// wheel or ×2 marks); with it off, `mesh_marks` (every mesh, none left out
+// for a wheel no longer shown: Hugh's ruling on #1764), or `wheel_marks`
+// from a document written before it. Each has core's name, words and
+// hover; with no wheel named, the reference periods. Wheel Periods shows
+// the wheels, ×2s and references, Mesh the meshes. Each line's x, turn
+// ("wheel", "twice", "mesh" or "reference"), name, name a word to a line
+// and hover.
 function wheelLines(doc, span) {
   const settings = (doc.input && doc.input.settings) || {};
-  const marks = settings.wheel_marks || [];
+  const marks = (!showWheels && settings.mesh_marks) || settings.wheel_marks || [];
   const inside = (l) => l.x > span[0] && l.x < span[1];
   const lines = marks.length
     ? marks.map((m) => ({ x: Math.log10(m.period_s), turn: m.turn, name: m.name, words: m.words, hover: m.hover }))

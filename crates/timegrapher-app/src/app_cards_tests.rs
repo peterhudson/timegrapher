@@ -844,6 +844,7 @@ fn an_archived_watch_is_listed_and_saving_clears_the_mark() {
 /// (a fraction: 1e-4 is 8.64 s a day), as a take's log.
 fn gaining_log(gain: f64) -> BeatLog {
     BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 120.0,
         bph: 28800,

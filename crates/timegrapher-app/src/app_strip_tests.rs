@@ -40,6 +40,7 @@ fn paused_take() -> (BeatLog, Vec<Break>) {
     let breaks = vec![Break { audio_s: at, gap_s }];
     renumber(&mut beats, &mut Vec::new(), &breaks, &[], 28800);
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 240.0,
         bph: 28800,

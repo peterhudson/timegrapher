@@ -109,6 +109,10 @@ pub struct Header {
     /// The beat shape of each recording in the session file, measured on
     /// the sound when the take was saved.
     pub shape: Vec<StoredShape>,
+    /// The beat log's `lock_template_kept` (#1503): left out when false,
+    /// as every take kept before it was.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lock_template_kept: bool,
 }
 
 /// [`crate::usbclock::UsbClock`], as kept.
@@ -672,6 +676,7 @@ pub fn from_log(
         usb_clock: None,
         signal_median: None,
         shape: Vec::new(),
+        lock_template_kept: log.lock_template_kept,
     };
     Stored {
         header,
@@ -782,6 +787,7 @@ pub(crate) fn stored_from(
     profiles: Vec<StretchProfiles>,
 ) -> Stored {
     let log = BeatLog {
+        lock_template_kept: header.lock_template_kept,
         sample_rate: header.sample_rate,
         duration_s: header.duration_s,
         bph: header.bph,

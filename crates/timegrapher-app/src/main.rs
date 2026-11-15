@@ -33,6 +33,7 @@ mod isochronism;
 mod marks;
 mod photos;
 mod pick;
+mod position_lanes;
 mod profiles;
 mod pump;
 mod report;

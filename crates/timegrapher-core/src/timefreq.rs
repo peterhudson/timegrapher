@@ -763,15 +763,24 @@ fn noise_level(
     period_s: &[f64],
     step: f64,
 ) -> Vec<f64> {
-    let ar = stretches.map(|s| {
-        crate::confidence::pooled_lag_one(s.iter().map(Vec::as_slice))
-            .map_or(0.0, |r| r.clamp(0.0, 0.99))
-    });
+    let ar = stretches.map(|s| noise_ar(&s));
     let coi_hi = std::f64::consts::SQRT_2 * OMEGA0 * period_s[0] / std::f64::consts::TAU / step;
     let noise_len = (2 * coi_hi.ceil() as usize + NOISE_INSIDE)
         .min(NOISE_MAX)
         .min(longest);
     red_noise_level(planner, ar, noise_len, period_s, step)
+}
+
+/// The lag-one correlation of one series' `stretches` that its red noise
+/// is drawn with: the one estimator every ± reads
+/// ([`crate::confidence::corrected_lag_one`], #1609), each stretch's line
+/// taken out as the coherence takes it out, with the line's bias downwards
+/// added back and held to 0 ..= [`crate::confidence::MAX_RHO`]. Read raw,
+/// the noise drawn was whiter than the series, so its 95% level sat too low
+/// and noise read as coherence more often than one time in twenty.
+fn noise_ar(stretches: &[Vec<f64>]) -> f64 {
+    let s: Vec<&[f64]> = stretches.iter().map(Vec::as_slice).collect();
+    crate::confidence::corrected_lag_one(&s)
 }
 
 /// Each column's mean coherence and the phase of its mean cross term, in
@@ -1464,6 +1473,75 @@ mod tests {
         );
         let phase = cells.iter().map(|q| q.1).sum::<f64>() / cells.len() as f64;
         assert!((phase - 90.0).abs() < 15.0, "{phase}");
+    }
+
+    /// The red noise behind the coherence level is drawn at the one
+    /// lag-one estimator every ± reads, bias added back (#1609): on short
+    /// AR(1) stretches it reads above the raw pooled value, by the line's
+    /// bias, never the raw one.
+    #[test]
+    fn the_coherence_noise_is_drawn_at_the_corrected_correlation() {
+        let mut rng = crate::synth::Rng::new(41);
+        let mut v = 0.0;
+        let stretches: Vec<Vec<f64>> = (0..3)
+            .map(|_| {
+                (0..80)
+                    .map(|_| {
+                        v = 0.7 * v + rng.normal();
+                        v
+                    })
+                    .collect()
+            })
+            .collect();
+        let s: Vec<&[f64]> = stretches.iter().map(Vec::as_slice).collect();
+        let raw = crate::confidence::pooled_lag_one(s.iter().copied()).unwrap();
+        let used = noise_ar(&stretches);
+        assert_eq!(used, crate::confidence::corrected_lag_one(&s));
+        assert!(used > raw + 0.03, "{used} {raw}");
+    }
+
+    /// The coherence level's false-alarm share on unrelated red noise
+    /// (#1609): 100 seeded pairs of independent AR(1) series at each lag-one
+    /// correlation and length, the share of cells read above `noise_95`.
+    /// Acceptance, set before the run: every share 2.5% to 7.5%. Run with
+    /// `--ignored --nocapture`; seeds 2026111500 on, fixed before the run.
+    #[test]
+    #[ignore = "acceptance run for #1609, about 26 minutes"]
+    fn red_noise_false_alarm_share_by_correlation_and_length() {
+        let mut seed = 2_026_111_500u64;
+        for rho in [0.0f64, 0.5, 0.9] {
+            for n in [180usize, 720] {
+                let (mut above, mut all) = (0usize, 0usize);
+                for _ in 0..100 {
+                    let ar = |s: u64| {
+                        let mut rng = crate::synth::Rng::new(s);
+                        let mut v = 0.0;
+                        for _ in 0..200 {
+                            v = rho * v + (1.0 - rho * rho).sqrt() * rng.normal();
+                        }
+                        grid(10.0, n, |_| {
+                            v = rho * v + (1.0 - rho * rho).sqrt() * rng.normal();
+                            v
+                        })
+                    };
+                    let (x, y) = (ar(seed), ar(seed + 1));
+                    seed += 2;
+                    let Some(c) = coherence(&x, &y, "x", "y") else {
+                        continue;
+                    };
+                    for col in &c.coherence {
+                        for (r, v) in col.iter().enumerate() {
+                            if v.is_finite() {
+                                all += 1;
+                                above += (*v > c.noise_95[r]) as usize;
+                            }
+                        }
+                    }
+                }
+                let share = above as f64 / all.max(1) as f64;
+                println!("rho {rho} n {n}: {:.2}% of {all} cells", 100.0 * share);
+            }
+        }
     }
 
     #[test]

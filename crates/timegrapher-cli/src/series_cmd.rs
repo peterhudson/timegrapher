@@ -103,6 +103,7 @@ pub fn run(o: Options) -> Result<(), String> {
             "named_wheels": lc.wheels,
             "named_meshes": meshes,
             "wheel_marks": timegrapher_core::steady_views::wheel_marks(&lc.wheels, &meshes),
+            "mesh_marks": timegrapher_core::steady_views::mesh_marks(&meshes),
             "reference_lines": crate::long::reference_lines(&lc.wheels),
             "wheels": o.wheels,
             "reading_s": o.check.rate_reading_s,

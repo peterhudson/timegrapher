@@ -98,6 +98,7 @@ fn beats_between(between: f64, gap: i64) -> i64 {
 /// A log with `log`'s header and no beats, for [`join`] to fill.
 fn empty_like(log: &BeatLog) -> BeatLog {
     BeatLog {
+        lock_template_kept: log.lock_template_kept,
         sample_rate: log.sample_rate,
         duration_s: 0.0,
         bph: log.bph,
@@ -242,6 +243,7 @@ mod tests {
     /// 200 s of an 18,000 bph watch, a beat every 0.2 s.
     fn log() -> BeatLog {
         BeatLog {
+            lock_template_kept: false,
             sample_rate: 48_000,
             duration_s: 200.0,
             bph: 18_000,

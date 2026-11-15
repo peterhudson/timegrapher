@@ -886,6 +886,7 @@ fn a_power_reserve_test_runs_in_the_cards_position() {
 fn the_live_hours_match_a_fresh_read_after_each_refresh() {
     use timegrapher_core::{beats::Beat, breaks::Break, stream::BeatLog};
     let log = |duration_s: f64| BeatLog {
+        lock_template_kept: false,
         sample_rate: 48_000,
         duration_s,
         bph: 28_800,
@@ -957,6 +958,7 @@ fn the_live_hours_match_a_fresh_read_after_each_refresh() {
 fn long_log(run_s: f64) -> BeatLog {
     let n = run_s as i64;
     BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: run_s + 60.0,
         bph: 3600,

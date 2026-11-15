@@ -25,6 +25,7 @@ fn whole_take_beat_error_keeps_its_size_across_a_turn() {
             })
             .collect();
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48_000,
             duration_s: 120.0,
             bph: 28_800,

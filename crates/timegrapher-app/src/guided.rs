@@ -1253,7 +1253,8 @@ fn table_grid(
     let be_hint = crate::reserve::beat_error_hint(
         "As a size, from the unlock, or from the drop where the unlock isn't found.",
     );
-    egui::Grid::new(id)
+    let mut tops = Vec::new();
+    let grid = egui::Grid::new(id)
         .num_columns(5)
         .spacing(Vec2::new(gap, 5.0))
         .min_col_width(LABEL_W.min(fw))
@@ -1262,6 +1263,7 @@ fn table_grid(
             head_row(ui, fw, from_word, &be_hint);
             let mut status = status;
             for (i, p) in kind.order().iter().enumerate() {
+                tops.push(ui.cursor().top());
                 match t.rows.get(i) {
                     Some((label, rate, from_mean, amp, be)) => {
                         ui.label(RichText::new(label).color(pal.text));
@@ -1310,6 +1312,7 @@ fn table_grid(
                 }
                 ui.end_row();
             }
+            tops.push(ui.cursor().top());
             if !t.rows.is_empty() {
                 ui.label(RichText::new(mean_word).strong().color(pal.text));
                 right_in(ui, fw, signed(t.mean_rate, RATE), true, pal.text);
@@ -1320,27 +1323,30 @@ fn table_grid(
                 ui.end_row();
             }
             if t.rows.len() >= 2 && !poise {
-                largest_label(ui);
-                right_in(ui, fw, plain(t.largest_difference, RATE), true, pal.text);
-                ui.label("");
-                right_in(
-                    ui,
-                    fw,
-                    plain(t.largest_amplitude, AMPLITUDE),
-                    true,
-                    pal.text,
-                );
-                right_in(
-                    ui,
-                    fw,
-                    plain(t.largest_beat_error, BEAT_ERROR),
-                    true,
-                    pal.text,
-                );
-                ui.end_row();
+                largest_row(ui, t, fw);
             }
         });
+    if kind == Kind::Positions {
+        let codes: Vec<_> = kind
+            .order()
+            .iter()
+            .map(|p| session::Position::parse(p.code()).map_or(p.code(), |c| c.common()))
+            .collect();
+        crate::position_lanes::table_rows(ui, (grid.response.rect.x_range(), 5.0), &codes, &tops);
+        crate::position_lanes::note_table_w(ui, grid.response.rect.width());
+    }
     (!poise).then(|| table_notes(ui, t));
+}
+
+/// A Positions Test table's Largest Difference row.
+fn largest_row(ui: &mut egui::Ui, t: &Table, fw: f32) {
+    let ink = theme::pal(ui).text;
+    largest_label(ui);
+    right_in(ui, fw, plain(t.largest_difference, RATE), true, ink);
+    ui.label("");
+    right_in(ui, fw, plain(t.largest_amplitude, AMPLITUDE), true, ink);
+    right_in(ui, fw, plain(t.largest_beat_error, BEAT_ERROR), true, ink);
+    ui.end_row();
 }
 
 /// What the Dynamic Poise pane's Info panel says of its table (Hugh on
@@ -1584,7 +1590,7 @@ fn table_notes(ui: &mut egui::Ui, t: &Table) {
 fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
     let pal = theme::pal(ui);
     let h = format!("{:.1} h", c.hours);
-    egui::Grid::new("full-wind")
+    let grid = egui::Grid::new("full-wind")
         .num_columns(7)
         .spacing(Vec2::new(16.0, 5.0))
         .min_col_width(LABEL_W.min(FIGURE_W))
@@ -1637,6 +1643,7 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
                 ui.end_row();
             }
         });
+    crate::position_lanes::note_table_w(ui, grid.response.rect.width());
     ui.add_space(4.0);
     ui.label(
         RichText::new(format!(
@@ -1690,7 +1697,7 @@ pub fn pane(
     settle_s: f64,
     watch: bool,
     note: Option<&str>,
-    (card, info): (&str, bool),
+    (card, info, shown): (&str, bool, [bool; 3]),
 ) -> Option<Action> {
     // When the banner comes or goes (a test starts, stops or finishes),
     // the pane starts again from its top, not where it was scrolled.
@@ -1722,9 +1729,10 @@ pub fn pane(
         note,
         card,
     };
+    let lines = body.lines(shown);
     let mut action = None;
     theme::with_info(ui, info, egui::Id::new("positions info"), panel, |ui| {
-        area.show(ui, |ui| action = body.show(ui));
+        action = crate::position_lanes::beside(ui, area, &lines, |ui| body.show(ui));
     });
     action
 }
@@ -1743,6 +1751,29 @@ struct Body<'a> {
 }
 
 impl Body<'_> {
+    /// The position lines of what the table shows, for the `shown`
+    /// measures: this test's, an opened 24 hour half's as saved, or the
+    /// take's own, its 45° stops too.
+    fn lines(&self, shown: [bool; 3]) -> Vec<timegrapher_core::position_line::PositionLine> {
+        use crate::position_lanes::lines;
+        let read = text_report::figures;
+        match (self.test, self.saved, self.free) {
+            (Some(t), ..) => {
+                let full = t.full.as_ref().map(|(f, _)| kept_figures(f));
+                let wind = (t.wind_h(), full.as_deref());
+                lines(&read(t.readings_so_far()), &[], wind, shown)
+            }
+            (None, Some(s), _) => {
+                let full = s.against.as_deref().map(kept_figures);
+                lines(&kept_figures(s), &[], (s.wind_h, full.as_deref()), shown)
+            }
+            (None, None, Some(f)) => {
+                lines(&read(&f.six.0), &read(&f.upright.0), (None, None), shown)
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// The body, top to bottom; what a button asked for.
     fn show(&self, ui: &mut egui::Ui) -> Option<Action> {
         let pal = theme::pal(ui);
@@ -2276,7 +2307,8 @@ fn table_duration(v: f64) -> String {
 /// difference once two positions have readings.
 fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
     let pal = theme::pal(ui);
-    egui::Grid::new("free-positions")
+    let mut tops = Vec::new();
+    let grid = egui::Grid::new("free-positions")
         .num_columns(5)
         .spacing(Vec2::new(16.0, 5.0))
         .min_col_width(LABEL_W.min(FIGURE_W))
@@ -2305,6 +2337,7 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
             }
             ui.end_row();
             for (label, duration, cell) in &t.rows {
+                tops.push(ui.cursor().top());
                 let marked = *cell != FreeCell::NotMarked;
                 let color = if marked { pal.text } else { pal.text_tertiary };
                 ui.label(RichText::new(label).color(color));
@@ -2343,37 +2376,37 @@ fn free_grid(ui: &mut egui::Ui, t: &FreeTable) {
                 }
                 ui.end_row();
             }
+            tops.push(ui.cursor().top());
             if t.read >= 2 {
-                ui.label(RichText::new("Average").strong().color(pal.text))
-                    .on_hover_text("Over the positions read");
-                right(ui, format!("{} of 6", t.read), false, pal.text_secondary);
-                right(ui, signed(t.mean[0], RATE), true, pal.trace_rate);
-                right(ui, plain(t.mean[1], AMPLITUDE), true, pal.trace_amplitude);
-                right(
-                    ui,
-                    plain(t.mean[2], BEAT_ERROR),
-                    true,
-                    pal.ink(pal.trace_beat_error),
-                );
-                ui.end_row();
-                largest_label(ui);
-                ui.label("");
-                right(ui, plain(t.largest[0], RATE), true, pal.trace_rate);
-                right(
-                    ui,
-                    plain(t.largest[1], AMPLITUDE),
-                    true,
-                    pal.trace_amplitude,
-                );
-                right(
-                    ui,
-                    plain(t.largest[2], BEAT_ERROR),
-                    true,
-                    pal.ink(pal.trace_beat_error),
-                );
-                ui.end_row();
+                free_means(ui, t);
             }
         });
+    let codes: Vec<_> = card_order().into_iter().map(|p| p.common()).collect();
+    crate::position_lanes::table_rows(ui, (grid.response.rect.x_range(), 5.0), &codes, &tops);
+    crate::position_lanes::note_table_w(ui, grid.response.rect.width());
+}
+
+/// A free take's table's Average and Largest Difference rows.
+fn free_means(ui: &mut egui::Ui, t: &FreeTable) {
+    let pal = theme::pal(ui);
+    let inks = [
+        pal.trace_rate,
+        pal.trace_amplitude,
+        pal.ink(pal.trace_beat_error),
+    ];
+    ui.label(RichText::new("Average").strong().color(pal.text))
+        .on_hover_text("Over the positions read");
+    right(ui, format!("{} of 6", t.read), false, pal.text_secondary);
+    right(ui, signed(t.mean[0], RATE), true, inks[0]);
+    right(ui, plain(t.mean[1], AMPLITUDE), true, inks[1]);
+    right(ui, plain(t.mean[2], BEAT_ERROR), true, inks[2]);
+    ui.end_row();
+    largest_label(ui);
+    ui.label("");
+    right(ui, plain(t.largest[0], RATE), true, inks[0]);
+    right(ui, plain(t.largest[1], AMPLITUDE), true, inks[1]);
+    right(ui, plain(t.largest[2], BEAT_ERROR), true, inks[2]);
+    ui.end_row();
 }
 
 /// The label of a table's Largest Difference row, with its hover.

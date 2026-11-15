@@ -53,6 +53,7 @@ fn a_lone_wrong_sound_stays_out_after_a_live_lift_change() {
         faint_withheld: [false; 2],
     };
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 40.0,
         bph: 28800,
