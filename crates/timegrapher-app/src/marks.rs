@@ -576,8 +576,9 @@ pub struct Across {
     pub hover: String,
 }
 
-/// The room the names of `lines` take beside a plot: the tick and the
-/// widest name. Kept the same whatever stretch the plot shows, so the plot
+/// The room the names of `lines` take beside a plot: the tick, the
+/// widest name (its widest line, for a name a word to a line) and the
+/// scroll bar. Kept the same whatever stretch the plot shows, so the plot
 /// doesn't change width as its lines come and go.
 pub fn side_width(ui: &egui::Ui, names: &[(String, Rank)]) -> f32 {
     let widest = names
@@ -585,7 +586,10 @@ pub fn side_width(ui: &egui::Ui, names: &[(String, Rank)]) -> f32 {
         .map(|(n, r)| galley(ui, n, *r, false).size().x)
         .fold(0.0, f32::max);
     if widest > 0.0 {
-        SIDE_GAP + widest + 4.0
+        // The pane's scroll bar floats over its right edge: kept clear of
+        // it, so no name is cut there (Hugh, Walter on #1774).
+        let bar = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_outer_margin;
+        SIDE_GAP + widest + 4.0 + bar
     } else {
         0.0
     }
