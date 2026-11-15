@@ -133,7 +133,10 @@ jobs:
         # edge-take comparisons the regress checks run.
         env:
           TIMEGRAPHER_MCP_TEST_CLI: ${{ github.workspace }}/target/release/timegrapher${{ runner.os == 'Windows' && '.exe' || '' }}
-        run: cargo nextest run --locked --release --no-fail-fast ${{ matrix.part && format('--partition count:{0}', matrix.part) || '' }}
+        # On a pull request, macOS and Windows leave out the heaviest
+        # pure-maths tests, which Linux runs (.config/nextest.toml, #1755).
+        # Pushes to main run every test on all three.
+        run: cargo nextest run --locked --release --no-fail-fast ${{ matrix.part && format('--partition count:{0}', matrix.part) || '' }} ${{ github.event_name == 'pull_request' && runner.os != 'Linux' && '--profile pr-off-linux' || '' }}
       - name: Doc tests
         if: matrix.part != '2/2' && steps.changes.outputs.full != 'false'
         run: cargo test --locked --release --doc

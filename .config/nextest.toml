@@ -1,0 +1,38 @@
+# nextest settings. The default profile is nextest's own.
+
+# Pull requests on macOS and Windows (ci.yml) leave out the 18 heaviest
+# pure-maths tests: each builds a synthetic watch's sound in memory and
+# checks core's numbers, with no files, devices, threads of the app or
+# drawing, so on a pull request Linux runs them for every platform. Every
+# push to main runs them on all three, since floating-point results can
+# still differ in the last digit by platform (the FFT's fast path on
+# Apple Silicon, each OS's maths library). Together they took about
+# 1,100 CPU-seconds of a test job on 14 Nov (#1755). A test renamed here
+# runs everywhere again until this list is updated.
+[profile.pr-off-linux]
+default-filter = """
+not (
+    (binary_id(timegrapher-core::noise_lead) & (
+        test(=a_long_noise_lead_does_not_set_the_rate)
+        | test(=a_read_at_a_harmonic_loses_to_the_watchs_own_rate)
+        | test(=a_noise_lead_before_a_slower_watch_ends_where_the_watch_starts)
+        | test(=a_watch_fading_in_or_after_noise_reads_as_the_watch)))
+    | (binary_id(timegrapher-core::guess_bph_sweep) & (
+        test(=faster_standard_rates_keep_their_rate_with_large_beat_error)
+        | test(=slower_standard_rates_keep_their_rate_with_large_beat_error)
+        | test(=vintage_standard_rates_keep_their_rate_with_large_beat_error)))
+    | (binary_id(timegrapher-core::live_places) & (
+        test(=a_live_figure_keeps_its_place_as_its_plus_minus_moves)))
+    | (binary_id(timegrapher-core) & (
+        test(=longterm::null::tests::a_walk_read_as_white_holds_its_false_alarms)
+        | test(=scenarios::tests::a_steady_watch_with_red_noise_names_little_on_the_whole_pane)
+        | test(=scenarios::tests::a_steady_watch_names_nothing_on_the_whole_pane)
+        | test(=scenarios::tests::the_analysis_finds_what_each_scenario_hides)
+        | test(=steadiness::tests::a_pure_alias_is_no_cycle_at_whole_half_or_third_turns)
+        | test(=steadiness::tests::a_real_slow_line_beside_an_alias_is_the_only_cycle_found)
+        | test(=beats::tests::a_dropout_the_tracker_follows_noise_through_keeps_the_sides)
+        | test(=live::tests::a_watch_heard_briefly_after_the_stand_noise_is_no_watch_live_or_saved)
+        | test(=steady_views::tests::a_once_a_minute_swing_gives_every_view)
+        | test(=live::relock_tests::a_right_lock_is_never_let_go)))
+)
+"""
