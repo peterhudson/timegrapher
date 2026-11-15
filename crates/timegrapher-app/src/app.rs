@@ -346,8 +346,7 @@ enum Confirm {
     /// while a take is on show: the take is put away.
     PickWatch(Option<String>),
     Quit,
-    /// Start listening to the microphone, over a recording whose masks
-    /// changed.
+    /// Start listening to the microphone, over a recording whose masks changed.
     Microphone,
     /// Quick Listen: a new session on the microphone, with no watch.
     QuickListen,
@@ -2045,8 +2044,9 @@ pub struct TimegrapherApp {
     chart_series: [bool; 3],
     /// The readings the Distributions pane draws.
     dist_series: [bool; 3],
-    /// The charts the Power Reserve pane draws (#1729).
+    /// The charts the Power Reserve and Positions Test panes draw (#1729).
     reserve_series: [bool; 3],
+    positions_series: [bool; 3],
     /// The charts drawn last frame: those turned on that had room. The
     /// key names only these.
     charts_drawn: [bool; 3],
@@ -2063,12 +2063,10 @@ pub struct TimegrapherApp {
     pane_top: f32,
     /// Show the cumulative share instead of the probability plot.
     hist_cumulative: bool,
-    /// The Power Reserve and Positions Test panes' Info panels open
-    /// (#1528).
+    /// The Power Reserve and Positions Test panes' Info panels open (#1528).
     reserve_info: bool,
     positions_info: bool,
-    /// The histograms count the readings rather than each 2 seconds of
-    /// beats.
+    /// The histograms count the readings rather than each 2 seconds of beats.
     hist_readings: bool,
     iso_view: isochronism::View,
     /// The rate over each 2 seconds of beats, for the rate's distribution.
@@ -2300,6 +2298,7 @@ impl TimegrapherApp {
             chart_series: self.chart_series,
             dist_series: self.dist_series,
             reserve_series: self.reserve_series,
+            positions_series: self.positions_series,
             hist_cumulative: self.hist_cumulative,
             reserve_info: self.reserve_info,
             positions_info: self.positions_info,
@@ -2362,6 +2361,7 @@ impl TimegrapherApp {
             chart_series,
             dist_series,
             reserve_series,
+            positions_series,
             hist_cumulative,
             reserve_info,
             positions_info,
@@ -2432,14 +2432,13 @@ impl TimegrapherApp {
         (self.rate_line, self.rate_guides) = (rate_line, rate_guides);
         (self.overlays, self.follow) = (overlays, follow);
         // One left on is kept: a pane with none shown would be empty.
-        let some = |s: [bool; 3]| if s.contains(&true) { s } else { RATE_ONLY };
-        (self.chart_series, self.dist_series, self.reserve_series) =
-            (some(chart_series), some(dist_series), some(reserve_series));
+        let on = |s: [bool; 3]| if s.contains(&true) { s } else { RATE_ONLY };
+        (self.chart_series, self.dist_series) = (on(chart_series), on(dist_series));
+        (self.reserve_series, self.positions_series) = (on(reserve_series), on(positions_series));
         (self.hist_cumulative, self.reserve_info) = (hist_cumulative, reserve_info);
         (self.positions_info, self.sound_opts) = (positions_info, sound);
         (self.hist_readings, self.iso_view) = (hist_readings, iso_view);
-        self.folded = folded.into_iter().collect();
-        self.theme = theme;
+        (self.folded, self.theme) = (folded.into_iter().collect(), theme);
         (self.periods_db, self.fft_timing) = (periods_db, fft_timing);
         self.maps_db = steady::PerPane::new(maps_db_set, maps_db);
         self.show_marks = steady::MarkSwitches::new(marks);
@@ -2618,6 +2617,7 @@ impl TimegrapherApp {
             chart_series: RATE_ONLY,
             dist_series: RATE_ONLY,
             reserve_series: [true; 3],
+            positions_series: [true; 3],
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
             panes_dragged: std::collections::HashSet::new(),

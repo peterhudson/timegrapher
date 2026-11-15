@@ -197,3 +197,6 @@ and the research behind the engine.
 
 GPL-3.0-or-later. This is a clean implementation; it contains no code from
 tg (which is GPL-2.0-only), though it learned a great deal from it.
+
+Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests from
+outside contributors need the [Contributor Licence Agreement](CLA.md).

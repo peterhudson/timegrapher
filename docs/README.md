@@ -38,6 +38,7 @@ For contributors: how the code is built, organised and checked.
 - [Design Guide](developer/design/design-guide.md) and [App Structure](developer/design/app-structure.md)
 - [Regression check against tg](developer/regress.md)
 - [Synthetic takes](developer/synthetic-takes.md)
+- [Contributor Licence Agreement acceptances](developer/cla-acceptances.md)
 
 ## [Research](research/)
 

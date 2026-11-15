@@ -186,6 +186,7 @@ report.position_lines[].amplitude.extent
 report.position_lines[].amplitude.key
 report.position_lines[].amplitude.lanes
 report.position_lines[].amplitude.lanes[].figure
+report.position_lines[].amplitude.lanes[].figures
 report.position_lines[].amplitude.lanes[].full_wind
 report.position_lines[].amplitude.lanes[].full_wind_text
 report.position_lines[].amplitude.lanes[].group
@@ -210,6 +211,7 @@ report.position_lines[].beat_error.extent
 report.position_lines[].beat_error.key
 report.position_lines[].beat_error.lanes
 report.position_lines[].beat_error.lanes[].figure
+report.position_lines[].beat_error.lanes[].figures
 report.position_lines[].beat_error.lanes[].full_wind
 report.position_lines[].beat_error.lanes[].full_wind_text
 report.position_lines[].beat_error.lanes[].group
@@ -235,6 +237,7 @@ report.position_lines[].rate.extent
 report.position_lines[].rate.key
 report.position_lines[].rate.lanes
 report.position_lines[].rate.lanes[].figure
+report.position_lines[].rate.lanes[].figures
 report.position_lines[].rate.lanes[].full_wind
 report.position_lines[].rate.lanes[].full_wind_text
 report.position_lines[].rate.lanes[].group

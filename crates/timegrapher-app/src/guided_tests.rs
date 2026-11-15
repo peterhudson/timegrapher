@@ -137,7 +137,7 @@ fn drawn_with(
                     20.0,
                     false,
                     None,
-                    ("Current Position", false),
+                    ("Current Position", false, [true; 3]),
                 );
             });
         });
@@ -998,7 +998,7 @@ fn drawn_empty(info: bool) -> Vec<String> {
         };
         let out = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                let card = ("Current Position", info);
+                let card = ("Current Position", info, [true; 3]);
                 pane(
                     ui, None, None, None, None, None, None, 20.0, false, None, card,
                 );

@@ -304,25 +304,48 @@ pub struct Named {
 /// leader where it had to slide. The lines themselves are the plot's,
 /// drawn under its trace. `id` keeps the rows the names took.
 pub fn lane_above(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id) {
-    lane(ui, frame, lines, id, false);
+    lane(ui, frame, lines, id, None);
 }
 
 /// As [`lane_above`], in a lane of one row: a name that would touch
 /// another slides along the row ([`place_row`]). For a plot that names
 /// only a few lines, such as the Scope's two edges.
 pub fn lane_above_one(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id) {
-    lane(ui, frame, lines, id, true);
+    lane(ui, frame, lines, id, Some(place_row));
 }
+
+/// As [`lane_above_one`], with core's
+/// [`timegrapher_core::chart_scale::lane_stack`] along the row: the names
+/// keep their lines' order, so no two leaders cross, each run that would
+/// touch sitting where its names are nearest their lines. For a few
+/// reference lines that can sit within a name's width of each other, such
+/// as a Positions Test's three averages (Hugh on #1785).
+pub fn lane_above_stack(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id) {
+    lane(ui, frame, lines, id, Some(place_stack));
+}
+
+/// Each name's left edge in one row by core's `lane_stack` (see
+/// [`lane_above_stack`]).
+fn place_stack(names: &[(f32, f32, Rank)], left: f32, right: f32) -> Vec<f32> {
+    timegrapher_core::chart_scale::lane_stack(&core_names(names), f64::from(left), f64::from(right))
+        .into_iter()
+        .map(|a| a as f32)
+        .collect()
+}
+
+/// How a lane of one row places its names: each one's centre, width and
+/// rank, within `left..right`, to each one's left edge.
+type RowRule = fn(&[(f32, f32, Rank)], f32, f32) -> Vec<f32>;
 
 /// The lines in `frame`, each with its name laid out and where it goes in
 /// a lane: its left edge and row, in two rows ([`place`], the rows kept
-/// under `id`) or, with `one`, in one ([`place_row`]).
+/// under `id`) or, with `one`, in one by that rule.
 fn laid_out<'a>(
     ui: &egui::Ui,
     frame: egui::Rect,
     lines: &'a [Named],
     id: egui::Id,
-    one: bool,
+    one: Option<RowRule>,
 ) -> Vec<(&'a Named, Arc<egui::Galley>, f32, u8)> {
     let lines: Vec<&Named> = lines
         .iter()
@@ -342,8 +365,8 @@ fn laid_out<'a>(
     let seen = frame
         .intersect(ui.clip_rect())
         .shrink2(egui::vec2(2.0, 0.0));
-    let placed = if one {
-        place_row(&names, seen.left(), seen.right())
+    let placed = if let Some(rule) = one {
+        rule(&names, seen.left(), seen.right())
             .into_iter()
             .map(|a| (a, 0))
             .collect()
@@ -381,7 +404,7 @@ fn hover_and_paint(
     }
 }
 
-fn lane(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id, one: bool) {
+fn lane(ui: &egui::Ui, frame: egui::Rect, lines: &[Named], id: egui::Id, one: Option<RowRule>) {
     let painter = ui.painter_at(frame.expand2(egui::vec2(0.0, LANE + LANE_GAP + 2.0)));
     let mut named = Vec::new();
     for (l, g, left, row) in laid_out(ui, frame, lines, id, one) {
@@ -418,7 +441,7 @@ pub fn lane_below(ui: &egui::Ui, frame: egui::Rect, under: f32, lines: &[Named],
         frame.bottom()..=top + ROW_H + 2.0,
     ));
     let mut named = Vec::new();
-    for (l, g, left, _) in laid_out(ui, frame, lines, id, true) {
+    for (l, g, left, _) in laid_out(ui, frame, lines, id, Some(place_row)) {
         let rect = egui::Rect::from_min_size(egui::pos2(left, top), egui::vec2(g.size().x, ROW_H));
         let down = [egui::pos2(l.x, frame.bottom()), egui::pos2(l.x, under)];
         let stroke = egui::Stroke::new(1.0_f32, l.ink);
