@@ -180,6 +180,7 @@ mod tests {
     fn log(n: usize) -> BeatLog {
         use crate::amplitude::AmplitudeWindow;
         BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: n as f64 * 2.0,
             bph: 28800,

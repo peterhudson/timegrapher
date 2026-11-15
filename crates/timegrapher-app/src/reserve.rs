@@ -536,24 +536,23 @@ fn reserve_charts(hours: &[power_reserve::Hour], shown: [bool; 3]) -> Vec<hour_s
     let step = |k: SeriesKind, h: &power_reserve::Hour| -> Option<Step> {
         Some(Step {
             v: h.value(k)?,
-            se: h.se(k),
+            hover: h.hover_text(k)?,
             band: h.band(k),
             grey: h.grey(k),
         })
     };
     [
-        (SeriesKind::Rate, base_digits::RATE),
-        (SeriesKind::Amplitude, base_digits::AMPLITUDE),
-        (SeriesKind::BeatError, base_digits::BEAT_ERROR),
+        SeriesKind::Rate,
+        SeriesKind::Amplitude,
+        SeriesKind::BeatError,
     ]
     .into_iter()
     .zip(shown)
     .filter(|(_, on)| *on)
-    .map(|((kind, digits), _)| Chart {
+    .map(|(kind, _)| Chart {
         kind,
         steps: hours.iter().map(|h| step(kind, h)).collect(),
         unit: timegrapher_core::position_line::unit_of(kind),
-        digits,
         signed: kind == SeriesKind::Rate,
         axis: power_reserve::chart_axis(hours, kind),
     })

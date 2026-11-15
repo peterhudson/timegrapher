@@ -266,13 +266,15 @@ impl DropWhy {
 }
 
 /// [`Caveat::LockTemplateKept`] as a sentence, with the first chunk's
-/// length from [`crate::stream::StreamConfig`].
+/// length from [`crate::stream::StreamConfig`] and the lock-on window's
+/// from [`crate::live::LiveConfig`].
 fn lock_template_kept_text() -> String {
     let chunk_s = crate::stream::StreamConfig::default().chunk_s;
+    let lock_s = crate::live::LiveConfig::default().window_s;
     format!(
-        "Live kept the beat shape it learned when it locked on. Learning it again from the \
-         first {chunk_s:.0} s, as the saved take does, found amplitude in fewer windows on \
-         both sides, so the saved take may read differently."
+        "This reading used the beat shape from the first {lock_s:.0} s of sound, where Live \
+         locks on. The shape from the first {chunk_s:.0} s found amplitude on both sides in \
+         fewer windows. Live and saved takes choose the same way."
     )
 }
 
@@ -371,11 +373,12 @@ pub enum Caveat {
     /// heard, and are left out of the readings
     /// ([`crate::session::watch_lead_s`], #844).
     LeadLeftOut { seconds: f64 },
-    /// Live only: the template built again from the first 47 s, as a
-    /// file's reading builds it, read both sides in fewer amplitude windows
-    /// than the one live locked on with, so live kept that one
-    /// ([`crate::live::LiveAnalyzer::kept_lock_template`], #1500). A
-    /// file's reading of the same sound may then differ.
+    /// The template built from the first 47 s read both sides in fewer
+    /// amplitude windows than the one a short window gave, as live locks
+    /// on with, so that one was kept: by live
+    /// ([`crate::live::LiveAnalyzer::kept_lock_template`], #1500) and by a
+    /// file's reading ([`crate::stream::BeatLog::lock_template_kept`],
+    /// #1503) alike.
     LockTemplateKept,
     /// The amplitude's or beat error's period search named a cycle on a
     /// stretch under [`crate::longterm::NOISE_CAVEAT_SPAN_S`] whose 2 s
@@ -911,7 +914,8 @@ mod tests {
     use super::*;
 
     /// The kept-template caveat names the first chunk's length from
-    /// `stream`, not a number of its own (#1500).
+    /// `stream` and the lock-on window's from `live`, not numbers of its
+    /// own (#1500, #1503).
     #[test]
     fn the_kept_template_caveat_names_the_first_chunk() {
         let c = Caveat::LockTemplateKept;
@@ -920,8 +924,16 @@ mod tests {
             Some("beat shape kept from lock-on")
         );
         let chunk_s = crate::stream::StreamConfig::default().chunk_s;
+        let lock_s = crate::live::LiveConfig::default().window_s;
         let long = c.long(None).unwrap();
-        assert!(long.contains(&format!("first {chunk_s:.0} s,")), "{long}");
+        assert!(
+            long.contains(&format!("first {chunk_s:.0} s found")),
+            "{long}"
+        );
+        assert!(
+            long.contains(&format!("first {lock_s:.0} s of sound")),
+            "{long}"
+        );
     }
 
     /// A beat error from the drop because the unlock was not found writes

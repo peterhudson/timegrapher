@@ -53,6 +53,7 @@ fn run(start: f64, first: i64, seconds: usize, rate: f64, error_ms: f64) -> Vec<
 
 fn log(beats: Vec<Beat>) -> BeatLog {
     BeatLog {
+        lock_template_kept: false,
         sample_rate: 48_000,
         duration_s: beats.last().unwrap().time + 0.125,
         bph: 28_800,

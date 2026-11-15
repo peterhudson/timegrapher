@@ -73,6 +73,13 @@ pub struct BeatLog {
     /// in it can be looked at by its sound ([`BeatLog::beat_sound`]).
     #[serde(skip)]
     pub snippets: Vec<(f64, Vec<f32>)>,
+    /// Whether the chunk the watch was first heard in was read with the
+    /// template a short window gave, as live locks on with, because the
+    /// chunk's own read both sides in fewer amplitude windows by more than
+    /// 2 SE (#1503): the reading then carries
+    /// [`crate::measure::Caveat::LockTemplateKept`].
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub lock_template_kept: bool,
 }
 
 impl BeatLog {
@@ -123,10 +130,17 @@ impl BeatLog {
     }
 }
 
+#[derive(Clone)]
 struct State {
     fs: f64,
     cfg: StreamConfig,
     template: Option<Vec<f32>>,
+    /// The template a short window gave, to read the chunk the watch is
+    /// first heard in with in place of that chunk's own ([`State::chunk`]).
+    lock_try: Option<Vec<f32>>,
+    /// Whether the chunk the watch was first heard in is read with the
+    /// template a short window gave ([`BeatLog::lock_template_kept`]).
+    lock_template_kept: bool,
     /// The typical beat's match with `template` at the end of the sound
     /// read so far ([`beats::detect_after`]).
     level: Option<f32>,
@@ -171,6 +185,47 @@ impl State {
     /// Returns what is needed to find the amplitude windows starting in
     /// the chunk, which are found off this thread ([`AmpJob::run`]).
     fn chunk(&mut self, c: &Prepared) -> Option<AmpJob> {
+        if self.template.is_some() {
+            return self.read_chunk(c);
+        }
+        let before = self.clone();
+        let job = self.read_chunk(c);
+        if self.template.is_none() {
+            return job;
+        }
+        // The chunk the watch is first heard in: read again with the
+        // template a short window gives, as live locks on with, which is
+        // kept when the chunk's own reads both sides in fewer amplitude
+        // windows by more than 2 SE, as live keeps its lock's (#1503).
+        let Some(lock) = lock_template(&c.env, self.fs, self.bph) else {
+            return job;
+        };
+        let mut alt = before;
+        alt.lock_try = Some(lock);
+        let alt_job = alt.read_chunk(c);
+        if alt.template.is_none() {
+            return job;
+        }
+        let (fs, cfg) = (self.fs, &self.cfg.analysis);
+        let wins =
+            |j: &Option<AmpJob>| j.as_ref().map_or_else(Vec::new, |j| j.run(&c.env, fs, cfg));
+        #[cfg_attr(not(test), expect(unused_mut, reason = "spoiled in tests"))]
+        let mut own = wins(&job);
+        #[cfg(test)]
+        if tests::SPOIL_OWN.with(std::cell::Cell::get) {
+            own.iter_mut().for_each(|w| w.even_deg = None);
+        }
+        if !crate::amplitude::reads_fewer_sides(&wins(&alt_job), &own) {
+            return job;
+        }
+        alt.lock_template_kept = true;
+        *self = alt;
+        alt_job
+    }
+
+    /// [`State::chunk`] read with the template it has, or else the one
+    /// its own sound gives ([`State::first_beats`]).
+    fn read_chunk(&mut self, c: &Prepared) -> Option<AmpJob> {
         self.chunks += 1;
         let (x, x0, core_a, core_b, env) = (&c.x[..], c.x0, c.core_a, c.core_b, &c.env[..]);
         let fs = self.fs;
@@ -259,14 +314,21 @@ impl State {
         let f = first_beats_in(env, self.fs, a.bph, a.amplitude_window_s)?;
         self.bph = f.bph;
         let mut heard_first = false;
+        let mut found = f.beats;
         if let Some(t) = f.template {
-            self.template = Some(t);
-            self.level = f.level;
+            // A short window's template, tried in its place ([`State::chunk`]).
+            if let Some(lock) = self.lock_try.take() {
+                let (b, level) = beats::detect_after(env, self.fs, f.bph, &lock, None);
+                (found, self.template, self.level) = (b, Some(lock), level);
+            } else {
+                self.template = Some(t);
+                self.level = f.level;
+            }
             // The beats found before the watch was heard are noise,
             // and no count of beats runs on from them.
             heard_first = !self.beats.is_empty();
         }
-        Some((f.beats, heard_first))
+        Some((found, heard_first))
     }
 
     /// Clipping, counted on this chunk's own stretch: its clipped samples
@@ -573,6 +635,8 @@ pub(crate) struct Seen<'a> {
     pub clipped_samples: usize,
     pub jumps: &'a [f64],
     pub sided: &'a [f64],
+    /// [`BeatLog::lock_template_kept`] so far.
+    pub lock_template_kept: bool,
 }
 
 /// [`analyze_fed`], with `seen` shown each chunk once it is analysed, in
@@ -742,6 +806,7 @@ fn in_order(
                 clipped_samples: st.clipped_samples,
                 jumps: &st.jumps,
                 sided: st.sides.sided(),
+                lock_template_kept: st.lock_template_kept,
             });
             // The last chunk's end is reported once, by the caller.
             if c.core_b.is_finite() {
@@ -858,6 +923,8 @@ impl State {
             fs: sample_rate as f64,
             cfg: cfg.clone(),
             template: None,
+            lock_try: None,
+            lock_template_kept: false,
             level: None,
             sides: beats::SideCheck::default(),
             jumps: Vec::new(),
@@ -896,9 +963,25 @@ impl State {
             jumps: self.jumps,
             sided: self.sides.sided().to_vec(),
             snippets: self.snippets.into_items(),
+            lock_template_kept: self.lock_template_kept,
         }
     }
 }
+
+/// The template live locks on with, from the envelope `env` of the chunk
+/// a watch is first heard in at `bph`: the beats of its first
+/// [`crate::live::LiveConfig`] window from where its sound starts, when
+/// that holds enough of them ([`LOCK_BEATS`]). None where it doesn't.
+fn lock_template(env: &[f32], fs: f64, bph: u32) -> Option<Vec<f32>> {
+    let from = beats::sound_onset(env, fs)?;
+    let window = crate::live::LiveConfig::default().window_s;
+    let to = (from + (window * fs).ceil() as usize).min(env.len());
+    let (b, t) = beats::detect(&env[from..to], fs, bph);
+    (b.len() >= LOCK_BEATS).then_some(t)
+}
+
+/// The fewest beats a short window holds for live to lock on with them.
+pub(crate) const LOCK_BEATS: usize = 8;
 
 /// The beats of the first stretch a watch may be heard in, and the
 /// template they give.
@@ -956,6 +1039,51 @@ pub fn first_beats_in(env: &[f32], fs: f64, bph: Option<u32>, window_s: f64) -> 
 mod tests {
     use super::*;
     use crate::synth::{generate, SynthConfig};
+
+    thread_local! {
+        /// The Tick left out of every amplitude window the first chunk's
+        /// own template reads, as on Walter's damaged captures (#1503).
+        pub(super) static SPOIL_OWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    /// A file's reading keeps the template its first chunk gives on clean
+    /// sound, and the one its first 4 s give, as live locks on, when the
+    /// chunk's reads both sides in far fewer windows (#1503): then the
+    /// windows are read on both sides and the reading says so.
+    #[test]
+    fn a_first_chunk_template_reading_fewer_sides_gives_way_to_the_lock_on_one() {
+        let cfg = SynthConfig {
+            duration_s: 120.0,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let read = |spoil: bool| {
+            SPOIL_OWN.with(|s| s.set(spoil));
+            let log = analyze_samples(&audio.samples, cfg.sample_rate, &StreamConfig::default());
+            SPOIL_OWN.with(|s| s.set(false));
+            log
+        };
+        let clean = read(false);
+        assert!(!clean.lock_template_kept);
+        let both = |l: &BeatLog| {
+            l.amplitude_windows
+                .iter()
+                .filter(|w| w.mean().is_some())
+                .count()
+        };
+        assert!(both(&clean) > 50, "{}", both(&clean));
+        let kept = read(true);
+        assert!(kept.lock_template_kept);
+        assert!(both(&kept) > 50, "{}", both(&kept));
+        let m = crate::session::measure(&kept, None, 0.0, 120.0);
+        assert!(m
+            .caveats
+            .contains(&crate::measure::Caveat::LockTemplateKept));
+        let m = crate::session::measure(&clean, None, 0.0, 120.0);
+        assert!(!m
+            .caveats
+            .contains(&crate::measure::Caveat::LockTemplateKept));
+    }
 
     /// The chunks' envelopes and clipping found on several threads give
     /// the same log, to the bit, as one thread does: on

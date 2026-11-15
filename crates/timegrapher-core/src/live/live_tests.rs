@@ -289,6 +289,7 @@ fn one_silence_is_one_break() {
         let mut a = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
         feed(&mut a, &x);
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: a.sample_rate(),
             duration_s: a.duration_s(),
             bph: a.bph().unwrap(),
@@ -352,6 +353,7 @@ pub(super) fn viewer_phase_log(before_rate: f64, after_rate: f64) -> BeatLog {
     let before_period = crate::timing::period_s(0.125, before_rate);
     let after_period = crate::timing::period_s(0.125, after_rate);
     BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 120.0,
         bph: 28800,
@@ -930,6 +932,7 @@ fn a_short_tidy_run_after_noise_is_no_watch_live_or_saved() {
     }
     times.extend((0..30).map(|i| 116.2 + i as f64 * 0.125));
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 120.0,
         bph: 28800,
@@ -1173,6 +1176,7 @@ fn clipped_beats_are_counted_as_they_settle() {
     // Made again from its beat log (a recording analysed at once), it
     // counts the same.
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: a.duration_s(),
         bph: a.bph().unwrap(),
@@ -1384,6 +1388,7 @@ fn live_and_saved_read_one_stretch_alike() {
     let mut a = LiveAnalyzer::new(48000, LiveConfig::default());
     feed(&mut a, &audio.samples);
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: a.duration_s(),
         bph: a.bph().unwrap(),
@@ -1426,6 +1431,7 @@ fn a_reading_finds_its_windows_by_halving() {
     let mut heard = LiveAnalyzer::new(48000, LiveConfig::default());
     feed(&mut heard, &audio.samples);
     let mut log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: heard.duration_s(),
         bph: heard.bph().unwrap(),

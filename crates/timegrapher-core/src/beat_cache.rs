@@ -33,8 +33,9 @@ use std::sync::RwLock;
 use std::time::{Duration, SystemTime};
 
 /// The layout's name and version, first in every copy.
-/// Version 2 adds each window's culled sides' edges (#1333).
-pub const FORMAT: &[u8; 16] = b"timegrapher.bc/2";
+/// Version 2 adds each window's culled sides' edges (#1333); 3, whether
+/// the lock-on template was kept (`lock_template_kept`, #1503).
+pub const FORMAT: &[u8; 16] = b"timegrapher.bc/3";
 /// Bytes in each span of a sound file read into the key.
 const HEAD_BYTES: usize = 1 << 16;
 /// Spans of each sound file read into the key: the first at its start,
@@ -220,6 +221,7 @@ pub fn encode(log: &BeatLog, peak: f32) -> Vec<u8> {
     f64s(&mut o, &[log.duration_s, log.lift_deg]);
     o.extend_from_slice(&peak.to_le_bytes());
     o.extend_from_slice(&(log.clipped_samples as u64).to_le_bytes());
+    o.push(u8::from(log.lock_template_kept));
     len(&mut o, log.beats.len());
     for b in &log.beats {
         o.extend_from_slice(&b.index.to_le_bytes());
@@ -332,6 +334,11 @@ pub fn decode(bytes: &[u8]) -> Option<(BeatLog, f32)> {
     let lift_deg = r.f64()?;
     let peak = r.f32()?;
     let clipped_samples = usize::try_from(u64::from_le_bytes(r.take()?)).ok()?;
+    let lock_template_kept = match r.take::<1>()? {
+        [0] => false,
+        [1] => true,
+        _ => return None,
+    };
     let n = r.len(20)?;
     let beats = (0..n)
         .map(|_| {
@@ -362,6 +369,7 @@ pub fn decode(bytes: &[u8]) -> Option<(BeatLog, f32)> {
         return None;
     }
     let log = BeatLog {
+        lock_template_kept,
         sample_rate,
         duration_s,
         bph,

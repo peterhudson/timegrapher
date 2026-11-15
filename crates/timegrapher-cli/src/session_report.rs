@@ -888,6 +888,7 @@ mod tests {
 
     fn reading(ppm: Option<f64>, position: Position) -> Reading {
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: 60.0,
             bph: 28800,

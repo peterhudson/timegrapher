@@ -1669,6 +1669,7 @@ mod tests {
             culled_ms: None,
         };
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: 40.0,
             bph: 28800,
@@ -1784,6 +1785,7 @@ mod tests {
     /// nothing else.
     fn bare_log(duration_s: f64, beats: &[f64]) -> BeatLog {
         BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s,
             bph: 28800,
@@ -2162,6 +2164,7 @@ mod tests {
             w
         };
         let kept = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: 40.0,
             bph: 28800,
@@ -2813,6 +2816,7 @@ mod tests {
         assert_eq!(fit.breaks.len(), 1, "{:?}", fit.breaks);
         let json = serde_json::json!({ "breaks": [{ "audio_s": 30.0, "gap_s": 0.0 }] });
         let mut log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48_000,
             duration_s: 120.0,
             bph: 28_800,
@@ -2856,6 +2860,7 @@ mod tests {
                 .unwrap();
             let json = serde_json::json!({ "breaks": [{ "audio_s": 60.0, "gap_s": gap_s }] });
             let mut log = BeatLog {
+                lock_template_kept: false,
                 sample_rate: 48_000,
                 duration_s: 120.0,
                 bph: 28_800,

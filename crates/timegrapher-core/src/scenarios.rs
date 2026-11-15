@@ -370,6 +370,7 @@ pub fn beat_log(s: &Scenario, seed: u64) -> crate::stream::BeatLog {
         })
         .collect();
     crate::stream::BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: s.duration_s,
         bph: BPH,

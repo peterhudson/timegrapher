@@ -847,7 +847,7 @@ impl LiveAnalyzer {
                 let (b, t) = beats::detect(env, fs, bph);
                 let heard =
                     heard_over(snr(env, fs, &b), self.cfg.min_snr) || clipped_out(x, fs, &b);
-                if heard && b.len() >= 8 {
+                if heard && b.len() >= crate::stream::LOCK_BEATS {
                     self.template = Some(t);
                     self.bph = Some(bph);
                     self.found_bph = bph_set.is_none();

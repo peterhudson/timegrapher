@@ -13,29 +13,28 @@ use crate::strength::{self, Grid};
 use crate::theme;
 use eframe::egui;
 use timegrapher_core::chart_scale::{axis_decimals, axis_number};
-use timegrapher_core::figure_text::{figure_with_pm, signed_text, true_minus};
+use timegrapher_core::figure_text::{signed_text, true_minus};
 use timegrapher_core::steadiness::SeriesKind;
 
-/// One hour's figure as drawn: its value, its ± (a standard error), and
-/// whether it is grey, as its table cell is.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One hour's figure as drawn: its value, its words for the hover (its
+/// figure with its ± and unit, from core), its band, and whether it is
+/// grey, as its table cell is.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Step {
     pub v: f64,
-    pub se: Option<f64>,
+    pub hover: String,
     /// Its ± band, low and high, from core (a beat error's floored at 0).
     pub band: Option<(f64, f64)>,
     pub grey: bool,
 }
 
 /// One chart: its measure, a step for each hour (none where the hour's
-/// figure isn't shown), and how its figures are written.
+/// figure isn't shown), and how its ticks are written.
 pub struct Chart {
     pub kind: SeriesKind,
     pub steps: Vec<Option<Step>>,
     pub unit: &'static str,
-    /// Decimals ([`timegrapher_core::figure_text::base_digits`]).
-    pub digits: usize,
-    /// A sign written on its figures and its ticks: a rate.
+    /// A sign written on its ticks: a rate.
     pub signed: bool,
     /// Its value axis, [lo, hi, step], core's for the run
     /// ([`timegrapher_core::power_reserve::chart_axis`]): its ticks fall
@@ -364,26 +363,20 @@ fn title_row(ui: &egui::Ui, band: egui::Rect, frame: egui::Rect, c: &Chart, hove
         pal.text_secondary,
     );
     if let Some(h) = hover {
-        let words = match c.steps.get(h).copied().flatten() {
+        let words = match c.steps.get(h).cloned().flatten() {
             // Degrees close up to the figure, as everywhere: "328°".
-            Some(s) => {
-                let gap = if c.unit == "°" { "" } else { " " };
-                format!(
-                    "{}{gap}{}",
-                    figure_with_pm(s.v, s.se, c.digits, c.signed),
-                    c.unit
-                )
-            }
+            // The pane's own words for it, from core (#1776).
+            Some(s) => s.hover.clone(),
             None => "–".to_string(),
         };
-        let ink = match c.steps.get(h).copied().flatten() {
+        let ink = match c.steps.get(h).cloned().flatten() {
             Some(s) if !s.grey => series_colour(c.kind, pal),
             _ => pal.text_secondary,
         };
         painter.text(
             egui::pos2(name.right() + 8.0, y),
             egui::Align2::LEFT_CENTER,
-            true_minus(&words),
+            words,
             font,
             ink,
         );
@@ -465,7 +458,7 @@ mod tests {
     fn step(v: f64, grey: bool) -> Option<Step> {
         Some(Step {
             v,
-            se: None,
+            hover: String::new(),
             band: None,
             grey,
         })

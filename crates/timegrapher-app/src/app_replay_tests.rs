@@ -211,6 +211,7 @@ fn whole_recording_viewer_keeps_known_jumps_with_or_without_position_cuts() {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         app.average_s = 60.0;
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: 120.0,
             bph: 28800,
@@ -392,6 +393,7 @@ fn replay_poll_does_not_publish_readings_inside_saved_settling() {
 fn replay_readouts_and_rebuilt_trends_respect_imported_settling() {
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 90.0,
         bph: 28800,

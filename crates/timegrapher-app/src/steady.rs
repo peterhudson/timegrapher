@@ -278,6 +278,7 @@ pub fn log_of_at(live: &LiveAnalyzer, bph: Option<u32>) -> Option<BeatLog> {
 
 fn log_masked_at(live: &LiveAnalyzer, masked: &[(f64, f64)], bph: Option<u32>) -> Option<BeatLog> {
     let mut log = BeatLog {
+        lock_template_kept: false,
         sample_rate: live.sample_rate(),
         duration_s: live.duration_s(),
         bph: bph?,

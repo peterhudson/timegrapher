@@ -36,6 +36,7 @@ fn moving_steadiness_out_leaves_the_profile_showing() {
 fn steadiness_stops_at_a_takes_breaks_with_their_gaps() {
     use timegrapher_core::breaks::Break;
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 600.0,
         bph: 28800,

@@ -373,7 +373,10 @@ fn analyze_read(
     if let Some(c) = confidence.as_mut() {
         f.floor_confidence(c);
     }
-    let caveats = assessment.caveats;
+    let mut caveats = assessment.caveats;
+    if log.lock_template_kept {
+        crate::measure::add(&mut caveats, crate::measure::Caveat::LockTemplateKept);
+    }
     let shape = watch_heard.then(|| {
         let beat_s = crate::timing::beat_period_s(fits.overall.as_ref(), bph);
         let r = crate::shape::analyze(env, fs, &beats, beat_s, &Default::default());

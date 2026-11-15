@@ -642,6 +642,7 @@ fn a_take_kept_as_analysis_only_reads_as_such() {
     lib.scan();
     assert_eq!(lib.watches[0].takes[0].duration_s, None);
     let log = crate::stream::BeatLog {
+        lock_template_kept: false,
         sample_rate: 48_000,
         duration_s: 3600.0,
         bph: 28_800,

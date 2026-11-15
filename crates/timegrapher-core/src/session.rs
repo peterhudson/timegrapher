@@ -1320,6 +1320,9 @@ pub fn measure_reading(
         figures.floor_confidence(c);
     }
     m.caveats = a.caveats;
+    if log.lock_template_kept {
+        crate::measure::add(&mut m.caveats, crate::measure::Caveat::LockTemplateKept);
+    }
     if masked_s > 0.0 {
         crate::measure::add(
             &mut m.caveats,

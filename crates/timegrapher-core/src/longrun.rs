@@ -518,6 +518,7 @@ mod tests {
             })
             .collect();
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: duration,
             bph: 28800,
@@ -565,6 +566,7 @@ mod tests {
             })
             .collect();
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: duration,
             bph: 21600,
@@ -648,6 +650,7 @@ mod tests {
             })
             .collect();
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: 400.0,
             bph: 18000,
@@ -720,6 +723,7 @@ mod tests {
                 })
                 .collect();
             BeatLog {
+                lock_template_kept: false,
                 sample_rate: 48000,
                 duration_s: 400.0,
                 bph: 18000,

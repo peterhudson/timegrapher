@@ -378,6 +378,7 @@ fn a_jump_inside_a_position_is_cut() {
     let duration = each * 6.0 + 1.0;
     let period = timegrapher_core::timing::period_s(0.125, 3.0);
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: duration,
         bph: 28800,

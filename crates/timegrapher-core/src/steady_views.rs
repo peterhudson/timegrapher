@@ -1392,6 +1392,7 @@ mod tests {
     #[test]
     fn derived_rate_grid_cuts_jumps_as_the_tests_do() {
         let mut log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48000,
             duration_s: 40.0,
             bph: 28800,
@@ -1519,6 +1520,7 @@ mod tests {
             live.push(b);
         }
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: live.sample_rate(),
             duration_s: live.duration_s(),
             bph: live.bph().expect("beat rate"),
@@ -1603,6 +1605,7 @@ mod tests {
             live.push(b);
         }
         let mut log = BeatLog {
+            lock_template_kept: false,
             sample_rate: live.sample_rate(),
             duration_s: live.duration_s(),
             bph: live.bph().expect("beat rate"),
@@ -1693,6 +1696,7 @@ mod tests {
             live.push(b);
         }
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: live.sample_rate(),
             duration_s: live.duration_s(),
             bph: live.bph().expect("beat rate"),

@@ -765,6 +765,7 @@ fn a_takes_clock_corrects_the_readings_drawn() {
 // Known beat records only: these controls do not run the detector.
 fn context_log() -> BeatLog {
     BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 120.0,
         bph: 28800,
@@ -1020,6 +1021,7 @@ fn views_leave_out_a_rate_reading_over_a_dropout() {
         .filter(|b| !(33.9..36.1).contains(&b.time))
         .collect();
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 200.0,
         bph: 28800,
@@ -1271,6 +1273,7 @@ fn a_repeats_note_is_hover_only_on_a_short_plot() {
         })
         .collect();
     let log = BeatLog {
+        lock_template_kept: false,
         sample_rate: 48000,
         duration_s: 1200.0,
         bph: 28800,

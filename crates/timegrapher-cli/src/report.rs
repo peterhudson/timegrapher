@@ -779,6 +779,7 @@ mod tests {
         use timegrapher_core::beats::Beat;
         use timegrapher_core::stream::BeatLog;
         let log = BeatLog {
+            lock_template_kept: false,
             sample_rate: 48_000,
             duration_s: 600.0,
             bph: 18_000,

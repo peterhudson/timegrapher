@@ -145,6 +145,7 @@ impl Writer {
             usb_clock: None,
             signal_median: None,
             shape: Vec::new(),
+            lock_template_kept: false,
         };
         Writer {
             dir: w.take.join(DIR),
@@ -291,6 +292,7 @@ impl Writer {
         h.clipped_samples = seen.clipped_samples;
         h.jumps = seen.jumps.iter().copied().filter(|&t| t < to_s).collect();
         h.sided = seen.sided.iter().copied().filter(|&t| t < to_s).collect();
+        h.lock_template_kept = seen.lock_template_kept;
         h.beats += b.rows;
         h.windows += w.rows;
         h.profiles += p.rows;
@@ -564,6 +566,7 @@ mod tests {
             clipped_samples: 0,
             jumps: &[],
             sided: &[],
+            lock_template_kept: false,
         }
     }
 

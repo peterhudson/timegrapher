@@ -504,6 +504,11 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
         let ring = f64::from(bezel.radius) / poise_case::RING_TO_BEZEL;
         // Every outline of the case whole inside the dial's room.
         case_uncut(&out, line, screen, (dark, size));
+        let face = colour(palette.case_over(palette.window).0);
+        faces_convex(&out, face);
+        // Each lug filled right up to its straight inner edge, as egui
+        // paints it (Peter, via Hugh on #1772).
+        lugs_filled(&ctx, &out, face, (bezel.center, ring), (dark, size));
         // The 3H name past the crown's end.
         let three = timegrapher_core::poise::hour_code(90.0);
         let name = out
@@ -546,6 +551,146 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
             std::fs::write(name, svg).unwrap();
         }
     }
+}
+
+/// Every piece of the case's face, drawn in `face`, convex, as egui fills
+/// only convex shapes (Max on #1772): the lugs filled from core's convex
+/// pieces, not whole.
+fn faces_convex(out: &egui::FullOutput, face: egui::Color32) {
+    let faces: Vec<&Vec<egui::Pos2>> = out
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Path(p) if p.closed && p.fill == face => Some(&p.points),
+            _ => None,
+        })
+        .collect();
+    assert!(!faces.is_empty(), "no face");
+    for f in faces {
+        let n = f.len();
+        let turns: Vec<f32> = (0..n)
+            .map(|i| {
+                let (a, b, c) = (f[i], f[(i + 1) % n], f[(i + 2) % n]);
+                (b - a).x * (c - b).y - (b - a).y * (c - b).x
+            })
+            .filter(|t| t.abs() > 1e-3)
+            .collect();
+        let convex = turns.iter().all(|t| *t > 0.0) || turns.iter().all(|t| *t < 0.0);
+        assert!(convex, "a concave fill: {f:?}");
+    }
+}
+
+/// The inside of each of the four lugs filled with the case's `face` as
+/// egui paints it, right up to the lug's straight inner edge and no
+/// further (Peter saw the 1H30 and 7H30 lugs' edges missing; Hugh on
+/// #1772): past the bezel, points 2 px inside each inner edge under a
+/// triangle of the face in egui's own tessellation of the frame, and
+/// points 2 px outside it under none. No face reaches off the case
+/// either. The dial is centred at
+/// `centre`, its outer ring `ring`.
+fn lugs_filled(
+    ctx: &egui::Context,
+    out: &egui::FullOutput,
+    face: egui::Color32,
+    (centre, ring): (egui::Pos2, f64),
+    (dark, size): (bool, egui::Vec2),
+) {
+    let case = timegrapher_core::poise_case::case(ring);
+    let shapes: Vec<Vec<egui::Pos2>> = case
+        .shapes
+        .iter()
+        .map(|s| {
+            s.iter()
+                .map(|p| centre + egui::vec2(p[0] as f32, p[1] as f32))
+                .collect()
+        })
+        .collect();
+    // Within `px` of the case: inside a shape or that near its edge.
+    let near_case = |q: egui::Pos2, px: f32| {
+        shapes.iter().any(|s| {
+            let n = s.len();
+            let mut on = false;
+            for i in 0..n {
+                let (a, b) = (s[i], s[(i + 1) % n]);
+                if (a.y > q.y) != (b.y > q.y) && q.x < a.x + (q.y - a.y) * (b.x - a.x) / (b.y - a.y)
+                {
+                    on = !on;
+                }
+                let t = ((q - a).dot(b - a) / (b - a).length_sq().max(1e-6)).clamp(0.0, 1.0);
+                if (a + t * (b - a)).distance(q) <= px {
+                    return true;
+                }
+            }
+            on
+        })
+    };
+    let mut tris: Vec<[egui::Pos2; 3]> = Vec::new();
+    for p in ctx.tessellate(out.shapes.clone(), 1.0) {
+        let egui::epaint::Primitive::Mesh(m) = &p.primitive else {
+            continue;
+        };
+        for t in m.indices.chunks(3) {
+            let v = [0, 1, 2].map(|i| &m.vertices[t[i] as usize]);
+            if v.iter().all(|v| v.color == face) {
+                tris.push(v.map(|v| v.pos));
+            }
+            // The face's feathered edge stays at the case's edge: a
+            // sliver's needle tip feathered out past it as a hairline
+            // (#1780).
+            if v.iter().any(|v| v.color == face) {
+                for q in v.map(|v| v.pos) {
+                    assert!(
+                        near_case(q, 2.0),
+                        "{dark} {size:?}: the face reaches {q:?}, off the case"
+                    );
+                }
+            }
+        }
+    }
+    let inside = |t: &[egui::Pos2; 3], q: egui::Pos2| {
+        let side = |a: egui::Pos2, b: egui::Pos2| (b - a).x * (q - a).y - (b - a).y * (q - a).x;
+        let s = [side(t[0], t[1]), side(t[1], t[2]), side(t[2], t[0])];
+        s.iter().all(|x| *x >= 0.0) || s.iter().all(|x| *x <= 0.0)
+    };
+    // The body first, then the four lugs; each lug's inner edge runs from
+    // its second point to its third.
+    let mut checked = 0;
+    for lug in &case.shapes[1..5] {
+        let (a, b) = (lug[1], lug[2]);
+        for i in 0..=20 {
+            let t = f64::from(i) / 20.0;
+            // 2 px either side of the edge: the lug's side filled, the
+            // other bare, so the edge's line shows (the old fill spilled
+            // the face over it, from the dial's centre).
+            let at = |off: f64| {
+                let p = [
+                    a[0] + t * (b[0] - a[0]) + a[0].signum() * off,
+                    a[1] + t * (b[1] - a[1]),
+                ];
+                (
+                    p[0].hypot(p[1]),
+                    centre + egui::vec2(p[0] as f32, p[1] as f32),
+                )
+            };
+            let ((r, q), (_, beyond)) = (at(2.0), at(-2.0));
+            if r < case.bezel_r + 3.0 {
+                continue;
+            }
+            assert!(
+                tris.iter().any(|t| inside(t, q)),
+                "{dark} {size:?}: the lug at {q:?} isn't filled to its inner edge"
+            );
+            assert!(
+                !tris.iter().any(|t| inside(t, beyond)),
+                "{dark} {size:?}: the face spills past the lug's inner edge to {beyond:?}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 20,
+        "{dark} {size:?}: only {checked} points past the bezel"
+    );
 }
 
 /// Every outline of the dial's case, drawn in `line`, whole inside the

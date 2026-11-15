@@ -303,6 +303,26 @@ pub fn template_pre_s(osc_period_s: f64, lift_deg: f64) -> f64 {
     (unlock_s + 0.005).max(PRE_S)
 }
 
+/// Whether `new`'s windows read both sides in a lower share of its 2 s
+/// windows than `old`'s did over the stretch `new` read, by more than 2
+/// standard errors ([`crate::confidence::share_differs`]): a template
+/// built from a file's first chunk reading a sound worse than the one a
+/// short window gave. Live keeps the template it locked on with then
+/// (#1500), and a file's reading the short window's (#1503), so both read
+/// such sound alike.
+pub(crate) fn reads_fewer_sides(old: &[AmplitudeWindow], new: &[AmplitudeWindow]) -> bool {
+    let Some(from) = new.first().map(|w| w.start_s) else {
+        return false;
+    };
+    let count = |ws: &[AmplitudeWindow]| {
+        let ws: Vec<_> = ws.iter().filter(|w| w.start_s >= from - 1e-6).collect();
+        let both = ws.iter().filter(|w| w.mean().is_some()).count();
+        (both as f64, ws.len() as f64)
+    };
+    let ((k1, n1), (k2, n2)) = (count(old), count(new));
+    crate::confidence::share_differs(k1, n1, k2, n2) == Some(false)
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AmplitudeWindow {
     pub start_s: f64,
