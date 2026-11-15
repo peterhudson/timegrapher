@@ -251,9 +251,7 @@ fn drawing(icon: Icon) -> &'static str {
         }
         // One wheel tooth going in between two pinion leaves: Mesh, where a
         // wheel drives a pinion (Peter's pick, A, on #1764).
-        Icon::Mesh => {
-            r#"<path d="M2.5,3.5 H21.5"/><path d="M8.6,3.5 C8.6,9.5 10.2,13.8 12,13.8 C13.8,13.8 15.4,9.5 15.4,3.5"/><path d="M2.5,20.5 H21.5"/><path d="M2.8,20.5 C2.8,15.6 4.4,12.6 6.3,12.6 C8.2,12.6 9.2,15.8 9.2,20.5"/><path d="M14.8,20.5 C14.8,15.8 15.8,12.6 17.7,12.6 C19.6,12.6 21.2,15.6 21.2,20.5"/>"#
-        }
+        Icon::Mesh => timegrapher_core::icons::MESH,
         // Two sheets, one over the other: Copy.
         Icon::Copy => {
             r#"<rect x="8.5" y="8.5" width="12" height="12.5" rx="2"/><path d="M15.5 8.5V5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2v9.5a2 2 0 0 0 2 2h3"/>"#

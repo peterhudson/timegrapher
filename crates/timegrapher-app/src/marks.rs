@@ -14,10 +14,10 @@ use std::sync::Arc;
 
 /// One row of names in a lane, points tall.
 pub const ROW_H: f32 = timegrapher_core::chart_scale::NAME_ROW_H as f32;
-/// The pitch of a lane's second row: a row and the gap kept between two
-/// names, so a name a row out never reads as part of the name under it
-/// (#1764).
-pub const ROW_OUT: f32 = ROW_H + NAME_GAP;
+/// The pitch of a lane's second row: a row and the clear space kept
+/// between two names, so a name a row out never reads as part of the name
+/// under it (#1764).
+pub const ROW_OUT: f32 = timegrapher_core::chart_scale::NAME_ROW_OUT as f32;
 /// A lane of names at its fullest: two rows.
 pub const LANE: f32 = ROW_H + ROW_OUT;
 /// The short gap between the plot and its nearest row of names, so each
@@ -553,7 +553,7 @@ const SIDE_GAP: f32 = TICK + 8.0;
 /// Where names level with lines across a plot go, in a column beside it
 /// (core's [`timegrapher_core::chart_scale::lane_stack`], #1764): `names`
 /// are each one's line's y, its height and rank. They keep their lines'
-/// order with [`NAME_GAP`] clear between any two, a strong name holding
+/// order with core's `NAME_CLEAR` between any two, a strong name holding
 /// its line, within `top..bottom`. Each name's top, in the order given.
 pub fn stack(names: &[(f32, f32, Rank)], top: f32, bottom: f32) -> Vec<f32> {
     let names: Vec<(f64, f64, bool)> = names
@@ -819,6 +819,8 @@ pub fn beside(
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// The clear space between two names one above another (#1764).
+    const NAME_CLEAR: f32 = timegrapher_core::chart_scale::NAME_CLEAR as f32;
     use timegrapher_core::steady_views::wheel_short;
 
     const S: Rank = Rank::Strong;
@@ -1146,7 +1148,7 @@ mod tests {
     fn a_second_row_stands_a_full_line_clear() {
         assert_eq!(lane_h(1), ROW_H);
         assert_eq!(lane_h(2), LANE);
-        assert_eq!(row_off(1) - row_off(0) - ROW_H, NAME_GAP);
+        assert_eq!(row_off(1) - row_off(0) - ROW_H, NAME_CLEAR);
     }
 
     /// Names beside a map go where core's column rule puts them: a
@@ -1160,7 +1162,7 @@ mod tests {
             400.0,
         );
         assert!((at[0] - 87.0).abs() < 1.0, "{at:?}");
-        assert!((at[1] - (at[0] + 26.0 + NAME_GAP)).abs() < 1e-3, "{at:?}");
+        assert!((at[1] - (at[0] + 26.0 + NAME_CLEAR)).abs() < 1e-3, "{at:?}");
     }
 
     #[test]
