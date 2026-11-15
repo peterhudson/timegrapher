@@ -157,9 +157,16 @@ pub const NAME_LANE_GAP: f64 = 6.0;
 /// above another: more than a line of a name (Peter on #1764), so two names
 /// never read as one phrase.
 pub const NAME_GAP: f64 = 12.0;
+/// The clear space kept between two names one above another, a full
+/// line of a name (Hugh's spec on #1764, after Peter): the gap reads as a
+/// gap, never as the next line of the same name.
+pub const NAME_CLEAR: f64 = 11.0;
+/// The pitch of a lane's second row above a plot, which appears only
+/// where a name can't sit in the first: a row and the clear space.
+pub const NAME_ROW_OUT: f64 = NAME_ROW_H + NAME_CLEAR;
 /// From one line of a name to the next, where a narrow lane breaks a name
-/// a word to a line (#1764): the gap between two names ([`NAME_GAP`])
-/// comes on top of it, so a name's own lines read as one.
+/// a word to a line (#1764): the clear space between two names
+/// ([`NAME_CLEAR`]) comes on top of it, so a name's own lines read as one.
 pub const NAME_LINE_H: f64 = 13.0;
 /// How far an overlap must start or end before a name changes row, so
 /// names don't hop between frames.
@@ -273,7 +280,7 @@ pub const STRONG_HOLD: f64 = 100.0;
 /// Where each name in a column beside a plot goes, along y (#1764):
 /// `names` are each one's line's y, its height and whether it is faint.
 /// The names keep their lines' order, so no two leaders cross, with
-/// [`NAME_GAP`] clear between any two. Each run of names that would touch
+/// [`NAME_CLEAR`] between any two. Each run of names that would touch
 /// sits where its names are nearest their lines, a strong one holding to
 /// its line far more than a faint one, within `top..bottom`. Each name's
 /// top, in the order given.
@@ -284,7 +291,7 @@ pub fn lane_stack(names: &[(f64, f64, bool)], top: f64, bottom: f64) -> Vec<f64>
     // A run, as its first and its count in `o`: its height, and its top
     // where its names sit nearest their lines, kept within the column.
     let height = |(s, n): (usize, usize)| {
-        o[s..s + n].iter().map(|&i| names[i].1).sum::<f64>() + (n - 1) as f64 * NAME_GAP
+        o[s..s + n].iter().map(|&i| names[i].1).sum::<f64>() + (n - 1) as f64 * NAME_CLEAR
     };
     let first = |(s, n): (usize, usize)| {
         let (mut off, mut sum, mut weight) = (0.0, 0.0, 0.0);
@@ -292,7 +299,7 @@ pub fn lane_stack(names: &[(f64, f64, bool)], top: f64, bottom: f64) -> Vec<f64>
             let (y, h, _) = names[i];
             sum += hold(i) * (y - h / 2.0 - off);
             weight += hold(i);
-            off += h + NAME_GAP;
+            off += h + NAME_CLEAR;
         }
         (sum / weight).min(bottom - height((s, n))).max(top)
     };
@@ -300,7 +307,7 @@ pub fn lane_stack(names: &[(f64, f64, bool)], top: f64, bottom: f64) -> Vec<f64>
     for k in 0..o.len() {
         let mut run = (k, 1);
         while let Some(&above) = runs.last() {
-            if first(run) < first(above) + height(above) + NAME_GAP {
+            if first(run) < first(above) + height(above) + NAME_CLEAR {
                 runs.pop();
                 run = (above.0, above.1 + run.1);
             } else {
@@ -314,7 +321,7 @@ pub fn lane_stack(names: &[(f64, f64, bool)], top: f64, bottom: f64) -> Vec<f64>
         let mut at = first(run);
         for &i in &o[run.0..run.0 + run.1] {
             out[i] = at;
-            at += names[i].1 + NAME_GAP;
+            at += names[i].1 + NAME_CLEAR;
         }
     }
     out
@@ -324,24 +331,45 @@ pub fn lane_stack(names: &[(f64, f64, bool)], top: f64, bottom: f64) -> Vec<f64>
 mod tests {
     use super::*;
 
-    /// Names beside a plot keep their lines' order with a clear gap; a
-    /// strong name holds its line and a faint one makes way (#1764).
+    /// Names beside a plot keep their lines' order with [`NAME_CLEAR`]
+    /// between any two, a strong name holding its line, in the cases the
+    /// MCP view's copy is held to too (marks_cases.json's `lane_stack`).
     #[test]
-    fn lane_stack_keeps_order_and_holds_strong_names() {
-        // Apart: each centred on its line.
-        let at = lane_stack(&[(100.0, 26.0, false), (200.0, 39.0, true)], 0.0, 400.0);
-        assert_eq!(at, vec![87.0, 180.5]);
-        // Touching: in order, the gap clear, the strong name all but on
-        // its line.
-        let at = lane_stack(&[(100.0, 26.0, false), (110.0, 39.0, true)], 0.0, 400.0);
-        assert!((at[1] - (at[0] + 26.0 + NAME_GAP)).abs() < 1e-9, "{at:?}");
-        assert!((at[0] - 87.0).abs() < 1.0, "{at:?}");
-        // A faint name just above a strong one stays above it.
-        let at = lane_stack(&[(100.0, 26.0, false), (95.0, 39.0, true)], 0.0, 400.0);
-        assert!(at[1] + 39.0 + NAME_GAP <= at[0] + 1e-9, "{at:?}");
-        // Kept within the column.
-        let at = lane_stack(&[(5.0, 26.0, false), (8.0, 39.0, true)], 0.0, 400.0);
-        assert_eq!(at[0], 0.0);
+    fn lane_stack_places_the_shared_cases() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../timegrapher-app/src/marks_cases.json"
+        );
+        let cases: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("marks_cases.json"))
+                .expect("its JSON");
+        let n = |v: &serde_json::Value| v.as_f64().expect("a number");
+        let list = cases["lane_stack"].as_array().expect("lane_stack");
+        assert!(!list.is_empty());
+        for c in list {
+            let names: Vec<(f64, f64, bool)> = c["names"]
+                .as_array()
+                .expect("names")
+                .iter()
+                .map(|v| (n(&v[0]), n(&v[1]), v[2] == "faint"))
+                .collect();
+            let got = lane_stack(&names, n(&c["top"]), n(&c["bottom"]));
+            let want = c["at"].as_array().expect("at");
+            assert_eq!(got.len(), want.len(), "{}", c["case"]);
+            for (g, w) in got.iter().zip(want) {
+                assert!((g - n(w)).abs() < 1e-3, "{}: {got:?}", c["case"]);
+            }
+            // In their lines' order, a clear line between any two.
+            let mut o: Vec<usize> = (0..names.len()).collect();
+            o.sort_by(|&a, &b| names[a].0.total_cmp(&names[b].0));
+            for w in o.windows(2) {
+                assert!(
+                    got[w[1]] >= got[w[0]] + names[w[0]].1 + NAME_CLEAR - 1e-9,
+                    "{}: {got:?}",
+                    c["case"]
+                );
+            }
+        }
     }
 
     /// The lane rules place the cases the app's marks and the MCP view's

@@ -23,7 +23,8 @@ const coreText = (name) => viewsRs.match(new RegExp(`pub const ${name}: &str = "
 const scaleRs = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/chart_scale.rs"), "utf8");
 const WHEEL_WORDS = { wheels_hint: coreText("WHEELS_HINT"), mesh_hint: coreText("MESH_HINT"),
   name_line_h: +scaleRs.match(/pub const NAME_LINE_H: f64 = ([\d.]+);/)[1],
-  strong_hold: +scaleRs.match(/pub const STRONG_HOLD: f64 = ([\d.]+);/)[1] };
+  strong_hold: +scaleRs.match(/pub const STRONG_HOLD: f64 = ([\d.]+);/)[1],
+  name_clear: +scaleRs.match(/pub const NAME_CLEAR: f64 = ([\d.]+);/)[1] };
 const REFERENCE_HOVER = Object.fromEntries(["1 min", "1 h"].map((l) => [l, hoverText.replace("{label}", l)]));
 function definition(name) {
   const match = html.match(new RegExp(`^function ${name}\\([^\\n]*\\{[\\s\\S]*?^\\}`, "m"));
@@ -31,7 +32,7 @@ function definition(name) {
   return match[0];
 }
 const context = vm.createContext({
-  VIRIDIS, PERIOD_TICKS, MARK_ROOM_PX, REFERENCE_HOVER, WHEEL_WORDS, mapPaints: [], mapsLog: false, showWheels: true, showMesh: true, Uint8ClampedArray,
+  VIRIDIS, PERIOD_TICKS, MARK_ROOM_PX, REFERENCE_HOVER, WHEEL_WORDS, ICONS: null, mapPaints: [], mapsLog: false, showWheels: true, showMesh: true, Uint8ClampedArray,
   steadyView: "periods", fftTiming: false,
   chartWidth: () => 600, logTicks: () => [], linTicks: () => [], fmtTime: (t) => `t${t}`, TIME_STEPS: [],
   plotArea: () => ({ id: "c", svg: "" }), gridDown: () => "", gridAcross: () => "", CHAR_W: 6.6, secs: (t) => `${t} s`, wheelTitle: String,
@@ -39,7 +40,7 @@ const context = vm.createContext({
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
 assert.ok(html.includes("const MARK_ROOM_PX = /*MARK_ROOM_PX*/null;"), "the server fills the mark room in");
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const MARKS = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0].replace(/^const WHEELS_HINT/, "var WHEELS_HINT").replace(/, MESH_HINT/, ", MESH_HINT") + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 
-  ["esc", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "oneMark", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markPlaceRow", "markWidth", "markText", "laneRight", "laneRightAt", "markStackNames", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
+  ["esc", "icon", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "oneMark", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markPlaceRow", "markWidth", "markText", "laneRight", "laneRightAt", "markStackNames", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
     .map(definition).join("\n") + "\nthis.mapPaints = mapPaints; this.WHEELS_HINT = WHEELS_HINT; this.MESH_HINT = MESH_HINT;", context);
 
 // Values made in the renderer's context, as plain ones.
