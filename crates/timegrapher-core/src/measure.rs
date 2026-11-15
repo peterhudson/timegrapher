@@ -431,6 +431,16 @@ pub enum Caveat {
 }
 
 impl Caveat {
+    /// Whether it limits only the amplitude and the beat error, which are
+    /// read from each beat's sounds, and not the rate: clipping, and sides
+    /// too faint to read (#1738).
+    pub fn is_amplitude_only(&self) -> bool {
+        matches!(
+            self,
+            Caveat::Clipped { .. } | Caveat::FaintSidesWithheld { .. }
+        )
+    }
+
     /// The beat error from the drop because the unlock was not found.
     pub const FROM_DROP: Caveat = Caveat::BeatErrorFromDrop {
         why: DropWhy::UnlockNotFound,

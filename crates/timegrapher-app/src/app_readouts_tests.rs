@@ -145,6 +145,27 @@ fn a_drop_beat_error_caveat_belongs_only_on_beat_error() {
     assert!(reading_limits("Amplitude", &caveats, 52.0, 30).is_empty());
 }
 
+/// Sides too faint to read are named on the Amplitude and Beat Error
+/// cards, whose figures leave them out, and not on Rate's (#1738).
+#[test]
+fn faint_sides_are_named_on_amplitude_and_beat_error_only() {
+    let caveats = [Caveat::FaintSidesWithheld {
+        sides: 3,
+        windows: 2,
+    }];
+    for title in ["Amplitude", "Beat Error"] {
+        let facts = reading_limits(title, &caveats, 52.0, 30);
+        assert_eq!(facts.len(), 1, "{title}");
+        assert_eq!(facts[0].0, "3 faint sides left out");
+        assert!(
+            facts[0].1.starts_with("3 sides in 2 windows"),
+            "{}",
+            facts[0].1
+        );
+    }
+    assert!(reading_limits("Rate", &caveats, 52.0, 30).is_empty());
+}
+
 /// Words in a reading's place on a narrow card show whole: "No
 /// Regular Beat" takes the dash's room rather than being cut.
 #[test]
