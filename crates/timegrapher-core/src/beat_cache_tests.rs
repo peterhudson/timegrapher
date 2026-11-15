@@ -330,3 +330,23 @@ fn a_copy_keeps_the_culled_sides_edges() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A window's sides withheld as too faint to read are kept in the copy and
+/// read back, so a take opened from its copy names them as the first read
+/// did (#1738).
+#[test]
+fn a_copy_keeps_the_sides_withheld_as_faint() {
+    let dir = folder("faint");
+    let files = take(&dir);
+    let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+    let cfg = StreamConfig::default();
+    let (mut log, peak) = crate::stream::analyze_files_peak(&paths, &cfg, |_| {}).unwrap();
+    log.amplitude_windows[0].faint_withheld = [true, false];
+    log.amplitude_windows[1].faint_withheld = [false, true];
+    log.amplitude_windows[2].faint_withheld = [true, true];
+    let (back, _) = decode(&encode(&log, peak)).expect("the copy reads");
+    for (b, w) in back.amplitude_windows.iter().zip(&log.amplitude_windows) {
+        assert_eq!(b.faint_withheld, w.faint_withheld);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

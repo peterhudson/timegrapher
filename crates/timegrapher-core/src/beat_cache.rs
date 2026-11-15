@@ -34,8 +34,9 @@ use std::time::{Duration, SystemTime};
 
 /// The layout's name and version, first in every copy.
 /// Version 2 adds each window's culled sides' edges (#1333); 3, whether
-/// the lock-on template was kept (`lock_template_kept`, #1503).
-pub const FORMAT: &[u8; 16] = b"timegrapher.bc/3";
+/// the lock-on template was kept (`lock_template_kept`, #1503); 4, each
+/// window's sides withheld as too faint to read (#1738).
+pub const FORMAT: &[u8; 16] = b"timegrapher.bc/4";
 /// Bytes in each span of a sound file read into the key.
 const HEAD_BYTES: usize = 1 << 16;
 /// Spans of each sound file read into the key: the first at its start,
@@ -240,6 +241,8 @@ pub fn encode(log: &BeatLog, peak: f32) -> Vec<u8> {
                 None => o.push(0),
             }
         }
+        let [e, d] = w.faint_withheld;
+        o.push(u8::from(e) | u8::from(d) << 1);
     }
     for times in [&log.clipped_beats, &log.jumps, &log.sided, &log.by_count] {
         len(&mut o, times.len());
@@ -399,6 +402,10 @@ fn read_window(r: &mut Bytes) -> Option<AmplitudeWindow> {
     }
     let [even_deg, odd_deg, beat_error_ms, beat_error_unlock_ms, even_unlock_ms, odd_unlock_ms, even_drop_ms, odd_drop_ms, eu, ed, ou, od] =
         v;
+    let faint = r.u8()?;
+    if faint > 3 {
+        return None;
+    }
     let mut w = AmplitudeWindow {
         start_s,
         end_s,
@@ -411,7 +418,7 @@ fn read_window(r: &mut Bytes) -> Option<AmplitudeWindow> {
         even_drop_ms,
         odd_drop_ms,
         culled_ms: None,
-        faint_withheld: [false; 2],
+        faint_withheld: [faint & 1 != 0, faint & 2 != 0],
     };
     w.set_culled([
         eu.zip(ed).map(|(u, d)| [u, d]),
