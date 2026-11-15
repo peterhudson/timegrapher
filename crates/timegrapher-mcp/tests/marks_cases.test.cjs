@@ -18,7 +18,13 @@ function constant(name) {
   if (!match) throw new Error(`Missing ${name}`);
   return match[0];
 }
-const context = vm.createContext({ document: { getElementById: () => ({ clientWidth: 624 }) }, WHEEL_WORDS: { strong_hold: 100, name_clear: 11, name_row_out: 26 } });
+// The constants the server fills in from core chart_scale.rs (#1764).
+function chartScale() {
+  const rs = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/chart_scale.rs"), "utf8");
+  const num = (name) => +rs.match(new RegExp(`pub const ${name}: f64 = ([\\d.]+);`))[1];
+  return { strong_hold: num("STRONG_HOLD"), name_clear: num("NAME_CLEAR"), name_row_out: num("NAME_ROW_H") + num("NAME_CLEAR") };
+}
+const context = vm.createContext({ document: { getElementById: () => ({ clientWidth: 624 }) }, WHEEL_WORDS: chartScale() });
 vm.runInContext(["CHAR_W", "DASH", "MARKS", "NAME_CLEAR"].map(constant).join("\n") + "\nlet clipCount = 0;\n" +
   ["esc", "chartWidth", "plotArea", "gridDown", "gridAcross", "xyChart", "laneRows", "rowOut", "markOrder", "markPlace", "markPlaceRow", "markInside", "besideSpots", "crosses", "besidePlace", "roomAbove", "markWidth", "markText", "laneAbove", "namesInside", "laneBelow", "sideWidth", "laneRight", "laneRightAt", "markStackNames"]
     .map(definition).join("\n") + "\nthis.MARKS = MARKS;", context);
@@ -53,7 +59,7 @@ test("names inside a short plot go where the app's rules put them, or nowhere", 
 });
 
 test("names beside a plot keep a clear gap, a word to a line, a strong one on its line (#1764)", () => {
-  context.NAME_LINE_H = 13;
+  context.NAME_LINE_H = +fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/chart_scale.rs"), "utf8").match(/pub const NAME_LINE_H: f64 = ([\d.]+);/)[1];
   const ink = "--callout";
   const lines = [
     { y: 60, name: "Fourth Wheel", words: ["Fourth", "Wheel"], rank: "strong", ink },
@@ -66,7 +72,7 @@ test("names beside a plot keep a clear gap, a word to a line, a strong one on it
   assert.ok(Math.abs(ys[0][1] - (60 - 13 + 9.5)) < 1, `${ys}`);
   assert.ok(Math.abs(ys[1][1] - ys[0][1] - 13) < 0.1);
   // Between two names, more than a line clear: the gap reads as a gap.
-  assert.ok(ys[2][1] - ys[1][1] >= 13 + 11 - 1e-9, `${ys}`);
+  assert.ok(ys[2][1] - ys[1][1] >= 13 + context.WHEEL_WORDS.name_clear - 1e-9, `${ys}`);
   assert.ok(context.sideWidth(lines) < context.sideWidth([{ name: "Third Pinion Mesh", rank: "faint" }]), "the lane as wide as its longest word");
 });
 

@@ -2260,9 +2260,22 @@ pub fn wheel_marks(
     out
 }
 
-/// A name a word to a line, for a narrow lane (#1764).
+/// A name a word to a line, for a narrow lane (#1764), a part in
+/// brackets kept whole: "Escape / Wheel / (20 Teeth)" (Hugh).
 pub fn words(name: &str) -> Vec<String> {
-    name.split_whitespace().map(str::to_string).collect()
+    let mut out: Vec<String> = Vec::new();
+    let mut open = false;
+    for w in name.split_whitespace() {
+        match out.last_mut() {
+            Some(last) if open => {
+                last.push(' ');
+                last.push_str(w);
+            }
+            _ => out.push(w.to_string()),
+        }
+        open = (open || w.starts_with('(')) && !w.ends_with(')');
+    }
+    out
 }
 
 /// The Wheel Periods switch's hint: the wheels' turns and their ×2, or
@@ -2379,6 +2392,11 @@ mod wheel_mark_tests {
         assert_eq!(lines[3].name, "Fourth Pinion Mesh");
         assert_eq!(lines[3].words, ["Fourth", "Pinion", "Mesh"]);
         assert!(lines.iter().all(|l| l.words.join(" ") == l.name));
+        assert_eq!(
+            words("Escape Wheel (20 Teeth) ×2"),
+            ["Escape", "Wheel", "(20 Teeth)", "×2"]
+        );
+        assert_eq!(words("Escape Wheel (20)"), ["Escape", "Wheel", "(20)"]);
         assert_eq!(lines[3].hover, "Fourth Pinion Mesh: 7.5 s.");
         // The 3% is a bound: 2.9% apart share a line, 3.1% don't.
         assert!(one_mark(103.0 - 0.1, 100.0) && !one_mark(103.1, 100.0));

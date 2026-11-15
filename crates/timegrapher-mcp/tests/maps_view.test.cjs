@@ -174,6 +174,10 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).map((m) => m.name), ["fourth wheel", "fourth wheel ×2"]);
   assert.ok(!rows(meshed).includes("10 10"));
   context.showMesh = true;
+  // A word to a line, a part in brackets kept whole (Hugh on #1770), as
+  // core's steady_views::words.
+  const teeth = { input: { settings: { named_wheels: [{ name: "Escape Wheel (20 Teeth)", period_s: 60 }], reference_lines: [] } } };
+  assert.deepEqual(plain(context.wheelLines(teeth, [0, 5])[0].words), ["Escape", "Wheel", "(20 Teeth)"]);
 });
 
 test("Wheel Periods sits beside each period view's own switch, with the app's hint", () => {

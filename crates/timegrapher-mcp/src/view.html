@@ -1742,7 +1742,10 @@ function laneAbove(lines, sx, L, T, plotW, one) {
     const pts = [[centre, T - off - 1]];
     if (!one && Math.abs(centre - x) > 1) pts.push([x, T - LANE_GAP / 2]);
     pts.push([x, T]);
-    strokes += `<polyline points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${l.ink})"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-width="1"/>`;
+    // In its line's own pattern, so a ×2's reads as faint as its line
+    // (Hugh on #1770).
+    const dash = l.dash ? ` stroke-dasharray="${DASH[l.dash]}"${DASH[l.dash].startsWith("0 ") ? ` stroke-linecap="round"` : ""}` : "";
+    strokes += `<polyline points="${pts.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${l.ink})"${l.opacity ? ` stroke-opacity="${l.opacity}"` : ""} stroke-width="${l.width || 1}"${dash}/>`;
     boxes += `<g><title>${esc(l.hover)}</title><rect x="${(left - 2).toFixed(1)}" y="${(top - 2).toFixed(1)}" width="${(w + 4).toFixed(1)}" height="${ROW_H + 4}" rx="2" fill="var(--card)"/>${markText(left, top + 11.5, l.name, l.rank)}</g>`;
   });
   return strokes + boxes;
@@ -1873,7 +1876,12 @@ function wheelLines(doc, span) {
   const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
   const meshes = (doc.input && doc.input.settings && doc.input.settings.named_meshes) || [];
   const inside = (l) => l.x > span[0] && l.x < span[1];
-  const words = (name) => name.split(" ");
+  // steady_views::words: a word to a line, a part in brackets kept whole.
+  const words = (name) => name.split(" ").reduce((out, w) => {
+    if (out.open) out.list[out.list.length - 1] += ` ${w}`; else out.list.push(w);
+    out.open = (out.open || w.startsWith("(")) && !w.endsWith(")");
+    return out;
+  }, { list: [], open: false }).list;
   if (!wheels.length) {
     if (!showWheels) return [];
     return referenceLines(doc).map((r) => ({ x: Math.log10(r.period_s), turn: "reference", name: r.label, words: [r.label], hover: (REFERENCE_HOVER || {})[r.label] || r.label })).filter(inside);
@@ -1979,7 +1987,7 @@ function steadyPlot(s, view, doc) {
         title: "Periods", x: span, y,
         xTicks: periodTicks,
         yTicks: (a, b, h) => scoreTicks(a, b, h, 24), yName: SCORE_WORDS && SCORE_WORDS.axis_name, yHover: SCORE_WORDS && SCORE_WORDS.axis_hover,
-        vlines: wheelMarks(doc, span), names: showWheels,
+        vlines: wheelMarks(doc, span), names: showWheels || showMesh,
         hlines: [{ y: p.threshold, color: "--callout", width: CALL_OUT_W, dash: "loose", name: SCORE_WORDS && SCORE_WORDS.threshold_name, hover: SCORE_WORDS && SCORE_WORDS.threshold_hover }],
         lines: [{ pts, color, width: 1.5 }], marks, beside: notes, noteRoom: true,
       });
@@ -2074,7 +2082,7 @@ function steadyPlot(s, view, doc) {
         title: "FFT", x, y,
         xTicks: periodTicks,
         yTicks: (p, q) => logTicks(p, q, size),
-        vlines: wheelMarks(doc, x), names: showWheels, lines: runs.map((r) => ({ pts: r, color, width: 1.5 })),
+        vlines: wheelMarks(doc, x), names: showWheels || showMesh, lines: runs.map((r) => ({ pts: r, color, width: 1.5 })),
         marks: [{ x: peak[0], y: peak[1], color }],
         noteRoom: true, beside: [{ x: peak[0], y: peak[1], text: `tallest at ${secs(Math.pow(10, peak[0]))}: ${size(Math.pow(10, peak[1]))}${asRate ? " peak to peak" : ""}` }],
       });
