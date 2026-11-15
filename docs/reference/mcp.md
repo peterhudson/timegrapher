@@ -133,7 +133,10 @@ user's own.
 worked out once (about a minute for a 9 h take) and kept in the user's
 settings folder; `at_end` is what the app showed when the take was saved,
 to be retired; a take with `audio` false kept only its analysis, which
-its reading is read from.
+its reading is read from. A take's `wind_h` is its hours from full wind
+to its start, null where the wind was not given, which is never taken as
+full wind (#1665); the watch's `full_wind` is when it was last fully
+wound, UTC, or null.
 
 For a multi-position test, the chat app records each position into one
 folder with `record_position` and then reads the folder with `run_session`.

@@ -127,6 +127,9 @@ pub fn show(name: &str, library: Option<&Path>, json: bool) -> Result<(), String
             "notes": w.notes,
             "archived": w.archived,
             "fields": w.fields,
+            // When it was last fully wound, UTC, as the app's Position card
+            // or a test's Start gave it; null where not given (#1665).
+            "full_wind": w.full_wind,
             "photos": e.photos.len(),
             "bytes": e.bytes(),
             "takes": takes_json(e, &readings),
@@ -191,6 +194,9 @@ fn takes_json(e: &WatchEntry, readings: &[Option<Reading>]) -> Vec<Value> {
                 "bytes": t.bytes,
                 "reading": reading,
                 "at_end": t.at_end,
+                // Hours from full wind to its start; null where the wind
+                // was not given, never taken as full wind (#1665).
+                "wind_h": t.wind_h,
             })
         })
         .collect()

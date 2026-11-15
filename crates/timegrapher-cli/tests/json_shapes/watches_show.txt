@@ -5,6 +5,7 @@ calibre
 caveats
 fields
 folder
+full_wind
 id
 input
 input.library
@@ -47,5 +48,6 @@ takes[].reading.position
 takes[].reading.rate_s_per_day
 takes[].reading.watch_heard
 takes[].started_utc
+takes[].wind_h
 unreadable
 unsorted
