@@ -77,9 +77,8 @@ pub fn page() -> &'static str {
         let no_beat = serde_json::to_string(timegrapher_core::measure::NO_WATCH_TITLE)
             .expect("the no-beat heading as JSON");
         let minus = serde_json::to_string(&true_minus("-")).expect("the minus sign as JSON");
-        let wind_not_given =
-            serde_json::to_string(timegrapher_core::reading_text::WIND_NOT_GIVEN)
-                .expect("the wind-not-given words as JSON");
+        let groups = serde_json::to_string(&group_names()).expect("the group names as JSON");
+        let icons = serde_json::to_string(&icons()).expect("the icons as JSON");
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*BASE_DIGITS*/null", &base_digits())
             .replace("/*VIRIDIS*/null", &viridis)
@@ -95,7 +94,8 @@ pub fn page() -> &'static str {
             .replace("/*PROBABILITY_MARKS*/null", &marks)
             .replace("/*POSITIONS*/null", &positions)
             .replace("/*NO_BEAT_TITLE*/null", &no_beat)
-            .replace("/*WIND_NOT_GIVEN*/null", &wind_not_given)
+            .replace("/*GROUP_NAMES*/null", &groups)
+            .replace("/*ICONS*/null", &icons)
             .replace("/*MINUS*/null", &minus)
     })
 }
@@ -175,6 +175,46 @@ fn positions() -> Map<String, Value> {
         map.insert(p.common().to_string(), entry);
     }
     map
+}
+
+/// The icons the view draws as the app does (core `icons`): each series'
+/// by its JSON name, the "i", and their line width.
+fn icons() -> Value {
+    use timegrapher_core::icons;
+    use timegrapher_core::steadiness::SeriesKind;
+    let mut m: Map<String, Value> = [
+        SeriesKind::Rate,
+        SeriesKind::Amplitude,
+        SeriesKind::BeatError,
+    ]
+    .into_iter()
+    .map(|k| {
+        let key = serde_json::to_value(k).expect("a series' JSON name");
+        (
+            key.as_str().unwrap_or_default().to_string(),
+            json!(icons::of(k)),
+        )
+    })
+    .collect();
+    m.insert("info".into(), json!(icons::INFO));
+    m.insert("width".into(), json!(icons::WIDTH));
+    Value::Object(m)
+}
+
+/// Each position group's name by its JSON name, as core gives them
+/// (`session::PositionGroup::name`), for the test panes' lane groups.
+fn group_names() -> Map<String, Value> {
+    use timegrapher_core::session::PositionGroup;
+    [PositionGroup::Horizontal, PositionGroup::Vertical]
+        .into_iter()
+        .map(|g| {
+            let key = serde_json::to_value(g).expect("a group's JSON name");
+            (
+                key.as_str().unwrap_or_default().to_string(),
+                json!(g.name()),
+            )
+        })
+        .collect()
 }
 
 /// Shares labelled up the probability plot, percent, as on probability
@@ -323,6 +363,81 @@ pub fn pm_texts(doc: &Value) -> Option<Value> {
         return Some(pm);
     }
     None
+}
+
+/// The `_meta` key the Power Reserve pane reads its hours from.
+pub const RESERVE_KEY: &str = "timegrapher/reserve";
+
+/// A Power Reserve run's hours as the view's pane draws them (#1729): each
+/// hour's start and length in hours and its Read % (core
+/// `Hour::read_share`), and for each measure its title, unit, value axis
+/// and each hour's figure as a size for the beat error, its words in
+/// core's figure text and whether it is thin (read from too few of its
+/// windows: grey, as the app's table has it). `None` with no hours.
+pub fn reserve_view(doc: &Value) -> Option<Value> {
+    use timegrapher_core::confidence::Figure;
+    use timegrapher_core::figure_text::fixed_text;
+    use timegrapher_core::position_line::{bare, screen, unit_of};
+    use timegrapher_core::power_reserve::{Hour, Results};
+    use timegrapher_core::steadiness::SeriesKind;
+    let run: Results = serde_json::from_value(doc.get("power_reserve")?.clone()).ok()?;
+    if run.hours.is_empty() {
+        return None;
+    }
+    let figure = |h: &Hour, k: SeriesKind| {
+        match k {
+            SeriesKind::Rate => h.rate_s_per_day,
+            SeriesKind::Amplitude => h.amplitude_deg,
+            SeriesKind::BeatError => h.beat_error_ms.map(f64::abs),
+        }
+        .filter(|v| v.is_finite())
+    };
+    let series: Vec<Value> = [
+        (SeriesKind::Rate, Figure::Rate),
+        (SeriesKind::Amplitude, Figure::Amplitude),
+        (SeriesKind::BeatError, Figure::BeatError),
+    ]
+    .into_iter()
+    .map(|(k, f)| {
+        let values: Vec<f64> = run.hours.iter().filter_map(|h| figure(h, k)).collect();
+        let axis = timegrapher_core::position_line::value_axis(k, &values);
+        let steps: Vec<Value> = run
+            .hours
+            .iter()
+            .map(|h| {
+                let v = figure(h, k);
+                json!({
+                    "value": v,
+                    "text": v.map(|x| screen(k, x)),
+                    "figure": v.map(|x| bare(k, x)),
+                    "thin": h.thin(f).is_some(),
+                })
+            })
+            .collect();
+        json!({ "series": k, "title": k.title(), "unit": unit_of(k), "axis": axis, "steps": steps })
+    })
+    .collect();
+    let hours: Vec<Value> = run
+        .hours
+        .iter()
+        .map(|h| {
+            json!({
+                "hour": h.hour,
+                "span_h": h.span_s / 3600.0,
+                "read": h.read_share().map(|r| fixed_text(100.0 * r, 0)),
+            })
+        })
+        .collect();
+    use timegrapher_core::power_reserve::{HOURS_COLUMN, READ_COLUMN, TEST_TITLE};
+    Some(json!({
+        "title": TEST_TITLE,
+        "hours_title": HOURS_COLUMN.0,
+        "read_title": READ_COLUMN.0,
+        "read_unit": READ_COLUMN.1,
+        "position": run.position,
+        "hours": hours,
+        "series": series,
+    }))
 }
 
 /// The `_meta` that links a tool to the view.
@@ -839,12 +954,27 @@ mod tests {
     }
 
     #[test]
-    fn the_page_carries_cores_wind_not_given() {
-        assert!(!page().contains("/*WIND_NOT_GIVEN*/"));
-        assert!(page().contains(&format!(
-            "const WIND_NOT_GIVEN = \"{}\";",
-            timegrapher_core::reading_text::WIND_NOT_GIVEN
-        )));
+    fn the_page_carries_cores_group_names() {
+        assert!(!page().contains("/*GROUP_NAMES*/"));
+        assert!(page()
+            .contains(r#"const GROUP_NAMES = {"horizontal":"Horizontal","vertical":"Vertical"};"#));
+    }
+
+    /// The series toggles and the "i" are core's drawings, the app's own.
+    #[test]
+    fn the_page_carries_cores_icons() {
+        assert!(!page().contains("/*ICONS*/"));
+        let at = page().find("const ICONS = ").expect("the icons");
+        let line = &page()[at..page()[at..].find('\n').unwrap() + at];
+        // A Windows checkout ends the line "\r\n".
+        let json = line
+            .trim_start_matches("const ICONS = ")
+            .trim_end()
+            .trim_end_matches(';');
+        let v: Value = serde_json::from_str(json).expect("the icons as JSON");
+        assert_eq!(v["rate"], timegrapher_core::icons::RATE);
+        assert_eq!(v["beat_error"], timegrapher_core::icons::BEAT_ERROR);
+        assert_eq!(v["info"], timegrapher_core::icons::INFO);
     }
 
     #[test]
@@ -1312,5 +1442,67 @@ mod tests {
             now,
             "run with TIMEGRAPHER_BLESS=1 to write the fixture"
         );
+    }
+
+    /// The Power Reserve pane's model: each hour's figures in core's words,
+    /// a thin figure marked, an hour with none left out of the line, Read %
+    /// from the hour's read share, and the titles core gives.
+    #[test]
+    fn the_reserve_view_gives_each_hours_figures() {
+        use timegrapher_core::confidence::Figure;
+        use timegrapher_core::measure::Caveat;
+        use timegrapher_core::power_reserve::{Ending, Hour, Results, SCHEMA};
+        let hour = |hour, rate, caveats| Hour {
+            hour,
+            span_s: 3600.0,
+            rate_s_per_day: rate,
+            amplitude_deg: Some(280.0),
+            beat_error_ms: Some(-0.4),
+            beat_error_source: None,
+            caveats,
+            read_s: 1800.0,
+            bph: Some(28_800),
+            rate_se: None,
+            amplitude_se: None,
+            beat_error_se: None,
+        };
+        let thin = vec![Caveat::ReadingWindows {
+            reading: Figure::Rate,
+            windows_used: 3,
+            windows_in_span: 10,
+        }];
+        let run = Results {
+            schema: SCHEMA.into(),
+            started_utc: "2026-11-14T00:00:00Z".into(),
+            position: "DU".into(),
+            sound_kept: false,
+            ending: Ending::Stopped,
+            first_beat_s: 0.0,
+            last_beat_s: 10800.0,
+            run_s: 10800.0,
+            pauses: vec![],
+            hours: vec![
+                hour(0, Some(-1.5), vec![]),
+                hour(1, None, vec![]),
+                hour(2, Some(2.0), thin),
+            ],
+            source: Default::default(),
+        };
+        let v = reserve_view(&json!({ "power_reserve": run })).expect("a model");
+        assert_eq!(v["title"], "Power Reserve");
+        assert_eq!(v["read_title"], "Read");
+        assert_eq!(v["read_unit"], "%");
+        assert_eq!(v["hours"][0]["read"], "50");
+        let rate = &v["series"][0];
+        assert_eq!(rate["series"], "rate");
+        assert_eq!(rate["steps"][0]["text"], "\u{2212}1.5 s/d");
+        assert_eq!(rate["steps"][0]["figure"], "\u{2212}1.5");
+        assert!(rate["steps"][1]["value"].is_null());
+        assert_eq!(rate["steps"][2]["thin"], true);
+        // A beat error is a size, drawn from 0.
+        let be = &v["series"][2];
+        assert_eq!(be["steps"][0]["value"], 0.4);
+        assert!(be["axis"][0].as_f64().unwrap() >= 0.0);
+        assert!(reserve_view(&json!({})).is_none());
     }
 }

@@ -507,6 +507,9 @@ pub fn finished_run(hours: u32) -> Test {
                 amplitude_deg: Some(281.0),
                 beat_error_ms: Some(0.4),
                 beat_error_source: None,
+                rate_se: None,
+                amplitude_se: None,
+                beat_error_se: None,
                 caveats: Vec::new(),
                 read_s: 3500.0,
                 bph: Some(28_800),
@@ -616,21 +619,7 @@ pub const THIN_KEY: &str =
 /// cell is dimmed and the caveat is in its hover. Amplitude and beat error
 /// alike, one rule.
 fn thin(h: &power_reserve::Hour, figure: Figure) -> Option<String> {
-    match figure {
-        Figure::Amplitude => h.amplitude_deg?,
-        Figure::BeatError => h.beat_error_ms?,
-        Figure::Rate => h.rate_s_per_day?,
-    };
-    h.caveats
-        .iter()
-        .find(|c| {
-            matches!(
-                c,
-                timegrapher_core::measure::Caveat::ReadingWindows { reading, .. }
-                    if *reading == figure
-            )
-        })
-        .and_then(|c| c.long(None))
+    h.thin(figure).and_then(|c| c.long(None))
 }
 
 /// The hour's beat error's hover and whether it is grey: its source in
@@ -698,7 +687,11 @@ pub fn beat_error_hint(lead: &str) -> String {
 /// The table's titles: each name, its unit under it (none for Hours),
 /// and what the column holds (Hugh's ruling on #1086).
 pub(crate) const HOUR_COLUMNS: [(&str, &str, &str); 6] = [
-    ("Hours", "", "Hours since the first beat heard"),
+    (
+        power_reserve::HOURS_COLUMN.0,
+        "",
+        power_reserve::HOURS_COLUMN.1,
+    ),
     (
         "Rate",
         "s/d",
@@ -715,11 +708,7 @@ pub(crate) const HOUR_COLUMNS: [(&str, &str, &str); 6] = [
         ),
     ),
     (be_angle::NAME, "°", be_angle::COLUMN_HINT),
-    (
-        "Read",
-        "%",
-        "How much of the hour its whole 10 s readings cover",
-    ),
+    power_reserve::READ_COLUMN,
 ];
 
 /// A title as drawn: its words, its hover, the cell, and where its name
@@ -1291,6 +1280,9 @@ mod tests {
             amplitude_deg: Some(281.4),
             beat_error_ms: Some(-0.4),
             beat_error_source: None,
+            rate_se: None,
+            amplitude_se: None,
+            beat_error_se: None,
             caveats: Vec::new(),
             read_s: 90.0,
             bph: Some(28_800),
@@ -1834,6 +1826,9 @@ mod tests {
                     amplitude_deg: Some(281.0),
                     beat_error_ms: Some(0.4),
                     beat_error_source: None,
+                    rate_se: None,
+                    amplitude_se: None,
+                    beat_error_se: None,
                     caveats: Vec::new(),
                     read_s: 3500.0,
                     bph: Some(28_800),
@@ -1918,6 +1913,9 @@ mod tests {
                         amplitude_deg: Some(281.0),
                         beat_error_ms: Some(0.4),
                         beat_error_source: None,
+                        rate_se: None,
+                        amplitude_se: None,
+                        beat_error_se: None,
                         caveats: Vec::new(),
                         read_s: 3500.0,
                         bph: Some(28_800),
@@ -2097,6 +2095,9 @@ mod tests {
             amplitude_deg: Some(281.0),
             beat_error_ms: Some(0.4),
             beat_error_source: None,
+            rate_se: None,
+            amplitude_se: None,
+            beat_error_se: None,
             caveats: Vec::new(),
             read_s: span_s - 100.0,
             bph: Some(28_800),
@@ -2164,6 +2165,9 @@ mod tests {
             amplitude_deg: Some(281.0),
             beat_error_ms: Some(0.4),
             beat_error_source: None,
+            rate_se: None,
+            amplitude_se: None,
+            beat_error_se: None,
             caveats: Vec::new(),
             read_s: 30.0,
             bph: Some(28_800),
@@ -2209,6 +2213,9 @@ mod tests {
                 amplitude_deg: (h < 8).then(|| 292.0 - 9.0 * f64::from(h)),
                 beat_error_ms: Some(0.4),
                 beat_error_source: None,
+                rate_se: None,
+                amplitude_se: None,
+                beat_error_se: None,
                 caveats: Vec::new(),
                 read_s: 3500.0,
                 bph: Some(28_800),

@@ -523,3 +523,40 @@ fn analyze_profile_and_shape_read_a_file_in_a_take_with_its_settings() {
         assert_eq!(settings(&other).0, Some(52.0), "{command}");
     }
 }
+
+/// `analyze --calibre` on a file in a take names the calibre's own lift on
+/// its Calibre line, and the take's lift where it says what was used
+/// (#1573): the take's lift is not shown as the calibre's.
+#[test]
+fn the_calibre_line_gives_the_calibres_own_lift_inside_a_take() {
+    let dir = scratch("calibre-line");
+    let take = dir.join("du.wav");
+    watch_wav(&take, 20.0);
+    std::fs::write(
+        dir.join("session.toml"),
+        "bph = 28800\nlift = 47\n\n[[recording]]\nfile = \"du.wav\"\nposition = \"DU\"\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_timegrapher"))
+        .args([
+            "analyze",
+            take.to_str().unwrap(),
+            "--calibre",
+            "Dandong 3235",
+        ])
+        .env("TIMEGRAPHER_CONFIG_DIR", dir.join("config"))
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let calibre = text.lines().find(|l| l.starts_with("Calibre")).unwrap();
+    assert!(
+        calibre.contains("lift 59°") && !calibre.contains("47"),
+        "{calibre}"
+    );
+    assert!(text.contains("lift angle 47 deg"), "{text}");
+}

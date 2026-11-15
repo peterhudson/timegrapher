@@ -302,6 +302,9 @@ pub struct StateFit {
     /// not given, as the session report's states name them.
     pub wind_h: Option<f64>,
     pub fit: PoiseFit,
+    /// What a surface draws of it, as a plot or round a dial
+    /// ([`crate::poise_picture`]).
+    pub picture: crate::poise_picture::Picture,
 }
 
 /// The [`shown_fit`] of each state of wind whose upright readings give
@@ -313,10 +316,15 @@ pub fn by_state(readings: &[crate::session::Reading]) -> Vec<StateFit> {
     wind_keys(readings)
         .into_iter()
         .filter_map(|k| {
-            let at = readings.iter().filter(|r| wind_key(r.wind_h) == k);
-            let fit = shown_fit(at.map(|r| (r.position, &r.measurement)))?;
+            let at: Vec<crate::session::Reading> = readings
+                .iter()
+                .filter(|r| wind_key(r.wind_h) == k)
+                .cloned()
+                .collect();
+            let fit = shown_fit(at.iter().map(|r| (r.position, &r.measurement)))?;
             Some(StateFit {
                 wind_h: k.map(|k| k as f64 / 10.0),
+                picture: crate::poise_picture::picture(&at, Some(&fit)),
                 fit,
             })
         })

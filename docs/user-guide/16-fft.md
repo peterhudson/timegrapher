@@ -11,7 +11,8 @@ gives.
 
 **Why you'd use it:** to see the size of every period's swing side by
 side, the strong ones and the weak ones, on one axis. Periods (chapter 11)
-says which periods the readings repeat at, beyond doubt; the FFT says how
+says which periods the readings repeat at, each with the chance that noise
+alone would show it (a false alarm); the FFT says how
 big each one is, whether or not it passes a test. When you know what you
 are looking for (a wheel you have just worked on, a swing you saw on
 another timegrapher), this is where you read its size.

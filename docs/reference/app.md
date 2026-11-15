@@ -838,7 +838,13 @@ once 5 positions are measured". **Info** shows `text`, the fit in full
 with its twice-round terms, the heavy spot or why it is not stated and
 its caveats, core's note on the amplitudes that show the heavy spot,
 then the table's notes and the key to its grey beat errors. Copy writes the watch, the table in the pane's order
-and that sentence. A Dynamic Poise test is not set against a full-wind
+and that sentence. **Save as Text…**, greyed until a position is
+measured, saves the plain-text report core `text_report::poise` writes,
+the one `timegrapher session` writes for a Dynamic Poise take: the watch
+and how it was read, the table in the pane's order, the fit in full and
+the notes. For a take opened again it is the report of the upright
+stops the pane shows, with no Settle or Each Position, as for the
+Positions Test. A Dynamic Poise test is not set against a full-wind
 test and keeps no results for 24 hours after.
 
 **Complication.** The Complication pane (#1576), a hidden tab beside the

@@ -31,6 +31,7 @@ menu.
 | 1 | **Settle** | The seconds the watch settles after each turn before it is measured: 20 s unless set, 5 to 600 s. A field to type in, with a menu of 10, 20, 30 and 60 s. | A balance takes some seconds to steady after the watch is turned. |
 | 2 | **Each Position** | The seconds each position is measured: 60 s unless set, 20 to 3600 s, with a menu from 30 s to 5 min. | Longer gives a smaller ± (M7). |
 | 3 | **Save as CSV…** (comma-separated values, which any spreadsheet opens) | Saves the watch, its calibre, beat rate and lift angle, when the test began, its settling and measuring times, and the tables. | For a spreadsheet or a service record. |
+| | **Save as Text…** | A plain-text report, lined up to read: the watch and how it was read (its calibre, beat rate and lift angle, the lift left out where the calibre's name already gives it), the date from the take's name, the table and the notes under it. In the 24-hour half, the full-wind test beside it. | To keep, print or send. |
 | 4 | **Copy** | The same, on the clipboard, with tabs between the columns. | To paste elsewhere. |
 | | **Save Results for 24 Hours…** | After a test at full wind: saves its results for the test 24 hours later. Saving the session keeps them too. | To compare later. |
 | | **Info** (the "i", at the right) | Opens a panel with how a take's table is read: what Duration leaves out, and when a position shows figures. | To check why a position's time or figures look short. |
@@ -107,6 +108,14 @@ less the Settle at the start of each stretch and any masked time. A
 position needs 10 s before it shows figures ("Under 10 s"), and one never
 marked reads "Not marked". The Average and Largest Difference rows follow
 once two positions have figures.
+
+**Save as CSV…**, **Save as Text…** and **Copy** save this table too, so
+a take opened from the Watches view can be kept or sent as a test's
+results are. As the take had no guided test, they leave out when a test
+began and its settling and measuring times, and list the rows in the
+table's own order. They are greyed ("Nothing measured yet") only while
+the table has no readings.
+
 Under the tables, one line says what to do next, such as "New Test leads
 you through the six positions."; the steps are in the pane's **?**.
 

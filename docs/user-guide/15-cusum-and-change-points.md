@@ -16,7 +16,7 @@ wind or a change in the watch that you suspect moved the rate.
 | Mark | Part | What it shows |
 | --- | --- | --- |
 | 1 | The CUSUM | The running total, against the time of the take. |
-| 2 | The dashed lines | ±1.36: readings with no change of level, correlated or not, stay inside them about 95 times in 100. |
+| 2 | The dashed lines | ±1.36: readings with no change of level stay inside them about 95 times in 100. The total is scaled by the long-run σ, which allows for correlated readings; on a short take, where that σ is itself uncertain, the 95 is only rough. |
 | 3 | The largest excursion | The point furthest from 0. When the headline names a level change, the corner nearest it gets a dot and a note, "level changes near 47:00". |
 
 ## Reading the Shape

@@ -19,7 +19,7 @@ const definition = (name) => {
 // Core's minus, as the server puts it in the page.
 const { MINUS } = require("./core_digits.cjs");
 const context = vm.createContext({ MINUS });
-vm.runInContext(["fixedDigits", "num", "signed", "barFigure", "hoverFigure"].map(definition).join("\n"), context);
+vm.runInContext(["fixedDigits", "num", "signed", "hoverFigure"].map(definition).join("\n"), context);
 
 test("the fixture has cases", () => assert.ok(cases.length > 0));
 for (const c of cases) {
@@ -28,13 +28,6 @@ for (const c of cases) {
     assert.equal(context.signed(c.v, c.digits), c.signed);
   });
 }
-
-test("a position's bar writes a rate or beat error with its sign, an amplitude without a plus", () => {
-  assert.equal(context.barFigure(1.5, " s/d", 1), "+1.5 s/d");
-  assert.equal(context.barFigure(-1.5, " s/d", 1), `${MINUS}1.5 s/d`);
-  assert.equal(context.barFigure(250, "°", 0), "250°");
-  assert.equal(context.barFigure(-0.04, " ms", 1), "0.0 ms", "no sign on a figure that rounds to zero");
-});
 
 test("a chart's hover writes its figure with core's true minus", () => {
   assert.equal(context.hoverFigure(-3.25, { decimals: 1, unit: " s/d" }), `${MINUS}3.2 s/d`);
