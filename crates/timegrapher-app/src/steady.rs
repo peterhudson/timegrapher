@@ -2173,8 +2173,10 @@ impl WheelNames {
         marks::lane_above(ui, frame, &named(false), self.id);
         if self.below > 0.0 {
             // Under the time axis's labels, not over them (Hugh, Walter
-            // on #1774): the plot's widget ends below its labels.
-            let under = ui.min_rect().bottom();
+            // on #1774): the plot's widget, its labels in it, ends where
+            // the next item would go, less the spacing between items. (The
+            // pane's own rect can reach past it, down to the pane's foot.)
+            let under = ui.cursor().top() - ui.spacing().item_spacing.y;
             marks::lane_below(ui, frame, under, &named(true), self.id.with("below"));
             ui.add_space(self.below);
         }
