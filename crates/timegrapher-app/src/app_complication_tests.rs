@@ -159,6 +159,7 @@ fn the_pane_draws_the_table_and_three_plots_amplitude_first() {
     a_hovered_stretch_gives_its_figures_in_each_title(&mut app);
     a_plot_turned_off_gives_the_others_its_room(&mut app);
     a_short_pane_keeps_each_plot_readable(&mut app);
+    a_take_opened_again_starts_at_the_top(&mut app);
     drop(tx);
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -260,6 +261,70 @@ fn a_short_pane_keeps_each_plot_readable(app: &mut TimegrapherApp) {
             assert!(!a.intersects(*b), "tick labels touch: {a:?} {b:?}");
         }
     }
+}
+
+/// Scrolled down a short pane keeps its place frame to frame, and a take
+/// opened, the same one again too, starts at the top (Hugh, #1801).
+fn a_take_opened_again_starts_at_the_top(app: &mut TimegrapherApp) {
+    let ctx = themed();
+    let size = Vec2::new(1280.0, 400.0);
+    // A second a frame, so the wheel's eased scroll ends within the frames.
+    let clock = std::cell::Cell::new(0.0);
+    let amplitude_top = |app: &mut TimegrapherApp, wheel: f32| {
+        let mut top = 0.0;
+        for frame in 0..4 {
+            clock.set(clock.get() + 1.0);
+            let mut events = vec![egui::Event::PointerMoved(egui::pos2(900.0, 200.0))];
+            if frame == 1 && wheel != 0.0 {
+                events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -wheel),
+                    modifiers: Default::default(),
+                });
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                events,
+                time: Some(clock.get()),
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    app.pane_tools(ui, Pane::Complication);
+                    app.complication_pane(ui);
+                });
+            });
+            top = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    // The plot's title, not the table's heading.
+                    egui::Shape::Text(t) if t.galley.text() == "Amplitude" && t.pos.x > 400.0 => {
+                        Some(t.galley.rect.translate(t.pos.to_vec2()).top())
+                    }
+                    _ => None,
+                })
+                .fold(f32::NEG_INFINITY, f32::max);
+        }
+        top
+    };
+    let at_top = amplitude_top(app, 0.0);
+    let scrolled = amplitude_top(app, 300.0);
+    assert!(
+        scrolled < at_top - 50.0,
+        "scrolled: {at_top} then {scrolled}"
+    );
+    let kept = amplitude_top(app, 0.0);
+    assert!(
+        (kept - scrolled).abs() < 1.0,
+        "kept: {scrolled} then {kept}"
+    );
+    app.rev.new_take();
+    let opened = amplitude_top(app, 0.0);
+    assert!(
+        (opened - at_top).abs() < 1.0,
+        "opened: {at_top} then {opened}"
+    );
 }
 
 /// The pane drawn with the pointer at `at`, a few frames so a hover in

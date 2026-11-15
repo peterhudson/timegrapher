@@ -58,6 +58,8 @@ mod dock;
 mod kept_analysis;
 mod library_folder;
 mod listen_card;
+mod revision;
+use revision::Revision;
 mod live_usb;
 use live_usb::reading_clock;
 #[cfg(target_os = "macos")]
@@ -1622,38 +1624,6 @@ fn listen_tap(was: Option<(f64, bool)>, now: f64, pressed: bool) -> (f64, bool) 
 /// The key a run of readings is kept under: its averaging time in ms.
 fn trend_key(seconds: f64) -> u64 {
     (seconds * 1000.0).round() as u64
-}
-
-/// What the take on show's readings rest on, a counter for each part,
-/// moved only where that part is set: every figure kept for later keys on
-/// the parts it reads, so a change in one place reaches every pane. Moves
-/// to core with #294's one measurement context per take.
-///
-/// Bumped in the put_* setters and in these places only: positions_moved
-/// (breaks; also after the Settle field resettles the take) and
-/// set_position (breaks), calibre_changed when the wheels change
-/// (settings), and new_take from reset_session and show_log (every
-/// part). Any other write to `rev` is a defect.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct Revision {
-    /// The lift angle, the calibre and the beat rate.
-    settings: u64,
-    /// The take's own clock and the clock kept for the input.
-    clock: u64,
-    /// The take's breaks and its changes of position.
-    breaks: u64,
-    /// The stretches masked out.
-    masks: u64,
-}
-
-impl Revision {
-    /// A take opened or a new session: every part is new.
-    fn new_take(&mut self) {
-        self.settings += 1;
-        self.clock += 1;
-        self.breaks += 1;
-        self.masks += 1;
-    }
 }
 
 /// What the strip's own readings were worked out for: the window and the

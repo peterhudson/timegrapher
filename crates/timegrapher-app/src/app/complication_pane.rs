@@ -220,7 +220,7 @@ impl TimegrapherApp {
             (test, phase, live.as_ref()),
             (now, lengths),
             (self.complication_info, self.complication_series),
-            &self.source_label,
+            self.rev.opens,
         );
         if let (Some(action), Some(now)) = (action, now) {
             self.apply_guided_action(action, now);
@@ -238,15 +238,15 @@ fn complication_body(
     ),
     (now, (settle_s, measure_s)): (Option<f64>, (f64, f64)),
     (info, shown): (bool, [bool; 3]),
-    take: &str,
+    opens: u64,
 ) -> Option<guided::Action> {
     let bottom = ui.available_rect_before_wrap().bottom();
-    // A take not shown here before starts at the top; the same take keeps
-    // its place (Hugh on #1799).
-    let shown_take = egui::Id::new("complication take");
+    // Each take opened starts at the top, the same one opened again
+    // too; the place is kept while it stays open (Hugh, #1801).
+    let shown_open = egui::Id::new("complication take");
     let top = ui.data_mut(|d| {
-        let fresh = d.get_temp::<String>(shown_take).as_deref() != Some(take);
-        d.insert_temp(shown_take, take.to_string());
+        let fresh = d.get_temp::<u64>(shown_open) != Some(opens);
+        d.insert_temp(shown_open, opens);
         fresh
     });
     let layout = test_body::Layout {
