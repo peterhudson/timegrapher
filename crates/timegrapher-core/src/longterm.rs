@@ -652,6 +652,9 @@ struct Band<'a> {
     /// A levelling to use instead of the table's: the table's own
     /// simulation.
     given: Option<&'a null::Levelling>,
+    /// The train's wheels: a period's harmonic on one of them is that
+    /// wheel's line, left out of the period's score (#1606).
+    wheels: &'a [Wheel],
 }
 
 /// f·w of spectrum bin `j`: the detrend's window, or the span under the
@@ -749,28 +752,9 @@ fn search(g: &Grid, band: &Band, exclude: &[f64]) -> Search {
     };
     for j in jmin..=jmax {
         let period = 1.0 / (j as f64 * sp.df);
-        // Harmonics only count when the fundamental itself shows: otherwise
-        // a line just below the shortest period searched would be reported
-        // at twice its period.
-        let fundamental_seen = sp.white[j] >= FUNDAMENTAL_MIN;
-        let mut sum = 0.0;
-        let mut best = (0.0f64, 1u8);
-        for h in 1..=HARMONICS[HARMONICS.len() - 1] {
-            // Only harmonics inside the searched band count: a strong line
-            // below the shortest period (a 3.75 s escape wheel on a long
-            // run's 4 s floor) would otherwise lift every period it divides.
-            if h * j > jmax {
-                break;
-            }
-            let Some(&w) = sp.white.get(h * j) else { break };
-            sum += w;
-            if HARMONICS.contains(&h) && (h == 1 || fundamental_seen) {
-                let s = -log10_gamma_tail(h, sum);
-                if s > best.0 {
-                    best = (s, h as u8);
-                }
-            }
-        }
+        let best = harmonic_score(&sp.white, j, jmax, |h| {
+            wheel_harmonic(band.wheels, period, h, g.span())
+        });
         let excluded = exclude
             .iter()
             .any(|&p| (period - p).abs() < 3.0 * p * p / g.span());
@@ -786,6 +770,43 @@ fn search(g: &Grid, band: &Band, exclude: &[f64]) -> Search {
     out.tail = lev.map_or(null::Tail::trials(trials), |l| l.tail(trials));
     out.threshold = out.tail.score_at(band.false_alarm);
     out
+}
+
+/// The best score of the period at spectrum index `j` over the harmonic
+/// counts a search sums ([`HARMONICS`]), and the count that gives it:
+/// the whitened powers at its first `h` harmonics summed, less any that
+/// `skip` leaves out, read against a gamma tail of as many terms as were
+/// summed. The search skips a harmonic that is a wheel of the train
+/// ([`wheel_harmonic`]): that is the wheel's line, not the period's, and
+/// a 15 s period whose 4th harmonic was a 15-tooth escape wheel's 3.75 s
+/// scored 1206 on it, against 34 on its own lines (#1606).
+fn harmonic_score(white: &[f64], j: usize, jmax: usize, skip: impl Fn(usize) -> bool) -> (f64, u8) {
+    // Harmonics only count when the fundamental itself shows: otherwise
+    // a line just below the shortest period searched would be reported
+    // at twice its period.
+    let fundamental_seen = white[j] >= FUNDAMENTAL_MIN;
+    let (mut sum, mut terms) = (0.0, 0);
+    let mut best = (0.0f64, 1u8);
+    for h in 1..=MAX_HARMONICS {
+        // Only harmonics inside the searched band count: a strong line
+        // below the shortest period (a 3.75 s escape wheel on a long
+        // run's 4 s floor) would otherwise lift every period it divides.
+        if h * j > jmax {
+            break;
+        }
+        let Some(&w) = white.get(h * j) else { break };
+        if !skip(h) {
+            sum += w;
+            terms += 1;
+        }
+        if terms > 0 && HARMONICS.contains(&h) && (h == 1 || fundamental_seen) {
+            let s = -log10_gamma_tail(terms, sum);
+            if s > best.0 {
+                best = (s, h as u8);
+            }
+        }
+    }
+    best
 }
 
 /// The average shape of one cycle, and every cycle as a raster row.
@@ -1235,6 +1256,7 @@ fn analyse_as(
                 detrend_w,
                 model,
                 given: given.or(kept.as_ref()),
+                wheels: &cfg.wheels,
             };
             let s = search(&work, &band, &found);
             let threshold = s.threshold;
