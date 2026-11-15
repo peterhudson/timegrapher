@@ -18,7 +18,11 @@ function constant(name) {
   if (!match) throw new Error(`Missing ${name}`);
   return match[0].replace(/^const /, "var ");
 }
-const context = vm.createContext({ MINUS: "−", CHAR_W: 6.6, ICONS: null, paneWs: {}, chartWidth: () => 860 });
+// Core's band fill, as the server puts it in.
+const paletteRs = fs.readFileSync(path.join(__dirname, "../../timegrapher-core/src/palette.rs"), "utf8");
+const BAND_FILL = +paletteRs.match(/pub const BAND_FILL: f64 = ([\d.]+);/)[1];
+assert.ok(html.includes("const BAND_FILL = /*BAND_FILL*/null;"), "the server fills the band fill in");
+const context = vm.createContext({ MINUS: "−", CHAR_W: 6.6, ICONS: null, paneWs: {}, chartWidth: () => 860, BAND_FILL });
 vm.runInContext(["PANE_MIN_CHART", "PANE_CHAR_W", "paneShown", "PANE_KINDS"].map(constant).join("\n"), context);
 vm.runInContext(["esc", "fixedDigits", "roundStep", "gridFor", "axisLabel", "gridDown", "gridAcross", "valueTick",
   "testPane", "icon", "columnHead", "paneChartWidth", "plHead", "paneToggles", "reservePane", "stepChart", "tickLabelsShown"].map(definition).join("\n"), context);
@@ -104,4 +108,24 @@ test("the grey key shows under the table only when core sends it", () => {
   const key = "Grey beat errors: from the drop, or source not recorded.";
   const markup = context.reservePane({ ...reserve, grey_key: key }, "r");
   assert.ok(markup.includes(`<div class="map-key">${key}</div>`), markup);
+});
+
+test("each hour's ± band lies under its step, in its line's colour or grey with it", () => {
+  const steps = reserve.series[0].steps.map((st, i) => ({ ...st, band: [[-1.5, -0.5], [0, 1], [1, 3], null][i] }));
+  const chart = context.stepChart({ ...reserve.series[0], steps }, reserve.hours, "r-rate");
+  const washes = [...chart.matchAll(/<path class="band" d="([^"]*)" fill="([^"]+)" fill-opacity="([\d.]+)"\/>/g)];
+  // Hour 1 has no figure and hour 3 no band: hour 0's band in the line's
+  // colour, hour 2's grey, each ink one path.
+  assert.deepEqual(washes.map((w) => w[2]), ["var(--rate)", "var(--text3)"], chart);
+  // Axis −2 to 4 over 140 px from y 8: −0.5 is at 113.0, −1.5 at 136.3.
+  assert.match(washes[0][1], /^M52\.0 113\.0H[\d.]+V136\.3H52\.0Z$/);
+  assert.equal((washes[1][1].match(/M/g) || []).length, 1);
+  assert.ok(washes.every((w) => +w[3] === BAND_FILL));
+  assert.ok(chart.indexOf('class="band"') < chart.indexOf('<path d='), "under the line");
+  // Two hours' bands of one ink are one path: no seam between them.
+  const both = reserve.series[0].steps.map((st, i) => ({ ...st, grey: false, band: st.value == null ? null : [st.value - 0.5, st.value + 0.5] }));
+  const one = context.stepChart({ ...reserve.series[0], steps: both }, reserve.hours, "r-rate");
+  const paths = [...one.matchAll(/<path class="band" d="([^"]*)"/g)];
+  assert.equal(paths.length, 1);
+  assert.equal((paths[0][1].match(/M/g) || []).length, 3);
 });

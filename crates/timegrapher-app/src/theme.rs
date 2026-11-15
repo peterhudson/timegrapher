@@ -163,6 +163,15 @@ pub fn pal(ui: &Ui) -> &'static Palette {
     palette(ui.visuals().dark_mode)
 }
 
+/// The Dynamic Poise dial's case (#1762), face and outline, in the theme
+/// `ui` is drawn in: core's steps over the window, the colour behind the
+/// dial (Hugh on #1772).
+pub fn case_colours(ui: &Ui) -> (Color32, Color32) {
+    let p = core_palette::palette(ui.visuals().dark_mode);
+    let (face, line) = p.case_over(p.window);
+    (c(face), c(line))
+}
+
 /// Corner radius of cards and of buttons and fields.
 pub const CARD_RADIUS: u8 = 10;
 pub const CONTROL_RADIUS: u8 = 6;

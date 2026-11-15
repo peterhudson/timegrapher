@@ -90,6 +90,10 @@ pub fn page() -> &'static str {
             .replace("/*SCORE_WORDS*/null", &score_words())
             .replace("/*WALK_WORDS*/null", &walk_words())
             .replace(
+                "/*BAND_FILL*/null",
+                &timegrapher_core::palette::BAND_FILL.to_string(),
+            )
+            .replace(
                 "/*MARK_ROOM_PX*/null",
                 &timegrapher_core::period_ticks::MARK_ROOM_PX.to_string(),
             )
@@ -417,7 +421,7 @@ pub const RESERVE_KEY: &str = "timegrapher/reserve";
 /// the unlock, with `grey_key`), as the app does. `None` with no hours.
 pub fn reserve_view(doc: &Value) -> Option<Value> {
     use timegrapher_core::figure_text::fixed_text;
-    use timegrapher_core::position_line::{bare, screen, unit_of};
+    use timegrapher_core::position_line::{bare, unit_of};
     use timegrapher_core::power_reserve::{Hour, Results};
     use timegrapher_core::steadiness::SeriesKind;
     let run: Results = serde_json::from_value(doc.get("power_reserve")?.clone()).ok()?;
@@ -441,8 +445,9 @@ pub fn reserve_view(doc: &Value) -> Option<Value> {
                 let v = h.value(k);
                 json!({
                     "value": v,
-                    "text": v.map(|x| screen(k, x)),
+                    "text": h.hover_text(k),
                     "figure": v.map(|x| bare(k, x)),
+                    "band": h.band(k).map(|(lo, hi)| [lo, hi]),
                     "grey": h.grey(k),
                 })
             })
@@ -1587,6 +1592,8 @@ mod tests {
             ],
             source: Default::default(),
         };
+        let mut run = run;
+        run.hours[0].rate_se = Some(0.3);
         let v = reserve_view(&json!({ "power_reserve": run })).expect("a model");
         assert_eq!(v["title"], "Power Reserve");
         assert_eq!(v["read_title"], "Read");
@@ -1594,7 +1601,10 @@ mod tests {
         assert_eq!(v["hours"][0]["read"], "50");
         let rate = &v["series"][0];
         assert_eq!(rate["series"], "rate");
-        assert_eq!(rate["steps"][0]["text"], "\u{2212}1.5 s/d");
+        // The hover's figure with its ± and its band, core's (#1761).
+        assert_eq!(rate["steps"][0]["text"], "\u{2212}1.5 ± 0.3 s/d");
+        assert_eq!(rate["steps"][0]["band"], json!([-1.8, -1.2]));
+        assert!(rate["steps"][2]["band"].is_null(), "no ±, no band");
         assert_eq!(rate["steps"][0]["figure"], "\u{2212}1.5");
         assert!(rate["steps"][1]["value"].is_null());
         assert_eq!(rate["steps"][2]["grey"], true);

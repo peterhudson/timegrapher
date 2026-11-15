@@ -74,17 +74,18 @@ fn lug() -> Vec<[f64; 2]> {
     p
 }
 
-/// The crown guard above the crown, case units.
+/// The crown guard above the crown, case units. Its inner end, under the
+/// body, is cut where its two inner edges meet, so its outline never
+/// crosses itself (#1772).
 fn guard() -> Vec<[f64; 2]> {
     let mut p = vec![
-        [0.0, 0.0],
+        [116.0 * 27.0 / 82.0, -27.0],
         [116.0, -82.0],
         [144.0, -70.0],
         [151.0, -60.0],
         [151.0, -31.0],
     ];
     p.extend(quad([151.0, -31.0], [151.0, -27.0], [147.0, -27.0], 4));
-    p.push([0.0, -27.0]);
     p
 }
 
@@ -162,6 +163,111 @@ pub fn label_r(deg: f64, ring_r: f64) -> Option<f64> {
     }
 }
 
+impl Case {
+    /// Each shape cut into convex pieces, for a surface that fills only
+    /// convex polygons (the app's egui): the lugs are concave (#1772). The pieces of a shape cover it exactly, so filling them
+    /// all fills the shape; the outlines are still drawn from `shapes`.
+    pub fn convex_parts(&self) -> Vec<Vec<[f64; 2]>> {
+        self.shapes.iter().flat_map(|s| convex_parts(s)).collect()
+    }
+}
+
+/// The turn at `b` from `a` to `c`: positive one way round, negative the
+/// other, 0 straight on.
+fn turn(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+}
+
+/// Twice the outline's signed area: its sign is its way round.
+fn area2(p: &[[f64; 2]]) -> f64 {
+    let n = p.len();
+    (0..n)
+        .map(|i| {
+            let (a, b) = (p[i], p[(i + 1) % n]);
+            a[0] * b[1] - b[0] * a[1]
+        })
+        .sum()
+}
+
+/// The vertex where the outline turns against its way round, if any.
+fn reflex(p: &[[f64; 2]]) -> Option<usize> {
+    let n = p.len();
+    let way = area2(p).signum();
+    let tol = 1e-9 * area2(p).abs();
+    (0..n).find(|&i| way * turn(p[(i + n - 1) % n], p[i], p[(i + 1) % n]) < -tol)
+}
+
+/// Whether segments `a`-`b` and `c`-`d` cross at a point inside both.
+fn cross(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> bool {
+    let (d1, d2) = (turn(a, b, c), turn(a, b, d));
+    let (d3, d4) = (turn(c, d, a), turn(c, d, b));
+    d1 * d2 < 0.0 && d3 * d4 < 0.0
+}
+
+/// Whether `q` is inside the outline (even-odd).
+fn inside(p: &[[f64; 2]], q: [f64; 2]) -> bool {
+    let n = p.len();
+    let mut on = false;
+    for i in 0..n {
+        let (a, b) = (p[i], p[(i + 1) % n]);
+        if (a[1] > q[1]) != (b[1] > q[1])
+            && q[0] < a[0] + (q[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
+        {
+            on = !on;
+        }
+    }
+    on
+}
+
+/// The outline from vertex `i` round to vertex `j`, both kept.
+fn arc(p: &[[f64; 2]], i: usize, j: usize) -> Vec<[f64; 2]> {
+    let n = p.len();
+    let mut out = vec![p[i]];
+    let mut k = i;
+    while k != j {
+        k = (k + 1) % n;
+        out.push(p[k]);
+    }
+    out
+}
+
+/// A cut from reflex vertex `i` to `j` that lies inside the outline,
+/// preferring one that leaves `i` convex on both sides.
+fn cut(p: &[[f64; 2]], i: usize) -> Option<usize> {
+    let n = p.len();
+    let clear = |j: usize| {
+        let (a, b) = (p[i], p[j]);
+        let mid = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
+        inside(p, mid) && (0..n).all(|e| !cross(a, b, p[e], p[(e + 1) % n]))
+    };
+    let mends = |j: usize| {
+        [arc(p, i, j), arc(p, j, i)]
+            .iter()
+            .all(|s| reflex(s) != Some(0))
+    };
+    let near = |j: &usize| *j != i && *j != (i + 1) % n && *j != (i + n - 1) % n;
+    let open: Vec<usize> = (0..n).filter(near).filter(|&j| clear(j)).collect();
+    open.iter()
+        .copied()
+        .find(|&j| mends(j))
+        .or(open.first().copied())
+}
+
+/// A closed outline cut into convex pieces that cover it exactly: a
+/// convex one whole, a concave one cut from a reflex vertex and each side
+/// cut again.
+pub fn convex_parts(p: &[[f64; 2]]) -> Vec<Vec<[f64; 2]>> {
+    let Some(i) = reflex(p) else {
+        return vec![p.to_vec()];
+    };
+    let Some(j) = cut(p, i) else {
+        return vec![p.to_vec()];
+    };
+    let mut out = convex_parts(&arc(p, i, j));
+    out.extend(convex_parts(&arc(p, j, i)));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +319,53 @@ mod tests {
             assert_eq!(label_r(d, 100.0), None, "{d}");
         }
         assert!(CROWN_LABEL * 100.0 > reach(100.0), "3H past the crown");
+    }
+
+    /// The convex pieces: each convex, together the shape's area, and the
+    /// body, guards and crown whole; the lugs are the cut ones.
+    #[test]
+    fn the_case_cuts_into_convex_pieces_that_cover_it() {
+        let c = case(100.0);
+        for s in &c.shapes {
+            // A plain outline: no two of its edges cross.
+            let n = s.len();
+            let edge = |i: usize| (s[i], s[(i + 1) % n]);
+            for i in 0..n {
+                for j in i + 2..n {
+                    let ((a, b), (p, q)) = (edge(i), edge(j));
+                    assert!(!cross(a, b, p, q), "{i} {j} cross");
+                }
+            }
+            let parts = convex_parts(s);
+            assert!(parts.iter().all(|q| reflex(q).is_none()), "{parts:?}");
+            let whole = area2(s).abs();
+            let sum: f64 = parts.iter().map(|q| area2(q).abs()).sum();
+            assert!((sum - whole).abs() < 1e-9 * whole, "{sum} {whole}");
+        }
+        let cut = |i: usize| convex_parts(&c.shapes[i]).len();
+        assert_eq!([0, 5, 6, 7, 8].map(cut), [1; 5]);
+        assert!((1..=4).all(|i| cut(i) > 1));
+        let all = c.convex_parts();
+        assert_eq!(all.len(), (0..c.shapes.len()).map(cut).sum::<usize>());
+        // An L cuts into two, an already convex square stays whole.
+        let l = [
+            [0.0, 0.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 2.0],
+            [0.0, 2.0],
+        ];
+        assert_eq!(convex_parts(&l).len(), 2);
+        assert_eq!(
+            convex_parts(
+                &l[..4]
+                    .iter()
+                    .map(|p| [p[0], p[1].min(1.0)])
+                    .collect::<Vec<_>>()
+            )
+            .len(),
+            1
+        );
     }
 }

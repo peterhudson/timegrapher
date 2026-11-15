@@ -301,6 +301,9 @@ const FAINT_CALL_OUT_W = 1;
 // How strongly the cycle plot's boxes are drawn: the shape's colour at this
 // opacity, so the shape stays on top (steady::BOX_OPACITY).
 const BOX_OPACITY = 0.6;
+// How strongly a ± band is filled (core palette::BAND_FILL), put in by the
+// server.
+const BAND_FILL = /*BAND_FILL*/null;
 const DASH = { dashed: "4 3", dotted: "1.2 2.4", loose: "6 5", wheel: "4 4", dense: "0 5", sparse: "0 10", mesh: "10 10" };
 
 // Charts are drawn at the width they are shown, so their text stays at its size.
@@ -1187,11 +1190,19 @@ function stepChart(s, hours, id) {
   });
   g += `<line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${T + plotH}"/><line class="axis" x1="${L}" x2="${L + plotW}" y1="${T + plotH}" y2="${T + plotH}"/>`;
   const color = `var(${(PANE_KINDS.find(([k]) => k === s.series) || [])[1] || "--rate"})`;
-  // One path: a level per hour, a riser to the next where it follows on.
+  // One path: a level per hour, a riser to the next where it follows on;
+  // under it each hour's ± band, core's, a wash of its line's colour (grey
+  // with a grey hour), all of one ink one path so no seam shows between
+  // two hours' bands.
   let d = "", prev = null, thin = "", hits = "";
+  const bands = { line: "", grey: "" };
   hours.forEach((h, i) => {
-    const v = s.steps[i].value;
+    const v = s.steps[i].value, band = s.steps[i].band;
     const x0 = sx(h.hour), x1 = sx(h.hour + h.span_h);
+    if (v != null && band) {
+      const [top, bottom] = [sy(band[1]), sy(band[0])].map((y) => y.toFixed(1));
+      bands[s.steps[i].grey ? "grey" : "line"] += `M${x0.toFixed(1)} ${top}H${x1.toFixed(1)}V${bottom}H${x0.toFixed(1)}Z`;
+    }
     if (v == null) { prev = null; } else {
       const y = sy(v);
       d += prev && Math.abs(prev - x0) < 0.5 ? ` V${y.toFixed(1)} H${x1.toFixed(1)}` : ` M${x0.toFixed(1)} ${y.toFixed(1)} H${x1.toFixed(1)}`;
@@ -1201,7 +1212,8 @@ function stepChart(s, hours, id) {
     const mid = (x0 + x1) / 2;
     hits += `<g class="lane" data-pos="h${i}" data-label="${esc(`${h.hour} h`)}" data-val="${esc(s.steps[i].text || "–")}"><rect class="hit" x="${x0}" y="${T}" width="${Math.max(1, x1 - x0)}" height="${plotH}"/><line class="ring" x1="${mid}" x2="${mid}" y1="${T}" y2="${T + plotH}"/></g>`;
   });
-  g += `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2"/>${thin}${hits}`;
+  const wash = (k, ink) => (bands[k] ? `<path class="band" d="${bands[k]}" fill="${ink}" fill-opacity="${BAND_FILL}"/>` : "");
+  g += `${wash("line", color)}${wash("grey", "var(--text3)")}<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2"/>${thin}${hits}`;
   return `<div class="chart pl" data-pl="${esc(id)}">${plHead(s.title, color)}<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(s.title)}">${g}</svg></div>`;
 }
 
