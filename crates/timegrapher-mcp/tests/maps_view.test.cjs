@@ -35,7 +35,7 @@ const context = vm.createContext({
   VIRIDIS, PERIOD_TICKS, MARK_ROOM_PX, REFERENCE_HOVER, WHEEL_WORDS, ICONS: null, mapPaints: [], mapsLog: false, showWheels: true, showMesh: true, Uint8ClampedArray,
   steadyView: "periods", fftTiming: false,
   chartWidth: () => 600, logTicks: () => [], linTicks: () => [], fmtTime: (t) => `t${t}`, TIME_STEPS: [],
-  plotArea: () => ({ id: "c", svg: "" }), gridDown: () => "", gridAcross: () => "", CHAR_W: 6.6, secs: (t) => `${t} s`, wheelTitle: String,
+  plotArea: () => ({ id: "c", svg: "" }), gridDown: () => "", gridAcross: () => "", CHAR_W: 6.6, secs: (t) => `${t} s`,
 });
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
 assert.ok(html.includes("const MARK_ROOM_PX = /*MARK_ROOM_PX*/null;"), "the server fills the mark room in");

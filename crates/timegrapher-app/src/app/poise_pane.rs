@@ -12,13 +12,16 @@ use timegrapher_core::poise_case;
 use timegrapher_core::poise_picture;
 
 /// How the pane draws the rate by the hour at the top: along a line, or
-/// round a watch face. Kept between runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+/// round a watch face.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PoiseView {
-    #[default]
     Plot,
     Dial,
 }
+
+/// The views on at first: the Plot alone, as the pane showed before the
+/// two became toggles (#1729).
+pub const POISE_VIEWS: [bool; 2] = [true, false];
 
 /// The picture's height, points, and the width below which it goes over
 /// the table rather than beside it (Hugh, #1499).
@@ -96,25 +99,27 @@ impl TimegrapherApp {
         theme::tool_field(
             ui,
             "View",
-            "The rate by the hour at the top, along a line or round a watch face: the same \
-             points, wave and words",
+            "The rate by the hour at the top, along a line, round a watch face, or both side \
+             by side: the same points, wave and words",
             |ui| {
-                theme::segmented(
-                    ui,
-                    &mut self.poise_view,
-                    &[
-                        (
-                            PoiseView::Plot,
-                            "Plot",
-                            "Rate along a line, the hour at the top across it",
-                        ),
-                        (
-                            PoiseView::Dial,
-                            "Dial",
-                            "Rate round a watch face, 12H at the top, further out when faster",
-                        ),
-                    ],
-                );
+                for (i, (name, hint)) in [
+                    ("Plot", "Rate along a line, the hour at the top across it"),
+                    (
+                        "Dial",
+                        "Rate round a watch face, 12H at the top, further out when faster",
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let mut on = self.poise_views[i];
+                    if theme::toggle(ui, name, &mut on)
+                        .on_hover_text(hint)
+                        .clicked()
+                    {
+                        show_one_more(&mut self.poise_views, i);
+                    }
+                }
             },
         );
         theme::bar_gap(ui);
@@ -251,7 +256,7 @@ impl TimegrapherApp {
             });
         let kept = self.poise_kept(ui.ctx());
         let info = self.poise_info;
-        let view = self.poise_view;
+        let view = self.poise_views;
         let settle = (self.guided_settle_s, self.guided_measure_s);
         let action = poise_body(
             ui,
@@ -277,7 +282,7 @@ fn poise_body(
     ),
     (kept, done): (Option<&[timegrapher_core::session::Reading]>, bool),
     amp_now: Option<&str>,
-    (view, info): (PoiseView, bool),
+    (view, info): ([bool; 2], bool),
     (settle_s, measure_s): (f64, f64),
 ) -> Option<guided::Action> {
     let readings = match test {
@@ -327,7 +332,20 @@ fn poise_body(
     )
 }
 
-/// The picture with core's words over it, in the room left above `bottom`.
+/// Each of the two views, Plot then Dial (#1729).
+const VIEWS: [PoiseView; 2] = [PoiseView::Plot, PoiseView::Dial];
+
+/// Turns view `i` on or off, never the last one off (#1729: at least
+/// one stays on).
+fn show_one_more(shown: &mut [bool; 2], i: usize) {
+    if !shown[i] || shown[1 - i] {
+        shown[i] = !shown[i];
+    }
+}
+
+/// The picture with core's words over it, in the room left above
+/// `bottom`: the views `shown`, side by side with the Dial square where
+/// both are on and there is room, else one over the other.
 fn picture_block(
     ui: &mut egui::Ui,
     (readings, fit, mean): (
@@ -335,42 +353,70 @@ fn picture_block(
         Option<&PoiseFit>,
         &Option<(f64, String)>,
     ),
-    (view, unfitted): (PoiseView, &str),
+    (shown, unfitted): ([bool; 2], &str),
     bottom: f32,
 ) {
     words(ui, fit, unfitted);
-    let points = poise_picture::points(readings);
-    let facts = fit.map(|f| {
+    let both = shown == [true, true];
+    let pic = |ui: &egui::Ui, view: PoiseView| {
         let name = match view {
             PoiseView::Plot => "plot",
             PoiseView::Dial => "dial",
         };
-        FactBox::plain(
-            ui,
-            "poise facts",
-            name,
-            vec![f.heavy_spot_row()],
-            Vec::new(),
-        )
-    });
-    let pic = Picture {
-        points,
-        fit,
-        mean: mean.clone(),
-        facts,
+        // With both on, the heavy spot's plate once, on the plot (Hugh
+        // on #1794).
+        let facts = fit.filter(|_| !(both && view == PoiseView::Dial)).map(|f| {
+            FactBox::plain(
+                ui,
+                "poise facts",
+                name,
+                vec![f.heavy_spot_row()],
+                Vec::new(),
+            )
+        });
+        Picture {
+            points: poise_picture::points(readings),
+            fit,
+            mean: mean.clone(),
+            facts,
+        }
     };
+    let views: Vec<PoiseView> = VIEWS
+        .into_iter()
+        .zip(shown)
+        .filter_map(|(v, on)| on.then_some(v))
+        .collect();
     let w = ui.available_width().max(PICTURE_MIN_W);
-    // The room left in the pane, never under PICTURE_H; the dial never
-    // taller than wide, the plot half as tall.
-    let tallest = match view {
-        PoiseView::Plot => w * PLOT_ASPECT,
-        PoiseView::Dial => w,
-    };
-    let h = (bottom - ui.cursor().top()).min(tallest).max(PICTURE_H);
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover());
-    match view {
-        PoiseView::Plot => draw_plot(ui, rect, &pic),
-        PoiseView::Dial => draw_dial(ui, rect, &pic),
+    let room = (bottom - ui.cursor().top()).max(PICTURE_H);
+    let gap = test_body::GAP;
+    if views.len() == 2 && w >= 2.0 * PICTURE_MIN_W + gap {
+        // The Dial square, the Plot the rest of the width and the Dial's
+        // height (Hugh on #1794).
+        let d = ((w - gap) / 2.0).min(room).max(PICTURE_H);
+        let (plot_w, plot_h) = (w - gap - d, d);
+        ui.horizontal_top(|ui| {
+            let (plot, _) = ui.allocate_exact_size(Vec2::new(plot_w, plot_h), egui::Sense::hover());
+            draw_plot(ui, plot, &pic(ui, PoiseView::Plot));
+            ui.add_space(gap - ui.spacing().item_spacing.x);
+            let (dial, _) = ui.allocate_exact_size(Vec2::splat(d), egui::Sense::hover());
+            draw_dial(ui, dial, &pic(ui, PoiseView::Dial));
+        });
+        return;
+    }
+    let share = room / views.len() as f32;
+    for view in views {
+        // The room left in the pane, never under PICTURE_H; the dial
+        // never taller than wide, the plot half as tall.
+        let tallest = match view {
+            PoiseView::Plot => w * PLOT_ASPECT,
+            PoiseView::Dial => w,
+        };
+        let h = share.min(tallest).max(PICTURE_H);
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::hover());
+        match view {
+            PoiseView::Plot => draw_plot(ui, rect, &pic(ui, view)),
+            PoiseView::Dial => draw_dial(ui, rect, &pic(ui, view)),
+        }
     }
 }
 
@@ -683,7 +729,12 @@ fn backed(
         egui::FontId::proportional(11.0),
         pal.text_secondary,
     );
+    // Slid along to stay whole inside the picture, as the Mean's name at
+    // 12H, the slowest hour at the plot's edge, would be cut (#1729).
     let rect = align.anchor_size(pos, galley.size());
+    let room = painter.clip_rect().shrink(BACKING);
+    let slide = (room.left() - rect.left()).max(0.0) + (room.right() - rect.right()).min(0.0);
+    let rect = rect.translate(Vec2::new(slide, 0.0));
     painter.rect_filled(rect.expand(BACKING), BACKING, pal.card);
     painter.galley(rect.min, galley, pal.text_secondary);
 }
@@ -788,8 +839,11 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
     let keep_off = ring_numbers_keep_off(&dial, &pic.points, mean_label.as_ref());
     dial_case(ui, &painter, &dial);
     dial_grid(&painter, &dial, pal, numbers, &keep_off);
+    // The key at the dial's top right, past the 3H name, not the pane's
+    // edge where the dial is narrower than its room (Hugh on #1794).
+    let dial_right = dial.centre.x + outer * wide + label_room;
     painter.text(
-        label_at,
+        egui::pos2(label_at.x.min(dial_right), label_at.y),
         egui::Align2::RIGHT_TOP,
         DIAL_KEY,
         small,
@@ -1176,6 +1230,49 @@ fn clear_of(at: egui::Pos2, size: Vec2, others: &[egui::Rect]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A backed label set past the picture's edge slides back inside it,
+    /// whole: the Mean's name at 12H, the plot's last hour (#1794).
+    #[test]
+    fn a_backed_label_stays_inside_the_picture() {
+        let ctx = egui::Context::default();
+        let picture = egui::Rect::from_min_size(egui::pos2(100.0, 100.0), Vec2::new(300.0, 200.0));
+        let out = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let painter = ui.painter_at(picture);
+                let pal = theme::pal(ui);
+                for x in [picture.left(), picture.right()] {
+                    let at = egui::pos2(x, picture.center().y);
+                    backed(&painter, at, egui::Align2::CENTER_BOTTOM, "Mean +4.0", pal);
+                }
+            });
+        });
+        let names: Vec<egui::Rect> = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.rect.translate(t.pos.to_vec2())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names.len(), 2);
+        for r in names {
+            assert!(picture.contains_rect(r), "{r:?} inside {picture:?}");
+        }
+    }
+
+    /// Plot and Dial turn on and off alone, but the last one on stays on
+    /// (#1729).
+    #[test]
+    fn one_view_always_stays_on() {
+        let mut shown = [true, false];
+        show_one_more(&mut shown, 1);
+        assert_eq!(shown, [true, true]);
+        show_one_more(&mut shown, 0);
+        assert_eq!(shown, [false, true]);
+        show_one_more(&mut shown, 1);
+        assert_eq!(shown, [false, true], "the last one stays");
+    }
 
     /// A ring number that would touch an hour's name is left out (#1530):
     /// the outer ring's on the 12H bearing, just under "12H"; one ring in

@@ -327,3 +327,30 @@ fn the_rate_profiles_last_bin_wraps_to_its_first() {
         );
     }
 }
+
+#[test]
+fn a_skipped_harmonic_is_left_out_of_the_sum_and_the_term_count() {
+    // #1606: a harmonic on a wheel adds neither its power nor a term, so
+    // the gamma tail is read over the terms summed, not the harmonic
+    // number. White powers at j = 1: 10 at every harmonic but the 4th,
+    // the wheel's, which is skipped (its power is 0, so only the term
+    // count can tell the two readings apart).
+    let white: Vec<f64> = (0..9)
+        .map(|h| match h {
+            0 | 4 => 0.0,
+            _ => 10.0,
+        })
+        .collect();
+    let got = harmonic_score(&white, 1, 8, |h| h == 4);
+    // 7 terms summing to 70 at the 8th harmonic: the best count.
+    assert_eq!(got.1, 8, "{got:?}");
+    assert!((got.0 + log10_gamma_tail(7, 70.0)).abs() < 1e-12, "{got:?}");
+    // Read over the harmonic number (8 terms), it would score lower.
+    assert!(got.0 > -log10_gamma_tail(8, 70.0) + 1.0, "{got:?}");
+    // With nothing skipped the 4th counts as a term of 0.
+    let full = harmonic_score(&white, 1, 8, |_| false);
+    assert!(
+        (full.0 + log10_gamma_tail(8, 70.0)).abs() < 1e-12,
+        "{full:?}"
+    );
+}

@@ -49,6 +49,8 @@ const SERIES_REPLACED: &[&str] = &["walk"];
 /// What it adds that the CLI's document does not carry.
 const SERIES_ADDED: &[&str] = &[
     "projection",
+    "series[].cycle.wheel_title",
+    "series[].period.wheel_title",
     "series[].unit_text",
     "spectrum_support",
     "time_frequency_maps",
@@ -653,6 +655,7 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
     if let Some(series) = doc.get_mut("series").and_then(Value::as_array_mut) {
         for s in series {
             add_unit_text(s);
+            add_wheel_titles(s);
             views.push(
                 s.as_object_mut()
                     .and_then(|o| o.remove("views"))
@@ -664,11 +667,10 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
         .as_object_mut()
         .and_then(|o| o.remove("period_span"))
         .unwrap_or(Value::Null);
-    let spectra = doc
+    let mut spectra = doc
         .as_object_mut()
         .and_then(|o| o.remove("spectra"))
         .unwrap_or(Value::Null);
-    let mut spectra = spectra;
     for s in spectra.as_array_mut().into_iter().flatten() {
         add_unit_text(s);
     }
@@ -750,6 +752,21 @@ pub fn take_series_charts(doc: &mut Value) -> Value {
         "views": views, "period_span": period_span, "spectra": spectra, "points": points,
         "maps": maps, "walk": walk_view,
     })
+}
+
+/// Adds `wheel_title` beside a series' `period.wheel` and `cycle.wheel`,
+/// the wheel's name as core title-cases it for a heading ("Fourth
+/// Wheel"), so the view writes it by core's rule, not its own (#1779).
+fn add_wheel_titles(series: &mut Value) {
+    for key in ["period", "cycle"] {
+        let Some(found) = series.get_mut(key).and_then(Value::as_object_mut) else {
+            continue;
+        };
+        if let Some(wheel) = found.get("wheel").and_then(Value::as_str) {
+            let title = timegrapher_core::steady_views::title_case(wheel);
+            found.insert("wheel_title".into(), Value::String(title));
+        }
+    }
 }
 
 /// Adds `unit_text`, the unit as it follows a number with its gap
@@ -1260,6 +1277,22 @@ mod tests {
     fn the_page_writes_cores_minus() {
         let line = format!("const MINUS = {};", json!(true_minus("-")));
         assert!(page().contains(&line), "{line}");
+    }
+
+    /// A series' cycle and period name their wheel as core title-cases it
+    /// for the view's notes (#1779); none where no wheel is named.
+    #[test]
+    fn each_series_names_its_wheel_by_cores_title_case() {
+        let mut doc = json!({ "series": [
+            { "series": "rate", "period": { "period_s": 60.0, "wheel": "fourth wheel" },
+              "cycle": { "period_s": 60.0, "wheel": "escape wheel" } },
+            { "series": "amplitude", "period": { "period_s": 46.0, "wheel": null } },
+        ] });
+        take_series_charts(&mut doc);
+        let rate = &doc["series"][0];
+        assert_eq!(rate["period"]["wheel_title"], "Fourth Wheel");
+        assert_eq!(rate["cycle"]["wheel_title"], "Escape Wheel");
+        assert!(doc["series"][1]["period"].get("wheel_title").is_none());
     }
 
     #[test]

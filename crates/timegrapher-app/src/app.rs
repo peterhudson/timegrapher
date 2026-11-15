@@ -48,7 +48,7 @@ use timegrapher_core::steadiness::SeriesKind;
 mod charts;
 use charts::chart_key;
 pub use charts::{lane_text, lane_width, paint_key, LANE_AFTER_TITLE, LANE_GAP};
-pub use poise_pane::PoiseView;
+pub use poise_pane::POISE_VIEWS;
 pub use position::Position;
 mod complication_pane;
 use new_take::{NewTake, NEW_TAKES};
@@ -1890,8 +1890,8 @@ pub struct TimegrapherApp {
     /// The Current Position card offers ten positions, the four 45°
     /// stops too, rather than six (its 6 | 10 switch, kept).
     ten_positions: bool,
-    /// The Dynamic Poise pane's view, and whether its Info panel shows.
-    poise_view: PoiseView,
+    /// The Dynamic Poise pane's Plot and Dial on or off, and its Info.
+    poise_views: [bool; 2],
     poise_info: bool,
     /// Whether the Complication pane's Info panel shows.
     complication_info: bool,
@@ -2318,7 +2318,7 @@ impl TimegrapherApp {
             steady_info_set: self.steady_info.saved(),
             positions_settle_s: self.guided_settle_s,
             ten_positions: self.ten_positions,
-            poise_view: self.poise_view,
+            poise_views: self.poise_views,
             poise_info: self.poise_info,
             complication_info: self.complication_info,
             positions_measure_s: self.guided_measure_s,
@@ -2382,7 +2382,7 @@ impl TimegrapherApp {
             positions_settle_s,
             positions_measure_s,
             ten_positions,
-            poise_view,
+            poise_views,
             poise_info,
             complication_info,
             scope,
@@ -2409,7 +2409,7 @@ impl TimegrapherApp {
         (self.watch_list_shows, self.after_save_command) = (watch_list_shows, after_save_command);
         self.settings_last = Tab::from_key(&settings_section);
         (self.listen_at_open, self.ten_positions) = (listen_at_open, ten_positions);
-        (self.poise_view, self.poise_info) = (poise_view, poise_info);
+        (self.poise_views, self.poise_info) = (poise_views, poise_info);
         (self.complication_info, self.agc_on) = (complication_info, agc_on);
         (self.mic_set_up, self.setup_declined) = (mic_set_up, setup_declined);
         // A layout from before the panes moved starts afresh.
@@ -2532,7 +2532,7 @@ impl TimegrapherApp {
             stop_test_ask: false,
             guided_settle_s: guided::SETTLE_S,
             ten_positions: false,
-            poise_view: PoiseView::default(),
+            poise_views: POISE_VIEWS,
             poise_info: false,
             complication_info: false,
             guided_measure_s: guided::MEASURE_S,

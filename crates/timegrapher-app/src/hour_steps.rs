@@ -12,8 +12,7 @@ use crate::steady::series_colour;
 use crate::strength::{self, Grid};
 use crate::theme;
 use eframe::egui;
-use timegrapher_core::chart_scale::{axis_decimals, axis_number};
-use timegrapher_core::figure_text::{signed_text, true_minus};
+use timegrapher_core::chart_scale::axis_number;
 use timegrapher_core::steadiness::SeriesKind;
 
 /// One hour's figure as drawn: its value, its words for the hover (its
@@ -123,14 +122,10 @@ fn tick_text(c: &Chart, v: f64, step: f64) -> String {
 }
 
 /// A value tick's label: bare, `signed` for a rate, a minus a true one;
-/// the Positions Test's charts write theirs the same.
+/// the Positions Test's charts write theirs the same, by core's one rule
+/// (#1779).
 pub(crate) fn tick_label(signed: bool, v: f64, step: f64) -> String {
-    let text = if signed {
-        signed_text(v, axis_decimals(step))
-    } else {
-        axis_number(v, step)
-    };
-    true_minus(&text)
+    timegrapher_core::chart_scale::axis_tick(v, step, signed)
 }
 
 /// A chart's value marks: core's axis's own step, or a rounder step above

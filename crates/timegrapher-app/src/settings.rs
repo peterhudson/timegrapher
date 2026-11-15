@@ -109,8 +109,9 @@ pub struct Settings {
     /// The Current Position card's 6 | 10: ten offers the four 45° stops
     /// too. One setting with the Dynamic Poise pane's.
     pub ten_positions: bool,
-    /// The Dynamic Poise pane's Plot | Dial, and its Info panel.
-    pub poise_view: crate::app::PoiseView,
+    /// The Dynamic Poise pane's Plot and Dial, each on or off (#1729),
+    /// and its Info panel.
+    pub poise_views: [bool; 2],
     pub poise_info: bool,
     /// The Complication pane's Info panel.
     pub complication_info: bool,
@@ -221,7 +222,7 @@ impl Default for Settings {
             positions_settle_s: crate::guided::SETTLE_S,
             positions_measure_s: crate::guided::MEASURE_S,
             ten_positions: false,
-            poise_view: Default::default(),
+            poise_views: crate::app::POISE_VIEWS,
             poise_info: false,
             complication_info: false,
             scope: scope::View::default(),

@@ -19,7 +19,7 @@ const SCORE_WORDS = { axis_name: coreStr("SCORE_AXIS_NAME"), axis_hover: coreStr
   threshold_hover: "Peaks above this line are named." };
 const context = vm.createContext({
   SCORE_WORDS, scoreTicks: (lo, hi) => [[1, `1 (${lo}..${hi})`]],
-  fftTiming: true, showWheels: true, showMesh: true, secs: String, logTicks: () => [], periodTicks: () => [], wheelMarks: () => [], wheelTitle: String,
+  fftTiming: true, showWheels: true, showMesh: true, secs: String, logTicks: () => [], periodTicks: () => [], wheelMarks: () => [],
   xyChart: (chart) => { context.last = JSON.parse(JSON.stringify(chart)); return "<svg data-test='FFT'></svg>"; },
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 

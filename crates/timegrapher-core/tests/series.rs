@@ -168,17 +168,19 @@ fn a_slow_cycle_beside_an_aliased_fast_line_is_still_found() {
     );
     assert_eq!(c.wheel.as_deref(), Some("fourth wheel"));
     // The period search's line, under three readings, is named beside it.
-    // The 3.75 s line is the escape wheel's (15 teeth), so it is listed as
-    // its own line, never as the 15 s cycle's 4th harmonic: the wheel-line
-    // rule (Norm, 13 Nov).
+    // The 3.75 s line is the escape wheel's (15 teeth), so it is named as
+    // the wheel's own line, never as the 15 s cycle's 4th harmonic: the
+    // wheel-line rule (Norm, 13 Nov). Nor is a 15 s cycle named on it: a
+    // period's harmonic on a wheel is left out of its score (#1606), and
+    // 15 s scored 1206 with the 3.75 s line, 34 on its own lines.
     let p = s.faster_than_readings().expect(&s.headline);
+    assert!((p.period_s - 3.75).abs() < 0.05, "{}", s.headline);
     assert!(
-        s.headline.contains(&format!(
-            ". The beat timing also repeats every {:.1} s",
-            p.period_s
-        )) && s.headline.ends_with(
-            "10 s readings are too coarse to show it. The rate's period search also finds 3.8 s."
-        ),
+        s.headline
+            .contains(". The beat timing also repeats every 3.8 s, the escape wheel's period, ")
+            && s.headline
+                .ends_with("; 10 s readings are too coarse to show it.")
+            && !s.headline.contains("15.0 s"),
         "{}",
         s.headline
     );

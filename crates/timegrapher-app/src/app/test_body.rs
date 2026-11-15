@@ -40,7 +40,8 @@ pub(super) type Live<'a> = (
     Option<&'a str>,
 );
 
-/// The body under the toolbar, in a scroll area named `id`; what a banner
+/// The body under the toolbar, the table in a scroll area named `id`
+/// (all of it where the result goes over the table); what a banner
 /// button asked for. `note` is the banner's extra line.
 pub(super) fn test_body(
     ui: &mut egui::Ui,
@@ -68,62 +69,81 @@ pub(super) fn test_body(
     } else {
         full.width()
     };
-    egui::ScrollArea::both()
-        .id_salt(id)
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 6.0;
-            ui.horizontal_top(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(main_w);
-                    if let (Some(t), Some(ph)) = (test, phase) {
-                        if ph != guided::Phase::Finished {
-                            action = guided::banner(ui, t, ph, note);
-                            ui.add_space(6.0);
-                        }
-                    }
-                    // Beside the result at the first of the table's widths
-                    // that leaves the result its least width; else under it.
-                    let side = layout
-                        .table_ws
-                        .iter()
-                        .copied()
-                        .find(|w| main_w >= w + GAP + layout.result_min_w);
-                    if let Some(table_w) = side {
-                        ui.horizontal_top(|ui| {
-                            ui.vertical(|ui| {
-                                ui.set_width(table_w);
-                                table(ui);
-                            });
-                            ui.add_space(GAP);
-                            ui.vertical(|ui| (parts.result)(ui));
+    ui.spacing_mut().item_spacing.y = 6.0;
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| {
+            ui.set_width(main_w);
+            if let (Some(t), Some(ph)) = (test, phase) {
+                if ph != guided::Phase::Finished {
+                    action = guided::banner(ui, t, ph, note);
+                    ui.add_space(6.0);
+                }
+            }
+            // Beside the result at the first of the table's widths that
+            // leaves the result its least width; else under it.
+            let side = layout
+                .table_ws
+                .iter()
+                .copied()
+                .find(|w| main_w >= w + GAP + layout.result_min_w);
+            let scroll = egui::ScrollArea::both()
+                .id_salt(id)
+                .auto_shrink([false, false]);
+            if let Some(table_w) = side {
+                // Only the table scrolls; the result stays put beside it
+                // (#1729, rule 2).
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(table_w);
+                        scroll.show(ui, |ui| {
+                            table(ui);
+                            if info && !beside {
+                                ui.add_space(8.0);
+                                (parts.info)(ui);
+                            }
                         });
-                    } else {
-                        // The result first (Hugh, #1499).
-                        (parts.result)(ui);
-                        ui.add_space(8.0);
-                        table(ui);
-                    }
+                    });
+                    ui.add_space(GAP);
+                    // Fitted to the height, down to its least; shorter than
+                    // that, it scrolls on its own, never cut off (Hugh on
+                    // #1794).
+                    ui.vertical(|ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt((id, "result"))
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| (parts.result)(ui));
+                    });
+                });
+            } else {
+                // The result first (Hugh, #1499), and all of it scrolls.
+                scroll.show(ui, |ui| {
+                    (parts.result)(ui);
+                    ui.add_space(8.0);
+                    table(ui);
                     if info && !beside {
                         ui.add_space(8.0);
                         (parts.info)(ui);
                     }
                 });
-                if beside {
-                    ui.add_space(GAP / 2.0);
-                    let top = ui.cursor().top();
-                    ui.painter().vline(
-                        ui.cursor().left(),
-                        egui::Rangef::new(top, top + layout.rule_h),
-                        egui::Stroke::new(1.0_f32, pal.separator),
-                    );
-                    ui.add_space(GAP / 2.0);
-                    ui.vertical(|ui| {
-                        ui.set_width(INFO_W);
-                        (parts.info)(ui);
-                    });
-                }
-            });
+            }
         });
+        if beside {
+            ui.add_space(GAP / 2.0);
+            let top = ui.cursor().top();
+            ui.painter().vline(
+                ui.cursor().left(),
+                egui::Rangef::new(top, top + layout.rule_h),
+                egui::Stroke::new(1.0_f32, pal.separator),
+            );
+            ui.add_space(GAP / 2.0);
+            ui.vertical(|ui| {
+                ui.set_width(INFO_W);
+                egui::ScrollArea::vertical()
+                    .id_salt((id, "info"))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| (parts.info)(ui));
+            });
+        }
+    });
     action
 }

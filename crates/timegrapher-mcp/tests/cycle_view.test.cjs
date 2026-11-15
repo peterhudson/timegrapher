@@ -16,7 +16,7 @@ function definition(name) {
   return match[0];
 }
 const context = vm.createContext({ MINUS,
-  TIME_MAP, document: { documentElement: { dataset: { theme: "dark" } } }, secs: (t) => `${t} s`, wheelTitle: String, linTicks: () => [], lagText: String, TIME_STEPS: [],
+  TIME_MAP, document: { documentElement: { dataset: { theme: "dark" } } }, secs: (t) => `${t} s`, linTicks: () => [], lagText: String, TIME_STEPS: [],
   chartWidth: () => 600, CHAR_W: 6.6,
   plotArea: () => ({ id: "c", svg: "" }), gridDown: () => "", gridAcross: () => "",
 });
@@ -51,6 +51,10 @@ test("the Cycle view colours the dots by when they came and boxes each phase's m
   context.steadyPlot({ series: "rate", views: { fold: old } }, "cycle", {});
   assert.deepEqual(chart.rects, []);
   assert.equal(chart.corner.text, "30 s cycle, 24 cycles folded");
+  // A wheel's cycle named as core title-cases it, the server's wheel_title
+  // (#1779), not by the view's own rule.
+  context.steadyPlot({ series: "rate", cycle: { wheel: "escape wheel", wheel_title: "Escape Wheel" }, views: { fold: old } }, "cycle", {});
+  assert.equal(chart.corner.text, "30 s cycle, Escape Wheel, 24 cycles folded");
 });
 
 test("a chart draws outlined boxes and a note of two lines", () => {

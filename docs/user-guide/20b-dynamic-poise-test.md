@@ -33,7 +33,7 @@ once round, 7 ± 1° each way, so part of the wave may be isochronism."
 
 | Mark | Control | What it does | Why you'd use it |
 | --- | --- | --- | --- |
-| 1 | **View** | **Plot** or **Dial**: the rate along a line, the hour at the top across it, or round a watch face with 12H at the top, further out when faster. The same points, wave and words. Kept between runs. | Plot to read the numbers; Dial to see at a glance which side of the watch is fast. |
+| 1 | **View** | **Plot** and **Dial**, each on or off: the rate along a line, the hour at the top across it, and round a watch face with 12H at the top, further out when faster. With both on they sit side by side, the Dial square, where the pane is wide enough, else one over the other. One always stays on. The same points, wave and words. Kept between runs. | Plot to read the numbers; Dial to see at a glance which side of the watch is fast; both to do each at once. |
 | | **New Test** | Sets the test up on a clear Bench at 9H at the top, and starts nothing; **Start Test** on the Listen card starts it. **Cancel Test** takes its place until then. | To begin. |
 | | **Settle** and **Each Position** | The seconds the watch settles after each turn, and the seconds each position is measured. Every guided test shares these two (chapter 20): changing them here changes them in the Positions Test and the Complication Test too. | Longer gives a smaller ± (M7), which the fit needs. |
 | | **Copy** | The watch, its calibre, the table, and the fit in words, with tabs between the columns. | To paste into a spreadsheet or a message. |

@@ -380,6 +380,7 @@ fn maxima_as_takes(
                 detrend_w: w,
                 model,
                 given,
+                wheels: &[],
             };
             let mut s = search(&det, &band(None), &[]);
             let fitted = if s.null.calibrated {
@@ -442,6 +443,7 @@ fn measure(model: NullModel, span: f64, step: f64, mix: f64, draws: usize) -> Me
             detrend_w: w,
             model,
             given: Some(&lev),
+            wheels: &[],
         };
         let s = search(&det, &band, &[]);
         if !s.null.calibrated {
@@ -1351,6 +1353,7 @@ fn fresh_seeds_hold_the_tail() {
                         detrend_w: w,
                         model: c.model,
                         given: if at_true { own.as_ref() } else { None },
+                        wheels: &[],
                     };
                     let s = search(&det, &band, &[]);
                     n[0] += 1;
@@ -1680,6 +1683,7 @@ fn a_walk_read_as_white_holds_its_false_alarms() {
                                 detrend_w: w,
                                 model: NullModel::Timing,
                                 given: None,
+                                wheels: &[],
                             };
                             let s = search(&det, &band, &[]);
                             s.tail
