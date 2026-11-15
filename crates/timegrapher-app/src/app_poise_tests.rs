@@ -108,6 +108,8 @@ fn a_measured_poise_test_passes_each_check() {
     reset(&mut app);
     the_table_tightens_beside_the_picture_then_goes_under_it(&mut app);
     reset(&mut app);
+    the_dial_has_its_watch_case_behind_it(&mut app);
+    reset(&mut app);
     save_as_text_writes_the_poise_tests_report(app, &base);
     drop(tx);
     let _ = std::fs::remove_dir_all(&base);
@@ -444,6 +446,97 @@ fn the_heavy_spot_is_in_a_facts_box_and_the_notes_in_info(app: &mut TimegrapherA
         let info = draw(app, Pane::DynamicPoise);
         for note in &notes {
             assert_eq!(info.matches(note.as_str()).count(), 1, "{note}: {info}");
+        }
+    }
+}
+
+/// The dial has the watch case behind it (#1762, Peter's version A, from
+/// core's `poise_case`): its bezel just outside the outer ring, the whole
+/// case inside the pane, lugs and crown included, and the 3H name past
+/// the crown; in both themes, and in a short wide pane as in a tall one.
+fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
+    use timegrapher_core::poise_case;
+    app.poise_view = PoiseView::Dial;
+    for (dark, size) in [
+        (true, Vec2::new(1280.0, 820.0)),
+        (false, Vec2::new(1280.0, 820.0)),
+        (true, Vec2::new(1000.0, 520.0)),
+    ] {
+        let ctx = themed();
+        ctx.set_theme(if dark {
+            egui::Theme::Dark
+        } else {
+            egui::Theme::Light
+        });
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
+        let mut out = None;
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            out = Some(ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    app.pane_tools(ui, Pane::DynamicPoise);
+                    app.poise_pane(ui);
+                });
+            }));
+        }
+        let out = out.unwrap();
+        let palette = timegrapher_core::palette::palette(dark);
+        let colour = |c: timegrapher_core::palette::Rgb| egui::Color32::from_rgb(c.r, c.g, c.b);
+        let line = colour(palette.case_line());
+        let card = colour(palette.card);
+        // The bezel: a circle filled with the card, outlined in the
+        // case's line.
+        let bezel = out
+            .shapes
+            .iter()
+            .find_map(|c| match &c.shape {
+                egui::Shape::Circle(b) if b.fill == card && b.stroke.color == line => Some(*b),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{dark} {size:?}: no bezel"));
+        let ring = f64::from(bezel.radius) / poise_case::RING_TO_BEZEL;
+        // Every outline of the case inside the pane.
+        let outlines: Vec<egui::Pos2> = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Path(p)
+                    if p.closed && p.stroke.color == egui::epaint::ColorMode::Solid(line) =>
+                {
+                    Some(p.points.clone())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(!outlines.is_empty(), "{dark} {size:?}: no case");
+        assert!(
+            outlines.iter().all(|p| screen.contains(*p)),
+            "{dark} {size:?}: the case leaves the pane"
+        );
+        // The 3H name past the crown's end.
+        let three = timegrapher_core::poise::hour_code(90.0);
+        let name = out
+            .shapes
+            .iter()
+            .find_map(|c| match &c.shape {
+                egui::Shape::Text(t) if t.galley.text() == three => {
+                    Some(t.galley.rect.translate(t.pos.to_vec2()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{dark} {size:?}: no {three}"));
+        let crown_end = bezel.center.x + poise_case::reach(ring) as f32;
+        assert!(name.left() > crown_end, "{name:?} {crown_end}");
+        if let Ok(d) = std::env::var("SHOT_DIR") {
+            let back = ctx.style().visuals.window_fill;
+            let svg = crate::export::svg(&out.shapes, screen, back);
+            let theme = if dark { "dark" } else { "light" };
+            let name = format!("{d}/dial-case-{theme}-{}.svg", size.x);
+            std::fs::write(name, svg).unwrap();
         }
     }
 }

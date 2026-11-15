@@ -8,6 +8,7 @@ use super::*;
 use crate::fact_box::{FactBox, FACT_INSET};
 use timegrapher_core::chart_scale;
 use timegrapher_core::poise::{self, PoiseFit};
+use timegrapher_core::poise_case;
 use timegrapher_core::poise_picture;
 
 /// How the pane draws the rate by the hour at the top: along a line, or
@@ -760,7 +761,13 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
     let small = egui::FontId::proportional(11.0);
     let (whole, (rect, label_at)) = (rect, dial_room(&painter, rect, pic));
     let label_room = 30.0;
-    let outer = (rect.height() / 2.0 - label_room).min(rect.width() / 2.0 - label_room - 20.0);
+    let (tall, wide) = case_reach();
+    // The case whole inside the room: its lugs top and bottom, and the
+    // crown with the 3H name past it at the right.
+    let outer = (rect.height() / 2.0 - label_room)
+        .min(rect.width() / 2.0 - label_room - 20.0)
+        .min(rect.height() / 2.0 / tall)
+        .min((rect.width() / 2.0 - label_room) / wide);
     let dial = Dial {
         centre: rect.center(),
         inner: outer * 0.15,
@@ -779,6 +786,7 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
         .zip(pic.mean.as_ref())
         .map(|(f, (m, name))| mean_label_at(&painter, &dial, (f.slowest().0, *m, name), pic, pal));
     let keep_off = ring_numbers_keep_off(&dial, &pic.points, mean_label.as_ref());
+    dial_case(ui, &painter, &dial);
     dial_grid(&painter, &dial, pal, numbers, &keep_off);
     painter.text(
         label_at,
@@ -824,6 +832,62 @@ fn draw_dial(ui: &egui::Ui, rect: egui::Rect, pic: &Picture<'_>) {
             pal,
         );
     }
+}
+
+/// How far the case reaches over the outer ring's radius: down to its
+/// lugs' tips, and out to the furthest hour name it moves (3H, past the
+/// crown).
+fn case_reach() -> (f32, f32) {
+    let case = poise_case::case(1.0);
+    let tall = case
+        .shapes
+        .iter()
+        .flatten()
+        .map(|p| p[1].abs())
+        .fold(0.0, f64::max);
+    let (n, step) = hours();
+    let wide = (0..n)
+        .filter_map(|i| poise_case::label_r(i as f64 * step, 1.0))
+        .fold(poise_case::reach(1.0), f64::max);
+    (tall as f32, wide as f32)
+}
+
+/// The watch case behind the dial (#1762, Peter's version A), from core's
+/// geometry: the shapes outlined, then filled over with the case's face so
+/// only their union's outline shows, the crown's knurl, then the bezel
+/// filled with the card and outlined.
+fn dial_case(ui: &egui::Ui, painter: &egui::Painter, dial: &Dial) {
+    let pal = theme::pal(ui);
+    let (face, line) = theme::case_colours(ui);
+    let case = poise_case::case(f64::from(dial.outer));
+    let at = |p: &[f64; 2]| dial.centre + Vec2::new(p[0] as f32, p[1] as f32);
+    let outline = |s: &Vec<[f64; 2]>| s.iter().map(at).collect::<Vec<_>>();
+    let width = |px: f64| px as f32;
+    for s in &case.shapes {
+        painter.add(egui::Shape::closed_line(
+            outline(s),
+            egui::Stroke::new(2.0 * width(poise_case::CASE_LINE_PX), line),
+        ));
+    }
+    for s in &case.shapes {
+        painter.add(egui::Shape::convex_polygon(
+            outline(s),
+            face,
+            egui::Stroke::NONE,
+        ));
+    }
+    for [a, b] in &case.knurl {
+        painter.line_segment(
+            [at(a), at(b)],
+            egui::Stroke::new(width(poise_case::KNURL_LINE_PX), line),
+        );
+    }
+    painter.circle(
+        dial.centre,
+        case.bezel_r as f32,
+        pal.card,
+        egui::Stroke::new(width(poise_case::BEZEL_LINE_PX), line),
+    );
 }
 
 /// What the dial's top right says.
@@ -1079,7 +1143,11 @@ fn dial_grid(
 
 /// Where an hour's name of `size` sits round the dial at `deg`.
 fn hour_name_box(dial: &Dial, deg: f64, size: Vec2) -> egui::Rect {
-    egui::Align2::CENTER_CENTER.anchor_size(dial.at(deg, dial.outer + HOUR_OUT), size)
+    // Past the case where it would cover the name (3H past the crown, the
+    // 45° stops clear of the lugs and guards); else just out of the ring.
+    let r =
+        poise_case::label_r(deg, f64::from(dial.outer)).map_or(dial.outer + HOUR_OUT, |r| r as f32);
+    egui::Align2::CENTER_CENTER.anchor_size(dial.at(deg, r), size)
 }
 
 /// Whether a label of `size` centred `at`, with its backing, keeps off
