@@ -461,6 +461,8 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
         (true, Vec2::new(1280.0, 820.0)),
         (false, Vec2::new(1280.0, 820.0)),
         (true, Vec2::new(1000.0, 520.0)),
+        // Short and wide: the lugs, not the crown, set the dial's size.
+        (true, Vec2::new(2400.0, 760.0)),
     ] {
         let ctx = themed();
         ctx.set_theme(if dark {
@@ -500,25 +502,32 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
             })
             .unwrap_or_else(|| panic!("{dark} {size:?}: no bezel"));
         let ring = f64::from(bezel.radius) / poise_case::RING_TO_BEZEL;
-        // Every outline of the case inside the pane.
-        let outlines: Vec<egui::Pos2> = out
+        // Every outline of the case whole inside the dial's room, none of
+        // it cut off at the room's edge: lugs, guards and crown.
+        let outlines: Vec<(egui::Rect, egui::Pos2)> = out
             .shapes
             .iter()
             .filter_map(|c| match &c.shape {
                 egui::Shape::Path(p)
                     if p.closed && p.stroke.color == egui::epaint::ColorMode::Solid(line) =>
                 {
-                    Some(p.points.clone())
+                    Some(
+                        p.points
+                            .iter()
+                            .map(|q| (c.clip_rect, *q))
+                            .collect::<Vec<_>>(),
+                    )
                 }
                 _ => None,
             })
             .flatten()
             .collect();
         assert!(!outlines.is_empty(), "{dark} {size:?}: no case");
-        assert!(
-            outlines.iter().all(|p| screen.contains(*p)),
-            "{dark} {size:?}: the case leaves the pane"
-        );
+        let cut: Vec<_> = outlines
+            .iter()
+            .filter(|(clip, q)| !clip.intersect(screen).contains(*q))
+            .collect();
+        assert!(cut.is_empty(), "{dark} {size:?}: the case cut: {cut:?}");
         // The 3H name past the crown's end.
         let three = timegrapher_core::poise::hour_code(90.0);
         let name = out
