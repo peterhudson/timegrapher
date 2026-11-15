@@ -1862,46 +1862,22 @@ function sideWidth(lines) {
   return widest > 0 ? MARKS.SIDE_GAP + widest + 4 : 0;
 }
 
-// steady::one_mark: two periods near enough (3%) to share one line.
-function oneMark(a, b) { return Math.abs(a / b - 1) < 0.03; }
 // steady::wheel_lines: the lines to mark on a period axis spanning `span`
-// (log10 s): each wheel's turn, and half of it ("×2", where a wheel that is
-// off centre shows twice a turn) unless another wheel turns there; with no
-// wheel named, the reference periods; with Wheel Periods off, none of
-// those. Then, with Mesh on, each pinion's mesh (input.settings.named_meshes,
-// its hover core's `about`) where no wheel or ×2 marks its period, shown or
-// not. Each line's x, turn ("wheel", "twice", "mesh" or "reference"), name,
-// name a word to a line (core's `words`) and hover.
+// (log10 s), core's `wheel_marks` as the document carries them
+// (input.settings.wheel_marks: each wheel's turn, its ×2 unless another
+// wheel turns there, each mesh no wheel or ×2 marks, with core's name,
+// words and hover); with no wheel named, the reference periods. Wheel
+// Periods shows the wheels, ×2s and references, Mesh the meshes. Each
+// line's x, turn ("wheel", "twice", "mesh" or "reference"), name, name a
+// word to a line and hover.
 function wheelLines(doc, span) {
-  const wheels = (doc.input && doc.input.settings && doc.input.settings.named_wheels) || [];
-  const meshes = (doc.input && doc.input.settings && doc.input.settings.named_meshes) || [];
+  const settings = (doc.input && doc.input.settings) || {};
+  const marks = settings.wheel_marks || [];
   const inside = (l) => l.x > span[0] && l.x < span[1];
-  // steady_views::words: a word to a line, a part in brackets kept whole.
-  const words = (name) => name.split(" ").reduce((out, w) => {
-    if (out.open) out.list[out.list.length - 1] += ` ${w}`; else out.list.push(w);
-    out.open = (out.open || w.startsWith("(")) && !w.endsWith(")");
-    return out;
-  }, { list: [], open: false }).list;
-  if (!wheels.length) {
-    if (!showWheels) return [];
-    return referenceLines(doc).map((r) => ({ x: Math.log10(r.period_s), turn: "reference", name: r.label, words: [r.label], hover: (REFERENCE_HOVER || {})[r.label] || r.label })).filter(inside);
-  }
-  const out = [];
-  for (const w of wheels) {
-    const title = wheelTitle(w.name);
-    out.push({ x: Math.log10(w.period_s), turn: "wheel", name: title, words: words(title), hover: `${title}: ${secs(w.period_s)}` });
-    const half = w.period_s / 2;
-    if (!wheels.some((o) => oneMark(o.period_s, half))) {
-      out.push({ x: Math.log10(half), turn: "twice", name: `${title} ×2`, words: words(`${title} ×2`), hover: `${title} ×2: ${secs(half)}` });
-    }
-  }
-  for (const m of meshes) {
-    if (out.some((l) => oneMark(Math.pow(10, l.x), m.period_s))) continue;
-    const title = wheelTitle(m.name);
-    out.push({ x: Math.log10(m.period_s), turn: "mesh", name: `${title} Mesh`,
-      words: words(`${title} Mesh`), hover: `${title} Mesh: ${m.about}.` });
-  }
-  return out.filter((l) => (l.turn === "mesh" ? showMesh : showWheels) && inside(l));
+  const lines = marks.length
+    ? marks.map((m) => ({ x: Math.log10(m.period_s), turn: m.turn, name: m.name, words: m.words, hover: m.hover }))
+    : referenceLines(doc).map((r) => ({ x: Math.log10(r.period_s), turn: "reference", name: r.label, words: [r.label], hover: (REFERENCE_HOVER || {})[r.label] || r.label }));
+  return lines.filter((l) => (l.turn === "mesh" ? showMesh : showWheels) && inside(l));
 }
 // steady::WheelLine::rank and ink: a wheel's name is strong, a ×2's or a
 // reference's faint; every line is a call-out, so the call-out grey, and

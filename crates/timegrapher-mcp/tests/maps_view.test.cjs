@@ -40,7 +40,7 @@ const context = vm.createContext({
 assert.ok(html.includes("const VIRIDIS = /*VIRIDIS*/null;"), "the server fills the table in");
 assert.ok(html.includes("const MARK_ROOM_PX = /*MARK_ROOM_PX*/null;"), "the server fills the mark room in");
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const DASH = .*$/m)[0] + "\n" + html.match(/^const MARKS = .*$/m)[0] + "\n" + html.match(/^const WHEELS_HINT = .*$/m)[0].replace(/^const WHEELS_HINT/, "var WHEELS_HINT").replace(/, MESH_HINT/, ", MESH_HINT") + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 
-  ["esc", "icon", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "oneMark", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markPlaceRow", "markWidth", "markText", "laneRight", "laneRightAt", "markStackNames", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
+  ["esc", "icon", "steadyNote", "steadyPlot", "steadySwitch", "periodTicks", "wheelMarks", "wheelLines", "wheelRank", "wheelInk", "wheelWidth", "markOrder", "markPlaceRow", "markWidth", "markText", "laneRight", "laneRightAt", "markStackNames", "sideWidth", "referenceLines", "tableRgb", "viridisRgb", "rampStops", "scaleAt", "mapScale", "mapOf", "mapSlots", "mapNumber", "mapSize", "mapKeyTitle", "mapChart", "mapPixels", "mapCell"]
     .map(definition).join("\n") + "\nthis.mapPaints = mapPaints; this.WHEELS_HINT = WHEELS_HINT; this.MESH_HINT = MESH_HINT;", context);
 
 // Values made in the renderer's context, as plain ones.
@@ -86,7 +86,7 @@ test("a map is coloured on the document's scale, its empty cells clear", () => {
 });
 
 test("the STFT and Wavelet Maps draw each series' map or say why not", () => {
-  const doc = { duration_s: 1800, time_frequency: [map], input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }] } } };
+  const doc = { duration_s: 1800, time_frequency: [map], input: { settings: { wheel_marks: [mark(60, "wheel", "fourth wheel", "fourth wheel: 60 s")] } } };
   context.mapPaints.length = 0;
   const drawn = context.steadyPlot({ series: "amplitude" }, "stft", doc);
   assert.ok(drawn.includes('canvas class="map" data-map="0" width="4" height="3"'), drawn);
@@ -118,6 +118,12 @@ test("period axes are marked as core's period_ticks marks them", () => {
   assert.deepEqual(plain(context.periodTicks(Math.log10(50), Math.log10(70), 640)), [[Math.log10(60), "1 min"]]);
 });
 
+// One of core's wheel_marks as the document carries it
+// (steady_views::WheelMark): its words as core breaks them.
+function mark(period_s, turn, name, hover) {
+  return { period_s, turn, name, short: name, words: name.split(" "), hover };
+}
+
 test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fainter in the same grey, and Wheel Periods turns them off", () => {
   const plainDoc = { input: { settings: { named_wheels: [], reference_lines: [
     { label: "1 min", period_s: 60 }, { label: "1 h", period_s: 3600 }] } } };
@@ -131,7 +137,8 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   assert.equal(context.wheelMarks(plainDoc, [0, 3]).length, 1);
   // A named wheel densely dotted and its half turn more loosely, both in
   // the call-out grey; series gives no reference lines then.
-  const named = { input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }], reference_lines: [] } } };
+  const named = { input: { settings: { wheel_marks: [mark(60, "wheel", "fourth wheel", "fourth wheel: 60 s"),
+    mark(30, "twice", "fourth wheel ×2", "fourth wheel ×2: 30 s")], reference_lines: [] } } };
   assert.deepEqual(plain(context.wheelMarks(named, [0, 5])), [
     { x: Math.log10(60), color: "--callout", width: 1.2, dash: "dense", name: "fourth wheel", rank: "strong", ink: "--callout", hover: "fourth wheel: 60 s", below: false },
     { x: Math.log10(30), color: "--callout", width: 1, dash: "sparse", name: "fourth wheel ×2", rank: "faint", ink: "--callout", hover: "fourth wheel ×2: 30 s", below: false },
@@ -147,12 +154,11 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   assert.match(rows(named), /<line[^>]*stroke="var\(--callout\)"[^>]*\/><polyline[^>]*\/><text[^>]*font-weight:600[^>]*>fourth<\/text><text[^>]*font-weight:600[^>]*>wheel</s);
   assert.ok(!rows(named).includes("×2"));
   // A calibre's meshes (#1472): faint and loosely dashed, named by their
-  // pinion, on the axes and the maps; one at a wheel's or a ×2's period
-  // is left to that line.
-  const meshed = { input: { settings: { named_wheels: [{ name: "fourth wheel", period_s: 60 }], reference_lines: [],
-    named_meshes: [{ name: "fourth pinion", period_s: 20 / 3, about: "6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves" },
-      { name: "third pinion", period_s: 600 / 13, about: "46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves" },
-      { name: "centre pinion", period_s: 30.2, about: "30.2 s" }] } } };
+  // pinion, on the axes and the maps (core leaves out one at a wheel's or
+  // a ×2's period).
+  const meshed = { input: { settings: { reference_lines: [], wheel_marks: [...named.input.settings.wheel_marks,
+    mark(20 / 3, "mesh", "fourth pinion Mesh", "fourth pinion Mesh: 6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves."),
+    mark(600 / 13, "mesh", "third pinion Mesh", "third pinion Mesh: 46.2 s, the time one tooth of the centre wheel takes to pass through the third pinion's leaves.")] } } };
   assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).slice(2), [
     { x: Math.log10(20 / 3), color: "--callout", width: 1, dash: "mesh", name: "fourth pinion Mesh", rank: "faint", ink: "--callout",
       hover: "fourth pinion Mesh: 6.67 s, the time one tooth of the third wheel takes to pass through the fourth pinion's leaves.", below: true },
@@ -174,10 +180,11 @@ test("wheels are marked in call-out grey dots, else 1 min and 1 h solid and fain
   assert.deepEqual(plain(context.wheelMarks(meshed, [0, 5])).map((m) => m.name), ["fourth wheel", "fourth wheel ×2"]);
   assert.ok(!rows(meshed).includes("10 10"));
   context.showMesh = true;
-  // A word to a line, a part in brackets kept whole (Hugh on #1770), as
-  // core's steady_views::words.
-  const teeth = { input: { settings: { named_wheels: [{ name: "Escape Wheel (20 Teeth)", period_s: 60 }], reference_lines: [] } } };
+  // A word to a line as core breaks it, a part in brackets kept whole
+  // (Hugh on #1770): the view draws core's words, not its own.
+  const teeth = { input: { settings: { wheel_marks: [{ ...mark(60, "wheel", "Escape Wheel (20 Teeth)", "x"), words: ["Escape", "Wheel", "(20 Teeth)"] }] } } };
   assert.deepEqual(plain(context.wheelLines(teeth, [0, 5])[0].words), ["Escape", "Wheel", "(20 Teeth)"]);
+  assert.ok(rows(teeth).includes(">(20 Teeth)<"));
 });
 
 test("Wheel Periods sits beside each period view's own switch, with the app's hint", () => {
