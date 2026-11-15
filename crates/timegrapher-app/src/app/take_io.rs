@@ -298,6 +298,8 @@ impl TimegrapherApp {
             return self.recording_failed(e);
         }
         self.release_capture();
+        // The newest amplitude chunk judged now, as a read of the take (#1738).
+        self.live.iter_mut().for_each(|l| l.settle());
         if self.session.mic() {
             applog::info("microphone stopped and released");
             let now = self.live.as_ref().map_or(0.0, |l| l.duration_s());

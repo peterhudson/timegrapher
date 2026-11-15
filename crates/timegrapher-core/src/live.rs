@@ -1025,32 +1025,62 @@ impl LiveAnalyzer {
                 stop - off,
                 &a.amplitude,
             );
+            let new = self.amp.len();
             self.amp.extend(wins.into_iter().map(|mut win| {
                 win.start_s += off;
                 win.end_s += off;
                 win
             }));
-            // A side too faint against the same side's in its chunk is
-            // withheld once the chunk has settled, on the grid a saved read
-            // groups by: the newest window's chunk waits for the rest of
-            // its windows (#1738).
-            let sc = crate::stream::StreamConfig::default();
-            let chunk_of =
-                |s: f64| crate::stream::amplitude_chunk_of(s, sc.chunk_s, sc.margin_s, w);
-            let open = chunk_of(stop - w);
-            let first = chunk_of(start).saturating_sub(1);
-            let lo = self.amp.partition_point(|x| chunk_of(x.start_s) < first);
-            let hi = self.amp.partition_point(|x| chunk_of(x.start_s) < open);
-            amplitude::withhold_faint_by_chunk(&mut self.amp[lo..hi], chunk_of);
-            // A side's edge marked on the wrong sound, as in a whole file;
-            // only the latest windows can change.
-            let span = amplitude::OUTLIER_SPAN_S;
-            let recent = self.amp.partition_point(|w| w.end_s < to - 2.0 * span);
-            amplitude::reject_side_outliers(&mut self.amp[recent..], span);
+            // The newest window's chunk waits for the rest of its windows.
+            let open = crate::stream::amplitude_chunk_of(stop - w, w);
+            self.judge_amplitude(new, open);
             self.next_amp_s = Some(stop);
         } else if self.next_amp_s.is_none() {
             self.next_amp_s = Some(start);
         }
+    }
+
+    /// The amplitude windows from `changed` on, and the chunks before
+    /// `open` they touch, judged as a saved read judges them (#1738): a
+    /// side too faint against the same side's in its chunk withheld
+    /// ([`amplitude::withhold_faint_by_chunk`], on the grid of
+    /// [`crate::stream::amplitude_chunk_of`]) once the chunk is closed, then
+    /// a side's edge marked on the wrong sound left out
+    /// ([`amplitude::reject_side_outliers_from`]) in each window whose
+    /// neighbours changed, scored against them as read. A chunk judged
+    /// again with more windows withholds the sides it did and any more.
+    fn judge_amplitude(&mut self, changed: usize, open: usize) {
+        let w = self.cfg.analysis.amplitude_window_s;
+        let chunk_of = |s: f64| crate::stream::amplitude_chunk_of(s, w);
+        let Some(first) = self.amp.get(changed).map(|x| chunk_of(x.start_s)) else {
+            return;
+        };
+        // The chunk before too: the newest windows may have closed it.
+        let first = first.saturating_sub(1);
+        let lo = self.amp.partition_point(|x| chunk_of(x.start_s) < first);
+        let hi = self.amp.partition_point(|x| chunk_of(x.start_s) < open);
+        amplitude::withhold_faint_by_chunk(&mut self.amp[lo..hi], chunk_of);
+        let from = if hi > lo { changed.min(lo) } else { changed };
+        let span = amplitude::OUTLIER_SPAN_S;
+        let mid = |x: &AmplitudeWindow| (x.start_s + x.end_s) / 2.0;
+        let from_s = mid(&self.amp[from]) - span / 2.0;
+        let context = self.amp.partition_point(|x| mid(x) < from_s - span / 2.0);
+        amplitude::reject_side_outliers_from(&mut self.amp[context..], span, from_s);
+    }
+
+    /// Judge the newest chunk's amplitude windows now, as a saved read of
+    /// the sound so far judges its last chunk: for a stop, so the readings
+    /// then withhold the same faint sides as the take read again
+    /// (#1738). Listening on, the chunk is judged again once it closes.
+    pub fn settle(&mut self) {
+        let w = self.cfg.analysis.amplitude_window_s;
+        let chunk_of = |s: f64| crate::stream::amplitude_chunk_of(s, w);
+        let Some(last) = self.amp.last().map(|x| chunk_of(x.start_s)) else {
+            return;
+        };
+        let from = self.amp.partition_point(|x| chunk_of(x.start_s) < last);
+        self.judge_amplitude(from, last + 1);
+        self.in_shadow(LiveAnalyzer::settle);
     }
 
     /// The Tick and Tock profiles from the sound kept up to `to`.

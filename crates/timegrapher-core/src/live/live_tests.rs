@@ -410,9 +410,8 @@ fn live_beat_error_names_its_source_and_only_drop_has_the_caveat() {
             odd_unlock_ms: None,
             even_drop_ms: None,
             odd_drop_ms: None,
-            culled_ms: None,
-            faint_withheld: [false; 2],
-            sound_1: [None; 2],
+            extra: None,
+            sound_1: [f32::NAN; 2],
         })
         .collect();
     let mut live = LiveAnalyzer::from_log(log, LiveConfig::default());
@@ -518,9 +517,8 @@ fn a_window_across_a_jump_in_a_read_recording_is_left_out() {
         odd_unlock_ms: None,
         even_drop_ms: None,
         odd_drop_ms: None,
-        culled_ms: None,
-        faint_withheld: [false; 2],
-        sound_1: [None; 2],
+        extra: None,
+        sound_1: [f32::NAN; 2],
     };
     // The jump is at 60.03 s: the window from 60 s reaches across it.
     log.amplitude_windows = vec![win(58.0, 280.0), win(60.0, 350.0), win(62.0, 280.0)];
@@ -1496,9 +1494,8 @@ fn profile_guides_come_from_the_latest_window_that_read_them() {
         odd_unlock_ms: odd,
         even_drop_ms: None,
         odd_drop_ms: None,
-        culled_ms: None,
-        faint_withheld: [false; 2],
-        sound_1: [None; 2],
+        extra: None,
+        sound_1: [f32::NAN; 2],
     };
     let mut a = LiveAnalyzer::new(8000, LiveConfig::default());
     a.amp = vec![

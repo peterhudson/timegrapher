@@ -1103,34 +1103,42 @@ fn smeared(seed: u64) -> Audio {
     )
 }
 
-/// Saved and live withhold the same sides as too faint to read, judged
-/// on one chunk grid ([`timegrapher_core::stream::amplitude_chunk_of`],
-/// Norm on #1800): every chunk live has settled, the last open one
-/// waiting for the rest of its windows.
+/// Saved and live judge the amplitude windows alike (Norm on #1800):
+/// read to the end and settled at the stop, live withholds the same sides
+/// as too faint to read, on one chunk grid
+/// ([`timegrapher_core::stream::amplitude_chunk_of`]), and leaves out the
+/// same sides as outliers after that, window for window. Live reads every
+/// window but the last, which waits for a beat's guard of sound after it.
+/// Which sides a window found edges for at all is the read's, not this
+/// judging's, and is not compared here.
 #[test]
 fn saved_and_live_withhold_the_same_faint_sides() {
     let a = smeared(1738);
     let path = on_disk(&a, "faint");
     let saved = stream(&path, 47.0);
     std::fs::remove_file(&path).ok();
-    let live = pushed(&a, 4_800);
-    let sc = StreamConfig::default();
-    let w = AnalysisConfig::default().amplitude_window_s;
-    let chunk_of =
-        |s: f64| timegrapher_core::stream::amplitude_chunk_of(s, sc.chunk_s, sc.margin_s, w);
-    let wins = live.amplitude_windows();
-    let open = chunk_of(wins.last().expect("live windows").start_s);
-    let held = |ws: &[timegrapher_core::amplitude::AmplitudeWindow]| -> Vec<(i64, usize)> {
+    let mut live = pushed(&a, 4_800);
+    live.settle();
+    type Judged = (i64, [bool; 2], [bool; 2]);
+    let judged = |ws: &[timegrapher_core::amplitude::AmplitudeWindow]| -> Vec<Judged> {
         ws.iter()
-            .filter(|w| chunk_of(w.start_s) < open)
-            .flat_map(|w| {
-                (0..2)
-                    .filter(|&k| w.faint_withheld[k])
-                    .map(move |k| ((w.start_s * 1000.0).round() as i64, k))
+            .map(|w| {
+                (
+                    (w.start_s * 1000.0).round() as i64,
+                    w.faint_withheld(),
+                    w.outliers().map(|d| d.is_some()),
+                )
             })
             .collect()
     };
-    let (s, l) = (held(&saved.amplitude_windows), held(wins));
-    assert!(!s.is_empty(), "the smear withholds sides");
-    assert_eq!(s, l);
+    let (s, l) = (
+        judged(&saved.amplitude_windows),
+        judged(live.amplitude_windows()),
+    );
+    let faint = |v: &[Judged]| v.iter().filter(|j| j.1.contains(&true)).count();
+    let out = |v: &[Judged]| v.iter().filter(|j| j.2.contains(&true)).count();
+    assert!(faint(&s) > 0, "the smear withholds sides");
+    assert!(out(&s) > 0, "the smear leaves out an outlier");
+    assert_eq!(l.len() + 1, s.len(), "live reads all but the last window");
+    assert_eq!(&s[..l.len()], &l[..]);
 }

@@ -909,7 +909,7 @@ pub fn assess_in(
     // windows (#1738).
     let faint = amplitude_windows
         .iter()
-        .flat_map(|w| w.faint_withheld)
+        .flat_map(|w| w.faint_withheld())
         .filter(|&f| f)
         .count();
     if faint > 0 && c.watch_heard {

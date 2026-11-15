@@ -158,7 +158,7 @@ fn faint_counts(log: &BeatLog) -> [(usize, usize); 2] {
     let mut c = [(0, 0); 2];
     for w in &log.amplitude_windows {
         let k = usize::from(!turning((w.start_s + w.end_s) / 2.0));
-        c[k].0 += w.faint_withheld.iter().filter(|&&f| f).count();
+        c[k].0 += w.faint_withheld().iter().filter(|&&f| f).count();
         c[k].1 += 2;
     }
     c

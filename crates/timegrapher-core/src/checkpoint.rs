@@ -271,7 +271,7 @@ impl Writer {
             ),
             (
                 analysis_take::CULLED,
-                windows.iter().filter(|w| w.culled_ms.is_some()).count(),
+                windows.iter().filter(|w| w.has_culled()).count(),
                 gz(analysis_take::culled_csv(&windows).as_bytes())?,
             ),
         ];
@@ -514,7 +514,7 @@ fn read_part(dir: &Path, i: usize, part: &Part, bph: u32) -> io::Result<Rows> {
     analysis_take::parse_culled(&text(CULLED, &part.culled)?, &mut windows).map_err(bad(CULLED))?;
     let profiles =
         analysis_take::parse_profiles(&load(PROFILES, &part.profiles)?).map_err(bad(PROFILES))?;
-    let culled = windows.iter().filter(|w| w.culled_ms.is_some()).count();
+    let culled = windows.iter().filter(|w| w.has_culled()).count();
     for (kind, want, got) in [
         (BEATS, part.beats.rows, beats.len()),
         (WINDOWS, part.windows.rows, windows.len()),

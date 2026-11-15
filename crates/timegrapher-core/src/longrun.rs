@@ -645,9 +645,8 @@ mod tests {
                     odd_unlock_ms: None,
                     even_drop_ms: None,
                     odd_drop_ms: None,
-                    culled_ms: None,
-                    faint_withheld: [false; 2],
-                    sound_1: [None; 2],
+                    extra: None,
+                    sound_1: [f32::NAN; 2],
                 }
             })
             .collect();
@@ -705,24 +704,20 @@ mod tests {
             let amplitude_windows = (0..200)
                 .map(|k| {
                     let start_s = k as f64 * 2.0;
+                    let be = if flip && start_s >= 200.0 { -0.3 } else { 0.3 };
                     crate::amplitude::AmplitudeWindow {
                         start_s,
                         end_s: start_s + 2.0,
                         even_deg: Some(250.0),
                         odd_deg: Some(250.0),
                         beat_error_ms: None,
-                        beat_error_unlock_ms: Some(if flip && start_s >= 200.0 {
-                            -0.3
-                        } else {
-                            0.3
-                        }),
+                        beat_error_unlock_ms: Some(be),
                         even_unlock_ms: None,
                         odd_unlock_ms: None,
                         even_drop_ms: None,
                         odd_drop_ms: None,
-                        culled_ms: None,
-                        faint_withheld: [false; 2],
-                        sound_1: [None; 2],
+                        extra: None,
+                        sound_1: [f32::NAN; 2],
                     }
                 })
                 .collect();

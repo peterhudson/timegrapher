@@ -499,9 +499,8 @@ mod tests {
             odd_unlock_ms: None,
             even_drop_ms: None,
             odd_drop_ms: None,
-            culled_ms: None,
-            faint_withheld: [false; 2],
-            sound_1: [None; 2],
+            extra: None,
+            sound_1: [f32::NAN; 2],
         };
         let run = |from: f64, n: usize, k: usize| -> Vec<AmplitudeWindow> {
             (0..n).map(|i| win(from + 2.0 * i as f64, i < k)).collect()

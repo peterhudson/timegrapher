@@ -341,12 +341,12 @@ fn a_copy_keeps_the_sides_withheld_as_faint() {
     let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
     let cfg = StreamConfig::default();
     let (mut log, peak) = crate::stream::analyze_files_peak(&paths, &cfg, |_| {}).unwrap();
-    log.amplitude_windows[0].faint_withheld = [true, false];
-    log.amplitude_windows[1].faint_withheld = [false, true];
-    log.amplitude_windows[2].faint_withheld = [true, true];
+    log.amplitude_windows[0].edit_extra(|x| x.faint_withheld = [true, false]);
+    log.amplitude_windows[1].edit_extra(|x| x.faint_withheld = [false, true]);
+    log.amplitude_windows[2].edit_extra(|x| x.faint_withheld = [true, true]);
     let (back, _) = decode(&encode(&log, peak)).expect("the copy reads");
     for (b, w) in back.amplitude_windows.iter().zip(&log.amplitude_windows) {
-        assert_eq!(b.faint_withheld, w.faint_withheld);
+        assert_eq!(b.faint_withheld(), w.faint_withheld());
     }
     let _ = fs::remove_dir_all(&dir);
 }

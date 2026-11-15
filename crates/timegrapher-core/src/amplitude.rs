@@ -292,6 +292,8 @@ pub fn at_lift(w: &mut AmplitudeWindow, osc_period_s: f64, from_lift: f64, to_li
     let [(ed, ek, ec), (od, ok, oc)] = new;
     w.even_deg = ed;
     w.odd_deg = od;
+    // Its sides as read at the new lift; the caller screens them again.
+    w.edit_extra(|x| x.outlier_deg = [None; 2]);
     (w.even_unlock_ms, w.even_drop_ms) = (ek.map(|e| e[0]), ek.map(|e| e[1]));
     (w.odd_unlock_ms, w.odd_drop_ms) = (ok.map(|e| e[0]), ok.map(|e| e[1]));
     w.set_culled([ec, oc]);
@@ -362,29 +364,49 @@ pub struct AmplitudeWindow {
     pub odd_unlock_ms: Option<f64>,
     pub even_drop_ms: Option<f64>,
     pub odd_drop_ms: Option<f64>,
-    /// A side whose edges were found but whose amplitude fell outside
-    /// [`MIN_AMPLITUDE_DEG`] to [`MAX_AMPLITUDE_DEG`] at the lift it was
-    /// read with: its unlock and drop, ms from the beat time, kept so a
-    /// later lift can read it again ([`at_lift`], #1333). None for a side
-    /// kept or never found. Even side first. Boxed and None when neither
-    /// side was culled, so a long run's windows stay small. Not in the JSON.
+    /// What a few windows carry besides (see [`Extra`]): boxed, and None
+    /// when it is all empty, so a long run's windows stay small. Not in
+    /// the JSON.
     #[serde(skip)]
-    pub culled_ms: Option<Box<Culled>>,
-    /// Each side withheld because its sound 1 was too faint against the
-    /// same side's in its chunk ([`withhold_faint_by_chunk`], #1738): it
-    /// keeps no edges and no amplitude, and is named in the caveats. Even
-    /// side first. Not in the JSON.
-    #[serde(skip)]
-    pub faint_withheld: [bool; 2],
+    pub extra: Option<Box<Extra>>,
     /// Each side's sound 1, its height over the floor, as read in this
-    /// window, for [`withhold_faint_by_chunk`]; None where none was found.
-    /// Even side first. Not in the JSON or the beat cache.
+    /// window, for [`withhold_faint_by_chunk`]; NaN where none was found
+    /// ([`AmplitudeWindow::sound_1_of`]). Even side first. Not in the
+    /// JSON.
     #[serde(skip)]
-    pub sound_1: [Option<f32>; 2],
+    pub sound_1: [f32; 2],
 }
 
 /// Each side's culled unlock and drop, ms from the beat time: even, odd.
 pub type Culled = [Option<[f64; 2]>; 2];
+
+/// What only a few amplitude windows carry, even side first in each.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Extra {
+    /// A side whose edges were found but whose amplitude fell outside
+    /// [`MIN_AMPLITUDE_DEG`] to [`MAX_AMPLITUDE_DEG`] at the lift it was
+    /// read with: its unlock and drop, ms from the beat time, kept so a
+    /// later lift can read it again ([`at_lift`], #1333). None for a side
+    /// kept or never found.
+    pub culled_ms: Culled,
+    /// Each side's amplitude, degrees, as read before
+    /// [`reject_side_outliers`] left it out; None for a side it kept.
+    /// Kept so a later screen scores every neighbour as first read, and
+    /// can judge the same window again (#1738).
+    pub outlier_deg: [Option<f64>; 2],
+    /// Each side withheld because its sound 1 was too faint against the
+    /// same side's in its chunk ([`withhold_faint_by_chunk`], #1738): it
+    /// keeps no edges and no amplitude, and is named in the caveats.
+    pub faint_withheld: [bool; 2],
+}
+
+impl Extra {
+    fn swap(&mut self) {
+        self.culled_ms.swap(0, 1);
+        self.outlier_deg.swap(0, 1);
+        self.faint_withheld.swap(0, 1);
+    }
+}
 
 impl AmplitudeWindow {
     /// The same window with Tick and Tock the other way round, for a
@@ -394,10 +416,9 @@ impl AmplitudeWindow {
         std::mem::swap(&mut self.even_deg, &mut self.odd_deg);
         std::mem::swap(&mut self.even_unlock_ms, &mut self.odd_unlock_ms);
         std::mem::swap(&mut self.even_drop_ms, &mut self.odd_drop_ms);
-        if let Some(c) = &mut self.culled_ms {
-            c.swap(0, 1);
+        if let Some(x) = &mut self.extra {
+            x.swap();
         }
-        self.faint_withheld.swap(0, 1);
         self.sound_1.swap(0, 1);
         self.beat_error_ms = self.beat_error_ms.map(|v| -v);
         self.beat_error_unlock_ms = self.beat_error_unlock_ms.map(|v| -v);
@@ -421,21 +442,63 @@ impl AmplitudeWindow {
             ]
         };
         (*deg, *unlock, *drop) = (None, None, None);
-        let mut c = self.culled();
-        c[k] = None;
-        self.set_culled(c);
         self.beat_error_unlock_ms = None;
-        self.faint_withheld[k] = true;
+        self.edit_extra(|x| {
+            x.culled_ms[k] = None;
+            x.outlier_deg[k] = None;
+            x.faint_withheld[k] = true;
+        });
     }
 
-    /// Each side's culled edges (see [`AmplitudeWindow::culled_ms`]).
+    /// What the window carries besides ([`Extra`]), empty for most.
+    pub fn extra(&self) -> Extra {
+        self.extra.as_deref().copied().unwrap_or_default()
+    }
+
+    /// Changes [`AmplitudeWindow::extra`], boxing it only if it isn't
+    /// empty.
+    pub fn edit_extra(&mut self, f: impl FnOnce(&mut Extra)) {
+        let mut x = self.extra();
+        f(&mut x);
+        self.extra = (x != Extra::default()).then(|| Box::new(x));
+    }
+
+    /// Each side withheld as too faint ([`Extra::faint_withheld`]).
+    pub fn faint_withheld(&self) -> [bool; 2] {
+        self.extra().faint_withheld
+    }
+
+    /// Side `k`'s sound 1 height, if one was found
+    /// ([`AmplitudeWindow::sound_1`]).
+    pub fn sound_1_of(&self, k: usize) -> Option<f32> {
+        Some(self.sound_1[k]).filter(|h| !h.is_nan())
+    }
+
+    /// Each side's amplitude left out as an outlier
+    /// ([`Extra::outlier_deg`]).
+    pub fn outliers(&self) -> [Option<f64>; 2] {
+        self.extra().outlier_deg
+    }
+
+    /// Each side's amplitude as read, before any outlier screen.
+    fn deg_as_read(&self) -> [Option<f64>; 2] {
+        let o = self.outliers();
+        [self.even_deg.or(o[0]), self.odd_deg.or(o[1])]
+    }
+
+    /// Each side's culled edges ([`Extra::culled_ms`]).
     pub fn culled(&self) -> Culled {
-        self.culled_ms.as_deref().copied().unwrap_or_default()
+        self.extra().culled_ms
     }
 
-    /// Sets each side's culled edges, boxing them only if one is culled.
+    /// Whether either side has culled edges.
+    pub fn has_culled(&self) -> bool {
+        self.culled() != [None, None]
+    }
+
+    /// Sets each side's culled edges.
     pub fn set_culled(&mut self, c: Culled) {
-        self.culled_ms = (c != [None, None]).then(|| Box::new(c));
+        self.edit_extra(|x| x.culled_ms = c);
     }
 
     pub fn mean(&self) -> Option<f64> {
@@ -467,19 +530,29 @@ pub const OUTLIER_SPAN_S: f64 = 60.0;
 /// unlock beat error is a median over windows already. Windows must be in
 /// time order. Returns how many sides were left out.
 pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize {
+    reject_side_outliers_from(wins, span_s, f64::NEG_INFINITY)
+}
+
+/// [`reject_side_outliers`] for the windows of `wins` whose middle is at
+/// `from_s` or later, each judged afresh against all of `wins` as read
+/// (a neighbour left out before still counts as read), so a run judged in
+/// parts, as live does, leaves out the same sides as one judged whole
+/// (#1738). The windows before `from_s` are left as they are.
+pub fn reject_side_outliers_from(wins: &mut [AmplitudeWindow], span_s: f64, from_s: f64) -> usize {
+    let mid = |w: &AmplitudeWindow| (w.start_s + w.end_s) / 2.0;
+    let first = wins.partition_point(|w| mid(w) < from_s);
+    let read: Vec<[Option<f64>; 2]> = wins.iter().map(AmplitudeWindow::deg_as_read).collect();
     // Each side's distance from its neighbours' median, degrees, and in
     // robust SDs.
-    let score = |get: &dyn Fn(&AmplitudeWindow) -> Option<f64>| -> Vec<Option<(f64, f64)>> {
-        let vals: Vec<Option<f64>> = wins.iter().map(get).collect();
-        (0..wins.len())
+    let score = |k: usize| -> Vec<Option<(f64, f64)>> {
+        (first..wins.len())
             .map(|i| {
-                let v = vals[i]?;
-                let mid = |w: &AmplitudeWindow| (w.start_s + w.end_s) / 2.0;
+                let v = read[i][k]?;
                 let lo = wins.partition_point(|w| mid(w) < mid(&wins[i]) - span_s / 2.0);
                 let hi = wins.partition_point(|w| mid(w) <= mid(&wins[i]) + span_s / 2.0);
                 let mut near: Vec<f64> = (lo..hi)
                     .filter(|&j| j != i)
-                    .filter_map(|j| vals[j])
+                    .filter_map(|j| read[j][k])
                     .collect();
                 if near.len() < 5 {
                     return None;
@@ -493,22 +566,15 @@ pub fn reject_side_outliers(wins: &mut [AmplitudeWindow], span_s: f64) -> usize 
             })
             .collect()
     };
-    let (even, odd) = (score(&|w| w.even_deg), score(&|w| w.odd_deg));
+    let (even, odd) = (score(0), score(1));
     let lone = |a: Option<(f64, f64)>, b: Option<(f64, f64)>| matches!((a, b), (Some(a), Some(b)) if a.1 > 5.0 && b.0 < 0.25 * a.0);
-    let (even, odd): (Vec<bool>, Vec<bool>) = even
-        .iter()
-        .zip(&odd)
-        .map(|(&e, &o)| (lone(e, o), lone(o, e)))
-        .unzip();
     let mut n = 0;
-    for (w, (e, o)) in wins.iter_mut().zip(even.into_iter().zip(odd)) {
-        if e {
-            w.even_deg = None;
-        }
-        if o {
-            w.odd_deg = None;
-        }
-        n += usize::from(e) + usize::from(o);
+    for (i, w) in wins[first..].iter_mut().enumerate() {
+        let out = [lone(even[i], odd[i]), lone(odd[i], even[i])];
+        let r = read[first + i];
+        [w.even_deg, w.odd_deg] = [0, 1].map(|k| r[k].filter(|_| !out[k]));
+        w.edit_extra(|x| x.outlier_deg = [0, 1].map(|k| r[k].filter(|_| out[k])));
+        n += usize::from(out[0]) + usize::from(out[1]);
     }
     n
 }
@@ -640,7 +706,7 @@ pub fn withhold_faint_by_chunk(wins: &mut [AmplitudeWindow], chunk_of: impl Fn(f
 /// [`withhold_faint_by_chunk`] for the windows of one chunk.
 fn withhold_faint(wins: &mut [AmplitudeWindow]) {
     for k in 0..2 {
-        let heights: Vec<Option<f32>> = wins.iter().map(|w| w.sound_1[k]).collect();
+        let heights: Vec<Option<f32>> = wins.iter().map(|w| w.sound_1_of(k)).collect();
         for (w, faint) in wins.iter_mut().zip(faint_sides(&heights)) {
             if faint {
                 w.withhold_side(k);
@@ -671,9 +737,13 @@ fn window_of(
             .map(|s| [s.1 * 1000.0, s.2 * 1000.0])
     };
     let (even_all, odd_all) = (side(0), side(1));
-    let culled_ms = Some([culled(even_all), culled(odd_all)])
-        .filter(|c| c != &[None, None])
-        .map(Box::new);
+    let culled_ms = [culled(even_all), culled(odd_all)];
+    let extra = (culled_ms != [None, None]).then(|| {
+        Box::new(Extra {
+            culled_ms,
+            ..Extra::default()
+        })
+    });
     let kept = |s: Option<(Option<f64>, f64, f64)>| s.and_then(|s| Some((s.0?, s.1, s.2)));
     let (even, odd) = (kept(even_all), kept(odd_all));
     let beat_error_ms = timing::beat_error_ms(win);
@@ -693,9 +763,8 @@ fn window_of(
         odd_unlock_ms: odd.map(|s| s.1 * 1000.0),
         even_drop_ms: even.map(|s| s.2 * 1000.0),
         odd_drop_ms: odd.map(|s| s.2 * 1000.0),
-        culled_ms,
-        faint_withheld: [false; 2],
-        sound_1: [0, 1].map(|k| sides[k].as_ref().map(|s| s.sound_1)),
+        extra,
+        sound_1: [0, 1].map(|k| sides[k].as_ref().map_or(f32::NAN, |s| s.sound_1)),
     }
 }
 
@@ -819,9 +888,8 @@ mod tests {
                 odd_unlock_ms: None,
                 even_drop_ms: None,
                 odd_drop_ms: None,
-                culled_ms: None,
-                faint_withheld: [false; 2],
-                sound_1: [None; 2],
+                extra: None,
+                sound_1: [f32::NAN; 2],
             })
             .collect();
         // Window 30's Tock edge lands on the wrong sound.
@@ -831,6 +899,52 @@ mod tests {
         assert_eq!(wins[30].odd_deg, None);
         assert!(wins[30].even_deg.is_some());
         assert_eq!(wins[30].beat_error_unlock_ms, Some(0.3));
+    }
+
+    /// Judged in parts as the windows come, as live judges them, each part
+    /// scored against its neighbours as read, the sides left out are the
+    /// same as one pass over the whole run leaves out (#1738, Norm on
+    /// #1800), with two wrong sounds close enough to be each other's
+    /// neighbours.
+    #[test]
+    fn side_outliers_judged_in_parts_match_one_pass() {
+        let mut read: Vec<super::AmplitudeWindow> = (0..80)
+            .map(|i| super::AmplitudeWindow {
+                start_s: 2.0 * i as f64,
+                end_s: 2.0 * i as f64 + 2.0,
+                even_deg: Some(250.0 + 0.4 * (i % 5) as f64),
+                odd_deg: Some(240.0 - 0.3 * (i % 4) as f64),
+                beat_error_ms: None,
+                beat_error_unlock_ms: None,
+                even_unlock_ms: None,
+                odd_unlock_ms: None,
+                even_drop_ms: None,
+                odd_drop_ms: None,
+                extra: None,
+                sound_1: [f32::NAN; 2],
+            })
+            .collect();
+        read[30].odd_deg = Some(290.0);
+        read[33].odd_deg = Some(275.0);
+        read[50].even_deg = Some(200.0);
+        let mut whole = read.clone();
+        let n = super::reject_side_outliers(&mut whole, super::OUTLIER_SPAN_S);
+        assert_eq!(n, 3);
+        let mid = |w: &super::AmplitudeWindow| (w.start_s + w.end_s) / 2.0;
+        let span = super::OUTLIER_SPAN_S;
+        let mut parts: Vec<super::AmplitudeWindow> = Vec::new();
+        for batch in read.chunks(3) {
+            let from_s = mid(&batch[0]) - span / 2.0;
+            parts.extend_from_slice(batch);
+            let context = parts.partition_point(|w| mid(w) < from_s - span / 2.0);
+            super::reject_side_outliers_from(&mut parts[context..], span, from_s);
+        }
+        let sides = |ws: &[super::AmplitudeWindow]| -> Vec<_> {
+            ws.iter()
+                .map(|w| (w.even_deg, w.odd_deg, w.outliers()))
+                .collect()
+        };
+        assert_eq!(sides(&parts), sides(&whole));
     }
 
     use super::*;
@@ -1069,9 +1183,8 @@ mod tests {
             odd_unlock_ms: Some(-7.0),
             even_drop_ms: None,
             odd_drop_ms: Some(0.0),
-            culled_ms: None,
-            faint_withheld: [false; 2],
-            sound_1: [None; 2],
+            extra: None,
+            sound_1: [f32::NAN; 2],
         };
         w.set_culled([Some([-5.0, 0.0]), None]);
         w.swap_sides();
@@ -1096,9 +1209,8 @@ mod tests {
             odd_unlock_ms: None,
             even_drop_ms: Some(0.0),
             odd_drop_ms: None,
-            culled_ms: None,
-            faint_withheld: [false; 2],
-            sound_1: [None; 2],
+            extra: None,
+            sound_1: [f32::NAN; 2],
         };
         at_lift(&mut w, 0.25, 52.0, 56.0);
         let again = side_deg(0.007, 0.25, 56.0);
@@ -1351,7 +1463,7 @@ mod tests {
         let read = |w: &AmplitudeWindow, k: usize| {
             [w.even_unlock_ms, w.odd_unlock_ms][k].is_some()
                 || w.culled()[k].is_some()
-                || w.faint_withheld[k]
+                || w.faint_withheld()[k]
         };
         let mut c = FaintCounts::default();
         for (w, &n) in w.iter().zip(noise) {
@@ -1365,7 +1477,7 @@ mod tests {
                     (&mut c.healthy, &mut c.healthy_held)
                 };
                 *of += 1;
-                *held += usize::from(w.faint_withheld[k]);
+                *held += usize::from(w.faint_withheld()[k]);
             }
         }
         c

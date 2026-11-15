@@ -241,13 +241,16 @@ pub fn encode(log: &BeatLog, peak: f32) -> Vec<u8> {
                 None => o.push(0),
             }
         }
-        let [e, d] = w.faint_withheld;
+        let [e, d] = w.faint_withheld();
         o.push(u8::from(e) | u8::from(d) << 1);
         for h in w.sound_1 {
-            match h {
-                Some(h) => {
+            o.extend_from_slice(&h.to_le_bytes());
+        }
+        for d in w.outliers() {
+            match d {
+                Some(d) => {
                     o.push(1);
-                    o.extend_from_slice(&h.to_le_bytes());
+                    o.extend_from_slice(&d.to_le_bytes());
                 }
                 None => o.push(0),
             }
@@ -415,11 +418,12 @@ fn read_window(r: &mut Bytes) -> Option<AmplitudeWindow> {
     if faint > 3 {
         return None;
     }
-    let mut sound_1 = [None; 2];
-    for h in &mut sound_1 {
-        *h = match r.u8()? {
+    let sound_1 = [r.f32()?, r.f32()?];
+    let mut outliers = [None; 2];
+    for d in &mut outliers {
+        *d = match r.u8()? {
             0 => None,
-            1 => Some(r.f32()?),
+            1 => Some(r.f64()?),
             _ => return None,
         };
     }
@@ -434,14 +438,17 @@ fn read_window(r: &mut Bytes) -> Option<AmplitudeWindow> {
         odd_unlock_ms,
         even_drop_ms,
         odd_drop_ms,
-        culled_ms: None,
-        faint_withheld: [faint & 1 != 0, faint & 2 != 0],
+        extra: None,
         sound_1,
     };
-    w.set_culled([
-        eu.zip(ed).map(|(u, d)| [u, d]),
-        ou.zip(od).map(|(u, d)| [u, d]),
-    ]);
+    w.edit_extra(|x| {
+        x.culled_ms = [
+            eu.zip(ed).map(|(u, d)| [u, d]),
+            ou.zip(od).map(|(u, d)| [u, d]),
+        ];
+        x.outlier_deg = outliers;
+        x.faint_withheld = [faint & 1 != 0, faint & 2 != 0];
+    });
     Some(w)
 }
 
