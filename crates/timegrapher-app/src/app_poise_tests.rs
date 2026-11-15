@@ -52,9 +52,7 @@ fn the_poise_order_is_the_eight_upright_stops_45_degrees_apart() {
 /// top: the eight stops are measured, the test ends by itself after the
 /// eighth, core's fit names 6H, and the Positions Test's pane and its
 /// 24 hour results take no part in it.
-#[test]
-fn a_poise_test_measures_eight_stops_and_core_fits_the_wave() {
-    let (app, base, tx) = measured("fit");
+fn a_poise_test_measures_eight_stops_and_core_fits_the_wave(app: &TimegrapherApp) {
     assert!(!app.guided_running(), "ended after the eighth");
     let kept = app.poise_test().expect("the table stays");
     let readings = kept.readings.as_ref().unwrap();
@@ -89,7 +87,42 @@ fn a_poise_test_measures_eight_stops_and_core_fits_the_wave() {
     );
     assert!(!text.contains("Largest Difference") && !text.contains("Vertical less"));
     assert!(text.trim_end().ends_with(&fit.text), "{text}");
+}
+
+/// The measured Dynamic Poise test's checks, each of them a test of its
+/// own until #1757, on one measured take: measuring it was nearly all of
+/// each one's time, about 12 s. Each check starts from the pane's view
+/// and Info as measured; Save as Text…, which takes the app, runs last.
+#[test]
+fn a_measured_poise_test_passes_each_check() {
+    let (mut app, base, tx) = measured("measured-checks");
+    let fresh = (app.poise_view, app.poise_info);
+    let reset = |app: &mut TimegrapherApp| {
+        app.poise_view = fresh.0;
+        app.poise_info = fresh.1;
+    };
+    a_poise_test_measures_eight_stops_and_core_fits_the_wave(&app);
+    the_picture_has_its_key_and_mean_and_info_says_each_fact_once(&mut app);
+    reset(&mut app);
+    the_heavy_spot_is_in_a_facts_box_and_the_notes_in_info(&mut app);
+    reset(&mut app);
+    the_table_tightens_beside_the_picture_then_goes_under_it(&mut app);
+    reset(&mut app);
+    save_as_text_writes_the_poise_tests_report(app, &base);
     drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The checks of a take of the eight upright stops saved and opened
+/// again, each of them a test of its own until #1757, on one such take:
+/// saving and opening it was nearly all of each one's time, about 13 s.
+/// Save as Text…, which takes the app, runs last.
+#[test]
+fn a_saved_and_opened_poise_take_passes_each_check() {
+    let (mut app, base) = saved_and_opened("saved-checks", guided::Kind::Poise.order());
+    a_saved_poise_take_opened_again_shows_its_stops_and_fit(&mut app);
+    a_reopened_poise_takes_copy_copies_the_table_it_shows(&mut app);
+    save_as_text_writes_an_opened_poise_takes_report(app, &base);
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -219,9 +252,7 @@ fn saved_and_opened_each(
 /// A take of the eight upright stops, saved and opened again (#1619):
 /// the pane reads each stop from the take's saved marks, as the
 /// Positions pane reads its six, so the table and core's fit come back.
-#[test]
-fn a_saved_poise_take_opened_again_shows_its_stops_and_fit() {
-    let (mut app, base) = saved_and_opened("reopen", guided::Kind::Poise.order());
+fn a_saved_poise_take_opened_again_shows_its_stops_and_fit(app: &mut TimegrapherApp) {
     let t = app.free_table(&egui::Context::default()).expect("a table");
     let readings = &t.upright.0;
     assert_eq!(readings.len(), 8, "{t:?}");
@@ -236,21 +267,18 @@ fn a_saved_poise_take_opened_again_shows_its_stops_and_fit() {
     );
     // The six positions' own table is as it was: only its six.
     assert_eq!(t.rows.len(), 6);
-    let drawn = draw(&mut app, Pane::DynamicPoise);
+    let drawn = draw(app, Pane::DynamicPoise);
     for label in ["Crown Down (CD, 9H)", "7:30 Up (7H30)", "10:30 Up (10H30)"] {
         assert!(drawn.contains(label), "{label}: {drawn}");
     }
     assert!(drawn.contains(&fit.short_text), "{drawn}");
     assert!(!drawn.contains(&poise_pending()), "{drawn}");
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// A reopened Dynamic Poise take's Copy copies the rows its table
 /// shows: it is not greyed out as "Nothing measured yet", and the text
 /// has the eight stops and the fit (#1657, from an external audit).
-#[test]
-fn a_reopened_poise_takes_copy_copies_the_table_it_shows() {
-    let (mut app, base) = saved_and_opened("copy", guided::Kind::Poise.order());
+fn a_reopened_poise_takes_copy_copies_the_table_it_shows(app: &mut TimegrapherApp) {
     let t = app.free_table(&egui::Context::default()).expect("a table");
     let fit = guided::poise_fit(&t.upright.0).expect("fitted from eight");
     let text = guided::kept_rows_text(&t.upright.0, guided::Kind::Poise, &app.guided_about(), '\t');
@@ -259,12 +287,12 @@ fn a_reopened_poise_takes_copy_copies_the_table_it_shows() {
     }
     assert!(text.contains(&fit.text), "{text}");
     let size = Vec2::new(1280.0, 820.0);
-    let drawn = draw_at(&mut app, Pane::DynamicPoise, size);
+    let drawn = draw_at(app, Pane::DynamicPoise, size);
     let (_, copy) = drawn
         .iter()
         .find(|(t, _)| t == "Copy")
         .unwrap_or_else(|| panic!("Copy in {drawn:?}"));
-    let copied = click(&mut app, Pane::DynamicPoise, size, copy.center());
+    let copied = click(app, Pane::DynamicPoise, size, copy.center());
     assert_eq!(
         copied.as_deref(),
         Some(text.as_str()),
@@ -272,7 +300,6 @@ fn a_reopened_poise_takes_copy_copies_the_table_it_shows() {
     );
     let said = app.message.as_ref().map(|(m, _)| m.as_str());
     assert_eq!(said, Some("Copied the Dynamic Poise table"));
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// A saved take of only the four vertical positions, as a Positions Test
@@ -356,9 +383,7 @@ fn info_shows_cores_note_on_the_band() {
 /// Hugh's review of #1499 on a measured run: the plot's key and its
 /// dotted Mean, named as the table's Mean row; the dial's Mean ring named
 /// too; and Info says 219.5° once, in the band's note.
-#[test]
-fn the_picture_has_its_key_and_mean_and_info_says_each_fact_once() {
-    let (mut app, base, tx) = measured("key");
+fn the_picture_has_its_key_and_mean_and_info_says_each_fact_once(app: &mut TimegrapherApp) {
     let readings = app.poise_test().unwrap().readings.clone().unwrap();
     let (_, mean) = guided::poise_mean(&readings).unwrap();
     let row = guided::table(&readings, guided::Kind::Poise)
@@ -366,34 +391,30 @@ fn the_picture_has_its_key_and_mean_and_info_says_each_fact_once() {
         .unwrap();
     assert!(mean.starts_with("Mean ") && mean.contains(&format!("{:.1}", row.abs())));
     app.poise_view = PoiseView::Plot;
-    let plot = draw(&mut app, Pane::DynamicPoise);
+    let plot = draw(app, Pane::DynamicPoise);
     for word in ["Upright positions (8)", "Fitted wave", mean.as_str()] {
         assert!(plot.contains(word), "{word}: {plot}");
     }
     // The Mean's dotted line reaches the screen: short level dashes
     // across the plot, apart from the grid's full-width lines.
-    let dashes = plot_dashes(&mut app);
+    let dashes = plot_dashes(app);
     assert!(dashes > 20, "{dashes} dashes");
     app.poise_view = PoiseView::Dial;
-    let dial = draw(&mut app, Pane::DynamicPoise);
+    let dial = draw(app, Pane::DynamicPoise);
     assert!(
         dial.contains(&mean) && dial.contains("Fastest 6H"),
         "{dial}"
     );
     app.poise_info = true;
-    let info = draw(&mut app, Pane::DynamicPoise);
+    let info = draw(app, Pane::DynamicPoise);
     assert_eq!(info.matches("least at 219.5°").count(), 1, "{info}");
-    drop(tx);
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// The heavy spot is a facts box's one row on the picture, in both views,
 /// and nothing else of it is over the picture; its caveats and the
 /// table's notes are in Info, once (Hugh on #1537). On the dial the box
 /// sits above the hours' names.
-#[test]
-fn the_heavy_spot_is_in_a_facts_box_and_the_notes_in_info() {
-    let (mut app, base, tx) = measured("facts");
+fn the_heavy_spot_is_in_a_facts_box_and_the_notes_in_info(app: &mut TimegrapherApp) {
     let readings = app.poise_test().unwrap().readings.clone().unwrap();
     let fit = guided::poise_fit(&readings).expect("a fit");
     let (name, value) = fit.heavy_spot_row();
@@ -402,7 +423,7 @@ fn the_heavy_spot_is_in_a_facts_box_and_the_notes_in_info() {
     for view in [PoiseView::Plot, PoiseView::Dial] {
         app.poise_view = view;
         app.poise_info = false;
-        let texts = draw_at(&mut app, Pane::DynamicPoise, Vec2::new(1280.0, 820.0));
+        let texts = draw_at(app, Pane::DynamicPoise, Vec2::new(1280.0, 820.0));
         let at = |want: &str| texts.iter().find(|(t, _)| t == want).map(|(_, r)| *r);
         let n = at(&name).unwrap_or_else(|| panic!("{view:?}: {texts:?}"));
         let v = at(&value).unwrap_or_else(|| panic!("{value} {view:?}: {texts:?}"));
@@ -420,21 +441,17 @@ fn the_heavy_spot_is_in_a_facts_box_and_the_notes_in_info() {
             assert!(v.bottom() < hour.top(), "{v:?} over {hour:?}");
         }
         app.poise_info = true;
-        let info = draw(&mut app, Pane::DynamicPoise);
+        let info = draw(app, Pane::DynamicPoise);
         for note in &notes {
             assert_eq!(info.matches(note.as_str()).count(), 1, "{note}: {info}");
         }
     }
-    drop(tx);
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// The table stays beside the picture, tight, while the picture keeps its
 /// least width, and the tight table fits the room it is given; narrower
 /// still the picture, the result, goes over the table (Hugh, #1499).
-#[test]
-fn the_table_tightens_beside_the_picture_then_goes_under_it() {
-    let (mut app, base, tx) = measured("layout");
+fn the_table_tightens_beside_the_picture_then_goes_under_it(app: &mut TimegrapherApp) {
     let at = |app: &mut TimegrapherApp, w: f32| {
         let texts = draw_at(app, Pane::DynamicPoise, Vec2::new(w, 820.0));
         let find = |want: &str| {
@@ -451,13 +468,13 @@ fn the_table_tightens_beside_the_picture_then_goes_under_it() {
         )
     };
     // Wide: the full table, beside.
-    let (row, title, _) = at(&mut app, 1280.0);
+    let (row, title, _) = at(app, 1280.0);
     assert!(
         title.left() > row.left() + guided::TABLE_W,
         "{row:?} {title:?}"
     );
     // Narrower: tight, still beside, and within its width.
-    let (row, title, last) = at(&mut app, 900.0);
+    let (row, title, last) = at(app, 900.0);
     assert!(
         title.left() > row.left() + guided::TIGHT_TABLE_W,
         "{row:?} {title:?}"
@@ -471,10 +488,8 @@ fn the_table_tightens_beside_the_picture_then_goes_under_it() {
         "{last:?}"
     );
     // Narrow: the picture over the table.
-    let (row, title, _) = at(&mut app, 780.0);
+    let (row, title, _) = at(app, 780.0);
     assert!(title.bottom() < row.top(), "{row:?} {title:?}");
-    drop(tx);
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// The level dashes drawn in the pane at 1280 by 820: the Plot's dotted
@@ -777,9 +792,7 @@ fn saved_text(app: TimegrapherApp, path: &std::path::Path) -> (TimegrapherApp, S
 /// Bench, writes core's poise report of the test (#1509): the watch, how
 /// it was read with Settle and Each Position, the table and the fit. The
 /// Positions Test's Save as Text… asks nothing for it.
-#[test]
-fn save_as_text_writes_the_poise_tests_report() {
-    let (mut app, base, tx) = measured("save-text");
+fn save_as_text_writes_the_poise_tests_report(mut app: TimegrapherApp, base: &std::path::Path) {
     let about = app.guided_about();
     app.save_test_text(&about, guided::Kind::Positions, None, None);
     assert!(!app.picking(), "no Positions Test on the Bench");
@@ -803,16 +816,12 @@ fn save_as_text_writes_the_poise_tests_report() {
         text,
         timegrapher_core::text_report::poise(&header, &readings)
     );
-    drop(tx);
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// Save as Text… on the Dynamic Poise pane, pressed for a take opened
 /// again with no test on the Bench, writes core's poise report of the upright stops
 /// the pane shows, with no Settle or Each Position (#1509).
-#[test]
-fn save_as_text_writes_an_opened_poise_takes_report() {
-    let (app, base) = saved_and_opened("save-text-kept", guided::Kind::Poise.order());
+fn save_as_text_writes_an_opened_poise_takes_report(app: TimegrapherApp, base: &std::path::Path) {
     // The pane's table is read off the window's thread: wait for it.
     let ctx = egui::Context::default();
     let start = Instant::now();
@@ -841,7 +850,6 @@ fn save_as_text_writes_an_opened_poise_takes_report() {
     };
     let text = press_save_as_text(app, &base.join("kept.txt"));
     assert_eq!(text, timegrapher_core::text_report::poise(&header, &kept));
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// With no stops at all, as on a fresh Quick Listen, the pane says how a

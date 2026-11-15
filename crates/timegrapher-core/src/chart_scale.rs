@@ -153,13 +153,14 @@ pub const NAME_ROW_H: f64 = 15.0;
 /// The short gap between a plot and its nearest row of names, so each
 /// line or leader shows outside the plot before it reaches its name.
 pub const NAME_LANE_GAP: f64 = 6.0;
-/// The room kept between two names in any lane, side by side or one
-/// above another: more than a line of a name (Peter on #1764), so two names
-/// never read as one phrase.
+/// The room kept between two names side by side in a lane: a word space
+/// and more (Peter on #1764), so two names never read as one phrase.
+/// Names one above another keep [`NAME_CLEAR`].
 pub const NAME_GAP: f64 = 12.0;
-/// The clear space kept between two names one above another, a full
-/// line of a name (Hugh's spec on #1764, after Peter): the gap reads as a
-/// gap, never as the next line of the same name.
+/// The clear space kept between two names one above another, about a
+/// line of a name's type (Hugh's spec on #1764, after Peter), on top of
+/// the [`NAME_LINE_H`] pitch within a name: the gap reads as a gap, never
+/// as the next line of the same name.
 pub const NAME_CLEAR: f64 = 11.0;
 /// The pitch of a lane's second row above a plot, which appears only
 /// where a name can't sit in the first: a row and the clear space.

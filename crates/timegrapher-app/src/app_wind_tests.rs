@@ -384,3 +384,67 @@ fn a_row_too_narrow_shrinks_the_wind() {
         .unwrap_or_else(|| panic!("{want} not drawn at {w}: {}", painted_text(&out)));
     assert!(t < w11 && t >= w9 - 0.5, "{t} between {w9} and {w11}");
 }
+
+/// While listening, each position button's code sits clear above the bar
+/// filling under it, at 6 and at 10 (#1752, Hugh).
+#[test]
+fn a_buttons_code_clears_its_bar() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.live = Some(timegrapher_core::live::LiveAnalyzer::new(
+        48_000,
+        timegrapher_core::live::LiveConfig::default(),
+    ));
+    for ten in [false, true] {
+        app.ten_positions = ten;
+        let mut out = None;
+        for _ in 0..3 {
+            let high = app.readings_card_h(&ctx);
+            let card = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(330.0, high));
+            out = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let inner = card.shrink(f32::from(theme::CARD_PADDING));
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+                    app.position_card(&mut child, false);
+                });
+            }));
+        }
+        let out = out.unwrap();
+        // The bars' tracks: flat rects under 6 pt tall.
+        let bars: Vec<egui::Rect> = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Rect(r) if r.rect.height() < 6.0 && r.rect.width() > 10.0 => {
+                    Some(r.rect)
+                }
+                _ => None,
+            })
+            .collect();
+        let codes = if ten {
+            &["DU", "CR", "1H30"][..]
+        } else {
+            &["DU", "CR"][..]
+        };
+        for code in codes {
+            let drawn = out
+                .shapes
+                .iter()
+                .find_map(|c| match &c.shape {
+                    egui::Shape::Text(t) if t.galley.text() == *code => {
+                        Some(t.galley.rect.translate(t.pos.to_vec2()))
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{code} not drawn"));
+            let bar = bars
+                .iter()
+                .find(|b| b.x_range().contains(drawn.center().x) && b.top() > drawn.top())
+                .unwrap_or_else(|| panic!("{ten} {code}: no bar under {drawn:?} in {bars:?}"));
+            // The glyphs' foot: the galley's, less its line's spare below.
+            let foot = drawn.bottom() - 2.0;
+            assert!(foot <= bar.top(), "{ten} {code}: {drawn:?} over {bar:?}");
+        }
+    }
+}

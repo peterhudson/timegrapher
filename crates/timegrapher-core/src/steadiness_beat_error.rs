@@ -100,15 +100,7 @@ fn wind_down_by(
     };
     let hours_apart = (end_from - t_start) / 3600.0;
     // Hours since full wind only when the wind was given (#1665).
-    let span = match (start.from_wind_h, end.from_wind_h) {
-        (Some(a), Some(b)) => format!("From {a:.1} h to {b:.1} h after full wind"),
-        _ => format!(
-            "From {:.1} h to {:.1} h into the take ({})",
-            start.from_h,
-            end.from_h,
-            crate::reading_text::WIND_NOT_GIVEN
-        ),
-    };
+    let span = super::wind::from_to_words(start.from_h, end.from_h, cfg.wind_h);
     let headline = match (rate_change, amplitude_change) {
         (Some(r), Some(a)) => format!(
             "{span} the rate moves {:+.1} s/d ({:+.1} to {:+.1}) and the amplitude {:+.0}° ({:.0}° to {:.0}°){}.",

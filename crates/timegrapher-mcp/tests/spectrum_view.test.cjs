@@ -19,7 +19,7 @@ const SCORE_WORDS = { axis_name: coreStr("SCORE_AXIS_NAME"), axis_hover: coreStr
   threshold_hover: "Peaks above this line are named." };
 const context = vm.createContext({
   SCORE_WORDS, scoreTicks: (lo, hi) => [[1, `1 (${lo}..${hi})`]],
-  fftTiming: true, showWheels: true, secs: String, logTicks: () => [], periodTicks: () => [], wheelMarks: () => [], wheelTitle: String,
+  fftTiming: true, showWheels: true, showMesh: true, secs: String, logTicks: () => [], periodTicks: () => [], wheelMarks: () => [], wheelTitle: String,
   xyChart: (chart) => { context.last = JSON.parse(JSON.stringify(chart)); return "<svg data-test='FFT'></svg>"; },
 });
 vm.runInContext(html.match(/const SERIES = \{[\s\S]*?\n\};/)[0] + "\n" + html.match(/^const CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const FAINT_CALL_OUT_W = .*$/m)[0] + "\n" + html.match(/^const BOX_OPACITY = .*$/m)[0] + "\n" + 
@@ -124,4 +124,17 @@ test("a size core withheld (null, #1638) leaves a gap: two lines, never bridged"
   const { chart } = render({ finite_bins: 128, total_bins: 256 }, true, [1, null, 2]);
   assert.deepEqual(chart.lines.map((l) => l.pts), [[[Math.log10(128), 0]], [[Math.log10(32), Math.log10(2)]]]);
   assert.ok(chart.lines.flatMap((l) => l.pts).every((p) => p[0] !== Math.log10(64)));
+});
+
+test("with Wheel Periods off and Mesh on, the meshes are still named (Walter on #1770)", () => {
+  context.showWheels = false;
+  context.showMesh = true;
+  try {
+    assert.equal(render({ finite_bins: 256, total_bins: 256, description: "x" }).chart.names, true);
+    context.showMesh = false;
+    assert.equal(render({ finite_bins: 256, total_bins: 256, description: "x" }).chart.names, false);
+  } finally {
+    context.showWheels = true;
+    context.showMesh = true;
+  }
 });
