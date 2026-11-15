@@ -380,8 +380,47 @@ fn listening_carries_on_when_the_first_chunk_read_again_takes_over() {
 /// the take held it.
 #[test]
 fn the_scope_reads_the_take_being_recorded_across_a_break() {
-    let (mut app, base, tx, heard) = listened("scope-heard");
-    // A second's stall, then 10 s whose blocks each carry their number.
+    let (mut app, base, tx, resumed) = numbered_after_a_break("scope-heard");
+    // Block 250 by the take's time, which runs on across the gap.
+    let lo = resumed + 0.02 * 250.0 + 0.005;
+    let (a, b, sp) = scope_read(&mut app, lo, lo + 0.01).expect("a job to read the take");
+    assert!(a <= lo && b >= lo + 0.01);
+    assert!((block_at(&sp, lo) - 0.25).abs() < 2e-3, "at {lo}");
+    drop(tx);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// No sound is read for a stretch across a break, or within the break
+/// itself: the sound either side isn't one stretch, and the break holds
+/// none. Near a break, the seconds read either side stop at it, so what
+/// is kept for later looks never holds sound from before it at the
+/// wrong time.
+#[test]
+fn the_scope_reads_nothing_across_a_break_and_stops_its_margin_there() {
+    let (mut app, base, tx, resumed) = numbered_after_a_break("scope-break");
+    let paused = resumed - 1.0;
+    // Across the break: from before it to after it.
+    assert!(scope_read(&mut app, paused - 0.3, resumed + 0.3).is_none());
+    // Within the break: the second the input stalled.
+    assert!(scope_read(&mut app, paused + 0.3, paused + 0.4).is_none());
+    // Half a second after it: read, but not from before the break.
+    let lo = resumed + 0.02 * 25.0 + 0.005;
+    let (a, b, sp) = scope_read(&mut app, lo, lo + 0.01).expect("read after the break");
+    assert!(
+        a >= resumed - 1e-9,
+        "read from {a}, before the break at {resumed}"
+    );
+    assert!(b >= lo + 0.01);
+    assert!((block_at(&sp, lo) - 0.025).abs() < 2e-3, "at {lo}");
+    drop(tx);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+/// A take listened to as [`listened`], a second's stall (a break), then
+/// 10 s whose blocks each carry their number over 1000: the app, its
+/// folder, the input's queue and the take's time it carried on at.
+fn numbered_after_a_break(name: &str) -> (TimegrapherApp, PathBuf, Sender<Event>, f64) {
+    let (mut app, base, tx, heard) = listened(name);
     let woke = 2000 + 20 * 49 + 1000;
     for k in 0..500u64 {
         tx.send(Event::Audio(timegrapher_core::capture::Block {
@@ -393,20 +432,25 @@ fn the_scope_reads_the_take_being_recorded_across_a_break() {
     while app.poll_for(Duration::from_secs(60)) > 0 {}
     assert_eq!(app.session.recorder.as_ref().unwrap().breaks().len(), 1);
     assert!(app.session.mic());
-    // Block 250 by the take's time, which runs on across the gap.
-    let resumed = heard + 1.0;
-    let lo = resumed + 0.02 * 250.0 + 0.005;
-    assert!(app.start_scope_job(lo, lo + 0.01), "a job to read the take");
+    (app, base, tx, heard + 1.0)
+}
+
+/// What the Scope reads for `lo` to `hi` while listening: the stretch
+/// read and its sound, or none when it reads nothing.
+fn scope_read(app: &mut TimegrapherApp, lo: f64, hi: f64) -> Option<(f64, f64, crate::span::Span)> {
+    app.scope_job = None;
+    if !app.start_scope_job(lo, hi) {
+        return None;
+    }
     let (a, b, got) = app
         .scope_job
-        .take()
-        .unwrap()
+        .take()?
         .recv_timeout(Duration::from_secs(30))
         .unwrap();
-    assert!(a <= lo && b >= lo + 0.01);
-    let sp = got.unwrap();
-    let i = ((lo - sp.t0) * sp.rate).round() as usize;
-    assert!((sp.mono[i] - 0.25).abs() < 2e-3, "{} at {lo}", sp.mono[i]);
-    drop(tx);
-    let _ = std::fs::remove_dir_all(base);
+    Some((a, b, got.unwrap()))
+}
+
+/// The numbered block's value in `sp` at the take's time `t`.
+fn block_at(sp: &crate::span::Span, t: f64) -> f32 {
+    sp.mono[((t - sp.t0) * sp.rate).round() as usize]
 }

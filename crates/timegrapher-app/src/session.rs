@@ -1055,7 +1055,7 @@ impl Session {
     /// Endpoints beyond the sound kept so far are bounded by its duration.
     pub fn audio_of(&self, t: f64) -> Option<f64> {
         let r = self.recorder.as_ref()?;
-        let audio_s = match self.audio_timeline.iter().rev().find(|a| a.at_s <= t) {
+        let audio_s = match self.anchor_at(t).map(|i| &self.audio_timeline[i]) {
             Some(a) if a.advancing => a.audio_s + (t - a.at_s),
             Some(a) => a.audio_s,
             None => t,
@@ -1063,16 +1063,23 @@ impl Session {
         Some(audio_s.clamp(0.0, r.duration_s()))
     }
 
+    /// The latest anchor of the recording timeline at or before `t`, by
+    /// index: the stretch of sound `t` falls in, or none before the first.
+    fn anchor_at(&self, t: f64) -> Option<usize> {
+        self.audio_timeline.iter().rposition(|a| a.at_s <= t)
+    }
+
     /// How far the session's time runs ahead of the sound kept (the
     /// pauses and breaks before it), when one stretch of sound covers
     /// `from` to `to`: none across a pause or break, or with no recording.
     pub fn sound_shift(&self, from: f64, to: f64) -> Option<f64> {
         self.recorder.as_ref()?;
-        let anchor = |t: f64| self.audio_timeline.iter().rposition(|a| a.at_s <= t);
-        let i = anchor(from);
-        if anchor(to) != i {
+        let i = self.anchor_at(from);
+        if self.anchor_at(to) != i {
             return None;
         }
+        // The same rule as `audio_of`: an advancing anchor runs on from
+        // its sound time; a paused one holds still.
         match i.map(|i| &self.audio_timeline[i]) {
             Some(a) if a.advancing => Some(a.at_s - a.audio_s),
             Some(_) => None,

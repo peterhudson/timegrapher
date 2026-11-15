@@ -492,8 +492,19 @@ impl TimegrapherApp {
         if self.scope_job.is_some() {
             return true;
         }
+        let (mut a, mut b) = ((lo - 2.0).max(0.0), hi + 2.0);
         let (files, shift) = if self.session.mic() {
-            match self.heard_files(lo, hi) {
+            // The two seconds either side only while they stay in the
+            // same stretch of sound: across a pause or break they would
+            // be read at the wrong time, and kept for later looks.
+            let heard = match self.heard_files(a, b) {
+                Some(heard) => Some(heard),
+                None => {
+                    (a, b) = (lo, hi);
+                    self.heard_files(lo, hi)
+                }
+            };
+            match heard {
                 Some(heard) => heard,
                 None => return false,
             }
@@ -505,7 +516,6 @@ impl TimegrapherApp {
         } else {
             return false;
         };
-        let (a, b) = ((lo - 2.0).max(0.0), hi + 2.0);
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             // Read in the sound's own seconds, kept in the take's.
@@ -521,7 +531,7 @@ impl TimegrapherApp {
 
     /// While listening, the sound files recorded so far, written out so
     /// they can be read, and how far the take's time from `lo` to `hi`
-    /// runs ahead of the sound kept (the pauses and breaks before it).
+    /// runs ahead of the sound kept ([`crate::session::Session::sound_shift`]).
     /// The engine holds only the last few seconds, so a moment further
     /// back is read from these. None with no recording, or with a pause
     /// or break between `lo` and `hi`: the sound either side of it isn't
