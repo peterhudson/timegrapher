@@ -286,8 +286,7 @@ impl TimegrapherApp {
         if self.capture.is_none() {
             return;
         }
-        // The sound the input already sent is the take's too (#873), and so
-        // is the sound core's gap rule still holds.
+        // The sound the input sent, and what core's gap rule holds, is the take's (#873).
         let (queued, failure) = self.queued_blocks();
         let held = self.finish_gaps();
         if let Err(CaptureFailure::Recording(e)) = queued
@@ -298,7 +297,6 @@ impl TimegrapherApp {
             return self.recording_failed(e);
         }
         self.release_capture();
-        // The newest amplitude chunk judged now, as a read of the take (#1738).
         self.live.iter_mut().for_each(|l| l.settle());
         if self.session.mic() {
             applog::info("microphone stopped and released");
