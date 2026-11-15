@@ -1,9 +1,0 @@
-{
-  "arch": "x86_64",
-  "build_date": "2026-11-03",
-  "git_dirty": false,
-  "git_hash": "8002cdc",
-  "name": "timegrapher",
-  "os": "linux",
-  "version": "0.4.2"
-}

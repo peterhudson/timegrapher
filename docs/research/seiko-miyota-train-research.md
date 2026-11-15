@@ -5,7 +5,7 @@ and Miyota catalogue rows** and adds source-backed escape-wheel periods to
 **42 canonical rows**, including newly separated and newly added variants.
 The complete before-state audit, coverage list, source URLs, SHA-256 hashes
 and locations of counted illustrations are in
-[research.json](assets/seiko-miyota/research.json).
+[research.json](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/seiko-miyota/research.json).
 
 **This is a partial train specification, not a complete tooth census.**
 The new result is a **5-second escape-wheel revolution** for the explicitly

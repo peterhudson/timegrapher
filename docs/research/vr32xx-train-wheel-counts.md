@@ -100,9 +100,9 @@ should be used as a blanket replacement for the other.
 
 ## Evidence assets
 
-Four unchanged 2592 × 1944 [original JPEGs](assets/train-wheels/vr32xx/originals/)
-are accompanied by a [SHA-256 manifest](assets/train-wheels/vr32xx/originals/manifest.json)
-and [tooth-tip coordinates](assets/train-wheels/vr32xx/tooth-tip-coordinates.json).
+Four unchanged 2592 × 1944 [original JPEGs](https://github.com/peterhudson/timegrapher-corpus/tree/main/research/train-wheels/vr32xx/originals/)
+are accompanied by a [SHA-256 manifest](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/vr32xx/originals/manifest.json)
+and [tooth-tip coordinates](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/vr32xx/tooth-tip-coordinates.json).
 The four wheel outlines were detected from their colour boundaries and
 checked for one marker per tooth. One third-wheel perimeter marker was
 placed manually where the colour detector lost the tooth against the
@@ -115,17 +115,17 @@ the title band. Pinion images are enlarged crops; no tooth geometry is
 reconstructed. Original filenames are corrected only in copied asset
 names and labels, never by modifying Peter's source files.
 
-![barrel 100 teeth](assets/train-wheels/vr32xx/barrel-100-teeth.png)
+![barrel 100 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/vr32xx/barrel-100-teeth.png)
 
-![second wheel 80 teeth](assets/train-wheels/vr32xx/second-wheel-80-teeth.png)
+![second wheel 80 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/vr32xx/second-wheel-80-teeth.png)
 
-![fourth wheel 120 teeth](assets/train-wheels/vr32xx/fourth-wheel-120-teeth.png)
+![fourth wheel 120 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/vr32xx/fourth-wheel-120-teeth.png)
 
-![third wheel 99 teeth](assets/train-wheels/vr32xx/third-wheel-99-teeth.png)
+![third wheel 99 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/vr32xx/third-wheel-99-teeth.png)
 
-![second pinion 20 leaves](assets/train-wheels/vr32xx/second-pinion-20-leaves.png)
+![second pinion 20 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/vr32xx/second-pinion-20-leaves.png)
 
-![fourth pinion 11 leaves](assets/train-wheels/vr32xx/fourth-pinion-11-leaves.png)
+![fourth pinion 11 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/vr32xx/fourth-pinion-11-leaves.png)
 
-![third pinion 12 leaves](assets/train-wheels/vr32xx/third-pinion-12-leaves.png)
+![third pinion 12 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/vr32xx/third-pinion-12-leaves.png)
 

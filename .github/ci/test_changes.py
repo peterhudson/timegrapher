@@ -15,11 +15,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 class Light(unittest.TestCase):
     def test_edited_or_added_plain_markdown_is_light(self):
         self.assertTrue(changes.light([("M", "docs/app.md"), ("A", "docs/new-page.md"),
-                                       ("M", "README.md"), ("M", "personas/README.md")]))
+                                       ("M", "README.md"), ("M", "fuzz/README.md")]))
 
     def test_code_or_any_other_file_is_full(self):
         for path in ("crates/timegrapher-core/src/lib.rs", "Cargo.lock", "regress/baseline.json",
-                     ".github/workflows/ci.yml", "personas/harness/round.py", "docs/assets/x.png"):
+                     ".github/workflows/ci.yml", "guide-figures/make.py", "docs/assets/x.png"):
             self.assertFalse(changes.light([("M", "docs/app.md"), ("M", path)]), path)
 
     def test_compiled_in_markdown_is_full(self):
@@ -46,7 +46,7 @@ class Pages(unittest.TestCase):
 
     def test_other_files_are_not(self):
         self.assertFalse(changes.pages([("M", "crates/timegrapher-core/src/lib.rs"),
-                                        ("M", "personas/README.md"), ("M", "docs.md")]))
+                                        ("M", "fuzz/README.md"), ("M", "docs.md")]))
         self.assertFalse(changes.pages([]))
 
     def test_every_file_docs_html_renders_is_covered(self):

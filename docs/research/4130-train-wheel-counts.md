@@ -157,67 +157,67 @@ These are measurement annotations over the supplied pixels, with no
 reconstruction of teeth. Whole images are 1824 × 1368 renditions of the
 2592 × 1944 originals; the small-gear figures are enlarged crops. Numbering
 runs clockwise from an arbitrary starting tooth, not an assembly index
-or direction-of-rotation mark. [Tooth-tip coordinates](assets/train-wheels/4130/tooth-tip-coordinates.json)
+or direction-of-rotation mark. [Tooth-tip coordinates](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/tooth-tip-coordinates.json)
 use the 1824 × 1368 coordinate system for independent review.
 
 All ten original JPEGs are retained byte-for-byte, with original filenames
-and SHA-256 checksums in the [manifest](assets/train-wheels/4130/originals/manifest.json).
+and SHA-256 checksums in the [manifest](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/manifest.json).
 The Rolex manual is linked as a reference, not redistributed with the photos.
 
 | Original filename | Repository copy |
 | --- | --- |
-| Barrel.JPG | [Barrel](assets/train-wheels/4130/originals/barrel.jpg) |
-| Second Wheel.JPG | [Second wheel](assets/train-wheels/4130/originals/second-wheel.jpg) |
-| Thrid Wheel.JPG (original spelling) | [Third-wheel candidate](assets/train-wheels/4130/originals/third-wheel.jpg) |
-| Fourth Wheel.JPG | [Fourth wheel](assets/train-wheels/4130/originals/fourth-wheel.jpg) |
-| Fourth Wheel Side Profile.JPG | [Fourth-wheel side profile](assets/train-wheels/4130/originals/fourth-wheel-side-profile.jpg) |
-| Escape Wheel.JPG | [Escape wheel](assets/train-wheels/4130/originals/escape-wheel.jpg) |
-| Escape Wheel (pinion).JPG | [Escape pinion](assets/train-wheels/4130/originals/escape-wheel-pinion.jpg) |
-| Chrono Seconds Counter.JPG | [Chronograph seconds counter](assets/train-wheels/4130/originals/chrono-seconds-counter.jpg) |
-| Vertical Clutch Bottom.JPG | [Clutch bottom](assets/train-wheels/4130/originals/clutch-bottom.jpg) |
-| Vertical Clutch Top.JPG | [Clutch top](assets/train-wheels/4130/originals/clutch-top.jpg) |
+| Barrel.JPG | [Barrel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/barrel.jpg) |
+| Second Wheel.JPG | [Second wheel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/second-wheel.jpg) |
+| Thrid Wheel.JPG (original spelling) | [Third-wheel candidate](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/third-wheel.jpg) |
+| Fourth Wheel.JPG | [Fourth wheel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/fourth-wheel.jpg) |
+| Fourth Wheel Side Profile.JPG | [Fourth-wheel side profile](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/fourth-wheel-side-profile.jpg) |
+| Escape Wheel.JPG | [Escape wheel](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/escape-wheel.jpg) |
+| Escape Wheel (pinion).JPG | [Escape pinion](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/escape-wheel-pinion.jpg) |
+| Chrono Seconds Counter.JPG | [Chronograph seconds counter](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/chrono-seconds-counter.jpg) |
+| Vertical Clutch Bottom.JPG | [Clutch bottom](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/clutch-bottom.jpg) |
+| Vertical Clutch Top.JPG | [Clutch top](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/4130/originals/clutch-top.jpg) |
 
 ## Numbered photographs
 
 ### Barrel: 105 teeth
 
-![Barrel with 105 teeth numbered](assets/train-wheels/4130/barrel-105-teeth.png)
+![Barrel with 105 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/barrel-105-teeth.png)
 
 ### Second wheel: 90 teeth, 15 pinion leaves
 
-![Second wheel with 90 teeth numbered](assets/train-wheels/4130/second-wheel-90-teeth.png)
+![Second wheel with 90 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/second-wheel-90-teeth.png)
 
-![Second pinion with 15 leaves numbered](assets/train-wheels/4130/second-pinion-15-leaves.png)
+![Second pinion with 15 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/second-pinion-15-leaves.png)
 
 ### Third-wheel candidate: 96 teeth, 12 pinion leaves
 
-![Third wheel with 96 teeth numbered](assets/train-wheels/4130/third-wheel-96-teeth.png)
+![Third wheel with 96 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/third-wheel-96-teeth.png)
 
-![Third pinion with 12 leaves numbered](assets/train-wheels/4130/third-pinion-12-leaves.png)
+![Third pinion with 12 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/third-pinion-12-leaves.png)
 
 ### Fourth wheel: 120 teeth and separate 30-tooth clutch-drive gear
 
-![Fourth wheel with 120 teeth numbered](assets/train-wheels/4130/fourth-wheel-120-teeth.png)
+![Fourth wheel with 120 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/fourth-wheel-120-teeth.png)
 
-![Fourth arbor steel gear with 30 teeth numbered](assets/train-wheels/4130/fourth-clutch-drive-30-teeth.png)
+![Fourth arbor steel gear with 30 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/fourth-clutch-drive-30-teeth.png)
 
 The side profile shows the receiving pinion between these two gears;
 its inferred 12 leaves are not directly countable here.
 
-![Fourth wheel side profile, original photograph](assets/train-wheels/4130/originals/fourth-wheel-side-profile.jpg)
+![Fourth wheel side profile, original photograph](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/originals/fourth-wheel-side-profile.jpg)
 
 ### Escape wheel: 20 teeth, 10 pinion leaves
 
-![Escape wheel with 20 teeth numbered](assets/train-wheels/4130/escape-wheel-20-teeth.png)
+![Escape wheel with 20 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/escape-wheel-20-teeth.png)
 
-![Escape pinion with 10 leaf tips marked; this is the least sharp detail](assets/train-wheels/4130/escape-pinion-10-leaves.png)
+![Escape pinion with 10 leaf tips marked; this is the least sharp detail](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/escape-pinion-10-leaves.png)
 
 ### Vertical clutch: 30-tooth input, 70-tooth output
 
-![Clutch bottom gear with 30 teeth numbered](assets/train-wheels/4130/clutch-bottom-30-teeth.png)
+![Clutch bottom gear with 30 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/clutch-bottom-30-teeth.png)
 
-![Clutch top wheel with 70 teeth numbered](assets/train-wheels/4130/clutch-top-70-teeth.png)
+![Clutch top wheel with 70 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/clutch-top-70-teeth.png)
 
 ### Chronograph seconds counter: 70 teeth
 
-![Chronograph seconds counter with 70 teeth numbered](assets/train-wheels/4130/chrono-seconds-counter-70-teeth.png)
+![Chronograph seconds counter with 70 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/4130/chrono-seconds-counter-70-teeth.png)

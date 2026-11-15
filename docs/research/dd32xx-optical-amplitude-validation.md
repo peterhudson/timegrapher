@@ -98,10 +98,10 @@ Shared optical errors do not average away across cycles or intervals. No pooled
 confidence interval or exact physical lift angle is inferred from these means.
 The persistent Tick/Tock split also leaves acoustic event-selection bias unresolved.
 
-![High take](assets/amplitude-validation/dd3285/2026-11-03/high/audio-video-comparison.png)
-![Low take](assets/amplitude-validation/dd3285/2026-11-03/low/audio-video-comparison.png)
-![Intermediate take](assets/amplitude-validation/dd3285/2026-11-03/intermediate/audio-video-comparison.png)
-![Final take](assets/amplitude-validation/dd3285/2026-11-03/final/audio-video-comparison.png)
+![High take](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/amplitude-validation/dd3285/2026-11-03/high/audio-video-comparison.png)
+![Low take](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/amplitude-validation/dd3285/2026-11-03/low/audio-video-comparison.png)
+![Intermediate take](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/amplitude-validation/dd3285/2026-11-03/intermediate/audio-video-comparison.png)
+![Final take](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/amplitude-validation/dd3285/2026-11-03/final/audio-video-comparison.png)
 
 The high-take figure is the original historical comparison at 52°, 55° and 59°.
 Its 58° column above was replayed during documentation preparation, after all
@@ -188,15 +188,15 @@ to be the unloaded hairspring zero; escapement contact may influence it.
 The rest study therefore supports a repeatable settled reference but is **not**
 used to assign directional amplitudes or resolve the acoustic Tick/Tock split.
 
-![Rest reference](assets/amplitude-validation/dd3285/2026-11-03/rest/rest-reference.png)
+![Rest reference](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/amplitude-validation/dd3285/2026-11-03/rest/rest-reference.png)
 
 ## Evidence, replay and remaining work
 
-The [evidence folder](assets/amplitude-validation/dd3285/2026-11-03/) preserves
+The [evidence folder](https://github.com/peterhudson/timegrapher-corpus/tree/main/research/amplitude-validation/dd3285/2026-11-03/) preserves
 the original blind JSON files byte-for-byte, fitted endpoints, selection seeds,
 geometry, sensitivity checks, native unscaled crop examples, comparison figures,
 explicit-lift acoustic window CSVs and normalized matched-window tables.
-[Replay instructions](assets/amplitude-validation/dd3285/2026-11-03/analysis/README.md)
+[Replay instructions](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/amplitude-validation/dd3285/2026-11-03/analysis/README.md)
 describe hash verification and reproduction from the source media. Geometry and
 selection priors are frozen inputs to that replay, not newly optimized evidence.
 

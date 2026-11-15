@@ -104,13 +104,13 @@ interchangeability.
 
 ## Evidence and reproducibility
 
-The [eight original JPEGs](assets/train-wheels/dd324/originals/) retain their
-original bytes. The [manifest](assets/train-wheels/dd324/originals/manifest.json)
+The [eight original JPEGs](https://github.com/peterhudson/timegrapher-corpus/tree/main/research/train-wheels/dd324/originals/) retain their
+original bytes. The [manifest](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/dd324/originals/manifest.json)
 records supplied names, normalized repository names and SHA-256 hashes.
 The source spellings `Centre Secodns Pinion.JPG` and `Third Wheel Botom.JPG`
 are preserved in the manifest, with corrected names on repository assets.
 
-[Tooth-tip coordinates](assets/train-wheels/dd324/tooth-tip-coordinates.json)
+[Tooth-tip coordinates](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/dd324/tooth-tip-coordinates.json)
 use a 1824 × 1368 viewing frame. Rim counts were obtained from radial colour
 or brightness boundaries and cross-checked across four thresholds; both
 third-wheel views independently give 90. Escape teeth and pinion leaves
@@ -120,32 +120,32 @@ remain the authoritative image evidence. No tooth geometry was generated.
 
 ### Going-train rims
 
-![Barrel: 93 teeth](assets/train-wheels/dd324/barrel-93-teeth.jpg)
+![Barrel: 93 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/barrel-93-teeth.jpg)
 
-![Second wheel: 60 teeth](assets/train-wheels/dd324/second-wheel-60-teeth.jpg)
+![Second wheel: 60 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/second-wheel-60-teeth.jpg)
 
-![Third wheel top: 90 teeth](assets/train-wheels/dd324/third-wheel-top-90-teeth.jpg)
+![Third wheel top: 90 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/third-wheel-top-90-teeth.jpg)
 
-![Third wheel bottom: 90 teeth](assets/train-wheels/dd324/third-wheel-bottom-90-teeth.jpg)
+![Third wheel bottom: 90 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/third-wheel-bottom-90-teeth.jpg)
 
-![Fourth wheel: 84 teeth](assets/train-wheels/dd324/fourth-wheel-84-teeth.jpg)
+![Fourth wheel: 84 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/fourth-wheel-84-teeth.jpg)
 
-![Escape wheel: 20 teeth](assets/train-wheels/dd324/escape-wheel-20-teeth.jpg)
+![Escape wheel: 20 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/escape-wheel-20-teeth.jpg)
 
 ### Pinions and hand-drive branches
 
-![Second pinion: 18 leaves](assets/train-wheels/dd324/second-wheel-18-leaves.jpg)
+![Second pinion: 18 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/second-wheel-18-leaves.jpg)
 
-![Third top pinion: 10 leaves](assets/train-wheels/dd324/third-wheel-top-10-leaves.jpg)
+![Third top pinion: 10 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/third-wheel-top-10-leaves.jpg)
 
-![Third bottom pinion: 10 leaves](assets/train-wheels/dd324/third-wheel-bottom-10-leaves.jpg)
+![Third bottom pinion: 10 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/third-wheel-bottom-10-leaves.jpg)
 
-![Fourth pinion: 9 leaves](assets/train-wheels/dd324/fourth-wheel-9-leaves.jpg)
+![Fourth pinion: 9 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/fourth-wheel-9-leaves.jpg)
 
-![Escape pinion: 7 leaves](assets/train-wheels/dd324/escape-wheel-7-leaves.jpg)
+![Escape pinion: 7 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/escape-wheel-7-leaves.jpg)
 
-![Separate centre seconds: 9 leaves](assets/train-wheels/dd324/centre-seconds-pinion-9-leaves.jpg)
+![Separate centre seconds: 9 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/centre-seconds-pinion-9-leaves.jpg)
 
-![Cannon wheel: 60 teeth](assets/train-wheels/dd324/cannon-wheel-60-teeth.jpg)
+![Cannon wheel: 60 teeth](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/cannon-wheel-60-teeth.jpg)
 
-![Cannon motion-works pinion: 28 leaves](assets/train-wheels/dd324/cannon-wheel-28-leaves.jpg)
+![Cannon motion-works pinion: 28 leaves](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/dd324/cannon-wheel-28-leaves.jpg)

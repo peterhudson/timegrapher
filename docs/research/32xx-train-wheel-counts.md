@@ -101,45 +101,45 @@ of the 2592 × 1944 supplied photos; pinion views are enlarged crops.
 The numbered PNGs preserve those annotated renditions losslessly. The six
 full-resolution original JPEGs are also included for independent recounting,
 with their original filenames and SHA-256 hashes in the
-[original-image manifest](assets/train-wheels/32xx/originals/manifest.json).
+[original-image manifest](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/32xx/originals/manifest.json).
 The starting tooth is arbitrary, and numbering runs clockwise in each
 image; it is not an assembly-index or rotation-direction mark.
 
 | Original filename | Saved evidence |
 | --- | --- |
-| [Mainspring.JPG](assets/train-wheels/32xx/originals/barrel.jpg) | Barrel perimeter |
-| [Second Wheel.JPG](assets/train-wheels/32xx/originals/second-wheel.jpg) | Second-wheel perimeter and pinion |
-| [Thrid Wheel.JPG](assets/train-wheels/32xx/originals/third-wheel.jpg) (original spelling) | Third-wheel perimeter and pinion |
-| [Fourth Wheel (bottom).JPG](assets/train-wheels/32xx/originals/fourth-wheel-bottom.jpg) | Fourth-wheel perimeter |
-| [Fourth Wheel (top).JPG](assets/train-wheels/32xx/originals/fourth-wheel-top.jpg) | Fourth-wheel pinion |
-| [Escape Wheel.JPG](assets/train-wheels/32xx/originals/escape-wheel.jpg) | Escape-wheel perimeter and pinion |
+| [Mainspring.JPG](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/32xx/originals/barrel.jpg) | Barrel perimeter |
+| [Second Wheel.JPG](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/32xx/originals/second-wheel.jpg) | Second-wheel perimeter and pinion |
+| [Thrid Wheel.JPG](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/32xx/originals/third-wheel.jpg) (original spelling) | Third-wheel perimeter and pinion |
+| [Fourth Wheel (bottom).JPG](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/32xx/originals/fourth-wheel-bottom.jpg) | Fourth-wheel perimeter |
+| [Fourth Wheel (top).JPG](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/32xx/originals/fourth-wheel-top.jpg) | Fourth-wheel pinion |
+| [Escape Wheel.JPG](https://github.com/peterhudson/timegrapher-corpus/blob/main/research/train-wheels/32xx/originals/escape-wheel.jpg) | Escape-wheel perimeter and pinion |
 
 ## Numbered photographs
 
 ### Barrel: 98 teeth
 
-![Barrel perimeter with all 98 teeth numbered](assets/train-wheels/32xx/barrel-98-teeth.png)
+![Barrel perimeter with all 98 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/barrel-98-teeth.png)
 
 ### Second wheel: 80 teeth, 14 pinion leaves
 
-![Second-wheel perimeter with all 80 teeth numbered](assets/train-wheels/32xx/second-wheel-80-teeth.png)
+![Second-wheel perimeter with all 80 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/second-wheel-80-teeth.png)
 
-![Second pinion with all 14 leaves numbered](assets/train-wheels/32xx/second-pinion-14-leaves.png)
+![Second pinion with all 14 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/second-pinion-14-leaves.png)
 
 ### Third wheel: 99 teeth, 12 pinion leaves
 
-![Third-wheel perimeter with all 99 teeth numbered](assets/train-wheels/32xx/third-wheel-99-teeth.png)
+![Third-wheel perimeter with all 99 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/third-wheel-99-teeth.png)
 
-![Third pinion with all 12 leaves numbered](assets/train-wheels/32xx/third-pinion-12-leaves.png)
+![Third pinion with all 12 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/third-pinion-12-leaves.png)
 
 ### Fourth wheel: 120 teeth, 11 pinion leaves
 
-![Fourth-wheel perimeter with all 120 teeth numbered](assets/train-wheels/32xx/fourth-wheel-120-teeth.png)
+![Fourth-wheel perimeter with all 120 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/fourth-wheel-120-teeth.png)
 
-![Fourth pinion with all 11 leaves numbered](assets/train-wheels/32xx/fourth-pinion-11-leaves.png)
+![Fourth pinion with all 11 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/fourth-pinion-11-leaves.png)
 
 ### Escape wheel: 20 teeth, 10 pinion leaves
 
-![Escape-wheel perimeter with all 20 teeth numbered](assets/train-wheels/32xx/escape-wheel-20-teeth.png)
+![Escape-wheel perimeter with all 20 teeth numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/escape-wheel-20-teeth.png)
 
-![Escape pinion with all 10 leaves numbered](assets/train-wheels/32xx/escape-pinion-10-leaves.png)
+![Escape pinion with all 10 leaves numbered](https://raw.githubusercontent.com/peterhudson/timegrapher-corpus/main/research/train-wheels/32xx/escape-pinion-10-leaves.png)
