@@ -485,10 +485,12 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
         let out = out.unwrap();
         let palette = timegrapher_core::palette::palette(dark);
         let colour = |c: timegrapher_core::palette::Rgb| egui::Color32::from_rgb(c.r, c.g, c.b);
-        let line = colour(palette.case_line());
-        let card = colour(palette.card);
-        // The bezel: a circle filled with the card, outlined in the
-        // case's line.
+        let (_, line) = palette.case_over(palette.window);
+        let line = colour(line);
+        let card = colour(palette.window);
+        assert_eq!(card, ctx.style().visuals.panel_fill, "the dial's back");
+        // The bezel: a circle filled with the window, the colour behind
+        // the dial, outlined in the case's line (Hugh on #1772).
         let bezel = out
             .shapes
             .iter()
@@ -531,6 +533,26 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
             .unwrap_or_else(|| panic!("{dark} {size:?}: no {three}"));
         let crown_end = bezel.center.x + poise_case::reach(ring) as f32;
         assert!(name.left() > crown_end, "{name:?} {crown_end}");
+        // The fastest hour's note clear of that hour's name (Hugh on
+        // #1772).
+        let texts: Vec<(String, egui::Rect)> = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some((
+                    t.galley.text().to_string(),
+                    t.galley.rect.translate(t.pos.to_vec2()),
+                )),
+                _ => None,
+            })
+            .collect();
+        let note = texts
+            .iter()
+            .find(|t| t.0.starts_with("Fastest "))
+            .unwrap_or_else(|| panic!("{dark} {size:?}: no note"));
+        let hour = note.0.trim_start_matches("Fastest ");
+        let named = texts.iter().find(|t| t.0 == hour).expect("its hour");
+        assert!(!note.1.intersects(named.1), "{note:?} {named:?}");
         if let Ok(d) = std::env::var("SHOT_DIR") {
             let back = ctx.style().visuals.window_fill;
             let svg = crate::export::svg(&out.shapes, screen, back);

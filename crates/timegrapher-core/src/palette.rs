@@ -156,21 +156,38 @@ impl Palette {
     /// The text colour at opacity `a` laid over the pane, as one opaque
     /// colour: for a shape drawn over another that must hide it.
     pub fn over_card(&self, a: f32) -> Rgb {
+        self.over(self.card, a)
+    }
+
+    /// The text colour at opacity `a` laid over `back`, as one opaque
+    /// colour.
+    pub fn over(&self, back: Rgb, a: f32) -> Rgb {
         let mix = |c: u8, t: u8| (f32::from(c) + (f32::from(t) - f32::from(c)) * a).round() as u8;
         Rgb {
-            r: mix(self.card.r, self.text.r),
-            g: mix(self.card.g, self.text.g),
-            b: mix(self.card.b, self.text.b),
+            r: mix(back.r, self.text.r),
+            g: mix(back.g, self.text.g),
+            b: mix(back.b, self.text.b),
         }
     }
 
-    /// The poise dial's case (#1762): its face and its outline, opaque.
+    /// The poise dial's case (#1762): its face and its outline, opaque,
+    /// over the card (the MCP view's dial).
     pub fn case_face(&self) -> Rgb {
         self.over_card(self.case_face_opacity)
     }
 
     pub fn case_line(&self) -> Rgb {
         self.over_card(self.case_line_opacity)
+    }
+
+    /// The case's face and outline over `back`, the colour actually
+    /// behind the dial (Hugh on #1772: the app's dial is on the window,
+    /// not a card), the same small steps toward the text as over the card.
+    pub fn case_over(&self, back: Rgb) -> (Rgb, Rgb) {
+        (
+            self.over(back, self.case_face_opacity),
+            self.over(back, self.case_line_opacity),
+        )
     }
 }
 
@@ -319,6 +336,13 @@ mod tests {
         for p in [&DARK, &LIGHT] {
             assert!(p.case_face_opacity < p.case_line_opacity);
             assert!(p.case_line_opacity < p.grid_opacity);
+            // Over the window, a step off it toward the text, the outline
+            // nearer the window than the grid's line is.
+            let (face, line) = p.case_over(p.window);
+            let off = |c: Rgb| p.window.r.abs_diff(c.r);
+            assert!(off(face) >= 1 && off(face) < off(line), "{face:?} {line:?}");
+            assert!(off(line) < off(p.separator), "{line:?}");
+            assert_eq!(p.case_over(p.card), (p.case_face(), p.case_line()));
         }
     }
 

@@ -855,7 +855,8 @@ fn case_reach() -> (f32, f32) {
 /// The watch case behind the dial (#1762, Peter's version A), from core's
 /// geometry: the shapes outlined, then filled over with the case's face so
 /// only their union's outline shows, the crown's knurl, then the bezel
-/// filled with the card and outlined.
+/// filled with the window, the colour behind the dial, and outlined
+/// (Hugh on #1772).
 fn dial_case(ui: &egui::Ui, painter: &egui::Painter, dial: &Dial) {
     let pal = theme::pal(ui);
     let (face, line) = theme::case_colours(ui);
@@ -885,7 +886,7 @@ fn dial_case(ui: &egui::Ui, painter: &egui::Painter, dial: &Dial) {
     painter.circle(
         dial.centre,
         case.bezel_r as f32,
-        pal.card,
+        pal.window,
         egui::Stroke::new(width(poise_case::BEZEL_LINE_PX), line),
     );
 }
@@ -1019,20 +1020,31 @@ fn dial_wave(
         [dial.centre, tip],
         egui::Stroke::new(1.2_f32, pal.text_secondary),
     );
-    // Named at the line's outer end, just beyond the wave (Hugh, #1499),
-    // set off the way the line points.
+    // Named inside its point, beside the line, with a leader to the
+    // point, on a plate of the window at 80%: clear of the hour's name
+    // past the ring (Hugh on #1772).
     let out = (tip - dial.centre).normalized();
+    let side = Vec2::new(-out.y, out.x);
     let align = egui::Align2([
-        lean(out.x, egui::Align::Min, egui::Align::Max),
-        lean(out.y, egui::Align::Min, egui::Align::Max),
+        lean(side.x, egui::Align::Min, egui::Align::Max),
+        lean(side.y, egui::Align::Min, egui::Align::Max),
     ]);
     let galley = painter.layout_no_wrap(
-        format!("Fastest {}", poise::hour_code(peak)),
+        poise_picture::fastest_name(peak),
         egui::FontId::proportional(11.0),
         pal.text,
     );
-    let rect = align.anchor_size(tip + out * 8.0, galley.size());
-    painter.rect_filled(rect.expand(BACKING), BACKING, pal.card);
+    let at = tip - out * (DOT_R + galley.size().y) + side * DOT_R * 2.0;
+    let rect = align.anchor_size(at, galley.size());
+    painter.line_segment(
+        [tip - out * DOT_R, rect.expand(BACKING).clamp(tip)],
+        egui::Stroke::new(1.0_f32, pal.text_secondary),
+    );
+    painter.rect_filled(
+        rect.expand(BACKING),
+        BACKING,
+        pal.window.gamma_multiply(0.8),
+    );
     painter.galley(rect.min, galley, pal.text);
 }
 
