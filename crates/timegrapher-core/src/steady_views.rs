@@ -1936,7 +1936,7 @@ mod tests {
                 .map(
                     |&(t_s, amplitude_deg, rate_s_per_day, readings)| walk::WalkPoint {
                         t_s,
-                        wind_h: t_s / 3600.0,
+                        wind_h: Some(t_s / 3600.0),
                         rate_s_per_day,
                         amplitude_deg,
                         readings,
@@ -2115,8 +2115,10 @@ mod tests {
             rate_s_per_day: r,
             rate_q25: r - 0.8,
             rate_q75: r + 1.2,
-            from_wind_h: 0.0,
-            to_wind_h: 1.0,
+            from_h: 0.0,
+            to_h: 1.0,
+            from_wind_h: Some(0.0),
+            to_wind_h: Some(1.0),
         };
         let mut c = IsochronismCurve {
             step_s: 10.0,

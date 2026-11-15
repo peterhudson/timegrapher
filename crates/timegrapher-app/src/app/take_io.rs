@@ -1441,7 +1441,8 @@ impl TimegrapherApp {
             .filter(|m| m[1] > m[0])
             .collect();
         // The positions in the saved sound's own time (the sound leaves
-        // out the pauses the session's clock counts).
+        // out the pauses the session's clock counts), and the wind (#1665).
+        let wind_h = self.entry_wind_h();
         m.recordings = self
             .session
             .take_ranges()
@@ -1449,6 +1450,7 @@ impl TimegrapherApp {
             .map(|(start_s, end_s, code)| RecordingEntry {
                 file: ".".into(),
                 position: Some(code),
+                wind_h,
                 clock: Some("clock.csv".into()),
                 start_s,
                 end_s,
@@ -1460,7 +1462,6 @@ impl TimegrapherApp {
         // A Positions Test's own stretches (after its settling, for its
         // measuring time), so `timegrapher session` reads the seconds its
         // table showed.
-        let wind_h = self.guided.as_ref().and_then(|t| t.wind_h());
         // A Complication Test's stretches say which is Off and which On,
         // so its results come back when the take is opened (#1620).
         let step = |i: usize| {

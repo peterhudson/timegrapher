@@ -25,9 +25,9 @@ pub const WALK_MAX_POINTS: usize = 250;
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct WalkPoint {
     /// The stretch's middle, seconds from the take's start, and hours
-    /// since full wind.
+    /// since full wind, `None` when the wind was not given (#1665).
     pub t_s: f64,
-    pub wind_h: f64,
+    pub wind_h: Option<f64>,
     pub rate_s_per_day: f64,
     pub amplitude_deg: f64,
     /// The rate readings and the amplitude windows each median read
@@ -95,7 +95,7 @@ enum Bin {
 /// reading's rate with its amplitude needs every window of the reading,
 /// and with 82% of windows read that left 37% of readings (#741). `None`
 /// with fewer than two bins.
-pub fn walk(rate: &Grid, amp: &Grid, wind_h: f64) -> Option<IsochronismWalk> {
+pub fn walk(rate: &Grid, amp: &Grid, wind_h: Option<f64>) -> Option<IsochronismWalk> {
     let n = rate.y.len();
     let per_bin = (WALK_BIN_S / rate.step).round().max(1.0) as usize;
     let bin_s = per_bin as f64 * rate.step;
@@ -142,7 +142,7 @@ pub fn walk(rate: &Grid, amp: &Grid, wind_h: f64) -> Option<IsochronismWalk> {
             };
             let mut p = WalkPoint {
                 t_s,
-                wind_h: wind_h + t_s / 3600.0,
+                wind_h: crate::steadiness::hours_since_wind(wind_h, t_s / 3600.0),
                 rate_s_per_day,
                 amplitude_deg,
                 readings: r.len(),
@@ -219,7 +219,11 @@ fn merge(g: &[&WalkPoint]) -> WalkPoint {
     let amp_n = |p: &WalkPoint| p.amp_windows;
     WalkPoint {
         t_s: mean(|p| p.t_s, rate_n),
-        wind_h: mean(|p| p.wind_h, rate_n),
+        // Hours since full wind run with the take's time, so the mean's
+        // is the first's moved on to the mean time.
+        wind_h: g[0]
+            .wind_h
+            .map(|w| w + (mean(|p| p.t_s, rate_n) - g[0].t_s) / 3600.0),
         rate_s_per_day: mean(|p| p.rate_s_per_day, rate_n),
         amplitude_deg: mean(|p| p.amplitude_deg, amp_n),
         readings: g.iter().map(|p| p.readings).sum(),
@@ -256,12 +260,12 @@ mod tests {
     #[test]
     fn a_run_down_walks_down_the_amplitude_in_time_order() {
         let (rate, amp) = run_down(10.0);
-        let w = walk(&rate, &amp, 1.0).unwrap();
+        let w = walk(&rate, &amp, Some(1.0)).unwrap();
         assert_eq!(w.bin_s, 300.0);
         assert_eq!(w.points.len(), 120);
         let p = &w.points[0];
         assert_eq!((p.t_s, p.readings, p.amp_windows), (150.0, 30, 150));
-        assert!((p.wind_h - (1.0 + 150.0 / 3600.0)).abs() < 1e-12);
+        assert!((p.wind_h.unwrap() - (1.0 + 150.0 / 3600.0)).abs() < 1e-12);
         assert!((p.amplitude_deg - (300.0 - 100.0 * 150.0 / 36000.0)).abs() < 1e-9);
         assert!((p.rate_s_per_day - 20.0 * 150.0 / 36000.0).abs() < 1e-9);
         assert!(w.points.windows(2).all(|q| q[1].t_s > q[0].t_s
@@ -287,7 +291,7 @@ mod tests {
         for (bin, share) in [(5, 0.05), (6, 0.3), (7, 0.7)] {
             thin_bin(&mut rate.y, 30, bin, (30.0_f64 * share).round() as usize);
         }
-        let w = walk(&rate, &amp, 0.0).unwrap();
+        let w = walk(&rate, &amp, Some(0.0)).unwrap();
         let got: Vec<(f64, usize, usize, bool)> = w
             .points
             .iter()
@@ -323,7 +327,7 @@ mod tests {
         thin_bin(&mut rate.y, 30, 3, 2);
         thin_bin(&mut amp.y, 150, 4, 15);
         thin_bin(&mut amp.y, 150, 5, 14);
-        let ts: Vec<f64> = walk(&rate, &amp, 0.0)
+        let ts: Vec<f64> = walk(&rate, &amp, Some(0.0))
             .unwrap()
             .points
             .iter()
@@ -346,7 +350,7 @@ mod tests {
             thin_bin(&mut amp.y, 150, bin, 5);
         }
         thin_bin(&mut rate.y, 30, 11, 1);
-        let w = walk(&rate, &amp, 0.0).unwrap();
+        let w = walk(&rate, &amp, Some(0.0)).unwrap();
         assert_eq!(w.points.last().unwrap().t_s, 2250.0);
         assert_eq!(w.rate_only_to_s, Some(3300.0));
         assert_eq!(merged(&w, 4).rate_only_to_s, Some(3300.0));
@@ -354,10 +358,10 @@ mod tests {
         // not past it.
         let (rate, mut amp) = run_down(1.0);
         thin_bin(&mut amp.y, 150, 3, 0);
-        assert_eq!(walk(&rate, &amp, 0.0).unwrap().rate_only_to_s, None);
+        assert_eq!(walk(&rate, &amp, Some(0.0)).unwrap().rate_only_to_s, None);
         // Read to the end, there is nothing past it.
         let (rate, amp) = run_down(1.0);
-        assert_eq!(walk(&rate, &amp, 0.0).unwrap().rate_only_to_s, None);
+        assert_eq!(walk(&rate, &amp, Some(0.0)).unwrap().rate_only_to_s, None);
     }
 
     /// A merged point is thin when any of its bins is, and its weights
@@ -366,7 +370,7 @@ mod tests {
     fn a_merged_point_is_thin_when_any_of_its_bins_is() {
         let (rate, mut amp) = run_down(1.0);
         thin_bin(&mut amp.y, 150, 1, 45);
-        let m = merged(&walk(&rate, &amp, 0.0).unwrap(), 2);
+        let m = merged(&walk(&rate, &amp, Some(0.0)).unwrap(), 2);
         assert!(m.points[0].thin);
         assert!(!m.points[1].thin);
         assert_eq!(
@@ -390,7 +394,7 @@ mod tests {
                 *v = f64::NAN;
             }
         }
-        let w = walk(&rate, &amp, 0.0).unwrap();
+        let w = walk(&rate, &amp, Some(0.0)).unwrap();
         assert_eq!(w.points.len(), 12);
         assert!(w
             .points
@@ -403,7 +407,7 @@ mod tests {
         let (mut rate, mut amp) = run_down(1.0);
         rate.y.extend(vec![0.0; 20]);
         amp.y.extend(vec![200.0; 100]);
-        let w = walk(&rate, &amp, 0.0).unwrap();
+        let w = walk(&rate, &amp, Some(0.0)).unwrap();
         let last = w.points.last().unwrap();
         assert_eq!(
             (w.points.len(), last.t_s, last.readings, last.amp_windows),
@@ -426,7 +430,7 @@ mod tests {
             .extend((0..20).map(|i| if i < 14 { 0.0 } else { f64::NAN }));
         amp.y
             .extend((0..100).map(|i| if i < 70 { 200.0 } else { f64::NAN }));
-        let last = walk(&rate, &amp, 0.0).unwrap().points.pop().unwrap();
+        let last = walk(&rate, &amp, Some(0.0)).unwrap().points.pop().unwrap();
         assert_eq!(
             (
                 last.t_s,
@@ -443,13 +447,13 @@ mod tests {
     #[test]
     fn under_two_bins_is_no_walk() {
         let (rate, amp) = run_down(5.0 / 60.0);
-        assert!(walk(&rate, &amp, 0.0).is_none());
+        assert!(walk(&rate, &amp, Some(0.0)).is_none());
     }
 
     #[test]
     fn merging_keeps_a_long_take_to_250_points_each_series_by_its_own_count() {
         let (rate, amp) = run_down(65.0);
-        let w = walk(&rate, &amp, 0.0).unwrap();
+        let w = walk(&rate, &amp, Some(0.0)).unwrap();
         assert_eq!(w.points.len(), 780);
         assert_eq!(default_merge(&w), 4);
         let m = merged(&w, default_merge(&w));
@@ -470,6 +474,6 @@ mod tests {
         assert!((m.points[0].amplitude_deg - amp).abs() < 1e-12);
         assert_eq!(merged(&w, 1).points, w.points);
         let (rate, amp) = run_down(10.0);
-        assert_eq!(default_merge(&walk(&rate, &amp, 0.0).unwrap()), 1);
+        assert_eq!(default_merge(&walk(&rate, &amp, Some(0.0)).unwrap()), 1);
     }
 }

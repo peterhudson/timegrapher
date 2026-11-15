@@ -321,6 +321,7 @@ fn the_watch_line_menu_offers_no_watch_the_recent_watches_new_and_find() {
             positions: Vec::new(),
             at_end: None,
             power_reserve: None,
+            wind_h: None,
         };
         for e in &mut l.watches {
             match e.watch.name.as_str() {

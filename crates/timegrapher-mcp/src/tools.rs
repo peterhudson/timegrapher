@@ -572,7 +572,8 @@ pub const TOOLS: &[ToolSpec] = &[
                 Arg::Flag("--wind-h"),
                 false,
                 "Hours since the watch was fully wound: 0 for the fully wound half of a \
-                 test, 24 for the run-down half (0 if left out).",
+                 test, 24 for the run-down half. Left out, the wind is not given: its own \
+                 state, never taken as fully wound.",
             ),
             p(
                 "watch",

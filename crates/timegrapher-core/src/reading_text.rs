@@ -110,6 +110,16 @@ pub fn wind_before_take_words(wind_h: Option<f64>) -> String {
     )
 }
 
+/// A saved take's wind on the Position card, to 0.1 h, short enough for
+/// its row: "24.2 h after full wind", or "Wind not given" (Hugh on #1745).
+/// The whole of it, [`wind_before_take_words`], is in the hover.
+pub fn wind_after_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(
+        || capitalised(WIND_NOT_GIVEN),
+        |h| format!("{} h after full wind", crate::figure_text::fixed_text(h, 1)),
+    )
+}
+
 fn capitalised(s: &str) -> String {
     let mut c = s.chars();
     c.next()
@@ -244,6 +254,8 @@ mod tests {
             "Full wind 2.0 h before it began"
         );
         assert_eq!(wind_before_take_words(None), "Wind not given");
+        assert_eq!(wind_after_words(Some(24.24)), "24.2 h after full wind");
+        assert_eq!(wind_after_words(None), "Wind not given");
     }
 
     #[test]

@@ -81,6 +81,7 @@ mod take_io;
 mod take_reads;
 mod test_body;
 mod watches_pane;
+mod wind;
 
 use dock::PaneBehavior;
 use pane_export::PaneExport;
@@ -978,10 +979,8 @@ impl CardRows {
             inner,
             title: band(0.0, theme::TITLE_ROW_H),
             figure: band(theme::TITLE_ROW_H + theme::ROW_GAP, theme::FIGURE_ROW_H),
-            controls: band(
-                theme::TITLE_ROW_H + theme::FIGURE_ROW_H + 2.0 * theme::ROW_GAP,
-                theme::CONTROL_H,
-            ),
+            // At the foot, where a taller card puts it (10 positions).
+            controls: band(inner.height() - theme::CONTROL_H, theme::CONTROL_H),
         }
     }
 }
@@ -1779,6 +1778,8 @@ pub struct TimegrapherApp {
     crash_shown: bool,
     /// Sound kept from earlier sessions, offered back one at a time.
     kept: Vec<KeptSound>,
+    /// When the watch was last fully wound, for a Quick Listen (#1665).
+    wind: wind::Wind,
     /// The kept sound Delete… is asking about.
     kept_delete_ask: Option<PathBuf>,
     /// Which view fills the window. The app always opens on the Bench.
@@ -2513,6 +2514,7 @@ impl TimegrapherApp {
             crash: None,
             crash_shown: false,
             kept: Vec::new(),
+            wind: Default::default(),
             kept_delete_ask: None,
             report: ReportDialog::default(),
             updates: Default::default(),
@@ -2936,15 +2938,6 @@ impl TimegrapherApp {
         }
         if from_file {
             self.load_earlier();
-        }
-    }
-
-    /// Set the next test against the `i`th of the watch's full-wind tests
-    /// on offer.
-    fn pick_full_wind(&mut self, i: usize) {
-        if let Some(f) = self.guided_choices.get(i) {
-            self.guided_earlier = Some(f.clone());
-            self.guided_earlier_file = false;
         }
     }
 

@@ -314,9 +314,11 @@ enum Command {
         #[arg(long, default_value_t = 10.0, value_parser = parse_positive)]
         reading: f64,
         /// Hours since the watch was last fully wound when the take
-        /// started (for the 0 h / 24 h comparison).
-        #[arg(long, default_value_t = 0.0, value_parser = parse_non_negative)]
-        wind_h: f64,
+        /// started (for the 0 h / 24 h comparison). Left out, the wind is
+        /// not given: hours are from the take's start, never taken as
+        /// hours since full wind.
+        #[arg(long, value_parser = parse_non_negative)]
+        wind_h: Option<f64>,
         /// Count the distributions over stretches of this many minutes as
         /// well as over the whole take (0: the whole take only).
         #[arg(long, default_value_t = 60.0, value_parser = parse_non_negative)]

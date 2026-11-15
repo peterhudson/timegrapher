@@ -885,8 +885,10 @@ mod tests {
                     rate_s_per_day: r,
                     rate_q25: r - 0.5,
                     rate_q75: r + 0.5,
-                    from_wind_h: 15.0 - 2.0 * i as f64,
-                    to_wind_h: 16.0 - 2.0 * i as f64,
+                    from_h: 15.0 - 2.0 * i as f64,
+                    to_h: 16.0 - 2.0 * i as f64,
+                    from_wind_h: Some(15.0 - 2.0 * i as f64),
+                    to_wind_h: Some(16.0 - 2.0 * i as f64),
                 }
             })
             .collect();
@@ -989,7 +991,7 @@ mod tests {
         use timegrapher_core::walk::{IsochronismWalk, WalkPoint, WALK_BIN_S};
         let at = |k: usize| WalkPoint {
             t_s: (k as f64 + 0.5) * WALK_BIN_S,
-            wind_h: 0.0,
+            wind_h: Some(0.0),
             rate_s_per_day: 2.0 - 0.3 * k as f64,
             amplitude_deg: 290.0 - 4.0 * k as f64,
             readings: 30,
@@ -1413,7 +1415,7 @@ mod tests {
         let points = (0..360)
             .map(|k| WalkPoint {
                 t_s: (k as f64 + 0.5) * WALK_BIN_S,
-                wind_h: 0.0,
+                wind_h: Some(0.0),
                 rate_s_per_day: 2.0 - 0.01 * k as f64 + 0.3 * (k as f64 / 9.0).sin(),
                 amplitude_deg: 290.0 - 0.2 * k as f64,
                 readings: 30,

@@ -45,6 +45,7 @@ mod sparkline;
 mod steady;
 mod strength;
 mod strip;
+mod take_wind;
 mod tfmap;
 mod theme;
 mod update;

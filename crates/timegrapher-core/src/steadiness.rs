@@ -83,8 +83,10 @@ pub struct Config {
     /// Curves in the output are thinned to about this many points.
     pub max_points: usize,
     /// Hours since the watch was last fully wound when the take started,
-    /// for the wind-down comparison.
-    pub wind_h: f64,
+    /// for the wind-down comparison; `None` when not given, never taken
+    /// as full wind (#1665): hours are then from the take's start
+    /// ([`hours_since_wind`]).
+    pub wind_h: Option<f64>,
     /// Length of the stretches the distributions are also counted over,
     /// seconds; 0 counts the whole take only.
     pub stretch_s: f64,
@@ -107,7 +109,7 @@ impl Default for Config {
             acf_alone: true,
             outlier_sigma: 6.0,
             max_points: 600,
-            wind_h: 0.0,
+            wind_h: None,
             stretch_s: 3600.0,
         }
     }
@@ -502,9 +504,12 @@ pub struct AmplitudeBin {
     pub rate_q25: f64,
     pub rate_q75: f64,
     /// When in the take the bin's readings fall: the first and the last,
-    /// hours since full wind.
-    pub from_wind_h: f64,
-    pub to_wind_h: f64,
+    /// hours from the take's start, and hours since full wind, `None`
+    /// when the wind was not given (#1665).
+    pub from_h: f64,
+    pub to_h: f64,
+    pub from_wind_h: Option<f64>,
+    pub to_wind_h: Option<f64>,
 }
 
 /// The isochronism curve: the rate by amplitude over the take, as the
@@ -535,12 +540,15 @@ pub struct IsochronismCurve {
 /// Rate, amplitude and beat error over one stretch of the take.
 #[derive(Debug, Clone, Serialize)]
 pub struct Stretch {
-    /// Hours since full wind at the stretch's start and end.
     pub beat_error_source: Option<crate::session::BeatErrorSource>,
     pub beat_error_sources: crate::session::BeatErrorSources,
     pub caveats: Vec<crate::measure::Caveat>,
-    pub from_wind_h: f64,
-    pub to_wind_h: f64,
+    /// Hours from the take's start at the stretch's start and end, and
+    /// hours since full wind, `None` when the wind was not given (#1665).
+    pub from_h: f64,
+    pub to_h: f64,
+    pub from_wind_h: Option<f64>,
+    pub to_wind_h: Option<f64>,
     pub readings: usize,
     /// Medians of the readings.
     pub rate_s_per_day: Option<f64>,
@@ -559,7 +567,8 @@ pub struct WindDown {
     pub start: Stretch,
     pub end: Stretch,
     /// Hours between the two stretches' middles, and whether the end
-    /// stretch is the one at 24 h.
+    /// stretch is the one at 24 h after full wind: never when the wind
+    /// was not given.
     pub hours_apart: f64,
     pub at_24h: bool,
     /// End minus start.
@@ -2716,9 +2725,15 @@ pub const ISO_BIN_DEG: f64 = 2.0;
 pub const ISO_MIN_READINGS: usize = 10;
 pub const ISO_MIN_BINS: usize = 3;
 
-/// The 2° bins of `(amplitude, rate, hours from wind)` from `lo` to `hi`
-/// that hold at least [`ISO_MIN_READINGS`] readings.
-fn amplitude_bins(pairs: &[(f64, f64, f64)], lo: f64, hi: f64) -> Vec<AmplitudeBin> {
+/// The 2° bins of `(amplitude, rate, hours from the take's start)` from
+/// `lo` to `hi` that hold at least [`ISO_MIN_READINGS`] readings, each
+/// with its hours since full wind when `wind_h` was given.
+fn amplitude_bins(
+    pairs: &[(f64, f64, f64)],
+    lo: f64,
+    hi: f64,
+    wind_h: Option<f64>,
+) -> Vec<AmplitudeBin> {
     let mut bins: Vec<AmplitudeBin> = Vec::new();
     let first = (lo / ISO_BIN_DEG).floor() as i64;
     let last = (hi / ISO_BIN_DEG).floor() as i64;
@@ -2731,14 +2746,20 @@ fn amplitude_bins(pairs: &[(f64, f64, f64)], lo: f64, hi: f64) -> Vec<AmplitudeB
         let mut r: Vec<f64> = inbin.iter().map(|p| p.1).collect();
         r.sort_by(f64::total_cmp);
         let hours = inbin.iter().map(|p| p.2);
+        let (from_h, to_h) = (
+            hours.clone().fold(f64::INFINITY, f64::min),
+            hours.fold(f64::NEG_INFINITY, f64::max),
+        );
         bins.push(AmplitudeBin {
             amplitude_deg: (a0 + a1) / 2.0,
             readings: inbin.len(),
             rate_s_per_day: quantile(&r, 0.5),
             rate_q25: quantile(&r, 0.25),
             rate_q75: quantile(&r, 0.75),
-            from_wind_h: hours.clone().fold(f64::INFINITY, f64::min),
-            to_wind_h: hours.fold(f64::NEG_INFINITY, f64::max),
+            from_h,
+            to_h,
+            from_wind_h: hours_since_wind(wind_h, from_h),
+            to_wind_h: hours_since_wind(wind_h, to_h),
         });
     }
     bins
@@ -2760,7 +2781,7 @@ fn isochronism_curve(
         .collect();
     let pairs: Vec<(f64, f64, f64)> = kept
         .iter()
-        .map(|&i| (x.y[i], y.y[i], cfg.wind_h + y.time(i) / 3600.0))
+        .map(|&i| (x.y[i], y.y[i], y.time(i) / 3600.0))
         .collect();
     // The slope from every reading, none smoothed, so a short swing of
     // amplitude counts, read off the amplitude's noise (#651).
@@ -2776,7 +2797,7 @@ fn isochronism_curve(
     let mut amps: Vec<f64> = pairs.iter().map(|p| p.0).collect();
     amps.sort_by(f64::total_cmp);
     let (lo, hi) = (quantile(&amps, 0.02), quantile(&amps, 0.98));
-    let bins = amplitude_bins(&pairs, lo, hi);
+    let bins = amplitude_bins(&pairs, lo, hi, cfg.wind_h);
     if bins.len() < ISO_MIN_BINS {
         return None;
     }
@@ -2816,6 +2837,10 @@ fn isochronism_curve(
         headline,
     })
 }
+
+#[path = "steadiness_wind.rs"]
+mod wind;
+pub use wind::{hours_since_wind, hours_words};
 
 #[path = "steadiness_beat_error.rs"]
 mod beat_error;
