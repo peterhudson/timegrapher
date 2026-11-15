@@ -504,6 +504,7 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
         let ring = f64::from(bezel.radius) / poise_case::RING_TO_BEZEL;
         // Every outline of the case whole inside the dial's room.
         case_uncut(&out, line, screen, (dark, size));
+        faces_convex(&out, colour(palette.case_over(palette.window).0));
         // The 3H name past the crown's end.
         let three = timegrapher_core::poise::hour_code(90.0);
         let name = out
@@ -545,6 +546,33 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
             let name = format!("{d}/dial-case-{theme}-{}.svg", size.x);
             std::fs::write(name, svg).unwrap();
         }
+    }
+}
+
+/// Every piece of the case's face, drawn in `face`, convex, as egui fills
+/// only convex shapes (Max on #1772): the lugs filled from core's convex
+/// pieces, not whole.
+fn faces_convex(out: &egui::FullOutput, face: egui::Color32) {
+    let faces: Vec<&Vec<egui::Pos2>> = out
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Path(p) if p.closed && p.fill == face => Some(&p.points),
+            _ => None,
+        })
+        .collect();
+    assert!(!faces.is_empty(), "no face");
+    for f in faces {
+        let n = f.len();
+        let turns: Vec<f32> = (0..n)
+            .map(|i| {
+                let (a, b, c) = (f[i], f[(i + 1) % n], f[(i + 2) % n]);
+                (b - a).x * (c - b).y - (b - a).y * (c - b).x
+            })
+            .filter(|t| t.abs() > 1e-3)
+            .collect();
+        let convex = turns.iter().all(|t| *t > 0.0) || turns.iter().all(|t| *t < 0.0);
+        assert!(convex, "a concave fill: {f:?}");
     }
 }
 

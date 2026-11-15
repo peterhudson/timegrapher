@@ -870,7 +870,9 @@ fn dial_case(ui: &egui::Ui, painter: &egui::Painter, dial: &Dial) {
             egui::Stroke::new(2.0 * width(poise_case::CASE_LINE_PX), line),
         ));
     }
-    for s in &case.shapes {
+    // Filled in core's convex pieces, as egui fills only convex shapes
+    // (Max, #1773): the lugs are concave.
+    for s in &case.convex_parts() {
         painter.add(egui::Shape::convex_polygon(
             outline(s),
             face,
