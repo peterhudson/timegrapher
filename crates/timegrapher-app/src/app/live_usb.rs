@@ -145,6 +145,22 @@ mod tests {
         panic!("the table was never read");
     }
 
+    /// A read whose thread ended with no answer is taken as no lines at its
+    /// length, and isn't started again (Percy on #1803, Trevor on #1804).
+    #[test]
+    fn a_read_that_ends_with_no_answer_finds_no_lines() {
+        let mut u = LiveUsb::new(48_000);
+        let (tx, rx) = std::sync::mpsc::channel();
+        drop(tx);
+        let over_s = usbclock::MIN_DURATION_S;
+        u.job = Some((over_s, rx));
+        u.follow();
+        assert_eq!(u.clock(), LiveClock::NoLines { over_s });
+        assert!(u.job.is_none(), "not started again");
+        u.follow();
+        assert!(u.job.is_none(), "nor on the next frame");
+    }
+
     /// Heard here, the readings are on the clock the take would be read on
     /// saved and opened again (#1721): the card's until the USB lines are
     /// read, the Rate saying so meanwhile, then the lines' (19.3 ppm slow,
