@@ -85,6 +85,7 @@ pub fn page() -> &'static str {
             .replace("/*TIME_MAP*/null", &time_map())
             .replace("/*PERIOD_TICKS*/null", &period_ticks)
             .replace("/*REFERENCE_HOVER*/null", &reference_hover())
+            .replace("/*WHEEL_WORDS*/null", &wheel_words().to_string())
             .replace("/*SCORE_WORDS*/null", &score_words())
             .replace("/*WALK_WORDS*/null", &walk_words())
             .replace(
@@ -97,6 +98,18 @@ pub fn page() -> &'static str {
             .replace("/*GROUP_NAMES*/null", &groups)
             .replace("/*ICONS*/null", &icons)
             .replace("/*MINUS*/null", &minus)
+    })
+}
+
+/// The Wheel Periods and Mesh switches' hints, a name's line height in a
+/// narrow lane and how much more a strong name holds its line there, for
+/// the page's `WHEEL_WORDS` (#1764).
+fn wheel_words() -> Value {
+    json!({
+        "wheels_hint": timegrapher_core::steady_views::WHEELS_HINT,
+        "mesh_hint": timegrapher_core::steady_views::MESH_HINT,
+        "name_line_h": timegrapher_core::chart_scale::NAME_LINE_H,
+        "strong_hold": timegrapher_core::chart_scale::STRONG_HOLD,
     })
 }
 
@@ -976,6 +989,27 @@ mod tests {
         assert_eq!(v["rate"], timegrapher_core::icons::RATE);
         assert_eq!(v["beat_error"], timegrapher_core::icons::BEAT_ERROR);
         assert_eq!(v["info"], timegrapher_core::icons::INFO);
+    }
+
+    /// The Wheel Periods and Mesh switches' hints and a name's line height
+    /// in a narrow lane are core's (#1764).
+    #[test]
+    fn the_page_carries_cores_wheel_words() {
+        assert!(!page().contains("/*WHEEL_WORDS*/"));
+        let at = page().find("const WHEEL_WORDS = ").expect("the words");
+        let line = &page()[at..page()[at..].find('\n').unwrap() + at];
+        let json = line
+            .trim_start_matches("const WHEEL_WORDS = ")
+            .trim_end()
+            .trim_end_matches(';');
+        let v: Value = serde_json::from_str(json).expect("the words as JSON");
+        assert_eq!(
+            v["wheels_hint"],
+            timegrapher_core::steady_views::WHEELS_HINT
+        );
+        assert_eq!(v["mesh_hint"], timegrapher_core::steady_views::MESH_HINT);
+        assert_eq!(v["name_line_h"], timegrapher_core::chart_scale::NAME_LINE_H);
+        assert_eq!(v["strong_hold"], timegrapher_core::chart_scale::STRONG_HOLD);
     }
 
     #[test]

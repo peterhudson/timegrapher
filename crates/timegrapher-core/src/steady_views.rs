@@ -2202,6 +2202,9 @@ pub struct WheelMark {
     pub name: String,
     /// Its name in a narrow lane: "4th Wheel", "4th Wheel ×2", "4th Mesh".
     pub short: String,
+    /// Its name a word to a line, for the narrow lane beside a map (#1764):
+    /// "Fourth / Wheel", "Third / Pinion / Mesh", "Third / Wheel / ×2".
+    pub words: Vec<String>,
     /// Its hover: the name and the period, or a mesh's own words.
     pub hover: String,
 }
@@ -2225,6 +2228,7 @@ pub fn wheel_marks(
             turn: WheelTurn::Wheel,
             name: title.clone(),
             short: short.clone(),
+            words: words(&title),
             hover: format!("{title}: {}", period_words(w.period_s)),
         });
         let half = w.period_s / 2.0;
@@ -2234,6 +2238,7 @@ pub fn wheel_marks(
                 turn: WheelTurn::Twice,
                 name: format!("{title} ×2"),
                 short: format!("{short} ×2"),
+                words: words(&format!("{title} ×2")),
                 hover: format!("{title} ×2: {}", period_words(half)),
             });
         }
@@ -2248,11 +2253,31 @@ pub fn wheel_marks(
             turn: WheelTurn::Mesh,
             name: format!("{title} Mesh"),
             short: mesh_short(&m.name),
+            words: words(&format!("{title} Mesh")),
             hover: format!("{title} Mesh: {}.", m.about),
         });
     }
     out
 }
+
+/// A name a word to a line, for a narrow lane (#1764).
+pub fn words(name: &str) -> Vec<String> {
+    name.split_whitespace().map(str::to_string).collect()
+}
+
+/// The Wheel Periods switch's hint: the wheels' turns and their ×2, or
+/// the reference periods with no wheel named. The meshes have their own
+/// switch ([`MESH_HINT`], #1764).
+pub const WHEELS_HINT: &str = "Mark the period each of the calibre's wheels turns in, in a \
+     grey dotted line named above the plot, and half of it more loosely dotted, where a wheel \
+     that is off centre shows twice a turn. With no calibre picked, or none of its wheels \
+     known, one minute and one hour are marked in grey instead: periods alone, named after no \
+     wheel.";
+
+/// The Mesh switch's hint (#1764).
+pub const MESH_HINT: &str = "Mark each pinion's mesh, where the calibre's tooth and leaf \
+     counts give it, faintly dashed and named under the plot: the time one tooth of the wheel \
+     driving the pinion takes to engage, drive and leave, where amplitude can step.";
 
 /// A period in a hover's words: whole seconds under two minutes, whole
 /// minutes under two hours, then hours to a tenth.
@@ -2352,6 +2377,8 @@ mod wheel_mark_tests {
         );
         assert_eq!(lines[0].hover, "Fourth Wheel: 60 s");
         assert_eq!(lines[3].name, "Fourth Pinion Mesh");
+        assert_eq!(lines[3].words, ["Fourth", "Pinion", "Mesh"]);
+        assert!(lines.iter().all(|l| l.words.join(" ") == l.name));
         assert_eq!(lines[3].hover, "Fourth Pinion Mesh: 7.5 s.");
         // The 3% is a bound: 2.9% apart share a line, 3.1% don't.
         assert!(one_mark(103.0 - 0.1, 100.0) && !one_mark(103.1, 100.0));

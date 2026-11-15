@@ -18,9 +18,9 @@ function constant(name) {
   if (!match) throw new Error(`Missing ${name}`);
   return match[0];
 }
-const context = vm.createContext({ document: { getElementById: () => ({ clientWidth: 624 }) } });
+const context = vm.createContext({ document: { getElementById: () => ({ clientWidth: 624 }) }, WHEEL_WORDS: { strong_hold: 100 } });
 vm.runInContext(["CHAR_W", "DASH", "MARKS", "NAME_CLEAR"].map(constant).join("\n") + "\nlet clipCount = 0;\n" +
-  ["esc", "chartWidth", "plotArea", "gridDown", "gridAcross", "xyChart", "markOrder", "markPlace", "markPlaceRow", "markInside", "markStack", "besideSpots", "crosses", "besidePlace", "roomAbove", "markWidth", "markText", "laneAbove", "namesInside", "sideWidth", "laneRight"]
+  ["esc", "chartWidth", "plotArea", "gridDown", "gridAcross", "xyChart", "markOrder", "markPlace", "markPlaceRow", "markInside", "besideSpots", "crosses", "besidePlace", "roomAbove", "markWidth", "markText", "laneAbove", "namesInside", "laneBelow", "sideWidth", "laneRight", "laneRightAt", "markStackNames"]
     .map(definition).join("\n") + "\nthis.MARKS = MARKS;", context);
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -52,8 +52,22 @@ test("names inside a short plot go where the app's rules put them, or nowhere", 
   }
 });
 
-test("names beside a map go where the app's rules put them", () => {
-  for (const c of cases.stack) close(plain(context.markStack(c.ys, c.top, c.bottom)), c.at, c.case);
+test("names beside a plot keep a clear gap, a word to a line, a strong one on its line (#1764)", () => {
+  context.NAME_LINE_H = 13;
+  const ink = "--callout";
+  const lines = [
+    { y: 60, name: "Fourth Wheel", words: ["Fourth", "Wheel"], rank: "strong", ink },
+    { y: 66, name: "Third Pinion Mesh", words: ["Third", "Pinion", "Mesh"], rank: "faint", ink },
+  ];
+  const svg = context.laneRight(lines, 300, 0, 200);
+  const ys = [...svg.matchAll(/<text x="[\d.]+" y="([\d.]+)"[^>]*>([^<]+)</g)].map((m) => [m[2], Number(m[1])]);
+  assert.deepEqual(ys.map(([w]) => w), ["Fourth", "Wheel", "Third", "Pinion", "Mesh"]);
+  // The wheel's name centred on its line; within a name, one line apart.
+  assert.ok(Math.abs(ys[0][1] - (60 - 13 + 9.5)) < 1, `${ys}`);
+  assert.ok(Math.abs(ys[1][1] - ys[0][1] - 13) < 0.1);
+  // Between two names, more than a line clear: the gap reads as a gap.
+  assert.ok(ys[2][1] - ys[1][1] >= 13 + 12 - 1e-9, `${ys}`);
+  assert.ok(context.sideWidth(lines) < context.sideWidth([{ name: "Third Pinion Mesh", rank: "faint" }]), "the lane as wide as its longest word");
 });
 
 test("a note beside a point tries the places the app's rules try, in order", () => {
@@ -197,4 +211,32 @@ test("a y axis' name sits above its top tick, left of the plot, in the ticks' st
   }
   // With no lane above, the plot keeps a row for it.
   assert.ok(+chart(false).match(/<rect class="plot" x="[\d.]+" y="([\d.]+)"/)[1] >= 14);
+});
+
+test("a mesh is named in a lane under the plot's tick labels, its line run on down to it (#1764)", () => {
+  const mesh = line(7.5, "Fourth Pinion Mesh", "faint", { width: 1, dash: "mesh", below: true });
+  const plain = plot({ names: true });
+  const svg = plot({ names: true, vlines: [line(60, "Fourth Wheel", "strong"), mesh] });
+  const { LANE_GAP, ROW_H } = context.MARKS;
+  // The chart keeps its height; the lane under the plot takes a row of it.
+  const h = (s) => +s.match(/<svg[^>]*height="([\d.]+)"/)[1];
+  assert.equal(h(svg), h(plain));
+  const plotOf = (s) => s.match(/<rect class="plot" x="[\d.]+" y="([\d.]+)" width="[\d.]+" height="([\d.]+)"/).slice(1).map(Number);
+  assert.deepEqual(plotOf(svg), [plotOf(plain)[0], plotOf(plain)[1] - ROW_H - LANE_GAP]);
+  const [top, ph] = plotOf(svg);
+  const outside = svg.split("clip-path")[0];
+  const at = (name) => +outside.match(new RegExp(`<text x="[\\d.]+" y="([\\d.]+)" style="[^"]*">${name}<`))[1];
+  assert.ok(at("Fourth Wheel") < top, "a wheel above");
+  assert.ok(at("Fourth Pinion Mesh") > top + ph + 15, "a mesh under the tick labels");
+  assert.equal((outside.match(/<polyline/g) || []).length, 2, "each name joined to its line");
+});
+
+test("names beside a plot keep their lines' order, a strong one on its line, as core's lane_stack (#1764)", () => {
+  const gap = context.MARKS.NAME_GAP, stack = (n) => plain(context.markStackNames(n, 0, 400));
+  assert.deepEqual(stack([[100, 26, "strong"], [200, 39, "faint"]]), [87, 180.5]);
+  let at = stack([[100, 26, "strong"], [110, 39, "faint"]]);
+  assert.ok(Math.abs(at[1] - (at[0] + 26 + gap)) < 1e-9 && Math.abs(at[0] - 87) < 1, `${at}`);
+  at = stack([[100, 26, "strong"], [95, 39, "faint"]]);
+  assert.ok(at[1] + 39 + gap <= at[0] + 1e-9, `${at}`);
+  assert.equal(stack([[5, 26, "strong"], [8, 39, "faint"]])[0], 0);
 });

@@ -15,8 +15,8 @@ function definition(name) {
 }
 const constant = (name) => html.match(new RegExp(`^const ${name} = [\\s\\S]*?;\\n(?=\\S|\\n)`, "m"))[0];
 const context = vm.createContext({ MINUS, fmtTime: (t) => `${t / 60}:00`, secs: (t) => `${t} s`, spectrumOf: () => null, steadyView: "readings",
-  periodsLog: false, fftTiming: false, mapsLog: false, showWheels: true, showInfo: false });
-vm.runInContext([constant("SERIES"), constant("STEADY_VIEWS"), constant("INFO_HINT"), constant("WHEELS_HINT"),
+  periodsLog: false, fftTiming: false, mapsLog: false, showWheels: true, showMesh: true, showInfo: false });
+vm.runInContext([constant("SERIES"), constant("STEADY_VIEWS"), constant("INFO_HINT"), constant("WHEEL_WORDS"), constant("WHEELS_HINT"),
   constant("SWITCH_DEFAULTS"), constant("viewSwitches"),
   ...["esc", "fixedDigits", "num", "signed", "pText", "steadySwitch", "switchView", "steadinessCard"].map(definition)].join("\n"), context);
 
@@ -59,9 +59,9 @@ test("the Long Recording view says what limits its readings, as the analyze and 
 
 test("a series' own caveat shows once, on that series, in the server's words", () => {
   const c = vm.createContext({ MINUS, fmtTime: (t) => `${t / 60}:00`, secs: (t) => `${t} s`, spectrumOf: () => null, steadyView: "readings",
-    periodsLog: false, fftTiming: false, mapsLog: false, showWheels: true, showInfo: false, steadyPlot: () => "<svg/>",
+    periodsLog: false, fftTiming: false, mapsLog: false, showWheels: true, showMesh: true, showInfo: false, steadyPlot: () => "<svg/>",
     distributionCards: () => "", walkCard: () => "", fileName: () => "a.wav", timeLabel: String });
-  vm.runInContext([constant("SERIES"), constant("STEADY_VIEWS"), constant("INFO_HINT"), constant("WHEELS_HINT"),
+  vm.runInContext([constant("SERIES"), constant("STEADY_VIEWS"), constant("INFO_HINT"), constant("WHEEL_WORDS"), constant("WHEELS_HINT"),
     constant("SWITCH_DEFAULTS"), constant("viewSwitches"),
     ...["esc", "fixedDigits", "num", "signed", "pText", "steadySwitch", "switchView", "steadinessCard", "limitsCard", "seriesView"].map(definition)].join("\n"), c);
   // The sentence core's PeriodMayBeNoise gives; the view draws it as sent.
