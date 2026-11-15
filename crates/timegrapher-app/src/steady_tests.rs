@@ -1384,7 +1384,7 @@ fn a_wheels_twice_and_a_reference_are_fainter_call_outs() {
         x: 1.0,
         turn,
         name: String::new(),
-        short: String::new(),
+        side: String::new(),
         hover: String::new(),
     };
     assert_eq!(line(Turn::Wheel).width(), crate::strength::CALL_OUT_W);
@@ -1418,19 +1418,20 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
     let marks = Marks {
         wheels: &wheels,
         meshes: &meshes,
+        wheels_on: true,
     };
     let lines = wheel_lines(Some(marks), (0.0, 5.0));
     let got: Vec<(&str, &str, bool)> = lines
         .iter()
-        .map(|l| (l.name.as_str(), l.short.as_str(), l.turn == Turn::Mesh))
+        .map(|l| (l.name.as_str(), l.side.as_str(), l.turn == Turn::Mesh))
         .collect();
     assert_eq!(
         got,
         [
-            ("Fourth Wheel", "4th Wheel", false),
-            ("Fourth Wheel ×2", "4th Wheel ×2", false),
-            ("Fourth Pinion Mesh", "4th Mesh", true),
-            ("Third Pinion Mesh", "3rd Mesh", true),
+            ("Fourth Wheel", "Fourth\nWheel", false),
+            ("Fourth Wheel ×2", "Fourth\nWheel\n×2", false),
+            ("Fourth Pinion Mesh", "Fourth\nPinion\nMesh", true),
+            ("Third Pinion Mesh", "Third\nPinion\nMesh", true),
         ]
     );
     let line = &lines[2];
@@ -1443,6 +1444,27 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
         "Centre Mesh"
     );
     assert!(wheel_lines(None, (0.0, 5.0)).is_empty());
+    // Each switch alone (#1764): Mesh off leaves the wheels; Wheel
+    // Periods off leaves the meshes, with no reference periods in place
+    // of the wheels, and the centre pinion's, left to the ×2 at 30 s
+    // while that is marked, marked itself.
+    let turns = |m: Marks<'_>| -> Vec<bool> {
+        wheel_lines(Some(m), (0.0, 5.0))
+            .iter()
+            .map(|l| l.turn == Turn::Mesh)
+            .collect()
+    };
+    let no_meshes = Marks {
+        meshes: &[],
+        ..marks
+    };
+    assert_eq!(turns(no_meshes), [false, false]);
+    let no_wheels = Marks {
+        wheels: &[],
+        wheels_on: false,
+        ..marks
+    };
+    assert_eq!(turns(no_wheels), [true, true, true]);
 }
 
 /// A trend or a split of levels the headline leaves out says why, in

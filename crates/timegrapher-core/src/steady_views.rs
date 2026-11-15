@@ -2278,6 +2278,13 @@ pub fn title_case(name: &str) -> String {
         .join(" ")
 }
 
+/// A name broken at every word, one word to a line, for the narrow lane
+/// beside a map: "Third Pinion Mesh" as "Third\nPinion\nMesh", so the
+/// lane is only as wide as its longest word (Peter on #1764).
+pub fn word_lines(name: &str) -> String {
+    name.split_whitespace().collect::<Vec<_>>().join("\n")
+}
+
 /// A wheel's short name, for the narrow lane beside a map: "fourth wheel"
 /// as "4th Wheel". A name with no short form is shown whole.
 pub fn wheel_short(name: &str) -> String {
@@ -2366,5 +2373,7 @@ mod wheel_mark_tests {
         assert_eq!(mesh_short("third pinion"), "3rd Mesh");
         assert_eq!(mesh_short("odd arbor"), "Odd Arbor Mesh");
         assert_eq!(period_words(7200.0), "2.0 h");
+        assert_eq!(word_lines("Third Wheel ×2"), "Third\nWheel\n×2");
+        assert_eq!(word_lines("Barrel"), "Barrel");
     }
 }

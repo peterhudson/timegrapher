@@ -39,6 +39,11 @@
     { "case": "a third touching the pair joins its run", "ys": [98, 104, 119], "top": 0, "bottom": 300, "at": [92, 107, 122] },
     { "case": "at the bottom edge the run rises to stay inside", "ys": [298, 296], "top": 0, "bottom": 300, "at": [292.5, 277.5] }
   ],
+  "stack_spaced": [
+    { "case": "names of several lines, apart: each level with its line", "ys": [100, 40], "hs": [28, 14], "gap": 11, "top": 0, "bottom": 300, "at": [100, 40] },
+    { "case": "two names that would come within the gap: a full gap apart, about their middle", "ys": [100, 120], "hs": [28, 28], "gap": 11, "top": 0, "bottom": 300, "at": [90.5, 129.5] },
+    { "case": "at the bottom edge the run rises to stay inside", "ys": [290, 295], "hs": [14, 28], "gap": 11, "top": 0, "bottom": 300, "at": [254, 286] }
+  ],
   "beside_spots": [
     { "case": "above right first, then round the point, then a row up at a time to the plot's top", "dot": [100, 100], "size": [40, 15], "top": 0, "spots": [[108, 77, 148, 92], [52, 77, 92, 92], [108, 108, 148, 123], [52, 108, 92, 123], [108, 62, 148, 77], [52, 62, 92, 77], [108, 47, 148, 62], [52, 47, 92, 62], [108, 32, 148, 47], [52, 32, 92, 47], [108, 17, 148, 32], [52, 17, 92, 32], [108, 2, 148, 17], [52, 2, 92, 17]] },
     { "case": "near the plot's top, no rows up", "dot": [100, 30], "size": [60, 15], "top": 0, "spots": [[108, 7, 168, 22], [32, 7, 92, 22], [108, 38, 168, 53], [32, 38, 92, 53]] }

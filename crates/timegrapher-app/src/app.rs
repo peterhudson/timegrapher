@@ -2088,8 +2088,8 @@ pub struct TimegrapherApp {
     fft_timing: bool,
     /// Each STFT and Wavelet Map pane's colours in dB.
     maps_db: steady::PerPane,
-    /// The calibre's wheels marked on each pane's period axes.
-    show_wheels: steady::PerPane,
+    /// The calibre's wheels and meshes marked on each pane's period axes.
+    show_marks: steady::MarkSwitches,
     /// Each Steadiness pane's Info panel open.
     steady_info: steady::PerPane,
     scope_view: scope::View,
@@ -2316,8 +2316,7 @@ impl TimegrapherApp {
             fft_timing: self.fft_timing,
             maps_db: self.maps_db.unset,
             maps_db_set: self.maps_db.saved(),
-            show_wheels: self.show_wheels.unset,
-            show_wheels_set: self.show_wheels.saved(),
+            marks: self.show_marks.saved(),
             steady_info: self.steady_info.unset,
             steady_info_set: self.steady_info.saved(),
             positions_settle_s: self.guided_settle_s,
@@ -2378,8 +2377,7 @@ impl TimegrapherApp {
             fft_timing,
             maps_db,
             maps_db_set,
-            show_wheels,
-            show_wheels_set,
+            marks,
             steady_info,
             steady_info_set,
             positions_settle_s,
@@ -2446,7 +2444,7 @@ impl TimegrapherApp {
         self.theme = theme;
         (self.periods_db, self.fft_timing) = (periods_db, fft_timing);
         self.maps_db = steady::PerPane::new(maps_db_set, maps_db);
-        self.show_wheels = steady::PerPane::new(show_wheels_set, show_wheels);
+        self.show_marks = steady::MarkSwitches::new(marks);
         self.steady_info = steady::PerPane::new(steady_info_set, steady_info);
         self.set_positions_times(positions_settle_s, positions_measure_s);
         self.steady_series = steady_series_from(steady_shown, steady_series);
@@ -2633,7 +2631,7 @@ impl TimegrapherApp {
             periods_db: false,
             fft_timing: false,
             maps_db: steady::PerPane::new(Vec::new(), false),
-            show_wheels: steady::PerPane::new(Vec::new(), true),
+            show_marks: steady::MarkSwitches::new(Default::default()),
             steady_info: steady::PerPane::new(Vec::new(), false),
             scope_view: scope::View::default(),
             scope_audio: None,

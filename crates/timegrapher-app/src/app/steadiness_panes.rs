@@ -78,7 +78,8 @@ impl TimegrapherApp {
             view,
             steady::View::Periods | steady::View::Fft | steady::View::Stft | steady::View::Wavelet
         ) {
-            let mut wheels = self.show_wheels.on(view);
+            let marks = &mut self.show_marks;
+            let mut wheels = marks.wheels.on(view);
             theme::tool_switch(
                 ui,
                 Icon::Wheel,
@@ -87,7 +88,18 @@ impl TimegrapherApp {
                 &mut wheels,
                 steady::WHEELS_HINT,
             );
-            self.show_wheels.set(view, wheels);
+            marks.wheels.set(view, wheels);
+            // The meshes, a switch of their own (#1764).
+            let mut meshes = marks.meshes.on(view);
+            theme::tool_switch(
+                ui,
+                Icon::Mesh,
+                accent,
+                "Mesh",
+                &mut meshes,
+                steady::MESH_HINT,
+            );
+            marks.meshes.set(view, meshes);
         }
     }
 
@@ -279,7 +291,8 @@ impl TimegrapherApp {
             periods_db: self.periods_db,
             fft_timing: self.fft_timing,
             maps_db: self.maps_db.on(view),
-            wheels: self.show_wheels.on(view),
+            wheels: self.show_marks.wheels.on(view),
+            meshes: self.show_marks.meshes.on(view),
             info: self.steady_info.on(view),
             take_span: self.take_span().filter(|_| !joined),
             joined_in: joined.then(|| self.position.code()),

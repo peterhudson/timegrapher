@@ -194,7 +194,7 @@ pub fn draw(
         .into_iter()
         .filter(|l| l.turn != Turn::Twice)
         .collect();
-    let named: Vec<(String, Rank)> = lines.iter().map(|l| (l.short.clone(), l.rank())).collect();
+    let named: Vec<(String, Rank)> = lines.iter().map(|l| (l.side.clone(), l.rank())).collect();
     let side = marks::side_width(ui, &named);
     let plot_w = (ui.available_width() - side).max(80.0);
     let x_hi = upto_s.max(left + width);
@@ -235,7 +235,7 @@ pub fn draw(
         .iter()
         .map(|l| marks::Across {
             y: t.position_from_point_y(l.x),
-            name: l.short.clone(),
+            name: l.side.clone(),
             rank: l.rank(),
             ink: l.ink(pal),
             hover: l.hover.clone(),
