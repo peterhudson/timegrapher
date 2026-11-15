@@ -125,7 +125,10 @@ half of it (`twice`) unless another wheel turns within 3% of that, and
 each mesh (`mesh`) where no wheel or ×2 already marks a period within
 3%, each with its `name`, `short` name and `hover`, from core's
 `steady_views::wheel_marks`. Every period is listed; a chart keeps those
-inside its axis.
+inside its axis. `input.settings.mesh_marks` lists the same for the
+meshes alone, none left out for a wheel (`steady_views::mesh_marks`):
+what a chart marks with its wheels hidden, when a mesh beside a wheel is
+named in its own right (#1764).
 
 ## Calibrating the sound card
 

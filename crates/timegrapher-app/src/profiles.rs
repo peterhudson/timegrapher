@@ -332,7 +332,7 @@ fn lanes(ui: &egui::Ui, k: usize, opt: Options, axis: bool) -> (bool, f32, f32) 
     // below it, then the time axis: none of them inside the plot.
     // Each lane as many rows as its names took last frame, so the plot
     // keeps what a second row isn't using.
-    let rows = |up: bool| lane_rows(ui, k, up) as f32 * ROW_H;
+    let rows = |up: bool| marks::lane_h(lane_rows(ui, k, up));
     let axis_h = if axis { AXIS_H + 2.0 } else { 0.0 };
     let top_lane = if opt.edges { rows(true) } else { ROW_H } + LANE_GAP;
     let bottom_lane = if opt.sounds {
@@ -652,8 +652,7 @@ const AXIS_H: f32 = 16.0;
 /// How many rows of names a side's lane took last frame (`up` for the
 /// edges' above the plot): one, or two where names crowded.
 fn lane_rows(ui: &egui::Ui, side: usize, up: bool) -> u8 {
-    let rows = marks::rows_were(ui, lane_id(ui, side, up));
-    1 + rows.into_iter().max().unwrap_or(0).min(1)
+    marks::rows_taken(ui, lane_id(ui, side, up))
 }
 
 /// Where a lane keeps the rows its names took, for the next frame.
@@ -931,7 +930,7 @@ impl Marker<'_> {
         for (((x, label, v), g), (left, row)) in marks.iter().zip(galleys).zip(&placed) {
             let x = *x;
             let w = g.size().x;
-            let row_off = LANE_GAP + *row as f32 * ROW_H;
+            let row_off = marks::row_off(*row);
             let (name_y, end_y) = if up {
                 (frame.top() - row_off - ROW_H, frame.top() - row_off - 1.0)
             } else {

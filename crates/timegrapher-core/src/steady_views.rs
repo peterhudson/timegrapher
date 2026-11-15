@@ -2264,6 +2264,40 @@ pub fn wheel_marks(
     out
 }
 
+/// The lines to mark with each switch on or off (#1764): Wheel Periods
+/// shows the wheels and ×2s, Mesh the meshes. A mesh within
+/// [`ONE_MARK_REL`] of a wheel or ×2 is left out only while that line
+/// shows; with Wheel Periods off each mesh is marked with its own name
+/// (Hugh's ruling on #1764). The app draws these, and the MCP view the
+/// same from `wheel_marks` and [`mesh_marks`].
+pub fn shown_marks(
+    wheels: &[crate::periodicity::Wheel],
+    meshes: &[crate::train::MeshLine],
+    wheels_on: bool,
+    meshes_on: bool,
+) -> Vec<WheelMark> {
+    let all = if wheels_on {
+        wheel_marks(wheels, meshes)
+    } else {
+        mesh_marks(meshes)
+    };
+    all.into_iter()
+        .filter(|m| {
+            if m.turn == WheelTurn::Mesh {
+                meshes_on
+            } else {
+                wheels_on
+            }
+        })
+        .collect()
+}
+
+/// Every mesh's line, none left out for a wheel: what Mesh shows with
+/// Wheel Periods off ([`shown_marks`]).
+pub fn mesh_marks(meshes: &[crate::train::MeshLine]) -> Vec<WheelMark> {
+    wheel_marks(&[], meshes)
+}
+
 /// A name a word to a line, for a narrow lane (#1764), a part in
 /// brackets kept whole: "Escape / Wheel / (20 Teeth)" (Hugh).
 pub fn words(name: &str) -> Vec<String> {
@@ -2404,6 +2438,40 @@ mod wheel_mark_tests {
         assert_eq!(lines[3].hover, "Fourth Pinion Mesh: 7.5 s.");
         // The 3% is a bound: 2.9% apart share a line, 3.1% don't.
         assert!(one_mark(103.0 - 0.1, 100.0) && !one_mark(103.1, 100.0));
+    }
+
+    /// A mesh by a wheel shows only with that wheel's line hidden; each
+    /// switch shows only its own lines (Hugh's ruling on #1764).
+    #[test]
+    fn each_switch_shows_its_own_lines() {
+        let wheels = [wheel("fourth wheel", 60.0), wheel("escape wheel", 30.6)];
+        let meshes = [mesh("fourth pinion", 7.5), mesh("escape pinion", 30.0)];
+        let names = |w: bool, m: bool| -> Vec<String> {
+            shown_marks(&wheels, &meshes, w, m)
+                .into_iter()
+                .map(|l| l.name)
+                .collect()
+        };
+        assert_eq!(
+            names(true, true),
+            [
+                "Fourth Wheel",
+                "Escape Wheel",
+                "Escape Wheel ×2",
+                "Fourth Pinion Mesh"
+            ]
+        );
+        assert_eq!(
+            names(true, false),
+            ["Fourth Wheel", "Escape Wheel", "Escape Wheel ×2"]
+        );
+        // The escape pinion's mesh, 2% from the escape wheel, comes back.
+        assert_eq!(
+            names(false, true),
+            ["Fourth Pinion Mesh", "Escape Pinion Mesh"]
+        );
+        assert!(names(false, false).is_empty());
+        assert_eq!(shown_marks(&[], &meshes, false, true), mesh_marks(&meshes));
     }
 
     #[test]

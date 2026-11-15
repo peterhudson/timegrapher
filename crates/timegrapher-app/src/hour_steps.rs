@@ -119,7 +119,13 @@ fn shared_gutter(ui: &egui::Ui, charts: &[&Chart]) -> f32 {
 /// A tick's label: bare, a rate's signed so fast or slow reads at a
 /// glance (Hugh on #1761), a minus a true one.
 fn tick_text(c: &Chart, v: f64, step: f64) -> String {
-    let text = if c.signed {
+    tick_label(c.signed, v, step)
+}
+
+/// A value tick's label: bare, `signed` for a rate, a minus a true one;
+/// the Positions Test's charts write theirs the same.
+pub(crate) fn tick_label(signed: bool, v: f64, step: f64) -> String {
+    let text = if signed {
         signed_text(v, axis_decimals(step))
     } else {
         axis_number(v, step)
@@ -128,10 +134,15 @@ fn tick_text(c: &Chart, v: f64, step: f64) -> String {
 }
 
 /// A chart's value marks: core's axis's own step, or a rounder step above
-/// it where that crowds the plot, labels at least
-/// 24 points apart, down to 21 on a short plot: egui_plot names no mark
-/// closer than 20.
-fn value_marks(g: egui_plot::GridInput, axis: Option<[f64; 3]>) -> Vec<egui_plot::GridMark> {
+/// it where that crowds the plot, labels at least the first of `px`
+/// points apart, else the next: an hour chart's 24 down to 21 on a short
+/// plot (egui_plot names no mark closer than 20), a position line's
+/// along its bottom wider, for its longer labels.
+pub(crate) fn value_marks(
+    g: egui_plot::GridInput,
+    axis: Option<[f64; 3]>,
+    px: &[f64],
+) -> Vec<egui_plot::GridMark> {
     let Some([_, _, step]) = axis else {
         return theme::short_y_grid(g);
     };
@@ -151,11 +162,10 @@ fn value_marks(g: egui_plot::GridInput, axis: Option<[f64; 3]>) -> Vec<egui_plot
         };
         theme::even_grid(again, px, &ladder)
     };
-    [24.0, 21.0]
-        .into_iter()
-        .map(at)
+    px.iter()
+        .map(|&p| at(p))
         .find(|m| m.len() >= 2)
-        .unwrap_or_else(|| at(24.0))
+        .unwrap_or_else(|| at(px[0]))
 }
 
 /// The marks of an axis from `lo` to `hi` at each `step`.
@@ -245,7 +255,7 @@ fn one(
     let pal = theme::pal(ui);
     let colour = series_colour(c.kind, pal);
     let axis = c.axis;
-    let grid = Grid::new(hour_marks, move |g| value_marks(g, axis));
+    let grid = Grid::new(hour_marks, move |g| value_marks(g, axis, &[24.0, 21.0]));
     // Zero across where it lies inside the axis (Hugh on #1761).
     let grid = match c.axis {
         Some([lo, hi, _]) if (lo..=hi).contains(&0.0) => grid.zero_y(),

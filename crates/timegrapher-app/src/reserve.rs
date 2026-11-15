@@ -475,8 +475,8 @@ fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool, sho
 }
 
 /// The least width the charts take beside the table, points (#1729):
-/// narrower than this, they go above it.
-const CHARTS_MIN_W: f32 = 320.0;
+/// narrower than this, they go above it. The Positions Test's the same.
+pub(crate) const CHARTS_MIN_W: f32 = 320.0;
 
 /// The hours' table in `rect`, scrolling, its titles pinned, the row
 /// `hover` outlined. Gives the row under the pointer.

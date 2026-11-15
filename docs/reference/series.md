@@ -478,7 +478,9 @@ take's start, always given. Everything else is as in version 1.
 ([long-runs.md](long-runs.md)): `named_wheels`, `named_meshes`,
 `reference_lines`, and `wheel_marks`, the lines a period chart marks for
 them as core picks them (`period_s`; `turn`: `wheel`, `twice` or `mesh`;
-`name`; `short`; `hover`; #1694). These marks are not the `wheel_lines[]`
+`name`; `short`; `hover`; #1694), and `mesh_marks`, the meshes alone
+in the same shape, none left out for a wheel, for a chart with its
+wheels hidden (#1764). These marks are not the `wheel_lines[]`
 below, which measure each wheel's line size.
 
 | Field | Contents |

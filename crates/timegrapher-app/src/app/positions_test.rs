@@ -296,6 +296,12 @@ impl TimegrapherApp {
         self.positions_wind(ui, running);
         theme::bar_gap(ui);
         self.positions_lengths(ui, running, "Each Position");
+        // Each chart on or off, the others sharing the height (#1729),
+        // once there is something to chart.
+        if self.positions_measured(ui.ctx()) {
+            theme::bar_gap(ui);
+            crate::steady::series_switches(ui, &mut self.positions_series);
+        }
         self.positions_results(ui);
     }
 
@@ -423,14 +429,18 @@ impl TimegrapherApp {
     /// Save Results for 24 Hours…. The first three write the table the
     /// pane shows: the test's, an opened 24 hour half's saved results
     /// (#1706), or an opened take's This Take (#1660).
+    /// Whether the pane has figures: the test's so far, kept or saved.
+    fn positions_measured(&self, ctx: &egui::Context) -> bool {
+        match self.positions_test() {
+            Some(t) => !t.readings_so_far().is_empty(),
+            None => self.positions_kept(ctx).is_some() || self.positions_saved().is_some(),
+        }
+    }
+
     fn positions_results(&mut self, ui: &mut egui::Ui) {
         let kept = self.positions_kept(ui.ctx());
         let saved = self.positions_saved().cloned();
-        let nothing = match self.positions_test() {
-            Some(t) => t.readings_so_far().is_empty(),
-            None => kept.is_none() && saved.is_none(),
-        }
-        .then_some("Nothing measured yet");
+        let nothing = (!self.positions_measured(ui.ctx())).then_some("Nothing measured yet");
         theme::bar_gap(ui);
         let about = self.guided_about();
         let text = |t: Option<&guided::Test>, sep: char| match (t, &saved, &kept) {
@@ -633,7 +643,11 @@ impl TimegrapherApp {
             self.guided_settle_s,
             self.open_watch().is_some(),
             note.as_deref(),
-            (self.position_card_title, self.positions_info),
+            (
+                self.position_card_title,
+                self.positions_info,
+                self.positions_series,
+            ),
         );
         let Some(action) = action else { return };
         if action == guided::Action::ClearEarlier {

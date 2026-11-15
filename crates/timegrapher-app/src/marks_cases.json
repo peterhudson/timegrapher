@@ -33,12 +33,6 @@
     { "case": "a faint name that would crowd a strong one is the one unnamed", "names": [[200, 60, "faint"], [240, 60, "strong"]], "left": 0, "right": 1000, "facts": null, "trace": [], "at": [null, 210] },
     { "case": "apart, both named", "names": [[100, 60, "faint"], [240, 60, "strong"]], "left": 0, "right": 1000, "facts": null, "trace": [], "at": [70, 210] }
   ],
-  "stack": [
-    { "case": "apart: each level with its line", "ys": [100, 40], "top": 0, "bottom": 300, "at": [100, 40] },
-    { "case": "two lines 5 pt apart: a row apart, about their middle", "ys": [100, 105], "top": 0, "bottom": 300, "at": [95, 110] },
-    { "case": "a third touching the pair joins its run", "ys": [98, 104, 119], "top": 0, "bottom": 300, "at": [92, 107, 122] },
-    { "case": "at the bottom edge the run rises to stay inside", "ys": [298, 296], "top": 0, "bottom": 300, "at": [292.5, 277.5] }
-  ],
   "beside_spots": [
     { "case": "above right first, then round the point, then a row up at a time to the plot's top", "dot": [100, 100], "size": [40, 15], "top": 0, "spots": [[108, 77, 148, 92], [52, 77, 92, 92], [108, 108, 148, 123], [52, 108, 92, 123], [108, 62, 148, 77], [52, 62, 92, 77], [108, 47, 148, 62], [52, 47, 92, 62], [108, 32, 148, 47], [52, 32, 92, 47], [108, 17, 148, 32], [52, 17, 92, 32], [108, 2, 148, 17], [52, 2, 92, 17]] },
     { "case": "near the plot's top, no rows up", "dot": [100, 30], "size": [60, 15], "top": 0, "spots": [[108, 7, 168, 22], [32, 7, 92, 22], [108, 38, 168, 53], [32, 38, 92, 53]] }

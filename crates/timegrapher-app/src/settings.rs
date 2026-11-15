@@ -14,6 +14,33 @@ use serde::{Deserialize, Serialize};
 /// Where the settings sit in eframe's storage.
 const KEY: &str = "timegrapher-settings";
 
+/// The period marks' switches as the settings keep them (#1764).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MarkSettings {
+    /// The calibre's wheels marked on the panes' period axes, for a pane
+    /// not switched yet.
+    pub show_wheels: bool,
+    /// Each pane's own Wheel Periods.
+    pub show_wheels_set: Vec<(steady::View, bool)>,
+    /// The calibre's meshes marked, for a pane not switched yet: on, as
+    /// they were before Mesh had a switch of its own.
+    pub show_meshes: bool,
+    /// Each pane's own Mesh.
+    pub show_meshes_set: Vec<(steady::View, bool)>,
+}
+
+impl Default for MarkSettings {
+    fn default() -> Self {
+        Self {
+            show_wheels: true,
+            show_wheels_set: Vec::new(),
+            show_meshes: true,
+            show_meshes_set: Vec::new(),
+        }
+    }
+}
+
 /// A pane of several plots shows Rate alone until its switches are
 /// changed: rate, amplitude, beat error.
 pub const RATE_ONLY: [bool; 3] = [true, false, false];
@@ -38,6 +65,8 @@ pub struct Settings {
     /// The charts the Power Reserve pane draws (#1729): all three until
     /// one is turned off.
     pub reserve_series: [bool; 3],
+    /// The Positions Test pane's charts (#1729), the same.
+    pub positions_series: [bool; 3],
     pub hist_cumulative: bool,
     /// The Power Reserve and Positions Test panes' Info panels open.
     pub reserve_info: bool,
@@ -65,11 +94,10 @@ pub struct Settings {
     pub maps_db: bool,
     /// Each map pane's own dB Scale.
     pub maps_db_set: Vec<(steady::View, bool)>,
-    /// The calibre's wheels marked on the Periods, FFT, STFT Map and
-    /// Wavelet Map panes' period axes, for a pane not switched yet.
-    pub show_wheels: bool,
-    /// Each of those panes' own Wheel Periods.
-    pub show_wheels_set: Vec<(steady::View, bool)>,
+    /// The Periods, FFT, STFT Map and Wavelet Map panes' Wheel Periods
+    /// and Mesh switches, kept beside the other settings as before.
+    #[serde(flatten)]
+    pub marks: MarkSettings,
     /// The Steadiness panes' Info panel open, for a pane not switched yet.
     pub steady_info: bool,
     /// Each Steadiness pane's own Info panel.
@@ -172,6 +200,7 @@ impl Default for Settings {
             chart_series: RATE_ONLY,
             dist_series: RATE_ONLY,
             reserve_series: [true; 3],
+            positions_series: [true; 3],
             hist_cumulative: false,
             reserve_info: false,
             positions_info: false,
@@ -186,8 +215,7 @@ impl Default for Settings {
             fft_timing: false,
             maps_db: false,
             maps_db_set: Vec::new(),
-            show_wheels: true,
-            show_wheels_set: Vec::new(),
+            marks: MarkSettings::default(),
             steady_info: false,
             steady_info_set: Vec::new(),
             positions_settle_s: crate::guided::SETTLE_S,

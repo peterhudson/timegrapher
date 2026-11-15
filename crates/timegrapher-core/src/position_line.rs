@@ -15,7 +15,10 @@
 use serde::Serialize;
 
 use crate::chart_scale;
-use crate::session::{group_mean, PositionGroup, PositionValue, StateIndices};
+use crate::session::{
+    group_mean, sourced_indices_over, Position, PositionGroup, PositionValue, SourcedFigures,
+    StateIndices,
+};
 use crate::steadiness::SeriesKind;
 
 /// The key's words for a comparison: this test's dots are solid, the
@@ -49,6 +52,10 @@ pub struct Lane {
     /// "Crown Up (CU, 3H) +10.2 s/d", and the full-wind figure after it
     /// where there is one.
     pub hover: String,
+    /// The hover without the name, as a chart beside the first writes
+    /// it: "328° (Full wind test 302°)" (Hugh on #1785), or "–" where
+    /// this test has no figure.
+    pub figures: String,
 }
 
 /// Which of the three averages a line is.
@@ -181,13 +188,18 @@ pub fn position_line_over(
             let name = v.position.display_label();
             let text = value.map(|x| screen(kind, x));
             let full_wind_text = earlier.map(|e| screen(kind, e));
-            let mut hover = match &text {
-                Some(t) => format!("{name} {t}"),
-                None => name.clone(),
+            let full = full_wind_text
+                .as_ref()
+                .map(|e| format!(" ({FULL_WIND_TEST} {e})"))
+                .unwrap_or_default();
+            let hover = match &text {
+                Some(t) => format!("{name} {t}{full}"),
+                None => format!("{name}{full}"),
             };
-            if let Some(e) = &full_wind_text {
-                hover += &format!(" ({FULL_WIND_TEST} {e})");
-            }
+            let figures = match &text {
+                Some(t) => format!("{t}{full}"),
+                None => format!("\u{2013}{full}"),
+            };
             lanes.push(Lane {
                 position: v.position.common(),
                 group,
@@ -198,6 +210,7 @@ pub fn position_line_over(
                 full_wind_text,
                 figure: value.map(|x| bare(kind, x)),
                 hover,
+                figures,
             });
         }
     }
@@ -298,12 +311,39 @@ pub fn state_lines_over(states: &[StateIndices], every: &[StateIndices]) -> Vec<
         .collect()
 }
 
+/// One Positions Test's position lines (#1729): `figures` over the six
+/// for the averages, with `more` (the 45° stops) given lanes too, and
+/// the full-wind test `full` compared when this test's wind is known
+/// and later than full ([`state_lines_over`]'s rule, which the session
+/// report draws by too).
+pub fn test_lines(
+    wind_h: Option<f64>,
+    figures: &[SourcedFigures],
+    more: &[SourcedFigures],
+    full: Option<&[SourcedFigures]>,
+) -> StateLines {
+    let every: Vec<SourcedFigures> = figures
+        .iter()
+        .chain(more.iter().filter(|m| figures.iter().all(|f| f.0 != m.0)))
+        .copied()
+        .collect();
+    let over = |w, f: &[SourcedFigures], p: &[Position]| sourced_indices_over(w, f, p);
+    let (mut states, mut lanes) = (Vec::new(), Vec::new());
+    if let Some(f) = full {
+        states.push(over(Some(0.0), f, &Position::ALL));
+        lanes.push(over(Some(0.0), f, &Position::TEN));
+    }
+    states.push(over(wind_h, figures, &Position::ALL));
+    lanes.push(over(wind_h, &every, &Position::TEN));
+    state_lines_over(&states, &lanes)
+        .pop()
+        .expect("this test's state is always there")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::{
-        sourced_indices, sourced_indices_over, BeatErrorSource, Position, SourcedFigures,
-    };
+    use crate::session::{sourced_indices, BeatErrorSource};
 
     fn figures(rates: &[(Position, f64, f64)]) -> Vec<SourcedFigures> {
         rates
@@ -428,5 +468,38 @@ mod tests {
             lines[0].rate.averages,
             state_lines(&six_only)[0].rate.averages
         );
+    }
+
+    /// A Positions Test's lines (#1729) are the session report's rule: the
+    /// 45° stops get lanes but stay out of the averages, and the full-wind
+    /// test is compared only when this test's wind is known and later.
+    #[test]
+    fn a_test_draws_by_the_session_rule() {
+        let mut more = six(9.0);
+        more.push((Position::H1h30, Some(100.0), Some(250.0), None, None));
+        let late = test_lines(Some(24.0), &six(-3.0), &more, Some(&six(0.0)));
+        assert_eq!(late.rate.lanes.len(), 7);
+        assert_eq!(
+            late.rate.lanes[0].value,
+            Some(-1.0),
+            "the test's own figure"
+        );
+        assert_eq!(late.rate.lanes[0].full_wind, Some(2.0));
+        assert_eq!(late.rate.key, Some([THIS_TEST, FULL_WIND_TEST]));
+        assert_eq!(
+            late.amplitude.lanes[0].figures,
+            "300° (Full wind test 300°)"
+        );
+        let session = state_lines(&[
+            sourced_indices(Some(0.0), &six(0.0)),
+            sourced_indices(Some(24.0), &six(-3.0)),
+        ]);
+        assert_eq!(late.rate.averages, session[1].rate.averages);
+        assert_eq!(late.amplitude.averages, session[1].amplitude.averages);
+        for wind in [None, Some(0.0)] {
+            let alone = test_lines(wind, &six(-3.0), &[], Some(&six(0.0)));
+            assert_eq!(alone.rate.key, None, "{wind:?}");
+            assert_eq!(alone.rate.lanes[0].full_wind, None, "{wind:?}");
+        }
     }
 }

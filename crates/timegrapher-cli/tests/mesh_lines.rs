@@ -116,6 +116,16 @@ fn long_and_series_give_cores_wheel_marks() {
             "{want}"
         );
         assert_eq!(s["wheel_marks"], want, "{command}");
+        // Every mesh, none left out for a wheel: the marks with Wheel
+        // Periods off (Hugh's ruling on #1764).
+        let alone =
+            serde_json::to_value(timegrapher_core::steady_views::mesh_marks(&meshes)).unwrap();
+        assert_eq!(s["mesh_marks"], alone, "{command}");
+        assert_eq!(
+            s["mesh_marks"].as_array().unwrap().len(),
+            meshes.len(),
+            "{command}"
+        );
         let turns: Vec<&str> = s["wheel_marks"]
             .as_array()
             .unwrap()
