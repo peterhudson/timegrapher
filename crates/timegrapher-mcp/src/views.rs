@@ -79,6 +79,7 @@ pub fn page() -> &'static str {
         let minus = serde_json::to_string(&true_minus("-")).expect("the minus sign as JSON");
         let groups = serde_json::to_string(&group_names()).expect("the group names as JSON");
         let icons = serde_json::to_string(&icons()).expect("the icons as JSON");
+        let case = poise_case().to_string();
         HTML.replace("/*PALETTE*/", &css)
             .replace("/*BASE_DIGITS*/null", &base_digits())
             .replace("/*VIRIDIS*/null", &viridis)
@@ -97,6 +98,7 @@ pub fn page() -> &'static str {
             .replace("/*NO_BEAT_TITLE*/null", &no_beat)
             .replace("/*GROUP_NAMES*/null", &groups)
             .replace("/*ICONS*/null", &icons)
+            .replace("/*POISE_CASE*/null", &case)
             .replace("/*MINUS*/null", &minus)
     })
 }
@@ -110,6 +112,26 @@ fn wheel_words() -> Value {
         "mesh_hint": timegrapher_core::steady_views::MESH_HINT,
         "name_line_h": timegrapher_core::chart_scale::NAME_LINE_H,
         "strong_hold": timegrapher_core::chart_scale::STRONG_HOLD,
+    })
+}
+
+/// The watch case behind the poise dial, core's (`poise_case`), at an
+/// outer ring of radius 1 for the view to scale: its shapes, knurl and
+/// bezel, how far it reaches, its line widths, and where each hour name
+/// that would sit on it goes instead (`null`: its own place).
+fn poise_case() -> Value {
+    use timegrapher_core::poise_case as c;
+    let labels: Vec<(f64, Option<f64>)> = timegrapher_core::poise_picture::hours()
+        .iter()
+        .map(|&(deg, _)| (deg, c::label_r(deg, 1.0)))
+        .collect();
+    json!({
+        "case": c::case(1.0),
+        "reach": c::reach(1.0),
+        "labels": labels,
+        "case_line": c::CASE_LINE_PX,
+        "bezel_line": c::BEZEL_LINE_PX,
+        "knurl_line": c::KNURL_LINE_PX,
     })
 }
 
@@ -272,6 +294,9 @@ fn variables(p: &Palette) -> String {
         ("grid", rgba(p.text, p.grid_opacity)),
         ("axis", rgba(p.text, p.axis_opacity)),
         ("callout", p.callout.css()),
+        // The watch case behind the poise dial (#1762), fainter still.
+        ("case-face", p.case_face().css()),
+        ("case-line", p.case_line().css()),
     ]
     .iter()
     .map(|(name, value)| format!("  --{name}: {value};\n"))
@@ -1010,6 +1035,39 @@ mod tests {
         assert_eq!(v["mesh_hint"], timegrapher_core::steady_views::MESH_HINT);
         assert_eq!(v["name_line_h"], timegrapher_core::chart_scale::NAME_LINE_H);
         assert_eq!(v["strong_hold"], timegrapher_core::chart_scale::STRONG_HOLD);
+    }
+
+    /// The watch case behind the poise dial is core's, at a ring of 1, with
+    /// its colours as the page's (#1762).
+    #[test]
+    fn the_page_carries_cores_poise_case() {
+        assert!(!page().contains("/*POISE_CASE*/"));
+        let at = page().find("const POISE_CASE = ").expect("the case");
+        let line = &page()[at..page()[at..].find('\n').unwrap() + at];
+        let json = line
+            .trim_start_matches("const POISE_CASE = ")
+            .trim_end()
+            .trim_end_matches(';');
+        let v: Value = serde_json::from_str(json).expect("the case as JSON");
+        let case = timegrapher_core::poise_case::case(1.0);
+        // Every number core's, to the last digit the page's JSON keeps.
+        let ours = serde_json::to_value(&case).unwrap();
+        fn numbers(v: &Value, out: &mut Vec<f64>) {
+            match v {
+                Value::Number(n) => out.push(n.as_f64().unwrap()),
+                Value::Array(a) => a.iter().for_each(|x| numbers(x, out)),
+                Value::Object(o) => o.values().for_each(|x| numbers(x, out)),
+                _ => {}
+            }
+        }
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        numbers(&v["case"], &mut a);
+        numbers(&ours, &mut b);
+        assert_eq!(a.len(), b.len());
+        assert!(a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 1e-12));
+        assert_eq!(v["labels"].as_array().unwrap().len(), 8);
+        let p = timegrapher_core::palette::DARK;
+        assert!(variables(&p).contains(&format!("--case-face: {};", p.case_face().css())));
     }
 
     #[test]

@@ -221,6 +221,10 @@ const GROUP_NAMES = /*GROUP_NAMES*/null;
 // The app's icons, core's drawings (core `icons`): each series' by its
 // name, the "i", and their line width. The server fills them in.
 const ICONS = /*ICONS*/null;
+// The watch case behind the poise dial (core `poise_case`, #1762) at an
+// outer ring of radius 1: its shapes, knurl and bezel, its reach, its
+// line widths and where each hour name it would cover goes instead.
+const POISE_CASE = /*POISE_CASE*/null;
 // Each figure's decimals: core's library::base_digits (rate 1, amplitude
 // 0, beat error 2, jitter 0), filled in by the server. A figure with a ±
 // takes the decimals the server gives beside it (library::figure_digits),
@@ -1018,13 +1022,23 @@ function poisePlot(pic, width) {
 // ends at the inner and outer rings; the mean a dotted ring, the wave grey.
 function poiseDial(pic, width) {
   const [lo, hi, step] = pic.axis;
-  const S = Math.min(width || 400, 420), c = S / 2, outer = c - 40, inner = outer * 0.15;
+  const S = Math.min(width || 400, 420), c = S / 2;
+  // Room round the ring for the hour names, moved out past the case.
+  const far = Math.max(1, ...((POISE_CASE || {}).labels || []).map(([, f]) => f || 0));
+  const outer = Math.min(c - 40, (c - 14) / far), inner = outer * 0.15;
+  // Each hour name's place: past the case where core moves it, else just
+  // outside the ring.
+  const nameAt = (deg) => {
+    const f = (((POISE_CASE || {}).labels || []).find(([d]) => Math.abs(d - deg) < 1e-6) || [])[1];
+    const r = f ? f * outer : outer + 16, a = (deg - 90) * Math.PI / 180;
+    return [c + r * Math.cos(a), c + r * Math.sin(a)];
+  };
   const rad = (r) => inner + (r - lo) / (hi - lo) * (outer - inner);
   const xy = (deg, r) => {
     const a = (deg - 90) * Math.PI / 180, q = rad(r);
     return [+(c + q * Math.cos(a)).toFixed(1), +(c + q * Math.sin(a)).toFixed(1)];
   };
-  let g = "";
+  let g = poiseCase(c, outer);
   const n = Math.round((hi - lo) / step);
   // The ring numbers half way between two stops from the slowest hour, so
   // they keep off the spokes, the points and the mean's name there.
@@ -1048,7 +1062,6 @@ function poiseDial(pic, width) {
       };
       if (pic.points.some(covers)) continue;
       // Nor on an hour's name round the face.
-      const nameAt = (deg) => { const a = (deg - 90) * Math.PI / 180; return [c + (outer + 16) * Math.cos(a), c + (outer + 16) * Math.sin(a)]; };
       if (pic.hours.some(([deg]) => near(nameAt(deg), 34))) continue;
       if (pic.mean && pic.slowest_deg != null && near(xy(pic.slowest_deg, pic.mean.rate_s_per_day), 20 + pic.mean.name.length * 3.5)) continue;
       g += `<text x="${x}" y="${y + 4}" text-anchor="middle" style="fill:var(--text3)">${esc(valueTick({ series: "rate", unit: "s/d" }, v, step, false))}</text>`;
@@ -1057,8 +1070,8 @@ function poiseDial(pic, width) {
   for (const [deg, code] of pic.hours) {
     const [x0, y0] = xy(deg, lo), [x1, y1] = xy(deg, hi);
     g += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" class="grid"/>`;
-    const a = (deg - 90) * Math.PI / 180;
-    g += `<text x="${(c + (outer + 16) * Math.cos(a)).toFixed(1)}" y="${(c + (outer + 16) * Math.sin(a) + 4).toFixed(1)}" text-anchor="middle">${esc(code)}</text>`;
+    const [lx, ly] = nameAt(deg);
+    g += `<text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle">${esc(code)}</text>`;
   }
   if (pic.mean) g += `<circle cx="${c}" cy="${c}" r="${rad(pic.mean.rate_s_per_day).toFixed(1)}" fill="none" stroke="var(--text2)" stroke-dasharray="3 3"/>`;
   if (pic.wave.length) g += `<path d="${pic.wave.map(([d, r], i) => `${i ? "L" : "M"}${xy(d, r).join(" ")}`).join(" ")}" fill="none" stroke="var(--text2)" stroke-width="1.5"/>`;
@@ -1069,6 +1082,22 @@ function poiseDial(pic, width) {
   g += poiseDots(pic, { plot: false, xy });
   g += `<text x="${S - 4}" y="14" text-anchor="end">${esc(pic.dial_key)}</text>`;
   return `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" style="margin:auto" role="img" aria-label="${esc(pic.dial_key)}">${g}</svg>`;
+}
+
+// The watch case behind the dial, centred at (c, c) round an outer ring of
+// radius `outer`, fainter than the grid and drawn before it (#1762): every
+// shape outlined, then every shape's face over that so only the union's
+// outline shows, the crown's knurl, and the bezel last in the pane's colour.
+function poiseCase(c, outer) {
+  if (!POISE_CASE) return "";
+  const k = POISE_CASE.case;
+  const pts = (s) => s.map(([x, y]) => `${(c + x * outer).toFixed(1)},${(c + y * outer).toFixed(1)}`).join(" ");
+  const shapes = k.shapes.map((s) => `<polygon points="${pts(s)}"/>`).join("");
+  const knurl = k.knurl.map(([[x1, y1], [x2, y2]]) =>
+    `<line x1="${(c + x1 * outer).toFixed(1)}" y1="${(c + y1 * outer).toFixed(1)}" x2="${(c + x2 * outer).toFixed(1)}" y2="${(c + y2 * outer).toFixed(1)}"/>`).join("");
+  return `<g class="poise-case" aria-hidden="true"><g fill="var(--case-line)" stroke="var(--case-line)" stroke-width="${2 * POISE_CASE.case_line}" stroke-linejoin="round">${shapes}</g>`
+    + `<g fill="var(--case-face)">${shapes}</g><g stroke="var(--case-line)" stroke-width="${POISE_CASE.knurl_line}">${knurl}</g>`
+    + `<circle cx="${c}" cy="${c}" r="${(k.bezel_r * outer).toFixed(1)}" fill="var(--card)" stroke="var(--case-line)" stroke-width="${POISE_CASE.bezel_line}"/></g>`;
 }
 
 // The key over the picture: the points, then the wave once it is fitted.
