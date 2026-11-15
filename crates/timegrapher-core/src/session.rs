@@ -966,6 +966,14 @@ impl std::fmt::Display for BeatErrorSource {
 }
 
 impl BeatErrorSource {
+    /// Whether a beat error from `source` is drawn grey: one not taken
+    /// from the unlock (the drop, or its source not recorded). The one
+    /// rule for every surface's tables and charts (#1076), always with
+    /// [`crate::power_reserve::GREY_BEAT_ERROR_KEY`].
+    pub fn greyed(source: Option<Self>) -> bool {
+        source != Some(Self::Unlock)
+    }
+
     /// The factual caveat for falling back to the drop.
     pub fn caveat(self) -> Option<crate::measure::Caveat> {
         self.caveat_why(false)

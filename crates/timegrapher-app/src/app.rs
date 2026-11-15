@@ -86,6 +86,7 @@ mod wind;
 use dock::PaneBehavior;
 use pane_export::PaneExport;
 use pane_room::keep_room;
+use readouts::day_of;
 use session_marks::save_marks_to_take;
 use take_io::Opened;
 
@@ -190,12 +191,6 @@ const WATCH_MENU_W: f32 = 220.0;
 /// How many recent watches the Watch line's menu lists.
 const RECENT_WATCHES: usize = 5;
 
-/// The day of a UTC timestamp kept as text ("2026-10-12T…").
-fn day_of(utc: &str) -> &str {
-    utc.get(..10).unwrap_or(utc)
-}
-
-/// The Rate caveat for an input whose clock hasn't been measured.
 /// Plain marks on the level meter, for reference only: the level core
 /// aims a recording at and the one it calls hot.
 const REFERENCE_DBFS: [f64; 2] = [
@@ -2050,6 +2045,8 @@ pub struct TimegrapherApp {
     chart_series: [bool; 3],
     /// The readings the Distributions pane draws.
     dist_series: [bool; 3],
+    /// The charts the Power Reserve pane draws (#1729).
+    reserve_series: [bool; 3],
     /// The charts drawn last frame: those turned on that had room. The
     /// key names only these.
     charts_drawn: [bool; 3],
@@ -2302,6 +2299,7 @@ impl TimegrapherApp {
             follow: self.follow,
             chart_series: self.chart_series,
             dist_series: self.dist_series,
+            reserve_series: self.reserve_series,
             hist_cumulative: self.hist_cumulative,
             reserve_info: self.reserve_info,
             positions_info: self.positions_info,
@@ -2357,13 +2355,14 @@ impl TimegrapherApp {
         let Settings {
             device,
             average_s,
-            strip,
+            mut strip,
             rate_line,
             rate_guides,
             overlays,
             follow,
             chart_series,
             dist_series,
+            reserve_series,
             hist_cumulative,
             reserve_info,
             positions_info,
@@ -2429,7 +2428,6 @@ impl TimegrapherApp {
         self.cal
             .restore(recent_calibres, short_added, short_removed);
         self.restore_device(device);
-        let mut strip = strip;
         strip.set_half_width(strip.half_width_ms);
         strip.set_span(strip.span_s);
         self.strip = strip;
@@ -2437,8 +2435,8 @@ impl TimegrapherApp {
         (self.overlays, self.follow) = (overlays, follow);
         // One left on is kept: a pane with none shown would be empty.
         let some = |s: [bool; 3]| if s.contains(&true) { s } else { RATE_ONLY };
-        self.chart_series = some(chart_series);
-        self.dist_series = some(dist_series);
+        (self.chart_series, self.dist_series, self.reserve_series) =
+            (some(chart_series), some(dist_series), some(reserve_series));
         (self.hist_cumulative, self.reserve_info) = (hist_cumulative, reserve_info);
         (self.positions_info, self.sound_opts) = (positions_info, sound);
         (self.hist_readings, self.iso_view) = (hist_readings, iso_view);
@@ -2621,6 +2619,7 @@ impl TimegrapherApp {
             overlays: [true, false, false],
             chart_series: RATE_ONLY,
             dist_series: RATE_ONLY,
+            reserve_series: [true; 3],
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
             panes_dragged: std::collections::HashSet::new(),

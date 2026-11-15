@@ -41,6 +41,10 @@ pub const CALL_OUT_W: f32 = 1.2;
 /// same grey, thinner.
 pub const FAINT_CALL_OUT_W: f32 = 1.0;
 
+/// How strongly a ± band is filled: a light wash of its line's colour,
+/// under the line (#1729).
+pub const BAND_FILL: f32 = 0.2;
+
 /// The length of a dash, points.
 const DASH: f32 = 6.0;
 

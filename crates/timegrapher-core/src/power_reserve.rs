@@ -14,6 +14,7 @@
 //! clock correction.
 
 use crate::beats::Beat;
+use crate::steadiness::SeriesKind;
 use serde::{Deserialize, Serialize};
 
 /// The results file's name, in the take's folder.
@@ -336,6 +337,109 @@ impl Hour {
         (self.span_s > 0.0 && self.read_s >= 0.0 && self.read_s <= self.span_s + 1.0)
             .then(|| (self.read_s / self.span_s).min(1.0))
     }
+
+    /// Its figure for `kind` as its chart and table draw it, the beat
+    /// error as a size; None where it has none.
+    pub fn value(&self, kind: SeriesKind) -> Option<f64> {
+        match kind {
+            SeriesKind::Rate => self.rate_s_per_day,
+            SeriesKind::Amplitude => self.amplitude_deg,
+            SeriesKind::BeatError => self.beat_error_ms.map(f64::abs),
+        }
+        .filter(|v| v.is_finite())
+    }
+
+    /// The ± of its figure for `kind`, the one its table cell prints;
+    /// None where the figure has none or is withheld.
+    pub fn se(&self, kind: SeriesKind) -> Option<f64> {
+        self.value(kind)?;
+        match kind {
+            SeriesKind::Rate => self.rate_se,
+            SeriesKind::Amplitude => self.amplitude_se,
+            SeriesKind::BeatError => self.beat_error_se,
+        }
+        .filter(|v| v.is_finite())
+    }
+
+    /// Its ± band for `kind`, low and high: the table's ± either side of
+    /// the figure, a beat error's floored at 0, as no beat error is below
+    /// it (Norm on #1761).
+    pub fn band(&self, kind: SeriesKind) -> Option<(f64, f64)> {
+        let v = self.value(kind)?;
+        let e = self.se(kind)?;
+        let lo = match kind {
+            SeriesKind::BeatError => (v - e).max(0.0),
+            _ => v - e,
+        };
+        Some((lo, v + e))
+    }
+
+    /// Whether its figure for `kind` is drawn grey, in its table cell and
+    /// on its chart, on every surface (Norm on #1761): thin (#1429), or a
+    /// beat error not taken from the unlock (#1076). The grey beat error
+    /// always comes with [`GREY_BEAT_ERROR_KEY`].
+    pub fn grey(&self, kind: SeriesKind) -> bool {
+        self.thin(figure_of(kind)).is_some()
+            || (kind == SeriesKind::BeatError && self.beat_error_off_unlock())
+    }
+
+    /// Whether its beat error is from elsewhere than the unlock: the drop,
+    /// or a source not recorded (#1076).
+    pub fn beat_error_off_unlock(&self) -> bool {
+        self.beat_error_ms.is_some()
+            && crate::session::BeatErrorSource::greyed(self.beat_error_source)
+    }
+}
+
+/// The key every surface shows wherever a beat error is grey for its
+/// source (#1076; Norm on #1761: grey with no key would read as thin).
+pub const GREY_BEAT_ERROR_KEY: &str = crate::grey_beat_error_key!();
+
+/// The confidence figure a chart of `kind` shows.
+fn figure_of(kind: SeriesKind) -> crate::confidence::Figure {
+    use crate::confidence::Figure;
+    match kind {
+        SeriesKind::Rate => Figure::Rate,
+        SeriesKind::Amplitude => Figure::Amplitude,
+        SeriesKind::BeatError => Figure::BeatError,
+    }
+}
+
+/// The value axis of a run's chart of `kind`, [lo, hi, step], on every
+/// surface (#1729): [`crate::position_line::value_axis`] over each hour's
+/// figure and its ± band (Norm on #1761: the band is the table's ±, a
+/// beat error's floored at 0), so no band is cut. Zero is taken in only
+/// when the scale already comes within one step of it, so an hourly swing
+/// of a few s/d is never flattened (Hugh on #1761). None for no figures.
+pub fn chart_axis(hours: &[Hour], kind: SeriesKind) -> Option<[f64; 3]> {
+    // Each figure and its band; a withheld figure adds nothing.
+    let values: Vec<f64> = hours
+        .iter()
+        .filter_map(|h| Some((h.value(kind)?, h.band(kind))))
+        .flat_map(|(v, band)| {
+            let (lo, hi) = band.unwrap_or((v, v));
+            [lo, v, hi]
+        })
+        .collect();
+    let [lo, hi, step] = crate::position_line::value_axis(kind, &values)?;
+    // The figures and their bands within a step of zero: out to it. Never
+    // for amplitude, whose axis never reaches 0 (Norm on #1761).
+    if kind == SeriesKind::Amplitude {
+        return Some([lo, hi, step]);
+    }
+    let least = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let most = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let lo = if lo.is_sign_positive() && least <= step {
+        0.0
+    } else {
+        lo
+    };
+    let hi = if hi.is_sign_negative() && -most <= step {
+        0.0
+    } else {
+        hi
+    };
+    Some([lo, hi, step])
 }
 
 /// A run's results, as `power-reserve.json` keeps them.
@@ -689,6 +793,71 @@ mod title_tests {
         );
         assert_eq!(Source::Test.chip(), None);
         assert!(Source::LongTake.chip().is_some());
+    }
+}
+
+#[cfg(test)]
+mod chart_tests {
+    use super::*;
+
+    fn hour(rate: f64, se: Option<f64>) -> Hour {
+        Hour {
+            hour: 0,
+            span_s: 3600.0,
+            rate_s_per_day: Some(rate),
+            amplitude_deg: Some(280.0),
+            beat_error_ms: Some(-0.4),
+            beat_error_source: Some(crate::session::BeatErrorSource::Unlock),
+            rate_se: se,
+            amplitude_se: None,
+            beat_error_se: Some(0.6),
+            caveats: Vec::new(),
+            read_s: 3500.0,
+            bph: Some(28_800),
+        }
+    }
+
+    /// The axis holds every band, never forces zero, and takes zero in
+    /// only from within a step of it (Hugh on #1761); a beat error's
+    /// floors at zero (Norm).
+    #[test]
+    fn a_runs_chart_axis_holds_its_bands_and_meets_zero_only_near_it() {
+        let far = [hour(3.0, Some(0.5)), hour(7.0, None)];
+        let [lo, hi, step] = chart_axis(&far, SeriesKind::Rate).unwrap();
+        assert!(lo <= 2.5 && hi >= 7.0, "{lo} {hi}");
+        assert!(lo > 0.0, "zero not forced: {lo} {hi} {step}");
+        let near = [hour(0.6, None), hour(4.0, None)];
+        let [lo, _, _] = chart_axis(&near, SeriesKind::Rate).unwrap();
+        assert_eq!(lo, 0.0);
+        let [lo, _, _] = chart_axis(&far, SeriesKind::BeatError).unwrap();
+        assert_eq!(lo, 0.0, "a size's band floors at zero");
+        assert!(chart_axis(&[], SeriesKind::Rate).is_none());
+        // |−0.4| ± 0.6: the band from 0, not −0.2.
+        assert_eq!(far[0].band(SeriesKind::BeatError), Some((0.0, 1.0)));
+        // Amplitude never out to zero, however near it comes.
+        let mut low = [hour(1.0, None), hour(1.0, None)];
+        low[0].amplitude_deg = Some(20.0);
+        low[1].amplitude_deg = Some(40.0);
+        let [lo, _, _] = chart_axis(&low, SeriesKind::Amplitude).unwrap();
+        assert!(lo > 0.0, "{lo}");
+    }
+
+    /// A figure is grey where thin, and a beat error also off the unlock,
+    /// with its key (Norm on #1761).
+    #[test]
+    fn grey_is_thin_or_a_beat_error_off_the_unlock() {
+        let mut h = hour(1.0, None);
+        assert!(!h.grey(SeriesKind::BeatError));
+        h.beat_error_source = Some(crate::session::BeatErrorSource::Drop);
+        assert!(h.grey(SeriesKind::BeatError) && !h.grey(SeriesKind::Rate));
+        h.caveats.push(crate::measure::Caveat::ReadingWindows {
+            reading: crate::confidence::Figure::Rate,
+            windows_used: 1,
+            windows_in_span: 10,
+        });
+        assert!(h.grey(SeriesKind::Rate));
+        assert_eq!(h.value(SeriesKind::BeatError), Some(0.4));
+        assert!(GREY_BEAT_ERROR_KEY.starts_with("Grey beat errors"));
     }
 }
 

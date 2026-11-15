@@ -5,11 +5,12 @@ use super::tests::{painted_text, queued_capture};
 use super::*;
 use timegrapher_core::synth::{generate, SynthConfig};
 
-/// A 46 h run in a 1000 x 700 or 800 x 600 window: the Power Reserve pane
-/// takes room enough to show both its charts whole, each naming 0 h on
-/// its hours' axis, the table scrolling under them. The Rate chart's zero
-/// line reads "0 s/d", never "-0 s/d" (#991). At 1000 x 700 the Rate
-/// chart names more than its zero line.
+/// A 46 h run in a 1000 x 700 or 800 x 600 window, too short for its
+/// three charts beside the table: they head the run, the Rate chart's
+/// title row first, and scroll down with the table to the hours' axis
+/// under the bottom one, naming 0 h once (#1729). The Rate chart's zero line reads
+/// "0", never "-0", its unit over its axis, and its values under zero carry
+/// a true minus (#991, #1402).
 #[test]
 fn a_long_runs_two_charts_show_whole_in_a_small_window() {
     for (w, h) in [(1000.0f32, 700.0f32), (800.0, 600.0)] {
@@ -23,15 +24,27 @@ fn a_long_runs_two_charts_show_whole_in_a_small_window() {
         }
         let ctx = super::tests::themed();
         let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
-        let pass = |app: &mut TimegrapherApp| {
+        // A pass, the wheel turned down over the pane's run if `wheel`.
+        let pass = |app: &mut TimegrapherApp, wheel: bool| {
+            // Over the charts, at the pane's right.
+            let at = egui::pos2(w - 120.0, h - 70.0);
+            let mut events = vec![egui::Event::PointerMoved(at)];
+            if wheel {
+                events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -600.0),
+                    modifiers: Default::default(),
+                });
+            }
             let input = egui::RawInput {
                 screen_rect: Some(screen),
+                events,
                 ..Default::default()
             };
             ctx.run(input, |ctx| app.panels(ctx))
         };
         for _ in 0..3 {
-            pass(&mut app);
+            pass(&mut app, false);
         }
         // The run's take opened, as from the Watches view.
         let dir = std::env::temp_dir().join(format!("tg-app-small-{}-{w}", std::process::id()));
@@ -40,51 +53,46 @@ fn a_long_runs_two_charts_show_whole_in_a_small_window() {
         std::fs::write(dir.join(power_reserve::FILE), r.to_json()).unwrap();
         app.load_reserve(&dir);
         let _ = std::fs::remove_dir_all(&dir);
+        // The text shown: inside its clip and the window.
+        let shown_of = |out: egui::FullOutput| -> Vec<String> {
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => {
+                        let r = t.galley.rect.translate(t.pos.to_vec2());
+                        let clip = c.clip_rect.intersect(screen);
+                        (clip.contains_rect(r)).then(|| t.galley.text().to_string())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
         let mut out = None;
         for _ in 0..4 {
-            out = Some(pass(&mut app));
+            out = Some(pass(&mut app, false));
         }
-        // The text shown: inside its clip and the window.
-        let shown: Vec<String> = out
-            .unwrap()
-            .shapes
-            .iter()
-            .filter_map(|c| match &c.shape {
-                egui::Shape::Text(t) => {
-                    let r = t.galley.rect.translate(t.pos.to_vec2());
-                    let clip = c.clip_rect.intersect(screen);
-                    (clip.contains_rect(r)).then(|| t.galley.text().to_string())
-                }
-                _ => None,
-            })
-            .collect();
+        // Too short for the three at their least: beside the table, the
+        // Rate chart's first, and their column scrolls (Hugh on #1761).
+        let top = shown_of(out.unwrap());
+        assert!(top.iter().any(|t| t == "Rate"), "{w}: {top:?}");
+        assert!(top.iter().any(|t| t == "s/d"), "{w}: {top:?}");
+        assert!(top.iter().any(|t| t == "0"), "{w}: {top:?}");
+        assert!(!top.iter().any(|t| t.starts_with("-0")), "{w}: {top:?}");
+        assert!(axis_labels(&top, "") >= 1, "{w}: {top:?}");
+        assert!(
+            !top.iter()
+                .any(|t| t.starts_with('-') && t[1..].starts_with(|c: char| c.is_ascii_digit())),
+            "{w}: {top:?}"
+        );
+        // Scrolled down: the bottom chart and its hours, 0 h once.
+        let mut out = None;
+        for i in 0..40 {
+            out = Some(pass(&mut app, i == 0));
+        }
+        let shown = shown_of(out.unwrap());
         assert_eq!(
             shown.iter().filter(|t| *t == "0 h").count(),
-            2,
-            "{w}: {shown:?}"
-        );
-        assert!(shown.iter().any(|t| t == "0 s/d"), "{w}: {shown:?}");
-        let rate_labels = shown
-            .iter()
-            .filter(|t| {
-                t.strip_suffix(" s/d")
-                    .is_some_and(|v| !v.contains('.') && v.parse::<i32>().is_ok())
-            })
-            .count();
-        assert!(w < 1000.0 || rate_labels >= 2, "{w}: {shown:?}");
-        assert!(!shown.iter().any(|t| t.starts_with("-0")), "{w}: {shown:?}");
-        // The rate falls below zero: its scale's negative values carry a
-        // true minus, never a hyphen (#1402).
-        assert!(
-            shown
-                .iter()
-                .any(|t| t.starts_with('\u{2212}') && t.ends_with(" s/d")),
-            "{w}: {shown:?}"
-        );
-        assert!(
-            !shown
-                .iter()
-                .any(|t| t.starts_with('-') && t[1..].starts_with(|c: char| c.is_ascii_digit())),
+            1,
             "{w}: {shown:?}"
         );
     }
@@ -122,17 +130,38 @@ fn axis_labels(shown: &[String], unit: &str) -> usize {
     shown
         .iter()
         .filter(|t| {
-            // A screen's minus is the true one (#1402).
+            // A screen's minus is the true one (#1402): a value under zero,
+            // whole, as only an axis writes one.
             t.strip_suffix(unit)
-                .is_some_and(|v| v.replace('\u{2212}', "-").parse::<i32>().is_ok())
+                .and_then(|v| v.strip_prefix('\u{2212}'))
+                .is_some_and(|v| v.parse::<i32>().is_ok())
         })
         .count()
 }
 
+/// No unit over a chart's axis, right of `table_right`, touches another
+/// text, its top tick's label above all (Walter on #1761); the table's
+/// units, stacked under their titles, aside.
+fn units_clear(texts: &[(String, egui::Rect, egui::Rect)], table_right: f32, w: f32) {
+    for unit in ["s/d", "°", "ms"] {
+        for u in texts
+            .iter()
+            .filter(|t| t.0 == unit && t.1.left() > table_right)
+        {
+            let touching: Vec<_> = texts
+                .iter()
+                .filter(|t| t.0 != unit && t.1.intersects(u.1))
+                .collect();
+            assert!(touching.is_empty(), "{w}: {unit} {touching:?}");
+        }
+    }
+}
+
 /// A 46 h run's take opened with its sound, as from the command line, in
 /// a 1000 x 700 window: the Paper Strip shows the sound's beats and keeps
-/// its least, and the Power Reserve pane still shows both charts whole,
-/// each naming at least two values and 0 h (#991, the #1043 walkthrough).
+/// its least, and the Power Reserve pane's charts, scrolled to, read
+/// whole: the bottom one naming 0 h and 48 h once, and the Rate chart a
+/// value under zero (#991, the #1043 walkthrough, #1729).
 #[test]
 fn a_long_runs_charts_read_with_its_take_open_in_a_small_window() {
     let dir = std::env::temp_dir().join(format!("tg-app-run-open-{}", std::process::id()));
@@ -158,16 +187,27 @@ fn a_long_runs_charts_read_with_its_take_open_in_a_small_window() {
     std::fs::write(dir.join(power_reserve::FILE), r.to_json()).unwrap();
     let ctx = super::tests::themed();
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1000.0, 700.0));
-    let pass = |app: &mut TimegrapherApp| {
+    // A pass, the wheel turned down over the pane's run if `wheel`.
+    let pass = |app: &mut TimegrapherApp, wheel: bool| {
+        let at = egui::pos2(screen.width() - 120.0, screen.height() - 70.0);
+        let mut events = vec![egui::Event::PointerMoved(at)];
+        if wheel {
+            events.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, -600.0),
+                modifiers: Default::default(),
+            });
+        }
         let input = egui::RawInput {
             screen_rect: Some(screen),
+            events,
             ..Default::default()
         };
         ctx.run(input, |ctx| app.panels(ctx))
     };
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     for _ in 0..3 {
-        pass(&mut app);
+        pass(&mut app, false);
     }
     app.start_batch(&path);
     let t = std::time::Instant::now();
@@ -178,8 +218,23 @@ fn a_long_runs_charts_read_with_its_take_open_in_a_small_window() {
     assert!(app.live.is_some(), "{:?}", app.message);
     assert!(app.reserve.is_some(), "{:?}", app.message);
     let mut out = None;
-    for _ in 0..6 {
-        out = Some(pass(&mut app));
+    let mut top = Vec::new();
+    for i in 0..40 {
+        if i == 6 {
+            // At the top first: the Rate chart, a value under zero.
+            top = under_run_line(out.as_ref().unwrap(), screen);
+        }
+        // Then scrolled down to the bottom chart's hours.
+        out = Some(pass(&mut app, i == 6));
+    }
+    // The pointer gone, so no hovered hour's words cover the hours.
+    for _ in 0..3 {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            events: vec![egui::Event::PointerGone],
+            ..Default::default()
+        };
+        out = Some(ctx.run(input, |ctx| app.panels(ctx)));
     }
     let _ = std::fs::remove_dir_all(&dir);
     if let Ok(d) = std::env::var("SHOT_DIR") {
@@ -187,11 +242,12 @@ fn a_long_runs_charts_read_with_its_take_open_in_a_small_window() {
         let svg = crate::export::svg(&o.shapes, screen, ctx.style().visuals.window_fill);
         std::fs::write(format!("{d}/open-1000.svg"), svg).unwrap();
     }
+    assert!(axis_labels(&top, "") >= 1, "{top:?}");
     let shown = under_run_line(out.as_ref().unwrap(), screen);
     // Each chart's first and last hour drawn whole, the right one clear
     // of the pane's edge and its scroll bar.
     for h in ["0 h", "48 h"] {
-        assert_eq!(shown.iter().filter(|t| *t == h).count(), 2, "{shown:?}");
+        assert_eq!(shown.iter().filter(|t| *t == h).count(), 1, "{shown:?}");
     }
     let last_right = out
         .as_ref()
@@ -207,8 +263,12 @@ fn a_long_runs_charts_read_with_its_take_open_in_a_small_window() {
         .fold(0.0f32, f32::max);
     // The pane's 12 pt edge and its scroll bar, with room to spare.
     assert!(last_right <= screen.right() - 36.0, "{last_right}");
-    assert!(axis_labels(&shown, " s/d") >= 2, "{shown:?}");
-    assert!(axis_labels(&shown, "°") >= 2, "{shown:?}");
+    for unit in ["s/d", "°", "ms"] {
+        assert!(
+            shown.iter().chain(&top).any(|t| t == unit),
+            "{unit}: {top:?} {shown:?}"
+        );
+    }
 }
 
 /// Each text drawn, its rect, and the part of it its clip shows.
@@ -359,13 +419,15 @@ fn open_long_run(app: &mut TimegrapherApp, tag: &str) {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// A 46 h run's table starts at its charts' plot frame, the value labels
-/// alone in the margin to its left, stacked at 2560 x 1440 and side by
-/// side at 1000 x 700 and 800 x 600; its units are in its titles
-/// (Peter's macOS screenshot, 11-04; Hugh's rules).
+/// A 46 h run's table sits at the left at its own width and its three
+/// charts fill the rest, their plots on one left edge, at 2560 x 1440
+/// and 1600 x 1000 (#1729); a smaller window stacks them. Only the
+/// table scrolls: its titles stay in view and no row shows cut, and the
+/// charts don't move. Its units are in its titles (Peter's macOS
+/// screenshot, 11-04; Hugh's rules).
 #[test]
-fn a_runs_table_starts_at_its_charts_plot_edge() {
-    for (w, h) in [(2560.0f32, 1440.0f32), (1000.0, 700.0), (800.0, 600.0)] {
+fn a_runs_table_sits_left_of_its_charts() {
+    for (w, h) in [(2560.0f32, 1440.0f32), (1600.0, 1000.0)] {
         let mut app = TimegrapherApp::with_devices(Vec::new(), None);
         let ctx = super::tests::themed();
         let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
@@ -399,23 +461,44 @@ fn a_runs_table_starts_at_its_charts_plot_edge() {
             .find(|t| t.0.starts_with("Ran "))
             .map(|t| t.1)
             .unwrap_or_else(|| panic!("{w}: no run line"));
-        let frames = plot_frames(&out, ctx.style().visuals.extreme_bg_color, ran);
-        assert_eq!(frames.len(), 2, "{w}: {frames:?}");
-        let plot_left = frames
-            .iter()
-            .map(|r| r.left())
-            .fold(f32::INFINITY, f32::min);
-        let plot_right = frames.iter().map(|r| r.right()).fold(0.0f32, f32::max);
-        // Scroll the pane down its table, a step at a time, gathering what
-        // shows: under the charts at 1000 and 800.
-        let at = egui::pos2(plot_left + 20.0, frames[0].center().y);
-        // Wherever it is scrolled to, rows that show have their titles in
-        // view, so each figure keeps its unit.
+        let fill = ctx.style().visuals.extreme_bg_color;
+        let frames = plot_frames(&out, fill, ran);
+        assert_eq!(frames.len(), 3, "{w}: {frames:?}");
+        let plot_left = frames[0].left();
+        assert!(
+            frames.iter().all(|r| (r.left() - plot_left).abs() < 1.0),
+            "{w}: {frames:?}"
+        );
+        if let Ok(d) = std::env::var("SHOT_DIR") {
+            let svg = crate::export::svg(&out.shapes, screen, ctx.style().visuals.window_fill);
+            std::fs::write(format!("{d}/table-{w}.svg"), svg).unwrap();
+        }
+        let first = clipped_texts(&out);
+        let head = |texts: &[(String, egui::Rect, egui::Rect)], name: &str| {
+            texts
+                .iter()
+                .find(|t| t.0 == name)
+                .map(|t| t.1)
+                .unwrap_or_else(|| panic!("{w}: no {name}: {texts:?}"))
+        };
+        // The table at the left, wholly clear of the charts' value axis.
+        let hours = head(&first, "Hours");
+        let read = head(&first, "%");
+        assert!(hours.left() < plot_left, "{w}: {hours:?} {plot_left}");
+        assert!(read.right() < plot_left - 30.0, "{w}: {read:?} {plot_left}");
+        for title in ["Rate", "s/d", "Amplitude", "°", "Beat Error", "ms"] {
+            head(&first, title);
+        }
+        units_clear(&first, read.right(), w);
+        // Scroll the table, a step at a time: rows that show have their
+        // titles in view, none shows cut, and the charts stay put.
+        let at = egui::pos2(hours.left() + 20.0, hours.bottom() + 60.0);
         let whole = |t: &(String, egui::Rect, egui::Rect)| t.2 == t.1;
-        let mut shown = clipped_texts(&out);
+        let mut moved = false;
+        let mut last = None;
         for step in 0..14 {
             let o = pass(&mut app, Some(at));
-            let cut = rows_cut(&o, ctx.style().visuals.extreme_bg_color);
+            let cut = rows_cut(&o, fill);
             assert!(cut.is_empty(), "{w}, step {step}: {cut:?}");
             let now = clipped_texts(&o);
             let rows = now
@@ -423,50 +506,31 @@ fn a_runs_table_starts_at_its_charts_plot_edge() {
                 .any(|t| whole(t) && t.0.ends_with(" h") && t.0.contains('–'));
             let titled = now.iter().any(|t| whole(t) && t.0 == "Read");
             assert!(!rows || titled, "{w}, step {step}: {now:?}");
-            shown.extend(now);
+            assert_eq!(plot_frames(&o, fill, ran), frames, "{w}, step {step}");
+            moved |= !now.iter().any(|t| t.0 == "0–1 h" && whole(t));
+            last = Some(o);
+        }
+        assert!(moved, "{w}: the table never scrolled");
+        // No hour label under the charts shows half hidden behind the
+        // hovered hour's words.
+        let now = last.as_ref().map(clipped_texts).unwrap_or_default();
+        let words = now
+            .iter()
+            .find(|t| t.0.contains(" · read "))
+            .map(|t| t.1)
+            .unwrap_or_else(|| panic!("{w}: no hovered hour's words: {now:?}"));
+        let crowded: Vec<_> = now
+            .iter()
+            .filter(|t| t.0.ends_with(" h") && !t.0.contains('–'))
+            .filter(|t| t.1.intersects(words.expand(2.0)))
+            .collect();
+        assert!(crowded.is_empty(), "{w}: {crowded:?}");
+        // The pointer on a row: the same hour in the charts.
+        if let (Ok(d), Some(o)) = (std::env::var("SHOT_DIR"), last) {
+            let svg = crate::export::svg(&o.shapes, screen, ctx.style().visuals.window_fill);
+            std::fs::write(format!("{d}/table-{w}-hover.svg"), svg).unwrap();
         }
         pinned_titles_and_hovers(&ctx, &mut app, at, screen);
-        let head = |name: &str| {
-            shown
-                .iter()
-                .find(|t| t.0 == name)
-                .map(|t| (t.1, t.2))
-                .unwrap_or_else(|| panic!("{w}: no {name}: {shown:?}"))
-        };
-        let hours = head("Hours").0;
-        assert!(
-            (hours.left() - plot_left).abs() < 1.0,
-            "{w}: table at {}, plots at {plot_left}",
-            hours.left()
-        );
-        // Each hour's row starts there too.
-        let rows: Vec<f32> = shown
-            .iter()
-            .filter(|t| t.0.ends_with(" h") && t.0.contains('–'))
-            .map(|t| t.1.left())
-            .collect();
-        assert!(!rows.is_empty(), "{w}: {shown:?}");
-        assert!(
-            rows.iter().all(|x| (x - plot_left).abs() < 1.0),
-            "{w}: {rows:?} {plot_left}"
-        );
-        // No wider than the plots, scrolling sideways when it would be;
-        // units in the titles, not the cells.
-        let read = head("%").1;
-        assert!(
-            read.right() <= plot_right + 1.0,
-            "{w}: {read:?} {plot_right}"
-        );
-        for title in ["Rate", "s/d", "Amplitude", "°", "Beat Error", "ms"] {
-            head(title);
-        }
-        assert!(
-            !shown.iter().any(|t| t.1.top() > ran.bottom()
-                && t.1.left() >= plot_left - 1.0
-                && t.0 != "%"
-                && (t.0.ends_with(" ms") || t.0.ends_with('%'))),
-            "{w}: {shown:?}"
-        );
     }
 }
 
@@ -795,7 +859,14 @@ fn a_power_reserve_test_runs_in_the_cards_position() {
     // And the steps before a run.
     let out = ctx.run(egui::RawInput::default(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
-            reserve::pane(ui, None, None, (app.position_card_title, ""), true, false);
+            reserve::pane(
+                ui,
+                None,
+                None,
+                (app.position_card_title, ""),
+                true,
+                (false, [true; 3]),
+            );
         });
     });
     assert!(

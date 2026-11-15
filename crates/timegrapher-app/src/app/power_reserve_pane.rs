@@ -15,6 +15,8 @@ impl TimegrapherApp {
         let mut info = self.reserve_info;
         theme::pane_toolbar_info(ui, title, &help, (&mut info, RESERVE_INFO_HINT), |ui| {
             self.reserve_settings(ui);
+            // Each chart on or off, the others sharing the height (#1729).
+            steady::series_switches(ui, &mut self.reserve_series);
         });
         self.reserve_info = info;
     }
@@ -664,7 +666,8 @@ impl TimegrapherApp {
         };
         let watch = self.watch.trim().to_string();
         // Its charts at a readable height, never a sliver under the strip.
-        if let Some(least) = reserve::least_h(self.reserve.as_ref()) {
+        let shown = self.reserve_series;
+        if let Some(least) = reserve::least_h(self.reserve.as_ref(), shown) {
             let above = ui.cursor().top() - self.pane_top;
             self.pane_need.insert(Pane::PowerReserve, above + least);
         } else {
@@ -676,7 +679,7 @@ impl TimegrapherApp {
             free,
             (self.position_card_title, &watch),
             self.ready_test() == Some(NewTake::PowerReserve),
-            self.reserve_info,
+            (self.reserve_info, shown),
         );
     }
 }

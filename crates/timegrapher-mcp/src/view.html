@@ -1135,19 +1135,20 @@ function valueTick(series, v, step, last) {
 
 // The Power Reserve pane (#1729): the table of each hour's figures and
 // Read %, and a chart per measure of the hourly levels as steps, from the
-// server's `timegrapher/reserve` (core's hours and words). A thin figure
-// (read from too few of its windows) is grey, as in the app's table; an
-// hour with no figure breaks the line.
+// server's `timegrapher/reserve` (core's hours and words). A figure core
+// greys (thin, or a beat error off the unlock, with its key) is grey, as in
+// the app; an hour with no figure breaks the line.
 function reservePane(r, id) {
   const series = r.series.filter((s) => s.axis);
   let table = `<table class="pane-rows"><thead><tr>${columnHead(r.hours_title, "")}${series.map((s) => columnHead(s.title, s.unit)).join("")}${columnHead(r.read_title, r.read_unit)}</tr></thead><tbody>`;
   r.hours.forEach((h, i) => {
     table += `<tr data-pos="h${i}"><td>${esc(String(h.hour))}</td>${series.map((s) => {
       const st = s.steps[i];
-      return `<td${st.thin ? ' class="thin"' : ""}>${esc(st.figure || "–")}</td>`;
+      return `<td${st.grey ? ' class="thin"' : ""}>${esc(st.figure || "–")}</td>`;
     }).join("")}<td>${esc(h.read || "–")}</td></tr>`;
   });
   table += `</tbody></table>`;
+  if (r.grey_key) table += `<div class="map-key">${esc(r.grey_key)}</div>`;
   const charts = series.filter((s) => paneShown[s.series]).map((s) => stepChart(s, r.hours, `${id}-${s.series}`)).join("");
   const titles = Object.fromEntries(series.map((s) => [s.series, s.title]));
   return `<div data-pane="${esc(id)}">${testPane(r.title, table, charts, paneToggles(titles))}</div>`;
@@ -1195,7 +1196,7 @@ function stepChart(s, hours, id) {
       const y = sy(v);
       d += prev && Math.abs(prev - x0) < 0.5 ? ` V${y.toFixed(1)} H${x1.toFixed(1)}` : ` M${x0.toFixed(1)} ${y.toFixed(1)} H${x1.toFixed(1)}`;
       prev = x1;
-      if (s.steps[i].thin) thin += `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="var(--text3)" stroke-width="2.5"/>`;
+      if (s.steps[i].grey) thin += `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="var(--text3)" stroke-width="2.5"/>`;
     }
     const mid = (x0 + x1) / 2;
     hits += `<g class="lane" data-pos="h${i}" data-label="${esc(`${h.hour} h`)}" data-val="${esc(s.steps[i].text || "–")}"><rect class="hit" x="${x0}" y="${T}" width="${Math.max(1, x1 - x0)}" height="${plotH}"/><line class="ring" x1="${mid}" x2="${mid}" y1="${T}" y2="${T + plotH}"/></g>`;
