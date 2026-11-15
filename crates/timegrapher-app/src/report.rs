@@ -838,7 +838,8 @@ impl Job {
     ) -> Result<(), String> {
         let got = match &src.kept {
             Some(dir) => {
-                let kept = analysis_take::read(dir).map_err(|e| e.to_string())?;
+                let kept =
+                    timegrapher_core::checkpoint::read_kept(dir).map_err(|e| e.to_string())?;
                 analysis_take::report_analysis(
                     analysis_take::ReportFrom::Kept(Box::new(kept)),
                     entries,

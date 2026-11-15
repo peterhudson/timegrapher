@@ -348,6 +348,36 @@ pub fn exists(take: &Path) -> bool {
     take.join(DIR).join(HEADER).is_file()
 }
 
+/// Whether the take folder `take` is kept as its parts alone: a test
+/// kept as its analysis alone whose save never finished (the app stopped,
+/// the power went), so it holds its parts and no `analysis/` (2c of
+/// #1514). Opened, it reads to its last part ([`read`]).
+pub fn only(take: &Path) -> bool {
+    exists(take) && !analysis_take::is_analysis_only(take)
+}
+
+/// The take `take` kept as its analysis alone, read: from `analysis/`, or
+/// for one kept as its parts alone ([`only`]), to its last part.
+pub fn read_kept(take: &Path) -> io::Result<Stored> {
+    match only(take) {
+        true => read(take).map(|r| r.stored),
+        false => analysis_take::read(take),
+    }
+}
+
+/// Whether `take` is kept as its analysis alone, from `analysis/` or its
+/// parts ([`only`]).
+pub fn is_kept(take: &Path) -> bool {
+    analysis_take::is_analysis_only(take) || only(take)
+}
+
+/// How long the sound the parts of `take` cover is, from `partial.json`
+/// alone: the last part's end, as [`read`] gives it when every part reads.
+pub fn length_s(take: &Path) -> io::Result<f64> {
+    let partial = read_list(&take.join(DIR))?;
+    Ok(partial.parts.last().map_or(0.0, |p| p.to_s))
+}
+
 /// A take read from its parts ([`read`]).
 #[derive(Debug, Clone)]
 pub struct Recovered {

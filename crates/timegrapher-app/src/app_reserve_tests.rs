@@ -1908,3 +1908,102 @@ fn a_failed_checkpoint_is_said_once_and_the_test_carries_on() {
     let _ = recording;
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A Power Reserve Test kept as its analysis alone whose save never
+/// finished (the app stopped as it recorded): its recording's folder,
+/// holding its session file and its parts, is offered back at the next
+/// start, and opens as the test to its last part, at least as long as
+/// heard, the recording, not the watch, ending there (2c of #1514, in
+/// Hugh's and Norm's words). Moved into a folder of its own, it opens to
+/// the same part (Felix).
+#[test]
+fn a_test_whose_save_never_finished_opens_to_its_last_part() {
+    super::kept_analysis::EVERY_S.with(|e| e.set(Some(20.0)));
+    let (mut app, base, recording, tx) = analysis_only_heard_with("ao-crash", 120.0, |_| {});
+    super::kept_analysis::EVERY_S.with(|e| e.set(None));
+    let kept_s = || timegrapher_core::checkpoint::length_s(&recording).unwrap_or(0.0);
+    for _ in 0..1000 {
+        app.reserve_follow();
+        if kept_s() >= 40.0 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let to_s = kept_s();
+    assert!(to_s >= 40.0, "{to_s} {:?}", app.message);
+    // What the folder holds now is what the app stopping leaves.
+    let left = base.join("left");
+    let crashed = left.join("2026-11-15 10.00");
+    super::unsaved::copy_tree(&recording, &crashed).unwrap();
+    let manifest = std::fs::read_to_string(crashed.join(MANIFEST)).unwrap();
+    assert!(manifest.contains("audio = false"), "{manifest}");
+    let offered = kept_sounds(&left);
+    assert_eq!(offered.len(), 1);
+    let k = &offered[0];
+    assert!(k.parts && k.what() == "analysis");
+    assert_eq!(k.duration_s, Some(to_s));
+    assert!(k.bytes > 1000, "its parts counted: {}", k.bytes);
+    let open = |dir: &Path| {
+        let mut again = TimegrapherApp::with_devices(Vec::new(), None);
+        again.start_batch(dir);
+        let t = std::time::Instant::now();
+        while again.batch.is_some() && t.elapsed().as_secs() < 120 {
+            again.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(again.live.is_some(), "{:?}", again.message);
+        again.reserve_from_long_take();
+        again
+    };
+    let mut again = open(&crashed);
+    let note = |a: &TimegrapherApp| a.message.clone().map(|(m, _)| m).unwrap_or_default();
+    // The notice and Open say how much it recorded in one string, never
+    // its run, which the pane gives (Hugh and Norm on #1806).
+    let recorded = super::unsaved::recorded_text(to_s);
+    assert_eq!(
+        recorded,
+        format!("recorded {}", power_reserve::run_text(to_s))
+    );
+    assert!(
+        k.notice().contains(&format!(", {recorded}, ")),
+        "{}",
+        k.notice()
+    );
+    let want = format!(
+        "This take wasn't saved: the app stopped while recording. It {recorded}. The watch \
+         may have run on after that."
+    );
+    assert!(note(&again).starts_with(&want), "{}", note(&again));
+    let r = again
+        .reserve
+        .as_ref()
+        .and_then(|t| t.results.clone())
+        .expect("read as the test");
+    assert!(r.source.is_test(), "a test, though under six hours");
+    assert_eq!(r.ending, power_reserve::Ending::RecordingFailed);
+    assert!(r.run_words().starts_with("at least"), "{}", r.run_words());
+    assert!(r.last_beat_s <= to_s, "{} past {to_s}", r.last_beat_s);
+    assert!(!r.sound_kept);
+    // Named by its start, not its folder, where the status line names it
+    // too (Walter on #1806 and #1807).
+    assert!(
+        again.source_label.starts_with("Unsaved Power Reserve Test"),
+        "{}",
+        again.source_label
+    );
+    again.input = Input::File;
+    let status = again.status_words();
+    assert!(status.starts_with("Unsaved Power Reserve Test"), "{status}");
+    // Moved into a folder of its own, its parts go with it.
+    let mine = base.join("mine");
+    std::fs::create_dir_all(&mine).unwrap();
+    let moved = move_kept(&crashed, &mine).unwrap();
+    assert!(kept_sounds(&left).is_empty());
+    let back = open(&moved);
+    assert!(note(&back).starts_with(&want), "{}", note(&back));
+    assert_eq!(back.reserve.and_then(|t| t.results), Some(r));
+    app.stop_listening();
+    let _ = kept_take(&mut app);
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}

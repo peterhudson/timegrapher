@@ -1396,7 +1396,7 @@ fn file_take_under(
         doc["watch"] = toml_edit::value(w.name.as_str());
     }
     let mut changed = false;
-    if !timegrapher_core::analysis_take::is_analysis_only(take) {
+    if !timegrapher_core::checkpoint::is_kept(take) {
         changed = settings_of(&mut doc, w, cal);
     }
     if doc.to_string() != text {

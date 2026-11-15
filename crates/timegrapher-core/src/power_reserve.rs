@@ -643,6 +643,72 @@ pub fn from_long_take(
     started_utc: &str,
     sound_kept: bool,
 ) -> Option<Results> {
+    let mut r = run_of(
+        log,
+        clock,
+        positions,
+        started_utc,
+        sound_kept,
+        Ending::TakeEnded,
+    )?;
+    if r.run_s < LONG_TAKE_S {
+        return None;
+    }
+    r.source = Source::LongTake;
+    r.hours = hours(log, clock, breaks, masked, r.first_beat_s, r.last_beat_s);
+    Some(r)
+}
+
+/// The run of a Power Reserve Test kept as its analysis alone whose save
+/// never finished, read from its parts (2c of #1514), as
+/// [`from_long_take`] reads a take but for a test of any length: ended
+/// [`Ending::Stopped`] when the parts go on [`STOP_AFTER_S`] past the last
+/// beat, by the rule a test stops by, else [`Ending::RecordingFailed`],
+/// at least as long as heard, never a stop of the watch (Norm).
+pub fn from_parts(
+    log: &crate::stream::BeatLog,
+    clock: Option<&crate::clock::ClockFit>,
+    breaks: &[crate::breaks::Break],
+    masked: &[(f64, f64)],
+    positions: &[&str],
+    started_utc: &str,
+) -> Option<Results> {
+    let unstopped = Ending::RecordingFailed;
+    let mut r = run_of(log, clock, positions, started_utc, false, unstopped)?;
+    r.hours = hours(log, clock, breaks, masked, r.first_beat_s, r.last_beat_s);
+    Some(r)
+}
+
+/// The run of the take in the folder `take` read whole, as every surface
+/// reads it: one kept as its parts alone, its save never finished, as the
+/// test it was ([`from_parts`]); else, and with no folder (a take heard
+/// here), as a long take ([`from_long_take`]).
+pub fn of_take(
+    take: Option<&std::path::Path>,
+    log: &crate::stream::BeatLog,
+    clock: Option<&crate::clock::ClockFit>,
+    breaks: &[crate::breaks::Break],
+    masked: &[(f64, f64)],
+    positions: &[&str],
+    sound_kept: bool,
+) -> Option<Results> {
+    match take.is_some_and(crate::checkpoint::only) {
+        true => from_parts(log, clock, breaks, masked, positions, ""),
+        false => from_long_take(log, clock, breaks, masked, positions, "", sound_kept),
+    }
+}
+
+/// The run of [`from_long_take`] and [`from_parts`] on `clock`, without
+/// its hours, ended `unstopped` when the watch was still heard at the
+/// log's end.
+fn run_of(
+    log: &crate::stream::BeatLog,
+    clock: Option<&crate::clock::ClockFit>,
+    positions: &[&str],
+    started_utc: &str,
+    sound_kept: bool,
+    unstopped: Ending,
+) -> Option<Results> {
     let position = match positions.split_first() {
         None => "",
         Some((p, rest)) if rest.iter().all(|q| q == p) => p,
@@ -652,17 +718,11 @@ pub fn from_long_take(
     let ending = if heard.stopped(log.duration_s) {
         Ending::Stopped
     } else {
-        Ending::TakeEnded
+        unstopped
     };
-    let mut r = Results::of(&heard, ending, started_utc, position, sound_kept, |s| {
+    Results::of(&heard, ending, started_utc, position, sound_kept, |s| {
         clock.map_or(s, |c| c.map(s))
-    })?;
-    if r.run_s < LONG_TAKE_S {
-        return None;
-    }
-    r.source = Source::LongTake;
-    r.hours = hours(log, clock, breaks, masked, r.first_beat_s, r.last_beat_s);
-    Some(r)
+    })
 }
 
 /// A run time in words ([`run_text`] of `run_s`), "at least" for a long
@@ -1022,6 +1082,40 @@ mod tests {
             from_long_take(&stopped, None, &[], &[], &[], "", true).map(|r| r.position),
             Some(String::new())
         );
+    }
+
+    /// A test kept in parts whose save never finished is read as a test
+    /// of any length to its last part: at least as long as heard, the
+    /// recording ending there, unless the parts hold the watch's stop by
+    /// the rule a test stops by (2c of #1514, Norm).
+    #[test]
+    fn a_test_kept_in_parts_reads_at_least_to_its_last_part() {
+        let run = 3600.0;
+        let r = from_parts(&take_of(run, 60.0), None, &[], &[], &["DU"], "").unwrap();
+        assert_eq!(r.source, Source::Test);
+        assert_eq!(r.ending, Ending::RecordingFailed);
+        assert_eq!(r.run_words(), format!("at least {}", run_text(r.run_s)));
+        assert!(!r.sound_kept);
+        assert_eq!(r.hours.len(), 1);
+        let stopped = from_parts(
+            &take_of(run, STOP_AFTER_S + 1.0),
+            None,
+            &[],
+            &[],
+            &["DU"],
+            "",
+        );
+        assert_eq!(stopped.map(|r| r.ending), Some(Ending::Stopped));
+        // A stop not yet wholly heard by the last part isn't one.
+        let short = from_parts(
+            &take_of(run, STOP_AFTER_S - 1.0),
+            None,
+            &[],
+            &[],
+            &["DU"],
+            "",
+        );
+        assert_eq!(short.map(|r| r.ending), Some(Ending::RecordingFailed));
     }
 
     /// A long take's settling, left out as a mask is

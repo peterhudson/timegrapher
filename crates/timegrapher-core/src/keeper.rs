@@ -1106,6 +1106,12 @@ mod tests {
         let all = checkpoint::read(&dir).unwrap();
         assert_eq!(all.stored.header.duration_s, status.to_s);
         assert_eq!(all.left_out, None);
+        // With no `analysis/`, the take is kept as its parts alone, read
+        // to its last part as Open reads it (2c of #1514).
+        assert!(checkpoint::only(&dir) && checkpoint::is_kept(&dir));
+        assert_eq!(checkpoint::length_s(&dir).unwrap(), status.to_s);
+        let kept = checkpoint::read_kept(&dir).unwrap();
+        assert_eq!(kept.header.duration_s, status.to_s);
         let part = folder.join("0002-windows.csv.gz");
         let mut bytes = std::fs::read(&part).unwrap();
         let last = bytes.len() - 1;

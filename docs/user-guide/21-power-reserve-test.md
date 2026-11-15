@@ -21,7 +21,7 @@ View menu.
 | Mark | Control | What it does | Why you'd use it |
 | --- | --- | --- | --- |
 | 1 | The position | "Runs in Dial Up (DU), set on the Current Position card". The test runs in the position on that card; the pane has no position setting of its own. | Set the position on the card before you start. |
-| 2 | **Keep Sound** or **Analysis Only** | Keep Sound keeps the run's sound in the take. Analysis Only keeps its analysis alone, and deletes the sound, as Keep Analysis Only does (chapter 23). | A run of 40 hours or more is a large file. The pane's hover before a test gives the space free against the most an 80-hour run writes: 0.35 GB (gigabytes) an hour at 48 kHz, 16-bit. |
+| 2 | **Keep Sound** or **Analysis Only** | Keep Sound keeps the run's sound in the take. Analysis Only keeps its analysis alone and never writes the sound, as if Keep Analysis Only had been used (chapter 23). | A run of 40 hours or more is a large file. The pane's hover before a test gives the space free against the most an 80-hour run writes: 0.35 GB (gigabytes) an hour at 48 kHz, 16-bit. |
 | 3 | **New Test** | Sets the test up on a clear Bench and starts nothing. **Cancel Test** then takes its place. | To start a run. |
 | 4 | **Save as CSV…** | Saves the watch, the run and the hour table, with a "Beat error from" column. | For a spreadsheet or a service record. |
 | 5 | **Copy** | The same, on the clipboard, with tabs between the columns. | To paste into a note or a message. |
@@ -57,6 +57,16 @@ disk, the run ends there and reads "at least": "Power Reserve at least
 2 h 01 min · The recording failed while the watch still ran". Its hours
 so far are kept in the take, and the take keeps its sound even with
 Analysis Only picked.
+
+With Analysis Only, the analysis is kept on the disk every 10 minutes as
+the test runs. If the app stops before the test ends (a crash or a power
+cut), the next start offers the run back: "An unsaved Power Reserve Test
+was found (Analysis Only)". **Open** reads it up to the last 10 minutes
+kept, and the run reads "at least", since the watch may have run on
+after that, unless the watch's stop was already heard by then. The
+notice says how much was recorded; the run, from the first beat heard
+to the last, is no longer. **Move To…** puts it in a folder of your
+own.
 
 ## The Results
 

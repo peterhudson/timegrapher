@@ -126,7 +126,7 @@ fn the_stand_noise_is_not_heard_over_any_short_stretch() {
 /// the position's start, not into the noise before it, and the watch is
 /// heard. Saved only: live, after a new position that follows noise,
 /// says no watch here today, on stretches with a whole window too, a
-/// gap older than this change (ISSUE).
+/// gap older than this change (#1692).
 #[test]
 fn a_clean_watch_just_after_a_new_position_is_heard() {
     let entry = 30.0;

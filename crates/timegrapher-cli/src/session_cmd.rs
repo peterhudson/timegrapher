@@ -734,7 +734,7 @@ fn read_one_inner(
     // A take of one entry is read whole here; one of several is read
     // whole once, after all of them ([`whole_take_run`], #1150).
     let run = if c.m.recordings.len() == 1 {
-        long_run_of(c, &read)
+        long_run_of(c, e, &read)
     } else {
         None
     };
@@ -814,16 +814,20 @@ type EntryRun = (Option<power_reserve::Results>, f64);
 type ReadRun = (Reading, EntryRun);
 
 /// The run of an entry that is a long take in the session's one position,
-/// read as a Power Reserve Test's run (core
-/// [`power_reserve::from_long_take`]), as the app reads it.
-fn long_run_of(c: &Ctx, read: &take::EntryRead) -> Option<power_reserve::Results> {
-    power_reserve::from_long_take(
+/// read as a Power Reserve Test's run, or a test kept in parts whose save
+/// never finished (core [`power_reserve::of_take`]), as the app reads it.
+fn long_run_of(
+    c: &Ctx,
+    e: &RecordingEntry,
+    read: &take::EntryRead,
+) -> Option<power_reserve::Results> {
+    power_reserve::of_take(
+        Some(&c.base.join(&e.file)),
         &read.log,
         read.clock.as_ref(),
         &read.breaks,
         &session::with_holes(&read.masked, &read.holes()),
         &positions_listed(c),
-        "",
         read.kept.is_none(),
     )
 }
@@ -1010,7 +1014,7 @@ fn read_all(m: &Manifest, ctx: &Ctx<'_>) -> Result<ReadAll, String> {
 /// The run of the take `c` names read whole, once, as its take context
 /// (core [`TakeContext`]: every recording end to end, each entry's masks
 /// at its recording's offset), when it is a long take in one position
-/// ([`power_reserve::from_long_take`]): a take of several entries is one
+/// ([`power_reserve::of_take`]): a take of several entries is one
 /// run however its files are listed, as the app opens a take's folder
 /// (#1150), cut where the take's readings are cut. None for a take whose entries name more than one clock log,
 /// which core can't read whole.
@@ -1052,13 +1056,13 @@ fn whole_take_run(c: &Ctx) -> Result<Option<power_reserve::Results>, String> {
     // Its settlings left out as a mask is (#1233); the run still starts at
     // its first beat.
     let masked = session::with_holes(&ctx.masked, &ctx.holes(c.m));
-    Ok(power_reserve::from_long_take(
+    Ok(power_reserve::of_take(
+        Some(c.base),
         &log,
         ctx.clock.as_ref(),
         &breaks,
         &masked,
         &positions_listed(c),
-        "",
         !ctx.files.is_empty(),
     ))
 }

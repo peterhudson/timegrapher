@@ -290,7 +290,8 @@ and `clock.csv` are unchanged (`session.json`'s `segments` still name the
 files the sound was in), and `positions-test.json` is kept when there is
 one. With no audio files, the file-order rule has nothing to order. A
 folder with both sound and `analysis/`, with `analysis/` but no
-`audio = false`, or with `audio = false` but no `analysis/`, is refused
+`audio = false`, or with `audio = false` but no `analysis/` (nor parts,
+[below](#parts-kept-while-a-take-is-recorded)), is refused
 with a message saying so; builds from before
 `audio` refuse the session file, as they refuse any field they don't
 know.
@@ -396,6 +397,20 @@ part before, and says which parts were left out and why. A take whose
 The take's own `analysis/` is written from the reading when the
 recording ends, not from the parts, and the parts are removed once it is
 in place.
+
+The recording's folder gets the take's `session.toml`, saying
+`audio = false`, as the test starts. So when the app stops before the
+take is written (a crash, a power cut), what it leaves is a take kept as
+its parts alone: `session.toml`, `session.json`, `clock.csv` and
+`analysis.partial/`, with no sound and no `analysis/` (core
+`checkpoint::only`). `timegrapher session`, the app and the library read
+such a take to its last part, as they read `analysis/` (core
+`checkpoint::read_kept`), and its length is the last part's end. Its run
+is read as the Power Reserve Test it was, at any length (core
+`power_reserve::of_take`, `from_parts`): from the first beat to the last
+heard in the parts, ended `recording_failed`, so "at least" that long,
+unless the parts already hold the watch's stop by the rule a test stops
+by. Nothing is written into it when it is read.
 
 ## What each reading is
 

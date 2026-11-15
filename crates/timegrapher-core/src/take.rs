@@ -1231,13 +1231,14 @@ fn open_sound(
 
 /// The take at `path` kept as its analysis alone, read; `None` for a
 /// take with its sound. Refused when the folder and `audio = false` in
-/// the manifest disagree, or when it holds both.
+/// the manifest disagree, or when it holds both. One kept as its parts
+/// alone, its save never finished, reads to its last part (2c of #1514).
 fn kept_take(
     path: &Path,
     m: &Manifest,
     e: &RecordingEntry,
 ) -> Result<Option<analysis_take::Stored>, String> {
-    if analysis_take::is_analysis_only(path) {
+    if crate::checkpoint::is_kept(path) {
         if m.audio != Some(false) {
             return Err(format!(
                 "{}: it has an {}/ folder, but {MANIFEST} doesn't say audio = false",
@@ -1254,7 +1255,7 @@ fn kept_take(
             ));
         }
         Ok(Some(
-            analysis_take::read(path).map_err(|err| format!("{}: {err}", e.file))?,
+            crate::checkpoint::read_kept(path).map_err(|err| format!("{}: {err}", e.file))?,
         ))
     } else if m.audio == Some(false) {
         Err(format!(

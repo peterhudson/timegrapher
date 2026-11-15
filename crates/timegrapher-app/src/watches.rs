@@ -1196,7 +1196,11 @@ fn keep_refused(
     (changes, keeping): (bool, bool),
     why: &str,
 ) -> Option<String> {
-    if !t.audio {
+    if !t.audio && timegrapher_core::checkpoint::only(dir) {
+        // A test kept in parts as it recorded, its save never finished
+        // (2c of #1514, Felix).
+        Some("This take has no sound to keep: it was recorded with Analysis Only".into())
+    } else if !t.audio {
         Some("This take's sound has already been removed".into())
     } else if t.incomplete {
         Some("Files this take lists are missing".into())

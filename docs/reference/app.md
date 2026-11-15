@@ -940,9 +940,10 @@ a "Beat error from" column (unlock or drop; empty when not recorded, as
 for a figure not measured) and a "BE Angle (deg)" column. The take
 is kept in the picked watch's history, named by its local start time and
 "Power Reserve", with
-`power-reserve.json` beside the standard files; with Analysis Only it is
-then kept as its analysis alone, as Keep Analysis Only does, and its sound
-deleted. The Watches view lists it as "Power Reserve 46 h 12 min", adding
+`power-reserve.json` beside the standard files; with Analysis Only its
+sound is read as it comes and never written, and the take is kept as its
+analysis alone, written when the test ends and kept on the disk in parts
+every 10 minutes meanwhile ([sessions.md](sessions.md#parts-kept-while-a-take-is-recorded)). The Watches view lists it as "Power Reserve 46 h 12 min", adding
 how it ended when the watch didn't stop it ("Stopped by hand while the
 watch still ran", "Reached the 80 h limit while the watch still ran"),
 and, like a Positions Test's take, without its last window's figures,
@@ -1723,7 +1724,7 @@ smears the sound aren't caught by it. Then how much sound the session
 holds and whether it is saved, and the latest message. It repeats
 nothing the cards show. On the right are its notices, one short word
 each for what needs you: an error, behind a red failure icon; **Closed Unexpectedly…**
-after a crash; **Unsaved Sound Found…** for sound kept from an earlier
+after a crash; **Unsaved Take Found…** for sound kept from an earlier
 session; **Timegrapher 0.2.0 Available…**. A click opens the whole
 message over the window with its buttons. Nothing ever appears above the
 readings, so the window never moves under the pointer.
@@ -2123,7 +2124,7 @@ the Dock, which can't be held back; on any system, a logout or a
 shutdown) with more than 5 s of unsaved sound other than a Quick Listen
 take's, or is stopped by a crash,
 the sound stays there, and the next start says so in the status bar,
-**Unsaved Sound Found…**, which opens the message with when it started (in this computer's time), its length and
+**Unsaved Take Found…**, which opens the message with when it started (in this computer's time), its length and
 size, and **Open** (analysed here, and offered again next time),
 **Move To…** (the recording's folder moved into one you pick, to open
 with Open Folder…), **Delete…** (asking first) and **Later**. When the
@@ -2133,7 +2134,21 @@ copy: the message names the take and offers **Open Take** (the take
 itself, opened where it is), **Delete Copy…** (asking first, and saying
 that only those last seconds are lost) and **Later**. If that take has
 since been moved or deleted, the copy is the only one, and it is offered
-as unsaved sound like any other. A folder
+as unsaved sound like any other. A Power Reserve Test with Analysis Only
+that stopped before its take was written leaves no sound but its
+analysis kept in parts: the next start offers it the same way, "An
+unsaved Power Reserve Test was found (Analysis Only): started …,
+recorded 41 h 10 min, 3.1 MB" (the button's tip "A Power Reserve Test
+(Analysis Only) was never saved: click to open, move or delete it"), with Open, Move To… (its parts with
+it), Delete… and Later. Opened, it reads to its last part, is named
+"Unsaved Power Reserve Test, started …", and the status bar says "This
+take wasn't saved: the app stopped while recording. It recorded 41 h
+10 min. The watch may have run on after that."; the Power Reserve pane
+reads it as the test, "Power reserve at least 41 h 09 min … The
+recording failed while the watch still ran", unless the watch's stop was
+already heard. What was recorded runs to the last part's end; the run,
+from the first beat heard to the last in true time, is no longer. Keep Analysis Only… refuses
+such a take: it has no sound to keep. A folder
 another copy of the app is recording into is never offered. The
 microphone's own settings are kept aside while recordings are open and
 come back with the next take on the microphone.

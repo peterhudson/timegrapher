@@ -724,16 +724,7 @@ impl TimegrapherApp {
             return self.streamed_notice(ui, &k, &to);
         }
         let (mut open, mut move_to, mut delete, mut later) = (false, false, false, false);
-        let what = format!(
-            "Sound from an earlier session wasn't saved{}{}, {}. Open it, move it into a \
-             folder of your own, or delete it?",
-            k.started
-                .as_ref()
-                .map_or(String::new(), |s| format!(": started {s}")),
-            k.duration_s
-                .map_or(String::new(), |d| format!(", {} long", length_text(d))),
-            size_text(k.bytes),
-        );
+        let what = k.notice();
         notice(ui, Some(theme::Alert::Warning), &what, |ui| {
             later = ui
                 .add(egui::Button::new("Later").frame_when_inactive(false))
@@ -741,7 +732,7 @@ impl TimegrapherApp {
                 .clicked();
             delete = ui
                 .add(egui::Button::new("Delete…"))
-                .on_hover_text("Delete this sound for good. It asks first.")
+                .on_hover_text(format!("Delete this {} for good. It asks first.", k.what()))
                 .clicked();
             move_to = ui
                 .add(egui::Button::new("Move To…"))
@@ -764,7 +755,9 @@ impl TimegrapherApp {
             self.file_path = k.dir.display().to_string();
             self.open_recording(&k.dir, true);
         } else if move_to {
-            let d = rfd::FileDialog::new().set_title("Move the Unsaved Sound Into a Folder");
+            let title = format!("Move the Unsaved {} Into a Folder", k.what_title());
+            let d = rfd::FileDialog::new().set_title(title);
+            let what = k.what();
             let dir = k.dir.clone();
             self.pick(Picker::one(
                 d,
@@ -772,7 +765,7 @@ impl TimegrapherApp {
                 move |a, parent| match move_kept(&dir, &parent) {
                     Ok(to) => {
                         a.kept.retain(|k| k.dir != dir);
-                        a.info_msg(format!("Moved the unsaved sound to {}.", to.display()));
+                        a.info_msg(format!("Moved the unsaved {what} to {}.", to.display()));
                     }
                     Err(e) => a.error(e),
                 },
@@ -833,7 +826,13 @@ impl TimegrapherApp {
         let mut choice = None;
         let modal = egui::Modal::new(egui::Id::new("delete kept sound")).show(ctx, |ui| {
             ui.set_width(380.0);
-            ui.label(RichText::new("Delete the unsaved sound?").font(theme::semibold(15.0)));
+            let what = self
+                .kept
+                .iter()
+                .find(|k| k.dir == dir)
+                .map_or("sound", KeptSound::what);
+            let title = format!("Delete the unsaved {what}?");
+            ui.label(RichText::new(title).font(theme::semibold(15.0)));
             ui.add_space(4.0);
             // A copy of a take recording into its folder: the take keeps
             // all but its last few seconds. One rule, the notice's.

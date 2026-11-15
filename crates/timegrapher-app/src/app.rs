@@ -34,7 +34,6 @@ use take_reads::{FreeJob, FreeKey, TrendKey, WholeKey, WholeTake};
 use timegrapher_core::beats::STANDARD_BPH;
 use timegrapher_core::breaks::{GapWatch, Live};
 use timegrapher_core::capture::{self, Capture, Event, InputDevice, Level};
-use timegrapher_core::clockstore;
 use timegrapher_core::library;
 use timegrapher_core::library::{length_text, size_text};
 use timegrapher_core::live::{profile_span_s, LiveAnalyzer, LiveConfig, LiveReading, AVERAGES};
@@ -44,6 +43,7 @@ use timegrapher_core::periodicity::Wheel;
 use timegrapher_core::power_reserve;
 use timegrapher_core::profile::TickProfile;
 use timegrapher_core::steadiness::SeriesKind;
+use timegrapher_core::{checkpoint, clockstore};
 
 mod charts;
 use charts::chart_key;
@@ -56,6 +56,8 @@ mod dialogs;
 mod distributions;
 mod dock;
 mod kept_analysis;
+mod unsaved;
+use unsaved::{kept_sounds, move_kept, KeptSound};
 mod library_folder;
 mod listen_card;
 mod revision;
@@ -384,106 +386,6 @@ fn scratch_dir() -> PathBuf {
         || std::env::temp_dir().join("timegrapher-unsaved"),
         |d| d.join("unsaved"),
     )
-}
-
-/// Sound a session recorded that was never saved or thrown away: the app
-/// quit without asking (on macOS, Cmd+Q and Quit in the app menu or the
-/// Dock), or was stopped (a crash, a logout, a shutdown).
-#[derive(Debug, Clone, PartialEq)]
-struct KeptSound {
-    dir: PathBuf,
-    /// "2026-10-21 14.32", from its session.json, in this computer's time.
-    started: Option<String>,
-    duration_s: Option<f64>,
-    bytes: u64,
-    /// The take it was recording into as it went, which holds all of it
-    /// but its last few seconds.
-    streamed_to: Option<PathBuf>,
-}
-
-/// The sound kept in `scratch` from earlier sessions, oldest first,
-/// leaving out any folder another copy of the app is recording into now.
-fn kept_sounds(scratch: &Path) -> Vec<KeptSound> {
-    let mut v: Vec<KeptSound> = std::fs::read_dir(scratch)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .map(|e| e.path())
-        .filter(|d| !timegrapher_core::recorder::in_use(d))
-        .filter_map(|dir| {
-            let files: Vec<std::fs::DirEntry> = std::fs::read_dir(&dir).ok()?.flatten().collect();
-            let has_sound = files.iter().any(|f| {
-                let n = f.file_name().to_string_lossy().to_lowercase();
-                n.ends_with(".wav") || n.ends_with(".flac")
-            });
-            if !has_sound {
-                return None;
-            }
-            let bytes = files
-                .iter()
-                .filter_map(|f| f.metadata().ok())
-                .map(|m| m.len())
-                .sum();
-            let about: Option<serde_json::Value> = std::fs::read(dir.join("session.json"))
-                .ok()
-                .and_then(|b| serde_json::from_slice(&b).ok());
-            let started = about
-                .as_ref()
-                .and_then(|a| a["started_utc"].as_str())
-                .map(|u| {
-                    // In this computer's time, as takes are named; as
-                    // written, marked UTC, when it can't be read.
-                    watches::local_minute(u).unwrap_or_else(|| {
-                        let at = u.get(..16).unwrap_or(u).replacen('T', " ", 1);
-                        format!("{} UTC", at.replace(':', "."))
-                    })
-                });
-            let streamed_to = take_io::streamed_to(&dir);
-            Some(KeptSound {
-                started,
-                duration_s: about.as_ref().and_then(|a| a["duration_s"].as_f64()),
-                bytes,
-                dir,
-                streamed_to,
-            })
-        })
-        .collect();
-    v.sort_by(|a, b| a.dir.cmp(&b.dir));
-    v
-}
-
-/// Move the recording folder `dir` into `parent`, under its own name:
-/// renamed, or onto another disk copied, each file written to the disk,
-/// and only then removed. Returns where it went.
-fn move_kept(dir: &Path, parent: &Path) -> Result<PathBuf, String> {
-    let name = dir.file_name().ok_or("The kept sound has no folder name")?;
-    let to = library::unused_dir(parent, &name.to_string_lossy());
-    timegrapher_core::recorder::remove_stale_lock(dir);
-    if std::fs::rename(dir, &to).is_ok() {
-        return Ok(to);
-    }
-    let copied = (|| -> std::io::Result<()> {
-        std::fs::create_dir_all(&to)?;
-        for e in std::fs::read_dir(dir)? {
-            let e = e?;
-            let mut r = std::fs::File::open(e.path())?;
-            let mut w = std::fs::File::create(to.join(e.file_name()))?;
-            std::io::copy(&mut r, &mut w)?;
-            w.sync_all()?;
-        }
-        Ok(())
-    })();
-    match copied {
-        Ok(()) => {
-            let _ = std::fs::remove_dir_all(dir);
-            Ok(to)
-        }
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&to);
-            Err(format!("Couldn't move it to {}: {e}", parent.display()))
-        }
-    }
 }
 
 /// Keep acquisition and recording failures distinct from their display text.
@@ -3073,19 +2975,9 @@ impl TimegrapherApp {
     /// What the strip shows, for the status line: the take's name, its
     /// watch and its state.
     fn status_words(&self) -> String {
-        let file_name = |p: &Path| {
-            p.file_name()
-                .map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into())
-        };
         // A take not yet saved or opened, with no watch, is Quick Listen's,
         // as the Calibre card's title says (No Watch (Quick Listen)).
-        let file = if let Some(to) = self.session.saved_to() {
-            Some(file_name(to))
-        } else if self.input == Input::File && !self.opened_path.is_empty() {
-            Some(file_name(Path::new(&self.opened_path)))
-        } else {
-            None
-        };
+        let file = self.take_name();
         let named = self.named_watch().map_or_else(String::new, |w| w.0);
         let quick = self.quick_listen || file.is_none() && named.is_empty();
         let name =
@@ -3867,7 +3759,7 @@ pub(crate) fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
 /// `timegrapher session` refuses it, sound in it or not.
 fn no_analysis_to_read(path: &Path) -> Option<String> {
     let dir = take_dir(path)?;
-    if analysis_take::is_analysis_only(dir) || !dir.join(MANIFEST).is_file() {
+    if checkpoint::is_kept(dir) || !dir.join(MANIFEST).is_file() {
         return None;
     }
     let m: Manifest = toml::from_str(&std::fs::read_to_string(dir.join(MANIFEST)).ok()?).ok()?;
@@ -3884,7 +3776,7 @@ fn no_analysis_to_read(path: &Path) -> Option<String> {
 /// folder), else the one take folder inside it, which is where the app
 /// saves a take. Several takes inside are named so one can be picked.
 fn take_folder(path: &Path) -> Result<PathBuf, String> {
-    let is_take = |p: &Path| recordings_in(p).is_ok() || analysis_take::is_analysis_only(p);
+    let is_take = |p: &Path| recordings_in(p).is_ok() || checkpoint::is_kept(p);
     if !path.is_dir() || is_take(path) {
         return Ok(path.to_path_buf());
     }

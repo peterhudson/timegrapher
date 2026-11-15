@@ -279,7 +279,7 @@ impl TakeContext {
         progress: impl FnMut(f64, f64),
     ) -> Result<(TakeContext, BeatLog), String> {
         let whole = whole_recording(m)?;
-        let kept = crate::analysis_take::is_analysis_only(&base.join(&whole.file));
+        let kept = crate::checkpoint::is_kept(&base.join(&whole.file));
         let (files, mut places) = if kept {
             (Vec::new(), kept_places(m, f64::INFINITY)?)
         } else {
@@ -504,8 +504,8 @@ pub fn entry_layout(
 ) -> Result<(Vec<FilePart>, Vec<EntryWindow>), String> {
     let whole = whole_recording(m)?;
     let path = base.join(&whole.file);
-    let (files, places) = if crate::analysis_take::is_analysis_only(&path) {
-        let length_s = crate::analysis_take::read(&path)
+    let (files, places) = if crate::checkpoint::is_kept(&path) {
+        let length_s = crate::checkpoint::read_kept(&path)
             .map_err(|err| format!("{}: {err}", path.display()))?
             .log
             .duration_s;

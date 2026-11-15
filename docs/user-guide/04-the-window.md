@@ -102,7 +102,7 @@ Every other pane starts hidden.
 | A red icon and a message's first line, ending "…" | Something else went wrong. Click for the whole message. |
 | A warning icon and a caveat | An opened take's USB lines and its clock log measure its sound card differently. Click for both figures. |
 | **Closed Unexpectedly…** | The app crashed last time. Click to make a report. |
-| **Unsaved Sound Found…** | Sound from an earlier session wasn't saved. Click to open, move or delete it. |
+| **Unsaved Take Found…** | Sound from an earlier session wasn't saved, or a Power Reserve Test with Analysis Only (chapter 21). Click to open, move or delete it. |
 | **Timegrapher 0.2.0 Available…** (with the version found) | A newer version is published. Click for its download page. |
 
 - The status bar never repeats a card's figures.

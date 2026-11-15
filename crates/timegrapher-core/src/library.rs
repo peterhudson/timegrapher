@@ -60,8 +60,10 @@ pub const CACHE_FILE: &str = ".cache.json";
 /// afresh. Apart from [`FORMAT`]: a new cache never stops an older build
 /// opening the library, which just makes its own cache again. 2: `at_end`
 /// gained `rate_corrected_s_per_day`. 3: a recording's USB lines correct
-/// that rate over its clock log. 4: a take gained `wind_h` (#1665).
-const CACHE_FORMAT: u32 = 4;
+/// that rate over its clock log. 4: a take gained `wind_h` (#1665). 5: a
+/// take kept as its parts alone, its save never finished, reads to its
+/// last part (2c of #1514).
+const CACHE_FORMAT: u32 = 5;
 pub const LOCK_FILE: &str = ".library.lock";
 /// The folder of takes not yet filed under a watch.
 pub const UNSORTED: &str = "Unsorted";
@@ -2183,11 +2185,15 @@ fn sound_length(dir: &Path, m: &Manifest) -> Option<f64> {
 }
 
 /// How long a take kept as its analysis ran, from the analysis's own
-/// header (its sound, which gave the length, is gone).
+/// header (its sound, which gave the length, is gone), or from its parts
+/// when its save never finished.
 fn kept_length(dir: &Path) -> Option<f64> {
-    crate::analysis_take::read_header(dir)
-        .ok()
-        .map(|h| h.duration_s)
+    match crate::checkpoint::only(dir) {
+        true => crate::checkpoint::length_s(dir).ok(),
+        false => crate::analysis_take::read_header(dir)
+            .ok()
+            .map(|h| h.duration_s),
+    }
 }
 
 /// What a take folder says about itself.
@@ -2204,7 +2210,7 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
         .and_then(|b| serde_json::from_slice(&b).ok());
     let audio = manifest.as_ref().and_then(|m| m.audio) != Some(false);
     let incomplete = match &manifest {
-        Some(_) if !audio => !dir.join("analysis").is_dir(),
+        Some(_) if !audio => !dir.join("analysis").is_dir() && !crate::checkpoint::only(dir),
         // An entry naming a folder (`file = "."`, as the app's own takes
         // do) is there when the folder holds sound files.
         Some(m) => m.recordings.iter().any(|r| {
@@ -2272,9 +2278,12 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
         audio,
         incomplete,
         started_utc,
-        duration_s: about
-            .as_ref()
-            .and_then(|a| at(a, "duration_s"))
+        // Of a take kept in parts, as far as its parts reach: its sound
+        // was heard further than its analysis was kept.
+        duration_s: crate::checkpoint::only(dir)
+            .then(|| kept_length(dir))
+            .flatten()
+            .or_else(|| about.as_ref().and_then(|a| at(a, "duration_s")))
             .or_else(|| {
                 let m = manifest.as_ref().filter(|_| audio && !incomplete)?;
                 sound_length(dir, m)

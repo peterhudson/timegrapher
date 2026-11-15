@@ -4,7 +4,7 @@
   "timegrapher-app": {
    "files": {
     "crates/timegrapher-app/src/app.rs": {
-     "bounds": 5,
+     "bounds": 4,
      "comparisons": 6,
      "constants": 16,
      "defaults": 0
@@ -85,6 +85,12 @@
      "bounds": 0,
      "comparisons": 0,
      "constants": 1,
+     "defaults": 0
+    },
+    "crates/timegrapher-app/src/app/unsaved.rs": {
+     "bounds": 1,
+     "comparisons": 0,
+     "constants": 0,
      "defaults": 0
     },
     "crates/timegrapher-app/src/app/watches_pane.rs": {
@@ -369,6 +375,6 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 4445
+  "crates/timegrapher-app/src/app.rs": 4337
  }
 }

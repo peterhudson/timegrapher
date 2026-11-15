@@ -1,5 +1,6 @@
 //! Listening and saving: the microphone, the session and its unsaved state, saving takes and analysis, opening and replaying recordings, the whole-take analysis, and the poll that feeds the live view.
 
+use super::kept_analysis::{kept_header, kept_label};
 use super::*;
 pub(super) use timegrapher_core::recording_order::order_warning;
 use timegrapher_core::take_context::{EntryWindow, FilePart};
@@ -1371,7 +1372,7 @@ impl TimegrapherApp {
             return None;
         }
         let manifest = read_manifest(&path).ok().flatten();
-        if analysis_take::is_analysis_only(&path) {
+        if checkpoint::is_kept(&path) {
             return Some(report::Source {
                 files: Vec::new(),
                 total_s: 0.0,
@@ -1748,7 +1749,7 @@ impl TimegrapherApp {
             return self.open_failed(why);
         }
         if let Ok(inner) = take_folder(path) {
-            if analysis_take::is_analysis_only(&inner) {
+            if checkpoint::is_kept(&inner) {
                 return self.open_failed(format!(
                     "{} has had its sound removed, so it can't be played again. Open shows \
                      its readings.",
@@ -1939,7 +1940,7 @@ impl TimegrapherApp {
         if self.file_path.trim() != path.display().to_string() {
             self.file_path = path.display().to_string();
         }
-        if analysis_take::is_analysis_only(path) {
+        if checkpoint::is_kept(path) {
             return self.open_analysis_only(path, manifest);
         }
         if let Some(why) = no_analysis_to_read(path) {
@@ -2116,24 +2117,16 @@ impl TimegrapherApp {
                 analysis_take::DIR
             ));
         };
-        let header_file = path.join(analysis_take::DIR).join(analysis_take::HEADER);
-        let header = std::fs::read_to_string(&header_file)
-            .ok()
-            .and_then(|t| serde_json::from_str::<analysis_take::Header>(&t).ok())
-            .filter(|h| h.format == analysis_take::FORMAT);
-        let Some(header) = header else {
-            let why = match analysis_take::read(path) {
-                Err(e) => e.to_string(),
-                Ok(_) => format!("{} can't be read", header_file.display()),
-            };
-            return self.open_failed(format!("Can't open {name}: {why}"));
+        let (header, parts) = match kept_header(path) {
+            Ok(h) => h,
+            Err(why) => return self.open_failed(format!("Can't open {name}: {why}")),
         };
         self.keep_mic_setup();
         self.set_watch_setup(WatchSetup::default());
-        self.open_note = None;
+        self.open_note = parts;
         let (stretches, settles) = self.apply_manifest(&m, &entries, Some(header.duration_s));
         self.watch_fills_in(path, &m);
-        let label = format!("{name} (analysis only)");
+        let label = kept_label(path, &name);
         // Its beats, its own clock log with its USB lines' figure as
         // measured when it was kept, and the breaks its session.json
         // lists, read by core as `timegrapher session` reads such a take.

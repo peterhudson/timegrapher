@@ -449,17 +449,23 @@ impl TimegrapherApp {
         // leaves out only the masks by hand.
         let (by_hand, masked) = (self.masked.clone(), self.engine_masked());
         let (position, sound) = (self.position, self.no_sound.is_none());
+        // The take opened kept as its analysis alone, whose folder says how
+        // (core `power_reserve::of_take`); none for one heard here.
+        let take = self
+            .no_sound
+            .as_ref()
+            .map(|_| PathBuf::from(&self.opened_path));
         Some(move || {
             let log = steady::log_masked(&live, &by_hand)?;
             let fit = reading_clock(take_clock.as_ref(), opened, ppm, log.duration_s);
             let breaks = steady::reading_breaks(take_breaks.unwrap_or_default(), &log);
-            let r = power_reserve::from_long_take(
+            let r = power_reserve::of_take(
+                take.as_deref(),
                 &log,
                 fit.as_ref(),
                 &breaks,
                 &masked,
                 &codes,
-                "",
                 sound,
             )?;
             let position = Position::from_name(&r.position).unwrap_or(position);
