@@ -103,15 +103,12 @@ pub(super) fn six_widths(total: f32, gap: f32) -> [f32; 6] {
 /// and each card's three rows, in the order of `widths`.
 fn lay_cards(
     ui: &mut egui::Ui,
-    total: f32,
+    (total, h): (f32, f32),
     widths: [f32; 6],
     gap: f32,
     pal: &theme::Palette,
 ) -> Vec<CardRows> {
-    let (block, _) = ui.allocate_exact_size(
-        Vec2::new(total, theme::READINGS_CARD_H),
-        egui::Sense::hover(),
-    );
+    let (block, _) = ui.allocate_exact_size(Vec2::new(total, h), egui::Sense::hover());
     // Each card's three rows, hung off the same three lines; left to
     // right they read Position, Calibre, Listen, Rate, Amplitude, Beat
     // Error.
@@ -393,7 +390,8 @@ impl TimegrapherApp {
         let position_compact = widths[0] < POSITION_W;
         let listen_compact = widths[1] < LISTEN_W;
         let compact = widths[2] < READING_FULL_W;
-        let cards = lay_cards(ui, total, widths, gap, pal);
+        let h = self.readings_card_h(ui.ctx());
+        let cards = lay_cards(ui, (total, h), widths, gap, pal);
         // A reading whose beats scatter like noise is no watch: no figures
         // then, only a word saying so where the unit goes.
         let heard = heard(r.as_ref());

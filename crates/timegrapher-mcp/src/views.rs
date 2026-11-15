@@ -763,7 +763,8 @@ fn walk_of(v: &Value) -> Option<IsochronismWalk> {
         .map(|p| {
             Some(WalkPoint {
                 t_s: p["t_s"].as_f64()?,
-                wind_h: p["wind_h"].as_f64()?,
+                // null where the wind was not given (#1665).
+                wind_h: p["wind_h"].as_f64(),
                 rate_s_per_day: p["rate_s_per_day"].as_f64()?,
                 amplitude_deg: p["amplitude_deg"].as_f64()?,
                 readings: p["readings"].as_u64()? as usize,

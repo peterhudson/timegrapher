@@ -33,7 +33,7 @@ impl TimegrapherApp {
         let gap = theme::GAP;
         let total = ui.available_width();
         let h = if self.readings_pinned {
-            theme::READINGS_CARD_H
+            self.readings_card_h(ui.ctx())
         } else {
             STRIP_H
         };
@@ -132,15 +132,13 @@ impl TimegrapherApp {
     /// shadow; they close when the pointer leaves them, or on Esc.
     fn cards_over(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         let ctx = ui.ctx().clone();
+        let high = self.readings_card_h(&ctx);
         let area = egui::Area::new(ui.id().with("readings over"))
             .order(egui::Order::Foreground)
             .fixed_pos(rect.min)
             .show(&ctx, |ui| {
                 let pal = theme::pal(ui);
-                let full = egui::Rect::from_min_size(
-                    rect.min,
-                    Vec2::new(rect.width(), theme::READINGS_CARD_H),
-                );
+                let full = egui::Rect::from_min_size(rect.min, Vec2::new(rect.width(), high));
                 let back = full.expand(SPACE / 2.0);
                 let radius = egui::CornerRadius::same(theme::CARD_RADIUS);
                 ui.painter()

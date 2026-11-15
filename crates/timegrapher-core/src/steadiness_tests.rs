@@ -922,7 +922,11 @@ fn isochronism_curve_and_wind_down_follow_the_run_down() {
         .map(|a| 0.5 * (a - 250.0) + 1.5 * z.next())
         .collect();
     let be = vec![0.3; n];
-    let cfg = Config::default();
+    // A take begun at full wind, as the run-down it follows (#1665).
+    let cfg = Config {
+        wind_h: Some(0.0),
+        ..Config::default()
+    };
     // Each amplitude reading's noise: the 2° scattered on it.
     let noise = vec![4.0; n];
     let c = isochronism_curve(
@@ -949,6 +953,67 @@ fn isochronism_curve_and_wind_down_follow_the_run_down() {
         w.headline
     );
     assert!(w.beat_error_change_ms.unwrap().abs() < 1e-9);
+}
+
+/// The same run-down with no wind given (#1665): it is never taken as
+/// full wind. The wind-down compares the first and last half hours, and
+/// says the hours are into the take; the bins keep their hours from the
+/// take's start and no hours since full wind.
+#[test]
+fn a_run_down_with_no_wind_given_is_never_read_as_full_wind() {
+    let mut z = Noise(11);
+    let n = 26 * 360;
+    let amp: Vec<f64> = (0..n)
+        .map(|i| 270.0 - 52.0 * i as f64 / n as f64 + 2.0 * z.next())
+        .collect();
+    let rate: Vec<f64> = amp
+        .iter()
+        .map(|a| 0.5 * (a - 250.0) + 1.5 * z.next())
+        .collect();
+    let be = vec![0.3; n];
+    let cfg = Config::default();
+    assert_eq!(cfg.wind_h, None, "not given unless set");
+    let noise = vec![4.0; n];
+    let c = isochronism_curve(
+        &grid(rate.clone(), 10.0),
+        &grid(amp.clone(), 10.0),
+        &noise,
+        &cfg,
+    )
+    .unwrap();
+    assert!(c
+        .bins
+        .iter()
+        .all(|b| b.from_wind_h.is_none() && b.to_wind_h.is_none()));
+    assert!(c.bins.iter().all(|b| b.from_h <= b.to_h && b.to_h <= 26.0));
+    let w = wind_down(&grid(rate, 10.0), &grid(amp, 10.0), &grid(be, 10.0), &cfg).unwrap();
+    assert!(!w.at_24h, "{}", w.headline);
+    assert_eq!((w.start.from_wind_h, w.end.from_wind_h), (None, None));
+    // The last half hour, 25.5 h in.
+    assert!((w.end.from_h - 25.5).abs() < 0.01, "{}", w.headline);
+    assert!(
+        w.headline
+            .starts_with("From 0.0 h to 25.5 h into the take (wind not given) the rate moves"),
+        "{}",
+        w.headline
+    );
+    assert!(!w.headline.contains("full wind"), "{}", w.headline);
+}
+
+/// Hours in a series' words: since full wind only when it was given
+/// (#1665).
+#[test]
+fn hours_are_since_full_wind_only_when_it_was_given() {
+    assert_eq!(hours_since_wind(None, 3.0), None);
+    assert_eq!(hours_since_wind(Some(2.0), 3.0), Some(5.0));
+    assert_eq!(
+        hours_words(1.0, 3.5, Some(24.0)),
+        "25.0–27.5 h after full wind"
+    );
+    assert_eq!(
+        hours_words(1.0, 3.5, None),
+        "1.0–3.5 h into the take (wind not given)"
+    );
 }
 
 /// Two hours of 10 s rate readings, detrended: unit noise and sines

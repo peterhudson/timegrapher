@@ -276,14 +276,13 @@ fn print_text(r: &Report, calibrated: bool) {
         println!("{}", c.headline);
         for b in &c.bins {
             println!(
-                "  {:>5}°  {:>7} s/d  (quartiles {} to {}, {} readings, {}–{} h)",
+                "  {:>5}°  {:>7} s/d  (quartiles {} to {}, {} readings, {})",
                 fixed_text(b.amplitude_deg, base_digits::AMPLITUDE),
                 signed_text(b.rate_s_per_day, base_digits::RATE),
                 signed_text(b.rate_q25, base_digits::RATE),
                 signed_text(b.rate_q75, base_digits::RATE),
                 b.readings,
-                fixed_text(b.from_wind_h, 1),
-                fixed_text(b.to_wind_h, 1)
+                timegrapher_core::steadiness::hours_words(b.from_h, b.to_h, r.config.wind_h)
             );
         }
     }
@@ -537,7 +536,7 @@ mod tests {
                 .iter()
                 .map(|&(t_s, rate, amp)| timegrapher_core::walk::WalkPoint {
                     t_s,
-                    wind_h: t_s / 3600.0,
+                    wind_h: Some(t_s / 3600.0),
                     rate_s_per_day: rate,
                     amplitude_deg: amp,
                     readings: 30,
