@@ -112,6 +112,8 @@ fn wheel_words() -> Value {
         "mesh_hint": timegrapher_core::steady_views::MESH_HINT,
         "name_line_h": timegrapher_core::chart_scale::NAME_LINE_H,
         "strong_hold": timegrapher_core::chart_scale::STRONG_HOLD,
+        "name_clear": timegrapher_core::chart_scale::NAME_CLEAR,
+        "name_row_out": timegrapher_core::chart_scale::NAME_ROW_OUT,
     })
 }
 
@@ -232,6 +234,7 @@ fn icons() -> Value {
     })
     .collect();
     m.insert("info".into(), json!(icons::INFO));
+    m.insert("mesh".into(), json!(icons::MESH));
     m.insert("width".into(), json!(icons::WIDTH));
     Value::Object(m)
 }
@@ -1035,6 +1038,11 @@ mod tests {
         assert_eq!(v["mesh_hint"], timegrapher_core::steady_views::MESH_HINT);
         assert_eq!(v["name_line_h"], timegrapher_core::chart_scale::NAME_LINE_H);
         assert_eq!(v["strong_hold"], timegrapher_core::chart_scale::STRONG_HOLD);
+        assert_eq!(v["name_clear"], timegrapher_core::chart_scale::NAME_CLEAR);
+        assert_eq!(
+            v["name_row_out"],
+            timegrapher_core::chart_scale::NAME_ROW_OUT
+        );
     }
 
     /// The watch case behind the poise dial is core's, at a ring of 1, with

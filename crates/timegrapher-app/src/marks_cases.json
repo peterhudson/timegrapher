@@ -1,5 +1,5 @@
 {
-  "about": "Cases for where marks.rs puts the names on a plot's lines. The app's tests (marks::tests) and the MCP view's (crates/timegrapher-mcp/tests/marks_cases.test.cjs) both run every case here, so the two keep one set of rules. Each name is [line x, width, rank]; places are in points. For a note beside a point, a place is [left, top, right, bottom]. For inside, facts is the facts box's span of x (null for none) and trace the spans of x where the trace crosses the row of names.",
+  "about": "Cases for where marks.rs puts the names on a plot's lines. The app's tests (marks::tests) and the MCP view's (crates/timegrapher-mcp/tests/marks_cases.test.cjs) both run every case here, so the two keep one set of rules. Each name is [line x, width, rank]; places are in points. For lane_stack, each name is [line y, height, rank] in a column from top to bottom, and at is each name's top. For a note beside a point, a place is [left, top, right, bottom]. For inside, facts is the facts box's span of x (null for none) and trace the spans of x where the trace crosses the row of names.",
   "place": [
     { "case": "apart: all in the first row, centred", "names": [[100, 40, "strong"], [300, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [280, 0]] },
     { "case": "a name that would touch goes out a row, still centred", "names": [[100, 40, "strong"], [130, 40, "strong"]], "left": 0, "right": 500, "was": [], "at": [[80, 0], [110, 1]] },
@@ -57,5 +57,14 @@
     { "case": "the room above the highest point", "lo": 0, "y": 10, "top": 10.3, "h": 200, "at": 11.976047904191617 },
     { "case": "a higher top stays", "lo": 0, "y": 10, "top": 20, "h": 200, "at": 20 },
     { "case": "from a low bottom, on a plot 126 tall", "lo": -30, "y": 0, "top": 0.5, "h": 126, "at": 10.64516129032258 }
+  ],
+  "lane_stack": [
+    {"case": "apart: each centred on its line", "names": [[100, 26, "strong"], [200, 39, "faint"]], "top": 0, "bottom": 400, "at": [87, 180.5]},
+    {"case": "closer than the clear space but not touching: a run, the gap kept", "names": [[100, 26, "strong"], [130, 26, "faint"]], "top": 0, "bottom": 400, "at": [86.9307, 123.9307]},
+    {"case": "touching: in order, the strong name all but on its line", "names": [[100, 26, "strong"], [110, 39, "faint"]], "top": 0, "bottom": 400, "at": [86.6683, 123.6683]},
+    {"case": "a faint name just above a strong one stays above it", "names": [[100, 26, "strong"], [95, 39, "faint"]], "top": 0, "bottom": 400, "at": [87.3812, 37.3812]},
+    {"case": "two strong names with a faint between and no room: one run, in order", "names": [[100, 26, "strong"], [118, 39, "faint"], [160, 26, "strong"]], "top": 0, "bottom": 400, "at": [73.4403, 110.4403, 160.4403]},
+    {"case": "kept within the column", "names": [[5, 26, "strong"], [8, 39, "faint"]], "top": 0, "bottom": 400, "at": [0, 37]},
+    {"case": "given out of order", "names": [[200, 26, "faint"], [100, 26, "strong"], [120, 26, "faint"]], "top": 0, "bottom": 400, "at": [187, 86.8317, 123.8317]}
   ]
 }

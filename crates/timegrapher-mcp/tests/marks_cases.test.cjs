@@ -18,9 +18,9 @@ function constant(name) {
   if (!match) throw new Error(`Missing ${name}`);
   return match[0];
 }
-const context = vm.createContext({ document: { getElementById: () => ({ clientWidth: 624 }) }, WHEEL_WORDS: { strong_hold: 100 } });
+const context = vm.createContext({ document: { getElementById: () => ({ clientWidth: 624 }) }, WHEEL_WORDS: { strong_hold: 100, name_clear: 11, name_row_out: 26 } });
 vm.runInContext(["CHAR_W", "DASH", "MARKS", "NAME_CLEAR"].map(constant).join("\n") + "\nlet clipCount = 0;\n" +
-  ["esc", "chartWidth", "plotArea", "gridDown", "gridAcross", "xyChart", "markOrder", "markPlace", "markPlaceRow", "markInside", "besideSpots", "crosses", "besidePlace", "roomAbove", "markWidth", "markText", "laneAbove", "namesInside", "laneBelow", "sideWidth", "laneRight", "laneRightAt", "markStackNames"]
+  ["esc", "chartWidth", "plotArea", "gridDown", "gridAcross", "xyChart", "laneRows", "rowOut", "markOrder", "markPlace", "markPlaceRow", "markInside", "besideSpots", "crosses", "besidePlace", "roomAbove", "markWidth", "markText", "laneAbove", "namesInside", "laneBelow", "sideWidth", "laneRight", "laneRightAt", "markStackNames"]
     .map(definition).join("\n") + "\nthis.MARKS = MARKS;", context);
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -66,7 +66,7 @@ test("names beside a plot keep a clear gap, a word to a line, a strong one on it
   assert.ok(Math.abs(ys[0][1] - (60 - 13 + 9.5)) < 1, `${ys}`);
   assert.ok(Math.abs(ys[1][1] - ys[0][1] - 13) < 0.1);
   // Between two names, more than a line clear: the gap reads as a gap.
-  assert.ok(ys[2][1] - ys[1][1] >= 13 + 12 - 1e-9, `${ys}`);
+  assert.ok(ys[2][1] - ys[1][1] >= 13 + 11 - 1e-9, `${ys}`);
   assert.ok(context.sideWidth(lines) < context.sideWidth([{ name: "Third Pinion Mesh", rank: "faint" }]), "the lane as wide as its longest word");
 });
 
@@ -103,10 +103,14 @@ const plot = (o) => context.xyChart({
 
 test("a plot's lines are dotted and named above it, joined by a stroke of their colour", () => {
   const svg = plot({ names: true });
-  const { LANE, LANE_GAP } = context.MARKS;
-  // The lane's room is kept above the plot, which keeps its height.
-  assert.match(svg, new RegExp(`height="${150 + LANE + LANE_GAP}"`));
-  assert.match(svg, new RegExp(`<rect class="plot" x="[\\d.]+" y="${4 + LANE + LANE_GAP}"`));
+  const { ROW_H, LANE_GAP } = context.MARKS, out = context.WHEEL_WORDS.name_row_out;
+  // The lane's row is kept above the plot, which keeps its height; the
+  // ×2's name can't sit beside the wheel's, so a second row comes, a row
+  // and a clear line out (#1764).
+  assert.match(svg, new RegExp(`height="${150 + ROW_H + LANE_GAP + out}"`));
+  assert.match(svg, new RegExp(`<rect class="plot" x="[\\d.]+" y="${4 + ROW_H + LANE_GAP + out}"`));
+  const one = plot({ names: true, vlines: [line(60, "Fourth Wheel", "strong")] });
+  assert.match(one, new RegExp(`height="${150 + ROW_H + LANE_GAP}"`), "one row where the names fit");
   // Dotted: round dots, 5 px apart for a wheel, 10 for its ×2.
   assert.match(svg, /stroke="var\(--callout\)" stroke-width="1.2" stroke-dasharray="0 5" stroke-linecap="round"/);
   assert.match(svg, /stroke="var\(--callout\)" stroke-width="1" stroke-dasharray="0 10" stroke-linecap="round"/);
@@ -117,7 +121,7 @@ test("a plot's lines are dotted and named above it, joined by a stroke of their 
   assert.match(outside, /<text[^>]*style="fill:var\(--text2\);[^"]*">Fourth Wheel ×2<\/text>/);
   assert.equal((outside.match(/<polyline/g) || []).length, 2);
   // Every name sits above the plot.
-  const top = 4 + LANE + LANE_GAP;
+  const top = 4 + ROW_H + LANE_GAP + out;
   const names = [...outside.matchAll(/<text x="[\d.]+" y="([\d.]+)" style/g)];
   assert.equal(names.length, 2);
   for (const [, y] of names) assert.ok(+y < top, outside);
@@ -215,7 +219,7 @@ test("a y axis' name sits above its top tick, left of the plot, in the ticks' st
 
 test("a mesh is named in a lane under the plot's tick labels, its line run on down to it (#1764)", () => {
   const mesh = line(7.5, "Fourth Pinion Mesh", "faint", { width: 1, dash: "mesh", below: true });
-  const plain = plot({ names: true });
+  const plain = plot({ names: true, vlines: [line(60, "Fourth Wheel", "strong")] });
   const svg = plot({ names: true, vlines: [line(60, "Fourth Wheel", "strong"), mesh] });
   const { LANE_GAP, ROW_H } = context.MARKS;
   // The chart keeps its height; the lane under the plot takes a row of it.
@@ -232,11 +236,6 @@ test("a mesh is named in a lane under the plot's tick labels, its line run on do
 });
 
 test("names beside a plot keep their lines' order, a strong one on its line, as core's lane_stack (#1764)", () => {
-  const gap = context.MARKS.NAME_GAP, stack = (n) => plain(context.markStackNames(n, 0, 400));
-  assert.deepEqual(stack([[100, 26, "strong"], [200, 39, "faint"]]), [87, 180.5]);
-  let at = stack([[100, 26, "strong"], [110, 39, "faint"]]);
-  assert.ok(Math.abs(at[1] - (at[0] + 26 + gap)) < 1e-9 && Math.abs(at[0] - 87) < 1, `${at}`);
-  at = stack([[100, 26, "strong"], [95, 39, "faint"]]);
-  assert.ok(at[1] + 39 + gap <= at[0] + 1e-9, `${at}`);
-  assert.equal(stack([[5, 26, "strong"], [8, 39, "faint"]])[0], 0);
+  assert.ok(cases.lane_stack.length > 0);
+  for (const c of cases.lane_stack) close(plain(context.markStackNames(c.names, c.top, c.bottom)), c.at, c.case);
 });

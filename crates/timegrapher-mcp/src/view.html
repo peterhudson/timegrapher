@@ -106,6 +106,8 @@ canvas.map { position: absolute; image-rendering: pixelated; cursor: crosshair; 
 .pane-charts svg text { font-size: 12px; }
 .pane-rows th .unit { display: block; font-weight: 400; color: var(--text2); font-size: 11.5px; }
 .icon-seg { display: inline-flex; gap: 4px; margin-bottom: 4px; }
+/* A switch with its icon before its name (Mesh, #1764). */
+.icon-label { display: inline-flex; align-items: center; gap: 4px; }
 .icon-toggle { width: 26px; height: 26px; padding: 3px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text3); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .icon-toggle:hover { background: var(--surface-2, rgba(127,127,127,.12)); }
 .icon-toggle[aria-pressed="true"] { color: var(--tint); background: color-mix(in srgb, var(--tint) 16%, transparent); border-color: color-mix(in srgb, var(--tint) 45%, transparent); }
@@ -1403,14 +1405,16 @@ function xyChart(o) {
   // #1764), its room kept while any is marked.
   const under = o.names && !short && (o.vlines || []).some((v) => v.name && v.below);
   const B = (o.xName ? 34 : 20) + (under ? MARKS.ROW_H + MARKS.LANE_GAP : 0);
-  const room = o.names && !short ? MARKS.LANE + MARKS.LANE_GAP : 0;
+  // The lane above is one row; a second appears only where a name can't
+  // sit in the first (Hugh on #1764), the chart growing by its pitch.
+  const room = o.names && !short ? MARKS.ROW_H + MARKS.LANE_GAP : 0;
   // A y axis' name sits above its top tick, left of the plot: in the lane's
   // room when there is one (the lane's names stay over the plot), else in a
   // row of its own.
   const yNames = o.yName ? String(o.yName).split("\n") : [];
   // The names sit clear of a top tick at the plot's very top (Walter, #1083).
   const nameRow = yNames.length && !room ? 14 * yNames.length + NAME_CLEAR : 0;
-  const H = (o.height || 150) + room + nameRow, T = 4 + room + nameRow;
+  let H = (o.height || 150) + room + nameRow, T = 4 + room + nameRow;
   const plotH = H - T - B;
   const [x0, x1] = o.x, y0 = o.y[0];
   // steady: the plot keeps a note's room above the trace's highest point,
@@ -1426,6 +1430,8 @@ function xyChart(o) {
   const plotW = W - L - (side || R);
   const xt = o.xTicks(x0, x1, plotW);
   const sx = (x) => L + (x - x0) / (x1 - x0) * plotW;
+  const above = (o.vlines || []).filter((v) => v.name && !v.below);
+  if (room && laneRows(above, sx, L, plotW) > 1) { H += rowOut(); T += rowOut(); }
   const sy = (y) => T + (y1 - y) / (y1 - y0) * plotH;
   const area = plotArea(L, T, plotW, plotH);
   let g = area.svg, inside = "";
@@ -1559,7 +1565,7 @@ function xyChart(o) {
 // its top. Strong names (a wheel) are placed first, faint ones (a wheel's
 // ×2, a reference period) after. The app's tests and these run the same
 // cases (crates/timegrapher-app/src/marks_cases.json).
-const MARKS = { ROW_H: 15, LANE: 30, LANE_GAP: 6, NAME_GAP: 12, HYSTERESIS: 2, SHORT_PLOT: 100, INSIDE_TOP: 4, NAME_SIZE: 11.5, TICK: 4, SIDE_GAP: 12, NOTE_OFF: 8, NOTE_PAD: 3, NOTE_ROOM: 33 };
+const MARKS = { ROW_H: 15, LANE_GAP: 6, NAME_GAP: 12, HYSTERESIS: 2, SHORT_PLOT: 100, INSIDE_TOP: 4, NAME_SIZE: 11.5, TICK: 4, SIDE_GAP: 12, NOTE_OFF: 8, NOTE_PAD: 3, NOTE_ROOM: 33 };
 
 // marks::order: strong first, then faint, each left to right. `names` are
 // each one's [x, width, rank], rank "strong" or "faint".
@@ -1711,6 +1717,15 @@ function markText(x, y, name, rank, extra = "") {
 // to slide. Each line and its name say its hover. With `one`,
 // marks::lane_above_one: a lane of one row, for a plot that names only a
 // few lines, where a name slides along the row (markPlaceRow).
+// chart_scale::NAME_ROW_OUT: the pitch of a lane's second row above a plot.
+function rowOut() { return (WHEEL_WORDS || {}).name_row_out; }
+// How many rows the lane above a plot takes for `lines`: one, or two where
+// a name can't sit in the first.
+function laneRows(lines, sx, L, plotW) {
+  const seen = lines.filter((l) => sx(l.x) >= L && sx(l.x) <= L + plotW);
+  const names = seen.map((l) => [sx(l.x), markWidth(l.name, l.rank), l.rank]);
+  return markPlace(names, L + 2, L + plotW - 2, []).some(([, row]) => row === 1) ? 2 : 1;
+}
 function laneAbove(lines, sx, L, T, plotW, one) {
   const { ROW_H, LANE_GAP } = MARKS;
   const seen = lines.filter((l) => sx(l.x) >= L && sx(l.x) <= L + plotW);
@@ -1721,7 +1736,7 @@ function laneAbove(lines, sx, L, T, plotW, one) {
   let strokes = "", boxes = "";
   seen.forEach((l, i) => {
     const [x, w] = names[i], [left, row] = placed[i];
-    const off = LANE_GAP + row * ROW_H, top = T - off - ROW_H, centre = left + w / 2;
+    const off = LANE_GAP + (row ? row * rowOut() : 0), top = T - off - ROW_H, centre = left + w / 2;
     // One angled line from the name's lower edge to the top of its line
     // on a one-row lane (Hugh on #1747); a bend under a two-row lane.
     const pts = [[centre, T - off - 1]];
@@ -1801,12 +1816,12 @@ function laneRightAt(lines, top, bottom) {
   return markStackNames(lines.map((l) => [l.y, (l.words || [l.name]).length * NAME_LINE_H, l.rank]), top, bottom);
 }
 // chart_scale::lane_stack: names in a column beside a plot, in their
-// lines' order with NAME_GAP clear between any two; each run of names that
+// lines' order with NAME_CLEAR (core's) between any two; each run of names that
 // would touch sits where its names are nearest their lines, a strong one
 // holding its line STRONG_HOLD times as much as a faint one, within
 // `top..bottom`. Each name's top.
 function markStackNames(names, top, bottom) {
-  const { NAME_GAP } = MARKS, STRONG_HOLD = (WHEEL_WORDS || {}).strong_hold;
+  const NAME_GAP = (WHEEL_WORDS || {}).name_clear, STRONG_HOLD = (WHEEL_WORDS || {}).strong_hold;
   const o = names.map((_, i) => i).sort((a, b) => names[a][0] - names[b][0]);
   const hold = (i) => (names[i][2] === "faint" ? 1 : STRONG_HOLD);
   const height = ([s, n]) => o.slice(s, s + n).reduce((t, i) => t + names[i][1], 0) + (n - 1) * NAME_GAP;
@@ -2169,7 +2184,7 @@ function steadySwitch() {
   // The meshes have a switch of their own (Peter on #1764).
   const mesh = ["mesh", "Mesh", showMesh, MESH_HINT];
   // Each a switch of its own, side by side.
-  return [sw, wheels, mesh].filter(Boolean).map((b) => `<button data-switch="${b[0]}" aria-pressed="${b[2]}" title="${esc(b[3])}">${b[1]}</button>`).join("");
+  return [sw, wheels, mesh].filter(Boolean).map((b) => `<button data-switch="${b[0]}" aria-pressed="${b[2]}" title="${esc(b[3])}"${b[0] === "mesh" ? ` class="icon-label">${icon("mesh", 14)}` : ">"}${b[1]}</button>`).join("");
 }
 
 // The app's Info button hint.

@@ -12,6 +12,10 @@ pub const AMPLITUDE: &str = r#"<path d="M3 3.5h18"/><path d="M10 3.5L6 15M14 3.5
 /// Two children on a seesaw: tick and tock out of balance, one up, one down.
 pub const BEAT_ERROR: &str = r#"<path d="M3 13.4l18 5.2"/><path d="M12 16l-2.4 4.6h4.8z"/><circle cx="5" cy="8.8" r="1.6"/><path d="M5 10.4v3.4M5 11.6l1.8.6M5 13.8l1.6 2.6"/><circle cx="19" cy="12.4" r="1.6"/><path d="M19 14v3.8M19 15.2l-1.8.4M19 17.8l-1.4 2.8"/>"#;
 
+/// One wheel tooth going in between two pinion leaves: the Mesh switch
+/// (Peter's pick, A, on #1764).
+pub const MESH: &str = r#"<path d="M2.5 3.5H21.5"/><path d="M8.6 3.5C8.6 9.5 10.2 13.8 12 13.8C13.8 13.8 15.4 9.5 15.4 3.5"/><path d="M2.5 20.5H21.5"/><path d="M2.8 20.5C2.8 15.6 4.4 12.6 6.3 12.6C8.2 12.6 9.2 15.8 9.2 20.5"/><path d="M14.8 20.5C14.8 15.8 15.8 12.6 17.7 12.6C19.6 12.6 21.2 15.6 21.2 20.5"/>"#;
+
 /// The standard "i" in a circle: info, the words in full.
 pub const INFO: &str = r#"<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/>"#;
 
