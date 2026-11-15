@@ -1868,3 +1868,8 @@ pub(super) fn timed_clock_text(ppm: f64, sd: f64) -> String {
     use timegrapher_core::figure_text::{base_digits, figure_with_pm};
     figure_with_pm(ppm.abs(), Some(sd), base_digits::CLOCK, false)
 }
+
+/// The day of a UTC timestamp kept as text ("2026-10-12T…").
+pub(super) fn day_of(utc: &str) -> &str {
+    utc.get(..10).unwrap_or(utc)
+}

@@ -62,6 +62,9 @@ pub struct Settings {
     /// load: both panes always cover the whole take.
     pub chart_series: [bool; 3],
     pub dist_series: [bool; 3],
+    /// The charts the Power Reserve pane draws (#1729): all three until
+    /// one is turned off.
+    pub reserve_series: [bool; 3],
     pub hist_cumulative: bool,
     /// The Power Reserve and Positions Test panes' Info panels open.
     pub reserve_info: bool,
@@ -194,6 +197,7 @@ impl Default for Settings {
             follow: false,
             chart_series: RATE_ONLY,
             dist_series: RATE_ONLY,
+            reserve_series: [true; 3],
             hist_cumulative: false,
             reserve_info: false,
             positions_info: false,

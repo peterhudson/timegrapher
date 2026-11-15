@@ -4,6 +4,16 @@
 //! that both live readings and long-horizon analysis (hours to days) read
 //! from the same per-beat log. See `docs/` in the repository.
 
+/// The key every surface shows wherever a beat error is grey for its
+/// source (#1076), as a literal, for `concat!`:
+/// [`power_reserve::GREY_BEAT_ERROR_KEY`].
+#[macro_export]
+macro_rules! grey_beat_error_key {
+    () => {
+        "Grey beat errors: from the drop, or source not recorded."
+    };
+}
+
 pub mod amplitude;
 pub mod amplitude_slope;
 pub mod analysis;

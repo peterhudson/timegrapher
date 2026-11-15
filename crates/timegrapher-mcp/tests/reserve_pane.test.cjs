@@ -1,6 +1,7 @@
 // The session view's Power Reserve pane (#1729): the hours table with core's
 // figures and Read %, and a chart per measure of the hourly levels as steps,
-// one line broken only where an hour has no figure; a thin figure grey.
+// one line broken only where an hour has no figure; a thin figure, or a beat
+// error not taken off the unlock, shown grey.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -22,7 +23,7 @@ vm.runInContext(["PANE_MIN_CHART", "PANE_CHAR_W", "paneShown", "PANE_KINDS"].map
 vm.runInContext(["esc", "fixedDigits", "roundStep", "gridFor", "axisLabel", "gridDown", "gridAcross", "valueTick",
   "testPane", "icon", "columnHead", "paneChartWidth", "plHead", "paneToggles", "reservePane", "stepChart", "tickLabelsShown"].map(definition).join("\n"), context);
 
-const step = (value, text, thin) => ({ value, text, figure: text && text.split(" ")[0].replace("°", ""), thin: !!thin });
+const step = (value, text, grey) => ({ value, text, figure: text && text.split(" ")[0].replace("°", ""), grey: !!grey });
 const reserve = {
   title: "Power Reserve", hours_title: "Hours", read_title: "Read", read_unit: "%", position: "DU",
   hours: [0, 1, 2, 3].map((hour) => ({ hour, span_h: hour === 3 ? 0.5 : 1, read: hour === 1 ? null : "90" })),
@@ -44,7 +45,7 @@ test("the table gives each hour core's bare figures and its Read, the units unde
   const row = (i) => [...markup.match(new RegExp(`<tr data-pos="h${i}">(.*?)</tr>`))[1].matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map((m) => m[1]);
   assert.deepEqual(row(0), ["0", "−1.0", "290", "90"]);
   assert.deepEqual(row(1), ["1", "–", "285", "–"]);
-  assert.ok(/<td class="thin">\+2\.0<\/td>/.test(markup), "a thin figure is grey");
+  assert.ok(/<td class="thin">\+2\.0<\/td>/.test(markup), "a grey figure is grey");
 });
 
 test("each measure's hours are one line of steps, broken where an hour has none", () => {
@@ -96,4 +97,11 @@ test("no two hour labels touch, at the narrowest chart", () => {
 test("the first hour's label starts at the axis, clear of the lowest value's", () => {
   const chart = context.stepChart(reserve.series[0], reserve.hours, "r-rate");
   assert.ok(/<text x="52" y="163" text-anchor="start">0<\/text>/.test(chart), chart);
+});
+
+test("the grey key shows under the table only when core sends it", () => {
+  assert.ok(!context.reservePane(reserve, "r").includes('class="map-key"'));
+  const key = "Grey beat errors: from the drop, or source not recorded.";
+  const markup = context.reservePane({ ...reserve, grey_key: key }, "r");
+  assert.ok(markup.includes(`<div class="map-key">${key}</div>`), markup);
 });

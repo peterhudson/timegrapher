@@ -4,7 +4,7 @@
   "timegrapher-app": {
    "files": {
     "crates/timegrapher-app/src/app.rs": {
-     "bounds": 6,
+     "bounds": 5,
      "comparisons": 6,
      "constants": 16,
      "defaults": 0
@@ -58,7 +58,7 @@
      "defaults": 0
     },
     "crates/timegrapher-app/src/app/readouts.rs": {
-     "bounds": 6,
+     "bounds": 7,
      "comparisons": 4,
      "constants": 0,
      "defaults": 0
@@ -129,6 +129,12 @@
      "constants": 4,
      "defaults": 0
     },
+    "crates/timegrapher-app/src/hour_steps.rs": {
+     "bounds": 0,
+     "comparisons": 0,
+     "constants": 1,
+     "defaults": 0
+    },
     "crates/timegrapher-app/src/icons.rs": {
      "bounds": 5,
      "comparisons": 6,
@@ -174,7 +180,7 @@
     "crates/timegrapher-app/src/reserve.rs": {
      "bounds": 1,
      "comparisons": 0,
-     "constants": 2,
+     "constants": 1,
      "defaults": 0
     },
     "crates/timegrapher-app/src/scope.rs": {
@@ -363,6 +369,6 @@
   }
  },
  "long_files": {
-  "crates/timegrapher-app/src/app.rs": 4493
+  "crates/timegrapher-app/src/app.rs": 4492
  }
 }

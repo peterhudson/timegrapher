@@ -27,6 +27,7 @@ mod fields;
 mod guide;
 mod guided;
 mod help;
+mod hour_steps;
 mod icons;
 mod isochronism;
 mod marks;

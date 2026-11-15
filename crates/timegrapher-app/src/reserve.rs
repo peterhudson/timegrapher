@@ -10,19 +10,19 @@
 //! position from wind to stop.
 
 use crate::app::Position;
-use crate::strength::{self, Grid};
+use crate::hour_steps;
 use crate::theme;
 use eframe::egui::{self, RichText};
 use std::path::PathBuf;
 use timegrapher_core::be_angle;
 use timegrapher_core::beats::Beat;
-use timegrapher_core::chart_scale::axis_number;
 use timegrapher_core::confidence::Figure;
 use timegrapher_core::figure_text::{base_digits, figure, fixed_text, true_minus};
 use timegrapher_core::library::length_text;
 use timegrapher_core::power_reserve::{self, Ending, Heard, Results};
 use timegrapher_core::recorder::STORED_BITS;
 use timegrapher_core::session::{beat_error_source_label, BeatErrorSource};
+use timegrapher_core::steadiness::SeriesKind;
 
 /// Bytes of sound written an hour at `sample_rate`, one channel, as the
 /// recorder keeps it: at [`STORED_BITS`] whatever the microphone gives.
@@ -198,7 +198,7 @@ pub fn pane(
     free: Option<(u64, u64)>,
     (card, watch): (&str, &str),
     ready: bool,
-    info: bool,
+    (info, shown): (bool, [bool; 3]),
 ) {
     ui.spacing_mut().item_spacing.y = 6.0;
     let Some(t) = test else {
@@ -226,7 +226,7 @@ pub fn pane(
         |ui, h| info_panel(ui, &info_lines(t, watch, hours), h),
         |ui| {
             if !hours.is_empty() {
-                hour_area(ui, hours, t.running());
+                hour_area(ui, hours, t.running(), shown);
             }
         },
     );
@@ -396,9 +396,109 @@ fn kept_words(name: &str, alone: Option<bool>) -> String {
 /// The hour charts and table, taking the rest of the pane and scrolling
 /// in it, their bar drawn at rest, from the top each time the pane is
 /// shown; `so_far` while the run goes on, its newest hour still filling.
-fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
+fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool, shown: [bool; 3]) {
     ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
-    let viewport_h = ui.available_height();
+    // While it runs the charts gain an hour as each is whole.
+    let whole = if so_far {
+        hours.iter().take_while(|h| h.whole()).count()
+    } else {
+        hours.len()
+    };
+    let charts = reserve_charts(&hours[..whole], shown);
+    let charts: Vec<&hour_steps::Chart> = charts.iter().collect();
+    let spans: Vec<(f64, f64)> = hours[..whole]
+        .iter()
+        .map(|h| (f64::from(h.hour), f64::from(h.hour) + h.span_s / 3600.0))
+        .collect();
+    // The hour under the pointer last frame, in the table or a chart.
+    let id = egui::Id::new("reserve hover");
+    let hover: Option<usize> = ui.data(|d| d.get_temp(id)).flatten();
+    let room = ui.available_rect_before_wrap();
+    let table_w = table_width(ui, hours) + ui.spacing().scroll.allocated_width();
+    let gap = theme::GAP;
+    let words = |h: usize| axis_words(&hours[h]);
+    let chart_hover = hover.filter(|&h| h < whole);
+    let now = if whole == 0 || charts.is_empty() {
+        table_scroll(ui, room, hours, hover)
+    } else if room.width() - table_w - gap >= CHARTS_MIN_W {
+        // The charts beside the table (#1729), the pane's height, or
+        // their least in a column of their own that scrolls when the pane
+        // is shorter (Hugh on #1761).
+        let split = room.left() + table_w;
+        let table = egui::Rect::from_x_y_ranges(room.left()..=split, room.y_range());
+        let column = egui::Rect::from_x_y_ranges(split + gap..=room.right(), room.y_range());
+        let now = table_scroll(ui, table, hours, hover);
+        let high = column.height().max(hour_steps::read_h(charts.len()));
+        let at = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("reserve charts scroll")
+                    .auto_shrink([false, false])
+                    .max_height(column.height())
+                    .show(ui, |ui| {
+                        // Clear of the scroll bar where there is one.
+                        let bar = if high > column.height() {
+                            ui.spacing().scroll.allocated_width()
+                        } else {
+                            0.0
+                        };
+                        let size = egui::vec2(ui.available_width() - bar, high);
+                        let (chart, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+                        hour_steps::stack(ui, chart, &charts, &spans, chart_hover, words)
+                    })
+                    .inner
+            })
+            .inner;
+        now.or(at)
+    } else {
+        // Too narrow for both: the charts above the table, at least half
+        // the pane, and the two scrolling together where they don't fit.
+        let high = (room.height() / 2.0).max(hour_steps::read_h(charts.len()));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
+            run_scroll(ui, room)
+                .show(ui, |ui| {
+                    let size = egui::vec2(ui.available_width(), high);
+                    let (chart, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+                    let at = hour_steps::stack(ui, chart, &charts, &spans, chart_hover, words);
+                    ui.add_space(gap);
+                    hour_grid(ui, hours, hover).or(at)
+                })
+                .inner
+        })
+        .inner
+    };
+    ui.allocate_rect(room, egui::Sense::hover());
+    if now != hover {
+        ui.data_mut(|d| d.insert_temp(id, now));
+        ui.ctx().request_repaint();
+    }
+}
+
+/// The least width the charts take beside the table, points (#1729):
+/// narrower than this, they go above it.
+const CHARTS_MIN_W: f32 = 320.0;
+
+/// The hours' table in `rect`, scrolling, its titles pinned, the row
+/// `hover` outlined. Gives the row under the pointer.
+fn table_scroll(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    hours: &[power_reserve::Hour],
+    hover: Option<usize>,
+) -> Option<usize> {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        run_scroll(ui, rect)
+            .show(ui, |ui| hour_grid(ui, hours, hover))
+            .inner
+    })
+    .inner
+}
+
+/// The scroll area of the pane's run in `rect`: back at its top whenever
+/// it shows again, and never taller than its room, however little:
+/// egui's least scrolled height of 64 would run the foot past a short
+/// pane, out of reach of the wheel.
+fn run_scroll(ui: &egui::Ui, rect: egui::Rect) -> egui::ScrollArea {
     let id = egui::Id::new("reserve run scroll");
     let pass = ui.ctx().cumulative_pass_nr();
     let last = ui.ctx().data_mut(|d| {
@@ -406,82 +506,72 @@ fn hour_area(ui: &mut egui::Ui, hours: &[power_reserve::Hour], so_far: bool) {
         d.insert_temp(id, pass);
         last
     });
-    // Never taller than the room left, however little: egui's least
-    // scrolled height of 64 would run the foot past a short pane, out of
-    // reach of the wheel.
-    let mut area = egui::ScrollArea::vertical()
+    let area = egui::ScrollArea::both()
         .id_salt(id)
         .auto_shrink([false, false])
         .min_scrolled_height(0.0)
-        .max_height(viewport_h.max(0.0))
+        .max_height(rect.height().max(0.0))
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
     if last.is_none_or(|l| l + 1 < pass) {
-        area = area.vertical_scroll_offset(0.0);
+        area.vertical_scroll_offset(0.0)
+    } else {
+        area
     }
-    area.show(ui, |ui| {
-        // The charts take the height left after the hours' table (or a
-        // third of it, for a long table); when that leaves them short of a
-        // readable height, all of it, the table under them. What doesn't
-        // fit scrolls.
-        let row_h = ui
-            .text_style_height(&egui::TextStyle::Body)
-            .max(ui.spacing().interact_size.y)
-            + 3.0;
-        let gap = ui.spacing().item_spacing.y;
-        let room = viewport_h - 8.0 - 3.0 * gap;
-        let table_h = ((hours.len() as f32 + 2.0) * row_h + 4.0).min(room / 3.0);
-        let with_table = (room - table_h - gap) / 2.0;
-        let stacked = if with_table >= CHART_READ_H {
-            with_table
-        } else {
-            ((room - gap) / 2.0).max(CHART_MIN_H)
-        };
-        // Too short to stack them at a height that reads, but wide enough:
-        // side by side, each the whole height.
-        let side = stacked < CHART_READ_H
-            && ui.available_width() >= 2.0 * SIDE_MIN_W + ui.spacing().item_spacing.x;
-        // Side by side, they fill the pane, the table wholly under them.
-        let chart_h = if side {
-            (viewport_h - 8.0).max(CHART_MIN_H)
-        } else {
-            stacked
-        };
-        // While it runs the charts gain a point as each hour is whole.
-        let whole = if so_far {
-            hours.iter().take_while(|h| h.whole()).count()
-        } else {
-            hours.len()
-        };
-        let mut plot_x = None;
-        if whole > 0 {
-            plot_x = Some(hour_chart(ui, &hours[..whole], chart_h, side));
-            ui.add_space(8.0);
-        }
-        hour_table(ui, hours, plot_x);
-    });
 }
 
-/// The least height of each of the Power Reserve charts, points.
-const CHART_MIN_H: f32 = 56.0;
+/// The hour under the hover line, as the bottom chart names it: "4–5 h ·
+/// read 100%" (#1729).
+fn axis_words(h: &power_reserve::Hour) -> String {
+    match h.read_share() {
+        Some(r) => format!("{} · read {}%", hour_label(h), fixed_text(100.0 * r, 0)),
+        None => hour_label(h),
+    }
+}
 
-/// The least width of each Power Reserve chart side by side, points.
-const SIDE_MIN_W: f32 = 360.0;
-
-/// The height each Power Reserve chart reads well at, points: its hours'
-/// labels and a plot that names a few values.
-const CHART_READ_H: f32 = 100.0;
+/// The Power Reserve charts `shown` of rate, amplitude and beat error,
+/// each hour's figure and ± as its table row gives it, grey where its cell
+/// is (#1729).
+fn reserve_charts(hours: &[power_reserve::Hour], shown: [bool; 3]) -> Vec<hour_steps::Chart> {
+    use hour_steps::{Chart, Step};
+    let step = |k: SeriesKind, h: &power_reserve::Hour| -> Option<Step> {
+        Some(Step {
+            v: h.value(k)?,
+            se: h.se(k),
+            band: h.band(k),
+            grey: h.grey(k),
+        })
+    };
+    [
+        (SeriesKind::Rate, base_digits::RATE),
+        (SeriesKind::Amplitude, base_digits::AMPLITUDE),
+        (SeriesKind::BeatError, base_digits::BEAT_ERROR),
+    ]
+    .into_iter()
+    .zip(shown)
+    .filter(|(_, on)| *on)
+    .map(|((kind, digits), _)| Chart {
+        kind,
+        steps: hours.iter().map(|h| step(kind, h)).collect(),
+        unit: timegrapher_core::position_line::unit_of(kind),
+        digits,
+        signed: kind == SeriesKind::Rate,
+        axis: power_reserve::chart_axis(hours, kind),
+    })
+    .collect()
+}
 
 /// The least height the pane's run needs under its toolbar once it has
-/// charts: its line and both charts at a height that reads, the table
-/// scrolling under them; none before then. The Paper Strip above gives
-/// room for it, down to its own least.
-pub fn least_h(test: Option<&Test>) -> Option<f32> {
+/// charts: its line and the charts `shown` at a height that reads, the
+/// table scrolling beside or under them; none before then. The Paper
+/// Strip above gives room for it, down to its own least.
+pub fn least_h(test: Option<&Test>, shown: [bool; 3]) -> Option<f32> {
     let t = test?;
     let charts = match t.results.as_ref() {
         Some(r) => !r.hours.is_empty(),
         None => t.so_far.iter().any(|h| h.whole()),
     };
-    charts.then_some(22.0 + 2.0 * CHART_READ_H + 8.0 + 12.0)
+    let n = shown.iter().filter(|&&on| on).count().max(1);
+    charts.then_some(22.0 + hour_steps::read_h(n) + 12.0)
 }
 
 /// A run stopped by hand after `hours` whole hours, for the tests.
@@ -562,34 +652,11 @@ fn part_hour_hover(h: &power_reserve::Hour) -> Option<(String, bool)> {
     })
 }
 
-/// The run hour by hour as a table, the hour in progress read like a
-/// finished run's last, part hour. Under charts, it starts at their plots'
-/// left edge, the value labels alone in the margin, and is no wider than
-/// the plots, scrolling sideways when it would be; `plot_x` is the plots'
-/// span, none with no chart.
-fn hour_table(ui: &mut egui::Ui, hours: &[power_reserve::Hour], plot_x: Option<egui::Rangef>) {
-    let Some(x) = plot_x else {
-        hour_grid(ui, hours);
-        return;
-    };
-    // The plots' span across, from here down.
-    let below = egui::Rect::from_x_y_ranges(x, ui.available_rect_before_wrap().y_range());
-    ui.scope_builder(egui::UiBuilder::new().max_rect(below), |ui| {
-        egui::ScrollArea::horizontal()
-            .id_salt("reserve hours across")
-            // egui shows a scroll area's content a clip margin past its
-            // edge.
-            .max_width(x.span() - ui.visuals().clip_rect_margin)
-            .auto_shrink([true, true])
-            .show(ui, |ui| hour_grid(ui, hours));
-    });
-}
-
 /// What the grey beat errors mean, in their key and the Beat Error title's
 /// hover: one text for both.
 macro_rules! dim_key {
     () => {
-        "Grey beat errors: from the drop, or source not recorded."
+        timegrapher_core::grey_beat_error_key!()
     };
 }
 
@@ -597,7 +664,7 @@ macro_rules! dim_key {
 /// the drop, or its source not recorded). The one rule for every table
 /// that shows beat errors, Power Reserve and Positions Test (#1076).
 pub fn beat_error_dimmed(source: Option<BeatErrorSource>) -> bool {
-    source != Some(BeatErrorSource::Unlock)
+    BeatErrorSource::greyed(source)
 }
 
 /// The dimming's key, over a table so it is in view with the rows, only
@@ -640,10 +707,8 @@ fn beat_error_hover(h: &power_reserve::Hour) -> (String, bool) {
             })
             .filter_map(|c| c.long(None)),
     );
-    let thin = thin(h, Figure::BeatError);
-    let grey = thin.is_some() || beat_error_dimmed(src);
-    words.extend(thin);
-    (words.join(". "), grey)
+    words.extend(thin(h, Figure::BeatError));
+    (words.join(". "), h.grey(SeriesKind::BeatError))
 }
 
 /// Whether an hour's BE Angle is grey: its beat error or its amplitude
@@ -664,7 +729,7 @@ fn any_thin(h: &power_reserve::Hour) -> bool {
 fn hour_key_text(hours: &[power_reserve::Hour]) -> Option<String> {
     let parts: Vec<&str> = [
         (
-            hours.iter().any(|h| beat_error_dimmed(h.beat_error_source)),
+            hours.iter().any(power_reserve::Hour::beat_error_off_unlock),
             dim_key!(),
         ),
         (hours.iter().any(any_thin), THIN_KEY),
@@ -732,19 +797,101 @@ type Cell = (String, Option<(String, bool)>);
 
 /// The table itself: the hour named at the left, the figures right-aligned
 /// under their titles.
-fn hour_grid(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
+fn hour_grid(
+    ui: &mut egui::Ui,
+    hours: &[power_reserve::Hour],
+    hover: Option<usize>,
+) -> Option<usize> {
     let pal = theme::pal(ui);
+    let rows = hour_rows(hours);
+    let widths = column_widths(ui, &rows);
+    let row_h = ui.spacing().interact_size.y;
+    let put = |ui: &mut egui::Ui, c: usize, text: RichText| {
+        if c == 0 {
+            return ui.label(text);
+        }
+        // One cell, its column's width, the figure at its right.
+        ui.allocate_ui_with_layout(
+            egui::vec2(widths[c], row_h),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                ui.set_min_width(widths[c]);
+                ui.label(text)
+            },
+        )
+        .inner
+    };
+    let mut titles = Vec::new();
+    let mut spans: Vec<egui::Rect> = Vec::new();
+    let grid = egui::Grid::new("reserve hours")
+        .striped(true)
+        .spacing([COLUMN_GAP, GRID_GAP])
+        .show(ui, |ui| {
+            for (c, (name, unit, hint)) in HOUR_COLUMNS.into_iter().enumerate() {
+                titles.push(title(ui, (name, unit, hint), widths[c], c > 0));
+            }
+            ui.end_row();
+            for row in &rows {
+                let mut span = egui::Rect::NOTHING;
+                for (c, (text, source)) in row.iter().enumerate() {
+                    // A beat error not from the unlock and a thin
+                    // amplitude dimmed, and every beat error's source in
+                    // words.
+                    let colour = if source.as_ref().is_some_and(|s| s.1) {
+                        pal.text_secondary
+                    } else {
+                        pal.text
+                    };
+                    let r = put(ui, c, RichText::new(text).color(colour));
+                    span = span.union(r.rect);
+                    if let Some((words, _)) = source {
+                        r.on_hover_text(words.as_str());
+                    }
+                }
+                spans.push(span);
+                ui.end_row();
+            }
+        });
+    // Each row's band, the gaps around it included, so the pointer is
+    // always over one row or the next.
+    let band = |r: egui::Rect| r.expand2(egui::vec2(COLUMN_GAP / 2.0, GRID_GAP / 2.0));
+    // The hovered hour's row outlined (#1729).
+    if let Some(r) = hover.and_then(|h| spans.get(h)) {
+        ui.painter().rect_stroke(
+            band(*r),
+            egui::CornerRadius::same(2),
+            egui::Stroke::new(1.0_f32, pal.text_secondary),
+            egui::StrokeKind::Inside,
+        );
+    }
+    pin_titles(ui, &titles, grid.response.rect, rows.len());
+    let pointer = ui.ctx().pointer_hover_pos()?;
+    if !ui.clip_rect().contains(pointer) {
+        return None;
+    }
+    spans.iter().position(|r| band(*r).contains(pointer))
+}
+
+/// The gap between the table's columns, points.
+const COLUMN_GAP: f32 = 18.0;
+
+/// The table's rows: for each hour, each cell's text, and the words of
+/// its hover with whether it is dimmed.
+fn hour_rows(hours: &[power_reserve::Hour]) -> Vec<[Cell; 6]> {
     // Each cell: its text, and the words of its source with whether it is
     // dimmed, for a beat error not from the unlock.
-    let plain = |t: String| (t, None);
-    let rows: Vec<[Cell; 6]> = hours
+    hours
         .iter()
         .map(|h| {
             [
                 (hour_label(h), part_hour_hover(h)),
-                plain(cell(h.rate_s_per_day, |v| {
-                    true_minus(&figure(v, None, base_digits::RATE, true))
-                })),
+                (
+                    cell(h.rate_s_per_day, |v| {
+                        true_minus(&figure(v, None, base_digits::RATE, true))
+                    }),
+                    // Grey when thin, as the amplitude (Norm on #1761).
+                    thin(h, Figure::Rate).map(|w| (w, true)),
+                ),
                 (
                     cell(h.amplitude_deg, |v| {
                         figure(v, None, base_digits::AMPLITUDE, false)
@@ -774,7 +921,18 @@ fn hour_grid(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
                 ),
             ]
         })
-        .collect();
+        .collect()
+}
+
+/// The width of the table of `hours`, its stripes' edges included.
+fn table_width(ui: &egui::Ui, hours: &[power_reserve::Hour]) -> f32 {
+    let widths = column_widths(ui, &hour_rows(hours));
+    widths.iter().sum::<f32>() + COLUMN_GAP * (widths.len() - 1) as f32 + 4.0
+}
+
+/// Each column as wide as its title or its widest figure, a point to
+/// spare for the bold title.
+fn column_widths(ui: &egui::Ui, rows: &[[Cell; 6]]) -> Vec<f32> {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let wide = |t: &str| {
         ui.fonts_mut(|f| {
@@ -783,9 +941,7 @@ fn hour_grid(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
                 .x
         })
     };
-    // Each column as wide as its title or its widest figure, a point to
-    // spare for the bold title.
-    let widths: Vec<f32> = HOUR_COLUMNS
+    HOUR_COLUMNS
         .iter()
         .enumerate()
         .map(|(c, (head, unit, _))| {
@@ -793,51 +949,7 @@ fn hour_grid(ui: &mut egui::Ui, hours: &[power_reserve::Hour]) {
                 .map(|r| wide(&r[c].0))
                 .fold((wide(head) + 1.0).max(wide(unit)), f32::max)
         })
-        .collect();
-    let row_h = ui.spacing().interact_size.y;
-    let put = |ui: &mut egui::Ui, c: usize, text: RichText| {
-        if c == 0 {
-            return ui.label(text);
-        }
-        // One cell, its column's width, the figure at its right.
-        ui.allocate_ui_with_layout(
-            egui::vec2(widths[c], row_h),
-            egui::Layout::right_to_left(egui::Align::Center),
-            |ui| {
-                ui.set_min_width(widths[c]);
-                ui.label(text)
-            },
-        )
-        .inner
-    };
-    let mut titles = Vec::new();
-    let grid = egui::Grid::new("reserve hours")
-        .striped(true)
-        .spacing([18.0, GRID_GAP])
-        .show(ui, |ui| {
-            for (c, (name, unit, hint)) in HOUR_COLUMNS.into_iter().enumerate() {
-                titles.push(title(ui, (name, unit, hint), widths[c], c > 0));
-            }
-            ui.end_row();
-            for row in &rows {
-                for (c, (text, source)) in row.iter().enumerate() {
-                    // A beat error not from the unlock and a thin
-                    // amplitude dimmed, and every beat error's source in
-                    // words.
-                    let colour = if source.as_ref().is_some_and(|s| s.1) {
-                        pal.text_secondary
-                    } else {
-                        pal.text
-                    };
-                    let r = put(ui, c, RichText::new(text).color(colour));
-                    if let Some((words, _)) = source {
-                        r.on_hover_text(words.as_str());
-                    }
-                }
-                ui.end_row();
-            }
-        });
-    pin_titles(ui, &titles, grid.response.rect, rows.len());
+        .collect()
 }
 
 /// One title's cell, `w` wide: its name, and its unit on its own line
@@ -955,180 +1067,6 @@ fn pin_titles(ui: &mut egui::Ui, titles: &[Title], table: egui::Rect, rows: usiz
 
 /// The gap between the table's rows, points.
 const GRID_GAP: f32 = 3.0;
-
-/// The steps, in hours, the Power Reserve charts' hours go up in.
-const HOUR_STEPS: [f64; 7] = [1.0, 2.0, 3.0, 6.0, 12.0, 24.0, 48.0];
-
-/// The Power Reserve charts' hour marks: none before the run, in the
-/// margin left of 0 h.
-fn hour_marks(g: egui_plot::GridInput) -> Vec<egui_plot::GridMark> {
-    // 80 points apart at least: egui_plot names hours only from 60 apart,
-    // and fades them in up to 80.
-    let mut marks = theme::even_grid(g, 80.0, &HOUR_STEPS);
-    marks.retain(|m| m.value >= 0.0);
-    marks
-}
-
-/// The least width of the Power Reserve charts' value axis, points.
-const GUTTER: f32 = 64.0;
-
-/// The Power Reserve charts' two figures: name, unit and reading.
-type Series = (
-    &'static str,
-    &'static str,
-    fn(&power_reserve::Hour) -> Option<f64>,
-);
-
-/// Rate, then amplitude.
-const SERIES: [Series; 2] = [
-    ("rate", " s/d", |h| h.rate_s_per_day),
-    ("amplitude", "°", |h| h.amplitude_deg),
-];
-
-/// One width for both charts' value axes, so their plots start at the
-/// same x: the least gutter, or the widest label either chart may draw,
-/// read from each figure's whole-number ends with a decimal to spare.
-fn shared_gutter(ui: &egui::Ui, hours: &[power_reserve::Hour]) -> f32 {
-    let font = egui::TextStyle::Body.resolve(ui.style());
-    let wide = |t: String| {
-        ui.fonts_mut(|f| {
-            f.layout_no_wrap(t, font.clone(), egui::Color32::WHITE)
-                .size()
-                .x
-        })
-    };
-    let mut w = GUTTER;
-    for (_, unit, get) in SERIES {
-        for v in hours.iter().filter_map(get) {
-            for end in [v.floor(), v.ceil()] {
-                w = w.max(wide(format!("{end:.1}{unit}")) + 8.0);
-            }
-        }
-    }
-    w
-}
-
-/// Where the run's hours end: the last hour's end, an hour at least, so a
-/// short run reads 0 h to 1 h rather than the one hour over and over.
-fn run_end_h(hours: &[power_reserve::Hour]) -> f64 {
-    hours
-        .iter()
-        .map(|h| f64::from(h.hour) + h.span_s / 3600.0)
-        .fold(1.0, f64::max)
-}
-
-/// Rate and amplitude against hours since the first beat, one above the
-/// other on the same hours, or `side` by side in a short, wide pane: both
-/// span 0 h to the run's end, on one width of value axis, so an hour sits
-/// at the same x in each when stacked. Gives the plots' span across.
-fn hour_chart(
-    ui: &mut egui::Ui,
-    hours: &[power_reserve::Hour],
-    height: f32,
-    side: bool,
-) -> egui::Rangef {
-    let end = run_end_h(hours);
-    // A 5% margin each side, as egui's own, the same in both, so 0 h
-    // clears the value axis.
-    let x_range = (-end * 0.05, end * 1.05);
-    let gutter = shared_gutter(ui, hours);
-    // Room at the right for half the last hour's label, which centres on
-    // the plot's edge, clear of the pane's scroll bar.
-    ui.set_max_width(ui.available_width() - 18.0);
-    let plots: Vec<egui::Rect> = if side {
-        ui.columns(2, |cols| {
-            cols.iter_mut()
-                .zip(SERIES)
-                .map(|(col, series)| one_chart(col, hours, series, height, x_range, gutter))
-                .collect()
-        })
-    } else {
-        SERIES
-            .into_iter()
-            .map(|series| one_chart(ui, hours, series, height, x_range, gutter))
-            .collect()
-    };
-    plots
-        .iter()
-        .map(|r| r.x_range())
-        .reduce(|a, b| egui::Rangef::new(a.min.min(b.min), a.max.max(b.max)))
-        .unwrap_or(egui::Rangef::NOTHING)
-}
-
-/// One of the Power Reserve charts: `series` against hours since the first
-/// beat, `height` tall, over `x_range` hours, its value axis `gutter` wide.
-/// Gives its plot's frame.
-fn one_chart(
-    ui: &mut egui::Ui,
-    hours: &[power_reserve::Hour],
-    (name, unit, get): Series,
-    height: f32,
-    (x_lo, x_hi): (f64, f64),
-    gutter: f32,
-) -> egui::Rect {
-    use egui_plot::{Line, Plot, PlotPoints};
-    let pal = theme::pal(ui);
-    // Its series' name over it, as the Distributions' plots have (#1528),
-    // in the chart's height.
-    use timegrapher_core::steadiness::SeriesKind;
-    let kind = if name == "rate" {
-        SeriesKind::Rate
-    } else {
-        SeriesKind::Amplitude
-    };
-    let title = crate::steady::title(kind);
-    let named = ui.label(theme::caption(title).color(pal.text_secondary));
-    let height = (height - named.rect.height() - ui.spacing().item_spacing.y).max(CHART_MIN_H);
-    let x = |h: &power_reserve::Hour| f64::from(h.hour) + h.span_s / 7200.0;
-    let colour = if name == "rate" {
-        pal.trace_rate
-    } else {
-        pal.trace_amplitude
-    };
-    let pts: Vec<[f64; 2]> = hours
-        .iter()
-        .filter_map(|h| get(h).map(|v| [x(h), v]))
-        .collect();
-    let mut grid = Grid::new(hour_marks, |g| theme::even_grid(g, 24.0, &[]));
-    if name == "rate" {
-        grid = grid.zero_y();
-    }
-    grid.on(Plot::new(format!("reserve {name}")))
-        .height(height)
-        .allow_drag(false)
-        .allow_zoom(false)
-        .allow_scroll(false)
-        .default_x_bounds(x_lo, x_hi)
-        .y_axis_min_width(gutter)
-        .x_axis_formatter(|m, _| format!("{} h", axis_number(m.value, m.step_size)))
-        // The point under the pointer in words: hours into the run and
-        // the hour's figure.
-        .label_formatter(move |name, v| {
-            if name.is_empty() {
-                return String::new();
-            }
-            format!(
-                "{} into the run\n{:.d$}{unit}",
-                length_text((v.x * 3600.0).max(0.0)),
-                v.y,
-                d = usize::from(unit != "°")
-            )
-        })
-        // Never "-0 s/d" on the zero line.
-        .y_axis_formatter(move |m, _| {
-            true_minus(&format!("{}{unit}", axis_number(m.value, m.step_size)))
-        })
-        .show(ui, |p| {
-            grid.draw(p, pal);
-            p.line(
-                Line::new(name, PlotPoints::from(pts))
-                    .color(colour)
-                    .width(strength::DATA_W),
-            );
-        })
-        .response
-        .rect
-}
 
 /// The dialog for saving the run as a CSV file, starting in `dir`.
 pub fn csv_dialog(dir: &std::path::Path) -> rfd::FileDialog {
@@ -1386,7 +1324,14 @@ mod tests {
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ink = (theme::pal(ui).text, theme::pal(ui).text_secondary);
-                    pane(ui, Some(&t), None, ("Position", "Pepsi"), true, false);
+                    pane(
+                        ui,
+                        Some(&t),
+                        None,
+                        ("Position", "Pepsi"),
+                        true,
+                        (false, [false; 3]),
+                    );
                 });
             });
             cells = out
@@ -1462,6 +1407,11 @@ mod tests {
         none.beat_error_ms = None;
         assert_eq!(thin(&none, Figure::Amplitude), None);
         assert_eq!(thin(&none, Figure::BeatError), None);
+        // An hour with no beat error and no source greys nothing, so the
+        // key says nothing of beat errors (Norm on #1761).
+        none.beat_error_source = None;
+        none.caveats.clear();
+        assert_eq!(hour_key_text(std::slice::from_ref(&none)), None);
         let ctx = egui::Context::default();
         theme::install(&ctx);
         let mut ink = (egui::Color32::TRANSPARENT, egui::Color32::TRANSPARENT);
@@ -1477,7 +1427,14 @@ mod tests {
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ink = (theme::pal(ui).text, theme::pal(ui).text_secondary);
-                    pane(ui, Some(&t), None, ("Position", "Pepsi"), true, false);
+                    pane(
+                        ui,
+                        Some(&t),
+                        None,
+                        ("Position", "Pepsi"),
+                        true,
+                        (false, [false; 3]),
+                    );
                 });
             });
             cells = out
@@ -1529,7 +1486,14 @@ mod tests {
             };
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    pane(ui, Some(t), None, ("Position", "Pepsi"), true, info);
+                    pane(
+                        ui,
+                        Some(t),
+                        None,
+                        ("Position", "Pepsi"),
+                        true,
+                        (info, [true; 3]),
+                    );
                 });
             });
             cells = out
@@ -1570,7 +1534,14 @@ mod tests {
             };
             ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    pane(ui, Some(&t), None, ("Position", "Pepsi"), true, false);
+                    pane(
+                        ui,
+                        Some(&t),
+                        None,
+                        ("Position", "Pepsi"),
+                        true,
+                        (false, [true; 3]),
+                    );
                 });
             })
         };
@@ -1784,7 +1755,7 @@ mod tests {
                 },
                 |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        hour_table(ui, &t.results.as_ref().unwrap().hours, None);
+                        hour_grid(ui, &t.results.as_ref().unwrap().hours, None);
                     });
                 },
             );
@@ -1808,9 +1779,9 @@ mod tests {
         assert!(texts.iter().any(|t| t.0 == NO_READ_SHARE), "{texts:?}");
     }
 
-    /// After a run, its two charts take the pane's height and nothing is
-    /// cut at its foot: a taller pane gives taller charts, and the hours'
-    /// table ends inside the pane.
+    /// After a run, its charts above the table in a narrow pane take half
+    /// its height, never less than their least, and nothing is cut at its
+    /// foot: the hours' table ends inside the pane.
     #[test]
     fn a_finished_runs_charts_take_the_panes_height() {
         let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
@@ -1850,23 +1821,27 @@ mod tests {
                 };
                 let out = ctx.run(input, |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        pane(ui, Some(&t), None, ("Position", "Pepsi"), true, false);
+                        pane(
+                            ui,
+                            Some(&t),
+                            None,
+                            ("Position", "Pepsi"),
+                            true,
+                            (false, [true; 3]),
+                        );
                     });
                 });
+                // What shows: each text inside its clip.
                 texts = out
                     .shapes
                     .iter()
-                    .filter(|c| {
-                        c.clip_rect.intersects(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            egui::vec2(700.0, h),
-                        ))
-                    })
                     .filter_map(|c| match &c.shape {
-                        egui::Shape::Text(t) => Some((
-                            t.galley.text().to_string(),
-                            t.galley.rect.translate(t.pos.to_vec2()),
-                        )),
+                        egui::Shape::Text(t) => {
+                            let r = t.galley.rect.translate(t.pos.to_vec2());
+                            c.clip_rect
+                                .intersects(r)
+                                .then(|| (t.galley.text().to_string(), r))
+                        }
                         _ => None,
                     })
                     .collect::<Vec<_>>();
@@ -1874,20 +1849,38 @@ mod tests {
             let zero: Vec<f32> = texts
                 .iter()
                 .filter(|t| t.0 == "0 h")
-                .map(|t| t.1.center().y)
+                .map(|t| t.1.bottom())
                 .collect();
-            assert_eq!(zero.len(), 2, "{texts:?}");
+            // The hours' axis, once, under the bottom chart.
+            assert_eq!(zero.len(), 1, "{texts:?}");
             // Nothing drawn starts below the pane: what doesn't fit is in
             // the table, which scrolls.
             assert!(texts.iter().all(|t| t.1.top() < h), "{texts:?}");
             let last = texts.iter().find(|t| t.0 == "2–3 h").map(|t| t.1.bottom());
-            (zero[1] - zero[0], last)
+            // The stack's top: the first chart's title row; the pane's
+            // margin, the run line's inset.
+            let top = texts
+                .iter()
+                .filter(|t| t.0 == "Rate")
+                .map(|t| t.1.top())
+                .fold(f32::INFINITY, f32::min);
+            let margin = texts
+                .iter()
+                .find(|t| t.0.starts_with("Ran "))
+                .map_or(0.0, |t| t.1.left());
+            (zero[0] - top, h - margin - top, last)
         };
-        let (short, _) = drawn(380.0);
-        let (tall, last) = drawn(760.0);
+        // Too narrow for the charts beside the table: above it, at least
+        // half the pane (Hugh on #1761), the hours' axis at the stack's
+        // foot, within a point.
+        let least = hour_steps::read_h(3);
+        let (short, room, _) = drawn(380.0);
+        assert!((short - least).abs() <= 1.0, "{short} {least} {room}");
+        let (tall, room, last) = drawn(760.0);
+        assert!(room / 2.0 > least, "{room} {least}");
+        assert!((tall - room / 2.0).abs() <= 1.0, "{tall} {room}");
         // Room enough: the whole table shows.
         assert!(last.is_some_and(|b| b <= 760.0), "{last:?}");
-        assert!(tall > short + 120.0, "{short} {tall}");
     }
 
     /// A finished run in a short pane scrolls, by the wheel, to its
@@ -1948,7 +1941,14 @@ mod tests {
             let out = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     if let Some(t) = t {
-                        pane(ui, Some(t), None, ("Position", "Pepsi"), true, false);
+                        pane(
+                            ui,
+                            Some(t),
+                            None,
+                            ("Position", "Pepsi"),
+                            true,
+                            (false, [true; 3]),
+                        );
                     }
                 });
             });
@@ -1967,11 +1967,17 @@ mod tests {
         };
         let t = run(5);
         let shown = |texts: &[(String, egui::Rect)], what: &str| texts.iter().any(|t| t.0 == what);
-        // The Rate chart's own scale, "7 s/d", at the top of what scrolls.
+        // The Rate chart's title row, its unit on the line under it over
+        // the value axis, left of the name, at the top of what scrolls;
+        // the table's titles put the unit under the name.
         let rate_scale = |texts: &[(String, egui::Rect)]| {
-            texts
-                .iter()
-                .any(|t| t.0.ends_with(" s/d") && !t.0.contains('.'))
+            texts.iter().filter(|t| t.0 == "Rate").any(|name| {
+                texts.iter().any(|u| {
+                    u.0 == "s/d"
+                        && (u.1.top() - name.1.bottom()).abs() < 4.0
+                        && u.1.right() <= name.1.left()
+                })
+            })
         };
         let mut texts = pass(Some(&t), h, false);
         texts = pass(Some(&t), h, false).into_iter().chain(texts).collect();
@@ -2044,7 +2050,7 @@ mod tests {
                 let out = ctx.run(egui::RawInput::default(), |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         let top = ui.cursor().top();
-                        pane(ui, t, free, ("Position", ""), true, false);
+                        pane(ui, t, free, ("Position", ""), true, (false, [true; 3]));
                         h = ui.cursor().top() - top - ui.spacing().item_spacing.y;
                     });
                 });
@@ -2119,7 +2125,14 @@ mod tests {
                 };
                 let out = ctx.run(input, |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
-                        pane(ui, Some(t), None, ("Position", "Pepsi"), true, false);
+                        pane(
+                            ui,
+                            Some(t),
+                            None,
+                            ("Position", "Pepsi"),
+                            true,
+                            (false, [true; 3]),
+                        );
                     });
                 });
                 texts = out
@@ -2145,7 +2158,7 @@ mod tests {
         for row in ["0–1 h", "1–2 h", "2–2.4 h"] {
             assert!(shown.iter().any(|s| s == row), "{row}: {shown:?}");
         }
-        assert_eq!(shown.iter().filter(|s| *s == "0 h").count(), 2, "{shown:?}");
+        assert_eq!(shown.iter().filter(|s| *s == "0 h").count(), 1, "{shown:?}");
         assert!(!shown.iter().any(|s| s == "3 h"), "{shown:?}");
         assert!(shown[0].starts_with("32 s · "), "{shown:?}");
     }
@@ -2177,8 +2190,7 @@ mod tests {
         let mut texts = Vec::new();
         for _ in 0..2 {
             let out = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default()
-                    .show(ctx, |ui| hour_chart(ui, &r.hours, 110.0, false));
+                egui::CentralPanel::default().show(ctx, |ui| charts(ui, &r.hours, 330.0, None));
             });
             texts = out
                 .shapes
@@ -2192,16 +2204,157 @@ mod tests {
         let hours: Vec<_> = texts.iter().filter(|t| t.ends_with(" h")).collect();
         assert!(!hours.is_empty(), "{texts:?}");
         assert!(texts.iter().all(|t| !t.starts_with("-0")), "{texts:?}");
-        // Two charts, each naming 0 h and 1 h once.
+        // Three charts on one hour axis, named under the bottom one only
+        // (#1729): 0 h and 1 h once each.
         for h in ["0 h", "1 h"] {
-            assert_eq!(hours.iter().filter(|t| **t == h).count(), 2, "{texts:?}");
+            assert_eq!(hours.iter().filter(|t| **t == h).count(), 1, "{texts:?}");
         }
-        assert_eq!(hours.len(), 4, "{texts:?}");
+        assert_eq!(hours.len(), 2, "{texts:?}");
     }
 
-    /// An 8.5 h run's two charts put each hour at the same x, though the
+    /// The charts of `hours`, all three, stacked `h` tall from the top of
+    /// `ui`, the hour `hover` marked.
+    fn charts(ui: &mut egui::Ui, hours: &[power_reserve::Hour], h: f32, hover: Option<usize>) {
+        let spans: Vec<(f64, f64)> = hours
+            .iter()
+            .map(|h| (f64::from(h.hour), f64::from(h.hour) + h.span_s / 3600.0))
+            .collect();
+        let made = reserve_charts(hours, [true; 3]);
+        let refs: Vec<&hour_steps::Chart> = made.iter().collect();
+        let rect =
+            egui::Rect::from_min_size(ui.max_rect().min, egui::vec2(ui.max_rect().width(), h));
+        hour_steps::stack(ui, rect, &refs, &spans, hover, |i| axis_words(&hours[i]));
+    }
+
+    /// Whole hours at these rates, the rest of each the same.
+    fn whole_hours(rates: &[f64]) -> Vec<power_reserve::Hour> {
+        (0u32..)
+            .zip(rates)
+            .map(|(h, &rate)| power_reserve::Hour {
+                hour: h,
+                span_s: 3600.0,
+                rate_s_per_day: Some(rate),
+                amplitude_deg: Some(281.0),
+                beat_error_ms: Some(0.4),
+                beat_error_source: None,
+                rate_se: None,
+                amplitude_se: None,
+                beat_error_se: None,
+                caveats: Vec::new(),
+                read_s: 3500.0,
+                bph: Some(28_800),
+            })
+            .collect()
+    }
+
+    /// One hour hovered in the table or the charts is the same hour in
+    /// both: its row outlined, its figures in the charts' title rows, and
+    /// the hours under the bottom chart naming it (#1729).
+    #[test]
+    fn a_hovered_hour_shows_in_the_table_and_the_charts() {
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        t.update(&beats(0.0, 32.0, 0.2), 0.2, 32.0);
+        t.stop();
+        t.finish(|s| s).unwrap();
+        if let Some(r) = t.results.as_mut() {
+            r.hours = whole_hours(&[4.5, 2.5, -1.5]);
+        }
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 700.0));
+        let run = |at: Option<egui::Pos2>| {
+            let mut out = None;
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(screen),
+                    events: at.map(egui::Event::PointerMoved).into_iter().collect(),
+                    ..Default::default()
+                };
+                out = Some(ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        pane(
+                            ui,
+                            Some(&t),
+                            None,
+                            ("Position", "Pepsi"),
+                            true,
+                            (false, [true; 3]),
+                        );
+                    });
+                }));
+            }
+            out.unwrap()
+        };
+        let texts = |out: &egui::FullOutput| -> Vec<(String, egui::Rect)> {
+            out.shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) => Some((
+                        t.galley.text().to_string(),
+                        t.galley.rect.translate(t.pos.to_vec2()),
+                    )),
+                    _ => None,
+                })
+                .collect()
+        };
+        let at = |texts: &[(String, egui::Rect)], what: &str| {
+            texts
+                .iter()
+                .find(|t| t.0 == what)
+                .unwrap_or_else(|| panic!("{what}: {texts:?}"))
+                .1
+        };
+        // The rows outlined: unfilled rects round a row's label.
+        let outlined = |out: &egui::FullOutput, label: egui::Rect| {
+            out.shapes.iter().any(|c| match &c.shape {
+                egui::Shape::Rect(r) => {
+                    r.fill == egui::Color32::TRANSPARENT
+                        && r.stroke.width > 0.0
+                        && r.rect.contains_rect(label)
+                        && r.rect.height() < 40.0
+                }
+                _ => false,
+            })
+        };
+        let still = run(None);
+        let shown = texts(&still);
+        let row = at(&shown, "1–2 h");
+        assert!(!outlined(&still, row), "{shown:?}");
+        // Over the second hour's row.
+        let out = run(Some(row.center()));
+        let shown = texts(&out);
+        assert!(outlined(&out, at(&shown, "1–2 h")), "{shown:?}");
+        for want in ["+2.5 s/d", "281°", "0.40 ms", "1–2 h · read 97%"] {
+            assert!(shown.iter().any(|t| t.0 == want), "{want}: {shown:?}");
+        }
+        // Over the third hour in the Rate chart: its row outlined.
+        let (two, rate) = (at(&shown, "2 h"), at(&shown, "Rate"));
+        let x = two.center().x + 20.0;
+        let charts_rate = shown
+            .iter()
+            .filter(|t| t.0 == "Rate")
+            .map(|t| t.1)
+            .max_by(|a, b| a.left().total_cmp(&b.left()))
+            .unwrap_or(rate);
+        let out = run(Some(egui::pos2(x, charts_rate.bottom() + 30.0)));
+        let shown = texts(&out);
+        assert!(outlined(&out, at(&shown, "2–3 h")), "{shown:?}");
+        assert!(!outlined(&out, at(&shown, "1–2 h")), "{shown:?}");
+        assert!(shown.iter().any(|t| t.0 == "−1.5 s/d"), "{shown:?}");
+        // No hour label shows half hidden behind the hovered hour's words.
+        let words = at(&shown, "2–3 h · read 97%");
+        let crowded: Vec<_> = shown
+            .iter()
+            .filter(|t| t.0.ends_with(" h") && t.1.intersects(words.expand(2.0)))
+            .collect();
+        assert!(crowded.is_empty(), "{crowded:?}");
+    }
+
+    /// An 8.5 h run's charts start their plots at the same x, though the
     /// rate's labels are wider than the amplitude's and the last part hour
-    /// has a rate but no amplitude.
+    /// has a rate but no amplitude; the hovered hour's value is in each
+    /// title row with its unit, and the hours under the bottom chart name
+    /// it with its Read % (#1729).
     #[test]
     fn the_two_charts_put_each_hour_at_the_same_x() {
         let rate = [3.2, 2.1, 1.4, 0.6, -0.8, -12.3, -44.1, -96.8, -150.5];
@@ -2233,7 +2386,7 @@ mod tests {
                 ..Default::default()
             };
             let out = ctx.run(input, |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| hour_chart(ui, &hours, 200.0, false));
+                egui::CentralPanel::default().show(ctx, |ui| charts(ui, &hours, 500.0, Some(5)));
             });
             texts = out
                 .shapes
@@ -2241,30 +2394,25 @@ mod tests {
                 .filter_map(|c| match &c.shape {
                     egui::Shape::Text(t) => Some((
                         t.galley.text().to_string(),
-                        t.galley.rect.translate(t.pos.to_vec2()).center().x,
+                        t.galley.rect.translate(t.pos.to_vec2()).left(),
                     )),
                     _ => None,
                 })
                 .collect::<Vec<_>>();
         }
-        for h in 0..=8 {
-            let name = format!("{h} h");
-            let xs: Vec<f32> = texts.iter().filter(|t| t.0 == name).map(|t| t.1).collect();
-            assert_eq!(xs.len(), 2, "{name}: {texts:?}");
-            assert!((xs[0] - xs[1]).abs() < 0.5, "{name}: {xs:?}");
+        let left = |name: &str| {
+            texts
+                .iter()
+                .find(|t| t.0 == name)
+                .unwrap_or_else(|| panic!("{name}: {texts:?}"))
+                .1
+        };
+        let rate = left("Rate");
+        for name in ["Amplitude", "Beat Error"] {
+            assert!((left(name) - rate).abs() < 0.5, "{name}: {texts:?}");
         }
-    }
-
-    /// A long run's margin left of 0 h, wider than an hour step, marks no
-    /// hour before the run.
-    #[test]
-    fn no_hour_is_marked_before_the_run() {
-        let marks = hour_marks(egui_plot::GridInput {
-            bounds: (-2.3, 48.8),
-            base_step_size: 0.2,
-        });
-        assert!(!marks.is_empty());
-        assert!(marks.iter().all(|m| m.value >= 0.0), "{marks:?}");
-        assert_eq!(marks[0].value, 0.0);
+        for want in ["−12.3 s/d", "247°", "0.40 ms", "5–6 h · read 97%"] {
+            assert!(texts.iter().any(|t| t.0 == want), "{want}: {texts:?}");
+        }
     }
 }
