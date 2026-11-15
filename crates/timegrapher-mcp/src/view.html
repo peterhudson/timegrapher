@@ -907,7 +907,9 @@ function positionLineChart(line, id) {
     y += LANE_H;
     for (const l of line.lanes.filter((m) => m.group === grp)) {
       const cy = y + LANE_H / 2;
-      const val = [l.text, l.full_wind_text && `${(line.key || [])[1] || ""} ${l.full_wind_text}`].filter(Boolean).join(" · ");
+      // The hover's figures as core writes them for the app's charts
+      // (Hugh on #1785): this test's, the full-wind test's after it.
+      const val = l.figures;
       g += `<g class="lane" data-pos="${esc(l.position)}" data-label="${esc(l.name)}" data-val="${esc(val)}"><rect class="hit" x="0" y="${y}" width="${W}" height="${LANE_H}"/>`;
       g += `<text x="${L - 8}" y="${cy + 4}" text-anchor="end" style="fill:var(--text)">${esc(l.position)}</text>`;
       if (l.full_wind != null && l.value != null) {

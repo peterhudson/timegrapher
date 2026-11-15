@@ -297,9 +297,9 @@ impl TimegrapherApp {
         theme::bar_gap(ui);
         self.positions_lengths(ui, running, "Each Position");
         // Each chart on or off, the others sharing the height (#1729),
-        // once there is something to chart.
+        // once there is something to chart: beside the lengths with no
+        // gap, so the row still fits at 1000 pt.
         if self.positions_measured(ui.ctx()) {
-            theme::bar_gap(ui);
             crate::steady::series_switches(ui, &mut self.positions_series);
         }
         self.positions_results(ui);

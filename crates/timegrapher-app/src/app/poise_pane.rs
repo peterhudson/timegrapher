@@ -297,6 +297,7 @@ fn poise_body(
         result_min_w: PICTURE_MIN_W,
         info_beside_w: INFO_BESIDE_W,
         rule_h: PICTURE_H,
+        top: false,
     };
     // A take that is done (no test on the Bench and no sound coming in,
     // Trevor on #1622): no more stops will come.

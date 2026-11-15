@@ -1370,7 +1370,8 @@ fn complication_grid(ui: &mut egui::Ui, t: &Test, status: Option<String>, live: 
     let pal = theme::pal(ui);
     let readings = t.readings_so_far();
     let measurements: Vec<Measurement> = readings.iter().map(|r| r.measurement.clone()).collect();
-    egui::Grid::new("complication")
+    let mut tops = Vec::new();
+    let grid = egui::Grid::new("complication")
         .num_columns(4)
         .spacing(Vec2::new(GAP, 5.0))
         .min_col_width(FIGURE_W)
@@ -1397,6 +1398,7 @@ fn complication_grid(ui: &mut egui::Ui, t: &Test, status: Option<String>, live: 
             ui.end_row();
             let mut status = status;
             for i in 0..t.order().len() {
+                tops.push(ui.cursor().top());
                 let label = t.step_code(i);
                 if let Some(r) = readings.get(i) {
                     let f = complication::figures(&r.measurement);
@@ -1434,6 +1436,7 @@ fn complication_grid(ui: &mut egui::Ui, t: &Test, status: Option<String>, live: 
                 }
                 ui.end_row();
             }
+            tops.push(ui.cursor().top());
             if measurements.len() == complication::ORDER.len() {
                 ui.label(
                     RichText::new(complication::DIFFERENCE_NAME)
@@ -1451,6 +1454,19 @@ fn complication_grid(ui: &mut egui::Ui, t: &Test, status: Option<String>, live: 
                 ui.end_row();
             }
         });
+    // The hovered stretch's row outlined, as the plots' (#1729).
+    let rows: Vec<usize> = (0..t.order().len()).collect();
+    let x = (grid.response.rect.x_range(), 5.0);
+    crate::position_lanes::rows_hovered(ui, x, (&rows, &tops), complication_hover_ids());
+}
+
+/// Where the Complication pane keeps the stretch hovered in its table or
+/// its plots, and the one under the pointer in its table (#1729).
+pub(crate) fn complication_hover_ids() -> (egui::Id, egui::Id) {
+    (
+        egui::Id::new("complication hover"),
+        egui::Id::new("complication table hover"),
+    )
 }
 
 /// A stretch's figure as the table and Copy write it: core's number at

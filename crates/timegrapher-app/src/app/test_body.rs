@@ -18,6 +18,9 @@ pub(super) struct Layout {
     pub result_min_w: f32,
     pub info_beside_w: f32,
     pub rule_h: f32,
+    /// A take just opened: the scroll areas start at the top (Hugh on
+    /// #1799).
+    pub top: bool,
 }
 
 /// What a pane's body draws besides the test's table: what the pane says
@@ -86,9 +89,12 @@ pub(super) fn test_body(
                 .iter()
                 .copied()
                 .find(|w| main_w >= w + GAP + layout.result_min_w);
-            let scroll = egui::ScrollArea::both()
+            let mut scroll = egui::ScrollArea::both()
                 .id_salt(id)
                 .auto_shrink([false, false]);
+            if layout.top {
+                scroll = scroll.vertical_scroll_offset(0.0);
+            }
             if let Some(table_w) = side {
                 // Only the table scrolls; the result stays put beside it
                 // (#1729, rule 2).
@@ -108,10 +114,13 @@ pub(super) fn test_body(
                     // that, it scrolls on its own, never cut off (Hugh on
                     // #1794).
                     ui.vertical(|ui| {
-                        egui::ScrollArea::vertical()
+                        let mut result = egui::ScrollArea::vertical()
                             .id_salt((id, "result"))
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| (parts.result)(ui));
+                            .auto_shrink([false, false]);
+                        if layout.top {
+                            result = result.vertical_scroll_offset(0.0);
+                        }
+                        result.show(ui, |ui| (parts.result)(ui));
                     });
                 });
             } else {

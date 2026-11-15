@@ -58,6 +58,10 @@ mod dock;
 mod kept_analysis;
 mod library_folder;
 mod listen_card;
+mod revision;
+use revision::Revision;
+mod live_usb;
+use live_usb::reading_clock;
 #[cfg(target_os = "macos")]
 pub(crate) mod mac_menu;
 mod masks;
@@ -107,16 +111,14 @@ struct Readouts {
     calibre_limits: Vec<(String, String)>,
 }
 
-/// The controls the readings' cards carry, each in a strip at its card's
-/// foot.
+/// The controls the readings' cards carry, each in a strip at its card's foot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Slot {
     /// The six positions.
     Position,
     /// Listen or Stop, Save, and Average Over.
     Listen,
-    /// The Watch line: the Calibre card's title, the watch on the
-    /// microphone, with its menu.
+    /// The Watch line: the Calibre card's title, the watch on the microphone, with its menu.
     WatchLine,
     /// The calibre, on the Calibre card's figure row.
     Calibre,
@@ -286,8 +288,7 @@ const SHEET_INDENT: f32 = 30.0;
 /// The names in the sheet's third step, right-aligned in this width.
 const SHEET_LABEL_W: f32 = 104.0;
 
-/// A step of Set Up the Microphone: its number in a small grey circle,
-/// then its title.
+/// A step of Set Up the Microphone: its number in a small grey circle, then its title.
 fn sheet_step(ui: &mut egui::Ui, n: u8, title: &str) {
     let pal = theme::pal(ui);
     ui.horizontal(|ui| {
@@ -391,8 +392,7 @@ fn scratch_dir() -> PathBuf {
 #[derive(Debug, Clone, PartialEq)]
 struct KeptSound {
     dir: PathBuf,
-    /// "2026-10-21 14.32", from its session.json, in this computer's
-    /// time.
+    /// "2026-10-21 14.32", from its session.json, in this computer's time.
     started: Option<String>,
     duration_s: Option<f64>,
     bytes: u64,
@@ -508,8 +508,7 @@ enum View {
     Watches,
 }
 
-/// The panes below the readings. Tick shape and the periodicity (FFT)
-/// views will join these.
+/// The panes below the readings. Tick shape and the periodicity (FFT) views will join these.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -1627,38 +1626,6 @@ fn trend_key(seconds: f64) -> u64 {
     (seconds * 1000.0).round() as u64
 }
 
-/// What the take on show's readings rest on, a counter for each part,
-/// moved only where that part is set: every figure kept for later keys on
-/// the parts it reads, so a change in one place reaches every pane. Moves
-/// to core with #294's one measurement context per take.
-///
-/// Bumped in the put_* setters and in these places only: positions_moved
-/// (breaks; also after the Settle field resettles the take) and
-/// set_position (breaks), calibre_changed when the wheels change
-/// (settings), and new_take from reset_session and show_log (every
-/// part). Any other write to `rev` is a defect.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct Revision {
-    /// The lift angle, the calibre and the beat rate.
-    settings: u64,
-    /// The take's own clock and the clock kept for the input.
-    clock: u64,
-    /// The take's breaks and its changes of position.
-    breaks: u64,
-    /// The stretches masked out.
-    masks: u64,
-}
-
-impl Revision {
-    /// A take opened or a new session: every part is new.
-    fn new_take(&mut self) {
-        self.settings += 1;
-        self.clock += 1;
-        self.breaks += 1;
-        self.masks += 1;
-    }
-}
-
 /// What the strip's own readings were worked out for: the window and the
 /// spacing in steps, the averaging time, how much sound there was and
 /// what the readings rest on.
@@ -1999,6 +1966,8 @@ pub struct TimegrapherApp {
     /// Where [`Self::take_clock`] came from, in core's words
     /// (`OpenedEntry::clock_source`), so the Rate's hover names it.
     take_clock_source: Option<String>,
+    /// The USB lines of the sound heard here, read as it comes (#1721).
+    live_usb: Option<live_usb::LiveUsb>,
     /// The take on show's breaks, as core reads them with its beats: the
     /// pauses it lists, its clock's steps and the jumps in its beats.
     /// `None` for a session heard here, whose readings go by the clock
@@ -2044,9 +2013,10 @@ pub struct TimegrapherApp {
     chart_series: [bool; 3],
     /// The readings the Distributions pane draws.
     dist_series: [bool; 3],
-    /// The charts the Power Reserve and Positions Test panes draw (#1729).
+    /// The charts the Power Reserve, Positions and Complication panes draw (#1729).
     reserve_series: [bool; 3],
     positions_series: [bool; 3],
+    complication_series: [bool; 3],
     /// The charts drawn last frame: those turned on that had room. The
     /// key names only these.
     charts_drawn: [bool; 3],
@@ -2299,6 +2269,7 @@ impl TimegrapherApp {
             dist_series: self.dist_series,
             reserve_series: self.reserve_series,
             positions_series: self.positions_series,
+            complication_series: self.complication_series,
             hist_cumulative: self.hist_cumulative,
             reserve_info: self.reserve_info,
             positions_info: self.positions_info,
@@ -2362,6 +2333,7 @@ impl TimegrapherApp {
             dist_series,
             reserve_series,
             positions_series,
+            complication_series,
             hist_cumulative,
             reserve_info,
             positions_info,
@@ -2445,7 +2417,7 @@ impl TimegrapherApp {
         self.steady_info = steady::PerPane::new(steady_info_set, steady_info);
         self.set_positions_times(positions_settle_s, positions_measure_s);
         self.steady_series = steady_series_from(steady_shown, steady_series);
-        self.scope_view = scope;
+        (self.complication_series, self.scope_view) = (on(complication_series), scope);
         self.panes = match panes.map(upgraded_layout) {
             Some(p) if layout_is_whole(&p) => {
                 self.panes_dragged = panes_dragged.into_iter().collect();
@@ -2596,6 +2568,7 @@ impl TimegrapherApp {
             pending_recorded: None,
             take_clock: None,
             take_clock_source: None,
+            live_usb: None,
             take_breaks: None,
             take_unlisted: None,
             brush: None,
@@ -2618,6 +2591,7 @@ impl TimegrapherApp {
             dist_series: RATE_ONLY,
             reserve_series: [true; 3],
             positions_series: [true; 3],
+            complication_series: [true; 3],
             charts_drawn: [true; 3],
             pane_need: std::collections::HashMap::new(),
             panes_dragged: std::collections::HashSet::new(),
@@ -3691,27 +3665,6 @@ fn settle_hint(s: f64) -> String {
          the readings, the charts' points, the Distributions and the Steadiness tests. The \
          sound is still kept, and a saved take's positions start after it."
     )
-}
-
-/// The beats the strip draws: `live`'s, or the take's numbered on its
-/// audio seconds (`audio`) while they are the same beats.
-/// The clock readings are put on, for a log `duration_s` long: for a
-/// take opened (`opened`), its own clock as core read it, or none; for a
-/// session heard here, the clock kept for the input (`ppm` fast).
-fn reading_clock(
-    take_clock: Option<&timegrapher_core::clock::ClockFit>,
-    opened: bool,
-    ppm: Option<f64>,
-    duration_s: f64,
-) -> Option<timegrapher_core::clock::ClockFit> {
-    if opened {
-        take_clock.cloned()
-    } else {
-        // The kept correction, as core puts a take with no clock log on it.
-        timegrapher_core::take::clock(None, 0, 0, None, ppm, duration_s)
-            .ok()
-            .flatten()
-    }
 }
 
 /// What core opens to read the take at `path` (core's `TakeContext::open`,

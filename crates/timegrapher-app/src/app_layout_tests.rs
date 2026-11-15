@@ -435,6 +435,31 @@ fn every_toolbar_keeps_to_one_row_and_folds_only_when_narrow() {
         }
     }
     app.poll();
+    // The Positions Test's table of the take is read in the background:
+    // wait for it, so its toolbar is checked with its Series switches on
+    // every machine, however fast.
+    for _ in 0..500 {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::splat(1000.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.pane_tools(ui, Pane::PositionsTest);
+            });
+        });
+        if app.free_table_shown(&ctx).is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(
+        app.free_table_shown(&ctx).is_some(),
+        "the take's table was never read"
+    );
 
     let mut wrong = Vec::new();
     let mut folded_at_narrow = Vec::new();

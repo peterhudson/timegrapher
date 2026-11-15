@@ -210,7 +210,7 @@ impl LiveClock {
             "the sound card's clock"
         };
         Some(format!(
-            "Rate on {on} for now: the recording's own clock (its USB lines) is read after {MIN_DURATION_S:.0} s of sound, {:.0} s in.",
+            "For now this rate is on {on}. The recording's own clock (its USB lines) is read once {MIN_DURATION_S:.0} s of sound are in: {:.0} s so far.",
             heard_s.max(0.0).floor()
         ))
     }

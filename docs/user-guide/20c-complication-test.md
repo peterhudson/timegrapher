@@ -21,6 +21,7 @@ icon bar and the View menu.
 | --- | --- | --- |
 | **New Test** | Sets the test up on a clear Bench, in the position on the Current Position card, and starts nothing; **Start Test** on the Listen card starts it. **Cancel Test** takes its place until then. | To begin. |
 | **Settle** and **Each Stretch** | The seconds the watch settles after each switch, and the seconds each stretch is measured. Every guided test shares these two: changing them here changes them in the Positions Test and Dynamic Poise too. | Longer gives a smaller ± (M7). The rate's ± needs about five minutes of take in all. |
+| **Series** (three icons) | Turns each plot on or off: Rate, Amplitude, Beat Error. The plots left on share the room, and at least one stays on. Shown once a stretch is measured. | To give one plot the whole height. |
 | **Copy** | The watch, the position, the table and the findings, with tabs between the columns. | To paste into a spreadsheet or a message. |
 | **Export…** | Saves the pane as a picture, PNG or SVG. | For a service record or a report. |
 | **Info** (i, at the right) | How On less Off and its ± are worked out, and when a change is named. | To check the method. |
@@ -51,7 +52,7 @@ test doesn't use is marked **Not Used for Complication Test**.
 | Part | What it shows |
 | --- | --- |
 | The table | A row for each stretch, **Off**, **On** and **Off**, with **Amplitude** (°) first, then **Rate** (s/d) and **Beat Error** (ms). Then **On less Off**, each with its ±. |
-| The plots | Three plots on one time axis (min:s): Amplitude, Rate, Beat Error. Each stretch is a point at its middle, with its ±. A dashed line joins the two Offs; a ring on it marks where On would sit with the complication off; a bracket runs from the ring to On: the change. A track over the plots names each stretch, lighter while it settles. Hovering a point gives its figure. |
+| The plots | Three plots on one time axis (min:s): Amplitude, Rate, Beat Error. Each stretch is a point at its middle, with a bar for its ± where it has one. Each plot's scale gives bare numbers, with its unit on its own line above them. A dashed line joins the two Offs; a ring on it marks where On would sit with the complication off; a bracket runs from the ring to On: the change. A track over the plots names each stretch, lighter while it settles. Hovering a stretch, on the plots or in the table, draws one line down every plot at its middle, gives its figure with its ± in each plot's title, and outlines its row in the table. |
 | Each plot's title | Its finding in words, such as "Amplitude · 5 ± 1° lower with the complication on". When the change is within twice its ± of zero: "no clear change", with the figure and ±. |
 
 **No ± yet.** A ± needs enough readings near the stretch, and the rate's

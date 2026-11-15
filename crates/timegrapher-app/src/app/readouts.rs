@@ -568,6 +568,11 @@ impl TimegrapherApp {
                 behind + &format!("\n\n{t}")
             };
         }
+        // Live, before the recording's own clock is read: first, so the
+        // figure isn't taken for the one the take will read (#1721).
+        if let Some(n) = self.live_usb_not_yet() {
+            behind = format!("{n}\n\n{}", behind.trim_start());
+        }
         let (fig, spark, place) = sparkline::lay(rows.inner, rows.figure, rows.controls);
         let colour = theme::pal(ui).trace_rate;
         sparkline::draw(ui, spark, place, &c.spark, &sparkline::RATE, colour);

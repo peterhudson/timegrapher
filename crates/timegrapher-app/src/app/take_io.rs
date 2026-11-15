@@ -89,6 +89,7 @@ impl TimegrapherApp {
         self.session.clear();
         self.put_input_clock(None);
         self.live = Some(LiveAnalyzer::new(sample_rate, self.live_config()));
+        self.live_usb = Some(live_usb::LiveUsb::new(sample_rate));
         self.source_label = label;
         self.gutter_fresh = true;
         self.anchor = None;
@@ -2003,7 +2004,7 @@ impl TimegrapherApp {
         self.reset_session(info.sample_rate, label.clone());
         self.load_reserve(path);
         self.session.analyse();
-        self.live = None;
+        (self.live, self.live_usb) = (None, None);
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.put_take_clock(None, None);
@@ -2160,7 +2161,7 @@ impl TimegrapherApp {
         self.load_reserve(path);
         self.no_sound = Some(Vec::new());
         self.session.analyse();
-        self.live = None;
+        (self.live, self.live_usb) = (None, None);
         // Nothing of the take before's clock carries over, whichever
         // way this one is kept; a take that fails to open leaves it.
         self.put_take_clock(None, None);
@@ -2253,6 +2254,7 @@ impl TimegrapherApp {
     /// Take in whatever audio has arrived.
     pub(super) fn poll(&mut self) {
         self.poll_for(FRAME_BUDGET);
+        self.follow_live_usb();
         self.poll_wav_keep();
         // Asks waiting on a save go ahead on the window's frame, never on
         // the listening thread, which polls too.
@@ -2322,6 +2324,7 @@ impl TimegrapherApp {
         if l.clipped_fraction > 0.0 {
             self.clipped_at = Some(Instant::now());
         }
+        self.live_usb.iter_mut().for_each(|u| u.push(&b.samples));
         if live.push(&b.samples) {
             // A jump the beats' timing shows is found a second
             // or two after it: the points read since reached

@@ -27,7 +27,8 @@ vm.runInContext(["esc", "fixedDigits", "axisLabel", "gridDown", "markOrder", "ma
   "sessionView", "testPane", "icon", "columnHead", "paneChartWidth", "plHead", "paneToggles", "positionsPane", "positionLineChart", "valueTick", "tickLabelsShown"].map(definition).join("\n"), context);
 
 const lane = (position, group, value, text, full) => ({ position, group, name: `${position} name`, value, text, figure: text.split(" ")[0].replace("°", ""),
-  full_wind: full == null ? null : full, full_wind_text: full == null ? null : `+${full}.0 s/d`, hover: `${position} name ${text}` });
+  full_wind: full == null ? null : full, full_wind_text: full == null ? null : `+${full}.0 s/d`, hover: `${position} name ${text}`,
+  figures: full == null ? text : `${text} (Full wind test +${full}.0 s/d)` });
 const line = (series, title, unit, lanes, key) => ({ series, title, unit, lanes, key: key || null,
   averages: [{ of: "all", name: "Average", value: 2, text: "+2.0 s/d", figure: "+2.0", hover: "Average +2.0 s/d" }],
   axis: [0, 4, 1] });
@@ -72,7 +73,8 @@ test("a later state draws the full-wind figure hollow with an arrow, and keys it
   const chart = context.positionLineChart(doc.report.position_lines[1].rate, "s1-rate");
   assert.ok(chart.includes("This test") && chart.includes("Full wind test"), chart);
   assert.ok(chart.includes('marker-end="url(#pl-arrow-s1-rate)"'), "an arrow from the full-wind figure to this test's");
-  assert.ok(chart.includes('data-val="+1.0 s/d · Full wind test +3.0 s/d"'), chart);
+  // The hover's figures are core's, as the app writes them (#1785).
+  assert.ok(chart.includes('data-val="+1.0 s/d (Full wind test +3.0 s/d)"'), chart);
   assert.ok(!context.positionLineChart(doc.report.position_lines[0].rate, "s0-rate").includes("marker-end"));
 });
 

@@ -53,7 +53,7 @@ const AXIS_H: f32 = 20.0;
 
 /// The height of the line over each chart's value axis that names its
 /// unit, points.
-const UNIT_H: f32 = 14.0;
+pub(crate) const UNIT_H: f32 = 14.0;
 
 /// The gap between one chart's plot and the next one's title row, clear
 /// of the lowest tick's label, points.

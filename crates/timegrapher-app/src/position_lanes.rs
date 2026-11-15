@@ -75,10 +75,23 @@ pub fn table_rows(
     codes: &[&'static str],
     tops: &[f32],
 ) {
+    rows_hovered(ui, (x, gap), (codes, tops), (hover_id(), table_hover_id()));
+}
+
+/// [`table_rows`] for any pane's rows: each keyed by `codes`, the hovered
+/// key read from `hover` and the key under the pointer kept in `table`.
+pub fn rows_hovered<K>(
+    ui: &egui::Ui,
+    (x, gap): (egui::Rangef, f32),
+    (codes, tops): (&[K], &[f32]),
+    (hover, table): (egui::Id, egui::Id),
+) where
+    K: Copy + PartialEq + Send + Sync + 'static,
+{
     let pal = theme::pal(ui);
     let half = gap / 2.0;
-    let hover: Option<&'static str> = ui.data(|d| d.get_temp(hover_id())).flatten();
-    let rows: Vec<(&'static str, egui::Rect)> = codes
+    let hover: Option<K> = ui.data(|d| d.get_temp(hover)).flatten();
+    let rows: Vec<(K, egui::Rect)> = codes
         .iter()
         .zip(tops.windows(2))
         .map(|(&c, w)| {
@@ -101,7 +114,7 @@ pub fn table_rows(
         return;
     }
     if let Some((c, _)) = rows.iter().find(|(_, r)| r.contains(pointer)) {
-        ui.data_mut(|d| d.insert_temp(table_hover_id(), Some(*c)));
+        ui.data_mut(|d| d.insert_temp(table, Some(*c)));
     }
 }
 

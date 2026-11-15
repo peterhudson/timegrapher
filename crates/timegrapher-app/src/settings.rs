@@ -67,6 +67,8 @@ pub struct Settings {
     pub reserve_series: [bool; 3],
     /// The Positions Test pane's charts (#1729), the same.
     pub positions_series: [bool; 3],
+    /// The Complication pane's charts (#1729), the same.
+    pub complication_series: [bool; 3],
     pub hist_cumulative: bool,
     /// The Power Reserve and Positions Test panes' Info panels open.
     pub reserve_info: bool,
@@ -202,6 +204,7 @@ impl Default for Settings {
             dist_series: RATE_ONLY,
             reserve_series: [true; 3],
             positions_series: [true; 3],
+            complication_series: [true; 3],
             hist_cumulative: false,
             reserve_info: false,
             positions_info: false,
