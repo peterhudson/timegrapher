@@ -1128,8 +1128,10 @@ function tickLabelsShown(labels, cw = CHAR_W) {
   return shown;
 }
 
-// A measure's axis tick: a rate's carries its sign, as its figures do, and
-// the last carries the unit ("°" set close, as core writes it).
+// A measure's axis tick, core chart_scale::axis_tick (#1779): a rate's
+// carries its sign, as its figures do, a minus a true one, one that rounds
+// to zero bare; held to core's own cases (axis_ticks.test.cjs). The last
+// carries the unit ("°" set close, as core writes it).
 function valueTick(series, v, step, last) {
   const t = axisLabel(v, step, "");
   const sign = series.series === "rate" && v > 0 && !/^[0.]+$/.test(t) ? "+" : "";
@@ -1340,7 +1342,6 @@ function sig(v) {
   return t.includes(".") ? t.replace(/0+$/, "").replace(/\.$/, "") : t;
 }
 function pText(p) { return p < 1e-300 ? "<1e-300" : p < 0.001 ? p.toExponential(0).replace("e-", "e-") : p.toFixed(3); }
-function wheelTitle(name) { return String(name).split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "); }
 // The app's steady.rs value_text: core's axis_number with the unit, which
 // is axisLabel (#815).
 function stepText(v, step, unit) { return axisLabel(v, step, unit); }
@@ -1977,7 +1978,7 @@ function steadyPlot(s, view, doc) {
           ? close.reduce((a, q) => (q[1] > a[1] ? q : a))
           : pts.reduce((a, q) => (Math.abs(q[0] - x) < Math.abs(a[0] - x) ? q : a), pts[0]);
         marks.push({ x, y: near[1], color });
-        notes.push({ x, y: near[1], text: secs(s.period.period_s) + (s.period.wheel ? `, ${wheelTitle(s.period.wheel)}` : "") });
+        notes.push({ x, y: near[1], text: secs(s.period.period_s) + (s.period.wheel_title ? `, ${s.period.wheel_title}` : "") });
       }
       return xyChart({
         title: "Periods", x: span, y,
@@ -2010,8 +2011,9 @@ function steadyPlot(s, view, doc) {
       const n = f.cycles || rows;
       let label;
       if (f.from === "own") {
-        const w = (s.cycle && s.cycle.wheel) || (s.period && s.period.wheel);
-        label = `${secs(f.period_s)} cycle${w ? `, ${wheelTitle(w)}` : ""}, ${n} cycles folded`;
+        // The wheel as core title-cases it (the server's wheel_title, #1779).
+        const w = (s.cycle && s.cycle.wheel_title) || (s.period && s.period.wheel_title);
+        label = `${secs(f.period_s)} cycle${w ? `, ${w}` : ""}, ${n} cycles folded`;
       } else if (SERIES[f.from]) {
         label = `Folded at the ${SERIES[f.from][0].toLowerCase()}'s ${secs(f.period_s)} cycle, ${n} cycles`;
       } else {

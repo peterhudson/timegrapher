@@ -12,8 +12,7 @@ use crate::steady::series_colour;
 use crate::strength::{self, Grid};
 use crate::theme;
 use eframe::egui;
-use timegrapher_core::chart_scale::{axis_decimals, axis_number};
-use timegrapher_core::figure_text::{signed_text, true_minus};
+use timegrapher_core::chart_scale::axis_number;
 use timegrapher_core::steadiness::SeriesKind;
 
 /// One hour's figure as drawn: its value, its words for the hover (its
@@ -119,12 +118,7 @@ fn shared_gutter(ui: &egui::Ui, charts: &[&Chart]) -> f32 {
 /// A tick's label: bare, a rate's signed so fast or slow reads at a
 /// glance (Hugh on #1761), a minus a true one.
 fn tick_text(c: &Chart, v: f64, step: f64) -> String {
-    let text = if c.signed {
-        signed_text(v, axis_decimals(step))
-    } else {
-        axis_number(v, step)
-    };
-    true_minus(&text)
+    timegrapher_core::chart_scale::axis_tick(v, step, c.signed)
 }
 
 /// A chart's value marks: core's axis's own step, or a rounder step above

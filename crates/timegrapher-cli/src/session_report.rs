@@ -172,17 +172,10 @@ fn value_axis(
     bottom: f64,
     line: &PositionLine,
 ) {
-    // A rate's ticks carry their sign, as its figures do (Hugh on #1742).
+    // A rate's ticks carry their sign, a minus a true one: core's one rule
+    // for a tick (Hugh on #1742; #1779).
     let signed = line.series == SeriesKind::Rate;
-    let tick = |t: f64| {
-        // A negative tick takes a true minus, as the figures do (Hugh).
-        let n = timegrapher_core::figure_text::true_minus(&chart_scale::axis_number(t, step));
-        if signed && t > 0.0 && n.chars().any(|c| c.is_ascii_digit() && c != '0') {
-            format!("+{n}")
-        } else {
-            n
-        }
-    };
+    let tick = |t: f64| chart_scale::axis_tick(t, step, signed);
     let ticks = ((hi - lo) / step).round() as usize;
     for i in 0..=ticks {
         let t = lo + i as f64 * step;

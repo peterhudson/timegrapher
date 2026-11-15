@@ -85,6 +85,21 @@ pub fn axis_number(v: f64, step: f64) -> String {
     crate::library::fixed_text(v, axis_decimals(step))
 }
 
+/// A value axis's tick label at `v` on an axis of `step`: [`axis_number`]
+/// bare, a rate's `signed` with a plus so fast or slow reads at a glance
+/// (Hugh on #1742, #1761; one that rounds to zero bare), a minus a true
+/// one. The one rule every surface writes a value tick by (#1779); the
+/// MCP view's `valueTick`, which can't call Rust, is held to the same
+/// fixture (`tests/fixtures/axis_ticks.json`).
+pub fn axis_tick(v: f64, step: f64, signed: bool) -> String {
+    let text = if signed {
+        crate::figure_text::signed_text(v, axis_decimals(step))
+    } else {
+        axis_number(v, step)
+    };
+    crate::figure_text::true_minus(&text)
+}
+
 /// 1, 2 or 5 times a power of ten, at least `x` (above 0): the step
 /// every grid and axis rounds to, so there is one rule for round numbers.
 /// The MCP view's `roundStep`, which can't call Rust, is held to the same
@@ -443,6 +458,19 @@ mod tests {
                 c["text"].as_str().unwrap(),
                 "{v} {step}"
             );
+        }
+    }
+
+    #[test]
+    fn a_tick_is_bare_a_rates_signed_and_its_minus_true() {
+        // The MCP view's valueTick reads the same cases (axis_ticks.test.cjs).
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../tests/fixtures/axis_ticks.json")).unwrap();
+        assert!(cases.len() > 5);
+        for c in cases {
+            let (v, step) = (c["v"].as_f64().unwrap(), c["step"].as_f64().unwrap());
+            let signed = c["signed"].as_bool().unwrap();
+            assert_eq!(axis_tick(v, step, signed), c["text"], "{c}");
         }
     }
 
