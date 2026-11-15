@@ -50,6 +50,7 @@ fn a_lone_wrong_sound_stays_out_after_a_live_lift_change() {
         even_drop_ms: Some(0.0),
         odd_drop_ms: Some(0.0),
         culled_ms: None,
+        faint_withheld: [false; 2],
     };
     let log = BeatLog {
         sample_rate: 48000,

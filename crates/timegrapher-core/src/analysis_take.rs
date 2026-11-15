@@ -1064,6 +1064,7 @@ pub(crate) fn parse_windows(text: &str) -> Result<Vec<AmplitudeWindow>, String> 
                 even_drop_ms: opt(f[8])?,
                 odd_drop_ms: opt(f[9])?,
                 culled_ms: None,
+                faint_withheld: [false; 2],
             };
             let figures = [
                 Some(w.start_s),

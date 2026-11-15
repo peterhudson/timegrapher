@@ -552,6 +552,7 @@ mod tests {
             even_drop_ms: None,
             odd_drop_ms: None,
             culled_ms: None,
+            faint_withheld: [false; 2],
         }
     }
 

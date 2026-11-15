@@ -28,6 +28,7 @@ fn a_live_reading_says_an_inconsistent_unlock_falls_back_to_the_drop() {
             even_drop_ms: None,
             odd_drop_ms: None,
             culled_ms: None,
+            faint_withheld: [false; 2],
         })
         .collect();
     let live = LiveAnalyzer::from_log(log, LiveConfig::default());

@@ -366,6 +366,7 @@ pub fn beat_log(s: &Scenario, seed: u64) -> crate::stream::BeatLog {
                 even_drop_ms: None,
                 odd_drop_ms: None,
                 culled_ms: None,
+                faint_withheld: [false; 2],
             }
         })
         .collect();

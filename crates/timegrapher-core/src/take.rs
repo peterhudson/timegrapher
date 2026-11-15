@@ -1667,6 +1667,7 @@ mod tests {
             even_drop_ms: None,
             odd_drop_ms: None,
             culled_ms: None,
+            faint_withheld: [false; 2],
         };
         let log = BeatLog {
             sample_rate: 48000,
@@ -1826,6 +1827,7 @@ mod tests {
             even_drop_ms: None,
             odd_drop_ms: None,
             culled_ms: None,
+            faint_withheld: [false; 2],
         }];
         log.snippets = [9.5, 10.0, 50.0, 100.0].map(|t| (t, Vec::new())).to_vec();
         let pause = |audio_s| Break {
@@ -2152,6 +2154,7 @@ mod tests {
                 even_drop_ms: Some(0.0),
                 odd_drop_ms: Some(0.0),
                 culled_ms: None,
+                faint_withheld: [false; 2],
             };
             if i == 10 {
                 // 398° at 52°, culled; 345° at 45° against its

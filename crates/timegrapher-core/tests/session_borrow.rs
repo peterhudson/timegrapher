@@ -25,9 +25,32 @@ fn turning(t: f64) -> bool {
     !stops().iter().any(|&(_, a, b)| t >= a - 2.0 && t < b + 2.0)
 }
 
-/// A take of the three stops whose turns are `loud`: the rate thrown about
-/// by the handling and the amplitude dropping, as a hand on the case does.
-fn take(loud: bool, tag: &str) -> BeatLog {
+/// The amplitude of the turns' handling as first written: a swing from
+/// 140° to 260° at 1.7 rad/s.
+fn handling_amp(t: f64) -> f64 {
+    200.0 + 60.0 * (t * 1.7).sin()
+}
+
+/// How the turns between the stops are handled.
+enum Handling {
+    /// Quiet turns: the watch as steady as in the stops.
+    Quiet,
+    /// The rate thrown about and the amplitude swung by [`handling_amp`]
+    /// as it runs, as first written for #1624. The swing inside each 2 s
+    /// window smears its sound 1, and the faint-side rule withholds some
+    /// of those sides (#1738).
+    Smeared,
+    /// The same rate, and the same amplitudes stepped once per analysis
+    /// window and flat inside it: [`handling_amp`] at each window's start,
+    /// on the analyser's own window grid, `windows` (#1738, Norm's
+    /// ruling). The borrowing that #1637 checks, with no smear.
+    Stepped(Vec<(f64, f64)>),
+}
+
+/// A take of the eight stops, its turns handled as `handling` says: a
+/// hand on the case throws the rate about and moves the amplitude.
+fn take(handling: &Handling, tag: &str) -> BeatLog {
+    let loud = !matches!(handling, Handling::Quiet);
     let cfg = SynthConfig {
         duration_s: 645.0,
         snr_db: 26.0,
@@ -36,12 +59,16 @@ fn take(loud: bool, tag: &str) -> BeatLog {
     };
     let path = std::env::temp_dir().join(format!("tg-borrow-{tag}-{}.wav", std::process::id()));
     let handled = |t: f64| loud && turning(t);
-    let amp = |t: f64| {
-        if handled(t) {
-            200.0 + 60.0 * (t * 1.7).sin()
-        } else {
-            280.0
+    let amp = |t: f64| match handling {
+        _ if !handled(t) => 280.0,
+        Handling::Stepped(windows) => {
+            let i = windows.partition_point(|w| w.0 <= t);
+            match i.checked_sub(1).map(|i| windows[i]) {
+                Some((a, b)) if t < b => handling_amp(a),
+                _ => handling_amp(t),
+            }
         }
+        _ => handling_amp(t),
     };
     let rate = |t: f64| {
         if handled(t) {
@@ -76,8 +103,19 @@ fn ses(log: &BeatLog, as_test: bool) -> (f64, f64) {
 
 #[test]
 fn loud_handling_between_stops_does_not_grow_a_stops_pm() {
-    let quiet = take(false, "quiet");
-    let loud = take(true, "loud");
+    let quiet = take(&Handling::Quiet, "quiet");
+    let grid = quiet
+        .amplitude_windows
+        .iter()
+        .map(|w| (w.start_s, w.end_s))
+        .collect();
+    let loud = take(&Handling::Stepped(grid), "loud");
+    // The handling's windows are read, so the borrowing below is still
+    // exercised by them: at most 1% of the sides withheld as faint, the
+    // healthy-side bar #1738 set before any run (Norm's ruling; 1 of 212
+    // here).
+    let [turns, _] = faint_counts(&loud);
+    assert!(turns.0 * 100 <= turns.1, "{turns:?}");
     let (rate_q, amp_q) = ses(&quiet, true);
     let (rate_l, amp_l) = ses(&loud, true);
     // The stops are as steady either way: the handling does not grow
@@ -100,7 +138,7 @@ fn loud_handling_between_stops_does_not_grow_a_stops_pm() {
 /// #1700), with the midpoint rule and the take around it to borrow from.
 #[test]
 fn one_span_reads_as_a_plain_take() {
-    let log = take(true, "one");
+    let log = take(&Handling::Smeared, "one");
     let (_, a, b) = stops()[3];
     let plain = session::measure_masked(&log, None, &[], &[], a, b);
     // The stop's start falls inside a window (its edges are not on the
@@ -112,4 +150,27 @@ fn one_span_reads_as_a_plain_take() {
     assert_eq!(format!("{:?}", whole.expect("read")), format!("{plain:?}"));
     let c = one.confidence.expect("a watch heard");
     assert!(c.amplitude.se.is_some(), "amplitude ± kept");
+}
+
+/// The sides withheld as too faint to read ([`timegrapher_core::amplitude::FAINT_SOUND_MAX_SHARE`])
+/// in the turns and in the stops of `log`, and the sides of each.
+fn faint_counts(log: &BeatLog) -> [(usize, usize); 2] {
+    let mut c = [(0, 0); 2];
+    for w in &log.amplitude_windows {
+        let k = usize::from(!turning((w.start_s + w.end_s) / 2.0));
+        c[k].0 += w.faint_withheld.iter().filter(|&&f| f).count();
+        c[k].1 += 2;
+    }
+    c
+}
+
+/// A handling that swings the amplitude 140° to 260° inside each 2 s
+/// window smears its sound 1, and the faint-side rule withholds those
+/// sides; at most 1% of the steady stops' sides are withheld (#1738,
+/// Norm's ruling: this handling, first written for #1624, found it).
+#[test]
+fn a_smeared_handling_is_withheld_as_faint_and_the_stops_are_kept() {
+    let [turns, stops] = faint_counts(&take(&Handling::Smeared, "smeared"));
+    assert!(turns.0 > 0, "{turns:?}");
+    assert!(stops.0 * 100 <= stops.1, "{stops:?}");
 }

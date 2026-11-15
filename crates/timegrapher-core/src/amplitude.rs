@@ -198,6 +198,28 @@ const SIDES_UNLOCK_AGREE_SHARE: f64 = 0.15;
 /// is the impulse. A bump of noise is far quieter than either sound.
 const EARLIER_SOUND_MIN: f32 = 0.5;
 
+/// A side whose sound 1 stands under this share of the median height
+/// over the floor of that side's sound 1 in the same chunk is withheld,
+/// edges and all: the side was too faint in that window for its unlock to
+/// be told from noise, and the edge found there is the loudest bump of
+/// noise, which the lift then decides between (#1738). Set from the gap
+/// in the training data: the faint windows of Peter's Submariner at Crown
+/// Down and Crown Up reach 0.228 at the most, and the lowest share outside
+/// them is 0.336, on six sides of dd3235_DU_30min part 1. The line is the
+/// gap's log-midpoint, √(0.228 × 0.336), an equal factor of about 1.2 from
+/// each side, and was frozen before any held-out run (Norm's ruling).
+///
+/// Its limit: it catches a side under 0.28 of its chunk median; a misread
+/// louder than that passes. On seeded weak watches whose noise sides read
+/// an edge at 0.2 to 0.4 of the median, it withheld 48% of them with 20%
+/// of the windows noise, 22% with 40% and 5% with 60%, as noise pulls the
+/// median down: the rule fades, with no cliff. It withheld none of the
+/// healthy sides, the lowest at 0.6 (Peter chose to ship with this limit
+/// stated, #1738; the gap is #1791). Pinned by
+/// `noise_windows_are_withheld_and_healthy_ones_kept` and
+/// `faint_windows_in_the_majority_are_not_withheld`.
+pub const FAINT_SOUND_MAX_SHARE: f32 = 0.28;
+
 /// Lowest amplitude a window reads, degrees.
 pub const MIN_AMPLITUDE_DEG: f64 = 100.0;
 /// The highest amplitude a side is read as, degrees: above it the edges
@@ -328,6 +350,12 @@ pub struct AmplitudeWindow {
     /// side was culled, so a long run's windows stay small. Not in the JSON.
     #[serde(skip)]
     pub culled_ms: Option<Box<Culled>>,
+    /// Each side withheld because its sound 1 was too faint against the
+    /// same side's in its chunk ([`FAINT_SOUND_MAX_SHARE`], #1738): it
+    /// keeps no edges and no amplitude, and is named in the caveats. Even
+    /// side first. Not in the JSON.
+    #[serde(skip)]
+    pub faint_withheld: [bool; 2],
 }
 
 /// Each side's culled unlock and drop, ms from the beat time: even, odd.
@@ -344,6 +372,7 @@ impl AmplitudeWindow {
         if let Some(c) = &mut self.culled_ms {
             c.swap(0, 1);
         }
+        self.faint_withheld.swap(0, 1);
         self.beat_error_ms = self.beat_error_ms.map(|v| -v);
         self.beat_error_unlock_ms = self.beat_error_unlock_ms.map(|v| -v);
     }
@@ -506,6 +535,8 @@ pub fn windows_between(
         }
     };
     let from = [pick(even_g, 0), pick(odd_g, 1)];
+    // Each window's beats, and each side's read in it.
+    let mut reads = Vec::new();
     let mut start = from_s;
     let mut lo = 0usize;
     while start + window_s <= to_s + 1e-9 {
@@ -517,51 +548,92 @@ pub fn windows_between(
             hi += 1;
         }
         let win = &beats[lo..hi];
-        // The unlock's and drop's offsets from the beat times, seconds,
-        // and the amplitude when it passes the gate.
-        let side = |even: bool| -> Option<(Option<f64>, f64, f64)> {
+        let side = |even: bool| -> Option<SideEdges> {
             let times = side_times(win, even);
             if times.len() < 3 {
                 return None;
             }
-            let (unlock, drop) =
-                side_edges(env, fs, &times, from[usize::from(!even)], long_pre_s, cfg)?;
-            let a = side_deg(drop - unlock, osc_period_s, cfg.lift_deg);
-            Some((a, unlock, drop))
+            side_edges(env, fs, &times, from[usize::from(!even)], long_pre_s, cfg)
         };
-        // A side outside the gate keeps only its edges, as culled.
-        let culled = |s: Option<(Option<f64>, f64, f64)>| {
-            s.filter(|s| s.0.is_none())
-                .map(|s| [s.1 * 1000.0, s.2 * 1000.0])
-        };
-        let (even_all, odd_all) = (side(true), side(false));
-        let culled_ms = Some([culled(even_all), culled(odd_all)])
-            .filter(|c| c != &[None, None])
-            .map(Box::new);
-        let kept = |s: Option<(Option<f64>, f64, f64)>| s.and_then(|s| Some((s.0?, s.1, s.2)));
-        let (even, odd) = (kept(even_all), kept(odd_all));
-        let beat_error_ms = timing::beat_error_ms(win);
-        let beat_error_unlock_ms = unlock_beat_error_ms(
-            beat_error_ms,
-            even.map(|s| s.1 * 1000.0),
-            odd.map(|s| s.1 * 1000.0),
-        );
-        out.push(AmplitudeWindow {
-            start_s: start,
-            end_s: start + window_s,
-            even_deg: even.map(|s| s.0),
-            odd_deg: odd.map(|s| s.0),
-            beat_error_ms,
-            beat_error_unlock_ms,
-            even_unlock_ms: even.map(|s| s.1 * 1000.0),
-            odd_unlock_ms: odd.map(|s| s.1 * 1000.0),
-            even_drop_ms: even.map(|s| s.2 * 1000.0),
-            odd_drop_ms: odd.map(|s| s.2 * 1000.0),
-            culled_ms,
-        });
+        reads.push((start, lo..hi, [side(true), side(false)]));
         start += window_s;
     }
+    // A side whose sound 1 is faint against the same side's in the chunk
+    // is withheld, edges and all (#1738).
+    let faint = [0, 1].map(|k| {
+        faint_sides(
+            &reads
+                .iter()
+                .map(|r| r.2[k].as_ref().map(|s| s.sound_1))
+                .collect::<Vec<_>>(),
+        )
+    });
+    for (i, (start, span, sides)) in reads.into_iter().enumerate() {
+        let faint_withheld = [faint[0][i], faint[1][i]];
+        out.push(window_of(
+            &beats[span],
+            (start, start + window_s),
+            &sides,
+            faint_withheld,
+            osc_period_s,
+            cfg,
+        ));
+    }
     out
+}
+
+/// One window of [`windows_between`] from its beats `win`, its start and
+/// end, seconds, and each side's read in it, `sides`; a side in
+/// `faint_withheld` keeps nothing (#1738).
+fn window_of(
+    win: &[Beat],
+    span_s: (f64, f64),
+    sides: &[Option<SideEdges>; 2],
+    faint_withheld: [bool; 2],
+    osc_period_s: f64,
+    cfg: &AmplitudeConfig,
+) -> AmplitudeWindow {
+    // The unlock's and drop's offsets from the beat times, seconds,
+    // and the amplitude when it passes the gate.
+    let side = |k: usize| -> Option<(Option<f64>, f64, f64)> {
+        if faint_withheld[k] {
+            return None;
+        }
+        let (unlock, drop) = sides[k].as_ref()?.edges?;
+        let a = side_deg(drop - unlock, osc_period_s, cfg.lift_deg);
+        Some((a, unlock, drop))
+    };
+    // A side outside the gate keeps only its edges, as culled.
+    let culled = |s: Option<(Option<f64>, f64, f64)>| {
+        s.filter(|s| s.0.is_none())
+            .map(|s| [s.1 * 1000.0, s.2 * 1000.0])
+    };
+    let (even_all, odd_all) = (side(0), side(1));
+    let culled_ms = Some([culled(even_all), culled(odd_all)])
+        .filter(|c| c != &[None, None])
+        .map(Box::new);
+    let kept = |s: Option<(Option<f64>, f64, f64)>| s.and_then(|s| Some((s.0?, s.1, s.2)));
+    let (even, odd) = (kept(even_all), kept(odd_all));
+    let beat_error_ms = timing::beat_error_ms(win);
+    let beat_error_unlock_ms = unlock_beat_error_ms(
+        beat_error_ms,
+        even.map(|s| s.1 * 1000.0),
+        odd.map(|s| s.1 * 1000.0),
+    );
+    AmplitudeWindow {
+        start_s: span_s.0,
+        end_s: span_s.1,
+        even_deg: even.map(|s| s.0),
+        odd_deg: odd.map(|s| s.0),
+        beat_error_ms,
+        beat_error_unlock_ms,
+        even_unlock_ms: even.map(|s| s.1 * 1000.0),
+        odd_unlock_ms: odd.map(|s| s.1 * 1000.0),
+        even_drop_ms: even.map(|s| s.2 * 1000.0),
+        odd_drop_ms: odd.map(|s| s.2 * 1000.0),
+        culled_ms,
+        faint_withheld,
+    }
 }
 
 /// Where a side's guide unlock was read ([`windows_between`]), samples
@@ -594,7 +666,7 @@ fn side_edges(
     guide: Option<Guide>,
     long_pre_s: f64,
     cfg: &AmplitudeConfig,
-) -> Option<(f64, f64)> {
+) -> Option<SideEdges> {
     let long_origin = (long_pre_s * fs).round() as usize;
     let long = trimmed_template_from(env, fs, times, long_pre_s);
     let (tmpl, origin, guide_at) = match guide {
@@ -609,6 +681,7 @@ fn side_edges(
     };
     let guided = edges_guided(&tmpl, fs, origin, cfg.onset_fraction, guide_at)?;
     let height = |e: &Edges| e.unlock_level - e.floor;
+    let sound_1 = height(&guided);
     let at = |i: f64, origin: usize| (i - origin as f64) / fs;
     let earlier = long
         .and_then(|t| edges_after(&t, fs, long_origin, cfg.onset_fraction, 0))
@@ -620,12 +693,32 @@ fn side_edges(
         Some(e) => (at(e.unlock, long_origin), at(e.drop, long_origin)),
         None => (at(guided.unlock, origin), at(guided.drop, origin)),
     };
-    if let Some(Guide::Long(g)) = guide {
-        if unlock > at(g, long_origin) + UNLOCK_LATE_S {
-            return None;
-        }
-    }
-    Some((unlock, drop))
+    let late = matches!(guide, Some(Guide::Long(g)) if unlock > at(g, long_origin) + UNLOCK_LATE_S);
+    Some(SideEdges {
+        sound_1,
+        edges: (!late).then_some((unlock, drop)),
+    })
+}
+
+/// A side's read in one window ([`side_edges`]): the height over the floor
+/// of the sound 1 its guide found, and its unlock and drop, seconds from
+/// its beat times, unless it was withheld as late.
+struct SideEdges {
+    sound_1: f32,
+    edges: Option<(f64, f64)>,
+}
+
+/// Which of `heights`, one side's sound 1 in each window of a chunk (None
+/// where none was found), stand under [`FAINT_SOUND_MAX_SHARE`] of their
+/// median.
+fn faint_sides(heights: &[Option<f32>]) -> Vec<bool> {
+    let mut found: Vec<f32> = heights.iter().flatten().copied().collect();
+    // NaN with none found, which no height is under.
+    let median = crate::dsp::median_f32(&mut found);
+    heights
+        .iter()
+        .map(|h| h.is_some_and(|h| h < FAINT_SOUND_MAX_SHARE * median))
+        .collect()
 }
 
 #[cfg(test)]
@@ -664,6 +757,7 @@ mod tests {
                 even_drop_ms: None,
                 odd_drop_ms: None,
                 culled_ms: None,
+                faint_withheld: [false; 2],
             })
             .collect();
         // Window 30's Tock edge lands on the wrong sound.
@@ -912,6 +1006,7 @@ mod tests {
             even_drop_ms: None,
             odd_drop_ms: Some(0.0),
             culled_ms: None,
+            faint_withheld: [false; 2],
         };
         w.set_culled([Some([-5.0, 0.0]), None]);
         w.swap_sides();
@@ -937,6 +1032,7 @@ mod tests {
             even_drop_ms: Some(0.0),
             odd_drop_ms: None,
             culled_ms: None,
+            faint_withheld: [false; 2],
         };
         at_lift(&mut w, 0.25, 52.0, 56.0);
         let again = side_deg(0.007, 0.25, 56.0);
@@ -1128,6 +1224,159 @@ mod tests {
             let be = w.beat_error_unlock_ms.unwrap() - w.beat_error_ms.unwrap();
             assert!(be.abs() < 0.1, "unlock beat error {be} ms off: {w:?}");
         }
+    }
+
+    /// A weak watch read for 60 s whose Tock, in the windows `noise`
+    /// names, has no sound 1 the search can hear: in its place a bump of
+    /// noise 0.1 to 0.3 times as high, 0 to 3 ms from where sound 1 sits,
+    /// in the same place on each of the window's beats so the window's
+    /// template keeps it: set so about one noise side in five reads an
+    /// edge, as on Peter's Submariner at Crown Down (about 12 of 60). Counts
+    /// of the sides that read an edge, and of those withheld as faint
+    /// ([`FAINT_SOUND_MAX_SHARE`], #1738). Each window's sound 1 stands 0.7 to 1.3 times its usual
+    /// height, as a real one varies.
+    fn faint_withheld_counts(seed: u64, noise: &[bool]) -> FaintCounts {
+        let (fs, period, secs) = (48_000.0, 0.125, 60.0);
+        let dt = 0.013;
+        let mut state = seed;
+        let mut rand = move || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 40) as f64 / (1u64 << 24) as f64
+        };
+        let mut env: Vec<f32> = (0..((secs + 0.5) * fs) as usize)
+            .map(|_| 0.016 + 0.004 * (rand() as f32 - 0.5))
+            .collect();
+        let windows = (secs / 2.0) as usize;
+        let gain: Vec<[f64; 2]> = (0..windows)
+            .map(|_| [0.7 + 0.6 * rand(), 0.7 + 0.6 * rand()])
+            .collect();
+        let bump: Vec<(f64, f64)> = (0..windows)
+            .map(|_| (0.1 + 0.2 * rand(), 0.003 * rand()))
+            .collect();
+        let at = |t: f64| (t * fs).round() as usize;
+        let mut beats = Vec::new();
+        for k in 0..(secs / period) as i64 - 2 {
+            let t = 0.1 + k as f64 * period;
+            let i = ((t / 2.0) as usize).min(windows - 1);
+            let side = usize::from(k % 2 != 0);
+            let (height, from) = if side == 1 && noise.get(i).copied().unwrap_or(false) {
+                (bump[i].0, t - dt + bump[i].1)
+            } else {
+                (gain[i][side], t - dt)
+            };
+            env[at(from)..at(from + 0.0003)].fill(0.016 + 0.12 * height as f32);
+            env[at(t - 0.7 * dt)..at(t - 0.7 * dt + 0.0003)].fill(0.03);
+            env[at(t)..at(t + 0.0003)].fill(1.0);
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let cfg = AmplitudeConfig::default();
+        let w = windows_between(&env, fs, &beats, 2.0 * period, 2.0, 0.0, secs - 0.5, &cfg);
+        assert_eq!(w.len(), noise.len());
+        // A side read an edge when it kept them, was culled at the gate or
+        // withheld as faint.
+        let read = |w: &AmplitudeWindow, k: usize| {
+            [w.even_unlock_ms, w.odd_unlock_ms][k].is_some()
+                || w.culled()[k].is_some()
+                || w.faint_withheld[k]
+        };
+        let mut c = FaintCounts::default();
+        for (w, &n) in w.iter().zip(noise) {
+            for k in 0..2 {
+                if !read(w, k) {
+                    continue;
+                }
+                let (of, held) = if k == 1 && n {
+                    (&mut c.noise, &mut c.noise_held)
+                } else {
+                    (&mut c.healthy, &mut c.healthy_held)
+                };
+                *of += 1;
+                *held += usize::from(w.faint_withheld[k]);
+            }
+        }
+        c
+    }
+
+    /// [`faint_withheld_counts`]: the noise sides and the healthy sides
+    /// that read an edge, and how many of each were withheld as faint.
+    #[derive(Default, Debug)]
+    struct FaintCounts {
+        noise: usize,
+        noise_held: usize,
+        healthy: usize,
+        healthy_held: usize,
+    }
+
+    /// [`faint_withheld_counts`] summed over `seeds`.
+    fn faint_counts_over(seeds: std::ops::Range<u64>, noise: &[bool]) -> FaintCounts {
+        let mut t = FaintCounts::default();
+        for seed in seeds {
+            let c = faint_withheld_counts(seed, noise);
+            t.noise += c.noise;
+            t.noise_held += c.noise_held;
+            t.healthy += c.healthy;
+            t.healthy_held += c.healthy_held;
+        }
+        t
+    }
+
+    /// The Tock's sound 1 left out of every `step`th window from `first`.
+    fn every(step: usize, first: usize) -> Vec<bool> {
+        (0..29).map(|i| i % step == first % step).collect()
+    }
+
+    /// A side whose sound 1 is lost in noise is withheld where it reads
+    /// under [`FAINT_SOUND_MAX_SHARE`] of its chunk's median, and a healthy
+    /// one is not (#1738). Norm's acceptance, set before the one run on
+    /// seeds 2000 to 2029, asked for at least 90% of the noise sides that
+    /// read an edge to be withheld at 20% and 40% noise: it withheld 23 of
+    /// 48 and 23 of 103, as most read at 0.28 to 0.4, and it failed. Peter
+    /// chose to ship with that limit stated (#1738, the gap is #1791). This
+    /// pins what was measured: every side read under the line is
+    /// withheld, none of the healthy ones (the bar was at most 1%), and the
+    /// counts withheld.
+    #[test]
+    fn noise_windows_are_withheld_and_healthy_ones_kept() {
+        let cases: [(Vec<bool>, usize, usize); 2] = [
+            (every(5, 2), 48, 23),
+            ((0..29).map(|i| i % 5 < 2).collect(), 103, 23),
+        ];
+        for (noise, read, held) in cases {
+            let c = faint_counts_over(2000..2030, &noise);
+            assert_eq!((c.noise, c.noise_held), (read, held), "{c:?}");
+            assert_eq!(c.healthy_held, 0, "{c:?}");
+        }
+    }
+
+    /// The limit of [`FAINT_SOUND_MAX_SHARE`], pinned: the share is of the
+    /// chunk's median, so where noise windows are the majority of a side's
+    /// windows in the chunk the median falls toward their height, and 7 of
+    /// the 151 noise sides that read an edge are withheld at 60% noise:
+    /// the rule fades, with no cliff (#1738, Norm's ruling). On heights
+    /// alone, a faint side among a majority of faint ones is not withheld,
+    /// and one among loud ones is.
+    #[test]
+    fn faint_windows_in_the_majority_are_not_withheld() {
+        let noise: Vec<bool> = (0..29).map(|i| i % 5 < 3).collect();
+        assert!(noise.iter().filter(|&&n| n).count() * 2 > noise.len());
+        let c = faint_counts_over(2000..2030, &noise);
+        assert_eq!(
+            (c.noise, c.noise_held, c.healthy_held),
+            (151, 7, 0),
+            "{c:?}"
+        );
+        let mid = |h: &[f32]| faint_sides(&h.iter().map(|&h| Some(h)).collect::<Vec<_>>());
+        assert_eq!(mid(&[0.01, 0.01, 0.01, 0.04, 0.04]), vec![false; 5]);
+        assert_eq!(
+            mid(&[0.01, 0.04, 0.04, 0.04, 0.04]),
+            vec![true, false, false, false, false]
+        );
     }
 
     /// A faint sound before one side's unlock is not read as its unlock:

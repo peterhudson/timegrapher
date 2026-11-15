@@ -403,6 +403,7 @@ fn read_window(r: &mut Bytes) -> Option<AmplitudeWindow> {
         even_drop_ms,
         odd_drop_ms,
         culled_ms: None,
+        faint_withheld: [false; 2],
     };
     w.set_culled([
         eu.zip(ed).map(|(u, d)| [u, d]),
