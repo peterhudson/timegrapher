@@ -407,3 +407,51 @@ fn a_kept_reading_follows_a_changed_user_calibre() {
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(config_dir());
 }
+
+/// A watch's full wind and each take's hours since it, as the app saves
+/// them (#1745): the time as given, 24.0 for a take its session file gives
+/// 24 h, and null for a take whose wind was not given, never 0 (#1665).
+#[test]
+fn watches_show_gives_the_full_wind_and_each_takes_wind() {
+    let root = std::env::temp_dir().join(format!("tg-cli-watches-wind-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mut lib = Library::create(&root).unwrap();
+    let mut w = Watch::new("Submariner");
+    w.full_wind = Some("2026-11-13T19:00:00.000Z".into());
+    let dir = lib.add(&w).unwrap();
+    let wound = dir.join(TAKES).join("2026-11-14 19.00 Dial Up");
+    take(&wound, "DU", "2026-11-14T19:00:00Z");
+    std::fs::write(
+        wound.join("session.toml"),
+        "bph = 28800\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\nwind_h = 24.0\n",
+    )
+    .unwrap();
+    take(
+        &dir.join(TAKES).join("2026-11-12 09.00 Dial Up"),
+        "DU",
+        "2026-11-12T09:00:00Z",
+    );
+    drop(lib);
+    let lib = root.to_string_lossy().into_owned();
+    let out = run(&["watches", "show", "Submariner", "--library", &lib, "--json"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(doc["full_wind"], "2026-11-13T19:00:00.000Z");
+    let wind = |name: &str| {
+        doc["takes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("no take {name}: {doc}"))["wind_h"]
+            .clone()
+    };
+    assert_eq!(wind("2026-11-14 19.00 Dial Up"), 24.0);
+    assert_eq!(wind("2026-11-12 09.00 Dial Up"), Value::Null);
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(config_dir());
+}
