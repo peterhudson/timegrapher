@@ -265,14 +265,16 @@ impl DropWhy {
     }
 }
 
-/// [`Caveat::FaintSidesWithheld`] as a sentence, for `sides` sides.
-fn faint_sides_text(sides: usize) -> String {
+/// [`Caveat::FaintSidesWithheld`] as a sentence, for `windows` windows
+/// (Hugh's words on #1800).
+fn faint_sides_text(windows: usize) -> String {
+    let share = crate::amplitude::FAINT_SOUND_MAX_SHARE;
+    let whose = if windows == 1 { "window's" } else { "windows'" };
     format!(
-        "In {sides} window side{} the first sound was too faint against the same \
-         side's nearby to tell its unlock from noise, so {} left out of the \
-         amplitude and the beat error.",
-        plural(sides),
-        if sides == 1 { "it is" } else { "they are" }
+        "In {windows} window{} one side's unlock sound was too faint to tell from noise: \
+         under {share:.2} of that side's usual level nearby. That side is left out of the \
+         {whose} amplitude and beat error.",
+        plural(windows),
     )
 }
 
@@ -374,11 +376,11 @@ pub enum Caveat {
         windows_used: usize,
         windows_in_span: usize,
     },
-    /// `sides` window sides were withheld because the side's sound 1 was
-    /// under [`crate::amplitude::FAINT_SOUND_MAX_SHARE`] of the same
-    /// side's in its chunk: too faint to tell its unlock from noise
-    /// (#1738). They give no amplitude and no unlock beat error.
-    FaintSidesWithheld { sides: usize },
+    /// `sides` window sides, in `windows` windows, were withheld because
+    /// the side's sound 1 was under [`crate::amplitude::FAINT_SOUND_MAX_SHARE`]
+    /// of the same side's in its chunk: too faint to tell its unlock from
+    /// noise (#1738). They give no amplitude and no unlock beat error.
+    FaintSidesWithheld { sides: usize, windows: usize },
     /// Stretches of the take were masked out of the readings by hand;
     /// `seconds` is their total within the stretch.
     Masked { seconds: f64 },
@@ -454,8 +456,8 @@ impl Caveat {
                 format!("{readings} beat-error readings with no recorded source left out")
             }
             Caveat::BeatErrorFromDrop { .. } => "beat error from the drop".to_string(),
-            Caveat::FaintSidesWithheld { sides } => {
-                format!("{sides} side{} too faint to read", plural(*sides))
+            Caveat::FaintSidesWithheld { sides, .. } => {
+                format!("{sides} faint side{} left out", plural(*sides))
             }
             Caveat::SetRateDisagrees { heard } => format!("{heard} bph heard"),
             Caveat::ShortSpan { span_s } => format!("{span_s:.0} s of beats"),
@@ -511,7 +513,7 @@ impl Caveat {
             Caveat::BeatErrorUnknownSource { readings } =>
                 format!("The beat-error aggregate leaves out {readings} reading{} whose source was not recorded.", plural(*readings)),
             Caveat::BeatErrorFromDrop { why } => why.sentence().to_string(),
-            Caveat::FaintSidesWithheld { sides } => faint_sides_text(*sides),
+            Caveat::FaintSidesWithheld { windows, .. } => faint_sides_text(*windows),
             Caveat::SetRateDisagrees { heard } => {
                 format!("The beat rate set differs from the {heard} bph heard.")
             }
@@ -907,13 +909,11 @@ pub fn assess_in(
     }
     // Sides withheld as too faint to read, among the measurement's own
     // windows (#1738).
-    let faint = amplitude_windows
-        .iter()
-        .flat_map(|w| w.faint_withheld())
-        .filter(|&f| f)
-        .count();
-    if faint > 0 && c.watch_heard {
-        caveats.push(Caveat::FaintSidesWithheld { sides: faint });
+    let faint = amplitude_windows.iter().map(|w| w.faint_withheld());
+    let sides = faint.clone().flatten().filter(|&f| f).count();
+    let windows = faint.filter(|f| f.contains(&true)).count();
+    if sides > 0 && c.watch_heard {
+        caveats.push(Caveat::FaintSidesWithheld { sides, windows });
     }
     let confidence = c.watch_heard.then(|| {
         Confidence::new(
@@ -949,21 +949,34 @@ mod tests {
     /// own (#1500, #1503).
     #[test]
     fn faint_sides_withheld_is_worded_with_its_count() {
-        let one = Caveat::FaintSidesWithheld { sides: 1 };
-        let two = Caveat::FaintSidesWithheld { sides: 2 };
+        let one = Caveat::FaintSidesWithheld {
+            sides: 1,
+            windows: 1,
+        };
+        // Both sides of one window, and one side of another.
+        let three = Caveat::FaintSidesWithheld {
+            sides: 3,
+            windows: 2,
+        };
+        assert_eq!(one.short(52.0, 0).as_deref(), Some("1 faint side left out"));
         assert_eq!(
-            one.short(52.0, 0).as_deref(),
-            Some("1 side too faint to read")
+            three.short(52.0, 0).as_deref(),
+            Some("3 faint sides left out")
         );
         assert_eq!(
-            two.short(52.0, 0).as_deref(),
-            Some("2 sides too faint to read")
+            one.long(None).as_deref(),
+            Some(
+                "In 1 window one side's unlock sound was too faint to tell from noise: under \
+                 0.28 of that side's usual level nearby. That side is left out of the window's \
+                 amplitude and beat error."
+            )
         );
-        assert!(one
-            .long(None)
-            .unwrap()
-            .contains("1 window side the first sound"));
-        assert!(two.long(None).unwrap().contains("so they are left out"));
+        let long = three.long(None).unwrap();
+        assert!(long.starts_with("In 2 windows one side's"), "{long}");
+        assert!(
+            long.ends_with("of the windows' amplitude and beat error."),
+            "{long}"
+        );
     }
 
     #[test]
