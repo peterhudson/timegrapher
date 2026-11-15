@@ -2467,3 +2467,45 @@ fn a_take_added_from_outside_shows_when_the_window_is_back_in_front() {
     assert_eq!(takes(&app), 1);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// Stop judges the newest amplitude chunk at once, as a read of the take
+/// judges its last (#1738, Trevor on #1800): a side too faint against the
+/// same side's in its chunk, which listening withholds only once the
+/// chunk closes, is withheld when listening stops.
+#[test]
+fn a_stop_withholds_the_faint_sides_of_the_open_chunk() {
+    let base = std::env::temp_dir().join(format!("tg-stop-settle-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.reset_session(48000, "syn".into());
+    // The swing smeared inside each 2 s window from 60 s on, as in core's
+    // equivalence test; the take stops 170 s in, in the chunk from 141 s.
+    let cfg = SynthConfig {
+        duration_s: 170.0,
+        snr_db: 26.0,
+        seed: 1738,
+        ..Default::default()
+    };
+    let swing = |t: f64| {
+        if (60.0..150.0).contains(&t) {
+            200.0 + 60.0 * (t * 1.7).sin()
+        } else {
+            270.0
+        }
+    };
+    let audio = generate(&cfg, swing, |_| 0.0);
+    for b in audio.samples.chunks(4800) {
+        app.live.as_mut().unwrap().push(b);
+    }
+    let faint_from = |app: &TimegrapherApp, from_s: f64| {
+        let live = app.live.as_ref().unwrap();
+        let wins = live.amplitude_windows().iter();
+        wins.filter(|w| w.start_s >= from_s && w.faint_withheld().contains(&true))
+            .count()
+    };
+    assert_eq!(faint_from(&app, 141.0), 0, "not judged while listening");
+    let _tx = super::tests::queued_capture(&mut app, &base);
+    app.pause();
+    assert!(faint_from(&app, 141.0) > 0, "judged at the stop");
+    let _ = std::fs::remove_dir_all(base);
+}

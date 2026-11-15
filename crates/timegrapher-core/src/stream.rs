@@ -1071,6 +1071,33 @@ mod tests {
         pub(super) static SPOIL_OWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
 
+    /// The amplitude chunk grid (#1738, Trevor on #1800): a 2 s window that
+    /// starts in a chunk's last 2 s belongs to it while it ends inside the
+    /// chunk's margin, and to the next once it reaches past it.
+    #[test]
+    fn a_window_in_a_chunks_margin_is_that_chunks() {
+        let at = |s: f64| amplitude_chunk_of(s, 2.0);
+        assert_eq!((CHUNK_S, MARGIN_S), (47.0, 1.0));
+        // Chunk 0's own stretch is 0 to 47 s; its margin runs to 48 s.
+        for (start, chunk) in [
+            (0.0, 0),
+            (44.0, 0),
+            // Ends at 47 s, inside the stretch.
+            (45.0, 0),
+            // Ends at 48 s, the margin's end: still chunk 0.
+            (46.0, 0),
+            // Ends at 48.5 s, past the margin.
+            (46.5, 1),
+            (47.0, 1),
+            // Chunk 1's own stretch ends at 94 s, its margin at 95 s.
+            (93.0, 1),
+            (93.5, 2),
+            (94.0, 2),
+        ] {
+            assert_eq!(at(start), chunk, "a window starting at {start} s");
+        }
+    }
+
     /// A file's reading keeps the template its first chunk gives on clean
     /// sound, and the one its first 4 s give, as live locks on, when the
     /// chunk's reads both sides in far fewer windows (#1503): then the
