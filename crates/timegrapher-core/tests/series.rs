@@ -177,7 +177,9 @@ fn a_slow_cycle_beside_an_aliased_fast_line_is_still_found() {
     assert!((p.period_s - 3.75).abs() < 0.05, "{}", s.headline);
     assert!(
         s.headline
-            .contains(". The beat timing also repeats every 3.8 s, the escape wheel's period")
+            .contains(". The beat timing also repeats every 3.8 s, the escape wheel's period, ")
+            && s.headline
+                .ends_with("; 10 s readings are too coarse to show it.")
             && !s.headline.contains("15.0 s"),
         "{}",
         s.headline
