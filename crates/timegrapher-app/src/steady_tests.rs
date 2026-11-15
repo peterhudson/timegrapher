@@ -1419,6 +1419,7 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
         wheels: &wheels,
         meshes: &meshes,
         wheels_on: true,
+        meshes_on: true,
     };
     let lines = wheel_lines(Some(marks), (0.0, 5.0));
     let got: Vec<(&str, &str, bool)> = lines
@@ -1446,25 +1447,33 @@ fn meshes_are_marked_faintly_unless_a_wheel_marks_their_period() {
     assert!(wheel_lines(None, (0.0, 5.0)).is_empty());
     // Each switch alone (#1764): Mesh off leaves the wheels; Wheel
     // Periods off leaves the meshes, with no reference periods in place
-    // of the wheels, and the centre pinion's, left to the ×2 at 30 s
-    // while that is marked, marked itself.
-    let turns = |m: Marks<'_>| -> Vec<bool> {
+    // of the wheels. The centre pinion's mesh, within 3% of the ×2 at
+    // 30 s, is unmarked while that line shows and marked with its own name
+    // once Wheel Periods is off (Hugh's ruling, Trevor on #1774).
+    let names = |m: Marks<'_>| -> Vec<String> {
         wheel_lines(Some(m), (0.0, 5.0))
-            .iter()
-            .map(|l| l.turn == Turn::Mesh)
+            .into_iter()
+            .map(|l| l.name)
             .collect()
     };
     let no_meshes = Marks {
-        meshes: &[],
+        meshes_on: false,
         ..marks
     };
-    assert_eq!(turns(no_meshes), [false, false]);
+    assert_eq!(names(no_meshes), ["Fourth Wheel", "Fourth Wheel ×2"]);
     let no_wheels = Marks {
-        wheels: &[],
         wheels_on: false,
         ..marks
     };
-    assert_eq!(turns(no_wheels), [true, true, true]);
+    assert_eq!(
+        names(no_wheels),
+        [
+            "Fourth Pinion Mesh",
+            "Third Pinion Mesh",
+            "Centre Pinion Mesh"
+        ]
+    );
+    assert!(!names(marks).contains(&"Centre Pinion Mesh".to_string()));
 }
 
 /// A trend or a split of levels the headline leaves out says why, in

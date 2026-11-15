@@ -1907,23 +1907,25 @@ pub struct Opts {
 }
 
 /// What the period axis marks: the calibre's wheels, and its meshes
-/// ([`timegrapher_core::calibre_store::Catalog::meshes`]), each where its
-/// switch is on; `wheels_on` says whether Wheel Periods is, so that with
-/// no wheel known the reference periods are marked in their place.
+/// ([`timegrapher_core::calibre_store::Catalog::meshes`]), and which of
+/// the two switches are on; with no wheel known, Wheel Periods marks the
+/// reference periods in their place.
 #[derive(Clone, Copy)]
 pub(crate) struct Marks<'a> {
     pub wheels: &'a [Wheel],
     pub meshes: &'a [timegrapher_core::train::MeshLine],
     pub wheels_on: bool,
+    pub meshes_on: bool,
 }
 
 /// The wheels and meshes to mark, each by its own switch (#1764): `None`
 /// when both are off.
 fn marked(s: &Steadiness, opts: Opts) -> Option<Marks<'_>> {
     (opts.wheels || opts.meshes).then(|| Marks {
-        wheels: if opts.wheels { &s.wheels } else { &[] },
-        meshes: if opts.meshes { &s.meshes } else { &[] },
+        wheels: &s.wheels,
+        meshes: &s.meshes,
         wheels_on: opts.wheels,
+        meshes_on: opts.meshes,
     })
 }
 
@@ -1978,16 +1980,17 @@ impl WheelLine {
 }
 
 /// The lines to mark on a period axis spanning `span`: core's
-/// ([`timegrapher_core::steady_views::wheel_marks`]: each wheel's turn, its
-/// ×2 and each mesh, one line where two periods are within 3%) inside the
-/// axis; with no wheels, the reference periods; with `None` (the marks
-/// off), nothing.
+/// ([`timegrapher_core::steady_views::shown_marks`]: each wheel's turn, its
+/// ×2 and each mesh, one line where two periods are within 3% while both
+/// show) inside the axis; with Wheel Periods on and no wheels, the
+/// reference periods; with `None` (the marks off), nothing.
 pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) -> Vec<WheelLine> {
     let inside = |x: f64| x > x_lo && x < x_hi;
     let Some(Marks {
         wheels,
         meshes,
         wheels_on,
+        meshes_on,
     }) = shown
     else {
         return Vec::new();
@@ -2007,7 +2010,7 @@ pub(crate) fn wheel_lines(shown: Option<Marks<'_>>, (x_lo, x_hi): (f64, f64)) ->
             .collect();
     }
     use timegrapher_core::steady_views::{self as views, WheelTurn};
-    views::wheel_marks(wheels, meshes)
+    views::shown_marks(wheels, meshes, wheels_on, meshes_on)
         .into_iter()
         .map(|l| WheelLine {
             x: l.period_s.log10(),
