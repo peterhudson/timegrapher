@@ -232,7 +232,9 @@ fn arc(p: &[[f64; 2]], i: usize, j: usize) -> Vec<[f64; 2]> {
 }
 
 /// A cut from reflex vertex `i` to `j` that lies inside the outline,
-/// preferring one that leaves `i` convex on both sides.
+/// preferring one that leaves both sides convex, so a lug is two pieces,
+/// not a fan of slivers: a sliver's needle tips feather out as hairlines
+/// past the case (#1780); then one that leaves `i` convex on both sides.
 fn cut(p: &[[f64; 2]], i: usize) -> Option<usize> {
     let n = p.len();
     let clear = |j: usize| {
@@ -247,9 +249,15 @@ fn cut(p: &[[f64; 2]], i: usize) -> Option<usize> {
     };
     let near = |j: &usize| *j != i && *j != (i + 1) % n && *j != (i + n - 1) % n;
     let open: Vec<usize> = (0..n).filter(near).filter(|&j| clear(j)).collect();
+    let whole = |j: usize| {
+        [arc(p, i, j), arc(p, j, i)]
+            .iter()
+            .all(|s| reflex(s).is_none())
+    };
     open.iter()
         .copied()
-        .find(|&j| mends(j))
+        .find(|&j| whole(j))
+        .or_else(|| open.iter().copied().find(|&j| mends(j)))
         .or(open.first().copied())
 }
 
@@ -344,7 +352,9 @@ mod tests {
         }
         let cut = |i: usize| convex_parts(&c.shapes[i]).len();
         assert_eq!([0, 5, 6, 7, 8].map(cut), [1; 5]);
-        assert!((1..=4).all(|i| cut(i) > 1));
+        // Each lug in two pieces, not a fan of slivers whose needle tips
+        // feather out past the case as hairlines (#1780).
+        assert_eq!([1, 2, 3, 4].map(cut), [2; 4]);
         let all = c.convex_parts();
         assert_eq!(all.len(), (0..c.shapes.len()).map(cut).sum::<usize>());
         // An L cuts into two, an already convex square stays whole.
