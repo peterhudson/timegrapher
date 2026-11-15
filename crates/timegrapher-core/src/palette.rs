@@ -199,6 +199,10 @@ pub fn palette(dark: bool) -> &'static Palette {
     }
 }
 
+/// How strongly a ± band is filled: a light wash of its line's colour
+/// under the line, on every surface (#1729, #1761).
+pub const BAND_FILL: f64 = 0.2;
+
 /// The time-frequency maps' colours, from the smallest size to the
 /// largest: viridis at 17 evenly spaced points, from matplotlib's table.
 /// The same in both themes.

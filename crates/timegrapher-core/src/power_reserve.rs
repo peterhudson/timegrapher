@@ -361,6 +361,23 @@ impl Hour {
         .filter(|v| v.is_finite())
     }
 
+    /// Its figure for `kind` with its ± and unit, as a chart's hover over
+    /// the hour writes it: "−1.5 ± 0.3 s/d", "280 ± 2°". None where it has
+    /// no figure.
+    pub fn hover_text(&self, kind: SeriesKind) -> Option<String> {
+        let v = self.value(kind)?;
+        let (gap, unit) = crate::steadiness::unit_after(kind.unit());
+        let figure = crate::figure_text::figure_with_pm(
+            v,
+            self.se(kind),
+            kind.digits(),
+            kind == SeriesKind::Rate,
+        );
+        Some(crate::figure_text::true_minus(&format!(
+            "{figure}{gap}{unit}"
+        )))
+    }
+
     /// Its ± band for `kind`, low and high: the table's ± either side of
     /// the figure, a beat error's floored at 0, as no beat error is below
     /// it (Norm on #1761).
@@ -858,6 +875,26 @@ mod chart_tests {
         assert!(h.grey(SeriesKind::Rate));
         assert_eq!(h.value(SeriesKind::BeatError), Some(0.4));
         assert!(GREY_BEAT_ERROR_KEY.starts_with("Grey beat errors"));
+    }
+
+    /// The hover writes the figure with its ± and unit, degrees closed up
+    /// and the minus a true one; nothing where the hour has no figure.
+    #[test]
+    fn the_hover_gives_the_figure_with_its_pm_and_unit() {
+        let mut h = hour(1.0, None);
+        h.rate_s_per_day = Some(-1.5);
+        h.rate_se = Some(0.3);
+        h.amplitude_deg = Some(280.0);
+        h.amplitude_se = Some(2.0);
+        assert_eq!(
+            h.hover_text(SeriesKind::Rate).unwrap(),
+            "\u{2212}1.5 ± 0.3 s/d"
+        );
+        assert_eq!(h.hover_text(SeriesKind::Amplitude).unwrap(), "280 ± 2°");
+        h.rate_se = None;
+        assert_eq!(h.hover_text(SeriesKind::Rate).unwrap(), "\u{2212}1.5 s/d");
+        h.rate_s_per_day = None;
+        assert_eq!(h.hover_text(SeriesKind::Rate), None);
     }
 }
 
