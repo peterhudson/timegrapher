@@ -1055,6 +1055,58 @@ mod tests {
         }
     }
 
+    /// The faint-sides caveat counts the sides and the windows they sit in
+    /// from the reading's own windows (#1738, Trevor on #1800): one window
+    /// with both sides withheld and one with one side give 3 sides in 2
+    /// windows; a window with none adds nothing.
+    #[test]
+    fn faint_sides_are_counted_by_side_and_by_window() {
+        let window = |i: u32, faint: [bool; 2]| {
+            let mut w = AmplitudeWindow {
+                start_s: 2.0 * f64::from(i),
+                end_s: 2.0 * f64::from(i) + 2.0,
+                even_deg: (!faint[0]).then_some(250.0),
+                odd_deg: (!faint[1]).then_some(250.0),
+                beat_error_ms: Some(0.3),
+                beat_error_unlock_ms: None,
+                even_unlock_ms: None,
+                odd_unlock_ms: None,
+                even_drop_ms: None,
+                odd_drop_ms: None,
+                extra: None,
+                sound_1: [f32::NAN; 2],
+            };
+            w.edit_extra(|x| x.faint_withheld = faint);
+            w
+        };
+        let wins = [
+            window(0, [true, true]),
+            window(1, [false, false]),
+            window(2, [false, true]),
+        ];
+        let refs: Vec<&AmplitudeWindow> = wins.iter().collect();
+        let a = assess(&[], &refs, &heard());
+        let faint: Vec<&Caveat> = a
+            .caveats
+            .iter()
+            .filter(|c| matches!(c, Caveat::FaintSidesWithheld { .. }))
+            .collect();
+        assert_eq!(
+            faint,
+            [&Caveat::FaintSidesWithheld {
+                sides: 3,
+                windows: 2
+            }]
+        );
+        // None withheld: no caveat.
+        let clean = [window(0, [false, false])];
+        let a = assess(&[], &[&clean[0]], &heard());
+        assert!(!a
+            .caveats
+            .iter()
+            .any(|c| matches!(c, Caveat::FaintSidesWithheld { .. })));
+    }
+
     #[test]
     fn a_clean_stretch_has_no_caveats() {
         let a = assess(&[], &[], &heard());
