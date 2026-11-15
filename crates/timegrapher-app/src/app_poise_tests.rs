@@ -502,32 +502,8 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
             })
             .unwrap_or_else(|| panic!("{dark} {size:?}: no bezel"));
         let ring = f64::from(bezel.radius) / poise_case::RING_TO_BEZEL;
-        // Every outline of the case whole inside the dial's room, none of
-        // it cut off at the room's edge: lugs, guards and crown.
-        let outlines: Vec<(egui::Rect, egui::Pos2)> = out
-            .shapes
-            .iter()
-            .filter_map(|c| match &c.shape {
-                egui::Shape::Path(p)
-                    if p.closed && p.stroke.color == egui::epaint::ColorMode::Solid(line) =>
-                {
-                    Some(
-                        p.points
-                            .iter()
-                            .map(|q| (c.clip_rect, *q))
-                            .collect::<Vec<_>>(),
-                    )
-                }
-                _ => None,
-            })
-            .flatten()
-            .collect();
-        assert!(!outlines.is_empty(), "{dark} {size:?}: no case");
-        let cut: Vec<_> = outlines
-            .iter()
-            .filter(|(clip, q)| !clip.intersect(screen).contains(*q))
-            .collect();
-        assert!(cut.is_empty(), "{dark} {size:?}: the case cut: {cut:?}");
+        // Every outline of the case whole inside the dial's room.
+        case_uncut(&out, line, screen, (dark, size));
         // The 3H name past the crown's end.
         let three = timegrapher_core::poise::hour_code(90.0);
         let name = out
@@ -570,6 +546,41 @@ fn the_dial_has_its_watch_case_behind_it(app: &mut TimegrapherApp) {
             std::fs::write(name, svg).unwrap();
         }
     }
+}
+
+/// Every outline of the dial's case, drawn in `line`, whole inside the
+/// dial's room, none of it cut off at the room's edge: lugs, guards and
+/// crown (Trevor on #1772).
+fn case_uncut(
+    out: &egui::FullOutput,
+    line: egui::Color32,
+    screen: egui::Rect,
+    (dark, size): (bool, Vec2),
+) {
+    let outlines: Vec<(egui::Rect, egui::Pos2)> = out
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Path(p)
+                if p.closed && p.stroke.color == egui::epaint::ColorMode::Solid(line) =>
+            {
+                Some(
+                    p.points
+                        .iter()
+                        .map(|q| (c.clip_rect, *q))
+                        .collect::<Vec<_>>(),
+                )
+            }
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert!(!outlines.is_empty(), "{dark} {size:?}: no case");
+    let cut: Vec<_> = outlines
+        .iter()
+        .filter(|(clip, q)| !clip.intersect(screen).contains(*q))
+        .collect();
+    assert!(cut.is_empty(), "{dark} {size:?}: the case cut: {cut:?}");
 }
 
 /// The table stays beside the picture, tight, while the picture keeps its
