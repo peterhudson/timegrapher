@@ -100,10 +100,11 @@ fn wav_frames(path: &Path, lo: u64, hi: u64) -> Result<Vec<f32>, String> {
 
 fn flac_frames(path: &Path, lo: u64, hi: u64) -> Result<Vec<f32>, String> {
     let mut file = File::open(path).map_err(|e| e.to_string())?;
+    let tag = timegrapher_core::flac::skip_id3(&mut file).map_err(|e| e.to_string())?;
     let header = flac_header(&mut file)?;
     let len = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
     // Bisect the bytes for the last frame starting at or before `lo`.
-    let (mut lo_off, mut hi_off) = (header.len() as u64, len);
+    let (mut lo_off, mut hi_off) = (tag + header.len() as u64, len);
     while hi_off - lo_off > 1 << 16 {
         let mid = lo_off + (hi_off - lo_off) / 2;
         match frame_at(path, &header, mid, hi_off)? {
@@ -258,6 +259,34 @@ mod tests {
             }
         }
         assert!(read(&files, 200.0, 1.0).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A FLAC behind an ID3v2 tag (#1502) reads the same stretches as
+    /// without it: the bisection starts after the tag.
+    #[test]
+    fn a_flac_behind_an_id3_tag_reads_the_same_stretches() {
+        let dir = std::env::temp_dir().join(format!("tg-span-id3-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let plain = dir.join("plain.flac");
+        excerpt::write_flac(&plain, &tone(8000 * 60, 1)).unwrap();
+        // A v2.4 tag of 5,812 body bytes, as the shared files put in front.
+        let mut bytes = b"ID3\x04\x00\x00\x00\x00\x2d\x34".to_vec();
+        bytes.extend((0..5_812).map(|i| (i * 37 % 256) as u8));
+        bytes.extend(std::fs::read(&plain).unwrap());
+        let tagged = dir.join("tagged.flac");
+        std::fs::write(&tagged, bytes).unwrap();
+        for (lo, hi) in [
+            (0, 100),
+            (8000 * 31 + 7, 8000 * 33),
+            (8000 * 60 - 50, 8000 * 60),
+        ] {
+            assert_eq!(
+                frames(&tagged, lo, hi).unwrap(),
+                frames(&plain, lo, hi).unwrap(),
+                "at {lo}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

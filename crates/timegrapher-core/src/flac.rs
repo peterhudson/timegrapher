@@ -294,6 +294,44 @@ fn write_checked(
     done
 }
 
+/// Move `r` from its start past one ID3v2 tag in front of a FLAC stream,
+/// returning the tag's length in bytes; 0, with `r` back at its start,
+/// when there is none. Such a tag is outside the FLAC format but some
+/// taggers and provenance tools add one, and ffmpeg and libFLAC skip it
+/// (#1502). Only reading skips it: [`bloated`] and [`shrink`] still take
+/// only a file that starts "fLaC", so a tagged file is never rewritten.
+pub fn skip_id3<R: std::io::Read + Seek>(r: &mut R) -> std::io::Result<u64> {
+    let mut h = [0u8; 10];
+    let len = match r.read_exact(&mut h) {
+        Ok(()) => id3_len(&h),
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => 0,
+        Err(e) => return Err(e),
+    };
+    r.seek(SeekFrom::Start(len))?;
+    Ok(len)
+}
+
+/// The length of the ID3v2 tag whose 10-byte header is `h`: the header,
+/// the syncsafe size it gives, and the footer when its flag says there
+/// is one. 0 when `h` is not an ID3v2.2 to v2.4 tag's header.
+fn id3_len(h: &[u8; 10]) -> u64 {
+    if &h[..3] != b"ID3" || !(2..=4).contains(&h[3]) || h[6..].iter().any(|b| b & 0x80 != 0) {
+        return 0;
+    }
+    let size = h[6..].iter().fold(0u64, |n, b| n << 7 | u64::from(*b));
+    let footer = if h[3] == 4 && h[5] & 0x10 != 0 { 10 } else { 0 };
+    10 + size + footer
+}
+
+/// A reader for the FLAC file `path`, past an ID3v2 tag in front of its
+/// stream if it has one ([`skip_id3`]).
+pub fn reader(path: &Path) -> Result<claxon::FlacReader<BufReader<File>>, AudioError> {
+    let io = |e| AudioError::Flac(claxon::Error::IoError(e));
+    let mut r = BufReader::new(File::open(path).map_err(io)?);
+    skip_id3(&mut r).map_err(io)?;
+    claxon::FlacReader::new(r).map_err(AudioError::Flac)
+}
+
 /// The format, largest block and length in frames a FLAC file's stream
 /// info names, read from its first 42 bytes; None when they are not a
 /// FLAC's.
@@ -904,6 +942,80 @@ mod tests {
         std::fs::write(&f, bytes).unwrap();
         assert_eq!(stream_info(&f).unwrap().2, 0);
         assert!(!bloated(&f));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An ID3v2 tag of `body` bytes, as a v2.`version` tag's header (and
+    /// footer, when `flags` say so) and a body of any bytes.
+    fn id3_tag(version: u8, flags: u8, body: usize) -> Vec<u8> {
+        let size: Vec<u8> = (0..4)
+            .rev()
+            .map(|i| (body >> (7 * i)) as u8 & 0x7f)
+            .collect();
+        let mut t = b"ID3".to_vec();
+        t.extend([version, 0, flags]);
+        t.extend(&size);
+        t.extend((0..body).map(|i| (i * 37 % 256) as u8));
+        if flags & 0x10 != 0 {
+            t.extend(b"3DI");
+            t.extend([version, 0, flags]);
+            t.extend(&size);
+        }
+        t
+    }
+
+    /// A FLAC behind an ID3v2 tag, as provenance tools and some taggers
+    /// put one (#1502), reads exactly as the same FLAC without it. It is
+    /// never taken for bloated, so the start-up pass never rewrites it,
+    /// even when the stream behind the tag is bloated.
+    #[test]
+    fn a_flac_behind_an_id3_tag_reads_the_same_and_is_never_rewritten() {
+        let dir = scratch("id3");
+        let plain = dir.join("plain.flac");
+        let samples = write_bloated(&plain);
+        assert!(bloated(&plain));
+        let stream = std::fs::read(&plain).unwrap();
+        let md5 = claxon::FlacReader::open(&plain)
+            .unwrap()
+            .streaminfo()
+            .md5sum;
+        let want = crate::audio::load(&plain).unwrap().samples;
+        // The 5,822-byte v2.4 tag the shared files put in front, one with
+        // a footer, a v2.3 and a v2.2 one.
+        for (version, flags, body) in [(4, 0, 5_812), (4, 0x10, 300), (3, 0, 0), (2, 0, 129)] {
+            let f = dir.join(format!("tagged-{version}-{flags}.flac"));
+            let mut bytes = id3_tag(version, flags, body);
+            assert_eq!(id3_len(bytes[..10].try_into().unwrap()), bytes.len() as u64);
+            bytes.extend(&stream);
+            std::fs::write(&f, &bytes).unwrap();
+            let mut r = reader(&f).unwrap();
+            assert_eq!(r.streaminfo().md5sum, md5, "v2.{version}");
+            let back: Vec<i32> = r.samples().map(Result::unwrap).collect();
+            assert_eq!(back, samples, "v2.{version}");
+            assert_eq!(crate::audio::load(&f).unwrap().samples, want);
+            let info = crate::audio::info(&f).unwrap();
+            assert_eq!(info.frames, Some(samples.len() as u64));
+            let mut streamed = Vec::new();
+            crate::audio::stream(&f, 1000, |b| streamed.extend_from_slice(b)).unwrap();
+            assert_eq!(streamed, want);
+            assert!(!bloated(&f), "v2.{version}");
+            assert_eq!(std::fs::read(&f).unwrap(), bytes);
+        }
+        // Not a tag: no "ID3", an unknown version, a size byte that is not
+        // syncsafe, or too short a file. Each is read from its start.
+        let mut not = id3_tag(4, 0, 20);
+        for (at, v) in [(0, b'X'), (3, 5), (6, 0x80)] {
+            let mut h = not.clone();
+            h[at] = v;
+            assert_eq!(id3_len(h[..10].try_into().unwrap()), 0, "byte {at}");
+        }
+        not.truncate(6);
+        let mut c = std::io::Cursor::new(not);
+        assert_eq!(skip_id3(&mut c).unwrap(), 0);
+        assert_eq!(c.position(), 0);
+        let mut c = std::io::Cursor::new(stream);
+        assert_eq!(skip_id3(&mut c).unwrap(), 0);
+        assert_eq!(c.position(), 0);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

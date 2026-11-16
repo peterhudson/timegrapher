@@ -151,7 +151,7 @@ fn load_wav(path: &Path) -> Result<Audio, AudioError> {
 }
 
 fn load_flac(path: &Path) -> Result<Audio, AudioError> {
-    let mut reader = claxon::FlacReader::open(path).map_err(AudioError::Flac)?;
+    let mut reader = crate::flac::reader(path)?;
     let info = reader.streaminfo();
     readable(info.sample_rate, info.channels, info.bits_per_sample)?;
     let scale = 1.0 / (1u64 << (info.bits_per_sample - 1)) as f32;
@@ -204,7 +204,7 @@ fn info_of(path: &Path) -> Result<AudioInfo, AudioError> {
             })
         }
         "flac" => {
-            let r = claxon::FlacReader::open(path).map_err(AudioError::Flac)?;
+            let r = crate::flac::reader(path)?;
             let i = r.streaminfo();
             readable(i.sample_rate, i.channels, i.bits_per_sample)?;
             Ok(AudioInfo {
@@ -295,7 +295,7 @@ fn stream_head_of(
                 }
             }
             _ => {
-                let mut reader = claxon::FlacReader::open(path).map_err(AudioError::Flac)?;
+                let mut reader = crate::flac::reader(path)?;
                 let si = reader.streaminfo();
                 let scale = 1.0 / (1u64 << (si.bits_per_sample - 1)) as f32;
                 let mut blocks = reader.blocks();

@@ -113,7 +113,7 @@ fn read_at(path: &Path) -> Result<Pcm, AudioError> {
             })
         }
         "flac" => {
-            let mut r = claxon::FlacReader::open(path).map_err(AudioError::Flac)?;
+            let mut r = crate::flac::reader(path)?;
             let s = r.streaminfo();
             let samples = r
                 .samples()
