@@ -795,6 +795,27 @@ fn a_ready_tests_full_wind_search_sees_the_time_and_the_takes() {
     assert!(app.start_test_why_not().is_some(), "not yet picked");
     app.pick_full_wind(0);
     assert_eq!(app.start_test_why_not(), None);
+    // No test set up (the last one done, the Bench left as it was) with
+    // Compare With still shown: its list is searched all the same, and
+    // waits on the minute too (#1714).
+    let ready = app.test_ready.take();
+    app.guided_choices.clear();
+    app.guided_earlier_for = None;
+    app.find_full_wind_at(now + 3600.0);
+    assert_eq!(app.guided_choices.len(), 1);
+    assert!(app.full_wind_recheck(at).is_some());
+    // While a test is under way Compare With is hidden: its list is
+    // neither searched nor rechecked.
+    app.guided = Some(guided::Test::new());
+    assert!(app.guided_running());
+    assert!(!app.compare_with_shown());
+    app.guided_choices.clear();
+    app.guided_earlier_for = None;
+    app.find_full_wind_at(now + 3600.0);
+    assert!(app.guided_choices.is_empty());
+    assert!(app.full_wind_recheck(at).is_none());
+    app.guided = None;
+    app.test_ready = ready;
     // The take removed, in the same minute: no longer found, even with
     // the takes folder's time as it was, as Windows can leave it.
     let takes = take.parent().unwrap().to_path_buf();

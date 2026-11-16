@@ -233,7 +233,7 @@
     },
     "crates/timegrapher-app/src/strip.rs": {
      "bounds": 6,
-     "comparisons": 11,
+     "comparisons": 10,
      "constants": 4,
      "defaults": 1
     },
@@ -264,7 +264,7 @@
    },
    "total": {
     "bounds": 102,
-    "comparisons": 93,
+    "comparisons": 92,
     "constants": 62,
     "defaults": 2
    }

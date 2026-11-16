@@ -1518,7 +1518,9 @@ impl TimegrapherApp {
 
     /// [`Self::find_full_wind`] at `now`, Unix seconds.
     pub(super) fn find_full_wind_at(&mut self, now: f64) {
-        if self.test_ready != Some(NewTake::Positions) {
+        // For a test set up, and wherever Compare With shows, a test done
+        // or none set up yet included (#1714).
+        if self.test_ready != Some(NewTake::Positions) && !self.compare_with_shown() {
             return;
         }
         let dir = self.open_watch().map(|e| e.dir.join(library::TAKES));
@@ -1566,10 +1568,16 @@ impl TimegrapherApp {
     /// reaching its 12 hour mark, or a take added or removed, is seen only
     /// when the mouse moves.
     pub(super) fn full_wind_recheck(&self, now: f64) -> Option<Duration> {
-        (self.ready_test() == Some(NewTake::Positions)
-            && self.guided_after
-            && self.open_watch().is_some())
-        .then(|| Duration::from_secs_f64(60.0 - now.rem_euclid(60.0) + 0.05))
+        (self.ready_test() == Some(NewTake::Positions) || self.compare_with_shown())
+            .then_some(())
+            .filter(|_| self.guided_after && self.open_watch().is_some())
+            .map(|_| Duration::from_secs_f64(60.0 - now.rem_euclid(60.0) + 0.05))
+    }
+
+    /// Whether the Positions Test's toolbar shows Compare With: a watch
+    /// set for 24 Hours After, no Positions Test under way.
+    pub(super) fn compare_with_shown(&self) -> bool {
+        self.guided_after && self.open_watch().is_some() && !self.guided_running()
     }
 
     /// Whether a new take asks first: a take of a watch asks about Quick

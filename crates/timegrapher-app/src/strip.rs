@@ -1491,7 +1491,11 @@ impl Frame<'_> {
                 )
             };
             let labelled = k % every == 0;
-            if labelled && room > if horizontal { 14.0 } else { 34.0 } {
+            // Lying across, "Early" and "Late" fill a row at the column's
+            // ends: a label, centred on its line, keeps clear of them
+            // (#1541).
+            let clear = if horizontal { self.row_h * 1.5 } else { 34.0 };
+            if labelled && room > clear {
                 painter.text(at, align, axis_ms(ms, step), font.clone(), text);
             }
             k += 1;
@@ -2092,16 +2096,6 @@ impl Frame<'_> {
         };
         painter.rect_filled(rect, 2.0, vis.extreme_bg_color.gamma_multiply(0.9));
         painter.galley(rect.min + Vec2::splat(2.0), galley, vis.strong_text_color());
-    }
-}
-
-pub fn fmt_ms(ms: f64) -> String {
-    if ms >= 10.0 {
-        format!("{ms:.0}")
-    } else if ms >= 1.0 {
-        format!("{ms:.1}")
-    } else {
-        format!("{ms:.2}").trim_end_matches('0').to_string()
     }
 }
 
