@@ -388,7 +388,7 @@ fn picture_block(
         .filter_map(|(v, on)| on.then_some(v))
         .collect();
     let w = ui.available_width().max(PICTURE_MIN_W);
-    let room = (bottom - ui.cursor().top()).max(PICTURE_H);
+    let room = picture_room(ui, bottom);
     let gap = test_body::GAP;
     if views.len() == 2 && w >= 2.0 * PICTURE_MIN_W + gap {
         // The Dial square, the Plot the rest of the width and the Dial's
@@ -419,6 +419,16 @@ fn picture_block(
             PoiseView::Dial => draw_dial(ui, rect, &pic(ui, view)),
         }
     }
+}
+
+/// The room above `bottom` from where the picture starts, never under
+/// [`PICTURE_H`], as if its scroll area were at its top: scrolled, the
+/// cursor moves up, and the picture mustn't grow with it (#1777).
+fn picture_room(ui: &egui::Ui, bottom: f32) -> f32 {
+    // A scroll area clips a margin wider than what it shows.
+    let shown_top = ui.clip_rect().top() + ui.visuals().clip_rect_margin;
+    let scrolled = (shown_top - ui.max_rect().top()).max(0.0);
+    (bottom - ui.cursor().top() - scrolled).max(PICTURE_H)
 }
 
 /// What the pane says before a test: how the test runs.
@@ -1231,6 +1241,37 @@ fn clear_of(at: egui::Pos2, size: Vec2, others: &[egui::Rect]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The picture's room doesn't depend on how far its pane is scrolled
+    /// (#1777): scrolled down, it is what it was at the top.
+    #[test]
+    fn the_pictures_room_holds_as_the_pane_scrolls() {
+        let ctx = egui::Context::default();
+        let room = |offset: f32| {
+            let mut got = 0.0;
+            for _ in 0..2 {
+                let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let bottom = ui.max_rect().top() + 500.0;
+                        ui.set_max_height(500.0);
+                        egui::ScrollArea::vertical()
+                            .vertical_scroll_offset(offset)
+                            .show(ui, |ui| {
+                                ui.add_space(100.0);
+                                got = picture_room(ui, bottom);
+                                ui.add_space(1000.0);
+                            });
+                    });
+                });
+            }
+            got
+        };
+        let top = room(0.0);
+        assert!(top > PICTURE_H && top < 500.0, "{top}");
+        for offset in [100.0, 200.0, 400.0] {
+            assert_eq!(room(offset), top, "{offset}");
+        }
+    }
 
     /// A backed label set past the picture's edge slides back inside it,
     /// whole: the Mean's name at 12H, the plot's last hour (#1794).
