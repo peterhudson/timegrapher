@@ -1,7 +1,6 @@
 //! The labels on the strip's ms axis, across the time.
 
-use super::fmt_ms;
-use timegrapher_core::chart_scale::round_step;
+use timegrapher_core::chart_scale::{axis_tick, round_step};
 
 /// Which grid lines across the strip, `step` ms and `step_px` points
 /// apart, carry a label: every `n`th, the fewest skipped that leaves
@@ -20,16 +19,16 @@ pub(super) fn label_every(step: f64, step_px: f32, need: f32) -> Option<i64> {
 /// A signed number of ms for an axis label on lines `step` ms apart:
 /// zero in seconds, as its neighbours are, once every line is a whole
 /// second or more from the next (Hugh: "0 s" between "−10 s" and "+10 s").
+/// The rest as every value axis writes its ticks (core `axis_tick`), so
+/// all on one axis share the step's decimals: "+5" beside "+10", never
+/// "+5.0" (#1541).
 pub(super) fn axis_ms(ms: f64, step: f64) -> String {
     if ms.abs() < 1e-9 {
         if step >= 1000.0 { "0 s" } else { "0 ms" }.into()
+    } else if ms.abs() >= 1000.0 {
+        format!("{} s", axis_tick(ms / 1000.0, step / 1000.0, true))
     } else {
-        let sign = if ms > 0.0 { "+" } else { "−" };
-        if ms.abs() >= 1000.0 {
-            format!("{sign}{} s", fmt_ms(ms.abs() / 1000.0))
-        } else {
-            format!("{sign}{}", fmt_ms(ms.abs()))
-        }
+        axis_tick(ms, step, true)
     }
 }
 
@@ -43,6 +42,12 @@ mod tests {
         assert_eq!(axis_ms(-250.0, 50.0), "−250");
         assert_eq!(axis_ms(2000.0, 500.0), "+2.0 s");
         assert_eq!(axis_ms(-20_000.0, 5000.0), "−20 s");
+        // One axis, one number of decimals: the step's (#1541).
+        assert_eq!(axis_ms(5.0, 5.0), "+5");
+        assert_eq!(axis_ms(10.0, 5.0), "+10");
+        assert_eq!(axis_ms(-1.0, 1.0), "−1");
+        assert_eq!(axis_ms(0.5, 0.5), "+0.5");
+        assert_eq!(axis_ms(1.0, 0.5), "+1.0");
         // Zero takes its neighbours' unit: ms while any line is under a
         // second from the next, seconds once all are.
         assert_eq!(axis_ms(0.0, 500.0), "0 ms");
@@ -86,6 +91,16 @@ mod drawn {
     /// The axis labels drawn on a strip lying across, `height` points
     /// tall overall, at Width ±`half_width_ms`.
     fn labels_at(height: f32, half_width_ms: f64) -> Vec<String> {
+        texts_at(height, half_width_ms)
+            .into_iter()
+            .map(|t| t.0)
+            .filter(|t| t == "0 ms" || t == "0 s" || t.starts_with('+') || t.starts_with('−'))
+            .collect()
+    }
+
+    /// Every text drawn on a strip lying across, `height` points tall
+    /// overall, at Width ±`half_width_ms`, with where it is drawn.
+    fn texts_at(height: f32, half_width_ms: f64) -> Vec<(String, Rect)> {
         let ctx = egui::Context::default();
         let view = StripView {
             half_width_ms,
@@ -116,11 +131,42 @@ mod drawn {
         out.shapes
             .iter()
             .filter_map(|c| match &c.shape {
-                egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+                egui::Shape::Text(t) => Some((
+                    t.galley.text().to_string(),
+                    t.galley.rect.translate(t.pos.to_vec2()),
+                )),
                 _ => None,
             })
-            .filter(|t| t == "0 ms" || t == "0 s" || t.starts_with('+') || t.starts_with('−'))
             .collect()
+    }
+
+    /// No ms label touches "Early" or "Late" at any Width or height, the
+    /// end ones at ±5, ±50 and ±500 ms included (Walter's #1540 walk,
+    /// #1541).
+    #[test]
+    fn no_ms_label_touches_early_or_late() {
+        for half in [2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0] {
+            for height in [140.0, 180.0, 260.0, 400.0] {
+                let texts = texts_at(height, half);
+                let ends: Vec<&Rect> = texts
+                    .iter()
+                    .filter(|t| t.0 == "Early" || t.0 == "Late")
+                    .map(|t| &t.1)
+                    .collect();
+                assert_eq!(ends.len(), 2, "±{half} at {height}: {texts:?}");
+                for (words, at) in texts
+                    .iter()
+                    .filter(|t| t.0 == "0 ms" || t.0.starts_with('+') || t.0.starts_with('−'))
+                {
+                    for end in &ends {
+                        assert!(
+                            !at.intersects(**end),
+                            "±{half} at {height}: {words} {at:?} touches {end:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// A short strip at ±20 ms, its 5 ms lines too close for a label
@@ -131,7 +177,7 @@ mod drawn {
         for shown in ["−10", "0 ms", "+10"] {
             assert!(labels.iter().any(|t| t == shown), "{shown}: {labels:?}");
         }
-        for skipped in ["−15", "−5.0", "+5.0", "+15"] {
+        for skipped in ["−15", "−5", "+5", "+15"] {
             assert!(
                 !labels.iter().any(|t| t == skipped),
                 "{skipped}: {labels:?}"

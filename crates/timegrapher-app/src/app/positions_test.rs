@@ -342,7 +342,7 @@ impl TimegrapherApp {
             if self.guided_after != was {
                 self.find_full_wind();
             }
-            if self.guided_after && !running {
+            if self.compare_with_shown() {
                 theme::bar_gap(ui);
                 self.compare_with(ui);
             }
