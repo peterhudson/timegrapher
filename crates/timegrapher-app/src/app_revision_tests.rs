@@ -4,6 +4,7 @@
 use super::tests::{reopened, synthetic};
 use super::*;
 use timegrapher_core::synth::{generate, SynthConfig};
+use timegrapher_core::walk::IsochronismWalk;
 
 /// A take whose session file names a clock log is read on that log,
 /// as `timegrapher session` reads it: the Positions table's rates and
@@ -377,6 +378,36 @@ fn a_pane_counts_as_shown_for_its_pass_and_the_next() {
     app.bg.shown_pass = [Some(11), Some(10)];
     assert_eq!(app.steady_need(12), Need::Tests);
     assert_eq!(app.steady_need(13), Need::Isochronism);
+}
+
+/// The Isochronism pane shows the newer of the tests' isochronism and the
+/// one read alone (#1830): the tests' when theirs covers more of the take,
+/// the one read alone when it does.
+#[test]
+fn the_isochronism_pane_shows_the_newer_answer() {
+    let ctx = egui::Context::default();
+    let mut app = synthetic(320.0, 12.0);
+    steadiness_now(&mut app, &ctx);
+    let upto = app.steady.as_ref().expect("the tests ran").1.upto_s;
+    let same = |a: Option<&IsochronismWalk>, b: Option<&IsochronismWalk>| match (a, b) {
+        (Some(a), Some(b)) => std::ptr::eq(a, b),
+        (a, b) => a.is_none() && b.is_none(),
+    };
+    for (alone_upto, tests_shown) in [(upto - 10.0, true), (upto + 10.0, false)] {
+        app.bg.isochronism = Some((
+            app.rev,
+            steady::IsochronismAlone {
+                isochronism: None,
+                walk: Some(IsochronismWalk::default()),
+                upto_s: alone_upto,
+            },
+        ));
+        let (_, walk) = app.isochronism_shown().expect("an answer");
+        let tests = app.steady.as_ref().unwrap().1.report.walk.as_ref();
+        let alone = app.bg.isochronism.as_ref().unwrap().1.walk.as_ref();
+        let want = if tests_shown { tests } else { alone };
+        assert!(same(walk, want), "tests' shown: {tests_shown}");
+    }
 }
 
 fn j(v: &impl serde::Serialize) -> String {

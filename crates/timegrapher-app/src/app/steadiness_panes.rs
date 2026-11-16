@@ -133,7 +133,9 @@ impl TimegrapherApp {
 
     /// The isochronism on show: the newer of the whole check's and the one
     /// read alone.
-    fn isochronism_shown(&self) -> Option<(Option<&IsochronismCurve>, Option<&IsochronismWalk>)> {
+    pub(super) fn isochronism_shown(
+        &self,
+    ) -> Option<(Option<&IsochronismCurve>, Option<&IsochronismWalk>)> {
         let tests = self.steady.as_ref().map(|s| (&s.1.report, s.1.upto_s));
         let alone = self.bg.isochronism.as_ref().map(|i| &i.1);
         if let Some(a) = alone.filter(|a| tests.is_none_or(|(_, u)| a.upto_s > u)) {
