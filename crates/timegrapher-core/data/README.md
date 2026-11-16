@@ -110,7 +110,15 @@ specification pages, read on 2026-10-13:
   other product lists, read again on 2026-11-16 for jewels, size, stem
   height and power reserve (the pages and the Chinese site print no lift
   angle, and their manual links are empty);
-- Tianjin Seagull: https://en.seagullwatch.com/ movement pages;
+- Tianjin Seagull: https://en.seagullwatch.com/ movement pages, and on
+  2026-11-16 the watch manuals on https://www.seagullwatch.com/ebook
+  (1,430 images; each prints the movement (机心型号), winding, beat rate
+  (振频) and jewels). They add 85 Seagull calibres and confirm five
+  rows. Two are left without a beat rate: ST9250, whose two manuals
+  disagree (21,600 and 18,000), and ST8250, whose manual prints 21,800.
+  A Peacock code (SL4510) in one manual is left out. 13 manuals had no
+  readable parameter block. The manual links are kept in
+  `docs/research/seagull-watch-manuals.json`;
 - Hangzhou: two assembly drawings (HZ8230A, HZ8220A) downloaded from
   Hangzhou's site, and on 2026-11-16 every movement on
   https://www.hzwatch.com/ (428 product pages, 418 calibres), each read
@@ -122,7 +130,16 @@ other pages give the beat rate, jewels, size and power reserve, so those
 rows carry a beat rate and a balance period and no lift angle. Seagull's pages print
 the beat rate as a bare number ("Frequency: 21600"), read as bph. Pages
 with no figures were left out, and none of the pages says which calibre
-a movement copies.
+a movement copies. Seagull ST2555 comes from a dealer's page
+(seagullwatchcompany.com, `confidence` "dealer's page"), since Seagull's
+own pages don't list it.
+
+The Chinese standard movement (Tongji, 统一机芯) has one row at 21,600
+bph, from Wikipedia and the Chinese Watch Wiki, with its factory names
+(SZ-1, SS7, ZB-1, ZSE) as family names; the 2650 name is left out
+because it would collide with the ETA 2650. The Shanghai Watch
+Factory's earlier SS1 has two rows, SS1A at 18,000 bph and SS1K at
+21,600, from the Chinese Watch Wiki.
 
 Hangzhou's product names end in a finish letter (A white, B gold,
 C rose gold, D gun-black, E white-gold, as its own pages say) and some

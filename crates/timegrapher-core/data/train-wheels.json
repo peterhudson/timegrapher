@@ -79448,7 +79448,8 @@
       }
     ],
     "sources": [
-      "https://en.seagullwatch.com/products/tourbillon-movement-ty800-st8000: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty800-st8000: maker's page, \"Frequency: 21600 (no unit stated on page)\"",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682313989448545.jpg: Seagull's manual for watch ST8000SA, \"振频 21600\", 19 jewels"
     ],
     "confidence": "maker's page",
     "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
@@ -79619,7 +79620,8 @@
       }
     ],
     "sources": [
-      "https://en.seagullwatch.com/products/tourbillon-movement-ty805-st8005-copy: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty805-st8005-copy: maker's page, \"Frequency: 21600 (no unit stated on page)\"",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314333990591.jpg: Seagull's manual for watch ST8006SA, \"振频 21600\", 21 jewels"
     ],
     "confidence": "maker's page",
     "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
@@ -79640,7 +79642,8 @@
       }
     ],
     "sources": [
-      "https://en.seagullwatch.com/products/tourbillon-movement-ty803-st8003: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty803-st8003: maker's page, \"Frequency: 21600 (no unit stated on page)\"",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314132670213.jpg: Seagull's manual for watch ST8003SA, \"振频 21600\", 19 jewels"
     ],
     "confidence": "maker's page",
     "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
@@ -79661,7 +79664,8 @@
       }
     ],
     "sources": [
-      "https://en.seagullwatch.com/products/tourbillon-movement-ty802-st8002: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty802-st8002: maker's page, \"Frequency: 21600 (no unit stated on page)\"",
+      "https://www.seagullwatch.com/static/upload/image/20240201/1706766197440365.jpg: Seagull's manual for watch ST8002ZGA, \"振频 21600\", 27 jewels"
     ],
     "confidence": "maker's page",
     "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
@@ -79682,7 +79686,8 @@
       }
     ],
     "sources": [
-      "https://en.seagullwatch.com/products/tourbillon-movement-ty801-st8001: maker's page, \"Frequency: 21600 (no unit stated on page)\""
+      "https://en.seagullwatch.com/products/tourbillon-movement-ty801-st8001: maker's page, \"Frequency: 21600 (no unit stated on page)\"",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314022770587.jpg: Seagull's manual for watch ST8001GA, \"振频 21600\", 25 jewels"
     ],
     "confidence": "maker's page",
     "notes": "The maker's page gives the beat rate as a bare number with no unit; read as bph."
@@ -91938,5 +91943,1808 @@
     ],
     "confidence": "maker's page",
     "notes": "Open heart, automatic tourbillon, skeleton; 31 jewels; power reserve ≥60 h; 33 mm across; 6.97 mm thick."
+  },
+  {
+    "calibre": "Seagull ST1601K2",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1601K2"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240326/1711430289454725.jpg: Seagull's manual for watch 513.17.7064KL, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 21 jewels (Seagull's manual for watch 513.17.7064KL). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1602K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1602K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279682941603.jpg: Seagull's manual for watch Y217.485, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 21 jewels (Seagull's manual for watch Y217.485). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1602K2",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1602K2"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682393101690224.jpg: Seagull's manual for watch Y217.482, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 21 jewels (Seagull's manual for watch Y217.482). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1603K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1603K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230331/1680242661967182.jpg: Seagull's manual for watch M149SK, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 21 jewels (Seagull's manual for watch M149SK). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1612-3",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1612-3"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240322/1711084757284794.jpg: Seagull's manual for watch 510.85.7055V, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 21 jewels (Seagull's manual for watch 510.85.7055V). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST16S4",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST16S4"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230331/1680242124273713.jpg: Seagull's manual for watch D2869SG, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 21 jewels (Seagull's manual for watch D2869SG). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1791",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1791"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682313606838548.jpg: Seagull's manual for watch M196S, \"振频 21600\", 20 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 20 jewels (Seagull's manual for watch M196S). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1901K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1901K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230331/1680243143511540.jpg: Seagull's manual for watch M190SK, \"振频 21600\", 22 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 22 jewels (Seagull's manual for watch M190SK). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1902",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1902"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682313551378907.jpg: Seagull's manual for watch M192S, \"振频 21600\", 22 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 22 jewels (Seagull's manual for watch M192S). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1905",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1905"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682313588555857.jpg: Seagull's manual for watch M193S, \"振频 21600\", 31 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 31 jewels (Seagull's manual for watch M193S). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1907",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1907"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682313705459409.jpg: Seagull's manual for watch M200S, \"振频 21600\", 31 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 31 jewels (Seagull's manual for watch M200S). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST1908",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST1908"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240322/1711085646331641.jpg: Seagull's manual for watch 819.91.1062, \"振频 21600\", 22 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 22 jewels (Seagull's manual for watch 819.91.1062). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2109",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2109"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230915/1694765328508326.jpg: Seagull's manual for watch 819.97.6053, \"振频 28800\", 42 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 42 jewels (Seagull's manual for watch 819.97.6053). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2146",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2146"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221228/1672220245431328.jpg: Seagull's manual for watch 816.363, \"振频 28800\", 26 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 26 jewels (Seagull's manual for watch 816.363). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2147",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2147"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221229/1672303545783256.jpg: Seagull's manual for watch 816.422, \"振频 28800\", 26 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 26 jewels (Seagull's manual for watch 816.422). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2150",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2150"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240829/1724918564369078.jpg: Seagull's manual for watch 819.32.1069, \"振频 28800\", 28 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 28 jewels (Seagull's manual for watch 819.32.1069). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2153",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2153"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240322/1711074437177864.jpg: Seagull's manual for watch 819.41.6092, \"振频 28800\", 32 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 32 jewels (Seagull's manual for watch 819.41.6092). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2162",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2162"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240227/1709017179336644.jpg: Seagull's manual for watch 816.32.1215, \"振频 28800\", 28 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 28 jewels (Seagull's manual for watch 816.32.1215). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2502JK",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2502JK"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221021/1666318554247631.jpg: Seagull's manual for watch Football collaboration with Premier League Wolverhampton Wanderers, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 25 jewels (Seagull's manual for watch Football collaboration with Premier League Wolverhampton Wanderers). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2504",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2504"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279645866776.jpg: Seagull's manual for watch Y217.480, \"振频 21600\", 33 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 33 jewels (Seagull's manual for watch Y217.480). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2510",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2510"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230919/1695091106363562.jpg: Seagull's manual for watch 819.318, \"振频 21600\", 34 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 34 jewels (Seagull's manual for watch 819.318). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2525",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2525"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221228/1672217219436887.jpg: Seagull's manual for watch 816.353, \"振频 21600\", 29 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 29 jewels (Seagull's manual for watch 816.353). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2527",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2527"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230830/1693384885668080.jpg: Seagull's manual for watch 219.329, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 25 jewels (Seagull's manual for watch 219.329). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2528",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2528"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230919/1695091076793112.jpg: Seagull's manual for watch 819.308, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 25 jewels (Seagull's manual for watch 819.308). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2545",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2545"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230919/1695091225319171.jpg: Seagull's manual for watch 839.359, \"振频 21600\", 40 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 40 jewels (Seagull's manual for watch 839.359). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2551K2",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2551K2"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240326/1711418399360777.jpg: Seagull's manual for watch 215.97.1126HK, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 25 jewels (Seagull's manual for watch 215.97.1126HK). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2553",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2553"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695265308203475.jpg: Seagull's manual for watch D819.552, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 25 jewels (Seagull's manual for watch D819.552). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2573",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2573"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682393056804649.jpg: Seagull's manual for watch Y217.481, \"振频 21600\", 31 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 31 jewels (Seagull's manual for watch Y217.481). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2575",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2575"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230831/1693473940882709.jpg: Seagull's manual for watch 816.413, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 25 jewels (Seagull's manual for watch 816.413). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2579",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2579"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230831/1693473982464333.jpg: Seagull's manual for watch 816.414, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 25 jewels (Seagull's manual for watch 816.414). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2585",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2585"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230119/1674116465787772.jpg: Seagull's manual for watch 819.381, \"振频 21600\", 35 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 35 jewels (Seagull's manual for watch 819.381). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2590",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2590"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682313886257410.jpg: Seagull's manual for watch 万年历ST2590G, \"振频 21600\", 39 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 39 jewels (Seagull's manual for watch 万年历ST2590G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST3100",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST3100"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230321/1679383609300516.jpg: Seagull's manual for watch 829.323K, \"振频 21600\", 18 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 18 jewels (Seagull's manual for watch 829.323K). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST3600K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST3600K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230919/1695091288719089.jpg: Seagull's manual for watch 8159.222K, \"振频 21600\", 17 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 17 jewels (Seagull's manual for watch 8159.222K). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST3620",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST3620"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221230/1672391254539312.jpg: Seagull's manual for watch 819.13.5036, \"振频 21600\", 17 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 17 jewels (Seagull's manual for watch 819.13.5036). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST3624",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST3624"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20231229/1703839356731305.jpg: Seagull's manual for watch 839.23.3017H, \"振频 21600\", 17 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 17 jewels (Seagull's manual for watch 839.23.3017H). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST3640",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST3640"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221228/1672208553435626.jpg: Seagull's manual for watch 815.18.1008H, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 815.18.1008H). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST4100",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST4100"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230321/1679383953217354.jpg: Seagull's manual for watch 849.402L, \"振频 21600\", 18 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 18 jewels (Seagull's manual for watch 849.402L). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST4200",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST4200"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20261029/1793259191364476.jpg: Seagull's manual for watch 319.67.1046L, \"振频 28800\", 29 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 29 jewels (Seagull's manual for watch 319.67.1046L). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST6102K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST6102K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230331/1680243198585650.jpg: Seagull's manual for watch M1495LK, \"振频 21600\", 23 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 23 jewels (Seagull's manual for watch M1495LK). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST6D1K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST6D1K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221109/1667977061731466.jpg: Seagull's manual for watch 217.335L, \"振频 21600\", 23 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20221109/1667976682842391.jpg: Seagull's manual for watch 217.333L, \"振频 21600\", 23 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 23 jewels (Seagull's manuals for watches 217.335L, 217.333L). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST6K2",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST6K2"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221228/1672197850779508.jpg: Seagull's manual for watch 739.759L, \"振频 21600\", 20 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20221228/1672197807112955.jpg: Seagull's manual for watch 739.758L, \"振频 21600\", 20 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 20 jewels (Seagull's manuals for watches 739.759L, 739.758L). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8000K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8000K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695265127989495.jpg: Seagull's manual for watch ST8000SK, \"振频 21600\", 19 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682313964702103.jpg: Seagull's manual for watch ST8000GK, \"振频 21600\", 19 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 19 jewels (Seagull's manuals for watches ST8000SK, ST8000GK). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8000W",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8000W"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221128/1669627334525215.jpg: Seagull's manual for watch 618.871, \"振频 21600\", 19 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 19 jewels (Seagull's manual for watch 618.871). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8001K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8001K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279204523872.jpg: Seagull's manual for watch ST8001GK-1, \"振频 21600\", 25 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695265089757401.jpg: Seagull's manual for watch ST8001GK, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 25 jewels (Seagull's manuals for watches ST8001GK-1, ST8001GK). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8002Z",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8002Z"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221229/1672305962868771.jpg: Seagull's manual for watch 818.31.6018, \"振频 21600\", 27 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 27 jewels (Seagull's manual for watch 818.31.6018). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8004",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8004"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279265894391.jpg: Seagull's manual for watch ST8004GA, \"振频 21600\", 31 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314189287663.jpg: Seagull's manual for watch ST8004SA, \"振频 21600\", 31 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314168177432.jpg: Seagull's manual for watch ST8004G, \"振频 21600\", 31 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 31 jewels (Seagull's manuals for watches ST8004GA, ST8004SA, ST8004G). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8004R",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8004R"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20250410/1744273376913432.jpg: Seagull's manual for watch ST8004ZS, \"振频 21600\", 31 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20250410/1744273538159360.png: Seagull's manual for watch ST8004, \"振频 21600\", 31 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 31 jewels (Seagull's manuals for watches ST8004ZS, ST8004). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8004Z",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8004Z"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314232673498.jpg: Seagull's manual for watch ST8004ZG, \"振频 21600\", 32 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 32 jewels (Seagull's manual for watch ST8004ZG). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8005",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8005"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221229/1672306419109733.jpg: Seagull's manual for watch 818.905, \"振频 21600\", 19 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 19 jewels (Seagull's manual for watch 818.905). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8007",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8007"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314400865367.jpg: Seagull's manual for watch ST8007GA, \"振频 21600\", 25 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314374174002.jpg: Seagull's manual for watch ST8007G, \"振频 21600\", 25 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 25 jewels (Seagull's manuals for watches ST8007GA, ST8007G). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8030",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8030"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230119/1674109209335253.jpg: Seagull's manual for watch 816.42.8800, \"振频 28800\", 23 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 23 jewels (Seagull's manual for watch 816.42.8800). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8080",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8080"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279316293470.jpg: Seagull's manual for watch ST8080GA, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279285280683.jpg: Seagull's manual for watch ST8080G, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314684435142.jpg: Seagull's manual for watch ST8080GS, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314590408591.jpg: Seagull's manual for watch 双陀飞轮ST8080GC, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314547642587.jpg: Seagull's manual for watch ST8080GBA, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314511561315.jpg: Seagull's manual for watch ST8080GB, \"振频 21600\", 42 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 42 jewels (Seagull's manuals for watches ST8080GA, ST8080G, ST8080GS, 双陀飞轮ST8080GC, ST8080GBA, ST8080GB). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8080-2",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8080-2"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314459608475.jpg: Seagull's manual for watch ST8080-2GB, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314437161503.jpg: Seagull's manual for watch ST8080-2G, \"振频 21600\", 42 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 42 jewels (Seagull's manuals for watches ST8080-2GB, ST8080-2G). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8080K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8080K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314666822828.jpg: Seagull's manual for watch ST8080GKA, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314612857674.jpg: Seagull's manual for watch ST8080GK, \"振频 21600\", 42 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 42 jewels (Seagull's manuals for watches ST8080GKA, ST8080GK). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8081",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8081"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230424/1682314713590612.jpg: Seagull's manual for watch ST8081G, \"振频 21600\", 49 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 49 jewels (Seagull's manual for watch ST8081G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8082",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8082"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279333916314.jpg: Seagull's manual for watch ST8082G, \"振频 21600\", 47 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 47 jewels (Seagull's manual for watch ST8082G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8083",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8083"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279423178497.jpg: Seagull's manual for watch ST8083GC, \"振频 21600\", 43 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279394440418.jpg: Seagull's manual for watch ST8083GA, \"振频 21600\", 43 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279368185642.jpg: Seagull's manual for watch ST8083G, \"振频 21600\", 43 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391741803529.jpg: Seagull's manual for watch ST8083GK, \"振频 21600\", 43 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391717636478.jpg: Seagull's manual for watch ST8083GB, \"振频 21600\", 43 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 43 jewels (Seagull's manuals for watches ST8083GC, ST8083GA, ST8083G, ST8083GK, ST8083GB). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8090",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8090"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230831/1693473613543936.jpg: Seagull's manual for watch 816.42.8801, \"振频 28800\", 23 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 23 jewels (Seagull's manual for watch 816.42.8801). The manual gives 振频 28800 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8103",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8103"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279463970510.jpg: Seagull's manual for watch ST8103SA, \"振频 21600\", 19 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 19 jewels (Seagull's manual for watch ST8103SA). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8160",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8160"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221110/1668065471296252.jpg: Seagull's manual for watch 218.98.8808G, \"振频 21600\", 27 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20221110/1668065057320726.jpg: Seagull's manual for watch 218.92.8808G, \"振频 21600\", 27 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 27 jewels (Seagull's manuals for watches 218.98.8808G, 218.92.8808G). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8200",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8200"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20231027/1698377215263120.jpg: Seagull's manual for watch ST8200S, \"振频 21600\", 119 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 119 jewels (Seagull's manual for watch ST8200S). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8210K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8210K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391757901017.jpg: Seagull's manual for watch ST8210SK, \"振频 21600\", 22 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 22 jewels (Seagull's manual for watch ST8210SK). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8230",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8230"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240821/1724206349609735.jpg: Seagull's manual for watch 218.98.8816, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 218.98.8816). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8230-1",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8230-1"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240322/1711085407655235.jpg: Seagull's manual for watch 818.12.8825, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 818.12.8825). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8230K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8230K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230901/1693532946637659.jpg: Seagull's manual for watch 818.28.7048VK, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 818.28.7048VK). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8230W",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8230W"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230915/1694760005283895.jpg: Seagull's manual for watch 819.92.7110, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 819.92.7110). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8230W-1",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8230W-1"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/other/20240322/1711085496674312.jpeg: Seagull's manual for watch 818.98.8840, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 818.98.8840). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8235",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8235"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240322/1711085468504267.jpg: Seagull's manual for watch 818.42.7081, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 818.42.7081). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8240W",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8240W"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221229/1672305685611156.jpg: Seagull's manual for watch 818.27.8810, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch 818.27.8810). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8242",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8242"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20250527/1748324419810673.jpg: Seagull's manual for watch 218.32.8843G, \"振频 21600\", 38 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 38 jewels (Seagull's manual for watch 218.32.8843G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8250",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8250"
+    ],
+    "wheels": [],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391781258329.jpg: Seagull's manual for watch ST8250G, \"振频 21800\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch ST8250G). Beat rate left blank: Seagull's only manual (watch ST8250G) prints 振频 21800, which is not a usual beat rate and is probably a misprint for 21600. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8260",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8260"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391797727292.jpg: Seagull's manual for watch ST8260G, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch ST8260G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8260K",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8260K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391820508077.jpg: Seagull's manual for watch ST8260GK, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch ST8260GK). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8260W",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8260W"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221021/1666341685293537.jpg: Seagull's manual for watch H618.862, \"振频 21600\", 21 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 21 jewels (Seagull's manual for watch H618.862). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8262",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8262"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279502545365.jpg: Seagull's manual for watch ST8262G, \"振频 21600\", 35 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 35 jewels (Seagull's manual for watch ST8262G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8263",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8263"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279526111428.jpg: Seagull's manual for watch ST8263G, \"振频 21600\", 38 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 38 jewels (Seagull's manual for watch ST8263G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8267",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8267"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230830/1693366447556687.jpg: Seagull's manual for watch ST8267G, \"振频 21600\", 31 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Automatic; 31 jewels (Seagull's manual for watch ST8267G). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8400",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8400"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391858679489.jpg: Seagull's manual for watch ST8400VGLC, \"振频 21600\", 18 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391834639507.jpg: Seagull's manual for watch ST8400VGLA, \"振频 21600\", 18 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 18 jewels (Seagull's manuals for watches ST8400VGLC, ST8400VGLA). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST8520",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST8520"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20221025/1666678256152399.jpg: Seagull's manual for watch ST8520GC, \"振频 21600\", 42 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391887948200.jpg: Seagull's manual for watch ST8520G, \"振频 21600\", 42 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 42 jewels (Seagull's manuals for watches ST8520GC, ST8520G). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST9000",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST9000"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279562915323.jpg: Seagull's manual for watch ST9000P, \"振频 21600\", 30 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391903644991.jpg: Seagull's manual for watch ST9000G, \"振频 21600\", 30 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 30 jewels (Seagull's manuals for watches ST9000P, ST9000G). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST9100",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST9100"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20240322/1711088386723973.jpg: Seagull's manual for watch ST9100GDA, \"振频 21600\", 33 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279580416226.jpg: Seagull's manual for watch ST9100G, \"振频 21600\", 33 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682391931571170.jpg: Seagull's manual for watch 三问ST9100GD, \"振频 21600\", 33 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 33 jewels (Seagull's manuals for watches ST9100GDA, ST9100G, 三问ST9100GD). The manuals give 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST9101",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST9101"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20250418/1744954514723666.jpg: Seagull's manual for watch 618.96.9101, \"振频 21600\", 33 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 33 jewels (Seagull's manual for watch 618.96.9101). The manual gives 振频 21600 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST9200",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST9200"
+    ],
+    "bph": 18000,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.4,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230921/1695279606713000.jpg: Seagull's manual for watch ST9200G-M, \"振频 18000\", 30 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20230425/1682393037909894.jpg: Seagull's manual for watch ST9200G, \"振频 18000\", 30 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 30 jewels (Seagull's manuals for watches ST9200G-M, ST9200G). The manuals give 振频 18000 with no unit; read as bph. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST9250",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST9250"
+    ],
+    "wheels": [],
+    "sources": [
+      "https://www.seagullwatch.com/static/upload/image/20230817/1692252578790753.png: Seagull's manual for watch ST9250G, \"振频 21600\", 30 jewels",
+      "https://www.seagullwatch.com/static/upload/image/20250408/1744089750443497.jpg: Seagull's manual for watch 618.12.9250, \"振频 18000\", 30 jewels"
+    ],
+    "confidence": "maker's page",
+    "notes": "Manual wind; 30 jewels (Seagull's manuals for watches ST9250G, 618.12.9250). Beat rate left blank: Seagull's two manuals disagree: watch ST9250G prints 振频 21600, watch 618.12.9250 prints 18000. No lift angle is published."
+  },
+  {
+    "calibre": "Seagull ST2555",
+    "maker": "Tianjin Seagull",
+    "family": [
+      "ST2555"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seagullwatchcompany.com/product-page/seagull-calendar-small-dial-automatic-mechanical-movement-st2555: dealer's page (China Watches), 21600 bph, 30 jewels"
+    ],
+    "confidence": "dealer's page",
+    "notes": "Automatic; calendar and small seconds at 9; 30 jewels; 30.4 mm across, 7.4 mm thick (a dealer's page, not Seagull's own). No lift angle is published."
+  },
+  {
+    "calibre": "Tongji (Chinese standard movement)",
+    "maker": "Chinese standard (many factories)",
+    "family": [
+      "Tongji",
+      "Tongyi",
+      "SZ-1",
+      "SS7",
+      "ZB-1",
+      "ZSE",
+      "Chinese standard movement",
+      "CSM"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://en.wikipedia.org/wiki/Chinese_standard_movement: \"a minimum of 17 jewels, 21,600 bph (beats per hour) escapement\"",
+      "https://chinesewatchwiki.net/Tongji: \"a manual-wind, 21,600 bph watch movement\"; names SZ-1 (prototype), SS7 (Shanghai), ZB-1 (Beijing) and ZSE (Shanghai No. 2)"
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "The unified movement (统一机芯, Tongji) designed in 1971 by a group from several factories and made across China: hand-wound, centre seconds, at least 17 jewels, at least 40 h. Factory versions differ in finish, jewels and date, and some are thinner (SS8, SB1H, ZB2) or larger (Jilin HJ1A, a pocket-watch size); those are not listed here because no source ties them to the same beat rate. The hand-wound export name 2650 is left out because it collides with the ETA 2650. No lift angle is published."
+  },
+  {
+    "calibre": "Shanghai SS1A",
+    "maker": "Shanghai Watch Factory",
+    "family": [
+      "SS1A"
+    ],
+    "bph": 18000,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.4,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://chinesewatchwiki.net/SS1: \"The first variant, the SS1A, with a 18,000 bph escapement\"",
+      "https://chinesewatchwiki.net/Shanghai_Watch_Factory: \"An upgrade of the escapement from 18,000 bph to 21,600 was designated SS1A-K.\""
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Shanghai Watch Factory's own hand-wound 17-jewel calibre from 1968, revised from its A581/A611; not the later standard movement. The SS1A beats 18,000 bph and the SS1K 21,600 bph, so a bare \"SS1\" is not listed: it could be either. No lift angle is published."
+  },
+  {
+    "calibre": "Shanghai SS1K",
+    "maker": "Shanghai Watch Factory",
+    "family": [
+      "SS1K"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://chinesewatchwiki.net/SS1: \"which featured a 21,600 bph escapement\"",
+      "https://chinesewatchwiki.net/Shanghai_Watch_Factory: \"An upgrade of the escapement from 18,000 bph to 21,600 was designated SS1A-K.\""
+    ],
+    "confidence": "derived from the beat rate",
+    "notes": "Shanghai Watch Factory's own hand-wound 17-jewel calibre from 1968, revised from its A581/A611; not the later standard movement. The SS1A beats 18,000 bph and the SS1K 21,600 bph, so a bare \"SS1\" is not listed: it could be either. No lift angle is published."
   }
 ]

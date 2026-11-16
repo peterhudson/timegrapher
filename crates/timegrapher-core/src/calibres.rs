@@ -1144,6 +1144,41 @@ mod tests {
     }
 
     #[test]
+    fn seagull_manuals_tongji_and_shanghai_rows_resolve() {
+        let manual: Vec<_> = all()
+            .iter()
+            .filter(|c| {
+                c.sources
+                    .iter()
+                    .any(|s| s.contains("Seagull's manual for watch"))
+            })
+            .collect();
+        // 85 rows from the manuals plus five older rows they confirm.
+        assert_eq!(manual.len(), 90);
+        for c in &manual {
+            assert!(c.calibre.starts_with("Seagull ST"), "{}", c.calibre);
+            assert_eq!(c.lift_angle_deg, None, "{}", c.calibre);
+        }
+        let bph = |n: &str| find(n).and_then(|c| c.bph);
+        assert_eq!(bph("ST8083"), Some(21600));
+        assert_eq!(bph("ST9200"), Some(18000));
+        assert_eq!(bph("ST8090"), Some(28800));
+        assert_eq!(bph("ST8080-2"), Some(21600));
+        // Seagull's own manuals disagree, or print an unusual figure.
+        assert_eq!(bph("ST9250"), None);
+        assert_eq!(bph("ST8250"), None);
+        assert_eq!(find("ST2555").unwrap().confidence, "dealer's page");
+        let t = find("Tongji").unwrap();
+        assert_eq!(t.bph, Some(21600));
+        assert_eq!(find("ZB-1").map(|c| &c.calibre), Some(&t.calibre));
+        // The bare 2650 stays with the Swiss rows.
+        assert_ne!(find("2650").map(|c| &c.calibre), Some(&t.calibre));
+        assert_eq!(bph("SS1A"), Some(18000));
+        assert_eq!(bph("SS1K"), Some(21600));
+        assert!(find("SS1").is_none());
+    }
+
+    #[test]
     fn makers_are_in_the_table_and_their_names_unique() {
         let mut seen = std::collections::HashSet::new();
         for m in makers() {
