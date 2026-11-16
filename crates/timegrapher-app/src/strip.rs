@@ -1496,7 +1496,7 @@ impl Frame<'_> {
             // (#1541).
             let clear = if horizontal { self.row_h * 1.5 } else { 34.0 };
             if labelled && room > clear {
-                painter.text(at, align, axis_ms(ms, step), font.clone(), text);
+                painter.text(at, align, axis_ms(ms, step, half), font.clone(), text);
             }
             k += 1;
         }
