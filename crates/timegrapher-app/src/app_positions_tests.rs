@@ -804,6 +804,17 @@ fn a_ready_tests_full_wind_search_sees_the_time_and_the_takes() {
     app.find_full_wind_at(now + 3600.0);
     assert_eq!(app.guided_choices.len(), 1);
     assert!(app.full_wind_recheck(at).is_some());
+    // While a test is under way Compare With is hidden: its list is
+    // neither searched nor rechecked.
+    app.guided = Some(guided::Test::new());
+    assert!(app.guided_running());
+    assert!(!app.compare_with_shown());
+    app.guided_choices.clear();
+    app.guided_earlier_for = None;
+    app.find_full_wind_at(now + 3600.0);
+    assert!(app.guided_choices.is_empty());
+    assert!(app.full_wind_recheck(at).is_none());
+    app.guided = None;
     app.test_ready = ready;
     // The take removed, in the same minute: no longer found, even with
     // the takes folder's time as it was, as Windows can leave it.
