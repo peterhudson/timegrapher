@@ -2336,7 +2336,11 @@ pub fn check(
         }
     });
     let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
-    let be_long = beat_error_long(&be_grid, clock, &long.breaks, long_cfg);
+    // The beat error's search and the amplitude's two-state find, side by side (#1839).
+    let (be_long, amp_two) = crate::cores::both(
+        || beat_error_long(&be_grid, clock, &long.breaks, long_cfg),
+        || twostate::find(&amp_samples, &p),
+    );
     let be_period = period_of(&be_long, SeriesKind::BeatError.unit());
     // The plain spectra of the series the period searches read, with
     // their slow change taken off as the searches take it off.
@@ -2373,7 +2377,7 @@ pub fn check(
                 Some(amp_grid),
                 amp_period,
                 sig(&long.amplitude.components),
-                Some(twostate::find(&amp_samples, &p)),
+                Some(amp_two),
             ),
             (
                 SeriesKind::BeatError,

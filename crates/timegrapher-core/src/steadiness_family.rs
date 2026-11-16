@@ -62,12 +62,11 @@ pub(super) fn check_all(
     wheels: &[Wheel],
     cfg: &Config,
 ) -> (Vec<SeriesCheck>, Vec<Vec<bool>>) {
-    let first: Vec<SeriesCheck> = inputs
-        .iter()
-        .map(|(k, g, f, q, _, t)| {
-            check_series(*k, g.clone(), f.clone(), q.clone(), t.clone(), wheels, cfg)
-        })
-        .collect();
+    // Each series is checked on its own, on every core (#1839); only the
+    // family below reads them together.
+    let first: Vec<SeriesCheck> = crate::cores::on_every_core(&inputs, |(k, g, f, q, _, t)| {
+        check_series(*k, g.clone(), f.clone(), q.clone(), t.clone(), wheels, cfg)
+    });
     // One entry per test: (series, None for Ljung–Box or Some(line)).
     let mut tests = Vec::new();
     let mut p = Vec::new();

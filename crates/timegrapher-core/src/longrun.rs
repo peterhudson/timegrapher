@@ -255,12 +255,12 @@ fn analyse_read(
     let aw: Vec<f64> = at.iter().map(|&t| to_watch(t)).collect();
     let amp_grid = grid_median(&aw, &av, 0.0, astep, (duration / astep).floor() as usize);
 
-    let timing = longterm::analyse_timing_pieces(&timing_grid, &piece_starts, cfg);
     let amp_cuts: Vec<f64> = cuts.iter().map(|&c| to_watch(c)).collect();
-    let amplitude = longterm::analyse_pieces(
-        &amp_grid,
-        &longterm::piece_starts(&amp_grid, &amp_cuts),
-        cfg,
+    let amp_starts = longterm::piece_starts(&amp_grid, &amp_cuts);
+    // The two searches read nothing of each other: on two cores (#1839).
+    let (amplitude, timing) = crate::cores::both(
+        || longterm::analyse_pieces(&amp_grid, &amp_starts, cfg),
+        || longterm::analyse_timing_pieces(&timing_grid, &piece_starts, cfg),
     );
     let rate_components = timing
         .components

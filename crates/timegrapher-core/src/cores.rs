@@ -37,6 +37,17 @@ pub fn on_every_core<T: Sync, R: Send>(items: &[T], work: impl Fn(&T) -> R + Syn
     done.into_iter().map(|d| d.1).collect()
 }
 
+/// `a` and `b` at once, `a` on a thread of its own: two pieces of work
+/// that don't depend on each other. Each answer is the same as when they
+/// run one after the other.
+pub fn both<A: Send, B>(a: impl FnOnce() -> A + Send, b: impl FnOnce() -> B) -> (A, B) {
+    std::thread::scope(|sc| {
+        let a = sc.spawn(a);
+        let b = b();
+        (a.join().expect("a worker panicked"), b)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,5 +58,10 @@ mod tests {
         let out = on_every_core(&items, |&i| i * i);
         assert_eq!(out, items.iter().map(|i| i * i).collect::<Vec<_>>());
         assert!(on_every_core(&[] as &[u64], |&i| i).is_empty());
+    }
+
+    #[test]
+    fn both_answers_come_back_in_their_places() {
+        assert_eq!(both(|| 2 + 2, || "b"), (4, "b"));
     }
 }

@@ -415,7 +415,12 @@ pub fn compute_with(
     let cfg = Config::default();
     let long = longrun::analyse_with_breaks(log, clock, breaks, &lc);
     stage.store(2, Relaxed);
-    let report = steadiness::check(log, clock, &long, &lc, &cfg);
+    // The maps, with the same clock the long-run analysis above was given,
+    // need nothing of the tests: they are read beside them (#1839).
+    let (maps, report) = timegrapher_core::cores::both(
+        || with_maps.then(|| timegrapher_core::timefreq::for_take(log, clock, &long, &lc)),
+        || steadiness::check(log, clock, &long, &lc, &cfg),
+    );
     stage.store(3, Relaxed);
     // The tests' own grids: a rate reading over a dropout or a jump is left
     // out, and the beat error is given as sizes when its sign turns over
@@ -434,8 +439,6 @@ pub fn compute_with(
         Some(fold)
     });
     let period_span = steady_views::period_span(&searches);
-    // With the same clock the long-run analysis above was given.
-    let maps = with_maps.then(|| timegrapher_core::timefreq::for_take(log, clock, &long, &lc));
     Steadiness {
         report,
         grids,

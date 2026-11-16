@@ -1007,13 +1007,22 @@ pub fn for_take(
         (&long.amplitude.detrended, "amplitude", "deg", 1.0),
         (&be, "beat_error", "ms", 1.0),
     ];
-    let stfts = inputs
-        .iter()
-        .filter_map(|(g, name, unit, k)| stft(g, name, unit, *k, STFT_WINDOW_S, STFT_HOP_S));
-    let ssts = inputs
-        .iter()
-        .filter_map(|(g, name, unit, k)| sst(g, name, unit, *k));
-    stfts.chain(ssts).collect()
+    // Each map on its own, on every core (#1839), in the same order.
+    let maps: Vec<(bool, usize)> = [false, true]
+        .into_iter()
+        .flat_map(|wavelet| (0..inputs.len()).map(move |i| (wavelet, i)))
+        .collect();
+    crate::cores::on_every_core(&maps, |&(wavelet, i)| {
+        let (g, name, unit, k) = inputs[i];
+        if wavelet {
+            sst(g, name, unit, k)
+        } else {
+            stft(g, name, unit, k, STFT_WINDOW_S, STFT_HOP_S)
+        }
+    })
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// The coherence maps of a take: the rate against the amplitude, on the
