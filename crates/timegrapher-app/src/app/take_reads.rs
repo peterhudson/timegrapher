@@ -124,9 +124,12 @@ pub(super) struct Background {
     /// read again when the take, its masks or its settings change after
     /// it came (#1644).
     pub(super) reserve_of: Option<Revision>,
-    /// The window's last pass that drew an STFT or Wavelet pane: the
-    /// steadiness tests read the maps only while one is shown (#1830).
-    pub(super) maps_shown_pass: Option<u64>,
+    /// The window's last pass that drew a Steadiness pane, and an STFT or
+    /// Wavelet one: the tests, and their maps, are read only while one is
+    /// shown; an Isochronism pane alone reads the isochronism alone (#1830).
+    pub(super) shown_pass: [Option<u64>; 2],
+    /// The isochronism read alone, and what the readings rested on then.
+    pub(super) isochronism: Option<(Revision, steady::IsochronismAlone)>,
 }
 
 /// A Positions Test table being read in the background, and what from.

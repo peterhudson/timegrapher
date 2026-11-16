@@ -1971,7 +1971,7 @@ pub struct TimegrapherApp {
     /// The steadiness tests' latest answer over the session, and the run
     /// in the background that will replace it.
     steady: Option<(Revision, Steadiness)>,
-    steady_job: Option<(Revision, std::sync::mpsc::Receiver<Steadiness>)>,
+    steady_job: Option<(Revision, std::sync::mpsc::Receiver<steady::Answer>)>,
     /// The step the steadiness run under way is on, and when it started.
     steady_work: (
         std::sync::Arc<std::sync::atomic::AtomicU8>,

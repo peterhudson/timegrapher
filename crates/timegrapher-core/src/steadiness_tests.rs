@@ -2561,3 +2561,23 @@ fn the_stats_line_is_one_text_with_a_screen_copy() {
     );
     assert!(s.screen_stats.contains("lag-1 r"), "{}", s.screen_stats);
 }
+
+/// The isochronism read alone, for a pane that shows nothing else, is the
+/// whole check's: its curve and its walk, at a break as well (#1830).
+#[test]
+fn the_isochronism_alone_is_the_whole_checks() {
+    let s = crate::scenarios::find("letting-down").unwrap();
+    let log = crate::scenarios::beat_log(&s, 1);
+    let mid = log.duration_s / 2.0;
+    let breaks = crate::breaks::with_jumps(Vec::new(), &[mid]);
+    let lc = crate::longterm::LongConfig::default();
+    let cfg = Config::default();
+    let long = crate::longrun::analyse_with_breaks(&log, None, &breaks, &lc);
+    let whole = check(&log, None, &long, &lc, &cfg);
+    let (curve, walk) = isochronism_alone(&log, None, &breaks, &cfg);
+    assert!(curve.is_some() && walk.is_some(), "nothing read");
+    let json = serde_json::to_string;
+    assert_eq!(json(&curve).unwrap(), json(&whole.isochronism).unwrap());
+    let json = serde_json::to_string;
+    assert_eq!(json(&walk).unwrap(), json(&whole.walk).unwrap());
+}
