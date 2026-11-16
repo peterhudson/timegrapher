@@ -93678,10 +93678,9 @@
     "notes": "Automatic; calendar and small seconds at 9; 30 jewels; 30.4 mm across, 7.4 mm thick (a dealer's page, not Seagull's own). No lift angle is published."
   },
   {
-    "calibre": "Tongji (Chinese standard movement)",
-    "maker": "Chinese standard (many factories)",
+    "calibre": "Tongji",
+    "maker": "Tongji (Chinese standard movement)",
     "family": [
-      "Tongji",
       "Tongyi",
       "SZ-1",
       "SS7",
@@ -93706,7 +93705,7 @@
     "notes": "The unified movement (统一机芯, Tongji) designed in 1971 by a group from several factories and made across China: hand-wound, centre seconds, at least 17 jewels, at least 40 h. Factory versions differ in finish, jewels and date, and some are thinner (SS8, SB1H, ZB2) or larger (Jilin HJ1A, a pocket-watch size); those are not listed here because no source ties them to the same beat rate. The hand-wound export name 2650 is left out because it collides with the ETA 2650. No lift angle is published."
   },
   {
-    "calibre": "Shanghai SS1A",
+    "calibre": "Shanghai Watch Factory SS1A",
     "maker": "Shanghai Watch Factory",
     "family": [
       "SS1A"
@@ -93727,7 +93726,7 @@
     "notes": "Shanghai Watch Factory's own hand-wound 17-jewel calibre from 1968, revised from its A581/A611; not the later standard movement. The SS1A beats 18,000 bph and the SS1K 21,600 bph, so a bare \"SS1\" is not listed: it could be either. No lift angle is published."
   },
   {
-    "calibre": "Shanghai SS1K",
+    "calibre": "Shanghai Watch Factory SS1K",
     "maker": "Shanghai Watch Factory",
     "family": [
       "SS1K"
