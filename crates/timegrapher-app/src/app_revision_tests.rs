@@ -326,6 +326,23 @@ fn steadiness_now(app: &mut TimegrapherApp, ctx: &egui::Context) -> String {
     }
 }
 
+/// The steadiness tests read the time-frequency maps only while an STFT
+/// or Wavelet pane is shown, and read them once one is (#1830).
+#[test]
+fn the_steadiness_maps_are_read_only_while_a_pane_shows_them() {
+    let ctx = egui::Context::default();
+    let mut app = synthetic(320.0, 12.0);
+    steadiness_now(&mut app, &ctx);
+    assert!(app.steady.as_ref().expect("the tests ran").1.maps.is_none());
+    app.bg.maps_shown_pass = Some(ctx.cumulative_pass_nr());
+    let start = Instant::now();
+    while app.steady.as_ref().is_none_or(|s| s.1.maps.is_none()) {
+        assert!(start.elapsed() < Duration::from_secs(300), "never read");
+        std::thread::sleep(Duration::from_millis(20));
+        app.update_steady(&ctx);
+    }
+}
+
 /// The steadiness job the panes start marks the picked calibre's meshes,
 /// core's `Catalog::meshes` (#1472).
 #[test]

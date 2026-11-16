@@ -133,9 +133,14 @@ impl TimegrapherApp {
                 clock.as_ref().filter(|_| joined),
             )
         });
+        // The maps only while a pane shows them, this pass or the last.
+        let pass = ctx.cumulative_pass_nr();
+        let with_maps = self.bg.maps_shown_pass.is_some_and(|p| p + 1 >= pass);
         let upto = self.steady.as_ref().map(|s| s.1.upto_s);
+        let unmapped = self.steady.as_ref().is_some_and(|s| s.1.maps.is_none());
         let due = match upto {
             None => true,
+            Some(_) if with_maps && unmapped => true,
             Some(u) if self.running() => dur - u >= steady::RERUN_S,
             Some(u) => dur - u > 1.0,
         };
@@ -150,7 +155,14 @@ impl TimegrapherApp {
                 let stage = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
                 self.steady_work = (stage.clone(), std::time::Instant::now());
                 std::thread::spawn(move || {
-                    let mut s = steady::compute_with(&log, &breaks, wheels, clock.as_ref(), &stage);
+                    let mut s = steady::compute_with(
+                        &log,
+                        &breaks,
+                        wheels,
+                        clock.as_ref(),
+                        with_maps,
+                        &stage,
+                    );
                     s.meshes = meshes;
                     let _ = tx.send(s);
                     ctx.request_repaint();
@@ -257,6 +269,9 @@ impl TimegrapherApp {
     }
 
     pub(super) fn steady_pane(&mut self, ui: &mut egui::Ui, view: steady::View) {
+        if matches!(view, steady::View::Stft | steady::View::Wavelet) {
+            self.bg.maps_shown_pass = Some(ui.ctx().cumulative_pass_nr());
+        }
         let dur = self.update_steady(ui.ctx());
         let upto = self.steady.as_ref().map(|s| s.1.upto_s);
         let working = self.steady_job.is_some();

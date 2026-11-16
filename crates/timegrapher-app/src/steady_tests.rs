@@ -753,6 +753,7 @@ fn a_takes_clock_corrects_the_readings_drawn() {
         &reading_breaks(Vec::new(), &log),
         None,
         Some(&fit),
+        true,
         &std::sync::atomic::AtomicU8::new(0),
     );
     let shift = timegrapher_core::clock::rate_error_s_per_day(20.0);
@@ -1236,21 +1237,27 @@ fn a_once_a_minute_swing_reads_periodic_and_every_view_draws(log: &BeatLog, s: S
         all
     };
     let mut s = s;
-    s.maps.clear();
+    // Not read yet (no STFT or Wavelet pane was shown): no note that it
+    // can't be (#1830).
+    s.maps = None;
+    assert!(!drawn(&s, View::Stft).contains("needs"));
+    s.maps = Some(Vec::new());
     assert!(drawn(&s, View::Stft).contains("The STFT Map needs"));
     let nan = f64::NAN;
     for method in ["stft", "sst"] {
-        s.maps.push(timegrapher_core::timefreq::TimeFrequency {
-            series: "rate",
-            method,
-            unit: "ms",
-            step_s: 10.0,
-            window_s: None,
-            hop_s: Some(300.0),
-            period_s: vec![600.0, 120.0, 30.0],
-            t_s: vec![600.0, 900.0],
-            values: vec![vec![0.1, 0.4, nan], vec![0.2, 0.3, 0.1]],
-        });
+        s.maps
+            .get_or_insert_default()
+            .push(timegrapher_core::timefreq::TimeFrequency {
+                series: "rate",
+                method,
+                unit: "ms",
+                step_s: 10.0,
+                window_s: None,
+                hop_s: Some(300.0),
+                period_s: vec![600.0, 120.0, 30.0],
+                t_s: vec![600.0, 900.0],
+                values: vec![vec![0.1, 0.4, nan], vec![0.2, 0.3, 0.1]],
+            });
     }
     for v in [View::Stft, View::Wavelet] {
         let t = drawn(&s, v);
