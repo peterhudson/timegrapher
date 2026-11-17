@@ -568,6 +568,12 @@ impl TimegrapherApp {
             },
             // The clock the rate line's reading is on: the live engine's.
             clock: self.take_rate_clock(),
+            // The peaks heard while guessing are no beats of the log.
+            beats_gen: self
+                .live
+                .as_ref()
+                .filter(|_| !guessing)
+                .map(|l| l.beats_gen()),
         };
         let Some(live) = &self.live else { return };
         let candidates = numbered_candidates(&candidates, period);

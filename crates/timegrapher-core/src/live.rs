@@ -20,6 +20,13 @@ use crate::measure::{self, Caveat, NoWatchReason};
 use crate::profile::{self, Side, TickProfile};
 use crate::timing::WindowFit;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// A number not handed out before ([`LiveAnalyzer::beats_gen`]).
+fn fresh_gen() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
 
 pub use crate::clean::GAP_S;
 
@@ -203,6 +210,9 @@ pub struct LiveAnalyzer {
     /// Building the template again from the first chunk (#1327).
     rebuild: rebuild::Rebuild,
     beats: Vec<Beat>,
+    /// Changes whenever `beats` do, to a number no beats of any analyzer
+    /// had before ([`LiveAnalyzer::beats_gen`]).
+    beats_gen: u64,
     /// Times of the settled beats whose sound clipped, oldest first.
     clipped: Vec<f64>,
     amp: Vec<AmplitudeWindow>,
@@ -293,6 +303,7 @@ impl LiveAnalyzer {
             template: None,
             rebuild: Default::default(),
             beats: Vec::new(),
+            beats_gen: fresh_gen(),
             clipped: Vec::new(),
             amp: Vec::new(),
             next_amp_s: None,
@@ -334,6 +345,7 @@ impl LiveAnalyzer {
             }
         }
         a.beats = log.beats;
+        a.beats_gen = fresh_gen();
         a.amp = log.amplitude_windows;
         // In order of midpoint, as listening keeps them, so a reading finds
         // its stretch's windows by halving ([`Self::amp_within`]). The
@@ -367,6 +379,13 @@ impl LiveAnalyzer {
     /// Every settled beat; times are seconds from the start of the audio.
     pub fn beats(&self) -> &[Beat] {
         &self.beats
+    }
+
+    /// A number that changes whenever [`Self::beats`] do, and is never
+    /// the same for two different runs of beats, even across analyzers:
+    /// what was drawn from the beats stands while it stays (#1857).
+    pub fn beats_gen(&self) -> u64 {
+        self.beats_gen
     }
 
     /// The peaks found while the sound was too quiet or irregular to log
@@ -442,6 +461,7 @@ impl LiveAnalyzer {
         self.doubt = None;
         self.logged_bph = self.bph;
         self.beats.clear();
+        self.beats_gen = fresh_gen();
         self.clipped.clear();
         self.amp.clear();
         self.next_amp_s = None;
@@ -550,6 +570,7 @@ impl LiveAnalyzer {
         for b in self.beats.iter_mut().filter(|b| b.time >= t) {
             b.index += 1;
         }
+        self.beats_gen = fresh_gen();
         for s in self.snippets.iter_mut().filter(|s| s.0 >= t) {
             s.1 = !s.1;
         }
@@ -943,6 +964,7 @@ impl LiveAnalyzer {
                 }
             }
             self.beats.push(Beat { time: t, ..*b });
+            self.beats_gen = fresh_gen();
             if any_clipped && Clipping::measure(x, fs, std::slice::from_ref(b)).beats > 0 {
                 self.clipped.push(t);
             }
@@ -974,6 +996,7 @@ impl LiveAnalyzer {
         if self.beats.len() > self.cfg.max_beats {
             let cut = self.beats.len() - self.cfg.max_beats;
             self.beats.drain(..cut);
+            self.beats_gen = fresh_gen();
             let first = self.beats[0].time;
             let gone = self.clipped.partition_point(|&t| t < first);
             self.clipped.drain(..gone);

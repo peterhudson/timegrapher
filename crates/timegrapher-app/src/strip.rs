@@ -334,6 +334,10 @@ pub struct Extras<'a> {
     /// The clock the rate line's reading is on, so the beats are read on
     /// it too and run along the line on a corrected take (#643).
     pub clock: Option<&'a ClockFit>,
+    /// The beats' generation when they come from the take's analyzer
+    /// ([`timegrapher_core::live::LiveAnalyzer::beats_gen`]): the dots
+    /// drawn from them stand only while it does (#1857).
+    pub beats_gen: Option<u64>,
 }
 
 /// Mark each stretch of the session in one position across the plotting

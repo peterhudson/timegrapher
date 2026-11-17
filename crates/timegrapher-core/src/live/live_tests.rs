@@ -1511,3 +1511,31 @@ fn profile_guides_come_from_the_latest_window_that_read_them() {
     assert_eq!(a.profile_guides_at(25.0), [Some(3.0), Some(2.0)]);
     assert_eq!(a.profile_guides_at(100.0), [Some(5.0), Some(6.0)]);
 }
+
+/// The beats' generation changes with the beats, and no two runs of
+/// beats share one: more heard, and the analyzer started again, each
+/// give a new one; a copy keeps its own; another analyzer's differs
+/// (#1857).
+#[test]
+fn the_beats_generation_changes_with_the_beats() {
+    let audio = generate(
+        &SynthConfig {
+            duration_s: 12.0,
+            ..Default::default()
+        },
+        |_| 280.0,
+        |_| 0.0,
+    );
+    let mut a = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+    let other = LiveAnalyzer::new(audio.sample_rate, LiveConfig::default());
+    let empty = a.beats_gen();
+    assert_ne!(empty, other.beats_gen());
+    feed(&mut a, &audio.samples);
+    assert!(!a.beats().is_empty());
+    let heard = a.beats_gen();
+    assert_ne!(heard, empty);
+    assert_eq!(a.clone().beats_gen(), heard);
+    a.restart();
+    assert!(a.beats().is_empty());
+    assert!(![empty, heard, other.beats_gen()].contains(&a.beats_gen()));
+}

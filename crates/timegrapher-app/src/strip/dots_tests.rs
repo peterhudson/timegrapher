@@ -107,3 +107,46 @@ fn dots_are_placed_again_when_what_they_rest_on_changes() {
     let greyed = circles(&ctx, &beats, 500.0, &all_masked);
     assert!(in_side_colour(&greyed) <= 2, "{}", in_side_colour(&greyed));
 }
+
+/// A clock fit that maps otherwise moves the dots on the next frame,
+/// with the beats the same (Trevor on #1868).
+#[test]
+fn dots_are_placed_again_on_a_new_clock() {
+    let ctx = egui::Context::default();
+    let beats = on_time(4_000);
+    // Logs every 10 s of a card 20 ppm slow, and then 20 ppm fast.
+    let fit = |ppm: f64| {
+        let k = 1.0 - ppm * 1e-6;
+        let pairs: Vec<(f64, f64)> = (0..=60)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0 * k))
+            .collect();
+        ClockFit::new(&pairs).unwrap()
+    };
+    let (slow, fast) = (fit(-20.0), fit(20.0));
+    let on = |clock| Extras {
+        clock: Some(clock),
+        ..Extras::default()
+    };
+    let before = circles(&ctx, &beats, 500.0, &on(&slow));
+    assert_eq!(circles(&ctx, &beats, 500.0, &on(&slow)), before);
+    assert_ne!(circles(&ctx, &beats, 500.0, &on(&fast)), before);
+}
+
+/// One beat read again in place, the count unchanged and between the
+/// beats the key samples, moves its dot on the next frame where the
+/// beats' generation changed with it (Trevor on #1868).
+#[test]
+fn dots_are_placed_again_on_a_new_beats_generation() {
+    let ctx = egui::Context::default();
+    let beats = on_time(4_000);
+    let at = |gen| Extras {
+        beats_gen: Some(gen),
+        ..Extras::default()
+    };
+    let before = circles(&ctx, &beats, 500.0, &at(1));
+    assert_eq!(circles(&ctx, &beats, 500.0, &at(1)), before);
+    let mut moved = beats.clone();
+    // The key samples every 62nd beat: 1001 is none of them.
+    moved[1001].time += 0.005;
+    assert_ne!(circles(&ctx, &moved, 500.0, &at(2)), before);
+}

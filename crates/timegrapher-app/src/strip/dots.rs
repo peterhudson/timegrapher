@@ -48,8 +48,8 @@ impl Frame<'_> {
     }
 
     /// Everything the dots' places and colours rest on, hashed: the
-    /// strip's shape and span, the beats on show (their count and a
-    /// sample through them, which any reading again moves), the anchor,
+    /// strip's shape and span, the beats on show (their generation where
+    /// given, else their count and a sample through them), the anchor,
     /// the clock and breaks, the masks and settles, and the theme.
     fn dots_key(&self, beats: &[Beat], period_s: f64, anchor: Anchor) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -71,7 +71,7 @@ impl Frame<'_> {
             (a.to_bits(), b.to_bits()).hash(&mut h);
         }
         (e.masked.len(), e.settles.len(), e.breaks.len()).hash(&mut h);
-        e.clock.map(|c| c.fingerprint()).hash(&mut h);
+        (e.clock.map(|c| c.fingerprint()), e.beats_gen).hash(&mut h);
         (self.vis.dark_mode, self.vis.extreme_bg_color).hash(&mut h);
         h.finish()
     }
