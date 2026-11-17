@@ -23,6 +23,9 @@ use timegrapher_core::library::length_text;
 pub use timegrapher_core::timing::Anchor;
 
 mod axis;
+mod dots;
+#[cfg(test)]
+mod dots_tests;
 mod lines;
 #[cfg(test)]
 use lines::joined;
@@ -1013,8 +1016,9 @@ pub fn draw_strip(
     let (step, ms_lines) = f.paint_ms_grid();
     let time_lines = f.paint_time_grid();
     // Masked beats lie under the position washes and the hatching.
-    if let Some(anchor) = anchor {
-        f.paint_beats(beats, period_s, anchor, true);
+    let dots = anchor.map(|a| f.dots(beats, period_s, a));
+    if let Some(dots) = &dots {
+        f.paint_beats(dots, true);
     }
     // Stretches and lines a lap at a time on still paper, so none runs
     // across the wrap or the blank ahead of the pen.
@@ -1023,12 +1027,12 @@ pub fn draw_strip(
         lap.paint_layers(&drags);
     }
     f.paint_grid(&ms_lines, &time_lines);
-    f.paint_key(beats, period_s, anchor);
+    f.paint_key(dots.as_ref());
     f.paint_scales(&overlays);
-    let Some(anchor) = anchor else {
+    let (Some(anchor), Some(dots)) = (anchor, dots) else {
         return input;
     };
-    f.paint_beats(beats, period_s, anchor, false);
+    f.paint_beats(&dots, false);
     for lap in &laps {
         lap.paint_overlay_lines(&overlays);
         lap.paint_rate_line(beats, period_s, anchor, step);
@@ -1726,14 +1730,12 @@ impl Frame<'_> {
 
     /// The key: Tick and Tock in their colours, in the corner left of the
     /// track when the strip lies across, else along the top; and the note.
-    fn paint_key(&self, beats: &[Beat], period_s: f64, anchor: Option<Anchor>) {
+    fn paint_key(&self, dots: Option<&dots::Dots>) {
         let (painter, r, outer, vis, font) =
             (&self.painter, self.g.r, self.outer, &self.vis, &self.font);
         let colors = side_colors(vis.dark_mode);
         if self.g.horizontal {
-            self.paint_corner_key(colors, |area| {
-                anchor.map_or(0, |a| self.dots_in(beats, period_s, a, area))
-            });
+            self.paint_corner_key(colors, |area| dots.map_or(0, |d| self.dots_in(d, area)));
         } else {
             let mut at = Pos2::new(r.left(), outer.top() + 3.0);
             for (label, c) in [("Tick", colors[0]), ("Tock", colors[1])] {
@@ -1952,54 +1954,6 @@ impl Frame<'_> {
         let (g, extras) = (&self.g, self.extras);
         let lead = anchor.lead_on_true(b, period_s, extras.breaks, extras.clock);
         g.pos(wrap(lead, g.half), b.time)
-    }
-
-    /// How many of the good beats on show lie in `area`.
-    fn dots_in(&self, beats: &[Beat], period_s: f64, anchor: Anchor, area: Rect) -> usize {
-        self.shown(beats)
-            .iter()
-            .filter(|b| b.is_good() && area.contains(self.beat_at(b, period_s, anchor)))
-            .count()
-    }
-
-    /// The beats on the strip as dots, Tick and Tock in their colours,
-    /// faint while the watch settles. With `masked`, only the beats in a
-    /// masked stretch, at 30% of their colour over the strip's ground and
-    /// opaque, so crowded dots don't add up to full strength: a masked
-    /// beat is still there to judge the mask by, but reads as unused
-    /// (Hugh, #1068 item 2). Without, only the others.
-    fn paint_beats(&self, beats: &[Beat], period_s: f64, anchor: Anchor, masked: bool) {
-        let (g, r, extras) = (&self.g, self.g.r, self.extras);
-        let shown = self.shown(beats);
-        // Dots shrink when the strip is crowded.
-        let along = if g.horizontal { r.width() } else { r.height() };
-        let per_px = shown.len() as f32 / along.max(1.0);
-        let radius = (2.2 / per_px.max(1.0).sqrt()).clamp(0.8, 2.2);
-        // Past a few dozen beats to a point, the dots only lie on one another:
-        // every nth Tick and its Tock are drawn, so a strip days long draws
-        // no more dots than a short one crowded to that.
-        let every = (per_px / MAX_BEATS_PER_PX).ceil().max(1.0) as i64;
-        let colors = side_colors(self.vis.dark_mode);
-        let painter = self.painter.with_clip_rect(r.expand(3.0));
-        let ground = self.vis.extreme_bg_color;
-        for b in shown {
-            if !b.is_good() || b.index.div_euclid(2).rem_euclid(every) != 0 {
-                continue;
-            }
-            let in_mask = extras.masked.iter().any(|m| b.time >= m.0 && b.time <= m.1);
-            if in_mask != masked {
-                continue;
-            }
-            let p = self.beat_at(b, period_s, anchor);
-            let mut c = colors[b.index.rem_euclid(2) as usize];
-            if in_mask {
-                c = ground.lerp_to_gamma(c, MASKED_BEAT);
-            } else if extras.settles.iter().any(|s| b.time > s.0 && b.time <= s.1) {
-                // Faint while the watch settles after a move.
-                c = c.gamma_multiply(0.3);
-            }
-            painter.circle_filled(p, radius, c);
-        }
     }
 
     /// The overlays, each scaled across the strip's width.
