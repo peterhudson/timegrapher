@@ -23,7 +23,7 @@ recording and sidecar that `doctor --save` already wrote.
 | `results/analyze-excerpt.json` | `analyze --json` on the excerpt |
 | `results/analyze-whole.json` or `results/long-whole.json` | `analyze --json` on the whole file, or `long --json` on a folder of segments, so the size of any difference from the excerpt shows |
 | `analysis/` | The take's analysis (#400): `analysis.json`, `beats.csv.gz`, `windows.csv.gz` and `profiles.bin.gz`, in the layout of a take kept as its analysis alone ([sessions.md](sessions.md)), so the unpacked bundle reads as such a take's folder. Every reading, chart and Steadiness figure of the whole take is read from it. It is whole, Tick Tock profiles too, when the zip stays under GitHub's 25 MB with it (about 1.5 MB an hour); otherwise the profiles are left out (`profiles.bin.gz` is empty, about 0.3 MB an hour) and `left_out` says so. From a recording it is read from the whole sound, which reads it once more, and the profiles a second time only when they can fit; `--no-analysis` leaves it out |
-| `long/clocklog.txt` | A folder's clock log |
+| `long/clock.csv` | A take folder's clock log, under its own name (`clock.csv`, or an older take's `clocklog.txt` or `clock.log`) |
 | `env/clock.json` | The stored sound-card clock corrections (`timegrapher clock`) |
 | `logs/` | Log and crash files from the last 7 days in the settings folder |
 

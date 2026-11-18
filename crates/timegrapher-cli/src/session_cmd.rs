@@ -355,11 +355,7 @@ fn init(paths: &[PathBuf], o: &Options) -> Result<(), String> {
             "# wind_h = 0  # hours since the watch was fully wound (0 = just wound); left out, the wind is not given: its own state, never fully wound\n",
         );
         if f.is_dir() {
-            if let Some(log) = ["clocklog.txt", "clock.csv", "clock.log"]
-                .iter()
-                .map(|n| f.join(n))
-                .find(|p| p.is_file())
-            {
+            if let Some(log) = take::clock_log_in(f) {
                 t.push_str(&format!("clock = \"{}\"\n", rel(&log, &dir)));
             }
         }
@@ -961,7 +957,11 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         left_out,
         report,
         // A test's kept run, else a long take's read as one.
-        power_reserve: power_reserve_of(&base)?.or(long_run),
+        power_reserve: match take_folder(paths) {
+            Some(folder) => power_reserve_of(&folder)?,
+            None => None,
+        }
+        .or(long_run),
         text_reports: Vec::new(),
     };
     let s = Session {
@@ -1103,6 +1103,28 @@ fn write_out(s: &Session, o: &Options, base: &Path) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// The folder holding the take `paths` name: a session file's, a folder
+/// given alone, or the one folder every file given sits in. None when the
+/// files are in different folders: a take's sidecars are read only from
+/// its own folder, never from wherever the command was run (#1879).
+fn take_folder(paths: &[PathBuf]) -> Option<PathBuf> {
+    let here = |d: &Path| {
+        if d.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            d.to_path_buf()
+        }
+    };
+    if let [p] = paths {
+        if p.is_dir() {
+            return Some(p.clone());
+        }
+    }
+    let mut folders = paths.iter().map(|p| p.parent().map(here));
+    let first = folders.next()??;
+    folders.all(|f| f.as_ref() == Some(&first)).then_some(first)
 }
 
 /// The Power Reserve Test's results in the session folder `base`, if it
@@ -2163,6 +2185,22 @@ mod tests {
             rate(mb)
         );
         let _ = fs::remove_dir_all(&base);
+    }
+
+    /// Loose files read a reserve only from the folder they share, never
+    /// from the working folder (#1879).
+    #[test]
+    fn loose_files_read_their_own_folders_reserve() {
+        let p = |s: &str| PathBuf::from(s);
+        assert_eq!(
+            take_folder(&[p("../b/DU.wav"), p("../b/DD.wav")]),
+            Some(p("../b"))
+        );
+        assert_eq!(take_folder(&[p("DU.wav"), p("DD.wav")]), Some(p(".")));
+        assert_eq!(take_folder(&[p("a/DU.wav"), p("b/DD.wav")]), None);
+        assert_eq!(take_folder(&[p("w/session.toml")]), Some(p("w")));
+        let dir = std::env::temp_dir();
+        assert_eq!(take_folder(std::slice::from_ref(&dir)), Some(dir));
     }
 
     /// A Power Reserve Test's folder gives its run in `power_reserve`; a

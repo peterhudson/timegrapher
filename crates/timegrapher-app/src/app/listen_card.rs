@@ -1295,34 +1295,19 @@ impl TimegrapherApp {
             Some(e) if self.watch_sets_here() => format!(" Saved to {}.", e.watch.name),
             _ => String::new(),
         };
-        if self.lift_settable() {
-            let mut lift = self.lift_deg;
-            let (resp, changed) = fields::combo(
-                ui,
-                "lift",
-                &mut lift,
-                timegrapher_core::input_domain::LIFT_RANGE_DEG,
-                &DEGREES,
-                &LIFTS,
-                show_degrees,
-                "Lift",
-                lift_w,
-            );
-            let mut hint = if self.lift_known() {
-                "The lift angle: type it, or pick one with ⏷.".to_string()
-            } else {
-                LIFT_HINT.to_string()
-            };
-            hint += &saved_to;
+        // A calibre whose escapement isn't measured yet says so in place
+        // of the lift angle: the short tag, the sentence and its source
+        // in the hover (#1872).
+        if let Some((_, why)) = self.escapement_unsupported() {
+            let tag = timegrapher_core::calibres::Escapement::TAG.to_string();
+            card_fact(ui, "", tag, &why, lift_w);
+        } else if self.lift_settable() {
+            let mut tail = saved_to.clone();
             if !both && !self.bph_set_by_calibre() && self.watch_sets_here() {
-                hint += " Beat Rate is hidden at this width: it heads the menu on the card's \
+                tail += " Beat Rate is hidden at this width: it heads the menu on the card's \
                          title.";
             }
-            resp.on_hover_text(hint);
-            if changed {
-                self.set_lift(lift);
-                self.save_card_to_watch();
-            }
+            self.lift_field(ui, lift_w, &tail);
         } else {
             card_fact(
                 ui,
@@ -1702,6 +1687,42 @@ impl TimegrapherApp {
         self.open_watch().is_none() || self.cal.find(&self.calibre).is_none()
     }
 
+    /// The lift angle field on the Calibre card, `w` wide, `tail` added to
+    /// its hover: where it is saved, and what the row hides.
+    fn lift_field(&mut self, ui: &mut egui::Ui, w: f32, tail: &str) {
+        let mut lift = self.lift_deg;
+        let (resp, changed) = fields::combo(
+            ui,
+            "lift",
+            &mut lift,
+            timegrapher_core::input_domain::LIFT_RANGE_DEG,
+            &DEGREES,
+            &LIFTS,
+            show_degrees,
+            "Lift",
+            w,
+        );
+        let hint = if self.lift_known() {
+            "The lift angle: type it, or pick one with ⏷."
+        } else {
+            LIFT_HINT
+        };
+        resp.on_hover_text(format!("{hint}{tail}"));
+        if changed {
+            self.set_lift(lift);
+            self.save_card_to_watch();
+        }
+    }
+
+    /// The calibre's escapement when Timegrapher doesn't measure it yet
+    /// (#1872): the sentence, and with its source for the hover.
+    fn escapement_unsupported(&self) -> Option<(String, String)> {
+        let x = self.cal.find(&self.calibre)?.escapement()?;
+        let sentence = x.sentence();
+        let why = format!("{sentence}\n\nSource: {}", x.source);
+        Some((sentence, why))
+    }
+
     /// One line for a watch's calibre and what it sets: the beat rate and
     /// the lift angle.
     fn calibre_line(&mut self, ui: &mut egui::Ui) {
@@ -1734,6 +1755,9 @@ impl TimegrapherApp {
                 "The {} beats at {cb} bph, but this watch beats at {b}.\n\n{hover}",
                 self.calibre
             );
+        }
+        if let Some((sentence, _)) = self.escapement_unsupported() {
+            hover = format!("{sentence}\n\n{hover}");
         }
         calibre_figure(ui, &line, pal.text).on_hover_text(hover);
     }

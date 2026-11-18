@@ -82,6 +82,39 @@ pub struct Calibre {
     /// repository, by path there (`<maker>/<calibre>/<file>`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assets: Vec<Asset>,
+    /// An escapement Timegrapher does not measure yet, from a cited
+    /// source; absent for a Swiss lever (#1872).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub escapement: Option<Escapement>,
+}
+
+/// A calibre's escapement when it is not a Swiss lever (#1872).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Escapement {
+    /// One of [`ESCAPEMENTS`].
+    pub kind: String,
+    pub source: String,
+}
+
+/// The escapements [`Escapement::kind`] may name.
+pub const ESCAPEMENTS: [&str; 3] = ["co-axial", "pin lever", "detent"];
+
+impl Escapement {
+    /// The short tag beside the calibre's name where it is listed (#1872).
+    pub const TAG: &'static str = "Not supported yet";
+
+    /// What the app says of it, in place of the lift angle (#1872).
+    pub fn sentence(&self) -> String {
+        let mut kind = self.kind.chars();
+        let kind = match kind.next() {
+            Some(first) => first.to_uppercase().chain(kind).collect::<String>(),
+            None => String::new(),
+        };
+        format!(
+            "{kind} escapement: not supported yet. Timegrapher measures Swiss lever \
+             escapements only."
+        )
+    }
 }
 
 /// When a calibre was made.
@@ -217,19 +250,71 @@ pub fn key(s: &str) -> String {
         .collect()
 }
 
-/// The calibre called `name`: its full name, its name without the
-/// maker, one of its family names or a name it had before.
+/// The calibre called `name`: the best of [`named`].
 pub fn find(name: &str) -> Option<&'static Calibre> {
+    named(name).into_iter().next()
+}
+
+/// Every calibre `name` names, best first (#1878): its full name, then
+/// its name without the maker or one of its family names, then a name it
+/// had before; within each, table order, as the table's first match
+/// was always taken.
+/// So "ETA 2732" is the ETA 2732, not the Cyma ETA 2732 whose name
+/// without its maker is the same.
+pub fn named(name: &str) -> Vec<&'static Calibre> {
     let k = key(name);
     if k.is_empty() {
+        return Vec::new();
+    }
+    let tier = |c: &Calibre| {
+        if key(&c.calibre) == k {
+            Some(0)
+        } else if key(c.calibre.strip_prefix(c.maker.as_str()).unwrap_or("")) == k
+            || c.family.iter().any(|f| key(f) == k)
+        {
+            Some(1)
+        } else if had_name(c, &k) {
+            Some(2)
+        } else {
+            None
+        }
+    };
+    let mut hits: Vec<(u8, &'static Calibre)> = all()
+        .iter()
+        .filter_map(|c| tier(c).map(|t| (t, c)))
+        .collect();
+    // A stable sort keeps table order within a tier.
+    hits.sort_by_key(|h| h.0);
+    hits.into_iter().map(|h| h.1).collect()
+}
+
+/// What to say when `name` is not one calibre's full name and fits
+/// others than the one [`find`] picks: their names, so the pick is never
+/// silent (#1878). None for a full name or a name only one calibre has.
+pub fn also_named_note(name: &str) -> Option<String> {
+    let hits = named(name);
+    let (first, rest) = hits.split_first()?;
+    if rest.is_empty() || key(&first.calibre) == key(name) {
         return None;
     }
-    all().iter().find(|c| {
-        key(&c.calibre) == k
-            || key(c.calibre.strip_prefix(c.maker.as_str()).unwrap_or("")) == k
-            || c.family.iter().any(|f| key(f) == k)
-            || had_name(c, &k)
-    })
+    let shown: Vec<&str> = rest.iter().take(3).map(|c| c.calibre.as_str()).collect();
+    let others = match (shown.as_slice(), rest.len() - shown.len()) {
+        ([one], 0) => (*one).to_string(),
+        (names, 0) => {
+            let (last, before) = names.split_last()?;
+            format!("{} and {last}", before.join(", "))
+        }
+        (names, more) => format!("{} and {more} more", names.join(", ")),
+    };
+    let pick = if rest.len() == 1 {
+        "pick that one"
+    } else {
+        "pick one of those"
+    };
+    Some(format!(
+        "'{name}' is read as {}. It also names {others}. Give the full name to {pick}.",
+        first.calibre
+    ))
 }
 
 /// Whether `c` once went by the name whose [`key`] is `k`, with or without
@@ -328,6 +413,52 @@ impl Calibre {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A full name wins over a name without the maker (#1878), and a
+    /// short name several calibres share says which it picked and the rest.
+    #[test]
+    fn an_exact_name_wins_and_a_shared_one_says_so() {
+        let c = find("ETA 2732").unwrap();
+        assert_eq!(c.calibre, "ETA 2732");
+        assert!(also_named_note("ETA 2732").is_none());
+        let all = named("321");
+        assert!(
+            all.len() > 1,
+            "{:?}",
+            all.iter().map(|c| &c.calibre).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            find("321").map(|c| &c.calibre),
+            all.first().map(|c| &c.calibre)
+        );
+        let note = also_named_note("321").unwrap();
+        // Hugh's words on #1899: no "the", a full stop to each sentence.
+        assert_eq!(
+            note,
+            "'321' is read as Chezard 321. It also names Valjoux 321 and Omega 321. Give the full name to pick one of those."
+        );
+        assert_eq!(
+            also_named_note("9015").unwrap(),
+            "'9015' is read as Miyota 9015. It also names Ronda 9015. Give the full name to pick that one."
+        );
+        // More than three others: the first three, then how many more.
+        let rest = named("520").len() - 1;
+        assert!(rest > 3);
+        let many = also_named_note("520").unwrap();
+        assert!(
+            many.contains(&format!(
+                " and {} more. Give the full name to pick one of those.",
+                rest - 3
+            )),
+            "{many}"
+        );
+        assert!(
+            note.contains(&all[0].calibre) && note.contains(&all[1].calibre),
+            "{note}"
+        );
+        assert!(also_named_note(&all[0].calibre).is_none());
+        assert_eq!(find("2824-2").unwrap().calibre, "ETA 2824-2");
+    }
 
     #[test]
     fn seiko_miyota_research_resolves_variants_without_broad_family_transfers() {
@@ -1304,6 +1435,37 @@ mod tests {
                 assert!((30.0..=70.0).contains(&l), "{}: {l}°", c.calibre);
             }
         }
+    }
+
+    /// A calibre with an escapement Timegrapher does not measure yet says
+    /// which one, from the fixed list, with a source that starts with its
+    /// address (#1872); the Omega 2500 family is co-axial.
+    #[test]
+    fn non_lever_escapements_are_named_and_sourced() {
+        let mut flagged = 0;
+        for c in all() {
+            let Some(e) = &c.escapement else { continue };
+            flagged += 1;
+            assert!(
+                ESCAPEMENTS.contains(&e.kind.as_str()),
+                "{}: {}",
+                c.calibre,
+                e.kind
+            );
+            assert!(e.source.starts_with("https://"), "{}", c.calibre);
+        }
+        assert_eq!(flagged, 4);
+        for n in ["Omega 2500", "Omega 2500A", "Omega 2500B", "Omega 2500C"] {
+            let e = find(n).unwrap().escapement.as_ref().unwrap();
+            assert_eq!(e.kind, "co-axial", "{n}");
+        }
+        assert!(find("ETA 2824-2").unwrap().escapement.is_none());
+        let e = find("Omega 2500").unwrap().escapement.clone().unwrap();
+        assert_eq!(
+            e.sentence(),
+            "Co-axial escapement: not supported yet. Timegrapher measures Swiss lever \
+             escapements only."
+        );
     }
 
     /// The metadata fields (#1861) keep their rules: every sentence,

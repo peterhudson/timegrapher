@@ -178,10 +178,26 @@ impl Train<'_> {
                 "--calibre '{name}' is not in the catalogue; use `timegrapher calibres --search {name}`"
             ))
         }).transpose()?;
+        if let (Some(name), Some(c)) = (self.calibre, calibre.as_ref()) {
+            note_also_named(name, &c.name);
+        }
         Ok(ResolvedTrain {
             calibre,
             escape_teeth: self.escape_teeth,
         })
+    }
+}
+
+/// Say, once a run, which calibre a short name several in the table share
+/// was read as, and the others it names (core's words, #1878); nothing
+/// when the user's own calibre of that name was taken.
+pub(crate) fn note_also_named(name: &str, taken: &str) {
+    static SAID: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    use timegrapher_core::calibres;
+    if calibres::find(name).is_some_and(|c| c.calibre == taken) {
+        if let Some(note) = calibres::also_named_note(name) {
+            SAID.get_or_init(|| eprintln!("note: {note}"));
+        }
     }
 }
 

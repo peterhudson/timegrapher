@@ -297,6 +297,15 @@ impl<'a> Entry<'a> {
     pub fn is_custom(&self) -> bool {
         matches!(self, Entry::Custom(_))
     }
+
+    /// Its escapement when Timegrapher does not measure it yet (#1872); a
+    /// custom calibre is taken as a Swiss lever.
+    pub fn escapement(&self) -> Option<&'a calibres::Escapement> {
+        match self {
+            Entry::Table(c) => c.escapement.as_ref(),
+            Entry::Custom(_) => None,
+        }
+    }
 }
 
 /// Where a wheel's period comes from.

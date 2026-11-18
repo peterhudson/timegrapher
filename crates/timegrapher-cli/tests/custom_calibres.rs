@@ -100,3 +100,24 @@ fn catalogue_errors_precede_audio_but_no_calibre_keeps_default_path() {
         assert!(String::from_utf8_lossy(&out.stderr).contains(&missing));
     }
 }
+
+/// A calibre whose escapement Timegrapher doesn't measure yet says so on
+/// its own line, in core's words (#1872).
+#[test]
+fn a_co_axial_calibre_says_it_is_not_supported_yet() {
+    let fixture = Fixture::new();
+    let out = fixture.run(&["calibres", "Omega 2500"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let sentence = timegrapher_core::calibres::find("Omega 2500")
+        .and_then(|c| c.escapement.as_ref())
+        .unwrap()
+        .sentence();
+    assert!(text.lines().any(|l| l == sentence), "{text}");
+    let other = fixture.run(&["calibres", "ETA 2824-2"]);
+    assert!(!String::from_utf8_lossy(&other.stdout).contains("not supported yet"));
+}

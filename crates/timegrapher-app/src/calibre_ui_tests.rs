@@ -1034,3 +1034,25 @@ fn a_funnels_search_narrows_what_ok_keeps() {
     run(&mut c, vec![enter(true), enter(false)]);
     assert_eq!(c.funnels[Col::Maker as usize], Some(listed));
 }
+
+/// The Lift Angle column is wide enough for the not-supported tag, the
+/// room taken from the Calibre column alone (#1872).
+#[test]
+fn the_lift_column_fits_the_not_supported_tag() {
+    let ctx = egui::Context::default();
+    let mut min = 0.0;
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| min = lift_min_w(ui));
+    });
+    assert!(min > NUMBER_PAD);
+    for w in [440.0, 700.0, 1200.0] {
+        let plain = col_widths(w, 0.0);
+        let widened = col_widths(w, min);
+        assert!(widened[3] >= min, "{w}");
+        assert_eq!(widened[0], plain[0]);
+        assert_eq!(widened[2], plain[2]);
+        assert_eq!(widened[4], plain[4]);
+        let sum = |c: [f32; 5]| c.iter().sum::<f32>();
+        assert!((sum(widened) - sum(plain)).abs() < 1e-3, "{w}");
+    }
+}

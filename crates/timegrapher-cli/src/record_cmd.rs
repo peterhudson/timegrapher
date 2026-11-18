@@ -552,7 +552,7 @@ fn capture(o: &Options, pos: Position, set: &Settings) -> Result<Captured, Strin
         if let Some(f) = feed.as_mut() {
             f.finish();
         }
-        return Ok((rec, label, fs_hz, stop.map(|s| s.ended()), asked.seen));
+        return Ok((rec, label, fs_hz, stop.map(|mut s| s.ended()), asked.seen));
     }
     live(o, pos, set, info, start)
 }
@@ -597,6 +597,8 @@ impl<'a> StopFile<'a> {
 struct StopWatch {
     live: LiveAnalyzer,
     next_s: f64,
+    /// Reads the beats, each only once (#1892).
+    hearing: power_reserve::Hearing,
 }
 
 impl StopWatch {
@@ -607,6 +609,7 @@ impl StopWatch {
         StopWatch {
             live: LiveAnalyzer::new(fs_hz, cfg),
             next_s: 2.0,
+            hearing: power_reserve::Hearing::default(),
         }
     }
 
@@ -623,14 +626,15 @@ impl StopWatch {
 
     /// How the test has ended by the sound taken in so far, if it has
     /// ([`power_reserve::Heard::ending`]), as the app decides it.
-    fn ending(&self) -> Option<power_reserve::Ending> {
+    fn ending(&mut self) -> Option<power_reserve::Ending> {
         let beat_s = power_reserve::beat_s(self.live.bph());
-        power_reserve::heard(self.live.beats(), beat_s).ending(self.live.duration_s(), 0.0)
+        let heard = self.hearing.update(self.live.beats(), beat_s);
+        heard.ending(self.live.duration_s(), 0.0)
     }
 
     /// How the test ended when the recording did: by hand unless the
     /// watch had stopped or the limit was reached.
-    fn ended(&self) -> power_reserve::Ending {
+    fn ended(&mut self) -> power_reserve::Ending {
         self.ending().unwrap_or(power_reserve::Ending::ByHand)
     }
 }
@@ -915,7 +919,7 @@ fn live(
         rec,
         cap.label.clone(),
         fs_hz,
-        stop.map(|s| s.ended()),
+        stop.map(|mut s| s.ended()),
         asked.seen,
     ))
 }
