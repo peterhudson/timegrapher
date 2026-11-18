@@ -708,9 +708,6 @@ const POSITION_HINT: &str = "The position the watch is in. Changing it while lis
 const SOUND_SETTINGS_HINT: &str = "The app can't set this input's level, so the system \
      does: this opens the system's sound input settings (Sound > Input on a Mac, Sound on \
      Windows), where the input volume is. Watch the Peak meter here as you change it.";
-const LIFT_HINT: &str = "No calibre or lift angle is set, so every amplitude is worked out \
-     from the default 52°. Type the calibre's lift angle, pick one, or pick the calibre above \
-     it.";
 /// The takes a watch's row starts, each saved into the watch.
 /// The Watches view's list column, pt.
 pub(crate) const WATCH_LIST_W: f32 = 280.0;

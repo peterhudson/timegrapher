@@ -1965,7 +1965,7 @@ fn fields(ui: &mut egui::Ui, w: &mut Watch, cal: &mut Calibres) {
         bph: cal.bph(n),
     };
     if let Some(p) = picked {
-        w.pick_calibre(&p, given(&p));
+        w.pick_calibre(&p, given(&p), given(&current));
     }
     // Either the calibre or the watch: a figure the calibre gives is the
     // calibre's, and only one it doesn't give is set here.

@@ -18,6 +18,85 @@ fn a_calibre_picked_sets_the_lift_angle() {
     assert!(app.lift_settable());
 }
 
+/// A calibre the table gives no lift for, picked after one it does,
+/// doesn't keep that calibre's lift as if known: the default lift angle,
+/// assumed, as with no calibre. A lift typed by hand stays (#1877).
+#[test]
+fn a_calibre_with_no_lift_leaves_the_last_calibres_lift_behind() {
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    let none = timegrapher_core::calibres::all()
+        .iter()
+        .map(|c| c.calibre.clone())
+        .find(|n| app.cal.lift(n).is_none())
+        .expect("a calibre with no lift in the table");
+    let given = app.cal.lift("ETA 2824-2").expect("ETA's lift");
+    assert_ne!(given, DEFAULT_LIFT_DEG);
+    app.set_calibre("ETA 2824-2".into());
+    assert_eq!(app.lift_deg, given);
+    assert!(app.lift_known());
+    app.set_calibre(none.clone());
+    assert_eq!(app.lift_deg, DEFAULT_LIFT_DEG, "{none}");
+    assert!(!app.lift_known(), "{none}: assumed, not known");
+    // Typed by hand after the calibre set it: kept, as typed.
+    app.set_calibre("ETA 2824-2".into());
+    let typed = given + 3.0;
+    app.set_lift(typed);
+    app.set_calibre(none);
+    assert_eq!(app.lift_deg, typed);
+    assert!(app.lift_known());
+}
+
+/// With a watch open, the same: a calibre with no lift after one with a
+/// lift gives the watch's own lift, known, or with none the default,
+/// assumed, and the take saves it as assumed (Norm on #1913).
+#[test]
+fn with_a_watch_open_a_calibre_with_no_lift_gives_the_watchs_own() {
+    let base = std::env::temp_dir().join(format!("tg-app-lift-watch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let root = base.join("Timegrapher Data");
+    let mut lib = library::Library::create(&root).unwrap();
+    let mut own = library::Watch::new("Own lift");
+    own.lift = Some(48.0);
+    lib.add(&library::Watch::new("No lift")).unwrap();
+    lib.add(&own).unwrap();
+    let id = |n: &str| lib.find(n).unwrap().watch.id.clone();
+    let (bare, own) = (id("No lift"), id("Own lift"));
+    drop(lib);
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.use_library(Some(root));
+    let none = timegrapher_core::calibres::all()
+        .iter()
+        .map(|c| c.calibre.clone())
+        .find(|n| app.cal.lift(n).is_none())
+        .expect("a calibre with no lift in the table");
+    for (watch, lift, known) in [(bare, DEFAULT_LIFT_DEG, false), (own, 48.0, true)] {
+        app.pick_watch(&watch);
+        app.set_calibre("ETA 2824-2".into());
+        assert!(app.lift_known());
+        app.set_calibre(none.clone());
+        assert_eq!((app.lift_deg, app.lift_known()), (lift, known), "{none}");
+        let saved = app.manifest_header();
+        assert_eq!((saved.lift, saved.lift_known), (Some(lift), Some(known)));
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The assumed lift's hover says why it is assumed: no calibre, or one
+/// the table gives no lift for, named (Hugh on #1913).
+#[test]
+fn the_assumed_lifts_hover_names_what_is_missing() {
+    assert_eq!(
+        listen_card::lift_hint(""),
+        "No calibre or lift angle is set, so every amplitude is worked out from the default \
+         52°. Type the calibre's lift angle, pick one, or pick the calibre above it."
+    );
+    assert_eq!(
+        listen_card::lift_hint("Audemars Piguet 4401"),
+        "The table has no lift angle for Audemars Piguet 4401, so every amplitude is worked \
+         out from the default 52°. Type its lift angle, or pick one."
+    );
+}
+
 /// Lift changed on a stopped take reads every amplitude again at the
 /// new lift: the whole take, the Tick Tock profiles and the Positions
 /// Test table scale with it.

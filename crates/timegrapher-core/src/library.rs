@@ -181,10 +181,18 @@ impl FromCalibre {
 }
 
 impl Watch {
-    /// Pick the calibre `name` (empty: none), which gives `given`: the
-    /// watch takes each figure the calibre gives and keeps its own for
-    /// one it doesn't.
-    pub fn pick_calibre(&mut self, name: &str, given: FromCalibre) {
+    /// Pick the calibre `name` (empty: none), which gives `given`, in
+    /// place of the one that gave `was`: the watch takes each figure the
+    /// calibre gives and keeps its own for one it doesn't. A figure the
+    /// last calibre gave was the calibre's, not the watch's, and goes with
+    /// it; one set by hand since differs from it and stays (#1877).
+    pub fn pick_calibre(&mut self, name: &str, given: FromCalibre, was: FromCalibre) {
+        if self.lift.is_some() && self.lift == was.lift {
+            self.lift = None;
+        }
+        if self.bph.is_some() && self.bph == was.bph {
+            self.bph = None;
+        }
         let name = name.trim();
         self.calibre = (!name.is_empty()).then(|| name.to_string());
         self.hold_calibre(given);
