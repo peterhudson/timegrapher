@@ -440,16 +440,21 @@ catalogue or press release:
   9039 and 90S5 are already names on the 8215 and 9015 rows).
 - Tudor: its press releases and calibre pages.
 - Citizen: The Citizen specification page and the 9051 manual.
-- Ronda: the R150 announcement on fhs.swiss and Worn & Wound's R01
-  article. La Joux-Perret: the G100 and L100 announcement on fhs.swiss.
+- Ronda: the R150 announcement on fhs.swiss. La Joux-Perret: the G100
+  and L100 announcement on fhs.swiss.
+
+The Ronda R01 has no maker's page here: its beat rate (25,200) comes
+from Worn & Wound's article on its launch, so its `confidence` is
+"press article".
 
 No lift angle is taken from these pages, because none of them prints
 one. Orient does not publish beat rates on its pages, and the Seiko NH
 and NE spec sheets are images, so neither is added here.
 
 Beat rates were also filled on 2026-11-18 for rows that had none:
-35 from watch-wiki.org (its `Halbschwingungen` field, GNU Free
-Documentation License, cited per page) and 8 from Seiko's manuals.
+35 from watch-wiki.org (its `Halbschwingungen` field): single figures,
+each cited to its page; no text was copied. Another 8 come from Seiko's
+manuals.
 
 ## Seiko and Miyota manufacturer-document research
 
