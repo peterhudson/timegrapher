@@ -97,11 +97,13 @@ pub struct LongReport {
 
 /// Grid step for the timing series: fine enough to search the escape
 /// wheel, coarser on longer runs to keep the work bounded. The period
-/// search needs eight steps a turn, so the shortest period searched is
-/// 2 s up to 12 hours and 4 s up to 80 hours (a full Power Reserve test,
-/// the memory budget's run): there it reaches a 5 s escape wheel (20 teeth
-/// at 28,800 bph, 15 at 21,600) but not a 3.75 s one (15 teeth at 28,800
-/// bph). Past 80 hours, 32 s.
+/// search needs eight steps a turn, so the grid alone allows 2 s up to
+/// 12 hours, 4 s up to 80 hours (a full Power Reserve test, the memory
+/// budget's run) and 32 s past that. The shortest period searched is the
+/// larger of that and `Config::min_period_s` (3 s): 3 s up to 12 hours,
+/// then 4 s, which reaches a 5 s escape wheel (20 teeth at 28,800 bph, 15
+/// at 21,600) but not a 3.75 s one (15 teeth at 28,800 bph), then 32 s.
+/// The report states the shortest period each search tried (#1897).
 pub fn timing_step(span_s: f64) -> f64 {
     if span_s <= 12.0 * 3600.0 {
         0.25
