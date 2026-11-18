@@ -715,6 +715,17 @@ impl TimegrapherApp {
         row.spacing_mut().interact_size.y = theme::CONTROL_H;
         let avg_now = fields::duration(self.average_s);
         let form = fit_form(&row, &avg_now, &field.words, foot.width());
+        if !form.arrows {
+            row.spacing_mut().icon_width = 0.0;
+            row.spacing_mut().icon_spacing = 0.0;
+        }
+        let arrows = |b: egui::ComboBox| {
+            if form.arrows {
+                b
+            } else {
+                b.icon(|_, _, _, _| {})
+            }
+        };
         let label = |ui: &mut egui::Ui, text: &str| {
             ui.label(
                 RichText::new(text)
@@ -727,7 +738,7 @@ impl TimegrapherApp {
         }
         let mut avg = self.average_s;
         let avg_text = form.average(&avg_now);
-        egui::ComboBox::from_id_salt("card average")
+        arrows(egui::ComboBox::from_id_salt("card average"))
             .width(combo_w(&row, &avg_text))
             .selected_text(avg_text)
             .show_ui(&mut row, |ui| {
@@ -751,7 +762,7 @@ impl TimegrapherApp {
         let mut picked = None;
         row.add_enabled_ui(field.settable, |ui| {
             // Open while its hours are typed: a pick closes it.
-            egui::ComboBox::from_id_salt("card wind")
+            arrows(egui::ComboBox::from_id_salt("card wind"))
                 .width(ui.available_width())
                 .selected_text(RichText::new(form.wind(&field.words)).color(colour))
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -1977,6 +1988,8 @@ pub(super) struct FieldForm {
     pub avg: bool,
     /// How much of the wind the Wind box says.
     pub wind: WindForm,
+    /// The boxes draw their arrows: not in the compact card's last form.
+    pub arrows: bool,
 }
 
 /// How much of the wind the Wind box says.
@@ -1994,32 +2007,44 @@ pub(super) enum WindForm {
 
 /// The foot row's forms, widest first: Hugh's three steps on #1915, then
 /// "Wind" alone and the average without "Avg" for the narrowest cards,
-/// where even the third doesn't fit.
-pub(super) const FIELD_FORMS: [FieldForm; 5] = [
+/// where even the third doesn't fit, and last the same two boxes without
+/// their arrows for the compact card.
+pub(super) const FIELD_FORMS: [FieldForm; 6] = [
     FieldForm {
         labels: true,
         avg: false,
         wind: WindForm::Value,
+        arrows: true,
     },
     FieldForm {
         labels: false,
         avg: true,
         wind: WindForm::Labelled,
+        arrows: true,
     },
     FieldForm {
         labels: false,
         avg: true,
         wind: WindForm::Short,
+        arrows: true,
     },
     FieldForm {
         labels: false,
         avg: true,
         wind: WindForm::Name,
+        arrows: true,
     },
     FieldForm {
         labels: false,
         avg: false,
         wind: WindForm::Name,
+        arrows: true,
+    },
+    FieldForm {
+        labels: false,
+        avg: false,
+        wind: WindForm::Name,
+        arrows: false,
     },
 ];
 
@@ -2060,7 +2085,12 @@ pub(super) fn fit_form(
         } else {
             0.0
         };
-        labels + combo_w(ui, &f.average(avg_now)) + gap + combo_w(ui, &f.wind(wind))
+        let arrow = if f.arrows {
+            0.0
+        } else {
+            2.0 * (ui.spacing().icon_width + ui.spacing().icon_spacing)
+        };
+        labels + combo_w(ui, &f.average(avg_now)) + gap + combo_w(ui, &f.wind(wind)) - arrow
     };
     FIELD_FORMS
         .into_iter()

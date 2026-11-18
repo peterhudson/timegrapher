@@ -29,6 +29,14 @@ struct CardCtx<'a> {
     short: bool,
 }
 
+/// The Listen card where the reading cards keep their full width beside
+/// it: wide enough for its Wind box's second form, "Wind: began 2.0 h
+/// after full", or its third, "Wind 2.0 h" (Hugh on #1915). The third
+/// measures 219 pt with "10 s" beside it at three figures of hours, and
+/// about 226 at four; with the card's padding, 260 holds it to 999.9 h.
+pub(super) const LISTEN_WIDE_W: f32 = 350.0;
+pub(super) const LISTEN_HOURS_W: f32 = 260.0;
+
 /// The cards' widths at `total`: Current Position, Listen, Calibre and
 /// each reading card.
 fn card_widths(total: f32, gap: f32) -> [f32; 4] {
@@ -38,6 +46,11 @@ fn card_widths(total: f32, gap: f32) -> [f32; 4] {
     // its figure alone), then Listen, Position and Calibre go compact in
     // turn, the reading cards keeping room for their captions whole.
     let layouts = [
+        // Listen wider while the reading cards keep their full width, for
+        // its Wind box in words (Hugh on #1915): "Wind: full 2.0 h ago",
+        // then "Wind 2.0 h".
+        (POSITION_W, LISTEN_WIDE_W, CALIBRE_W, READING_FULL_W),
+        (POSITION_W, LISTEN_HOURS_W, CALIBRE_W, READING_FULL_W),
         (POSITION_W, LISTEN_W, CALIBRE_W, READING_FULL_W),
         (POSITION_W, LISTEN_W, CALIBRE_W, READING_ROOMY_W),
         (POSITION_W, LISTEN_COMPACT_W, CALIBRE_W, READING_ROOMY_W),

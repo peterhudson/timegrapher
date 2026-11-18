@@ -403,13 +403,10 @@ fn the_listen_card_shows_the_wind_beside_average_over() {
     }
 }
 
-/// The readings cards' row keeps its height at 800 x 560 with the Wind
-/// box on the Listen card (Hugh on #1915).
-#[test]
-fn the_cards_row_is_no_taller_at_800_by_560() {
+/// The window at `w` x `h`: the Wind box's form as drawn, and where.
+fn window_wind(app: &mut TimegrapherApp, w: f32, h: f32) -> (listen_card::FieldForm, egui::Rect) {
     let ctx = super::super::tests::themed();
-    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(800.0, 560.0));
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, h));
     let mut out = None;
     for _ in 0..3 {
         let input = egui::RawInput {
@@ -419,16 +416,58 @@ fn the_cards_row_is_no_taller_at_800_by_560() {
         out = Some(ctx.run(input, |ctx| app.panels(ctx)));
     }
     let out = out.unwrap();
-    assert_eq!(app.readings_card_h(&ctx), theme::READINGS_CARD_H);
+    assert_eq!(
+        app.readings_card_h(&ctx),
+        theme::READINGS_CARD_H,
+        "no taller"
+    );
     let words = app.wind_field().words;
-    let shown = listen_card::FIELD_FORMS
+    let avg_now = fields::duration(app.average_s);
+    listen_card::FIELD_FORMS
         .iter()
-        .find_map(|f| drawn(&out, &f.wind(&words)))
-        .unwrap_or_else(|| panic!("no Wind box: {}", painted_text(&out)));
-    let avg = drawn(&out, "Avg 10 s")
-        .or_else(|| drawn(&out, "10 s"))
-        .expect("Average Over's box");
-    assert!((shown.center().y - avg.center().y).abs() < 1.0, "one row");
+        .find_map(|f| {
+            let wind = drawn(&out, &f.wind(&words))?;
+            let avg = drawn(&out, &f.average(&avg_now))?;
+            assert!((wind.center().y - avg.center().y).abs() < 1.0, "one row");
+            Some((*f, wind))
+        })
+        .unwrap_or_else(|| panic!("{w}: no Wind box: {}", painted_text(&out)))
+}
+
+/// The cards' row keeps its height in every window (Hugh on #1915); the
+/// Listen card widens for the Wind box in words where the reading cards
+/// keep their full width: its second form at 1920 x 1080, its third at
+/// 1600 x 900; at 1280 x 800
+/// and 800 x 560, where they can't, it keeps today's width.
+#[test]
+fn the_listen_card_widens_for_the_wind_where_there_is_room() {
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.pick_wind(WindPick::HoursAgo(24.2));
+    let forms = &listen_card::FIELD_FORMS;
+    assert_eq!(window_wind(&mut app, 1920.0, 1080.0).0, forms[1]);
+    assert_eq!(window_wind(&mut app, 1600.0, 900.0).0, forms[2]);
+    for (w, h) in [(1280.0, 800.0), (800.0, 560.0)] {
+        let (form, _) = window_wind(&mut app, w, h);
+        assert!(
+            !form.labels && form.wind == listen_card::WindForm::Name,
+            "{w}: {form:?}"
+        );
+    }
+}
+
+/// A wider Listen card never takes a reading card under its full width
+/// (Hugh on #1915).
+#[test]
+fn a_wider_listen_card_leaves_the_readings_whole() {
+    let mut seen = [false; 2];
+    for total in (600..2600).step_by(10) {
+        let w = readouts::six_widths(total as f32, theme::GAP);
+        if w[1] > LISTEN_W {
+            assert!(w[2] >= READING_FULL_W, "{total}: {w:?}");
+            seen[usize::from(w[1] == readouts::LISTEN_WIDE_W)] = true;
+        }
+    }
+    assert_eq!(seen, [true; 2], "both wider forms are used");
 }
 
 /// From a take's start the Wind field is fixed at the hours from full

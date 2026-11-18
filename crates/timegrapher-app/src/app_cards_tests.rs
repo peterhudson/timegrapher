@@ -1066,25 +1066,28 @@ fn the_readings_cards_carry_the_take_controls() {
             ["Amp.", "B.E."]
         });
         if w <= 800.0 {
-            wants.extend(["Position", "Avg 10 s"]);
+            // The compact Listen card's foot: the average and Wind,
+            // short (Hugh on #1915).
+            wants.extend(["Position", "10 s", "Wind"]);
         }
         if w > 1000.0 {
             wants.extend([
                 "Current Position",
                 "Dial Up",
-                "10 s",
                 "CR",
                 "DU · CH",
                 "0:00",
                 "Not Started",
-                "Average Over",
+                // Listen widened for Wind's third form (Hugh on #1915).
+                "Avg 10 s",
+                "Wind —",
                 "Auto",
             ]);
         } else if w > 800.0 {
             // The take's length in the compact Listen card's title row,
             // Average Over's pop-up saying what it is, and the beat
             // rate beside the lift on the Calibre card.
-            wants.extend(["Position", "Avg 10 s", "Auto"]);
+            wants.extend(["Position", "10 s", "Wind", "Auto"]);
         }
         for want in wants {
             assert!(texts.iter().any(|t| t == want), "{want} at {w}: {texts:?}");
@@ -1456,14 +1459,17 @@ fn the_readings_strip_opens_its_cards_over_the_panes() {
     };
     pass(&mut app, Vec::new());
     let (pinned, at_pinned) = pass(&mut app, Vec::new());
-    assert!(pinned.contains("Avg 10 s"), "{pinned}");
+    assert!(
+        pinned.contains("10 s") && pinned.contains("Wind"),
+        "{pinned}"
+    );
     // The pin, at the row's right end, unpins them.
     let pin = egui::pos2(1280.0 - 33.0, 66.0);
     pass(&mut app, pointer(pin, true));
     assert!(app.menu_checked(super::menus::MenuCommand::CompactReadings));
     pass(&mut app, pointer(pin, false));
     let (strip, at_closed) = pass(&mut app, Vec::new());
-    for gone in ["Avg 10 s", "Lift"] {
+    for gone in ["Wind", "Lift"] {
         assert!(!strip.contains(gone), "{gone} in the strip: {strip}");
     }
     for shown in ["Dial Up", "Rate", "s/d", "ms", "52° · Auto 28800"] {
@@ -1478,7 +1484,7 @@ fn the_readings_strip_opens_its_cards_over_the_panes() {
     let rate = egui::pos2(closed.center().x, 70.0);
     pass(&mut app, pointer(rate, true));
     let (open, at_open) = pass(&mut app, pointer(rate, false));
-    assert!(open.contains("Avg 10 s"), "{open}");
+    assert!(open.contains("Wind"), "{open}");
     assert_eq!(at_open, Some(closed), "the panes stay where they were");
     // Esc closes them.
     let esc = egui::Event::Key {
@@ -1490,7 +1496,7 @@ fn the_readings_strip_opens_its_cards_over_the_panes() {
     };
     pass(&mut app, vec![esc]);
     let (shut, _) = pass(&mut app, Vec::new());
-    assert!(!shut.contains("Avg 10 s"), "{shut}");
+    assert!(!shut.contains("Wind"), "{shut}");
     // The pin is kept.
     let mut back = TimegrapherApp::with_devices(Vec::new(), None);
     back.apply_settings(app.settings());
