@@ -941,7 +941,9 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "calibre_notes": calibre_notes,
         "settle_s": o.settle,
         "shape": !o.no_shape,
-        "cycles": !o.no_cycles,
+        // Whether the cycle search ran: off by `--no-cycles` or by the
+        // session file's own `cycles = false` alike (#1880).
+        "cycles": !o.no_cycles && m.cycles != Some(false),
         "analysis_only": kept_note(&base, &m),
     });
     let s = Session {
