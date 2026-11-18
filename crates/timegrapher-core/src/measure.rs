@@ -743,8 +743,6 @@ fn uncalibrated_text(model: crate::longterm::NullModel, mix: f64, span_s: f64) -
     )
 }
 
-/// The "s" an English noun takes after a count of `n`: none after 1.
-/// The one rule for every count the app, CLI and MCP word (#1366).
 /// The lift angle an amplitude was worked out from, as every reading
 /// beside an amplitude says it: "lift angle 52°", or "lift angle 52°, the
 /// default" when neither the calibre nor the user set it (#1881).
@@ -756,6 +754,8 @@ pub fn lift_words(lift_deg: f64, known: bool) -> String {
     }
 }
 
+/// The "s" an English noun takes after a count of `n`: none after 1.
+/// The one rule for every count the app, CLI and MCP word (#1366).
 pub fn plural(n: usize) -> &'static str {
     if n == 1 {
         ""
