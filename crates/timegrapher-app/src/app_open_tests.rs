@@ -1056,3 +1056,33 @@ fn a_take_at_another_rate_than_its_calibre_says_so_on_the_watch_line() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An analysis whose thread ends without answering is a failure, said in
+/// the status line, not a window left saying Analysing (#1891).
+#[test]
+fn an_analysis_that_stops_without_answering_says_it_failed() {
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.batch = Some(Batch {
+        rx,
+        progress: Default::default(),
+        cancel: Default::default(),
+        duration_s: None,
+        label: String::new(),
+        started: Instant::now(),
+        files: 1,
+        first: String::new(),
+        last: String::new(),
+        stretches: Vec::new(),
+        settles: Vec::new(),
+        order_note: None,
+    });
+    app.poll_batch();
+    assert!(app.batch.is_some(), "still analysing");
+    drop(tx);
+    app.poll_batch();
+    assert!(app.batch.is_none(), "Analysing is down");
+    let (said, bad) = app.message.clone().expect("a message");
+    assert_eq!(said, "Analysis failed: it stopped part way");
+    assert!(bad);
+}

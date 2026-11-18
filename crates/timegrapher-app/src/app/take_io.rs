@@ -2508,13 +2508,16 @@ impl TimegrapherApp {
     }
 
     /// Show a recording opened whole once its analysis is done.
-    fn poll_batch(&mut self) {
+    pub(super) fn poll_batch(&mut self) {
         let mut done = None;
         if let Some(b) = &self.batch {
             match b.rx.try_recv() {
                 Ok(r) => done = Some(r),
                 Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => done = Some(Ok(None)),
+                // The analysis thread ended without an answer: a failure,
+                // not a cancel, so the window isn't left saying Analysing
+                // (#1891).
+                Err(TryRecvError::Disconnected) => done = Some(Err("it stopped part way".into())),
             }
         }
         if let Some(r) = done {

@@ -14,7 +14,7 @@ use crate::{applog, theme};
 use eframe::egui::{self, RichText, Sense, Vec2};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use timegrapher_core::analysis::{analyze, AnalysisConfig, Summary};
@@ -145,6 +145,16 @@ enum Saved {
     Failed(String),
 }
 
+/// The save's answer, once there is one: a save whose thread ended
+/// without answering failed, so Saving doesn't stay up (#1891).
+fn saved_answer(rx: &Receiver<Saved>) -> Option<Saved> {
+    match rx.try_recv() {
+        Ok(r) => Some(r),
+        Err(TryRecvError::Empty) => None,
+        Err(TryRecvError::Disconnected) => Some(Saved::Failed("it stopped part way".into())),
+    }
+}
+
 #[derive(Default)]
 pub struct ReportDialog {
     pub open: bool,
@@ -206,7 +216,7 @@ impl ReportDialog {
         }
         let mut message = None;
         if let Some(rx) = &self.saving {
-            if let Ok(r) = rx.try_recv() {
+            if let Some(r) = saved_answer(rx) {
                 self.saving = None;
                 if let Saved::Done { zip, .. } = &r {
                     let kind = self.kind.unwrap_or(Kind::Bug);
@@ -1075,6 +1085,15 @@ pub(crate) fn software() -> Value {
 mod tests {
     use super::*;
     use timegrapher_core::redact::replace_word;
+
+    /// A save whose thread ends without answering says it failed (#1891).
+    #[test]
+    fn a_save_that_stops_without_answering_failed() {
+        let (tx, rx) = channel::<Saved>();
+        assert!(saved_answer(&rx).is_none(), "still saving");
+        drop(tx);
+        assert!(matches!(saved_answer(&rx), Some(Saved::Failed(e)) if e == "it stopped part way"));
+    }
     use timegrapher_core::synth::{generate, SynthConfig};
 
     fn assert_explicit_replay_lift(bph: Option<u32>, lift: f64) {
