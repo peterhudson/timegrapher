@@ -87,7 +87,7 @@ pub fn wind_state_title(wind_h: Option<f64>) -> String {
 /// The words for a state of wind that was not given.
 pub const WIND_NOT_GIVEN: &str = "wind not given";
 
-/// The wind on the Position card, to 0.1 h: "Full wind 2.0 h ago", or
+/// The wind in full, in the Wind field's hover, to 0.1 h: "Full wind 2.0 h ago", or
 /// "Wind not given" until it is set (#1665).
 pub fn wind_since_words(wind_h: Option<f64>) -> String {
     wind_h.map_or_else(
@@ -110,15 +110,33 @@ pub fn wind_before_take_words(wind_h: Option<f64>) -> String {
     )
 }
 
-/// A saved take's wind on the Position card, to 0.1 h, short enough for
-/// its row: "24.2 h after full wind", or "Wind not given" (Hugh on #1745).
-/// The whole of it, [`wind_before_take_words`], is in the hover.
-pub fn wind_after_words(wind_h: Option<f64>) -> String {
+/// The Listen card's Wind field before a take, to 0.1 h, short beside its
+/// "Wind" label: "Full 2.0 h ago", or "Not given" (#1915). The whole of
+/// it, [`wind_since_words`], is in the hover.
+pub fn wind_field_since_words(wind_h: Option<f64>) -> String {
     wind_h.map_or_else(
-        || capitalised(WIND_NOT_GIVEN),
-        |h| format!("{} h after full wind", crate::figure_text::fixed_text(h, 1)),
+        || capitalised(NOT_GIVEN),
+        |h| format!("Full {} h ago", crate::figure_text::fixed_text(h, 1)),
     )
 }
+
+/// The Listen card's Wind field from a take's start, and for a take
+/// opened, to 0.1 h: "Began 2.0 h after full", or "Not given" (#1915).
+/// The whole of it, [`wind_before_take_words`], is in the hover.
+pub fn wind_field_began_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(
+        || capitalised(NOT_GIVEN),
+        |h| {
+            format!(
+                "Began {} h after full",
+                crate::figure_text::fixed_text(h, 1)
+            )
+        },
+    )
+}
+
+/// A field's words for a wind not given, beside its "Wind" label.
+const NOT_GIVEN: &str = "not given";
 
 fn capitalised(s: &str) -> String {
     let mut c = s.chars();
@@ -242,8 +260,8 @@ mod tests {
         assert_eq!(wind_words(0.0), "full wind");
     }
 
-    /// The card and a take's hover say the wind to 0.1 h, or that it was
-    /// not given (#1665).
+    /// The Listen card and a take's hover say the wind to 0.1 h, or that
+    /// it was not given (#1665).
     #[test]
     fn the_wind_since_full_wind_is_said_to_a_tenth() {
         assert_eq!(wind_since_words(Some(2.0)), "Full wind 2.0 h ago");
@@ -254,8 +272,14 @@ mod tests {
             "Full wind 2.0 h before it began"
         );
         assert_eq!(wind_before_take_words(None), "Wind not given");
-        assert_eq!(wind_after_words(Some(24.24)), "24.2 h after full wind");
-        assert_eq!(wind_after_words(None), "Wind not given");
+        // The Listen card's field, short beside its label (#1915).
+        assert_eq!(wind_field_since_words(Some(2.0)), "Full 2.0 h ago");
+        assert_eq!(wind_field_since_words(None), "Not given");
+        assert_eq!(
+            wind_field_began_words(Some(24.24)),
+            "Began 24.2 h after full"
+        );
+        assert_eq!(wind_field_began_words(None), "Not given");
     }
 
     #[test]

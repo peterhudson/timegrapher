@@ -72,15 +72,14 @@ impl TimegrapherApp {
     }
 
     /// The readings cards' height: [`theme::READINGS_CARD_H`], or taller
-    /// at 10 positions, where the Current Position card's name line and
-    /// wind row need room between its title and its two rows of buttons
-    /// (Hugh on #1745). Every card in the row takes it.
+    /// at 10 positions, where the Current Position card's name line needs
+    /// room between its title and its two rows of buttons (Hugh on
+    /// #1745). Every card in the row takes it.
     pub(super) fn readings_card_h(&self, ctx: &egui::Context) -> f32 {
         if !self.card_ten() {
             return theme::READINGS_CARD_H;
         }
-        let text = ctx
-            .fonts_mut(|f| f.row_height(&theme::semibold(POSITION_NAME_TEN_PT)) + wind::row_h(f));
+        let text = ctx.fonts_mut(|f| f.row_height(&theme::semibold(POSITION_NAME_TEN_PT)));
         // The title row as last drawn, its 6 | 10 switch's frame included.
         let past: f32 = ctx
             .data(|d| d.get_temp(egui::Id::new(TITLE_PAST)))
@@ -132,20 +131,12 @@ impl TimegrapherApp {
                 egui::pos2(rows.inner.left(), rows.title.bottom() + 6.0),
                 Vec2::splat(side),
             )
-        } else if compact {
-            // Raised into the gap above, for the wind under it (#1665).
-            egui::Rect::from_min_size(
-                egui::pos2(
-                    rows.figure.left(),
-                    rows.figure.top() - theme::ROW_GAP * 0.75,
-                ),
-                Vec2::splat(side),
-            )
         } else {
             // Under the title row, which runs the card's width for its
-            // 6 | 10, centred on the figure row.
+            // 6 | 10, centred between it and the buttons.
+            let mid = (rows.title.bottom() + rows.controls.top()) / 2.0;
             egui::Rect::from_min_size(
-                egui::pos2(rows.inner.left(), rows.figure.center().y - side / 2.0),
+                egui::pos2(rows.inner.left(), mid - side / 2.0),
                 Vec2::splat(side),
             )
         };
@@ -197,9 +188,9 @@ impl TimegrapherApp {
             });
     }
 
-    /// The Current Position card's name at 6, beside the picture `pic`:
-    /// both its `codes` under it, and the wind on its own row under them
-    /// (#1665, Hugh), centred between the title and the buttons.
+    /// The Current Position card's name at 6, beside the picture `pic`,
+    /// and both its `codes` under it, centred between the title and the
+    /// buttons.
     fn position_lines(&mut self, ui: &mut egui::Ui, rows: &CardRows, pic: egui::Rect, codes: &str) {
         let pal = theme::pal(ui);
         let x = pic.right() + theme::GAP;
@@ -209,8 +200,7 @@ impl TimegrapherApp {
         );
         let name_font = theme::semibold(17.0);
         let code_font = egui::FontId::proportional(12.0);
-        let high =
-            ui.fonts_mut(|f| f.row_height(&name_font) + f.row_height(&code_font) + wind::row_h(f));
+        let high = ui.fonts_mut(|f| f.row_height(&name_font) + f.row_height(&code_font));
         let clip = ui.painter().with_clip_rect(fig);
         let name = clip.text(
             egui::pos2(fig.left(), fig.center().y - high / 2.0),
@@ -219,17 +209,12 @@ impl TimegrapherApp {
             name_font,
             pal.text,
         );
-        let code = clip.text(
+        clip.text(
             name.left_bottom(),
             egui::Align2::LEFT_TOP,
             codes,
             code_font,
             pal.text_secondary,
-        );
-        self.wind_line(
-            &mut ui.new_child(egui::UiBuilder::new().max_rect(fig)),
-            code.left_bottom(),
-            egui::Align2::LEFT_TOP,
         );
     }
 
@@ -264,10 +249,9 @@ impl TimegrapherApp {
         };
         let second = row(foot);
         let first = row(second.top() - POSITION_TEN_GAP);
-        // The name and code on one line, and the wind on its own row under
-        // them (#1665, Hugh), centred between the title and the buttons
-        // and clear of both by the gap between the buttons' two rows; the
-        // card is tall enough for it ([`Self::readings_card_h`]).
+        // The name and code on one line, centred between the title and the
+        // buttons and clear of both by the gap between the buttons' two
+        // rows; the card is tall enough for it ([`Self::readings_card_h`]).
         let left = pic.right() + 10.0;
         let (top, clear) = (
             title.bottom() + POSITION_TEN_GAP,
@@ -275,11 +259,11 @@ impl TimegrapherApp {
         );
         let line = egui::Rect::from_x_y_ranges(left..=rows.inner.right(), top..=clear);
         let name_font = theme::semibold(POSITION_NAME_TEN_PT);
-        let high = ui.fonts_mut(|f| f.row_height(&name_font) + wind::row_h(f));
+        let high = ui.fonts_mut(|f| f.row_height(&name_font));
         let clip = ui.painter().with_clip_rect(line);
         let name_top = (line.center().y - high / 2.0).max(top);
-        // The picture centred on the name and wind (Hugh), kept clear of
-        // the title and the buttons.
+        // The picture centred on the name (Hugh), kept clear of the title
+        // and the buttons.
         let mid = (name_top + high / 2.0)
             .min(clear - pic.height() / 2.0)
             .max(top + pic.height() / 2.0);
@@ -301,11 +285,6 @@ impl TimegrapherApp {
             codes,
             egui::FontId::proportional(12.0),
             pal.text_secondary,
-        );
-        self.wind_line(
-            &mut ui.new_child(egui::UiBuilder::new().max_rect(line)),
-            name.left_bottom(),
-            egui::Align2::LEFT_TOP,
         );
         for track in [first, second] {
             ui.painter().rect_filled(
@@ -396,16 +375,6 @@ impl TimegrapherApp {
         );
         ui.interact(code, ui.id().with("position code"), egui::Sense::hover())
             .on_hover_text(format!("{} ({codes})", here.name()));
-        // The wind under the picture and code, across the card (#1665).
-        let under = egui::Rect::from_min_max(
-            egui::pos2(rows.inner.left(), pic.bottom()),
-            egui::pos2(rows.inner.right(), rows.controls.top()),
-        );
-        self.wind_line(
-            &mut ui.new_child(egui::UiBuilder::new().max_rect(under)),
-            under.center(),
-            egui::Align2::CENTER_CENTER,
-        );
         // The six or ten in one pop-up; their keys still pick them. Where
         // the position can't be set (a take on show, a test running),
         // no pop-up: the code beside the picture says it all.
@@ -414,8 +383,6 @@ impl TimegrapherApp {
         }
         let mut picked = here;
         let offered = Position::offered(self.card_ten());
-        let settable = self.wind_settable();
-        let mut wind = None;
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt("position menu")
@@ -429,21 +396,14 @@ impl TimegrapherApp {
                 // says what it does instead.
                 // Tall enough for all ten: egui's default height shows six
                 // and hides the 45° stops below a scroll (Walter, #1491).
-                // Open while the wind's hours are typed: a pick closes it.
                 egui::ComboBox::from_id_salt("position")
                     .width(ui.available_width())
                     .height(f32::INFINITY)
                     .selected_text("Set")
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show_ui(ui, |ui| {
                         for &p in offered {
                             let key = format!("{} ({}) · key {}", p.name(), p.code(), p.key_name());
-                            if ui.selectable_value(&mut picked, p, key).clicked() {
-                                ui.close();
-                            }
-                        }
-                        if settable {
-                            wind = self.wind_menu(ui, true);
+                            ui.selectable_value(&mut picked, p, key);
                         }
                     })
                     .response
@@ -456,9 +416,6 @@ impl TimegrapherApp {
             });
         if picked != here && picked != self.position {
             self.change_position(picked);
-        }
-        if let Some(w) = wind {
-            self.pick_wind(w);
         }
     }
 
@@ -570,18 +527,19 @@ impl TimegrapherApp {
     }
 
     /// The Listen card's rows under its caption: Listen or Stop and Save,
-    /// with the take's length and state beside them, then Average Over. On
-    /// a compact card, the length goes in Listen's hover and Average Over
-    /// loses its label to its hover.
+    /// with the take's length and state beside them, then Average Over and
+    /// Wind (#1915). On a compact card, the length goes in Listen's hover
+    /// and the two fields lose their labels.
     pub(super) fn listen_buttons(&mut self, ui: &mut egui::Ui, compact: bool) {
         let area = ui.max_rect();
         let length = length_text(self.live.as_ref().map_or(0.0, |l| l.duration_s()));
         let state = self.state_words();
         let top = egui::Rect::from_min_size(area.min, Vec2::new(area.width(), theme::FIGURE_ROW_H));
-        let foot = egui::Rect::from_min_max(
+        let wind = egui::Rect::from_min_max(
             egui::pos2(area.left(), area.bottom() - theme::CONTROL_H),
             area.max,
         );
+        let foot = wind.translate(Vec2::new(0.0, -(theme::CONTROL_H + theme::FIELD_GAP)));
         let mut buttons = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt("listen buttons")
@@ -601,6 +559,7 @@ impl TimegrapherApp {
             listen_length(ui_b, top, &length, state);
         }
         self.listen_average(ui, foot, compact);
+        self.listen_wind(ui, wind, compact);
     }
 
     /// Whether the take on show is listening, stopped or opened.
@@ -742,22 +701,12 @@ impl TimegrapherApp {
     /// The Listen card's Average Over, in its `foot` row; on a compact
     /// card without its label.
     fn listen_average(&mut self, ui: &mut egui::Ui, foot: egui::Rect, compact: bool) {
-        let pal = theme::pal(ui);
-        let mut row = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt("listen average")
-                .max_rect(foot)
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        let mut row = field_row(
+            ui,
+            foot,
+            "listen average",
+            (!compact).then_some("Average Over"),
         );
-        row.spacing_mut().item_spacing.x = 8.0;
-        row.spacing_mut().interact_size.y = theme::CONTROL_H;
-        if !compact {
-            row.label(
-                RichText::new("Average Over")
-                    .size(13.0)
-                    .color(pal.text_secondary),
-            );
-        }
         let mut avg = self.average_s;
         egui::ComboBox::from_id_salt("card average")
             .width(row.available_width())
@@ -776,6 +725,54 @@ impl TimegrapherApp {
             .on_hover_text(format!("Average Over: {AVERAGE_REACH}"));
         if avg != self.average_s {
             self.set_average(avg);
+        }
+    }
+
+    /// The Listen card's Wind (#1915), in its `rect` under Average Over:
+    /// before a take, the watch's wind, set from its menu; from a take's
+    /// start, and for a take opened, the take's own as plain words, fixed,
+    /// set smaller where they don't fit, never cut. On a compact card the
+    /// field reads "Wind" alone, the wind in its hover.
+    fn listen_wind(&mut self, ui: &mut egui::Ui, rect: egui::Rect, compact: bool) {
+        let pal = theme::pal(ui);
+        let field = self.wind_field();
+        let mut row = field_row(ui, rect, "listen wind", (!compact).then_some("Wind"));
+        let words = if compact {
+            "Wind".to_string()
+        } else {
+            field.words
+        };
+        let colour = if field.given && !compact {
+            pal.text
+        } else {
+            pal.text_secondary
+        };
+        if !field.settable {
+            let room = row.available_rect_before_wrap();
+            let font = fitted(&row, &words, room.width());
+            let at = egui::pos2(room.left(), room.center().y);
+            let drawn = row.painter().with_clip_rect(room).text(
+                at,
+                egui::Align2::LEFT_CENTER,
+                &words,
+                font,
+                colour,
+            );
+            row.interact(drawn, row.id().with("wind words"), egui::Sense::hover())
+                .on_hover_text(&field.hover);
+            return;
+        }
+        let mut picked = None;
+        // Open while its hours are typed: a pick closes it.
+        egui::ComboBox::from_id_salt("card wind")
+            .width(row.available_width())
+            .selected_text(RichText::new(words).color(colour))
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show_ui(&mut row, |ui| picked = self.wind_menu(ui))
+            .response
+            .on_hover_text(&field.hover);
+        if let Some(p) = picked {
+            self.pick_wind(p);
         }
     }
 
@@ -1977,6 +1974,54 @@ fn compact_caption(ui: &mut egui::Ui, rect: egui::Rect, caption: &str) {
 /// The memory of how far the 10 card's title row, as drawn, runs past
 /// its row, points.
 const TITLE_PAST: &str = "position title past its row";
+
+/// One of the Listen card's fields' rows in `rect`, its controls
+/// `CONTROL_H` tall, after its `label` where it has one.
+fn field_row(ui: &mut egui::Ui, rect: egui::Rect, id: &str, label: Option<&str>) -> egui::Ui {
+    let pal = theme::pal(ui);
+    let mut row = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(id)
+            .max_rect(rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    row.spacing_mut().item_spacing.x = 8.0;
+    row.spacing_mut().interact_size.y = theme::CONTROL_H;
+    if let Some(label) = label {
+        row.label(
+            RichText::new(label)
+                .size(FIELD_LABEL_PT)
+                .color(pal.text_secondary),
+        );
+    }
+    row
+}
+
+/// `words` in the field's font, set smaller to fit `room` where they
+/// don't, down to [`FIELD_MIN_PT`]: smaller isn't readable (Hugh).
+fn fitted(ui: &egui::Ui, words: &str, room: f32) -> egui::FontId {
+    let wide = ui
+        .painter()
+        .layout_no_wrap(
+            words.into(),
+            egui::FontId::proportional(FIELD_LABEL_PT),
+            egui::Color32::WHITE,
+        )
+        .size()
+        .x;
+    let pt = if wide > room {
+        (FIELD_LABEL_PT * (room - 1.0) / wide).max(FIELD_MIN_PT)
+    } else {
+        FIELD_LABEL_PT
+    };
+    egui::FontId::proportional(pt)
+}
+
+/// The smallest the Wind field's words are set, points (Hugh).
+const FIELD_MIN_PT: f32 = 9.0;
+
+/// The Listen card's fields' labels, points.
+const FIELD_LABEL_PT: f32 = 13.0;
 
 /// A position card's caption in `rect`: its help at the right, then
 /// `beside` (right to left), then the caption from the left. Gives what

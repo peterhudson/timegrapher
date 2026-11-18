@@ -1,11 +1,14 @@
-//! The watch's wind on the Position card (#1665): when it was last fully
-//! wound, kept with the watch picked in Watches or for a Quick Listen's
-//! session, set in the card's Set menu or by a test's Start, and each take
-//! saved with its hours since then. A take on show shows its own.
+//! The watch's wind, on the Listen card (#1665, #1915): when it was last
+//! fully wound, kept with the watch picked in Watches or for a Quick
+//! Listen's session, set in the card's Wind field or by a test's Start,
+//! and each take saved with its hours since then. A take begun or opened
+//! shows its own.
 
 use super::*;
 use timegrapher_core::full_wind;
-use timegrapher_core::reading_text::{wind_after_words, wind_before_take_words, wind_since_words};
+use timegrapher_core::reading_text::{
+    wind_before_take_words, wind_field_began_words, wind_field_since_words, wind_since_words,
+};
 
 /// Whether Start on a test that begins at full wind (the Positions Test's
 /// full-wind step, the Power Reserve Test) sets Full Wind Now by itself.
@@ -151,23 +154,27 @@ impl TimegrapherApp {
         }
     }
 
-    /// The wind under the Position card's code: a take on show's own
-    /// ("24.2 h after full wind"), else the watch's now ("Full wind 2.0 h
-    /// ago"), or "Wind not given".
-    pub(super) fn wind_words(&mut self) -> String {
-        match self.shown_wind() {
-            Some(h) => wind_after_words(h),
-            None => wind_since_words(self.wind_h_at(guided::unix_now())),
+    /// The Listen card's Wind field (#1915): a take opened shows its own
+    /// wind, and a take begun, running or stopped, its hours from full
+    /// wind to its start, fixed; neither can be set there. Before a take,
+    /// the watch's wind now, counting up, set from the field.
+    pub(super) fn wind_field(&mut self) -> WindField {
+        if let Some(h) = self.shown_wind() {
+            return WindField::began(h, WIND_SHOWN_HINT);
+        }
+        if self.live.is_some() {
+            return WindField::began(self.entry_wind_h(), WIND_BEGUN_HINT);
+        }
+        let h = self.wind_h_at(guided::unix_now());
+        WindField {
+            words: wind_field_since_words(h),
+            hover: format!("{}. {WIND_HINT}", wind_since_words(h)),
+            settable: self.position_editable(),
+            given: h.is_some(),
         }
     }
 
-    /// Whether the wind can be set on the card: never for a take on show,
-    /// which keeps its own, nor while a test runs, which sets it.
-    pub(super) fn wind_settable(&mut self) -> bool {
-        self.shown_wind().is_none() && self.position_editable()
-    }
-
-    /// Act on a choice in the Wind part of a Set menu.
+    /// Act on a choice in the Wind menu.
     pub(super) fn pick_wind(&mut self, pick: WindPick) {
         let now = guided::unix_now();
         self.set_wound(match pick {
@@ -177,139 +184,63 @@ impl TimegrapherApp {
         });
     }
 
-    /// The Wind part of a Set menu in `ui`, under a separator when it is
-    /// `below` the positions: its pick, once one is made, and the menu
+    /// The Wind menu in `ui`: its pick, once one is made, and the menu
     /// closed.
-    pub(super) fn wind_menu(&mut self, ui: &mut egui::Ui, below: bool) -> Option<WindPick> {
+    pub(super) fn wind_menu(&mut self, ui: &mut egui::Ui) -> Option<WindPick> {
         if self.wind.ago.is_empty() {
             let h = self.wind_h_at(guided::unix_now()).unwrap_or(0.0);
             self.wind.ago = fields::plain(h);
         }
-        let picked = wind_choices(ui, &mut self.wind.ago, below);
+        let picked = wind_choices(ui, &mut self.wind.ago);
         if picked.is_some() {
             self.wind.ago.clear();
             ui.close();
         }
         picked
     }
+}
 
-    /// The wind under the code at `pos`, muted, with `align`; on a card
-    /// where it can be set, a click opens the Wind menu. Where it doesn't
-    /// fit at its size it shrinks to fit, as the compact card's code does,
-    /// down to [`WIND_MIN_SIZE`] (Walter's walk of #1745). Where it
-    /// doesn't fit whole even then, it is in the hover alone, never cut,
-    /// wrapped or pushing the codes (Hugh).
-    pub(super) fn wind_line(&mut self, ui: &mut egui::Ui, pos: egui::Pos2, align: egui::Align2) {
-        let pal = theme::pal(ui);
-        let words = self.wind_words();
-        let room = ui.max_rect();
-        let centred = align == egui::Align2::CENTER_CENTER;
-        let wide = ui
-            .painter()
-            .layout_no_wrap(
-                words.clone(),
-                egui::FontId::proportional(WIND_SIZE),
-                pal.text,
-            )
-            .size()
-            .x;
-        let fits = if centred {
-            room.width()
-        } else {
-            (room.right() - pos.x).min(room.width())
-        };
-        let size = if wide > fits {
-            WIND_SIZE * (fits - 1.0) / wide
-        } else {
-            WIND_SIZE
-        };
-        let shown = wide <= fits || size >= WIND_MIN_SIZE;
-        // Laid out only at a size it is drawn at.
-        let size = if shown { size } else { WIND_SIZE };
-        let font = egui::FontId::proportional(size);
-        let galley = ui
-            .painter()
-            .layout_no_wrap(words.clone(), font.clone(), pal.text_secondary);
-        let rect = if shown {
-            align.anchor_size(pos, galley.size())
-        } else {
-            let row = align.anchor_size(pos, egui::vec2(0.0, WIND_SIZE));
-            egui::Rect::from_x_y_ranges(pos.x..=room.right(), row.y_range())
-        };
-        let settable = self.wind_settable();
-        let sense = if settable {
-            egui::Sense::click()
-        } else {
-            egui::Sense::hover()
-        };
-        let resp = ui.interact(rect.intersect(room), ui.id().with("wind line"), sense);
-        if shown {
-            // Clickable text's hover fill, behind the words.
-            if settable && resp.hovered() {
-                ui.painter().with_clip_rect(room).rect_filled(
-                    rect.expand(2.0),
-                    egui::CornerRadius::same(theme::CONTROL_RADIUS),
-                    pal.control_hover,
-                );
-            }
-            ui.painter()
-                .with_clip_rect(room)
-                .text(pos, align, &words, font, pal.text_secondary);
-        }
-        let hint = if settable { WIND_HINT } else { WIND_SHOWN_HINT };
-        // A take on show's wind in full ("Full wind 24.2 h before it
-        // began"), or the words when they aren't shown.
-        let hover = match self.shown_wind().map(wind_before_take_words) {
-            Some(full) => format!("{full}. {hint}"),
-            None if shown => hint.to_string(),
-            None => format!("{words}. {hint}"),
-        };
-        let resp = resp.on_hover_text(hover);
-        let resp = if settable {
-            resp.on_hover_cursor(egui::CursorIcon::PointingHand)
-        } else {
-            resp
-        };
-        let mut picked = None;
-        egui::Popup::menu(&resp)
-            // Kept open on a click in it, so its hours can be typed.
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(|ui| picked = self.wind_menu(ui, false));
-        if let Some(p) = picked {
-            self.pick_wind(p);
+/// The Listen card's Wind field as it stands.
+pub(super) struct WindField {
+    /// "Full 2.0 h ago" before a take, "Began 2.0 h after full" from its
+    /// start, or "Not given".
+    pub words: String,
+    /// The wind in full, and what the field does.
+    pub hover: String,
+    /// Whether it opens the Wind menu.
+    pub settable: bool,
+    /// Whether a wind is given: muted where not.
+    pub given: bool,
+}
+
+impl WindField {
+    /// A take's wind, hours from full wind to its start, fixed.
+    fn began(h: Option<f64>, hint: &str) -> Self {
+        WindField {
+            words: wind_field_began_words(h),
+            hover: format!("{}. {hint}", wind_before_take_words(h)),
+            settable: false,
+            given: h.is_some(),
         }
     }
 }
 
-/// The wind line's size, points: as a card's secondary lines.
-const WIND_SIZE: f32 = 11.0;
-
-/// The height of the wind line's row, at its full size.
-pub(super) fn row_h(fonts: &mut egui::epaint::FontsView<'_>) -> f32 {
-    fonts.row_height(&egui::FontId::proportional(WIND_SIZE))
-}
-
-/// The smallest the wind line shrinks to on the compact card, points:
-/// smaller isn't readable (Hugh).
-const WIND_MIN_SIZE: f32 = 9.0;
-
-/// The wind line's hover where it can be set.
+/// The Wind field's hover before a take.
 const WIND_HINT: &str = "When the watch was last fully wound. Each take is saved with the \
-     hours since. Click to set it: Full Wind Now, some hours ago, or Not Given.";
+     hours from then to its start. Set it here before a take: Full Wind Now, some hours ago, \
+     or Not Given.";
 
-/// The wind line's hover for a take on show or a test running.
-const WIND_SHOWN_HINT: &str = "When the watch was last fully wound. A take on show keeps its \
-     own: change it with Set Wind on its row in Watches. A running test sets it.";
+/// The Wind field's hover once a take has begun.
+const WIND_BEGUN_HINT: &str = "Fixed when the take began, and saved with it.";
 
-/// The Wind part of a Set menu: Full Wind Now, Full Wind [ ] h ago with
-/// its hours typed in `ago`, and Not Given, under a separator when it is
-/// `below` the positions; the one picked.
-fn wind_choices(ui: &mut egui::Ui, ago: &mut String, below: bool) -> Option<WindPick> {
+/// The Wind field's hover for a take opened.
+const WIND_SHOWN_HINT: &str = "Saved with the take: change it with Set Wind on its row in \
+     Watches.";
+
+/// The Wind menu: Full Wind Now, Full Wind [ ] h ago with its hours
+/// typed in `ago`, and Not Given; the one picked.
+fn wind_choices(ui: &mut egui::Ui, ago: &mut String) -> Option<WindPick> {
     let mut picked = None;
-    if below {
-        ui.separator();
-    }
-    ui.label(egui::RichText::new("Wind").small().weak());
     if ui.selectable_label(false, "Full Wind Now").clicked() {
         picked = Some(WindPick::Now);
     }

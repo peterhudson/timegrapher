@@ -155,7 +155,7 @@ pub struct Watch {
     #[serde(default, rename = "field", skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<Field>,
     /// When it was last fully wound, UTC (`2026-10-08T21:04:05.123Z`), as
-    /// the app's Position card or a test's Start gave it: each take of it
+    /// the app's Listen card or a test's Start gave it: each take of it
     /// is saved with its hours since then (#1665). None where not given.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full_wind: Option<String>,
