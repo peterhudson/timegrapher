@@ -470,6 +470,55 @@ fn a_wider_listen_card_leaves_the_readings_whole() {
     assert_eq!(seen, [true; 2], "both wider forms are used");
 }
 
+/// Hovering a box in `out` at `text`: what the window then says.
+fn hovered_at(app: &mut TimegrapherApp, ctx: &egui::Context, text: &str, w: f32) -> String {
+    let (out, _) = listen_card_out(app, ctx, w, true);
+    let at = drawn(&out, text).unwrap_or_else(|| panic!("{text}: {}", painted_text(&out)));
+    let pass = |app: &mut TimegrapherApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            events,
+            ..Default::default()
+        };
+        ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let card = egui::Rect::from_min_size(
+                    egui::pos2(20.0, 20.0),
+                    Vec2::new(w, app.readings_card_h(ctx)),
+                );
+                let rows = CardRows::of(card);
+                let area = rows.figure.union(rows.controls);
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area));
+                app.listen_buttons(&mut child, true);
+            });
+        })
+    };
+    pass(app, vec![egui::Event::PointerMoved(at.center())]);
+    pass(app, Vec::new());
+    painted_text(&pass(app, Vec::new()))
+}
+
+/// The compact card's boxes have no arrows, so their hovers say a click
+/// opens them (Hugh on #1915).
+#[test]
+fn the_compact_cards_boxes_say_a_click_opens_them() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    ctx.style_mut(|s| {
+        s.interaction.tooltip_delay = 0.0;
+        s.interaction.show_tooltips_only_when_still = false;
+    });
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.pick_wind(WindPick::HoursAgo(2.0));
+    let w = readouts::six_widths(600.0, theme::GAP)[1];
+    let wind = hovered_at(&mut app, &ctx, "Wind", w);
+    assert!(wind.contains("Click to set the wind."), "{wind}");
+    let avg = hovered_at(&mut app, &ctx, "10 s", w);
+    assert!(
+        avg.contains("Average Over: 10 s. Click to change."),
+        "{avg}"
+    );
+}
+
 /// From a take's start the Wind field is fixed at the hours from full
 /// wind to its start, and can't be set until the next take (#1915).
 #[test]

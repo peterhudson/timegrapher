@@ -747,7 +747,12 @@ impl TimegrapherApp {
                 }
             })
             .response
-            .on_hover_text(format!("Average Over: {AVERAGE_REACH}"));
+            .on_hover_text(if form.arrows {
+                format!("Average Over: {AVERAGE_REACH}")
+            } else {
+                // No arrow says it's a menu (Hugh on #1915).
+                format!("Average Over: {avg_now}. Click to change. {AVERAGE_REACH}")
+            });
         if avg != self.average_s {
             self.set_average(avg);
         }
@@ -770,7 +775,11 @@ impl TimegrapherApp {
                 .response
         })
         .inner
-        .on_hover_text(&field.hover)
+        .on_hover_text(if form.arrows {
+            field.hover.clone()
+        } else {
+            format!("{} {WIND_CLICK}", field.hover)
+        })
         .on_disabled_hover_text(&field.hover);
         if let Some(p) = picked {
             self.pick_wind(p);
@@ -1975,6 +1984,9 @@ fn compact_caption(ui: &mut egui::Ui, rect: egui::Rect, caption: &str) {
 /// The memory of how far the 10 card's title row, as drawn, runs past
 /// its row, points.
 const TITLE_PAST: &str = "position title past its row";
+
+/// The arrowless Wind box's hover, saying what a click does.
+const WIND_CLICK: &str = "Click to set the wind.";
 
 /// Average Over's label, in the Listen card's widest form.
 const AVERAGE_LABEL: &str = "Average Over";
