@@ -831,8 +831,21 @@ pub fn sentence(
 /// first beat `first_beat_s` audio seconds on, and its last `run_s` true
 /// seconds after that. `None` when the start can't be read.
 pub fn last_beat_words(started_utc: &str, first_beat_s: f64, run_s: f64) -> Option<String> {
+    last_beat_in(started_utc, first_beat_s, run_s, &chrono::Local)
+}
+
+/// [`last_beat_words`] in the time zone `tz`.
+fn last_beat_in<Tz: chrono::TimeZone>(
+    started_utc: &str,
+    first_beat_s: f64,
+    run_s: f64,
+    tz: &Tz,
+) -> Option<String>
+where
+    Tz::Offset: std::fmt::Display,
+{
     let unix = crate::full_wind::unix_of_utc(started_utc)? + first_beat_s + run_s;
-    minute_words(unix, &chrono::Local)
+    minute_words(unix, tz)
 }
 
 /// Unix seconds `unix` in the time zone `tz`, to the minute: "17 Nov
@@ -1119,6 +1132,27 @@ mod tests {
         assert_eq!(minute_words(unix, &vancouver).unwrap(), "17 Nov 14:33");
         assert!(last_beat_words("", 0.0, 1.0).is_none());
         assert!(last_beat_words("2026-11-15T07:30:00Z", 12.0, 3600.0).is_some());
+        // The take's start, its first beat and the run each move the time
+        // named: first beat 2 min in, then 63 h 03 min, 22:35 on the 17th
+        // (22:33 without the first beat, 07:32 on the 15th without the run).
+        let run = 63.0 * 3600.0 + 3.0 * 60.0;
+        let at = |start: &str, first: f64, run: f64| last_beat_in(start, first, run, &utc);
+        assert_eq!(
+            at("2026-11-15T07:30:00Z", 120.0, run).unwrap(),
+            "17 Nov 22:35"
+        );
+        assert_eq!(
+            at("2026-11-15T08:30:00Z", 120.0, run).unwrap(),
+            "17 Nov 23:35"
+        );
+        assert_eq!(
+            at("2026-11-15T07:30:00Z", 0.0, run).unwrap(),
+            "17 Nov 22:33"
+        );
+        assert_eq!(
+            at("2026-11-15T07:30:00Z", 120.0, 0.0).unwrap(),
+            "15 Nov 07:32"
+        );
     }
 
     /// A run whose recording failed is at least as long as heard, and its
