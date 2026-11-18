@@ -30,9 +30,9 @@ struct CardCtx<'a> {
 }
 
 /// The Listen card where the reading cards keep their full width beside
-/// it: wide enough for its Wind box's second form, "Wind: began 2.0 h
-/// after full", or its third, "Wind 2.0 h" (Hugh on #1915). The third
-/// measures 219 pt with "10 s" beside it at three figures of hours, and
+/// it: wide enough for its Wind box's second form, "Wind: full 2.0 h
+/// ago" or "Wind: 2.0 h at start", or its third, "Wind 2.0 h" (Hugh on
+/// #1915). The third measures 219 pt with "10 s" beside it at three figures of hours, and
 /// about 226 at four; with the card's padding, 260 holds it to 999.9 h.
 pub(super) const LISTEN_WIDE_W: f32 = 350.0;
 pub(super) const LISTEN_HOURS_W: f32 = 260.0;

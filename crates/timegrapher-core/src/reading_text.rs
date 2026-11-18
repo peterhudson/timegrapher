@@ -118,8 +118,8 @@ pub struct WindFieldWords {
     /// Beside a "Wind" label: "Full 2.0 h ago" before a take, "Began 2.0 h
     /// after full" from its start, or "Not given".
     pub value: String,
-    /// With no label: "Wind: full 2.0 h ago", "Wind: began 2.0 h after
-    /// full", "Wind: not given".
+    /// With no label: "Wind: full 2.0 h ago", "Wind: 2.0 h at start",
+    /// "Wind: not given".
     pub labelled: String,
     /// The hours alone: "Wind 2.0 h", or "Wind \u{2014}" where not given.
     pub short: String,
@@ -141,8 +141,13 @@ pub fn wind_field_words(wind_h: Option<f64>, began: bool) -> WindFieldWords {
         .next()
         .map(|c| c.to_lowercase().chain(first).collect())
         .unwrap_or_default();
+    let hours = wind_h.map(|h| crate::figure_text::fixed_text(h, 1));
     WindFieldWords {
-        labelled: format!("{WIND_FIELD}: {lower}"),
+        // From the start, as short as before it (Hugh on #1926).
+        labelled: match (&hours, began) {
+            (Some(h), true) => format!("{WIND_FIELD}: {h} h at start"),
+            _ => format!("{WIND_FIELD}: {lower}"),
+        },
         short: match wind_h {
             Some(h) => format!("{WIND_FIELD} {} h", crate::figure_text::fixed_text(h, 1)),
             None => format!("{WIND_FIELD} \u{2014}"),
@@ -305,7 +310,7 @@ mod tests {
             wind_field_words(Some(24.24), true),
             w(
                 "Began 24.2 h after full",
-                "Wind: began 24.2 h after full",
+                "Wind: 24.2 h at start",
                 "Wind 24.2 h"
             )
         );

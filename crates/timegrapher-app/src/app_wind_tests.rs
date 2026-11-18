@@ -446,6 +446,15 @@ fn the_listen_card_widens_for_the_wind_where_there_is_room() {
     let forms = &listen_card::FIELD_FORMS;
     assert_eq!(window_wind(&mut app, 1920.0, 1080.0).0, forms[1]);
     assert_eq!(window_wind(&mut app, 1600.0, 900.0).0, forms[2]);
+    // From a take's start, the second form still fits at 1920 (Walter and
+    // Hugh on #1926): "Wind: 54.1 h at start".
+    app.pick_wind(WindPick::HoursAgo(54.1));
+    app.live = Some(timegrapher_core::live::LiveAnalyzer::new(
+        48_000,
+        timegrapher_core::live::LiveConfig::default(),
+    ));
+    assert_eq!(window_wind(&mut app, 1920.0, 1080.0).0, forms[1]);
+    app.live = None;
     for (w, h) in [(1280.0, 800.0), (800.0, 560.0)] {
         let (form, _) = window_wind(&mut app, w, h);
         assert!(
