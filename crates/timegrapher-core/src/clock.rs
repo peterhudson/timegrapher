@@ -155,6 +155,25 @@ pub fn ppm_words(ppm: f64, sd: Option<f64>) -> String {
     }
 }
 
+/// A sound card's error and what it does to rates, as the long run's
+/// text and HTML both say it (#1881): "sound card 12.3 ppm fast against
+/// NTP time, so uncorrected rates read 1.1 s/d slow". `against` names the
+/// reference ("NTP time", "true time"). The way comes from
+/// [`ppm_words`] and [`rate_error_s_per_day`], so a fast card is never
+/// written as slower.
+pub fn card_error_words(ppm: f64, sd: Option<f64>, against: &str) -> String {
+    use crate::figure_text::{base_digits, figure};
+    let card = ppm_words(ppm, sd);
+    let err = rate_error_s_per_day(ppm);
+    let size = figure(err.abs(), None, base_digits::RATE, false);
+    if size.bytes().all(|b| b == b'0' || b == b'.') {
+        format!("sound card {card} against {against}, which leaves rates as they read")
+    } else {
+        let way = if err < 0.0 { "slow" } else { "fast" };
+        format!("sound card {card} against {against}, so uncorrected rates read {size} s/d {way}")
+    }
+}
+
 /// The standard error of the gap between two measures of one clock, each
 /// with its own (`None` for one typed in, taken as exact): the root of the
 /// sum of their squares, as the two are measured apart. `None` when
@@ -1236,6 +1255,24 @@ mod tests {
         assert_eq!(ppm_words(-0.01, None), "0.0 ppm");
         assert_eq!(ppm_words(0.04, Some(0.06)), "0.0 ppm");
         assert_eq!(ppm_words(0.06, Some(0.06)), "0.1 ppm fast");
+    }
+
+    /// A fast card makes uncorrected rates read slow, and the words say
+    /// both ways the same in every surface (#1881).
+    #[test]
+    fn card_error_words_name_the_way() {
+        assert_eq!(
+            card_error_words(12.3, None, "NTP time"),
+            "sound card 12.3 ppm fast against NTP time, so uncorrected rates read 1.1 s/d slow"
+        );
+        assert_eq!(
+            card_error_words(-20.24, Some(0.3), "true time"),
+            "sound card 20.2 ppm slow against true time, so uncorrected rates read 1.7 s/d fast"
+        );
+        assert_eq!(
+            card_error_words(0.04, None, "NTP time"),
+            "sound card 0.0 ppm against NTP time, which leaves rates as they read"
+        );
     }
 
     /// Two measures of one clock are apart by no less than either is

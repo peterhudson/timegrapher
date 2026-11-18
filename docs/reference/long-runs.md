@@ -17,7 +17,7 @@ Recording    30:00 at 48000 Hz, 28800 bph, 14399 beats (100.0% clean)
 Clock        not calibrated: rates are read on the sound card's clock, whose error is not measured here (--clock, or a card error stored with `timegrapher clock`, corrects it)
 Rate         +4.00 s/d over the run; 10 s slices from -19.1 to 8.1 s/d (5th-95th pct)
 Beat error   0.40 ms (from the unlock; 0.40 ms from the drop)
-Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52 deg)
+Amplitude    269 deg median; slices from 255 to 270 deg (lift angle 52°, the default)
 Periodic changes in rate (the rate itself, not 10 s readings):
       60.00 s ±2.00   swing 37 s/d p-p       explains 100%  false alarm <1e-300  matches the fourth wheel (+0.0% off; a match is within ±2.0 s or 1%)
 Periodic changes in amplitude:

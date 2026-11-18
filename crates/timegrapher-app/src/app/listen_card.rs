@@ -1703,9 +1703,9 @@ impl TimegrapherApp {
             w,
         );
         let hint = if self.lift_known() {
-            "The lift angle: type it, or pick one with ⏷."
+            "The lift angle: type it, or pick one with ⏷.".to_string()
         } else {
-            LIFT_HINT
+            lift_hint(&self.calibre)
         };
         resp.on_hover_text(format!("{hint}{tail}"));
         if changed {
@@ -1925,9 +1925,18 @@ impl TimegrapherApp {
         if let Some(l) = self.cal.lift(&self.calibre) {
             self.set_lift(l);
             self.lift_context = (l, true);
-        } else if self.calibre.is_empty() && self.lift_deg != DEFAULT_LIFT_DEG {
-            // No calibre: the default lift angle, as Quick Listen starts.
-            self.set_lift(DEFAULT_LIFT_DEG);
+        } else if self.calibre.is_empty() || self.lift_deg == self.lift_context.0 {
+            // No calibre, or one with no lift of its own: not the last
+            // calibre's lift, kept as if known (#1877). The open watch's
+            // own lift, else the default lift angle, assumed, as Quick
+            // Listen starts. A lift typed by hand differs from the one the
+            // last calibre gave, and stays.
+            let own = self.open_watch().and_then(|e| e.watch.lift);
+            let l = own.unwrap_or(DEFAULT_LIFT_DEG);
+            if self.lift_deg != l {
+                self.set_lift(l);
+            }
+            self.lift_context = (l, own.is_some());
         }
         // In Quick Listen, the calibre's beat rate, else Auto again with
         // none picked; a watch's own beat rate stays the watch's.
@@ -1938,6 +1947,23 @@ impl TimegrapherApp {
         {
             self.change_bph(bph);
         }
+    }
+}
+
+/// The Lift card's hover while the lift is the default, assumed: with no
+/// calibre, or with one the table gives no lift for (Hugh on #1913).
+pub(super) fn lift_hint(calibre: &str) -> String {
+    let d = DEFAULT_LIFT_DEG;
+    if calibre.is_empty() {
+        format!(
+            "No calibre or lift angle is set, so every amplitude is worked out from the default \
+             {d:.0}°. Type the calibre's lift angle, pick one, or pick the calibre above it."
+        )
+    } else {
+        format!(
+            "The table has no lift angle for {calibre}, so every amplitude is worked out from \
+             the default {d:.0}°. Type its lift angle, or pick one."
+        )
     }
 }
 

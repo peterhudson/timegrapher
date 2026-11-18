@@ -197,7 +197,7 @@ pub struct Pause {
 }
 
 /// Where the beats heard so far put the run.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Heard {
     /// The first and last beats heard, audio seconds; `None` before any.
     pub first_s: Option<f64>,
@@ -241,34 +241,86 @@ pub fn beat_s(bph: Option<u32>) -> f64 {
 
 /// The beats heard in `beats` (in time order) at `beat_s` seconds a beat.
 pub fn heard(beats: &[Beat], beat_s: f64) -> Heard {
-    let gap = 1.5 * beat_s;
-    let mut out = Heard {
-        first_s: None,
-        last_s: None,
-        pauses: Vec::new(),
-    };
-    let mut run: Vec<f64> = Vec::new();
-    let close = |run: &mut Vec<f64>, out: &mut Heard| {
-        if run.len() >= RUN_BEATS {
-            let (a, b) = (run[0], run[run.len() - 1]);
-            if let Some(l) = out.last_s {
-                if a - l >= PAUSE_S {
-                    out.pauses.push(Pause { from_s: l, to_s: a });
-                }
+    Hearing::default().update(beats, beat_s)
+}
+
+/// [`heard`] carried on as the beats come in: each update reads only the
+/// beats after the last one it read, so it costs no more ten hours into
+/// a run than ten seconds in (#1892). It checks three things only, and
+/// reads all the beats again when any has changed: the first beat's time
+/// (the oldest dropped, the take read again), the time of the last beat
+/// it read, and the beat rate. Beats changed between those two go unseen,
+/// as the analyzer only adds beats after its last one.
+#[derive(Debug, Clone, Default)]
+pub struct Hearing {
+    beat_s: f64,
+    /// The times of the first beat and the last beat read.
+    first: Option<f64>,
+    last: Option<f64>,
+    /// The runs closed so far.
+    closed: Heard,
+    /// The run still open: its first and last good beats, and how many.
+    run: Option<(f64, f64, usize)>,
+}
+
+impl Hearing {
+    /// What the beats heard in `beats` (in time order) at `beat_s` seconds
+    /// a beat put the run at, as [`heard`] reads it.
+    pub fn update(&mut self, beats: &[Beat], beat_s: f64) -> Heard {
+        let at = |t: f64| {
+            beats
+                .get(beats.partition_point(|b| b.time < t))
+                .map(|b| b.time)
+        };
+        let kept = self.beat_s == beat_s
+            && self
+                .first
+                .is_none_or(|t| beats.first().map(|b| b.time) == Some(t))
+            && self.last.is_none_or(|t| at(t) == Some(t));
+        if !kept {
+            *self = Hearing {
+                beat_s,
+                ..Hearing::default()
+            };
+        }
+        let from = self
+            .last
+            .map_or(0, |t| beats.partition_point(|b| b.time <= t));
+        let gap = 1.5 * beat_s;
+        for b in &beats[from..] {
+            self.first.get_or_insert(b.time);
+            self.last = Some(b.time);
+            if !b.is_good() {
+                continue;
             }
-            out.first_s.get_or_insert(a);
-            out.last_s = Some(b);
+            self.run = match self.run {
+                Some((a, l, n)) if b.time - l <= gap => Some((a, b.time, n + 1)),
+                open => {
+                    close(open, &mut self.closed);
+                    Some((b.time, b.time, 1))
+                }
+            };
         }
-        run.clear();
-    };
-    for b in beats.iter().filter(|b| b.is_good()) {
-        if run.last().is_some_and(|&l| b.time - l > gap) {
-            close(&mut run, &mut out);
-        }
-        run.push(b.time);
+        let mut out = self.closed.clone();
+        close(self.run, &mut out);
+        out
     }
-    close(&mut run, &mut out);
-    out
+}
+
+/// A run of good beats, its first and last and how many, ended: heard if
+/// it is [`RUN_BEATS`] long or more, after a pause if [`PAUSE_S`] or more
+/// passed since the last run heard.
+fn close(run: Option<(f64, f64, usize)>, out: &mut Heard) {
+    let Some((a, b, _)) = run.filter(|r| r.2 >= RUN_BEATS) else {
+        return;
+    };
+    if let Some(l) = out.last_s {
+        if a - l >= PAUSE_S {
+            out.pauses.push(Pause { from_s: l, to_s: a });
+        }
+    }
+    out.first_s.get_or_insert(a);
+    out.last_s = Some(b);
 }
 
 /// One hour of the run (or its last part hour), as read from the beats.
@@ -1375,6 +1427,65 @@ mod tests {
         let n = 300.0 - step;
         assert_eq!(h.ending(n, n - LIMIT_S + 1.0), None);
         assert_eq!(h.ending(n, n - LIMIT_S), Some(Ending::Limit));
+    }
+
+    /// Beats heard a piece at a time read as one pass over them all, cut
+    /// anywhere, through runs, poor beats, a stop on the way and noise;
+    /// and the hearing starts again on each of the three changes it
+    /// checks: the first beat (the oldest dropped, all moved), the last
+    /// beat read moved, and a new beat rate (#1892).
+    #[test]
+    fn beats_heard_a_piece_at_a_time_read_as_one_pass() {
+        let step = 0.125;
+        let mut b = beats(2.0, 60.0, step, 1.0);
+        b.extend(beats(60.0, 62.0, step, 0.3));
+        b.extend(beats(100.0, 160.0, step, 1.0));
+        b.push(Beat {
+            index: 0,
+            time: 200.0,
+            quality: 0.9,
+        });
+        b.extend(beats(201.0, 201.5, step, 0.9));
+        b.extend(beats(240.0, 260.0, step, 1.0));
+        let whole = heard(&b, step);
+        assert_eq!(whole.pauses.len(), 2, "{whole:?}");
+        for cut in [1, 7, 8, 9, 400, 463, 464, 500, 1000, b.len() - 1] {
+            let mut h = Hearing::default();
+            let first = h.update(&b[..cut], step);
+            assert_eq!(first, heard(&b[..cut], step), "cut at {cut}");
+            assert_eq!(h.update(&b, step), whole, "cut at {cut}");
+        }
+        let mut h = Hearing::default();
+        h.update(&b, step);
+        assert_eq!(
+            h.update(&b[16..], step),
+            heard(&b[16..], step),
+            "oldest dropped"
+        );
+        let moved: Vec<Beat> = b
+            .iter()
+            .map(|x| Beat {
+                time: x.time + 0.01,
+                ..*x
+            })
+            .collect();
+        assert_eq!(h.update(&moved, step), heard(&moved, step), "read again");
+        // Only the last beat read moves, earlier: the run ends there now.
+        let mut last_moved = moved.clone();
+        last_moved.last_mut().unwrap().time -= 0.05;
+        assert_ne!(heard(&last_moved, step), heard(&moved, step));
+        assert_eq!(
+            h.update(&last_moved, step),
+            heard(&last_moved, step),
+            "last moved"
+        );
+        // Beats 0.2 s apart: no run at 0.125 s a beat (each gap over 1.5
+        // beats), one run at 0.2 s.
+        let slow = beats(0.0, 20.0, 0.2, 1.0);
+        let mut h = Hearing::default();
+        assert_eq!(h.update(&slow, step), Heard::default());
+        assert_ne!(heard(&slow, 0.2), Heard::default());
+        assert_eq!(h.update(&slow, 0.2), heard(&slow, 0.2), "a new beat rate");
     }
 
     #[test]

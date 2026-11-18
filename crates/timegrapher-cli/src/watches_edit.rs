@@ -175,12 +175,25 @@ fn user_calibres() -> Result<UserCalibres, String> {
     }
 }
 
+/// What the calibre `name` gives, from the table and the user's calibres:
+/// nothing for no calibre, or one not found.
+fn given_by(name: Option<&str>) -> Result<FromCalibre, String> {
+    Ok(match name {
+        Some(n) => take::calibre_named(n, &user_calibres()?)
+            .map(|c| FromCalibre::of(&c))
+            .unwrap_or_default(),
+        None => FromCalibre::default(),
+    })
+}
+
 /// `d` applied to `w`: the calibre first, as the app's form takes it, its
 /// lift angle and beat rate then the calibre's where it gives them.
 fn apply(w: &mut Watch, d: &Details) -> Result<(), String> {
     if let Some(name) = d.calibre.as_deref() {
+        // What the calibre being replaced gave, to go with it (#1877).
+        let was = given_by(w.calibre.as_deref())?;
         if name.trim().is_empty() {
-            w.calibre = None;
+            w.pick_calibre("", FromCalibre::default(), was);
         } else {
             let c = take::calibre_named(name, &user_calibres()?).ok_or_else(|| {
                 format!(
@@ -189,15 +202,10 @@ fn apply(w: &mut Watch, d: &Details) -> Result<(), String> {
                     name.trim()
                 )
             })?;
-            w.pick_calibre(&c.name, FromCalibre::of(&c));
+            w.pick_calibre(&c.name, FromCalibre::of(&c), was);
         }
     }
-    let given = match w.calibre.as_deref() {
-        Some(n) => take::calibre_named(n, &user_calibres()?)
-            .map(|c| FromCalibre::of(&c))
-            .unwrap_or_default(),
-        None => FromCalibre::default(),
-    };
+    let given = given_by(w.calibre.as_deref())?;
     // Core says why; the flag to leave out is the command line's.
     if let Some(b) = d.bph {
         w.set_bph(Some(input_domain::bph(b)?), given)

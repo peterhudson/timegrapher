@@ -140,10 +140,13 @@ let initialized = false;
 
 function send(msg) { window.parent.postMessage(msg, "*"); }
 
-function request(method, params) {
+// A request, and with `ms` one given up after that long: its entry leaves
+// `pending` then, so an answer that never comes holds nothing (#1887).
+function request(method, params, ms) {
   const id = nextId++;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
+    if (ms) setTimeout(() => { if (pending.delete(id)) reject(new Error("timeout")); }, ms);
     try { send({ jsonrpc: "2.0", id, method, params }); }
     catch (error) { pending.delete(id); reject(error); }
   });
@@ -2622,24 +2625,24 @@ function positionName(p) { return ((POSITIONS || {})[p] || [p, p || ""])[1]; }
 let live = null;
 
 function toolInput(args) {
-  // Only a recording has a live view; the other tools draw their result.
-  if (typeof args.position !== "string" || typeof args.folder !== "string") return;
+  // Each call starts afresh: an earlier call's live state never carries on (#1887).
   if (live && live.timer) clearTimeout(live.timer);
+  live = null;
+  // Only a recording has a live view; the other tools draw their result.
+  // It records into a `folder`, or into a new test under a library `watch`.
+  const into = typeof args.folder === "string" || typeof args.watch === "string";
+  if (typeof args.position !== "string" || !into) return;
   live = { position: args.position, seconds: Number.isFinite(args.seconds) ? args.seconds : 120, doc: null, failures: 0, seen: false };
   last = null;
   redraw();
   pollLive();
 }
 
-function withTimeout(promise, ms) {
-  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
-}
-
 function pollLive() {
   const mine = live;
   if (!mine) return;
   mine.timer = null;
-  withTimeout(request("tools/call", { name: "recording_status", arguments: {} }), 5000).then((r) => {
+  request("tools/call", { name: "recording_status", arguments: {} }, 5000).then((r) => {
     if (live !== mine || last) return;
     const d = r && r.structuredContent;
     mine.failures = 0;

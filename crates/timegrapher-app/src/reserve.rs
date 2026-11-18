@@ -92,6 +92,8 @@ pub struct Test {
     pub began_s: f64,
     /// The beats heard since.
     pub heard: Heard,
+    /// Reads the beats since it began, each only once (#1892).
+    hearing: power_reserve::Hearing,
     /// The session's audio seconds when last looked at.
     pub now_s: f64,
     /// How it ended, once it has.
@@ -122,6 +124,7 @@ impl Test {
             started_utc,
             began_s,
             heard: power_reserve::heard(&[], 1.0),
+            hearing: power_reserve::Hearing::default(),
             now_s: began_s,
             ending: None,
             results: None,
@@ -145,7 +148,7 @@ impl Test {
             return None;
         }
         let from = beats.partition_point(|b| b.time < self.began_s);
-        self.heard = power_reserve::heard(&beats[from..], beat_s);
+        self.heard = self.hearing.update(&beats[from..], beat_s);
         self.now_s = now_s;
         let ending = self.heard.ending(now_s, self.began_s)?;
         self.ending = Some(ending);

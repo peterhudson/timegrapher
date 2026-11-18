@@ -27433,11 +27433,13 @@
   {
     "calibre": "IWC 50",
     "maker": "IWC",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 50, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 50, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 50, 52°)",
+      "https://watch-wiki.org/index.php?title=IWC_50 (Watch-Wiki: IWC 50) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -27510,23 +27512,27 @@
   {
     "calibre": "IWC 61",
     "maker": "IWC",
+    "bph": 18000,
     "lift_angle_deg": 42.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 61, 42°)",
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 61, 42°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 61, 42°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 61, 42°)",
+      "https://watch-wiki.org/index.php?title=IWC_61 (Watch-Wiki: IWC 61) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "IWC 62",
     "maker": "IWC",
+    "bph": 18000,
     "lift_angle_deg": 42.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 62, 42°)",
-      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 62, 42°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 62, 42°)",
+      "https://watch-wiki.org/index.php?title=IWC_62 (Watch-Wiki: IWC 62) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list",
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 40° (Watchmaking Tools)."
@@ -27607,11 +27613,13 @@
   {
     "calibre": "IWC 83",
     "maker": "IWC",
+    "bph": 18000,
     "lift_angle_deg": 42.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 83, 42°)",
-      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 83, 42°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 83, 42°)",
+      "https://watch-wiki.org/index.php?title=IWC_83 (Watch-Wiki: IWC 83) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list",
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
@@ -27640,23 +27648,27 @@
   {
     "calibre": "IWC 84",
     "maker": "IWC",
+    "bph": 18000,
     "lift_angle_deg": 56.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 84, 56°)",
       "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 84, 56°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 84, 56°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (IWC 84, 56°)",
+      "https://watch-wiki.org/index.php?title=IWC_84 (Watch-Wiki: IWC 84) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "IWC 88",
     "maker": "IWC",
+    "bph": 18000,
     "lift_angle_deg": 42.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (IWC (International Watch Company) 88, 42°)",
-      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 88, 42°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 88, 42°)",
+      "https://watch-wiki.org/index.php?title=IWC_88 (Watch-Wiki: IWC 88) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list",
     "notes": "Sources disagree; kept as separate entries. Others give 18,000 bph and 41° (Watchmaking Tools)."
@@ -34089,12 +34101,14 @@
   {
     "calibre": "Marvin 560",
     "maker": "Marvin",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (MARVIN 560, 52°)",
       "https://watchguy.co.uk/cgi-bin/lift_angles (Marvin 560, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Marvin 560, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Marvin 560, 52°)",
+      "https://watch-wiki.org/index.php?title=Marvin_560 (Watch-Wiki: Marvin 560) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -37227,11 +37241,13 @@
   {
     "calibre": "Otero 64",
     "maker": "Otero",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (OTERO 64, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Otero 64, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Otero 64, 52°)",
+      "https://watch-wiki.org/index.php?title=Otero_64 (Watch-Wiki: Otero 64) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -52869,12 +52885,14 @@
   {
     "calibre": "Zenith 135",
     "maker": "Zenith",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://docs.google.com/spreadsheets/d/teAKORqEYkv8yFz96BRHbkg (lift angle sheet linked from watchrepairtalk.com/topic/27749-lift-angle) (ZENITH 135, 52°)",
       "https://watchguy.co.uk/cgi-bin/lift_angles (Zenith 135, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zenith 135, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zenith 135, 52°)",
+      "https://watch-wiki.org/index.php?title=Zenith_135 (Watch-Wiki: Zenith 135) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -53915,11 +53933,13 @@
   {
     "calibre": "A. Schild 1220",
     "maker": "A. Schild",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 1220, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 1220, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 1220, 52°)",
+      "https://watch-wiki.org/index.php?title=AS_1220 (Watch-Wiki: AS 1220) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -53937,11 +53957,13 @@
   {
     "calibre": "A. Schild 1287",
     "maker": "A. Schild",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (A. Schild [AS] 1287, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 1287, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (A. Schild 1287, 52°)",
+      "https://watch-wiki.org/index.php?title=AS_1287 (Watch-Wiki: AS 1287) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -54356,12 +54378,14 @@
   {
     "calibre": "Bifora 81",
     "maker": "Bifora",
+    "bph": 18000,
     "lift_angle_deg": 51.5,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Bidling-Maier 81, 51.5°)",
       "https://watchguy.co.uk/cgi-bin/lift_angles (Bifora 81, 51.5°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Bidling Maier 81, 51.5°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Bidling Maier 81, 51.5°)",
+      "https://watch-wiki.org/index.php?title=Bifora_81 (Watch-Wiki: Bifora 81) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -56847,11 +56871,13 @@
   {
     "calibre": "ETA 2000",
     "maker": "ETA",
+    "bph": 28800,
     "lift_angle_deg": 50.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (ETA 2000, 50°)",
-      "https://ranfft.org/caliber/11393-ETA-2000 (Ranfft: ETA 2000, read 2026-11-17) (50°)"
+      "https://ranfft.org/caliber/11393-ETA-2000 (Ranfft: ETA 2000, read 2026-11-17) (50°)",
+      "https://watch-wiki.org/index.php?title=ETA_2000 (Watch-Wiki: ETA 2000) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
@@ -59806,10 +59832,12 @@
   {
     "calibre": "ETA 2893-2",
     "maker": "ETA",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (ETA 2893-2, 52°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (ETA 2893-2, 52°)",
+      "https://watch-wiki.org/index.php?title=ETA_2893-2 (Watch-Wiki: ETA 2893-2) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
@@ -61205,10 +61233,12 @@
   {
     "calibre": "IWC 30110",
     "maker": "IWC",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 30110, 52°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (IWC 30110, 52°)",
+      "https://watch-wiki.org/index.php?title=IWC_30110 (Watch-Wiki: IWC 30110) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
@@ -62833,10 +62863,12 @@
   {
     "calibre": "Lemania 5100",
     "maker": "Lemania",
+    "bph": 28800,
     "lift_angle_deg": 53.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Lemania 5100, 53°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Lemania 5100, 53°)",
+      "https://watch-wiki.org/index.php?title=Lemania_5100 (Watch-Wiki: Lemania 5100) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
@@ -63102,11 +63134,13 @@
   {
     "calibre": "Marvin 520",
     "maker": "Marvin",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Marvin 520, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Marvin 520, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Marvin 520, 52°)",
+      "https://watch-wiki.org/index.php?title=Marvin_520 (Watch-Wiki: Marvin 520) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -64764,33 +64798,39 @@
   {
     "calibre": "Omega 1001",
     "maker": "Omega",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Omega 1001, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 1001, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 1001, 52°)",
+      "https://watch-wiki.org/index.php?title=Omega_1001 (Watch-Wiki: Omega 1001) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Omega 1002",
     "maker": "Omega",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Omega 1002, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 1002, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 1002, 52°)",
+      "https://watch-wiki.org/index.php?title=Omega_1002 (Watch-Wiki: Omega 1002) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Omega 1010",
     "maker": "Omega",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Omega 1010, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 1010, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 1010, 52°)",
+      "https://watch-wiki.org/index.php?title=Omega_1010 (Watch-Wiki: Omega 1010) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
@@ -65417,11 +65457,13 @@
   {
     "calibre": "Omega 268",
     "maker": "Omega",
+    "bph": 18000,
     "lift_angle_deg": 49.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Omega 268, 49°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 268, 49°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 268, 49°)",
+      "https://watch-wiki.org/index.php?title=Omega_268 (Watch-Wiki: Omega 268) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -65690,11 +65732,13 @@
   {
     "calibre": "Omega 341",
     "maker": "Omega",
+    "bph": 19800,
     "lift_angle_deg": 50.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Omega 341, 50°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 341, 50°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 341, 50°)",
+      "https://watch-wiki.org/index.php?title=Omega_341 (Watch-Wiki: Omega 341) (\"Halbschwingungen = 19.800\")"
     ],
     "confidence": "published list"
   },
@@ -66060,11 +66104,13 @@
   {
     "calibre": "Omega 552",
     "maker": "Omega",
+    "bph": 19800,
     "lift_angle_deg": 49.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Omega 552, 49°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 552, 49°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 552, 49°)",
+      "https://watch-wiki.org/index.php?title=Omega_552 (Watch-Wiki: Omega 552) (\"Halbschwingungen = 19.800\")"
     ],
     "confidence": "published list"
   },
@@ -66585,11 +66631,13 @@
   {
     "calibre": "Omega 861",
     "maker": "Omega",
+    "bph": 21600,
     "lift_angle_deg": 50.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Omega 861, 50°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 861, 50°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Omega 861, 50°)",
+      "https://watch-wiki.org/index.php?title=Omega_861 (Watch-Wiki: Omega 861) (\"Halbschwingungen = 21.600\")"
     ],
     "confidence": "published list"
   },
@@ -68164,11 +68212,13 @@
   {
     "calibre": "Rolex 1535",
     "maker": "Rolex",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 1535, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 1535, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 1535, 52°)",
+      "https://watch-wiki.org/index.php?title=Rolex_1535 (Watch-Wiki: Rolex 1535) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -68208,11 +68258,13 @@
   {
     "calibre": "Rolex 1560",
     "maker": "Rolex",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 1560, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 1560, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 1560, 52°)",
+      "https://watch-wiki.org/index.php?title=Rolex_1560 (Watch-Wiki: Rolex 1560) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -68594,11 +68646,13 @@
   {
     "calibre": "Rolex 3035",
     "maker": "Rolex",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Rolex 3035, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 3035, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Rolex 3035, 52°)",
+      "https://watch-wiki.org/index.php?title=Rolex_3035 (Watch-Wiki: Rolex 3035) (\"Halbschwingungen = 28.800\")"
     ],
     "confidence": "published list"
   },
@@ -69046,11 +69100,13 @@
   {
     "calibre": "Seiko 4206A",
     "maker": "Seiko",
+    "bph": 21600,
     "lift_angle_deg": 49.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4206A, 49°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4206A, 49°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4206A, 49°)",
+      "https://watch-wiki.org/index.php?title=Seiko_4206_A (Watch-Wiki: Seiko 4206 A) (\"Halbschwingungen = 21.600\")"
     ],
     "confidence": "published list"
   },
@@ -69188,22 +69244,26 @@
   {
     "calibre": "Seiko 4R15A",
     "maker": "Seiko",
+    "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R15A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R15A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R15A, 53°)",
+      "https://www.seikowatches.com/global-en/-/media/Files/Common/Seiko/instructions/English/4/4R15/4R15.pdf (Seiko instruction manual, Cal. 4R15/4R16/4R35/4R36/7S26/7S35/7S36) (\"Vibrations per hour ... 21,600\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Seiko 4R16A",
     "maker": "Seiko",
+    "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 4R16A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R16A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 4R16A, 53°)",
+      "https://www.seikowatches.com/global-en/-/media/Files/Common/Seiko/instructions/English/4/4R15/4R15.pdf (Seiko instruction manual, Cal. 4R15/4R16/4R35/4R36/7S26/7S35/7S36) (\"Vibrations per hour ... 21,600\")"
     ],
     "confidence": "published list"
   },
@@ -70297,33 +70357,39 @@
   {
     "calibre": "Seiko 6R20A",
     "maker": "Seiko",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R20A, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R20A, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R20A, 52°)",
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R20_6R21_6R24_6R27_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R20/6R21/6R24/6R27 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Seiko 6R21A",
     "maker": "Seiko",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R21A, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R21A, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R21A, 52°)",
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R20_6R21_6R24_6R27_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R20/6R21/6R24/6R27 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Seiko 6R24A",
     "maker": "Seiko",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 6R24A, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R24A, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 6R24A, 52°)",
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R20_6R21_6R24_6R27_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R20/6R21/6R24/6R27 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
     ],
     "confidence": "published list"
   },
@@ -70618,11 +70684,13 @@
   {
     "calibre": "Seiko 7S35A",
     "maker": "Seiko",
+    "bph": 21600,
     "lift_angle_deg": 53.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 7S35A, 53°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S35A, 53°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 7S35A, 53°)",
+      "https://www.seikowatches.com/global-en/-/media/Files/Common/Seiko/instructions/English/4/4R15/4R15.pdf (Seiko instruction manual, Cal. 4R15/4R16/4R35/4R36/7S26/7S35/7S36) (\"Vibrations per hour ... 21,600\")"
     ],
     "confidence": "published list"
   },
@@ -70795,22 +70863,26 @@
   {
     "calibre": "Seiko 8R28A",
     "maker": "Seiko",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 8R28A, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 8R28A, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 8R28A, 52°)",
+      "https://www.seikowatches.com/global-en/-/media/Files/Common/Seiko/instructions/English/8/8R28/8R28.pdf (Seiko instruction manual, Cal. 8R28) (\"Vibrations per hour ... 28,800\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Seiko 8R39A",
     "maker": "Seiko",
+    "bph": 28800,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Seiko 8R39A, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 8R39A, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Seiko 8R39A, 52°)",
+      "https://www.seikowatches.com/global-en/-/media/Files/Common/Seiko/instructions/English/8/8R39/8R39.pdf (Seiko instruction manual, Cal. 8R39) (\"Vibrations per hour ... 28,800\")"
     ],
     "confidence": "published list"
   },
@@ -71587,30 +71659,36 @@
   {
     "calibre": "Venus 175",
     "maker": "Venus",
+    "bph": 18000,
     "lift_angle_deg": 42.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Venus 175, 42°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Venus 175, 42°)",
+      "https://watch-wiki.org/index.php?title=Venus_175 (Watch-Wiki: Venus 175) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Venus 178",
     "maker": "Venus",
+    "bph": 18000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Venus 178, 52°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Venus 178, 52°)",
+      "https://watch-wiki.org/index.php?title=Venus_178 (Watch-Wiki: Venus 178) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Venus 188",
     "maker": "Venus",
+    "bph": 18000,
     "lift_angle_deg": 42.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Venus 188, 42°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Venus 188, 42°)",
+      "https://watch-wiki.org/index.php?title=Venus_188 (Watch-Wiki: Venus 188) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -71735,21 +71813,25 @@
   {
     "calibre": "Zenith 400",
     "maker": "Zenith",
+    "bph": 36000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
-      "https://watchguy.co.uk/cgi-bin/lift_angles (Zenith 400, 52°)"
+      "https://watchguy.co.uk/cgi-bin/lift_angles (Zenith 400, 52°)",
+      "https://watch-wiki.org/index.php?title=Zenith_400 (Watch-Wiki: Zenith 400) (\"Halbschwingungen = 36.000\")"
     ],
     "confidence": "published list"
   },
   {
     "calibre": "Zenith 410",
     "maker": "Zenith",
+    "bph": 36000,
     "lift_angle_deg": 52.0,
     "wheels": [],
     "sources": [
       "https://watchguy.co.uk/cgi-bin/lift_angles (Zenith 410, 52°)",
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zenith 410, 52°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zenith 410, 52°)",
+      "https://watch-wiki.org/index.php?title=Zenith_410 (Watch-Wiki: Zenith 410) (\"Halbschwingungen = 36.000\")"
     ],
     "confidence": "published list"
   },
@@ -77673,10 +77755,12 @@
   {
     "calibre": "Venus 189",
     "maker": "Venus",
+    "bph": 18000,
     "lift_angle_deg": 42.0,
     "wheels": [],
     "sources": [
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Venus 189, 42°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Venus 189, 42°)",
+      "https://watch-wiki.org/index.php?title=Venus_189 (Watch-Wiki: Venus 189) (\"Halbschwingungen = 18.000\")"
     ],
     "confidence": "published list"
   },
@@ -77764,10 +77848,12 @@
   {
     "calibre": "Zenith 133.8",
     "maker": "Zenith",
+    "bph": 21600,
     "lift_angle_deg": 51.0,
     "wheels": [],
     "sources": [
-      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zenith 133.8, 51°)"
+      "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles/ (Zenith 133.8, 51°)",
+      "https://watch-wiki.org/index.php?title=Zenith_133.8 (Watch-Wiki: Zenith 133.8) (\"Halbschwingungen = 21.600\")"
     ],
     "confidence": "published list"
   },
@@ -101087,5 +101173,1614 @@
     ],
     "confidence": "derived from the beat rate",
     "notes": "Shanghai Watch Factory's own hand-wound 17-jewel calibre from 1968, revised from its A581/A611; not the later standard movement. The SS1A beats 18,000 bph and the SS1K 21,600 bph, so a bare \"SS1\" is not listed: it could be either. No lift angle is published."
+  },
+  {
+    "calibre": "Grand Seiko 9S85",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S85"
+    ],
+    "bph": 36000,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.2,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"36,000 vibrations per hour (5 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S86",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S86"
+    ],
+    "bph": 36000,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.2,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"36,000 vibrations per hour (5 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S63",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S63"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"28,800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S64",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S64"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"28,800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S65",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S65"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"28,800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S66",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S66"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"28,800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S68",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S68"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"28,800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S27",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S27"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/us-en/about/movement/mechanical (Grand Seiko, 9S mechanical movement comparison) (\"28,800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "Grand Seiko 9S61",
+    "maker": "Grand Seiko",
+    "family": [
+      "9S61"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.grand-seiko.com/instructions/html/GS_9S_EN/AGFISYjlvuuait.html (Grand Seiko 9S instruction manual, movement specifications) (\"28,800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "La Joux-Perret G100",
+    "maker": "La Joux-Perret",
+    "family": [
+      "G100"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.fhs.swiss/eng/2021_09_16_04_La_Joux-Perret.html (Federation of the Swiss Watch Industry FH news, G100 and L100 movements by La Joux-Perret) (\"maintaining a frequency of 4Hz\")"
+    ],
+    "confidence": "maker's page"
+  },
+  {
+    "calibre": "La Joux-Perret L100",
+    "maker": "La Joux-Perret",
+    "family": [
+      "L100"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.fhs.swiss/eng/2021_09_16_04_La_Joux-Perret.html (Federation of the Swiss Watch Industry FH news, G100 and L100 movements by La Joux-Perret) (\"maintaining a frequency of 4Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Chronograph."
+  },
+  {
+    "calibre": "Miyota 6T27",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "6T27"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/product/6T27/ (Miyota product page, Cal. 6T27) (\"Vibration Frequency 28800\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "8 3/4''', 5.23 mm, 21 jewels, automatic and hand winding, 3 hands, about 40 h."
+  },
+  {
+    "calibre": "Miyota 6T15",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "6T15"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/product/6T15/ (Miyota product page, Cal. 6T15) (\"Vibration Frequency 28800 per hour\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "8 3/4''', 5.98 mm, 21 jewels, automatic and hand winding, 3 hands date, about 40 h."
+  },
+  {
+    "calibre": "Miyota 6T28",
+    "maker": "Miyota (Citizen)",
+    "family": [
+      "6T28"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://miyotamovement.com/product/6T28/ (Miyota product page, Cal. 6T28) (\"Vibration Frequency 28800 per hour\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "8 3/4''', 5.23 mm, 21 jewels, automatic and hand winding, 3 hands, open heart, about 40 h."
+  },
+  {
+    "calibre": "Citizen 0200",
+    "maker": "Citizen",
+    "family": [
+      "0200"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://citizenwatch.eu/info/the-citizen/line-up/mechanical-model/detailed-specifications (Citizen Europe, The Citizen mechanical model detailed specifications, Cal. 0200) (\"Frequency: 28,800 vph\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "The Citizen automatic."
+  },
+  {
+    "calibre": "Citizen 0210",
+    "maker": "Citizen",
+    "family": [
+      "0210"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://citizenwatch.eu/info/the-citizen/line-up/mechanical-model/detailed-specifications (Citizen Europe, The Citizen mechanical model detailed specifications, Cal. 0210) (\"Frequency: 28,800 vph\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "The Citizen automatic."
+  },
+  {
+    "calibre": "Citizen 9051",
+    "maker": "Citizen",
+    "family": [
+      "9051"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://citizenwatch-global.com/support/html/en/9051/spec_main_9051.html (Citizen instruction manual, Model 9051 specifications) (\"Beats 28,800 times per hour (8 beats)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Series 8 automatic."
+  },
+  {
+    "calibre": "Ronda R150",
+    "maker": "Ronda",
+    "family": [
+      "R150"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.fhs.swiss/eng/2016_04_14_01_ronda.html (Federation of the Swiss Watch Industry FH news, Ronda launches a new mechanical calibre) (\"the R150 beats at a frequency of 28,800 vibrations per hour\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Lever escapement, ball-bearing rotor."
+  },
+  {
+    "calibre": "Ronda R01",
+    "maker": "Ronda",
+    "family": [
+      "R01"
+    ],
+    "bph": 25200,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.2857142857142857,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://wornandwound.com/industry-news-ronda-returns-to-mechanical-movements-with-the-impressive-r01/ (Worn & Wound, Ronda returns to mechanical movements with the R01) (\"Ronda went for 25,200bph or 3.5hz\")"
+    ],
+    "confidence": "press article",
+    "notes": "3.5 Hz."
+  },
+  {
+    "calibre": "Seiko 4R34",
+    "maker": "Seiko",
+    "family": [
+      "4R34"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_4R34_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 4R34 specifications) (\"21,600 vibrations/hour (6 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "24 jewels, about 41 h."
+  },
+  {
+    "calibre": "Seiko 4R57",
+    "maker": "Seiko",
+    "family": [
+      "4R57"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_4R57_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 4R57 specifications) (\"21,600 vibrations/hour (6 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "29 jewels, about 41 h."
+  },
+  {
+    "calibre": "Seiko 4R71",
+    "maker": "Seiko",
+    "family": [
+      "4R71"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_4R35_4R36_4R37_4R38_4R39_4R71_4R72_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 4R35/4R36/4R37/4R38/4R39/4R71/4R72 specifications) (\"21,600 vibrations/hour (6 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "The manual prints one figure across all its calibre columns."
+  },
+  {
+    "calibre": "Seiko 4R72",
+    "maker": "Seiko",
+    "family": [
+      "4R72"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_4R35_4R36_4R37_4R38_4R39_4R71_4R72_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 4R35/4R36/4R37/4R38/4R39/4R71/4R72 specifications) (\"21,600 vibrations/hour (6 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "The manual prints one figure across all its calibre columns."
+  },
+  {
+    "calibre": "Seiko 6R27",
+    "maker": "Seiko",
+    "family": [
+      "6R27"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R20_6R21_6R24_6R27_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R20/6R21/6R24/6R27 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Power reserve indicator; 29 jewels, about 45 h."
+  },
+  {
+    "calibre": "Seiko 6R51",
+    "maker": "Seiko",
+    "family": [
+      "6R51"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R51_6R55_6R5H_6R5J_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R51/6R55/6R5H/6R5J specifications) (\"21,600 vibrations/hour (6 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "24 jewels, about 72 h."
+  },
+  {
+    "calibre": "Seiko 6R5H",
+    "maker": "Seiko",
+    "family": [
+      "6R5H"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R51_6R55_6R5H_6R5J_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R51/6R55/6R5H/6R5J specifications) (\"21,600 vibrations/hour (6 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "The manual prints one figure across all its calibre columns; about 72 h."
+  },
+  {
+    "calibre": "Seiko 6R5J",
+    "maker": "Seiko",
+    "family": [
+      "6R5J"
+    ],
+    "bph": 21600,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.3333333333333333,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R51_6R55_6R5H_6R5J_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R51/6R55/6R5H/6R5J specifications) (\"21,600 vibrations/hour (6 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "The manual prints one figure across all its calibre columns; about 72 h."
+  },
+  {
+    "calibre": "Seiko 6R64",
+    "maker": "Seiko",
+    "family": [
+      "6R64"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_6R64_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6R64 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "29 jewels, about 45 h."
+  },
+  {
+    "calibre": "Seiko 6L35",
+    "maker": "Seiko",
+    "family": [
+      "6L35"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_6L35_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6L35 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "26 jewels, about 45 h."
+  },
+  {
+    "calibre": "Seiko 6L37",
+    "maker": "Seiko",
+    "family": [
+      "6L37"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_6L37_D_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 6L37 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "26 jewels, about 45 h."
+  },
+  {
+    "calibre": "Seiko 8L35",
+    "maker": "Seiko",
+    "family": [
+      "8L35"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_8L35_8L55_D_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 8L35/8L55 specifications) (\"Vibrations per hour 28,800\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "26 jewels, about 50 h."
+  },
+  {
+    "calibre": "Seiko 8L55",
+    "maker": "Seiko",
+    "family": [
+      "8L55"
+    ],
+    "bph": 36000,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.2,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_8L35_8L55_D_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 8L35/8L55 specifications) (\"Vibrations per hour 36,000\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "37 jewels, about 55 h."
+  },
+  {
+    "calibre": "Seiko 8L45",
+    "maker": "Seiko",
+    "family": [
+      "8L45"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_8L45_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 8L45 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "35 jewels, about 72 h."
+  },
+  {
+    "calibre": "Seiko 8R46",
+    "maker": "Seiko",
+    "family": [
+      "8R46"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_8R46_8R48_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 8R46/8R48 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Chronograph; 34 jewels, about 45 h."
+  },
+  {
+    "calibre": "Seiko 8R48",
+    "maker": "Seiko",
+    "family": [
+      "8R48"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.seikowatches.com/instructions/html/SEIKO_8R46_8R48_EN/BONDSYkqbeszsf (Seiko instruction manual, Cal. 8R46/8R48 specifications) (\"28,800 vibrations/hour (8 vibrations/sec)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Chronograph; the manual prints one figure across both calibre columns."
+  },
+  {
+    "calibre": "Sellita SW100",
+    "maker": "Sellita",
+    "family": [
+      "SW100"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW100 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW305-1",
+    "maker": "Sellita",
+    "family": [
+      "SW305-1"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW305-1 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW330-2",
+    "maker": "Sellita",
+    "family": [
+      "SW330-2"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW330-2 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW331-2",
+    "maker": "Sellita",
+    "family": [
+      "SW331-2"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW331-2 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW360-1",
+    "maker": "Sellita",
+    "family": [
+      "SW360-1"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW360-1 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW382-1",
+    "maker": "Sellita",
+    "family": [
+      "SW382-1"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW382-1 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW501",
+    "maker": "Sellita",
+    "family": [
+      "SW501",
+      "SW501 BV",
+      "SW501 MP"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW501 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW510",
+    "maker": "Sellita",
+    "family": [
+      "SW510",
+      "SW510 M",
+      "SW510 BH",
+      "SW510 MP",
+      "SW510 MPC"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW510 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW511",
+    "maker": "Sellita",
+    "family": [
+      "SW511",
+      "SW511 BH",
+      "SW511 MPC"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW511 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW530",
+    "maker": "Sellita",
+    "family": [
+      "SW530",
+      "SW530 M",
+      "SW530 MP",
+      "SW530 MPC"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW530 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW531",
+    "maker": "Sellita",
+    "family": [
+      "SW531"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW531 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW532",
+    "maker": "Sellita",
+    "family": [
+      "SW532",
+      "SW532 MP",
+      "SW532 MPC"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW532 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW533",
+    "maker": "Sellita",
+    "family": [
+      "SW533"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW533 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW536",
+    "maker": "Sellita",
+    "family": [
+      "SW536",
+      "SW536 MP",
+      "SW536 MPC"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW536 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW537",
+    "maker": "Sellita",
+    "family": [
+      "SW537",
+      "SW537 MP"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW537 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW560",
+    "maker": "Sellita",
+    "family": [
+      "SW560",
+      "SW560 M",
+      "SW560 MP",
+      "SW560 MPC"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW560 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW561",
+    "maker": "Sellita",
+    "family": [
+      "SW561"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW561 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW562",
+    "maker": "Sellita",
+    "family": [
+      "SW562",
+      "SW562 M",
+      "SW562 MP",
+      "SW562 MPC",
+      "SW562 S"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW562 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW563",
+    "maker": "Sellita",
+    "family": [
+      "SW563",
+      "SW563 MPC",
+      "SW563 S"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW563 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW600",
+    "maker": "Sellita",
+    "family": [
+      "SW600"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW600 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Sellita SW602",
+    "maker": "Sellita",
+    "family": [
+      "SW602"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.sellita.ch/images/documents/Catalogue2024_ENG.pdf (Sellita catalogue 2024, calibre SW602 technical data) (\"28’800 vibrations per hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Grades a, b and c share this row."
+  },
+  {
+    "calibre": "Soprod Newton",
+    "maker": "Soprod",
+    "family": [
+      "Newton"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "22 jewels, 44 h, quickset date, stop seconds."
+  },
+  {
+    "calibre": "Soprod M100",
+    "maker": "Soprod",
+    "family": [
+      "M100",
+      "SOP M100",
+      "M100 SQ",
+      "M100 BV"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "25 jewels, 42 h, quickset date, stop seconds."
+  },
+  {
+    "calibre": "Soprod C100",
+    "maker": "Soprod",
+    "family": [
+      "C100"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Chronograph, 61 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C105",
+    "maker": "Soprod",
+    "family": [
+      "C105"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Small seconds at 6, moon phase at 9; 33 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C106",
+    "maker": "Soprod",
+    "family": [
+      "C106"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Small seconds at 9, moon phase at 12; 33 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C107",
+    "maker": "Soprod",
+    "family": [
+      "C107"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Small seconds at 3, moon phase at 6; 33 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C110",
+    "maker": "Soprod",
+    "family": [
+      "C110",
+      "C110/Q3",
+      "C110/Q12"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Small seconds at 6, date; 29 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C111",
+    "maker": "Soprod",
+    "family": [
+      "C111",
+      "C111/Q3",
+      "C111/Q6",
+      "C111/Q12"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Small seconds at 9, date; 29 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C112",
+    "maker": "Soprod",
+    "family": [
+      "C112",
+      "C112/Q3",
+      "C112/Q6"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Small seconds at 12, date; 29 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C113",
+    "maker": "Soprod",
+    "family": [
+      "C113",
+      "C113/Q6",
+      "C113/Q12"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Small seconds at 3, date; 29 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C115",
+    "maker": "Soprod",
+    "family": [
+      "C115"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "24 h indicator at 6; 31 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C120",
+    "maker": "Soprod",
+    "family": [
+      "C120"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Second time zone, day/night, big date; 25 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C125",
+    "maker": "Soprod",
+    "family": [
+      "C125"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "24 h display; 25 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C130",
+    "maker": "Soprod",
+    "family": [
+      "C130"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Power reserve at 12, big date at 6; 27 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C131",
+    "maker": "Soprod",
+    "family": [
+      "C131"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Big date at 6; 25 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C140",
+    "maker": "Soprod",
+    "family": [
+      "C140"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Power reserve at 12, date at 3; 27 jewels, 42 h."
+  },
+  {
+    "calibre": "Soprod C145",
+    "maker": "Soprod",
+    "family": [
+      "C145"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.cousinsuk.com/pdf/products/10024_soprod calibre comparison 2.pdf (Soprod calibre comparison sheet, \"Swiss production\", hosted by Cousins UK) (\"28800 vibrations per hour / 4 Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Power reserve at 12, visible balance at 6; 27 jewels, 42 h."
+  },
+  {
+    "calibre": "Tudor MT5602",
+    "maker": "Tudor",
+    "family": [
+      "MT5602",
+      "MT5602-U"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://media.tudorwatch.com/image/upload/fl_attachment/v1/tudorwatch/pressroom/products/black-bay/2024/pdf/New-Watches-2024_Black-Bay-en.pdf (Tudor press release 2024, Black Bay, Manufacture Calibre MT5602-U) (\"Frequency: 28,800 beats/hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "COSC chronometer."
+  },
+  {
+    "calibre": "Tudor MT5201",
+    "maker": "Tudor",
+    "family": [
+      "MT5201"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://media.tudorwatch.com/image/upload/fl_attachment/v1/tudorwatch/pressroom/products/black-bay-31-36-39-41/pdf/t23rp-blackbay31-36-39-41-en.pdf (Tudor press release, Black Bay 31/36/39/41, Manufacture Calibres MT5201, MT5400, MT5602, MT5601) (\"Frequency: 28,800 beats/hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "COSC chronometer; Black Bay 31."
+  },
+  {
+    "calibre": "Tudor MT5400",
+    "maker": "Tudor",
+    "family": [
+      "MT5400",
+      "MT5400-U"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://media.tudorwatch.com/image/upload/fl_attachment/v1/tudorwatch/pressroom/products/black-bay-31-36-39-41/pdf/t23rp-blackbay31-36-39-41-en.pdf (Tudor press release, Black Bay 31/36/39/41, Manufacture Calibres MT5201, MT5400, MT5602, MT5601) (\"Frequency: 28,800 beats/hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "COSC chronometer."
+  },
+  {
+    "calibre": "Tudor MT5601",
+    "maker": "Tudor",
+    "family": [
+      "MT5601"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://media.tudorwatch.com/image/upload/fl_attachment/v1/tudorwatch/pressroom/products/black-bay-31-36-39-41/pdf/t23rp-blackbay31-36-39-41-en.pdf (Tudor press release, Black Bay 31/36/39/41, Manufacture Calibres MT5201, MT5400, MT5602, MT5601) (\"Frequency: 28,800 beats/hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "COSC chronometer."
+  },
+  {
+    "calibre": "Tudor MT5652",
+    "maker": "Tudor",
+    "family": [
+      "MT5652"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://media.tudorwatch.com/image/upload/fl_attachment/v1/tudorwatch/pressroom/products/black-bay-gmt/pdf/t23rp-blackbaygmt-en.pdf (Tudor press release, Black Bay GMT, Manufacture Calibre MT5652) (\"Frequency: 28,800 beats/hour (4 Hz)\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "GMT; COSC chronometer."
+  },
+  {
+    "calibre": "Tudor MT5612",
+    "maker": "Tudor",
+    "family": [
+      "MT5612"
+    ],
+    "bph": 28800,
+    "wheels": [
+      {
+        "name": "balance",
+        "period_s": 0.25,
+        "basis": "derived from the beat rate"
+      }
+    ],
+    "sources": [
+      "https://www.tudorwatch.com/en/inside-tudor/watchmaking/movement-5612 (Tudor, Manufacture Calibre MT5612 page) (\"Beating to a frequency of 28,800 beats/hour or 4Hz\")"
+    ],
+    "confidence": "maker's page",
+    "notes": "Date; COSC chronometer."
   }
 ]

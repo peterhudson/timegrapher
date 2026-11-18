@@ -512,7 +512,8 @@ pub const MIN_VALUES: usize = 3;
 /// [`effective_readings`] independent ones, so
 /// SE = 1.2533 × s / sqrt(1 − ρ) / sqrt(n_eff). With ρ = 0 this is
 /// 1.2533 s / sqrt(n), the median's standard error under independent
-/// Gaussian noise. None with fewer than [`MIN_VALUES`].
+/// Gaussian noise. None with fewer than [`MIN_VALUES`], or where the ±
+/// is 0 ([`shown`]).
 pub fn standard_error(values: &[f64]) -> Option<f64> {
     standard_error_in([values])
 }
@@ -522,11 +523,20 @@ pub fn standard_error(values: &[f64]) -> Option<f64> {
 /// stretch only, never across a gap, and the lag-one correlation is
 /// pooled over the stretches ([`pooled_lag_one`]); `n` counts every
 /// value. With one stretch it is [`standard_error`]. None with fewer than
-/// [`MIN_VALUES`] values or no difference within a stretch.
+/// [`MIN_VALUES`] values, no difference within a stretch, or a ± of 0
+/// ([`shown`]).
 pub fn standard_error_in<'a>(stretches: impl IntoIterator<Item = &'a [f64]>) -> Option<f64> {
     let stretches: Vec<&[f64]> = stretches.into_iter().collect();
     let noise = Noise::of(&stretches, MIN_VALUES)?;
-    Some(noise.standard_error(count(&stretches)))
+    shown(noise.standard_error(count(&stretches)))
+}
+
+/// A ± as given: None in place of 0. The scatter is read as the MAD of
+/// successive differences, which is 0 when more than half of them are
+/// exactly 0, and a ± of 0 would claim the figure is known exactly, so
+/// none is given instead (#1898). Every ± the core gives passes here.
+fn shown(se: f64) -> Option<f64> {
+    (se > 0.0).then_some(se)
 }
 
 /// The fewest values a ± takes its noise from (#1470, math-standards
@@ -724,7 +734,7 @@ pub fn amplitude_windows_se<'a>(
     let span = |w: &&AmplitudeWindow| (w.start_s, w.end_s);
     let (levels, pool) = own_and_pool(&own, take, span, |w| value(w))?;
     let within = standard_error_borrowing(&levels, &pool)?;
-    Some(within.hypot(between_levels(&levels)))
+    shown(within.hypot(between_levels(&levels)))
 }
 
 /// Whether a run of `g` missing windows spanning `gap_s` splits a series
@@ -812,7 +822,7 @@ pub fn rate_se(windows: &[WindowFit], take: &[WindowFit]) -> Option<f64> {
         |w| (w.start_s, w.end_s),
         |w| Some(w.fit.rate_s_per_day),
     )?;
-    standard_error_borrowing(&s, &pool)
+    shown(standard_error_borrowing(&s, &pool)?)
 }
 
 /// Standard error of the beat error from the unlock, ms: the one rule for
@@ -896,6 +906,25 @@ mod tests {
             beat_error_se(&windows[..2], &every(&windows[..2]), false),
             None
         );
+    }
+
+    /// No ± of 0 (#1898): where more than half the successive differences
+    /// are exactly 0, the scatter reads 0, and a figure is given with no
+    /// ± rather than one claiming it is known exactly.
+    #[test]
+    fn a_scatter_of_zero_gives_no_plus_minus() {
+        assert_eq!(standard_error(&[5.0; 10]), None);
+        let steps: Vec<f64> = (0..10).map(|i| if i < 5 { 1.0 } else { 2.0 }).collect();
+        assert_eq!(standard_error(&steps), None);
+        let windows = unlock_windows(
+            &(0..40)
+                .map(|i| 0.2 + 0.1 * ((i / 10) % 2) as f64)
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(beat_error_se(&windows, &every(&windows), false), None);
+        let mut rng = Rng::new(1898);
+        let rates: Vec<f64> = (0..40).map(|_| rng.normal()).collect();
+        assert!(standard_error(&rates).is_some_and(|se| se > 0.0));
     }
 
     /// 2 s windows whose unlock beat errors are `values`.

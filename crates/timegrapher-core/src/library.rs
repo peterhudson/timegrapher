@@ -181,10 +181,18 @@ impl FromCalibre {
 }
 
 impl Watch {
-    /// Pick the calibre `name` (empty: none), which gives `given`: the
-    /// watch takes each figure the calibre gives and keeps its own for
-    /// one it doesn't.
-    pub fn pick_calibre(&mut self, name: &str, given: FromCalibre) {
+    /// Pick the calibre `name` (empty: none), which gives `given`, in
+    /// place of the one that gave `was`: the watch takes each figure the
+    /// calibre gives and keeps its own for one it doesn't. A figure the
+    /// last calibre gave was the calibre's, not the watch's, and goes with
+    /// it; one set by hand since differs from it and stays (#1877).
+    pub fn pick_calibre(&mut self, name: &str, given: FromCalibre, was: FromCalibre) {
+        if self.lift.is_some() && self.lift == was.lift {
+            self.lift = None;
+        }
+        if self.bph.is_some() && self.bph == was.bph {
+            self.bph = None;
+        }
         let name = name.trim();
         self.calibre = (!name.is_empty()).then(|| name.to_string());
         self.hold_calibre(given);
@@ -357,6 +365,24 @@ pub(crate) fn write_atomic_with(p: &Path, bytes: &[u8], steps: &AtomicSteps) -> 
         failed(e)
     })
 }
+
+/// The hidden folder [`Library::replace_take`] moves `take` to while it
+/// puts the kept take in its place.
+fn aside_of(take: &Path) -> PathBuf {
+    take.with_file_name(format!(".{}.with-sound", file_name(take)))
+}
+
+/// [`Library::replace_take`]'s moves and deletes; a test makes any one
+/// fail (#1890).
+pub(crate) struct SwapSteps {
+    pub rename: fn(&Path, &Path) -> std::io::Result<()>,
+    pub remove_all: fn(&Path) -> std::io::Result<()>,
+}
+
+const SWAP_ON_DISK: SwapSteps = SwapSteps {
+    rename: |from, to| fs::rename(from, to),
+    remove_all: |p| fs::remove_dir_all(p),
+};
 
 /// A folder name for `name` that every system accepts: the characters
 /// Windows forbids and control characters become `-`, trailing dots and
@@ -1524,21 +1550,61 @@ impl Library {
     /// in place of `take`: the take is moved aside, `kept` takes its name,
     /// and only then is the take with its sound deleted. `Ok(Some(why))`
     /// when the kept take is in place but some of the old one couldn't be
-    /// deleted. On an error the take is as it was, and so is `kept`.
+    /// deleted. On an error the take is as it was, and so is `kept`, unless
+    /// the take couldn't be moved back either: then the error names the
+    /// hidden folder its sound is in (#1890).
     pub fn replace_take(&mut self, take: &Path, kept: &Path) -> Result<Option<String>, String> {
+        self.replace_take_with(take, kept, &SWAP_ON_DISK)
+    }
+
+    /// [`Library::replace_take`] with `steps`, so a test can make any one
+    /// of its moves or deletes fail (#1890).
+    pub(crate) fn replace_take_with(
+        &mut self,
+        take: &Path,
+        kept: &Path,
+        steps: &SwapSteps,
+    ) -> Result<Option<String>, String> {
+        let aside = aside_of(take);
+        self.writable()?;
+        if !take.exists() && aside.is_dir() {
+            // An earlier try left the sound here: it may be the only copy.
+            return Err(format!(
+                "The take's sound is in {}, left there by an earlier try. Move that folder \
+                 back to {} first.",
+                aside.display(),
+                take.display()
+            ));
+        }
         self.take_in_library(take)?;
         if kept.parent() != take.parent() || !crate::analysis_take::is_analysis_only(kept) {
             return Err(format!("{} is not a kept take beside it", kept.display()));
         }
-        let aside = take.with_file_name(format!(".{}.with-sound", file_name(take)));
-        let _ = fs::remove_dir_all(&aside);
-        fs::rename(take, &aside).map_err(|e| format!("Moving {} aside: {e}", take.display()))?;
-        if let Err(e) = fs::rename(kept, take) {
-            // Put back as it was.
-            let _ = fs::rename(&aside, take);
-            return Err(format!("Putting the kept take in place: {e}"));
+        // The take is in place, so anything aside is left from a swap that
+        // put a kept take in and couldn't delete all of the old one.
+        if aside.exists() {
+            (steps.remove_all)(&aside).map_err(|e| {
+                format!("Deleting {} left from an earlier try: {e}", aside.display())
+            })?;
         }
-        let gone = fs::remove_dir_all(&aside);
+        (steps.rename)(take, &aside)
+            .map_err(|e| format!("Moving {} aside: {e}", take.display()))?;
+        if let Err(e) = (steps.rename)(kept, take) {
+            // Put back as it was.
+            return Err(match (steps.rename)(&aside, take) {
+                Ok(()) => format!("Putting the kept take in place: {e}"),
+                Err(back) => format!(
+                    "Putting the kept take in place failed: {e}. Moving the take back failed \
+                     too: {back}. Its sound is safe in {}, and its kept analysis in {}. Move {} \
+                     back to {}.",
+                    aside.display(),
+                    kept.display(),
+                    aside.display(),
+                    take.display()
+                ),
+            });
+        }
+        let gone = (steps.remove_all)(&aside);
         self.scan();
         Ok(gone.err().map(|e| {
             format!(
@@ -1552,12 +1618,24 @@ impl Library {
     /// Keep Analysis Only's last step, one for the app and the CLI: the
     /// take `take` written as its analysis alone in `kept`
     /// ([`crate::analysis_take::write_kept`]) put in its place
-    /// ([`Library::replace_take`]). On an error the take is as it was,
-    /// and `kept` is removed where it is the folder `write_kept` writes
-    /// beside the take (never any other).
+    /// ([`Library::replace_take`]). On an error `kept` is removed where it
+    /// is the folder `write_kept` writes beside the take (never any other),
+    /// and only once the take is back in place: while its sound is aside,
+    /// `kept` stays (#1890).
     pub fn put_kept(&mut self, take: &Path, kept: &Path) -> Result<Option<String>, String> {
-        let placed = self.replace_take(take, kept);
-        if placed.is_err() && kept == crate::analysis_take::kept_beside(take) {
+        self.put_kept_with(take, kept, &SWAP_ON_DISK)
+    }
+
+    /// [`Library::put_kept`] with `steps` ([`Library::replace_take_with`]).
+    pub(crate) fn put_kept_with(
+        &mut self,
+        take: &Path,
+        kept: &Path,
+        steps: &SwapSteps,
+    ) -> Result<Option<String>, String> {
+        let placed = self.replace_take_with(take, kept, steps);
+        let sound_aside = !take.is_dir() && aside_of(take).exists();
+        if placed.is_err() && kept == crate::analysis_take::kept_beside(take) && !sound_aside {
             let _ = fs::remove_dir_all(kept);
         }
         placed

@@ -299,11 +299,16 @@ fn whole_into(
         });
     }
     if folder {
-        let log = o.recording[0].join("clocklog.txt");
-        if let Ok(t) = std::fs::read_to_string(&log) {
-            parts
-                .entries
-                .push(("long/clocklog.txt".into(), red.apply(&t).into_bytes()));
+        // The clock log under any name a take gives it (#1886), kept by
+        // its own name.
+        let log = timegrapher_core::take::clock_log_in(&o.recording[0]);
+        if let Some((log, name)) = log.as_ref().and_then(|p| Some((p, p.file_name()?))) {
+            if let Ok(t) = std::fs::read_to_string(log) {
+                let name = name.to_string_lossy();
+                parts
+                    .entries
+                    .push((format!("long/{name}"), red.apply(&t).into_bytes()));
+            }
         }
     }
     Ok(())
@@ -676,6 +681,16 @@ fn unpack(files: &[(String, Vec<u8>)], work: &Path) -> Result<(), String> {
 
 /// Each recorded command run again where it can be, and what moved.
 fn rerun(recorded: &[Recorded], files: &[(String, Vec<u8>)], work: &Path) -> Vec<Replayed> {
+    rerun_with(recorded, files, work, run_self)
+}
+
+/// [`rerun`] with the command runner given, so a test can count the runs.
+fn rerun_with(
+    recorded: &[Recorded],
+    files: &[(String, Vec<u8>)],
+    work: &Path,
+    run: impl Fn(&[String], &Path) -> Result<Value, String>,
+) -> Vec<Replayed> {
     let get = |name: &str| files.iter().find(|(p, _)| p == name).map(|(_, d)| d);
     let mut out = Vec::new();
     for c in recorded {
@@ -691,14 +706,18 @@ fn rerun(recorded: &[Recorded], files: &[(String, Vec<u8>)], work: &Path) -> Vec
         } else if !safe_to_replay(&c.args) {
             r.error = Some("not a command report writes, so not run".into());
         } else {
+            // The saved output first: with none there is nothing to set
+            // the run against, so it is not run (#1886).
             let then: Option<Value> = get(&c.output).and_then(|d| serde_json::from_slice(d).ok());
-            match (then, run_self(&c.args, work)) {
-                (Some(then), Ok(now)) => {
-                    r.ran = true;
-                    r.moved = diff(&then, &now);
-                }
-                (None, _) => r.error = Some(format!("{} is missing", c.output)),
-                (_, Err(e)) => r.error = Some(e),
+            match then {
+                None => r.error = Some(format!("{} is missing", c.output)),
+                Some(then) => match run(&c.args, work) {
+                    Ok(now) => {
+                        r.ran = true;
+                        r.moved = diff(&then, &now);
+                    }
+                    Err(e) => r.error = Some(e),
+                },
             }
         }
         out.push(r);
@@ -793,6 +812,42 @@ mod tests {
         let paths: Vec<_> = d.iter().map(|m| m.path.as_str()).collect();
         assert_eq!(paths, ["rate", "new"]);
         assert!(diff(&a, &a).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    /// A command whose saved output is missing is not run (#1886): there
+    /// is nothing to set it against.
+    #[test]
+    fn a_missing_saved_output_is_not_run() {
+        let recorded = vec![Recorded {
+            args: ["analyze", "audio/excerpt.flac", "--json"]
+                .map(String::from)
+                .to_vec(),
+            cwd: "recording".into(),
+            output: "results/analyze-excerpt.json".into(),
+            replayable: true,
+        }];
+        let runs = Cell::new(0);
+        let run = |_: &[String], _: &Path| {
+            runs.set(runs.get() + 1);
+            Ok(serde_json::json!({}))
+        };
+        let out = rerun_with(&recorded, &[], Path::new("."), run);
+        assert_eq!(runs.get(), 0, "run with no saved output to set it against");
+        assert!(!out[0].ran);
+        assert_eq!(
+            out[0].error.as_deref(),
+            Some("results/analyze-excerpt.json is missing")
+        );
+        let files = vec![("results/analyze-excerpt.json".to_string(), b"{}".to_vec())];
+        let out = rerun_with(&recorded, &files, Path::new("."), run);
+        assert_eq!(runs.get(), 1);
+        assert!(out[0].ran, "{:?}", out[0].error);
     }
 }
 

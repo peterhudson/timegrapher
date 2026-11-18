@@ -206,10 +206,15 @@ impl TimegrapherApp {
         } else {
             test.stop(now);
         }
-        if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
-            let clock = self.reading_clock(log.duration_s);
-            test.bph_set = self.live.as_ref().and_then(|l| l.config().analysis.bph);
-            test.finish(&log, clock.as_ref(), &self.masked);
+        match self.live.as_ref().and_then(steady::log_of) {
+            Some(log) => {
+                let clock = self.reading_clock(log.duration_s);
+                test.bph_set = self.live.as_ref().and_then(|l| l.config().analysis.bph);
+                test.finish(&log, clock.as_ref(), &self.masked);
+            }
+            // No beat to read the stretches by: the test ends all the same,
+            // keeping the positions already read (#1888).
+            None => test.end_unread(),
         }
         self.guided_unused = test.unused(now);
         self.guided_measured = test.measured(now);

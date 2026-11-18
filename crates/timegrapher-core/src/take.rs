@@ -30,6 +30,18 @@ pub const REPORT_DIR: &str = "session_report";
 /// in.
 pub const CLOCK_LOG: &str = "clock.csv";
 
+/// The names a take folder's clock log goes by, first found first: older
+/// takes and other tools named it `clocklog.txt` or `clock.log`.
+pub const CLOCK_LOG_NAMES: [&str; 3] = ["clocklog.txt", CLOCK_LOG, "clock.log"];
+
+/// The clock log in take folder `dir`, under any of [`CLOCK_LOG_NAMES`].
+pub fn clock_log_in(dir: &Path) -> Option<PathBuf> {
+    CLOCK_LOG_NAMES
+        .iter()
+        .map(|n| dir.join(n))
+        .find(|p| p.is_file())
+}
+
 /// Where a take's clock comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClockFrom {
@@ -1614,6 +1626,23 @@ pub fn whole_take(m: &Manifest) -> Result<RecordingEntry, String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A take's clock log under any of its names, the first one first
+    /// (#1886); none in a folder without one.
+    #[test]
+    fn a_take_folder_finds_its_clock_log_under_any_name() {
+        let dir = std::env::temp_dir().join(format!("tg-clock-names-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(clock_log_in(&dir), None);
+        fs::write(dir.join("clock.log"), "").unwrap();
+        assert_eq!(clock_log_in(&dir), Some(dir.join("clock.log")));
+        fs::write(dir.join(CLOCK_LOG), "").unwrap();
+        assert_eq!(clock_log_in(&dir), Some(dir.join(CLOCK_LOG)));
+        fs::write(dir.join("clocklog.txt"), "").unwrap();
+        assert_eq!(clock_log_in(&dir), Some(dir.join("clocklog.txt")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     /// A live reading's clock is the one opening the take saved at that
     /// moment gives: the measured USB lines over a kept correction, and
