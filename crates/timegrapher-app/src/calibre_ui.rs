@@ -134,12 +134,37 @@ const COLS: [(Col, &str, &str); 5] = [
 
 /// The widths of the table's columns in `w`: the facts' columns as wide
 /// as their headings, the Short List's as its star and funnel, maker and
-/// name sharing the rest.
-fn col_widths(w: f32) -> [f32; 5] {
+/// name sharing the rest. The Lift Angle column is at least `lift_min`
+/// wide, for the not-supported tag (#1872), the room taken from the
+/// Calibre column.
+fn col_widths(w: f32, lift_min: f32) -> [f32; 5] {
     let facts = [118.0, 108.0, 44.0];
     let rest = (w - facts.iter().sum::<f32>()).max(160.0);
-    [rest * 0.5, rest * 0.5, facts[0], facts[1], facts[2]]
+    let lift = facts[1].max(lift_min);
+    let calibre = (rest * 0.5 - (lift - facts[1])).max(CALIBRE_MIN_W);
+    [rest * 0.5, calibre, facts[0], lift, facts[2]]
 }
+
+/// The least width of the Lift Angle column: the not-supported tag at its
+/// size, right-aligned under the heading's end, with room at its left.
+fn lift_min_w(ui: &egui::Ui) -> f32 {
+    let tag = ui
+        .painter()
+        .layout_no_wrap(
+            calibres::Escapement::TAG.to_string(),
+            egui::FontId::proportional(TAG_SIZE),
+            egui::Color32::PLACEHOLDER,
+        )
+        .size()
+        .x;
+    tag + NUMBER_PAD + 8.0
+}
+
+/// The least the Calibre column gives up to the Lift Angle column.
+const CALIBRE_MIN_W: f32 = 40.0;
+
+/// The not-supported tag's text size in the table (#1872).
+const TAG_SIZE: f32 = 11.0;
 
 /// The least width the selected calibre's details need beside the table, in
 /// their card: room for a wheel's row with Add and Cancel.
@@ -928,7 +953,7 @@ impl Calibres {
         let mut select: Option<String> = None;
         theme::card().fill(pal.card).show(ui, |ui| {
             ui.set_min_size(ui.available_size());
-            let widths = col_widths(ui.available_width());
+            let widths = col_widths(ui.available_width(), lift_min_w(ui));
             self.table_head(ui, &widths);
             ui.separator();
             if rows.is_empty() {
@@ -1704,6 +1729,13 @@ impl Calibres {
                 );
             }
         }
+        // Its escapement, when Timegrapher doesn't measure it yet, with
+        // where that comes from in the hover (#1872).
+        if let Some(x) = e.escapement() {
+            ui.add_space(6.0);
+            ui.label(RichText::new(x.sentence()).color(pal.text_secondary))
+                .on_hover_text(format!("Source: {}", x.source));
+        }
         let share = Catalog::new(&self.user).contribution_url(e, version);
         ui.add_space(10.0);
         if custom {
@@ -1938,6 +1970,18 @@ pub(crate) fn custom<'a>(
 /// up; a dim dash where the list gives nothing.
 fn number_cell(ui: &egui::Ui, e: Entry<'_>, col: Col, cell: egui::Rect) {
     let pal = theme::pal(ui);
+    // A calibre whose escapement isn't measured yet: the muted tag in
+    // place of its lift angle, which still sorts the column (#1872).
+    if col == Col::LiftAngle && e.escapement().is_some() {
+        ui.painter().with_clip_rect(cell).text(
+            egui::pos2(cell.right() - NUMBER_PAD, cell.center().y),
+            egui::Align2::RIGHT_CENTER,
+            calibres::Escapement::TAG,
+            egui::FontId::proportional(TAG_SIZE),
+            pal.text_tertiary,
+        );
+        return;
+    }
     let value = match col {
         Col::BeatRate => e.bph().map(|b| b.to_string()),
         _ => e.lift_angle_deg().map(|l| fields::plain(l).to_string()),
@@ -2382,6 +2426,12 @@ impl Picked {
 
 /// One calibre in the menu, ticked when it is `current`.
 fn menu_line(ui: &mut egui::Ui, e: Entry<'_>, text: String, current: &str, picked: &Picked) {
+    // A calibre whose escapement isn't measured yet can still be picked,
+    // its tag beside its name (#1872).
+    let text = match e.escapement() {
+        Some(_) => format!("{text}  ·  {}", calibres::Escapement::TAG),
+        None => text,
+    };
     picked.item(ui, e.name() == current, text, &hint(e), e.name());
 }
 
@@ -2513,6 +2563,9 @@ fn short_name<'a>(e: Entry<'a>) -> &'a str {
 fn hint(e: Entry<'_>) -> String {
     // The name first: the table may cut it short.
     let mut t = format!("{}\n{}", e.name(), summary(e));
+    if let Some(x) = e.escapement() {
+        t += &format!("\n{}", x.sentence());
+    }
     if let Entry::Table(c) = e {
         if !c.family.is_empty() {
             t += &format!("\nAlso: {}", c.family.join(", "));

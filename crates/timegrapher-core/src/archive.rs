@@ -140,7 +140,9 @@ pub fn write_zip(path: &Path, entries: &[(String, Vec<u8>)]) -> Result<(), Strin
     let out = zip
         .finish()
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    std::fs::write(path, out.into_inner()).map_err(|e| format!("{}: {e}", path.display()))
+    // Beside it first, then into place: a crash or a full disk never
+    // leaves half a ZIP, nor loses one it would have replaced (#1886).
+    crate::library::write_atomic(path, &out.into_inner())
 }
 
 /// The file entries of a ZIP file, stored or deflated, in order. Folder
@@ -254,6 +256,26 @@ mod tests {
         std::fs::write(&p, &b).unwrap();
         let err = read_zip(&p).unwrap_err();
         assert!(err.contains("damaged"), "{err}");
+        std::fs::remove_file(&p).unwrap();
+    }
+
+    /// A ZIP written over another is put in place whole: nothing is left
+    /// beside it (#1886).
+    #[test]
+    fn a_zip_written_over_another_leaves_nothing_beside_it() {
+        let p = temp("replaced");
+        std::fs::write(&p, b"an older report").unwrap();
+        write_zip(&p, &sample()).unwrap();
+        assert!(read_zip(&p).is_ok());
+        let dir = p.parent().unwrap();
+        let name = p.file_name().unwrap().to_string_lossy().into_owned();
+        let stray = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(&format!(".{name}.")))
+            .count();
+        assert_eq!(stray, 0);
         std::fs::remove_file(&p).unwrap();
     }
 
