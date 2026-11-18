@@ -1466,7 +1466,7 @@ fn a_calibre_gives_its_lift_and_beat_rate_and_only_the_rest_is_set_by_hand() {
         lift: Some(52.0),
         bph: Some(28_800),
     };
-    w.pick_calibre(" ETA 2824-2 ", both);
+    w.pick_calibre(" ETA 2824-2 ", both, FromCalibre::default());
     assert_eq!(w.calibre.as_deref(), Some("ETA 2824-2"));
     assert_eq!((w.lift, w.bph), (Some(52.0), Some(28_800)));
     let e = w.set_lift(49.0, both).unwrap_err();
@@ -1480,21 +1480,47 @@ fn a_calibre_gives_its_lift_and_beat_rate_and_only_the_rest_is_set_by_hand() {
         lift: None,
         bph: Some(18_000),
     };
-    w.pick_calibre("Unitas 6497", bph_only);
-    assert_eq!((w.lift, w.bph), (Some(52.0), Some(18_000)));
+    w.pick_calibre("Unitas 6497", bph_only, both);
+    // The lift the last calibre gave went with it: not kept as the
+    // watch's own (#1877).
+    assert_eq!((w.lift, w.bph), (None, Some(18_000)));
     w.set_lift(44.0, bph_only).unwrap();
     assert_eq!(w.lift, Some(44.0));
     assert!(w.set_lift(120.0, bph_only).is_err());
     assert_eq!(w.lift, Some(44.0));
     // No calibre: both are the watch's, and the beat rate can go back
     // to being found from the sound.
-    w.pick_calibre("", FromCalibre::default());
+    w.pick_calibre("", FromCalibre::default(), bph_only);
     assert!(w.calibre.is_none());
     w.set_bph(None, FromCalibre::default()).unwrap();
     assert_eq!((w.lift, w.bph), (Some(44.0), None));
     // Figures set by hand give way to a calibre picked after them.
     w.hold_calibre(both);
     assert_eq!((w.lift, w.bph), (Some(52.0), Some(28_800)));
+}
+
+/// A calibre with no lift picked after one that gave a lift leaves the
+/// watch none of its own; a lift set by hand in between is the watch's,
+/// and stays. The beat rate likewise (Norm on #1913).
+#[test]
+fn a_calibre_with_no_lift_leaves_the_last_calibres_behind() {
+    let eta = FromCalibre {
+        lift: Some(50.0),
+        bph: Some(28_800),
+    };
+    let none = FromCalibre::default();
+    let mut w = Watch::new("Pepsi");
+    w.pick_calibre("ETA 2824-2", eta, none);
+    assert_eq!((w.lift, w.bph), (Some(50.0), Some(28_800)));
+    w.pick_calibre("Audemars Piguet 4401", none, eta);
+    assert_eq!((w.lift, w.bph), (None, None));
+    // Set by hand between: the watch's own, kept.
+    w.pick_calibre("ETA 2824-2", eta, none);
+    w.pick_calibre("", none, eta);
+    w.set_lift(48.0, none).unwrap();
+    w.set_bph(Some(21_600), none).unwrap();
+    w.pick_calibre("Audemars Piguet 4401", none, none);
+    assert_eq!((w.lift, w.bph), (Some(48.0), Some(21_600)));
 }
 
 /// The engine a kept reading names is this build's version as it is and

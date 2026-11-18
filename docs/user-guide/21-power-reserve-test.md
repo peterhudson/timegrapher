@@ -40,8 +40,11 @@ View menu.
    Listen card ends it early, after asking, with **Keep Measuring** the
    default.
 
-**When the watch has stopped:** the run ends at the last beat heard
-before 10 minutes with none. A beat counts when it matches the watch's
+**When no beat is heard:** the run ends at the last beat heard
+before 10 minutes with none. A stopped watch and a pickup that slipped
+sound the same, so the pane says only what it heard: "No beat heard
+since 17 Nov 22:42", the last beat's time in this computer's time
+zone. A beat counts when it matches the watch's
 sound with a quality over 0.4, in a run of at least eight such beats each
 within one and a half beats of the last, so a lone click is not the
 watch. Beats that come back sooner join the run, and each silence of 30 s
@@ -72,7 +75,7 @@ own.
 
 | Mark | Part | What it shows |
 | --- | --- | --- |
-| 6 | The title | The run time in true time (through the sound card's measured clock) and how it ended, in short: "Ran 41 h 12 min · stopped". When the beats stopped and came back on the way, it adds how many times: "· restarted 2 times". The position is in the toolbar. The **i** in the toolbar opens the Info panel: the run in full, where the take is kept, the beats' pauses, and what grey means in the table. |
+| 6 | The title | The run time in true time (through the sound card's measured clock) and how it ended, in short: "Ran 41 h 12 min · no beat heard". When the beats stopped and came back on the way, it adds how many times: "· restarted 2 times". The position is in the toolbar. The **i** in the toolbar opens the Info panel: the run in full, where the take is kept, the beats' pauses, and what grey means in the table. |
 | 7 | The rate | The rate against hours since the first beat: a line through the middle of each hour, an ended run's last part hour included. |
 | 8 | The amplitude | The amplitude against the same hours. |
 | 9 | The hour table | Each hour: its rate (s/d), median amplitude (°), beat error (ms) from the unlock, and how much of the hour its whole 10 s readings cover (Read %). The last hour is as long as is left. |
@@ -109,7 +112,7 @@ take's end. The Info panel says it in full: "Ran 59 h 46 min in … from
 the take's start". Nothing is written into the take.
 
 **In the picture** is a Dandong 3235, fully wound, left dial up on the
-stand and recorded until it stopped: "Ran 59 h 46 min · stopped". The
+stand and recorded until it stopped: "Ran 59 h 46 min · no beat heard". The
 Paper Strip above it shows the whole
 take, the amplitude line falling to the right and the beats ending
 before the take does. Hour by hour, the amplitude falls from 253° in

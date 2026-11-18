@@ -237,7 +237,7 @@ pub fn pane(
 
 /// The run's title line (#1528): while it runs, the run so far and how
 /// the beats stand ("4 h 12 min · Running"); once it ends, core's
-/// [`power_reserve::title`] ("Ran 9 h 46 min · stopped").
+/// [`power_reserve::title`] ("Ran 9 h 46 min · no beat heard").
 fn run_title(t: &Test) -> String {
     let restarts = t.heard.pauses.len();
     if t.running() {
@@ -296,6 +296,7 @@ fn info_lines(t: &Test, watch: &str, hours: &[power_reserve::Hour]) -> Vec<Strin
                     ending,
                     power_reserve::Source::Test,
                     position,
+                    None,
                 )
             },
             |r| r.sentence(position),
@@ -1112,7 +1113,7 @@ pub fn results_text(r: &Results, watch: &str, sep: char) -> String {
     }
     out += &line(&["Position".into(), r.position.clone()]);
     out += &line(&[r.run_label().into(), r.run_words()]);
-    out += &line(&["Ended".into(), r.ending.text()]);
+    out += &line(&["Ended".into(), r.ending_text()]);
     if let Some(w) = r.source.text() {
         out += &line(&["Read from".into(), w.into()]);
     }

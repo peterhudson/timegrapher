@@ -621,10 +621,16 @@ pub(crate) fn read_one_with_context(
     Ok((reading, context))
 }
 
+/// Whether the cycle search runs: off by `--no-cycles` or by the session
+/// file's own `cycles = false` alike (#1880).
+fn cycles_on(o: &Options, m: &Manifest) -> bool {
+    !o.no_cycles && m.cycles != Some(false)
+}
+
 /// The cycles found in an entry's reading, from its own windows; none for
-/// noise, or where `--no-cycles` or the session file turns them off.
+/// noise, or where the search is off ([`cycles_on`]).
 fn cycles_of(c: &Ctx, read: &take::EntryRead) -> Vec<session::Cycle> {
-    if !read.measurement.watch_heard || c.o.no_cycles || c.m.cycles == Some(false) {
+    if !read.measurement.watch_heard || !cycles_on(c.o, c.m) {
         Vec::new()
     } else {
         let lc = LongConfig {
@@ -931,7 +937,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         "calibre_notes": calibre_notes,
         "settle_s": o.settle,
         "shape": !o.no_shape,
-        "cycles": !o.no_cycles,
+        "cycles": cycles_on(o, &m),
         "analysis_only": kept_note(&base, &m),
     });
     let s = Session {

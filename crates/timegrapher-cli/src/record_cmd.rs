@@ -1228,7 +1228,7 @@ fn print_report(r: &Report) {
         println!(
             "Power reserve {}. {}.",
             power_reserve::run_text(p.run_s),
-            p.ending.text()
+            p.ending_text()
         );
     }
     println!("Added to     {}", r.session_file);

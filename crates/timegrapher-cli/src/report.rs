@@ -328,9 +328,13 @@ fn search_points(s: &Search) -> Vec<(f64, f64)> {
 }
 
 fn search_chart(s: &Search, wheels: &[Wheel]) -> String {
-    if s.period_s.is_empty() {
-        return "<p class=\"note\">The run is too short to search.</p>".into();
+    if !s.searched() {
+        return format!(
+            "<p class=\"note\">{}</p>",
+            esc(timegrapher_core::longterm::TOO_SHORT_TO_SEARCH)
+        );
     }
+    let level = none_level();
     let pts = search_points(s);
     let xa = Axis::log_of(pts.iter().map(|p| p.0));
     let ya = Axis {
@@ -357,7 +361,7 @@ fn search_chart(s: &Search, wheels: &[Wheel]) -> String {
             tip: Box::new(|_, _| String::new()),
         }],
         &vlines,
-        Some((s.threshold, "1% false-alarm level")),
+        Some((s.threshold, &level)),
     )
 }
 
@@ -628,13 +632,45 @@ fn facts(body: &mut String, r: &LongReport, clock_note: Option<&str>) {
     );
 }
 
+/// The shortest cycle a search tried, under its chart (#1897).
+fn shortest_searched(body: &mut String, search: &timegrapher_core::longterm::Search) {
+    // A search that tried nothing says so once, in place of its chart.
+    if !search.searched() {
+        return;
+    }
+    let _ = write!(
+        body,
+        r#"<p class="note">{}</p>"#,
+        esc(&search.shortest_text())
+    );
+}
+
+/// The dashed line's name, "1% false-alarm level", from the search's own
+/// false-alarm rate.
+fn none_level() -> String {
+    timegrapher_core::steady_views::false_alarm_level(
+        timegrapher_core::longterm::LongConfig::default().false_alarm,
+    )
+}
+
 /// The search for periodic changes in rate, and each one named.
 fn rate_cycles(body: &mut String, r: &LongReport, wheels: &[Wheel]) {
     body.push_str("<h2>Periodic changes in rate</h2>");
-    body.push_str(r#"<p class="note">Each trial period is scored together with its harmonics against the noise around it. A peak above the dashed line has less than a 1% chance of being noise anywhere in the search. Grey lines mark the wheels' turn periods.</p>"#);
+    let _ = write!(
+        body,
+        r#"<p class="note">Each trial period is scored together with its harmonics against the noise around it. {} Grey lines mark the wheels' turn periods.</p>"#,
+        timegrapher_core::steady_views::threshold_meaning(
+            timegrapher_core::longterm::LongConfig::default().false_alarm
+        )
+    );
     body.push_str(&search_chart(&r.timing.search, wheels));
-    if r.rate_components.is_empty() {
-        body.push_str("<p>No periodic change in rate named (1% false-alarm level, held across the take's tests).</p>");
+    shortest_searched(body, &r.timing.search);
+    if r.rate_components.is_empty() && r.timing.search.searched() {
+        let _ = write!(
+            body,
+            "<p>No periodic change in rate named ({}, held across the take's tests).</p>",
+            none_level()
+        );
     }
     for c in &r.rate_components {
         // A cycle too short for a rate reading is drawn as timing, in ms.
@@ -674,8 +710,13 @@ fn rate_cycles(body: &mut String, r: &LongReport, wheels: &[Wheel]) {
 fn amplitude_cycles(body: &mut String, r: &LongReport, wheels: &[Wheel]) {
     body.push_str("<h2>Periodic changes in amplitude</h2>");
     body.push_str(&search_chart(&r.amplitude.search, wheels));
-    if r.amplitude.components.is_empty() {
-        body.push_str("<p>No periodic change in amplitude named (1% false-alarm level, held across the take's tests).</p>");
+    shortest_searched(body, &r.amplitude.search);
+    if r.amplitude.components.is_empty() && r.amplitude.search.searched() {
+        let _ = write!(
+            body,
+            "<p>No periodic change in amplitude named ({}, held across the take's tests).</p>",
+            none_level()
+        );
     }
     for c in &r.amplitude.components {
         body.push_str(&component(

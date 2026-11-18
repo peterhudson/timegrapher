@@ -13,6 +13,9 @@ hound = "3.5"
 realfft = "3.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# A stopped run's last beat in the computer's time zone (#1895): the
+# version and features the app and CLI already use.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # The gzip of an analysis-only take's files.
 flate2 = "1"
 # The FLAC encoder for excerpts, single-threaded (excerpts are short).

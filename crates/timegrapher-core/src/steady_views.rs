@@ -443,12 +443,35 @@ pub const THRESHOLD_NAME: &str = "Threshold";
 /// rates measured on seeded noise, so it agrees with `period_may_be_noise`.
 pub fn threshold_hover(false_alarm: f64) -> String {
     use longterm::{MEASURED_CROSSING_IN, SHORT_CORRELATED_CROSSING_IN};
-    let n = thousands((1.0 / false_alarm).round() as u64);
+    let n = searches_per_alarm(false_alarm);
     format!(
         "Peaks above this line are named. Expected noise would cross it somewhere in this search 1 time in {n}. \
          On test noise it was crossed about 1 time in {MEASURED_CROSSING_IN}, and up to 1 time in {SHORT_CORRELATED_CROSSING_IN} on short takes with correlated readings. \
          The more periods searched, the higher the line."
     )
+}
+
+/// What the search's dashed line means, in Norm's words (#1897): a false
+/// alarm rate over whole searches, not a chance that a peak is noise. The
+/// same "1 in n" as [`threshold_hover`].
+pub fn threshold_meaning(false_alarm: f64) -> String {
+    format!(
+        "Noise alone of the kind the search is calibrated on puts a peak above the dashed line in about 1 search in {}.",
+        searches_per_alarm(false_alarm)
+    )
+}
+
+/// The dashed line's name: "1% false-alarm level".
+pub fn false_alarm_level(false_alarm: f64) -> String {
+    format!(
+        "{}% false-alarm level",
+        (false_alarm * 100_000.0).round() / 1000.0
+    )
+}
+
+/// Whole searches per false alarm: "100" at 1%.
+fn searches_per_alarm(false_alarm: f64) -> String {
+    thousands((1.0 / false_alarm).round() as u64)
 }
 
 /// A whole number with thousands separators: "1,000".
@@ -1121,6 +1144,13 @@ mod tests {
              The more periods searched, the higher the line."
         );
         assert!(super::threshold_hover(0.001).contains("search 1 time in 1,000."));
+        assert_eq!(
+            super::threshold_meaning(super::LongConfig::default().false_alarm),
+            "Noise alone of the kind the search is calibrated on puts a peak above the dashed line in about 1 search in 100."
+        );
+        assert!(super::threshold_meaning(0.001).ends_with("1 search in 1,000."));
+        assert_eq!(super::false_alarm_level(0.01), "1% false-alarm level");
+        assert_eq!(super::false_alarm_level(0.001), "0.1% false-alarm level");
     }
 
     /// The Readings view's readout says one reading's value, and a band's

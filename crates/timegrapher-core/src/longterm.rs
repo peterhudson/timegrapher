@@ -1040,6 +1040,38 @@ pub fn beyond_simulated(significance: f64, calibrated: bool) -> bool {
     calibrated && significance > -SIMULATED_P.log10()
 }
 
+/// A search that tried no period: the take is shorter than any cycle the
+/// search looks for, which is not "none found" (#1880).
+pub const TOO_SHORT_TO_SEARCH: &str =
+    "Not searched: the take is too short for any cycle the search looks for.";
+
+impl Search {
+    /// The shortest trial period the search tried, s; none when it tried
+    /// none.
+    pub fn shortest_period_s(&self) -> Option<f64> {
+        self.period_s
+            .iter()
+            .copied()
+            .filter(|p| p.is_finite())
+            .reduce(f64::min)
+    }
+
+    /// "Shortest cycle searched: 2 s", so a cycle shorter than any tried
+    /// never reads as none found (Norm on #1897); with no period tried,
+    /// that the take was too short to search (#1880).
+    pub fn shortest_text(&self) -> String {
+        match self.shortest_period_s() {
+            Some(p) => format!("Shortest cycle searched: {} s", (p * 100.0).round() / 100.0),
+            None => TOO_SHORT_TO_SEARCH.to_string(),
+        }
+    }
+
+    /// Whether the search tried any period at all.
+    pub fn searched(&self) -> bool {
+        self.shortest_period_s().is_some()
+    }
+}
+
 /// A false-alarm chance as shown: `shown` of its −log10 within the
 /// simulated range, and past it that it lies beyond (#1243).
 pub fn false_alarm_text(significance: f64, beyond: bool, shown: impl Fn(f64) -> String) -> String {

@@ -85,6 +85,7 @@ Each rule is marked **implemented** (the code does it today), **partial** (some 
 - **History follows the newest engine.** After an update, a kept reading is read again when its take or its watch is opened, never in one sweep. Until then the row shows which version read it.
 - **The stream engine is the record.** Live and kept figures can differ until #512 gives one engine.
 - **One break rule, on the sound's own clock.** A step of 0.5 s or more between the sound card and the true clock is a break, live and saved. Microphone blocks that arrive late with no sound lost are not a break.
+- **Every platform gets the whole bench.** A new platform has every bench function or isn't supported; phones and tablets get their own touch-first interface ([platforms.md](platforms.md), #1585).
 - **A changed meaning takes a new schema version.** A JSON field whose meaning moves to core's rule follows `docs/reference/agent-interface.md`: additive, or a new version, never a silent change.
 
 ---

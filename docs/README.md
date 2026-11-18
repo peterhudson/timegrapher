@@ -33,7 +33,7 @@ offline, since the User Guide links them.
 For contributors: how the code is built, organised and checked.
 
 - [Building from source](developer/building.md)
-- [Architecture Guide](developer/architecture.md)
+- [Architecture Guide](developer/architecture.md) and [Platforms](developer/platforms.md)
 - [Math Standards Guide](developer/math-standards.md)
 - [Design Guide](developer/design/design-guide.md) and [App Structure](developer/design/app-structure.md)
 - [Regression check against tg](developer/regress.md)

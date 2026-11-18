@@ -525,8 +525,19 @@ fn cycles_table(sn: &Session) -> String {
         .flat_map(|r| r.cycles.iter().map(move |c| (r, c)))
         .collect();
     let mut s = String::from("<h2>Periodic changes</h2>");
+    // Not searched is not "none found" (#1880).
+    if sn.input["settings"]["cycles"] == false {
+        s.push_str("<p>Not searched for: the search for periodic changes was turned off for this session.</p>");
+        return s;
+    }
     if rows.is_empty() {
-        s.push_str("<p>No periodic change in rate or amplitude named in any recording (1% false-alarm level, held across each recording's tests).</p>");
+        let _ = write!(
+            s,
+            "<p>No periodic change in rate or amplitude named in any recording ({}, held across each recording's tests).</p>",
+            timegrapher_core::steady_views::false_alarm_level(
+                timegrapher_core::longterm::LongConfig::default().false_alarm
+            )
+        );
         return s;
     }
     s.push_str(r#"<table class="data"><thead><tr><th>Position</th><th>In</th><th class="num">Period s</th><th class="num">Size p-p</th><th class="num">Share</th><th class="num">False alarm</th><th>Wheel</th><th>Recording</th></tr></thead><tbody>"#);
@@ -999,6 +1010,20 @@ mod tests {
         let six = session_of(Position::ALL.iter().map(|&p| reading(None, p)).collect());
         assert!(six.poise.is_empty() && !html(&six).contains("Dynamic Poise"));
         assert!(serde_json::to_value(&six).unwrap().get("poise").is_none());
+    }
+
+    /// A search turned off is said to be off, never "none found" (#1880).
+    #[test]
+    fn cycles_not_searched_are_not_none_found() {
+        let mut s = session_of(vec![reading(Some(0.0), Position::CH)]);
+        let searched = html(&s);
+        assert!(searched.contains("No periodic change"), "{searched}");
+        s.input = serde_json::json!({ "settings": { "cycles": false } });
+        let off = html(&s);
+        assert!(
+            off.contains("Not searched for") && !off.contains("No periodic change"),
+            "{off}"
+        );
     }
 
     #[test]

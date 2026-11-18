@@ -40,5 +40,29 @@ fn the_slice_range_reads_as_signed_rates() {
         .expect("the report's rate row");
     assert!(row.contains(" slices from +"), "{row}");
     assert!(row.contains(" to +"), "{row}");
+    // Each search says the shortest cycle it tried, in the text and the
+    // report, and the dashed line is a rate over searches (#1897). On 40 s
+    // the rate is searched and the amplitude is not, which is said, never
+    // "none named" (#1880).
+    use timegrapher_core::longterm::TOO_SHORT_TO_SEARCH;
+    for (out, shortest) in [
+        (&text, "  Shortest cycle searched: "),
+        (&html, "Shortest cycle searched: "),
+    ] {
+        assert_eq!(out.matches(shortest).count(), 1, "{out}");
+        assert_eq!(out.matches(TOO_SHORT_TO_SEARCH).count(), 1, "{out}");
+    }
+    assert_eq!(text.matches("none named").count(), 1, "{text}");
+    assert_eq!(html.matches("No periodic change").count(), 1);
+    assert!(
+        html.contains(&timegrapher_core::steady_views::threshold_meaning(
+            timegrapher_core::longterm::LongConfig::default().false_alarm
+        ))
+    );
+    assert!(
+        !html.contains("too short to search."),
+        "one fact, one place"
+    );
+    assert!(!html.contains("chance of being noise"));
     let _ = std::fs::remove_dir_all(&dir);
 }
