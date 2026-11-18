@@ -368,7 +368,7 @@ fn comparison(e: Earlier, later: &[SourcedFigures]) -> String {
         (session::IM_NAME, unit(signed(c.im, r), " s/d")),
         (session::IE_NAME, unit(plain(c.ie, r), " s/d")),
     ]);
-    if let Some(n) = c.amplitude_note() {
+    if let Some(n) = c.amplitude_note(e.hours) {
         out += &wrap(&n, "");
     }
     out

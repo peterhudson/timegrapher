@@ -864,12 +864,49 @@ fn a_positions_test_ends_by_itself_after_the_sixth_position() {
     }
     app.guided = Some(test);
     assert!(app.test_listening());
+    app.lift_deg = 53.0;
     let ctx = egui::Context::default();
     app.guided_tick(&ctx);
     assert!(!app.guided_running(), "ended");
     assert!(app.session.paused(), "listening stopped");
     let kept = app.guided.as_ref().expect("the table stays");
     assert_eq!(kept.readings.as_ref().map(|r| r.len()), Some(6));
+    assert_eq!(kept.lift_deg, Some(53.0), "read at the lift in use (#1884)");
+    drop(tx);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A Positions Test keeps the lift its positions were read at, so its
+/// amplitudes are set against full wind's only at the same lift
+/// (#1884): read as it goes at the lift in use, and read again at a new
+/// one.
+#[test]
+fn a_positions_test_keeps_the_lift_it_was_read_at() {
+    let base = std::env::temp_dir().join(format!("tg-app-guided-lift-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let mut app = synthetic(20.0, 0.0);
+    app.session.listen();
+    let tx = queued_capture(&mut app, &base);
+    let end = app.live.as_ref().unwrap().duration_s();
+    let mut test = guided::Test::new().timed(0.5, 2.0);
+    let mut t = end - 18.0;
+    test.tick(t);
+    for _ in 0..2 {
+        t += 2.75;
+        test.tick(t);
+        test.advance(t);
+    }
+    assert_eq!(test.lift_deg, None);
+    app.guided = Some(test);
+    app.lift_deg = 55.0;
+    app.guided_tick(&egui::Context::default());
+    assert!(app.guided_running());
+    let lift = |app: &TimegrapherApp| app.guided.as_ref().unwrap().lift_deg;
+    assert_eq!(lift(&app), Some(55.0), "read as it goes");
+    app.lift_deg = 50.0;
+    app.reread_guided();
+    assert_eq!(lift(&app), Some(50.0), "read again");
     drop(tx);
     let _ = std::fs::remove_dir_all(&base);
 }

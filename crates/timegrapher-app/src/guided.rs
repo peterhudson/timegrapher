@@ -1686,7 +1686,7 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
          takes it. Ie: the size of the mean rate's change over the positions measured both \
          times.",
     );
-    if let Some(n) = c.amplitude_note() {
+    if let Some(n) = c.amplitude_note(WindHours::measured(c.hours)) {
         ui.label(RichText::new(n).color(pal.text_secondary));
     }
 }
@@ -2621,7 +2621,7 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
     let num = |v: Option<f64>| v.map_or_else(String::new, |x| fixed_text(x, RATE));
     cells.push(vec![format!("{}, s/d", session::IM_NAME), num(c.im)]);
     cells.push(vec![format!("{}, s/d", session::IE_NAME), num(c.ie)]);
-    if let Some(n) = c.amplitude_note() {
+    if let Some(n) = c.amplitude_note(WindHours::measured(c.hours)) {
         cells.push(vec![n]);
     }
     let field = |s: &str| {

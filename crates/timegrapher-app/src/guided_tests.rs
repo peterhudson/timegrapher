@@ -544,7 +544,10 @@ fn six_positions_read_their_own_rates() {
     );
     let csv = comparison_text(&c, ',');
     assert!(csv.starts_with("Position,\"Rate at Full Wind, s/d\",\"Rate at 24.0 h, s/d\""));
-    assert!(c.amplitude_note().is_none(), "one lift");
+    assert!(
+        c.amplitude_note(WindHours::measured(24.0)).is_none(),
+        "one lift"
+    );
     // Read at another lift, the amplitudes can't be set against each
     // other: no change, the rest as before, and the lifts said (#1884).
     let full_lift = full.lift_angle_deg.unwrap();
@@ -554,7 +557,11 @@ fn six_positions_read_their_own_rates() {
         assert_eq!(x[..5], y[..5]);
     }
     assert_eq!((other.im, other.ie), (c.im, c.ie));
-    let note = other.amplitude_note().unwrap();
+    let note = other.amplitude_note(WindHours::measured(24.0)).unwrap();
+    assert!(
+        note.contains("24.0 h"),
+        "named as the heads name it: {note}"
+    );
     assert!(
         comparison_text(&other, ',').contains(&format!("\"{note}\"")),
         "{note}"
@@ -1251,6 +1258,8 @@ fn an_opened_24_hour_halfs_results_are_saved_as_the_pane_shows_them() {
     t.readings = Some(readings.clone());
     let mut half = Test::after(t.kept(&about).unwrap());
     half.readings = Some(readings);
+    // Read at the lift in use, as the app's every read sets it (#1884).
+    half.lift_deg = Some(about.lift_angle_deg);
     let s = half.kept(&about).unwrap();
     assert!(s.against.is_some() && s.wind_h.is_some(), "{s:?}");
     let pane = About::default();
