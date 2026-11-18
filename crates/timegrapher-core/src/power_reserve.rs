@@ -75,12 +75,15 @@ pub enum Ending {
 
 impl Ending {
     /// How the run ended, as a sentence without its full stop, the same
-    /// on every surface: "The watch stopped", "Stopped by hand while the
-    /// watch still ran", "Reached the 80 h limit while the watch still
-    /// ran".
+    /// on every surface: "No beat heard for 10 min", "Stopped by hand
+    /// while the watch still ran", "Reached the 80 h limit while the watch
+    /// still ran". A stopped watch and a pickup that slipped sound the
+    /// same, so a run no beat ended says only what was heard (#1895);
+    /// where the last beat's time is known, [`Ending::text_since`] gives
+    /// it.
     pub fn text(self) -> String {
         match self {
-            Ending::Stopped => "The watch stopped".to_string(),
+            Ending::Stopped => format!("No beat heard for {} min", STOP_AFTER_S / 60.0),
             Ending::ByHand => "Stopped by hand while the watch still ran".to_string(),
             Ending::Limit => format!(
                 "Reached the {} limit while the watch still ran",
@@ -92,11 +95,21 @@ impl Ending {
         }
     }
 
+    /// [`Ending::text`], with a run no beat ended naming when its last
+    /// beat was heard, `last_beat` as [`last_beat_words`] gives it: "No
+    /// beat heard since 17 Nov 22:42".
+    pub fn text_since(self, last_beat: Option<&str>) -> String {
+        match (self, last_beat) {
+            (Ending::Stopped, Some(t)) => format!("No beat heard since {t}"),
+            _ => self.text(),
+        }
+    }
+
     /// How the run ended in a word or two, as a plot's title gives it
-    /// after the run time ([`title`]): "stopped".
+    /// after the run time ([`title`]): "no beat heard".
     pub fn short(self) -> String {
         match self {
-            Ending::Stopped => "stopped".to_string(),
+            Ending::Stopped => "no beat heard".to_string(),
             Ending::ByHand => "stopped by hand".to_string(),
             Ending::Limit => format!("reached the {} limit", limit_text()),
             Ending::TakeEnded => "take ended".to_string(),
@@ -143,7 +156,7 @@ impl Source {
 }
 
 /// An ended run in one line, as the Power Reserve pane's title gives it
-/// (#1528): "Ran 9 h 46 min · stopped", then how many times the beats
+/// (#1528): "Ran 9 h 46 min · no beat heard", then how many times the beats
 /// stopped and came back on the way, when they did ("· restarted 2
 /// times"). The run sentence ([`sentence`]) says it in full.
 pub fn title(run_s: f64, ending: Ending, source: Source, restarts: usize) -> String {
@@ -739,20 +752,45 @@ pub fn run_words(run_s: f64, ending: Ending, source: Source) -> String {
     }
 }
 
-/// A run in sentences, with `position` as the surface names it, the same
-/// on every surface: "Power reserve 41 h 12 min in DU. The watch
-/// stopped." for a test. A long take, not known to start fully wound, has
-/// its run named a run from the take's start, never a power reserve, and
-/// says where it came from.
-pub fn sentence(run_s: f64, ending: Ending, source: Source, position: &str) -> String {
+/// A run in sentences, with `position` as the surface names it and
+/// `last_beat` when its last beat was heard ([`last_beat_words`]), the
+/// same on every surface: "Power reserve 41 h 12 min in DU. No beat heard
+/// since 17 Nov 22:42." for a test. A long take, not known to start fully
+/// wound, has its run named a run from the take's start, never a power
+/// reserve, and says where it came from.
+pub fn sentence(
+    run_s: f64,
+    ending: Ending,
+    source: Source,
+    position: &str,
+    last_beat: Option<&str>,
+) -> String {
     let run = run_words(run_s, ending, source);
+    let ended = ending.text_since(last_beat);
     match source.text() {
-        None => format!("Power reserve {run} in {position}. {}.", ending.text()),
-        Some(from) => format!(
-            "Ran {run} in {position} from the take's start. {}. {from}.",
-            ending.text()
-        ),
+        None => format!("Power reserve {run} in {position}. {ended}."),
+        Some(from) => format!("Ran {run} in {position} from the take's start. {ended}. {from}."),
     }
+}
+
+/// When a run's last beat was heard, in this computer's time zone, as a
+/// run no beat ended names it ([`Ending::text_since`]): "17 Nov 22:42".
+/// The run's take started at `started_utc` (its audio second 0), its
+/// first beat `first_beat_s` audio seconds on, and its last `run_s` true
+/// seconds after that. `None` when the start can't be read.
+pub fn last_beat_words(started_utc: &str, first_beat_s: f64, run_s: f64) -> Option<String> {
+    let unix = crate::full_wind::unix_of_utc(started_utc)? + first_beat_s + run_s;
+    minute_words(unix, &chrono::Local)
+}
+
+/// Unix seconds `unix` in the time zone `tz`, to the minute: "17 Nov
+/// 22:42".
+fn minute_words<Tz: chrono::TimeZone>(unix: f64, tz: &Tz) -> Option<String>
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let t = chrono::DateTime::from_timestamp(unix.floor() as i64, 0)?;
+    Some(t.with_timezone(tz).format("%-d %b %H:%M").to_string())
 }
 
 impl Results {
@@ -780,9 +818,26 @@ impl Results {
         }
     }
 
+    /// [`last_beat_words`] of this run.
+    pub fn last_beat_words(&self) -> Option<String> {
+        last_beat_words(&self.started_utc, self.first_beat_s, self.run_s)
+    }
+
+    /// How this run ended, as [`Ending::text_since`] says it with the
+    /// time of its last beat.
+    pub fn ending_text(&self) -> String {
+        self.ending.text_since(self.last_beat_words().as_deref())
+    }
+
     /// [`sentence`] of this run.
     pub fn sentence(&self, position: &str) -> String {
-        sentence(self.run_s, self.ending, self.source, position)
+        sentence(
+            self.run_s,
+            self.ending,
+            self.source,
+            position,
+            self.last_beat_words().as_deref(),
+        )
     }
 
     /// A long take's run read while the take is still being heard: one
@@ -856,11 +911,11 @@ mod title_tests {
         let s = 9.0 * 3600.0 + 46.0 * 60.0;
         assert_eq!(
             title(s, Ending::Stopped, Source::Test, 0),
-            "Ran 9 h 46 min \u{b7} stopped"
+            "Ran 9 h 46 min \u{b7} no beat heard"
         );
         assert_eq!(
             title(s, Ending::Stopped, Source::LongTake, 2),
-            "Ran 9 h 46 min \u{b7} stopped \u{b7} restarted 2 times"
+            "Ran 9 h 46 min \u{b7} no beat heard \u{b7} restarted 2 times"
         );
         assert!(title(s, Ending::TakeEnded, Source::LongTake, 1)
             .starts_with("Ran at least 9 h 46 min \u{b7} take ended \u{b7} restarted once"));
@@ -973,7 +1028,17 @@ mod tests {
 
     #[test]
     fn an_ending_reads_the_same_everywhere() {
-        assert_eq!(Ending::Stopped.text(), "The watch stopped");
+        // A stopped watch and a slipped pickup sound the same: a run no
+        // beat ended says only what was heard (#1895).
+        assert_eq!(Ending::Stopped.text(), "No beat heard for 10 min");
+        assert_eq!(
+            Ending::Stopped.text_since(Some("17 Nov 22:42")),
+            "No beat heard since 17 Nov 22:42"
+        );
+        assert_eq!(
+            Ending::ByHand.text_since(Some("17 Nov 22:42")),
+            Ending::ByHand.text()
+        );
         assert_eq!(
             Ending::ByHand.text(),
             "Stopped by hand while the watch still ran"
@@ -989,12 +1054,27 @@ mod tests {
         );
     }
 
+    /// The last beat's time is the take's start on by the first beat and
+    /// the run, to the minute, in the time zone given (#1895).
+    #[test]
+    fn the_last_beat_is_named_to_the_minute() {
+        let start = crate::full_wind::unix_of_utc("2026-11-15T07:30:00Z").unwrap();
+        // First beat 12 s in, then 63 h 03 min 38 s: 22:33:50 UTC on the 17th.
+        let unix = start + 12.0 + 63.0 * 3600.0 + 3.0 * 60.0 + 38.0;
+        let utc = chrono::FixedOffset::east_opt(0).unwrap();
+        let vancouver = chrono::FixedOffset::west_opt(8 * 3600).unwrap();
+        assert_eq!(minute_words(unix, &utc).unwrap(), "17 Nov 22:33");
+        assert_eq!(minute_words(unix, &vancouver).unwrap(), "17 Nov 14:33");
+        assert!(last_beat_words("", 0.0, 1.0).is_none());
+        assert!(last_beat_words("2026-11-15T07:30:00Z", 12.0, 3600.0).is_some());
+    }
+
     /// A run whose recording failed is at least as long as heard, and its
     /// file names how it ended (#1380).
     #[test]
     fn a_run_whose_recording_failed_reads_at_least() {
         assert_eq!(
-            sentence(7260.0, Ending::RecordingFailed, Source::Test, "DU"),
+            sentence(7260.0, Ending::RecordingFailed, Source::Test, "DU", None),
             "Power reserve at least 2 h 01 min in DU. The recording failed while the watch \
              still ran."
         );
@@ -1232,16 +1312,24 @@ mod tests {
         r.ending = Ending::Stopped;
         assert_eq!(
             r.sentence("DU"),
-            "Ran 65 h 03 min in DU from the take's start. The watch stopped. Read from a \
-             long take, not a Power Reserve Test."
+            "Ran 65 h 03 min in DU from the take's start. No beat heard for 10 min. Read \
+             from a long take, not a Power Reserve Test."
         );
         r.source = Source::Test;
         assert_eq!(r.ran(), "Ran 65 h 03 min");
         assert_eq!(r.run_label(), "Power reserve");
         assert_eq!(
             r.sentence("DU"),
-            "Power reserve 65 h 03 min in DU. The watch stopped."
+            "Power reserve 65 h 03 min in DU. No beat heard for 10 min."
         );
+        // With its start known, the run names when its last beat was heard.
+        r.started_utc = "2026-11-15T07:30:00Z".into();
+        let last = r.last_beat_words().unwrap();
+        assert_eq!(
+            r.sentence("DU"),
+            format!("Power reserve 65 h 03 min in DU. No beat heard since {last}.")
+        );
+        assert_eq!(r.ending_text(), format!("No beat heard since {last}"));
         for surface in [r.sentence("DU"), r.ran()] {
             assert!(!surface.contains("at least"));
         }

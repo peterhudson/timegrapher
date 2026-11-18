@@ -909,7 +909,7 @@ far as at the end: about once a minute the hour in progress is measured
 again and the table gains a row as each hour starts, the hour in progress
 read like a finished run's last ("2 h + 26:28"); the charts gain a point as
 each hour is whole and show from the first whole hour. At the end it shows one line,
-such as "Ran 41 h 12 min · The watch stopped, in Dial Up (DU) · Kept in Pepsi",
+such as "Ran 41 h 12 min · No beat heard since 17 Nov 22:42, in Dial Up (DU) · Kept in Pepsi",
 the run time in true time (through the input's clock as measured
 while listening, else its stored correction), then, scrolling in the rest
 of the pane, the rate and amplitude against hours since the first beat, and a table

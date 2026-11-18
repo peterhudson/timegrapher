@@ -256,13 +256,19 @@ fn with_limits(mut lines: Vec<String>, doc: &Value) -> Option<String> {
 /// A Power Reserve take's run, as the CLI's text gives it, with the stops
 /// on the way and the hours read.
 fn power_reserve(p: &Value) -> Option<String> {
-    use timegrapher_core::power_reserve::{sentence, Ending, Source};
+    use timegrapher_core::power_reserve::{last_beat_words, sentence, Ending, Source};
     let run_s = p["run_s"].as_f64()?;
     let ending: Ending = serde_json::from_value(p["ending"].clone()).ok()?;
     let source: Source = serde_json::from_value(p["source"].clone()).unwrap_or_default();
     let position = position_name(p["position"].as_str().unwrap_or(""));
     // As core words it: a long take's run is never a power reserve.
-    let mut s = sentence(run_s, ending, source, &position);
+    // A run no beat ended names when its last beat was heard (#1895).
+    let last_beat = last_beat_words(
+        p["started_utc"].as_str().unwrap_or(""),
+        p["first_beat_s"].as_f64().unwrap_or(0.0),
+        run_s,
+    );
+    let mut s = sentence(run_s, ending, source, &position, last_beat.as_deref());
     let pauses = p["pauses"].as_array().map_or(0, |a| a.len()) as u64;
     if pauses > 0 {
         s += &format!(
@@ -762,12 +768,25 @@ mod tests {
         let s = lead(&doc).unwrap();
         assert!(
             s.starts_with(
-                "Power reserve 42 h 03 min in Dial Up (DU). The watch stopped. The \
+                "Power reserve 42 h 03 min in Dial Up (DU). No beat heard for 10 min. The \
                  beats stopped for 30 s or more and came back once on the way. Measured \
                  hour by hour: 3 hours in `hours`.\nReadings by position:"
             ),
             "{s}"
         );
+        // With the take's start, the run names when its last beat was heard.
+        let mut timed = doc.clone();
+        timed["power_reserve"]["started_utc"] = json!("2026-11-15T07:30:00Z");
+        timed["power_reserve"]["first_beat_s"] = json!(12.0);
+        let last = timegrapher_core::power_reserve::last_beat_words(
+            "2026-11-15T07:30:00Z",
+            12.0,
+            151_380.0,
+        )
+        .unwrap();
+        assert!(lead(&timed).unwrap().starts_with(&format!(
+            "Power reserve 42 h 03 min in Dial Up (DU). No beat heard since {last}. The"
+        )));
         let mut by_hand = doc.clone();
         by_hand["power_reserve"]["ending"] = json!("by_hand");
         by_hand["power_reserve"]["pauses"] = json!([]);
