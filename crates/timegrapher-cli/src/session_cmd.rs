@@ -874,17 +874,11 @@ pub struct TextReport {
 }
 
 impl Session<'_> {
-    /// The lift angle as the text and the HTML report show it: core's
-    /// caveat wording ("lift angle 52°, the default") when it is the
-    /// default rather than one set for the watch.
+    /// The lift angle as the text and the HTML report show it, in core's
+    /// words ([`timegrapher_core::measure::lift_words`]): "lift angle 52°,
+    /// the default" when it is the default rather than one set for the watch.
     pub fn lift_text(&self) -> String {
-        if self.lift_known {
-            format!("lift angle {}°", self.lift_deg)
-        } else {
-            timegrapher_core::measure::Caveat::LiftUnknown
-                .short(self.lift_deg, 0)
-                .unwrap_or_default()
-        }
+        timegrapher_core::measure::lift_words(self.lift_deg, self.lift_known)
     }
 }
 
