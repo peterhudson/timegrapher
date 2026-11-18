@@ -3,6 +3,7 @@
 
 use crate::long::{duration, false_alarm, wheel_note};
 use std::fmt::Write;
+use timegrapher_core::clock;
 use timegrapher_core::library::fixed_text;
 use timegrapher_core::longrun::LongReport;
 use timegrapher_core::longterm::{false_alarm_text, Component, Search};
@@ -575,18 +576,16 @@ fn facts(body: &mut String, r: &LongReport, clock_note: Option<&str>) {
     });
     let clock = match (&r.clock, clock_note) {
         (Some(c), Some(note)) => format!(
-            "corrected: sound card {} ppm {} than true time, a steady error {note}",
-            fixed_text(c.ppm.abs(), 2),
-            if c.ppm >= 0.0 { "slower" } else { "faster" },
+            "corrected: {}; a steady error {note}",
+            clock::card_error_words(c.ppm, Some(c.ppm_sd), "true time"),
         ),
         (Some(c), None) if !c.corrects() => format!(
             "not calibrated: {}",
             c.withheld.map(|w| w.note()).unwrap_or_default()
         ),
         (Some(c), None) => format!(
-            "calibrated: sound card {} ppm {} than NTP time ({} entries, {} ms rms)",
-            fixed_text(c.ppm.abs(), 2),
-            if c.ppm >= 0.0 { "slower" } else { "faster" },
+            "calibrated: {} ({} entries, {} ms rms)",
+            clock::card_error_words(c.ppm, Some(c.ppm_sd), "NTP time"),
             c.points,
             fixed_text(c.residual_ms, 1)
         ),
@@ -600,7 +599,7 @@ fn facts(body: &mut String, r: &LongReport, clock_note: Option<&str>) {
 <tr><th>Clock</th><td>{}</td></tr>
 <tr><th>Rate</th><td>{rate} over the run; {} slices from {} to {} s/d (5th to 95th percentile)</td></tr>
 <tr><th>Beat error</th><td>{}</td></tr>
-<tr><th>Amplitude</th><td>{} deg median; slices from {} to {} deg (lift angle {} deg)</td></tr>
+<tr><th>Amplitude</th><td>{} deg median; slices from {} to {} deg ({})</td></tr>
 {}</table>"#,
         duration(r.duration_s),
         r.sample_rate,
@@ -620,7 +619,7 @@ fn facts(body: &mut String, r: &LongReport, clock_note: Option<&str>) {
         o(r.amplitude_deg, 0),
         o(r.amplitude_p05, 0),
         o(r.amplitude_p95, 0),
-        r.lift_deg,
+        esc(&crate::long::lift_of(r)),
         // What the figures above carry, as the text summary says it.
         crate::long::caveat_lines(&r.caveats)
             .iter()
@@ -806,6 +805,63 @@ mod tests {
         assert!(
             page.contains(&format!("<tr><th>{label}</th><td>{}</td></tr>", esc(&line))),
             "{label}: {line}"
+        );
+    }
+
+    /// The HTML says a card that runs fast is fast, as the text summary
+    /// and the app do (#1881), and gives the lift beside the amplitude,
+    /// marked as the default when it is.
+    #[test]
+    fn the_report_names_the_clocks_way_and_the_lift() {
+        use timegrapher_core::beats::Beat;
+        use timegrapher_core::clock::ClockFit;
+        use timegrapher_core::stream::BeatLog;
+        let log = BeatLog {
+            lock_template_kept: false,
+            sample_rate: 48_000,
+            duration_s: 600.0,
+            bph: 18_000,
+            lift_deg: 52.0,
+            beats: (0..3000)
+                .map(|i| Beat {
+                    index: i,
+                    time: i as f64 * 0.2,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+            snippets: Vec::new(),
+        };
+        // A card 20 ppm fast: 1 true second in every 1.00002 card seconds.
+        let pairs: Vec<(f64, f64)> = (0..=60)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0 / (1.0 + 20e-6)))
+            .collect();
+        let clock = ClockFit::new(&pairs).unwrap();
+        assert!(clock.ppm > 0.0, "{}", clock.ppm);
+        let lc = timegrapher_core::longterm::LongConfig::default();
+        let mut r = timegrapher_core::longrun::analyse(&log, Some(&clock), &lc);
+        let page = html("take", &r, &[], None);
+        assert!(
+            page.contains("ppm fast against NTP time, so uncorrected rates read"),
+            "clock row"
+        );
+        assert!(
+            page.contains("s/d slow"),
+            "a fast card makes rates read slow"
+        );
+        assert!(!page.contains("slower") && !page.contains("faster"));
+        assert!(page.contains("(lift angle 52°)"), "lift");
+        r.caveats
+            .push(timegrapher_core::measure::Caveat::LiftUnknown);
+        let page = html("take", &r, &[], None);
+        assert!(
+            page.contains("(lift angle 52°, the default)"),
+            "assumed lift"
         );
     }
 

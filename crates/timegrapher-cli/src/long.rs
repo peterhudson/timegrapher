@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use timegrapher_core::calibre_store::{self, UserCalibres};
 #[cfg(test)]
 use timegrapher_core::calibres::{self, Calibre};
-use timegrapher_core::clock::ClockFit;
+use timegrapher_core::clock::{self, ClockFit};
 use timegrapher_core::library::{fixed_text, signed_text};
 use timegrapher_core::longrun::{self, LongReport};
 use timegrapher_core::longterm::{false_alarm_text, Component, LongConfig};
@@ -653,7 +653,7 @@ pub fn run(
     timegrapher_core::steadiness::family_long(&log, clock.as_ref(), &mut rep, &lc);
 
     fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
-    write_tables(&out, &log, clock.as_ref(), &rep)?;
+    write_tables(&out, &log, clock.as_ref(), &breaks, &rep)?;
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));
     let settings = serde_json::json!({
         "take": take_file.map(|p| p.display().to_string()),
@@ -716,21 +716,25 @@ pub(crate) fn add_caveats(
     }
 }
 
-/// The beats, amplitude, slices and folds written as CSV to `out`.
+/// The beats, amplitude, slices and folds written as CSV to `out`. Their
+/// true times are the report's: on `clock`, with each pause in `breaks`
+/// the clock didn't see added (#1883).
 fn write_tables(
     out: &Path,
     log: &BeatLog,
     clock: Option<&ClockFit>,
+    breaks: &[timegrapher_core::breaks::Break],
     rep: &LongReport,
 ) -> Result<(), String> {
     let io = |p: PathBuf, r: std::io::Result<()>| r.map_err(|e| format!("{}: {e}", p.display()));
+    let cuts = timegrapher_core::clean::Cuts::new(clock, breaks, &[]);
     io(
         out.join("beats.csv"),
-        write_beats(&out.join("beats.csv"), log, clock),
+        write_beats(&out.join("beats.csv"), log, &cuts),
     )?;
     io(
         out.join("amplitude.csv"),
-        write_amplitude(&out.join("amplitude.csv"), log, clock),
+        write_amplitude(&out.join("amplitude.csv"), log, &cuts),
     )?;
     io(
         out.join("slices.csv"),
@@ -947,6 +951,15 @@ fn opt(v: Option<f64>, digits: usize) -> String {
     v.map_or("-".into(), |x| fixed_text(x, digits))
 }
 
+/// The lift the run's amplitudes were worked out from, said the same in
+/// the text and the HTML (#1881).
+pub(crate) fn lift_of(r: &LongReport) -> String {
+    let known = !r
+        .caveats
+        .contains(&timegrapher_core::measure::Caveat::LiftUnknown);
+    timegrapher_core::measure::lift_words(r.lift_deg, known)
+}
+
 fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     println!(
         "Recording    {} at {} Hz, {} bph, {} beats ({}% clean)",
@@ -958,22 +971,16 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     );
     match (&r.clock, clock_note) {
         (Some(c), Some(note)) => println!(
-            "Clock        sound card {} ppm {} than true time, so uncorrected rates read {} s/d {}; corrected with the steady error {note}",
-            fixed_text(c.ppm.abs(), 2),
-            if c.ppm >= 0.0 { "faster" } else { "slower" },
-            fixed_text(c.rate_error_s_per_day.abs(), 2),
-            if c.ppm >= 0.0 { "slow" } else { "fast" },
+            "Clock        {}; corrected with the steady error {note}",
+            clock::card_error_words(c.ppm, Some(c.ppm_sd), "true time"),
         ),
         (Some(c), None) if !c.corrects() => println!(
             "Clock        not calibrated: {}",
             c.withheld.map(|w| w.note()).unwrap_or_default()
         ),
         (Some(c), None) => println!(
-            "Clock        sound card {} ppm {} than NTP time, so uncorrected rates read {} s/d {}; corrected from {} entries, {} ms rms{}",
-            fixed_text(c.ppm.abs(), 2),
-            if c.ppm >= 0.0 { "faster" } else { "slower" },
-            fixed_text(c.rate_error_s_per_day.abs(), 2),
-            if c.ppm >= 0.0 { "slow" } else { "fast" },
+            "Clock        {}; corrected from {} entries, {} ms rms{}",
+            clock::card_error_words(c.ppm, Some(c.ppm_sd), "NTP time"),
             c.points,
             fixed_text(c.residual_ms, 1),
             if c.tracks_drift { ", drift followed" } else { "" }
@@ -1007,11 +1014,11 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
         println!("{label:<13}{line}");
     }
     println!(
-        "Amplitude    {} deg median; slices from {} to {} deg (lift angle {} deg)",
+        "Amplitude    {} deg median; slices from {} to {} deg ({})",
         opt(r.amplitude_deg, 0),
         opt(r.amplitude_p05, 0),
         opt(r.amplitude_p95, 0),
-        r.lift_deg
+        lift_of(r)
     );
     let line = |c: &Component, size: String| {
         println!(
@@ -1044,7 +1051,11 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
     }
 }
 
-fn write_beats(p: &Path, log: &BeatLog, clock: Option<&ClockFit>) -> std::io::Result<()> {
+fn write_beats(
+    p: &Path,
+    log: &BeatLog,
+    cuts: &timegrapher_core::clean::Cuts,
+) -> std::io::Result<()> {
     let mut w = BufWriter::new(File::create(p)?);
     writeln!(w, "index,time_s,true_time_s,quality")?;
     for b in &log.beats {
@@ -1053,14 +1064,18 @@ fn write_beats(p: &Path, log: &BeatLog, clock: Option<&ClockFit>) -> std::io::Re
             "{},{:.6},{:.6},{:.3}",
             b.index,
             b.time,
-            clock.map_or(b.time, |c| c.map(b.time)),
+            cuts.true_time(b.time),
             b.quality
         )?;
     }
     w.flush()
 }
 
-fn write_amplitude(p: &Path, log: &BeatLog, clock: Option<&ClockFit>) -> std::io::Result<()> {
+fn write_amplitude(
+    p: &Path,
+    log: &BeatLog,
+    cuts: &timegrapher_core::clean::Cuts,
+) -> std::io::Result<()> {
     let mut w = BufWriter::new(File::create(p)?);
     writeln!(
         w,
@@ -1072,7 +1087,7 @@ fn write_amplitude(p: &Path, log: &BeatLog, clock: Option<&ClockFit>) -> std::io
             "{:.3},{:.3},{:.3},{},{},{},{}",
             a.start_s,
             a.end_s,
-            clock.map_or(a.start_s, |c| c.map(a.start_s)),
+            cuts.true_time(a.start_s),
             a.even_deg.map_or(String::new(), |v| format!("{v:.1}")),
             a.odd_deg.map_or(String::new(), |v| format!("{v:.1}")),
             a.beat_error_ms.map_or(String::new(), |v| format!("{v:.3}")),
@@ -1726,5 +1741,110 @@ mod take_tests {
         assert_eq!(breaks.len(), 1, "{breaks:?}");
         assert_eq!(breaks[0]["gap_s"], 30.0, "{breaks:?}");
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod csv_time_tests {
+    use super::*;
+    use timegrapher_core::beats::Beat;
+    use timegrapher_core::breaks::Break;
+
+    /// Beats every 0.2 s of audio from 0 to `to` s.
+    fn log_to(to: f64) -> BeatLog {
+        BeatLog {
+            lock_template_kept: false,
+            sample_rate: 48_000,
+            duration_s: to,
+            bph: 18_000,
+            lift_deg: 52.0,
+            beats: (0..)
+                .map(|i| Beat {
+                    index: i,
+                    time: i as f64 * 0.2,
+                    quality: 1.0,
+                })
+                .take_while(|b| b.time < to)
+                .collect(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+            snippets: Vec::new(),
+        }
+    }
+
+    /// beats.csv's `true_time_s` at audio second `t`, as `write_tables`
+    /// writes it.
+    fn csv_true_time(log: &BeatLog, clock: Option<&ClockFit>, breaks: &[Break], t: f64) -> f64 {
+        let dir =
+            std::env::temp_dir().join(format!("tg-csv-{}-{}", std::process::id(), clock.is_some()));
+        fs::create_dir_all(&dir).unwrap();
+        let cuts = timegrapher_core::clean::Cuts::new(clock, breaks, &[]);
+        let p = dir.join("beats.csv");
+        write_beats(&p, log, &cuts).unwrap();
+        let text = fs::read_to_string(&p).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        text.lines()
+            .skip(1)
+            .map(|l| {
+                l.split(',')
+                    .map(|f| f.parse::<f64>().unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .find(|f| (f[1] - t).abs() < 1e-6)
+            .map(|f| f[2])
+            .unwrap_or_else(|| panic!("no beat at {t} s"))
+    }
+
+    /// With no clock log, a 30 s pause at audio second 60 puts a beat at
+    /// audio second 65 at 95 s, in the CSV as in the report (#1883).
+    #[test]
+    fn a_pause_moves_the_csv_true_time_as_the_report_does() {
+        let log = log_to(120.0);
+        let breaks = [Break {
+            audio_s: 60.0,
+            gap_s: 30.0,
+        }];
+        assert!((csv_true_time(&log, None, &breaks, 59.0) - 59.0).abs() < 1e-6);
+        assert!((csv_true_time(&log, None, &breaks, 65.0) - 95.0).abs() < 1e-6);
+        let r = longrun::analyse_with_breaks(&log, None, &breaks, &LongConfig::default());
+        assert!((r.duration_s - 150.0).abs() < 1e-6, "{}", r.duration_s);
+    }
+
+    /// With a clock log that saw the pause, its gap is the log's and is
+    /// not added again: the CSV's true time is the log's.
+    #[test]
+    fn a_pause_the_clock_log_saw_is_counted_once() {
+        let k = 1.0 + 20e-6;
+        let mut pairs: Vec<(f64, f64)> = (0..=30)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0 * k))
+            .collect();
+        pairs.extend((0..30).map(|i| {
+            let t = 305.1 + i as f64 * 10.0;
+            (t, 1.79e9 + t * k + 30.0)
+        }));
+        let clock = ClockFit::new(&pairs).unwrap();
+        let log = log_to(500.0);
+        let breaks = [Break {
+            audio_s: 305.0,
+            gap_s: 30.0,
+        }];
+        for t in [100.0, 400.0] {
+            let got = csv_true_time(&log, Some(&clock), &breaks, t);
+            let want = timegrapher_core::clean::Cuts::new(Some(&clock), &breaks, &[]).true_time(t);
+            assert!((got - want).abs() < 1e-6, "{t}: {got} against {want}");
+            assert!(
+                (got - clock.map(t)).abs() < 1e-3,
+                "{t}: {got} against the log's {}",
+                clock.map(t)
+            );
+        }
+        assert!(
+            clock.map(400.0) - clock.map(100.0) > 329.0,
+            "the log carries the pause"
+        );
     }
 }
