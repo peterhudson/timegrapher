@@ -385,7 +385,7 @@ impl Comparison {
             // "read at 52°" under an amplitude reads as one.
             LiftGap::Differ(full, later) => format!(
                 "No amplitude change: the two tests used different lift angles \
-                 (full wind {full}°, {h} {later}°)."
+                 ({full}° at full wind, {later}° at {h})."
             ),
             LiftGap::NotRecorded(full, later) => {
                 let whose = match (full, later) {
@@ -502,13 +502,13 @@ mod tests {
         assert_eq!(
             apart.amplitude_note(at).unwrap(),
             "No amplitude change: the two tests used different lift angles \
-             (full wind 52°, 24.1 h 55°)."
+             (52° at full wind, 55° at 24.1 h)."
         );
         let tenth = comparison(&full, 24.0, &later, [Some(52.5), Some(52.0)]).unwrap();
         assert!(tenth
             .amplitude_note(at)
             .unwrap()
-            .contains("full wind 52.5°, 24.1 h 52°"));
+            .contains("52.5° at full wind, 52° at 24.1 h"));
         for (lifts, whose) in [
             (
                 [None, Some(default)],
