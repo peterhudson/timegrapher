@@ -679,6 +679,12 @@ impl Test {
         self.readings = Some(readings);
     }
 
+    /// End the test with no beat to read its stretches by: the positions
+    /// read so far are its readings, so it is finished, not running.
+    pub fn end_unread(&mut self) {
+        self.readings = Some(std::mem::take(&mut self.done));
+    }
+
     /// Read every position measured so far again, as when the stretches
     /// masked change; a finished test is finished again.
     pub fn reread(&mut self, log: &BeatLog, clock: Option<&ClockFit>, masked: &[(f64, f64)]) {

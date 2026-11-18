@@ -1243,3 +1243,66 @@ fn every_chart_off_leaves_the_positions_table() {
     assert!(drawn.contains("Crown Down (CD, 9H)"), "the table: {drawn}");
     let _ = std::fs::remove_dir_all(base);
 }
+
+/// A silent app listening on a queued capture, 5 s heard, its beat never
+/// found, with a Positions Test started at the first second and `then`
+/// done to it at 3 s.
+fn silent_test(
+    base: &Path,
+    then: impl Fn(&mut guided::Test),
+) -> (TimegrapherApp, std::sync::mpsc::Sender<Event>) {
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    app.reset_session(48000, "silence".into());
+    app.session.listen();
+    let tx = queued_capture(&mut app, base);
+    let live = app.live.as_mut().unwrap();
+    for b in vec![0.0; 5 * 48000].chunks(960) {
+        live.push(b);
+    }
+    assert!(
+        app.live.as_ref().and_then(steady::log_of).is_none(),
+        "no beat"
+    );
+    let mut test = guided::Test::new().timed(1.0, 2.0);
+    test.tick(1.0);
+    then(&mut test);
+    app.guided = Some(test);
+    (app, tx)
+}
+
+/// Stop Test before the beat is found ends the test all the same: it
+/// stays ended at the next frame rather than settling again, and a
+/// paused or redone position ends the same way (#1888).
+#[test]
+fn a_positions_test_stopped_before_the_beat_is_found_stays_ended() {
+    let base = std::env::temp_dir().join(format!("tg-app-guided-unlocked-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    type Then = fn(&mut guided::Test);
+    let cases: [(&str, Then); 4] = [
+        ("settling", |_| {}),
+        ("paused", |t| t.pause(3.0)),
+        ("paused and resumed", |t| {
+            t.pause(2.0);
+            t.resume(3.0);
+        }),
+        ("redone", |t| t.redo(3.0)),
+    ];
+    let ctx = egui::Context::default();
+    for (case, then) in cases {
+        let (mut app, _tx) = silent_test(&base, then);
+        assert!(app.guided_running(), "{case}: under way");
+        app.stop_test();
+        assert!(!app.guided_running(), "{case}: ended");
+        assert!(app.session.paused(), "{case}: listening stopped");
+        app.guided_tick(&ctx);
+        let test = app.guided.as_mut().expect("the table stays");
+        assert_eq!(
+            test.tick(9.0),
+            guided::Phase::Finished,
+            "{case}: not settling again"
+        );
+        assert_eq!(test.readings_so_far().len(), 0, "{case}: nothing read");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -2657,10 +2657,16 @@ mod reading_coverage_tests {
             beat.time = i as f64 * 3600.0 / log.bph as f64;
             beat.index = i as i64;
         }
-        for w in &mut log.amplitude_windows {
-            w.even_deg = Some(270.0);
-            w.odd_deg = Some(270.0);
-            w.beat_error_unlock_ms = Some(0.4);
+        // A little scatter so the windows have noise to give a ± from (a
+        // scatter of exactly 0 gives none, #1898): sizes 1 to 5 tenths,
+        // each once up and once down, so the median of the windows is
+        // still 270° and 0.4 ms.
+        for (i, w) in log.amplitude_windows.iter_mut().enumerate() {
+            let sign = if i % 2 == 0 { 1.0 } else { -1.0 };
+            let d = sign * 0.2 * (1 + (i / 2) % 5) as f64;
+            w.even_deg = Some(270.0 + 0.5 * d);
+            w.odd_deg = Some(270.0 + 0.5 * d);
+            w.beat_error_unlock_ms = Some(0.4 + 0.01 * d);
         }
         log
     }

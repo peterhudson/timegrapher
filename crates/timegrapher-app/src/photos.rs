@@ -119,6 +119,9 @@ pub struct Thumbs {
     work: Option<(Sender<PathBuf>, Receiver<Done>)>,
 }
 
+/// Why a thumbnail asked of a thread that has ended isn't shown.
+const STOPPED: &str = "Its reading stopped part way.";
+
 impl Thumbs {
     /// The thumbnail of `path`, asked for the first time it is wanted.
     pub fn get(&mut self, ctx: &egui::Context, path: &Path) -> &Thumb {
@@ -142,8 +145,16 @@ impl Thumbs {
                     .expect("a thread for thumbnails");
                 (tx, rx)
             });
-            let _ = tx.send(path.to_path_buf());
-            self.shown.insert(path.to_path_buf(), Thumb::Loading);
+            // The thumbnail thread gone: say so, rather than Loading for
+            // good, and start a new one at the next ask (#1891).
+            let thumb = match tx.send(path.to_path_buf()) {
+                Ok(()) => Thumb::Loading,
+                Err(_) => {
+                    self.work = None;
+                    Thumb::Failed(STOPPED.into())
+                }
+            };
+            self.shown.insert(path.to_path_buf(), thumb);
         }
         &self.shown[path]
     }
@@ -153,7 +164,24 @@ impl Thumbs {
         let Some((_, rx)) = &self.work else {
             return;
         };
-        for (p, t) in rx.try_iter() {
+        let mut answers = Vec::new();
+        let gone = loop {
+            match rx.try_recv() {
+                Ok(a) => answers.push(a),
+                Err(mpsc::TryRecvError::Empty) => break false,
+                Err(mpsc::TryRecvError::Disconnected) => break true,
+            }
+        };
+        // The thread ended part way: what it was still to read failed.
+        if gone {
+            self.work = None;
+            for t in self.shown.values_mut() {
+                if matches!(t, Thumb::Loading) {
+                    *t = Thumb::Failed(STOPPED.into());
+                }
+            }
+        }
+        for (p, t) in answers {
             let thumb = match t {
                 Ok(img) => Thumb::Ready(ctx.load_texture(
                     format!("thumb {}", p.display()),
@@ -189,6 +217,35 @@ mod tests {
         let at = |x: usize| img.pixels[(h / 2) * w + x];
         let (l, r) = (at(w / 8), at(w - 1 - w / 8));
         l.r() > 150 && l.b() < 100 && r.b() > 150 && r.r() < 100
+    }
+
+    /// A thumbnail thread that has ended leaves no photo saying Loading
+    /// for good: one waiting fails, and so does one it can't be sent
+    /// (#1891).
+    #[test]
+    fn a_thumbnail_thread_that_ended_leaves_nothing_loading() {
+        let ctx = egui::Context::default();
+        let mut thumbs = Thumbs::default();
+        let waiting = PathBuf::from("waiting.png");
+        thumbs.shown.insert(waiting.clone(), Thumb::Loading);
+        // The thread ended after taking the job: what waits fails, and the
+        // next ask starts a new thread.
+        let (tx, _jobs) = mpsc::channel::<PathBuf>();
+        let (done, rx) = mpsc::channel::<Done>();
+        drop(done);
+        thumbs.work = Some((tx, rx));
+        let asked = Path::new("asked.png");
+        assert!(matches!(thumbs.get(&ctx, asked), Thumb::Loading));
+        assert!(matches!(&thumbs.shown[&waiting], Thumb::Failed(e) if e == STOPPED));
+        assert!(thumbs.work.is_some(), "a new thread");
+        // The send itself failing, the thread gone since the last collect.
+        let (tx, jobs) = mpsc::channel::<PathBuf>();
+        let (_done, rx) = mpsc::channel::<Done>();
+        drop(jobs);
+        thumbs.work = Some((tx, rx));
+        let sent = Path::new("sent.png");
+        assert!(matches!(thumbs.get(&ctx, sent), Thumb::Failed(e) if e == STOPPED));
+        assert!(thumbs.work.is_none());
     }
 
     #[test]

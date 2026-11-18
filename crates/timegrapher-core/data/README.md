@@ -7,9 +7,11 @@ tooth, an eccentric wheel, a rubbing seconds hand) repeats once per turn,
 so a periodic change in rate or amplitude can be named once these periods
 are known. The table is read by `timegrapher_core::calibres`.
 
-Only lever escapements are listed. Co-axial calibres (Omega 8500, 8800
-and their kin) and other non-lever escapements are left out: the
-measurement assumes a Swiss lever's unlock and drop.
+Timegrapher measures Swiss lever escapements only, because the
+measurement assumes a lever's unlock and drop. A calibre with another
+escapement (co-axial, pin lever, detent) stays in the table so it can be
+found, but carries an `escapement` field with a source, and the app and
+CLI say it is not supported yet.
 
 ## DD32xx and JH32xx empirical lift setting
 
@@ -417,6 +419,42 @@ Eterna 12824 52°, ETA 2824 at 21,600 bph 53°), and their notes give his
 100 / 80:20 / 99:12 / 120:11 train and five-hour barrel. The 20:10 escape pair
 is the contributor-accepted standard specification, supported by both
 comparison families. Its source note records that it was not photographed. VR and SH aliases are separated.
+
+## Modern makers' own pages (2026-11-18)
+
+Rows added on 2026-11-18 with `confidence` "maker's page" quote the
+beat-rate line from the maker's own specification page, manual,
+catalogue or press release:
+
+- Sellita: catalogue 2024. Grades a, b and c share one row, and the
+  M, MP, MPC, BV, BH and S versions are names in its `family`. The
+  SW500 has no row of its own yet, because the Valjoux 7750 row already
+  answers to "SW500".
+- Soprod: its calibre comparison sheet, as hosted by Cousins UK.
+- Seiko and Grand Seiko: the instruction manuals and Grand Seiko's
+  movement comparison. Where a manual prints one beat rate across
+  several calibre columns, the figure is taken for each of them.
+  Grand Seiko's 9SA4, 9SA5 and 9SC5 use a dual impulse escapement, not
+  a Swiss lever, so they are not added.
+- Miyota: its product pages (the 6T15, 6T27 and 6T28; the 8205, 8217,
+  9039 and 90S5 are already names on the 8215 and 9015 rows).
+- Tudor: its press releases and calibre pages.
+- Citizen: The Citizen specification page and the 9051 manual.
+- Ronda: the R150 announcement on fhs.swiss. La Joux-Perret: the G100
+  and L100 announcement on fhs.swiss.
+
+The Ronda R01 has no maker's page here: its beat rate (25,200) comes
+from Worn & Wound's article on its launch, so its `confidence` is
+"press article".
+
+No lift angle is taken from these pages, because none of them prints
+one. Orient does not publish beat rates on its pages, and the Seiko NH
+and NE spec sheets are images, so neither is added here.
+
+Beat rates were also filled on 2026-11-18 for rows that had none:
+35 from watch-wiki.org (its `Halbschwingungen` field): single figures,
+each cited to its page; no text was copied. Another 8 come from Seiko's
+manuals.
 
 ## Seiko and Miyota manufacturer-document research
 
