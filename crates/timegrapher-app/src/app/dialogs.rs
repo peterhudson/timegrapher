@@ -280,10 +280,15 @@ impl TimegrapherApp {
         if modal.should_close() {
             later = true;
         }
-        if self.device != before && self.running() && self.session.mic() {
+        match sheet_pick(self.device != before, self.running(), self.session.mic()) {
+            SheetPick::Keep => {}
             // Another microphone chosen: listen to that one instead.
-            self.stop_listening();
-            self.quick_listen(true);
+            SheetPick::Switch => {
+                self.stop_listening();
+                self.quick_listen(true);
+            }
+            // The last one failed to open: try the one just chosen, once.
+            SheetPick::Try => self.quick_listen(true),
         }
         if done {
             self.setup_sheet = false;
@@ -986,6 +991,27 @@ pub(super) fn confirm_title(what: &Confirm) -> &'static str {
 
 /// Set Up the Microphone's Done and Not Now, with what follows beside
 /// them; whether each was pressed.
+/// What a microphone chosen in Set Up the Microphone asks for.
+#[derive(Debug, PartialEq)]
+enum SheetPick {
+    Keep,
+    Switch,
+    Try,
+}
+
+/// A pick that `changed` the microphone switches to it while one is
+/// listening, and tries it when nothing is, as after a failed first try
+/// (#1889). With no new pick nothing is tried again, so a failed
+/// microphone isn't reopened every frame; and a recording playing is left
+/// to play.
+fn sheet_pick(changed: bool, running: bool, mic: bool) -> SheetPick {
+    match (changed, running, mic) {
+        (false, _, _) | (true, true, false) => SheetPick::Keep,
+        (true, true, true) => SheetPick::Switch,
+        (true, false, _) => SheetPick::Try,
+    }
+}
+
 fn setup_sheet_buttons(ui: &mut egui::Ui) -> (bool, bool) {
     let pal = theme::pal(ui);
     let (mut done, mut later) = (false, false);
@@ -1321,4 +1347,32 @@ fn watch_of_take(a: &OpenAsk, fill: &Fill, cal: &crate::calibre_ui::Calibres) ->
         .or(fill.lift.filter(|&(_, set)| set).map(|(l, _)| l))
         .filter(|_| cal.lift(named).is_none());
     w
+}
+
+#[cfg(test)]
+mod sheet_tests {
+    use super::*;
+
+    #[test]
+    fn a_microphone_chosen_after_a_failure_is_tried() {
+        assert_eq!(
+            sheet_pick(true, false, false),
+            SheetPick::Try,
+            "after a failure"
+        );
+        assert_eq!(sheet_pick(true, false, true), SheetPick::Try);
+        assert_eq!(sheet_pick(true, true, true), SheetPick::Switch);
+        assert_eq!(
+            sheet_pick(true, true, false),
+            SheetPick::Keep,
+            "a file plays"
+        );
+        for (running, mic) in [(false, false), (false, true), (true, true)] {
+            assert_eq!(
+                sheet_pick(false, running, mic),
+                SheetPick::Keep,
+                "no new pick"
+            );
+        }
+    }
 }
