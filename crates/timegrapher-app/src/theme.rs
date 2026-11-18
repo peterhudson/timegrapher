@@ -179,24 +179,16 @@ pub const CONTROL_RADIUS: u8 = 6;
 pub const GAP: f32 = 12.0;
 pub const CARD_PADDING: i8 = 16;
 
-/// The readings cards' rows, 8 apart: the title, the figure and the
-/// controls, two rows of them on the Listen card (Average Over, then
-/// Wind: #1915). Every control on them is `CONTROL_H` tall.
+/// The readings cards' three rows, 8 apart: the title, the figure and the
+/// controls. Every control on them is `CONTROL_H` tall.
 pub const TITLE_ROW_H: f32 = 18.0;
 pub const FIGURE_ROW_H: f32 = 40.0;
 pub const CONTROL_H: f32 = 28.0;
 pub const ROW_GAP: f32 = 8.0;
-/// A readings card's height at every width, whatever it shows: its rows,
-/// the Listen card's two rows of controls among them, and its padding.
+/// A readings card's height at every width, whatever it shows: its three
+/// rows and its padding.
 pub const READINGS_CARD_H: f32 =
-    TITLE_ROW_H + FIGURE_ROW_H + LISTEN_FIELDS_H + 2.0 * ROW_GAP + 2.0 * CARD_PADDING as f32;
-/// The Listen card's two rows of controls, Average Over and Wind,
-/// [`FIELD_GAP`] apart.
-pub const LISTEN_FIELDS_H: f32 = 2.0 * CONTROL_H + FIELD_GAP;
-/// Between the Listen card's two fields: half a row's gap, as two fields
-/// of one card, and so a small window keeps its charts' axes (the Power
-/// Reserve pane at 800 x 600, #1729).
-pub const FIELD_GAP: f32 = ROW_GAP / 2.0;
+    TITLE_ROW_H + FIGURE_ROW_H + CONTROL_H + 2.0 * ROW_GAP + 2.0 * CARD_PADDING as f32;
 /// The size of a readings card's big figure, and on a compact card.
 pub const FIGURE_PT: f32 = 32.0;
 pub const FIGURE_COMPACT_PT: f32 = 26.0;

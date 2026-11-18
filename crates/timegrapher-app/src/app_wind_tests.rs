@@ -24,10 +24,10 @@ fn with_watch(tag: &str, name: &str) -> (TimegrapherApp, PathBuf) {
 #[test]
 fn the_set_menu_sets_and_clears_the_watchs_wind() {
     let (mut app, base) = with_watch("set", "Pepsi");
-    assert_eq!(app.wind_field().words, "Not given");
+    assert_eq!(app.wind_field().words.value, "Not given");
     assert!(app.wind_field().settable);
     app.pick_wind(WindPick::HoursAgo(2.0));
-    assert_eq!(app.wind_field().words, "Full 2.0 h ago");
+    assert_eq!(app.wind_field().words.value, "Full 2.0 h ago");
     let kept = app.open_watch().unwrap().watch.full_wind.clone();
     assert!(
         kept.as_deref().is_some_and(|t| t.ends_with('Z')),
@@ -38,9 +38,9 @@ fn the_set_menu_sets_and_clears_the_watchs_wind() {
     let again = library::Library::read(&root).unwrap();
     assert_eq!(again.find("Pepsi").unwrap().watch.full_wind, kept);
     app.pick_wind(WindPick::Now);
-    assert_eq!(app.wind_field().words, "Full 0.0 h ago");
+    assert_eq!(app.wind_field().words.value, "Full 0.0 h ago");
     app.pick_wind(WindPick::NotGiven);
-    assert_eq!(app.wind_field().words, "Not given");
+    assert_eq!(app.wind_field().words.value, "Not given");
     assert_eq!(app.open_watch().unwrap().watch.full_wind, None);
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -51,9 +51,9 @@ fn the_set_menu_sets_and_clears_the_watchs_wind() {
 fn a_quick_listens_wind_lasts_until_a_watch_is_picked() {
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     app.pick_wind(WindPick::HoursAgo(5.0));
-    assert_eq!(app.wind_field().words, "Full 5.0 h ago");
+    assert_eq!(app.wind_field().words.value, "Full 5.0 h ago");
     app.forget_quick_wind();
-    assert_eq!(app.wind_field().words, "Not given");
+    assert_eq!(app.wind_field().words.value, "Not given");
 }
 
 /// A take is saved with its hours from full wind to its start, to a
@@ -89,7 +89,7 @@ fn start_at_full_wind_sets_full_wind_now() {
     app.start_guided(None);
     assert!(app.guided.is_some(), "{:?}", app.message);
     // Fixed from the take's start, in the Wind field (#1915).
-    assert_eq!(app.wind_field().words, "Began 0.0 h after full");
+    assert_eq!(app.wind_field().words.value, "Began 0.0 h after full");
     // Its readings are saved at full wind.
     assert!(app
         .take_manifest()
@@ -102,7 +102,7 @@ fn start_at_full_wind_sets_full_wind_now() {
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     app.pick_wind(WindPick::HoursAgo(30.0));
     app.begin_reserve();
-    assert_eq!(app.wind_field().words, "Full 0.0 h ago");
+    assert_eq!(app.wind_field().words.value, "Full 0.0 h ago");
 }
 
 /// A take on show, a reopened 24 hour half among them, shows its own wind
@@ -122,7 +122,7 @@ fn a_take_on_show_shows_its_own_wind() {
     .unwrap();
     app.opened_path = take.display().to_string();
     app.session.analyse();
-    assert_eq!(app.wind_field().words, "Began 24.2 h after full");
+    assert_eq!(app.wind_field().words.value, "Began 24.2 h after full");
     assert!(!app.wind_field().settable, "the Wind menu is closed");
     // On show, Set Wind is refused: its next save would undo it (Felix).
     let before = std::fs::read_to_string(take.join(MANIFEST)).unwrap();
@@ -143,7 +143,7 @@ fn a_take_on_show_shows_its_own_wind() {
         .contains("wind_h"));
     app.set_take_wind(&take, Some(1.25));
     app.opened_path = take.display().to_string();
-    assert_eq!(app.wind_field().words, "Began 1.3 h after full");
+    assert_eq!(app.wind_field().words.value, "Began 1.3 h after full");
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -301,14 +301,18 @@ fn listen_card_out(
         Vec2::new(w, app.readings_card_h(ctx)),
     );
     let rows = CardRows::of(card);
-    let out = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let area = rows.figure.union(rows.controls);
-            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area));
-            app.listen_buttons(&mut child, compact);
-        });
-    });
-    (out, card)
+    let mut out = None;
+    // Twice, as egui sizes a box from its last frame.
+    for _ in 0..2 {
+        out = Some(ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let area = rows.figure.union(rows.controls);
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area));
+                app.listen_buttons(&mut child, compact);
+            });
+        }));
+    }
+    (out.unwrap(), card)
 }
 
 /// Where `text` is drawn in `out`.
@@ -321,75 +325,110 @@ fn drawn(out: &egui::FullOutput, text: &str) -> Option<egui::Rect> {
     })
 }
 
-/// The Listen card's Wind sits under Average Over, its label under
-/// theirs and its words whole inside the card: before a take in its menu,
-/// from the take's start as words, set smaller where they need to be but
-/// no smaller than 9 pt. Compact, it reads "Wind", the wind in its hover
-/// (#1915).
+/// The Listen card's Average Over and Wind share its foot row, the card
+/// no taller (Hugh on #1915), in the widest form that fits whole: never
+/// cut or set smaller, stepping down as the card narrows, before a take
+/// and from its start alike.
 #[test]
-fn the_listen_card_shows_the_wind_under_average_over() {
+fn the_listen_card_shows_the_wind_beside_average_over() {
     let ctx = egui::Context::default();
     theme::install(&ctx);
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     app.pick_wind(WindPick::HoursAgo(24.2));
+    assert_eq!(
+        app.readings_card_h(&ctx),
+        theme::READINGS_CARD_H,
+        "no taller"
+    );
     let live = || {
         timegrapher_core::live::LiveAnalyzer::new(
             48_000,
             timegrapher_core::live::LiveConfig::default(),
         )
     };
-    for (w, begun) in [
-        (LISTEN_W, false),
-        (330.0, false),
-        (LISTEN_W, true),
-        (330.0, true),
-    ] {
+    let mut forms = Vec::new();
+    for begun in [false, true] {
         app.live = begun.then(live);
-        let want = if begun {
-            "Began 24.2 h after full"
-        } else {
-            "Full 24.2 h ago"
-        };
-        let mut out = None;
-        let mut card = egui::Rect::NOTHING;
-        for _ in 0..2 {
-            let (o, c) = listen_card_out(&mut app, &ctx, w, false);
-            out = Some(o);
-            card = c;
+        let words = app.wind_field().words;
+        for (w, compact) in [
+            (500.0, false),
+            (330.0, false),
+            (LISTEN_W, false),
+            (150.0, true),
+        ] {
+            let (out, card) = listen_card_out(&mut app, &ctx, w, compact);
+            let all = painted_text(&out);
+            let inner = card.shrink(f32::from(theme::CARD_PADDING));
+            let avg_now = fields::duration(app.average_s);
+            let form = listen_card::FIELD_FORMS
+                .iter()
+                .copied()
+                .find(|f| {
+                    drawn(&out, &f.wind(&words)).is_some()
+                        && drawn(&out, &f.average(&avg_now)).is_some()
+                })
+                .unwrap_or_else(|| panic!("{w} {begun}: no Wind box in {all}"));
+            let avg = drawn(&out, &form.average(&fields::duration(app.average_s)))
+                .unwrap_or_else(|| panic!("{w}: no Average Over box in {all}"));
+            let wind = drawn(&out, &form.wind(&words)).unwrap();
+            for r in [avg, wind] {
+                assert!(
+                    inner.contains_rect(r),
+                    "{w} {begun}: {r:?} cut by {inner:?}"
+                );
+            }
+            assert!(
+                (avg.center().y - wind.center().y).abs() < 1.0,
+                "{w}: one row"
+            );
+            assert!(wind.left() > avg.right(), "{w}: Wind after Average Over");
+            if form.labels {
+                assert!(drawn(&out, "Average Over").is_some(), "{w}: {all}");
+            }
+            forms.push((w, begun, form));
         }
-        let out = out.unwrap();
-        let words = painted_text(&out);
-        let avg = drawn(&out, "Average Over").unwrap_or_else(|| panic!("{words}"));
-        let label = drawn(&out, "Wind").unwrap_or_else(|| panic!("{words}"));
-        let (value, pt) = out
-            .shapes
-            .iter()
-            .find_map(|c| match &c.shape {
-                egui::Shape::Text(t) if t.galley.text() == want => Some((
-                    t.galley.rect.translate(t.pos.to_vec2()),
-                    t.galley.job.sections[0].format.font_id.size,
-                )),
-                _ => None,
-            })
-            .unwrap_or_else(|| panic!("{want} at {w}: {words}"));
-        assert!(label.top() >= avg.bottom(), "{w}: {label:?} under {avg:?}");
-        assert!(
-            (label.left() - avg.left()).abs() < 0.5,
-            "{w}: labels line up"
-        );
-        let inner = card.shrink(f32::from(theme::CARD_PADDING));
-        assert!(
-            inner.contains_rect(value),
-            "{w} {begun}: {value:?} in {inner:?}"
-        );
-        assert!(value.left() > label.right(), "{w}: beside its label");
-        assert!(pt >= 9.0, "{w} {begun}: {pt} pt");
     }
-    app.live = None;
-    let (out, _) = listen_card_out(&mut app, &ctx, 120.0, true);
-    let words = painted_text(&out);
-    assert!(drawn(&out, "Wind").is_some(), "{words}");
-    assert!(!words.contains("24.2"), "in the hover alone: {words}");
+    // The widest card says it all beside its labels; the forms step down.
+    for begun in [false, true] {
+        let mine: Vec<listen_card::FieldForm> =
+            forms.iter().filter(|f| f.1 == begun).map(|f| f.2).collect();
+        assert_eq!(mine[0], listen_card::FIELD_FORMS[0], "{begun}");
+        let at = |f: &listen_card::FieldForm| {
+            listen_card::FIELD_FORMS
+                .iter()
+                .position(|g| g == f)
+                .unwrap()
+        };
+        assert!(mine.windows(2).all(|p| at(&p[0]) <= at(&p[1])), "{mine:?}");
+    }
+}
+
+/// The readings cards' row keeps its height at 800 x 560 with the Wind
+/// box on the Listen card (Hugh on #1915).
+#[test]
+fn the_cards_row_is_no_taller_at_800_by_560() {
+    let ctx = super::super::tests::themed();
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(800.0, 560.0));
+    let mut out = None;
+    for _ in 0..3 {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        out = Some(ctx.run(input, |ctx| app.panels(ctx)));
+    }
+    let out = out.unwrap();
+    assert_eq!(app.readings_card_h(&ctx), theme::READINGS_CARD_H);
+    let words = app.wind_field().words;
+    let shown = listen_card::FIELD_FORMS
+        .iter()
+        .find_map(|f| drawn(&out, &f.wind(&words)))
+        .unwrap_or_else(|| panic!("no Wind box: {}", painted_text(&out)));
+    let avg = drawn(&out, "Avg 10 s")
+        .or_else(|| drawn(&out, "10 s"))
+        .expect("Average Over's box");
+    assert!((shown.center().y - avg.center().y).abs() < 1.0, "one row");
 }
 
 /// From a take's start the Wind field is fixed at the hours from full
@@ -399,7 +438,7 @@ fn the_wind_is_fixed_from_a_takes_start() {
     let mut app = TimegrapherApp::with_devices(Vec::new(), None);
     app.pick_wind(WindPick::HoursAgo(2.0));
     let before = app.wind_field();
-    assert_eq!(before.words, "Full 2.0 h ago");
+    assert_eq!(before.words.value, "Full 2.0 h ago");
     assert!(before.settable && before.given);
     assert!(
         before.hover.starts_with("Full wind 2.0 h ago. "),
@@ -411,7 +450,7 @@ fn the_wind_is_fixed_from_a_takes_start() {
         timegrapher_core::live::LiveConfig::default(),
     ));
     let during = app.wind_field();
-    assert_eq!(during.words, "Began 2.0 h after full");
+    assert_eq!(during.words.value, "Began 2.0 h after full");
     assert!(!during.settable);
     assert!(
         during
@@ -423,7 +462,7 @@ fn the_wind_is_fixed_from_a_takes_start() {
     app.live = None;
     app.pick_wind(WindPick::NotGiven);
     let none = app.wind_field();
-    assert_eq!(none.words, "Not given");
+    assert_eq!(none.words.value, "Not given");
     assert!(!none.given, "muted");
 }
 

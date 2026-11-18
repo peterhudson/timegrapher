@@ -7,7 +7,7 @@
 use super::*;
 use timegrapher_core::full_wind;
 use timegrapher_core::reading_text::{
-    wind_before_take_words, wind_field_began_words, wind_field_since_words, wind_since_words,
+    wind_before_take_words, wind_field_words, wind_since_words, WindFieldWords,
 };
 
 /// Whether Start on a test that begins at full wind (the Positions Test's
@@ -167,7 +167,7 @@ impl TimegrapherApp {
         }
         let h = self.wind_h_at(guided::unix_now());
         WindField {
-            words: wind_field_since_words(h),
+            words: wind_field_words(h, false),
             hover: format!("{}. {WIND_HINT}", wind_since_words(h)),
             settable: self.position_editable(),
             given: h.is_some(),
@@ -202,9 +202,9 @@ impl TimegrapherApp {
 
 /// The Listen card's Wind field as it stands.
 pub(super) struct WindField {
-    /// "Full 2.0 h ago" before a take, "Began 2.0 h after full" from its
-    /// start, or "Not given".
-    pub words: String,
+    /// Its words in each of its widths: "Full 2.0 h ago" before a take,
+    /// "Began 2.0 h after full" from its start, "Not given".
+    pub words: WindFieldWords,
     /// The wind in full, and what the field does.
     pub hover: String,
     /// Whether it opens the Wind menu.
@@ -217,7 +217,7 @@ impl WindField {
     /// A take's wind, hours from full wind to its start, fixed.
     fn began(h: Option<f64>, hint: &str) -> Self {
         WindField {
-            words: wind_field_began_words(h),
+            words: wind_field_words(h, true),
             hover: format!("{}. {hint}", wind_before_take_words(h)),
             settable: false,
             given: h.is_some(),
