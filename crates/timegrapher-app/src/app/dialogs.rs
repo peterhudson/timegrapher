@@ -989,8 +989,6 @@ pub(super) fn confirm_title(what: &Confirm) -> &'static str {
     }
 }
 
-/// Set Up the Microphone's Done and Not Now, with what follows beside
-/// them; whether each was pressed.
 /// What a microphone chosen in Set Up the Microphone asks for.
 #[derive(Debug, PartialEq)]
 enum SheetPick {
@@ -1012,6 +1010,8 @@ fn sheet_pick(changed: bool, running: bool, mic: bool) -> SheetPick {
     }
 }
 
+/// Set Up the Microphone's Done and Not Now, with what follows beside
+/// them; whether each was pressed.
 fn setup_sheet_buttons(ui: &mut egui::Ui) -> (bool, bool) {
     let pal = theme::pal(ui);
     let (mut done, mut later) = (false, false);
@@ -1367,7 +1367,7 @@ mod sheet_tests {
             SheetPick::Keep,
             "a file plays"
         );
-        for (running, mic) in [(false, false), (false, true), (true, true)] {
+        for (running, mic) in [(false, false), (false, true), (true, false), (true, true)] {
             assert_eq!(
                 sheet_pick(false, running, mic),
                 SheetPick::Keep,
