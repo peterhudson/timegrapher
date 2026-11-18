@@ -1024,8 +1024,10 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
             wheel_note(c)
         );
     };
+    let shortest = |s: &timegrapher_core::longterm::Search| println!("  {}", s.shortest_text());
     println!("Periodic changes in rate (the rate itself, not 10 s readings):");
-    if r.rate_components.is_empty() {
+    shortest(&r.timing.search);
+    if r.rate_components.is_empty() && r.timing.search.searched() {
         println!("  none named (1% false-alarm level, held across the take's tests)");
     }
     for c in &r.rate_components {
@@ -1036,7 +1038,8 @@ fn print_summary(r: &LongReport, clock_note: Option<&str>) {
         line(&c.component, swing);
     }
     println!("Periodic changes in amplitude:");
-    if r.amplitude.components.is_empty() {
+    shortest(&r.amplitude.search);
+    if r.amplitude.components.is_empty() && r.amplitude.search.searched() {
         println!("  none named (1% false-alarm level, held across the take's tests)");
     }
     for c in &r.amplitude.components {
