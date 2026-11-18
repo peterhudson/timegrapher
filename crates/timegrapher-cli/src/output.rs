@@ -107,3 +107,70 @@ pub fn input(files: &[PathBuf], settings: Value) -> Value {
         .collect();
     json!({ "files": files, "settings": settings })
 }
+
+/// The file a path names once written: the canonical path of an existing
+/// file, or of its folder joined to its name for one not yet written.
+fn resolved(p: &Path) -> PathBuf {
+    if let Ok(c) = p.canonicalize() {
+        return c;
+    }
+    let parent = match p.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d,
+        _ => Path::new("."),
+    };
+    match (parent.canonicalize(), p.file_name()) {
+        (Ok(d), Some(name)) => d.join(name),
+        _ => p.to_path_buf(),
+    }
+}
+
+/// Refuse output files that are the input being read or each other,
+/// before anything is read or written: `analyze x.wav --beats x.wav`
+/// would put a CSV where the recording was (#1876).
+pub fn files_apart(input: &Path, outputs: &[(&str, &Path)]) -> Result<(), String> {
+    let read = resolved(input);
+    let mut seen: Vec<(&str, PathBuf)> = Vec::new();
+    for &(flag, p) in outputs {
+        let r = resolved(p);
+        if r == read {
+            return Err(format!(
+                "{flag} {} is the recording being read; name another file",
+                p.display()
+            ));
+        }
+        if let Some((other, _)) = seen.iter().find(|(_, s)| *s == r) {
+            return Err(format!(
+                "{flag} and {other} both name {}; give each its own file",
+                p.display()
+            ));
+        }
+        seen.push((flag, r));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod files_apart_tests {
+    use super::files_apart;
+    use std::path::Path;
+
+    #[test]
+    fn an_output_may_not_be_the_input_or_another_output() {
+        let dir = std::env::temp_dir().join(format!("tg-apart-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("x.wav");
+        std::fs::write(&wav, b"RIFF").unwrap();
+        let beats = dir.join("beats.csv");
+        let same = dir.join(".").join("x.wav");
+        assert!(files_apart(&wav, &[("--beats", &beats)]).is_ok());
+        let e = files_apart(&wav, &[("--beats", &same)]).unwrap_err();
+        assert!(
+            e.contains("--beats") && e.contains("recording being read"),
+            "{e}"
+        );
+        let e = files_apart(&wav, &[("--beats", &beats), ("--windows", &beats)]).unwrap_err();
+        assert!(e.contains("--windows and --beats"), "{e}");
+        assert!(files_apart(Path::new("x.wav"), &[("--trend", Path::new("t.csv"))]).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

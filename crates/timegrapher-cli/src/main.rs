@@ -1382,6 +1382,15 @@ fn run_analyze(
     take: Option<serde_json::Value>,
     json: bool,
 ) -> Result<(), String> {
+    let outputs: Vec<(&str, &Path)> = [
+        ("--beats", beats.as_deref()),
+        ("--windows", windows.as_deref()),
+        ("--trend", trend.as_ref().map(|t| t.path.as_path())),
+    ]
+    .into_iter()
+    .filter_map(|(flag, p)| p.map(|p| (flag, p)))
+    .collect();
+    output::files_apart(file, &outputs)?;
     let audio = load(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let mut a = analyze(&audio, cfg);
     let calibre = train.calibre.as_ref();
