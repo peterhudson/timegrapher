@@ -72,6 +72,7 @@ impl TimegrapherApp {
         if let Some(log) = self.live.as_ref().and_then(steady::log_of) {
             let clock = self.reading_clock(log.duration_s);
             if let Some(test) = self.guided.as_mut() {
+                test.lift_deg = Some(self.lift_deg);
                 test.reread(&log, clock.as_ref(), &self.masked);
             }
         }

@@ -350,15 +350,40 @@ pub struct Comparison {
     /// The size of the change in the mean rate over the positions
     /// measured in both ([`IE_NAME`]), s/d.
     pub ie: Option<f64>,
+    /// The lift angles the two were read at, full wind then later, when
+    /// they differ: the amplitude change is then not given, since
+    /// amplitude scales with the lift (#1884). Each amplitude stands at its
+    /// own lift. None when they agree.
+    pub lifts: Option<(f64, f64)>,
+}
+
+/// Lifts closer than this are the same lift: they are typed in whole
+/// or tenth degrees (Norm on #1884).
+const SAME_LIFT_DEG: f64 = 0.05;
+
+impl Comparison {
+    /// Why the amplitude change is not given, when the two were read at
+    /// different lifts: the one place that says so, for the app's table,
+    /// its CSV and the text report.
+    pub fn amplitude_note(&self) -> Option<String> {
+        // As typed, in whole or tenth degrees: rounded to the degree, two
+        // lifts that differ could read the same.
+        let (full, later) = self.lifts?;
+        Some(format!(
+            "Amplitude change not given: full wind read at {full}°, 24 h at {later}°."
+        ))
+    }
 }
 
 /// Full wind (`full`) against `later`, `hours` on, read by
-/// [`evaluate_states`] as `session` reads a file with both. None when
-/// either is empty.
+/// [`evaluate_states`] as `session` reads a file with both. `lifts` are
+/// the lift angles each was read at, full wind first, the default where
+/// one wasn't kept. None when either is empty.
 pub fn comparison(
     full: &[SourcedFigures],
     hours: f64,
     later: &[SourcedFigures],
+    lifts: [Option<f64>; 2],
 ) -> Option<Comparison> {
     if full.is_empty() || later.is_empty() {
         return None;
@@ -370,6 +395,8 @@ pub fn comparison(
     let report = evaluate_states(states, Vec::new());
     let (first, last) = (report.states.first()?, report.states.last()?);
     let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
+    let [a, b] = lifts.map(|l| l.unwrap_or(crate::take::DEFAULT_LIFT_DEG));
+    let lifts = ((a - b).abs() >= SAME_LIFT_DEG).then_some((a, b));
     let rows = later
         .iter()
         .filter_map(|f| {
@@ -384,7 +411,7 @@ pub fn comparison(
                     change(a.rate_s_per_day, b.rate_s_per_day),
                     a.amplitude_deg,
                     b.amplitude_deg,
-                    change(a.amplitude_deg, b.amplitude_deg),
+                    change(a.amplitude_deg, b.amplitude_deg).filter(|_| lifts.is_none()),
                 ],
             ))
         })
@@ -394,6 +421,7 @@ pub fn comparison(
         rows,
         im: report.im,
         ie: report.ie,
+        lifts,
     })
 }
 
@@ -403,6 +431,57 @@ mod tests {
     fn row(p: Position, value: f64, source: BeatErrorSource) -> SourcedFigures {
         (p, Some(1.0), Some(270.0), Some(value), Some(source))
     }
+    /// Two halves read at different lifts give no amplitude change and
+    /// say both lifts; the same lift, kept or not, gives what it gave
+    /// before lifts were compared (Norm on #1884).
+    #[test]
+    fn halves_read_at_different_lifts_give_no_amplitude_change() {
+        let half = |amp: f64| -> Vec<SourcedFigures> {
+            [Position::CH, Position::CB, Position::H3]
+                .map(|p| {
+                    (
+                        p,
+                        Some(2.0),
+                        Some(amp),
+                        Some(0.2),
+                        Some(BeatErrorSource::Unlock),
+                    )
+                })
+                .to_vec()
+        };
+        let (full, later) = (half(270.0), half(285.6));
+        let default = crate::take::DEFAULT_LIFT_DEG;
+        let same = comparison(&full, 24.0, &later, [None, None]).unwrap();
+        assert_eq!(same.lifts, None);
+        assert!(same.amplitude_note().is_none());
+        assert!(same.rows.iter().all(|(_, v)| v[5].is_some()));
+        // A lift kept equal to the default, or within a twentieth of a
+        // degree of the other, is the same lift: bit for bit.
+        for lifts in [[Some(default), None], [Some(55.0), Some(55.04)]] {
+            assert_eq!(
+                comparison(&full, 24.0, &later, lifts).unwrap(),
+                same,
+                "{lifts:?}"
+            );
+        }
+        let apart = comparison(&full, 24.0, &later, [None, Some(55.0)]).unwrap();
+        assert_eq!(apart.lifts, Some((default, 55.0)));
+        for ((_, x), (_, y)) in same.rows.iter().zip(&apart.rows) {
+            assert_eq!(x[..5], y[..5], "each half's own figures stand");
+            assert_eq!(y[5], None);
+        }
+        assert_eq!((apart.im, apart.ie), (same.im, same.ie));
+        assert_eq!(
+            apart.amplitude_note().unwrap(),
+            "Amplitude change not given: full wind read at 52°, 24 h at 55°."
+        );
+        let tenth = comparison(&full, 24.0, &later, [Some(52.5), Some(52.0)]).unwrap();
+        assert!(tenth
+            .amplitude_note()
+            .unwrap()
+            .contains("52.5°, 24 h at 52°"));
+    }
+
     #[test]
     fn position_and_state_aggregates_never_mix_sources() {
         let s = sourced_indices(
