@@ -54,7 +54,15 @@ fn the_slice_range_reads_as_signed_rates() {
     }
     assert_eq!(text.matches("none named").count(), 1, "{text}");
     assert_eq!(html.matches("No periodic change").count(), 1);
-    assert!(html.contains(timegrapher_core::longterm::THRESHOLD_MEANING));
+    assert!(
+        html.contains(&timegrapher_core::steady_views::threshold_meaning(
+            timegrapher_core::longterm::LongConfig::default().false_alarm
+        ))
+    );
+    assert!(
+        !html.contains("too short to search."),
+        "one fact, one place"
+    );
     assert!(!html.contains("chance of being noise"));
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -1040,10 +1040,6 @@ pub fn beyond_simulated(significance: f64, calibrated: bool) -> bool {
     calibrated && significance > -SIMULATED_P.log10()
 }
 
-/// What the search's dashed line means, in Norm's words (#1897): a false
-/// alarm rate over whole searches, not a chance that a peak is noise.
-pub const THRESHOLD_MEANING: &str = "Noise alone of the kind the search is calibrated on puts a peak above the dashed line in about 1 search in 100.";
-
 /// A search that tried no period: the take is shorter than any cycle the
 /// search looks for, which is not "none found" (#1880).
 pub const TOO_SHORT_TO_SEARCH: &str =

@@ -531,7 +531,13 @@ fn cycles_table(sn: &Session) -> String {
         return s;
     }
     if rows.is_empty() {
-        s.push_str("<p>No periodic change in rate or amplitude named in any recording (1% false-alarm level, held across each recording's tests).</p>");
+        let _ = write!(
+            s,
+            "<p>No periodic change in rate or amplitude named in any recording ({}, held across each recording's tests).</p>",
+            timegrapher_core::steady_views::false_alarm_level(
+                timegrapher_core::longterm::LongConfig::default().false_alarm
+            )
+        );
         return s;
     }
     s.push_str(r#"<table class="data"><thead><tr><th>Position</th><th>In</th><th class="num">Period s</th><th class="num">Size p-p</th><th class="num">Share</th><th class="num">False alarm</th><th>Wheel</th><th>Recording</th></tr></thead><tbody>"#);
