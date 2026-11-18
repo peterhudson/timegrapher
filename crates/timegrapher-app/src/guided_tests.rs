@@ -525,7 +525,7 @@ fn six_positions_read_their_own_rates() {
             r
         })
         .collect();
-    let c = comparison(&full, 24.0, &later).unwrap();
+    let c = comparison(&full, 24.0, &later, full.lift_angle_deg).unwrap();
     assert_eq!(c.rows.len(), 6);
     for (p, v) in &c.rows {
         let label = position_label(*p);
@@ -544,6 +544,28 @@ fn six_positions_read_their_own_rates() {
     );
     let csv = comparison_text(&c, ',');
     assert!(csv.starts_with("Position,\"Rate at Full Wind, s/d\",\"Rate at 24.0 h, s/d\""));
+    assert!(
+        c.amplitude_note(WindHours::measured(24.0)).is_none(),
+        "one lift"
+    );
+    // Read at another lift, the amplitudes can't be set against each
+    // other: no change, the rest as before, and the lifts said (#1884).
+    let full_lift = full.lift_angle_deg.unwrap();
+    let other = comparison(&full, 24.0, &later, Some(full_lift + 3.0)).unwrap();
+    assert!(other.rows.iter().all(|(_, v)| v[5].is_none()));
+    for ((_, x), (_, y)) in c.rows.iter().zip(&other.rows) {
+        assert_eq!(x[..5], y[..5]);
+    }
+    assert_eq!((other.im, other.ie), (c.im, c.ie));
+    let note = other.amplitude_note(WindHours::measured(24.0)).unwrap();
+    assert!(
+        note.contains("24.0 h"),
+        "named as the heads name it: {note}"
+    );
+    assert!(
+        comparison_text(&other, ',').contains(&format!("\"{note}\"")),
+        "{note}"
+    );
     // A 24 hour half keeps its own rows, the hours since full wind and
     // the results it was set against, and reads back to the same
     // comparison from the file alone.
@@ -558,7 +580,7 @@ fn six_positions_read_their_own_rates() {
     );
     let saved = FullWind::from_json(&kept.to_json()).unwrap();
     assert_eq!(saved, kept);
-    let run = comparison(&full, h, &later).unwrap();
+    let run = comparison(&full, h, &later, full.lift_angle_deg).unwrap();
     let again = saved_comparison(&saved).unwrap();
     assert_eq!(
         (again.hours, again.im, again.ie),
@@ -1236,6 +1258,8 @@ fn an_opened_24_hour_halfs_results_are_saved_as_the_pane_shows_them() {
     t.readings = Some(readings.clone());
     let mut half = Test::after(t.kept(&about).unwrap());
     half.readings = Some(readings);
+    // Read at the lift in use, as the app's every read sets it (#1884).
+    half.lift_deg = Some(about.lift_angle_deg);
     let s = half.kept(&about).unwrap();
     assert!(s.against.is_some() && s.wind_h.is_some(), "{s:?}");
     let pane = About::default();

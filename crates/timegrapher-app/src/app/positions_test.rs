@@ -168,6 +168,7 @@ impl TimegrapherApp {
                 let clock = self.reading_clock(log.duration_s);
                 if let Some(test) = self.guided.as_mut() {
                     test.bph_set = self.live.as_ref().and_then(|l| l.config().analysis.bph);
+                    test.lift_deg = Some(self.lift_deg);
                     test.read_new(&log, clock.as_ref(), &self.masked);
                 }
             }
@@ -210,6 +211,7 @@ impl TimegrapherApp {
             Some(log) => {
                 let clock = self.reading_clock(log.duration_s);
                 test.bph_set = self.live.as_ref().and_then(|l| l.config().analysis.bph);
+                test.lift_deg = Some(self.lift_deg);
                 test.finish(&log, clock.as_ref(), &self.masked);
             }
             // No beat to read the stretches by: the test ends all the same,

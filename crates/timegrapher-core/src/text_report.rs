@@ -54,6 +54,9 @@ pub struct Header {
 pub struct Earlier<'a> {
     pub figures: &'a [SourcedFigures],
     pub hours: WindHours,
+    /// The lift angles the two were read at, full wind first, as
+    /// [`session::comparison`] takes them.
+    pub lifts: [Option<f64>; 2],
 }
 
 /// When a take began, as its folder's name records it (the app and
@@ -308,7 +311,7 @@ fn table(rows: &[Vec<String>], head: usize, summary: usize) -> String {
 /// rate and amplitude at full wind and now, and the change, then Im and
 /// Ie. Positions read in only one of the two are left out.
 fn comparison(e: Earlier, later: &[SourcedFigures]) -> String {
-    let Some(c) = session::comparison(e.figures, e.hours.hours, later) else {
+    let Some(c) = session::comparison(e.figures, e.hours.hours, later, e.lifts) else {
         return String::new();
     };
     // The hours at the precision of their source, as the pane and the CSV
@@ -365,6 +368,9 @@ fn comparison(e: Earlier, later: &[SourcedFigures]) -> String {
         (session::IM_NAME, unit(signed(c.im, r), " s/d")),
         (session::IE_NAME, unit(plain(c.ie, r), " s/d")),
     ]);
+    if let Some(n) = c.amplitude_note(e.hours) {
+        out += &wrap(&n, "");
+    }
     out
 }
 

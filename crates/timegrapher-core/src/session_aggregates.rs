@@ -350,15 +350,64 @@ pub struct Comparison {
     /// The size of the change in the mean rate over the positions
     /// measured in both ([`IE_NAME`]), s/d.
     pub ie: Option<f64>,
+    /// Why the amplitude change is not given, where it isn't: amplitude
+    /// scales with the lift, so two read at different lifts, or at one
+    /// not recorded, don't compare (#1884). Each amplitude stands at its
+    /// own lift. None when both were read at the same recorded lift.
+    pub lifts: Option<LiftGap>,
+}
+
+/// Why two halves' amplitudes don't compare (#1884).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LiftGap {
+    /// Read at different lifts, full wind then later, degrees.
+    Differ(f64, f64),
+    /// A lift not recorded: a file saved before lifts were kept, read at
+    /// whatever lift the app had then (Norm on #1922). True for each half,
+    /// full wind then later, whose lift wasn't recorded.
+    NotRecorded(bool, bool),
+}
+
+/// Lifts closer than this are the same lift: they are typed in whole
+/// or tenth degrees (Norm on #1884).
+const SAME_LIFT_DEG: f64 = 0.05;
+
+impl Comparison {
+    /// Why the amplitude change is not given, where it isn't: the one
+    /// place that says so, for the app's table, its CSV and the text
+    /// report. `later` is the later half's hours as their heads write
+    /// them (Trevor on #1922).
+    pub fn amplitude_note(&self, later_h: crate::reading_text::WindHours) -> Option<String> {
+        let h = later_h.short();
+        Some(match self.lifts? {
+            // As typed, in whole or tenth degrees: rounded to the degree,
+            // two lifts that differ could read the same. Hugh on #1922:
+            // "read at 52°" under an amplitude reads as one.
+            LiftGap::Differ(full, later) => format!(
+                "No amplitude change: the two tests used different lift angles \
+                 ({full}° at full wind, {later}° at {h})."
+            ),
+            LiftGap::NotRecorded(full, later) => {
+                let whose = match (full, later) {
+                    (true, true) => "neither test's lift angle was".to_string(),
+                    (true, false) => "the full-wind test's lift angle wasn't".to_string(),
+                    _ => format!("the {h} test's lift angle wasn't"),
+                };
+                format!("No amplitude change: {whose} recorded.")
+            }
+        })
+    }
 }
 
 /// Full wind (`full`) against `later`, `hours` on, read by
-/// [`evaluate_states`] as `session` reads a file with both. None when
-/// either is empty.
+/// [`evaluate_states`] as `session` reads a file with both. `lifts` are
+/// the lift angles each was read at, full wind first, None where one
+/// wasn't recorded. None when either is empty.
 pub fn comparison(
     full: &[SourcedFigures],
     hours: f64,
     later: &[SourcedFigures],
+    lifts: [Option<f64>; 2],
 ) -> Option<Comparison> {
     if full.is_empty() || later.is_empty() {
         return None;
@@ -370,6 +419,10 @@ pub fn comparison(
     let report = evaluate_states(states, Vec::new());
     let (first, last) = (report.states.first()?, report.states.last()?);
     let change = |x: Option<f64>, y: Option<f64>| y.zip(x).map(|(y, x)| y - x);
+    let lifts = match lifts {
+        [Some(a), Some(b)] => ((a - b).abs() >= SAME_LIFT_DEG).then_some(LiftGap::Differ(a, b)),
+        [a, b] => Some(LiftGap::NotRecorded(a.is_none(), b.is_none())),
+    };
     let rows = later
         .iter()
         .filter_map(|f| {
@@ -384,7 +437,7 @@ pub fn comparison(
                     change(a.rate_s_per_day, b.rate_s_per_day),
                     a.amplitude_deg,
                     b.amplitude_deg,
-                    change(a.amplitude_deg, b.amplitude_deg),
+                    change(a.amplitude_deg, b.amplitude_deg).filter(|_| lifts.is_none()),
                 ],
             ))
         })
@@ -394,6 +447,7 @@ pub fn comparison(
         rows,
         im: report.im,
         ie: report.ie,
+        lifts,
     })
 }
 
@@ -403,6 +457,76 @@ mod tests {
     fn row(p: Position, value: f64, source: BeatErrorSource) -> SourcedFigures {
         (p, Some(1.0), Some(270.0), Some(value), Some(source))
     }
+    /// Two halves read at different lifts give no amplitude change and
+    /// say both lifts; the same lift gives what it gave before lifts were
+    /// compared (Norm on #1884). A lift not recorded is not the default:
+    /// no change, and a note saying whose (Norm on #1922).
+    #[test]
+    fn halves_read_at_different_lifts_give_no_amplitude_change() {
+        let half = |amp: f64| -> Vec<SourcedFigures> {
+            [Position::CH, Position::CB, Position::H3]
+                .map(|p| {
+                    (
+                        p,
+                        Some(2.0),
+                        Some(amp),
+                        Some(0.2),
+                        Some(BeatErrorSource::Unlock),
+                    )
+                })
+                .to_vec()
+        };
+        let (full, later) = (half(270.0), half(285.6));
+        let default = crate::take::DEFAULT_LIFT_DEG;
+        // The later half's hours as its heads write them.
+        let at = crate::reading_text::WindHours::measured(24.1);
+        let same = comparison(&full, 24.0, &later, [Some(default); 2]).unwrap();
+        assert_eq!(same.lifts, None);
+        assert!(same.amplitude_note(at).is_none());
+        assert!(same.rows.iter().all(|(_, v)| v[5].is_some()));
+        // Within a twentieth of a degree is the same lift: bit for bit.
+        assert_eq!(
+            comparison(&full, 24.0, &later, [Some(55.0), Some(55.04)]).unwrap(),
+            comparison(&full, 24.0, &later, [Some(55.0); 2]).unwrap()
+        );
+        let withheld = |c: &Comparison| {
+            for ((_, x), (_, y)) in same.rows.iter().zip(&c.rows) {
+                assert_eq!(x[..5], y[..5], "each half's own figures stand");
+                assert_eq!(y[5], None);
+            }
+            assert_eq!((c.im, c.ie), (same.im, same.ie));
+        };
+        let apart = comparison(&full, 24.0, &later, [Some(default), Some(55.0)]).unwrap();
+        assert_eq!(apart.lifts, Some(LiftGap::Differ(default, 55.0)));
+        withheld(&apart);
+        assert_eq!(
+            apart.amplitude_note(at).unwrap(),
+            "No amplitude change: the two tests used different lift angles \
+             (52° at full wind, 55° at 24.1 h)."
+        );
+        let tenth = comparison(&full, 24.0, &later, [Some(52.5), Some(52.0)]).unwrap();
+        assert!(tenth
+            .amplitude_note(at)
+            .unwrap()
+            .contains("52.5° at full wind, 52° at 24.1 h"));
+        for (lifts, whose) in [
+            (
+                [None, Some(default)],
+                "the full-wind test's lift angle wasn't",
+            ),
+            ([Some(default), None], "the 24.1 h test's lift angle wasn't"),
+            ([None, None], "neither test's lift angle was"),
+        ] {
+            let c = comparison(&full, 24.0, &later, lifts).unwrap();
+            withheld(&c);
+            assert_eq!(
+                c.amplitude_note(at).unwrap(),
+                format!("No amplitude change: {whose} recorded."),
+                "{lifts:?}"
+            );
+        }
+    }
+
     #[test]
     fn position_and_state_aggregates_never_mix_sources() {
         let s = sourced_indices(

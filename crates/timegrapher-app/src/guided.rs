@@ -292,6 +292,9 @@ pub struct Test {
     /// Complication Test's one position three times.
     order: Vec<Position>,
     pub bph_set: Option<u32>,
+    /// The lift angle the readings are read at, for setting them against
+    /// a full-wind test read at another (#1884).
+    pub lift_deg: Option<f64>,
     pub step: usize,
     /// When the watch was put in this step's position, seconds of the
     /// session's sound; set on the first frame that has a session.
@@ -327,6 +330,7 @@ impl Test {
             kind: Kind::Positions,
             order: ORDER.to_vec(),
             bph_set: None,
+            lift_deg: None,
             step: 0,
             start: None,
             began: None,
@@ -1682,6 +1686,9 @@ fn comparison_grid(ui: &mut egui::Ui, c: &Comparison) {
          takes it. Ie: the size of the mean rate's change over the positions measured both \
          times.",
     );
+    if let Some(n) = c.amplitude_note(WindHours::measured(c.hours)) {
+        ui.label(RichText::new(n).color(pal.text_secondary));
+    }
 }
 
 /// When a saved test began, as the pane names it: "2026-10-08 21:04 UTC".
@@ -1856,7 +1863,7 @@ impl Body<'_> {
             Some(t) => t
                 .full
                 .as_ref()
-                .and_then(|(f, h)| comparison(f, *h, t.readings_so_far())),
+                .and_then(|(f, h)| comparison(f, *h, t.readings_so_far(), t.lift_deg)),
             None => self.saved.and_then(saved_comparison),
         };
         if let Some(c) = &c {
@@ -2475,8 +2482,19 @@ pub use session::Comparison;
 /// later, read by core `session::evaluate_states` as `session` reads a
 /// file with both. The kept figures stand in for the full-wind
 /// measurements.
-pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<Comparison> {
-    session::comparison(&kept_figures(full), hours, &text_report::figures(readings))
+pub fn comparison(
+    full: &FullWind,
+    hours: f64,
+    readings: &[Reading],
+    lift_deg: Option<f64>,
+) -> Option<Comparison> {
+    let lifts = [full.lift_angle_deg, lift_deg];
+    session::comparison(
+        &kept_figures(full),
+        hours,
+        &text_report::figures(readings),
+        lifts,
+    )
 }
 
 /// A saved 24 hour half (`later`) against the full-wind results it was set
@@ -2484,7 +2502,13 @@ pub fn comparison(full: &FullWind, hours: f64, readings: &[Reading]) -> Option<C
 /// nothing but its saved rows. None for a full-wind test's results.
 pub fn saved_comparison(later: &FullWind) -> Option<Comparison> {
     let full = later.against.as_deref()?;
-    session::comparison(&kept_figures(full), later.wind_h?, &kept_figures(later))
+    let lifts = [full.lift_angle_deg, later.lift_angle_deg];
+    session::comparison(
+        &kept_figures(full),
+        later.wind_h?,
+        &kept_figures(later),
+        lifts,
+    )
 }
 
 /// A position as the app names it: "Crown Up (CU, 3H)", the hobby
@@ -2597,6 +2621,9 @@ pub fn comparison_text(c: &Comparison, sep: char) -> String {
     let num = |v: Option<f64>| v.map_or_else(String::new, |x| fixed_text(x, RATE));
     cells.push(vec![format!("{}, s/d", session::IM_NAME), num(c.im)]);
     cells.push(vec![format!("{}, s/d", session::IE_NAME), num(c.ie)]);
+    if let Some(n) = c.amplitude_note(WindHours::measured(c.hours)) {
+        cells.push(vec![n]);
+    }
     let field = |s: &str| {
         if s.contains(sep) || s.contains('"') {
             format!("\"{}\"", s.replace('"', "\"\""))
@@ -2643,7 +2670,7 @@ pub fn export_text(test: &Test, about: &About, sep: char) -> String {
     if let Some(c) = test
         .full
         .as_ref()
-        .and_then(|(f, h)| comparison(f, *h, readings))
+        .and_then(|(f, h)| comparison(f, *h, readings, test.lift_deg))
     {
         out.push('\n');
         out += &comparison_text(&c, sep);
@@ -2698,11 +2725,14 @@ pub fn saved_report_text(
         .against
         .as_deref()
         .zip(s.wind_h)
-        .map(|(f, h)| (kept_figures(f), h));
-    let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
-        figures,
-        hours: WindHours::measured(*hours),
-    });
+        .map(|(f, h)| (kept_figures(f), h, f.lift_angle_deg));
+    let earlier = full
+        .as_ref()
+        .map(|(figures, hours, lift)| text_report::Earlier {
+            figures,
+            hours: WindHours::measured(*hours),
+            lifts: [*lift, s.lift_angle_deg],
+        });
     text_report::positions_of(&header, &figures, earlier, &order, &[])
 }
 
@@ -2818,11 +2848,17 @@ pub fn report_text(
     let readings = test.readings_so_far();
     match test.kind {
         Kind::Positions => {
-            let full = test.full.as_ref().map(|(f, h)| (kept_figures(f), *h));
-            let earlier = full.as_ref().map(|(figures, hours)| text_report::Earlier {
-                figures,
-                hours: WindHours::measured(*hours),
-            });
+            let full = test
+                .full
+                .as_ref()
+                .map(|(f, h)| (kept_figures(f), *h, f.lift_angle_deg));
+            let earlier = full
+                .as_ref()
+                .map(|(figures, hours, lift)| text_report::Earlier {
+                    figures,
+                    hours: WindHours::measured(*hours),
+                    lifts: [*lift, test.lift_deg],
+                });
             Some(text_report::positions(&header, readings, earlier))
         }
         Kind::Poise => Some(text_report::poise(&header, readings)),
