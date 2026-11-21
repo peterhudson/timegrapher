@@ -1,12 +1,17 @@
 //! The Paper Strip pane: its trend, settings, fit and input.
 
 use super::*;
+use timegrapher_core::beats::Beat;
+use timegrapher_core::live::{in_spans, unheard_spans};
 use timegrapher_core::steady_views;
 
 /// The Length field's width: holds the longest length whole, Fit's 80
 /// hours to its latest beat as 79:59:59, its last digit clear of the ⏷
 /// (#1976).
 pub(super) const LENGTH_FIELD_W: f32 = 112.0;
+
+/// What the strip says over beats heard where no watch is (#2177).
+const POSSIBLE_BEATS: &str = "Possible Beats";
 
 impl TimegrapherApp {
     /// Show the whole session so far along the strip, ending at its latest
@@ -87,6 +92,10 @@ impl TimegrapherApp {
         let Some(live) = &self.live else { return };
         let Some(bph) = live.bph() else { return };
         let period = 3600.0 / bph as f64;
+        // Fit's width holds the watch's beats alone: the stand's noise,
+        // where no reading hears a watch, is left out (#2177).
+        let unheard = self.strip_unheard();
+        let watch = |b: &&Beat| !in_spans(&unheard, b.time);
         let beats = live.beats();
         let breaks = self.take_breaks.as_deref().unwrap_or_default();
         let clock = self.take_rate_clock();
@@ -98,8 +107,12 @@ impl TimegrapherApp {
         let Some(anchor) = centred else { return };
         let mut leads: Vec<f64> = beats
             .iter()
+            .filter(watch)
             .map(|b| anchor.lead_on_true(b, period, breaks, clock))
             .collect();
+        if leads.is_empty() {
+            return;
+        }
         leads.sort_by(f64::total_cmp);
         let stray = leads.len() / 1000;
         let (lo, hi) = (leads[stray], leads[leads.len() - 1 - stray]);
@@ -124,6 +137,33 @@ impl TimegrapherApp {
             .find(|&w| w >= need)
             .unwrap_or(StripView::MAX_HALF_WIDTH_MS);
         self.strip.set_half_width(width);
+    }
+
+    /// Where no reading of the take on show hears a watch (core's
+    /// `live::unheard_spans` over the charts' readings): its beats are the
+    /// stand's noise, drawn faintly as possible beats and left out of
+    /// what the strip fits to (#2177). None while listening, when the
+    /// newest beats have no reading yet.
+    pub(super) fn strip_unheard(&self) -> Vec<(f64, f64)> {
+        match &self.live {
+            Some(live) if !self.running() => {
+                unheard_spans(&self.trend, self.average_s, live.duration_s())
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// An opened take's charts read after it opened (#1014): the strip
+    /// fitted again, now that where the watch is heard is known, unless
+    /// its view was changed since it was fitted (#2177).
+    pub(super) fn refit_opened(&mut self) {
+        match self.live_strip {
+            Some((live, fitted, rate)) if fitted == self.strip && !self.running() => {
+                self.fit_view();
+                self.live_strip = Some((live, self.strip, rate));
+            }
+            _ => {}
+        }
     }
 
     /// The take's span on every stacked time pane's axis, the fitted
@@ -190,6 +230,25 @@ impl TimegrapherApp {
             .map(|&(a, b)| (a, b, guided::SETTLING))
             .chain(rest)
             .collect();
+        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        out
+    }
+
+    /// The stretches the strip draws faintly, each with what it is: with
+    /// no regular beat yet, the stretch `guessing` on show, all possible
+    /// beats; else [`Self::strip_settles`], and where no reading hears a
+    /// watch ([`Self::strip_unheard`]) possible beats too, drawn as faintly
+    /// as the beats the readings leave out (#2177).
+    pub(super) fn strip_faint(
+        &self,
+        guessing: Option<(f64, f64)>,
+    ) -> Vec<(f64, f64, &'static str)> {
+        if let Some((from, to)) = guessing {
+            return vec![(from, to, POSSIBLE_BEATS)];
+        }
+        let mut out = self.strip_settles();
+        let unheard = self.strip_unheard().into_iter();
+        out.extend(unheard.map(|(a, b)| (a, b, POSSIBLE_BEATS)));
         out.sort_by(|a, b| a.0.total_cmp(&b.0));
         out
     }
@@ -613,11 +672,9 @@ impl TimegrapherApp {
         let mut overlays = strip_overlays_drawn(self.overlays, &trend, from, end, theme::pal(ui));
         let bands = self.position_bands();
         let (track, painted) = self.strip_tracks();
-        let mut settles = self.strip_settles();
+        let settles = self.strip_faint(guessing.then_some((from, end + 1.0)));
         if guessing {
-            // Drawn faintly, as the beats the readings leave out are.
             overlays.clear();
-            settles = vec![(from, end + 1.0, "Possible Beats")];
         }
         let rate_line = rate_line.filter(|_| !guessing);
         let wall = self.strip_wall(ui.ctx());

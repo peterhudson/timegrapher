@@ -2141,6 +2141,8 @@ pub use as_file::{AS_FILE_MAX_S, READ_LAG_CAP_S};
 mod held;
 mod locks;
 mod rebuild;
+mod unheard;
+pub use unheard::{in_spans, unheard_spans};
 
 #[cfg(test)]
 mod jump_tests;

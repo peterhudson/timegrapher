@@ -147,7 +147,10 @@ pub(super) struct Background {
 /// A Positions Test table being read in the background, and what from.
 pub(super) type FreeJob = Job<FreeKey, Option<guided::FreeTable>>;
 
-/// The whole take in one position, and the seconds it covers.
+/// The whole take in one position, and the seconds it covers: the
+/// stretch its reading read, less what that left out (core's
+/// `Measurement::measured_s`), so a lead of stand noise the reading
+/// leaves out is not counted in "over {span}" (#2177).
 #[derive(Clone)]
 pub(super) struct WholeTake {
     pub(super) m: timegrapher_core::session::Measurement,
@@ -326,7 +329,6 @@ impl TimegrapherApp {
             ),
         };
         let read = move || {
-            let span: f64 = spans.iter().map(|(a, b)| b - a).sum();
             spans.first()?;
             let mut log = log?;
             let clock = reading_clock(take_clock.as_ref(), opened, ppm, log.duration_s);
@@ -346,6 +348,7 @@ impl TimegrapherApp {
                 (&spans, &spans),
             )?;
             m.take_doubts(lift_known, unlisted);
+            let span = m.measured_s();
             Some(WholeTake { m, span })
         };
         Box::new(read)
@@ -519,8 +522,12 @@ impl TimegrapherApp {
         match job.done() {
             Ok((mut points, read_to)) => {
                 self.bg.trend = None;
+                let first = self.trend.is_empty();
                 points.extend(self.trend.iter().filter(|p| p.t > read_to).copied());
                 self.put_trend(points);
+                if first {
+                    self.refit_opened();
+                }
             }
             Err(true) => {}
             Err(false) => self.bg.trend = None,

@@ -1487,3 +1487,239 @@ fn walters_splice_shows_the_reads_beat_error() {
         "Walter's moments: the read's beat error, live's sides lost"
     );
 }
+
+/// A take made of corpus sound, opened: each part is a take's first
+/// file from `from` to `to` seconds, one after another, as a watch put on
+/// and taken off the stand is heard. None without `TIMEGRAPHER_CORPUS`.
+fn spliced_take(name: &str, parts: &[(&str, usize, usize)]) -> Option<TimegrapherApp> {
+    let required = std::env::var_os("TIMEGRAPHER_REQUIRE_CORPUS").is_some();
+    let Some(root) = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from) else {
+        assert!(!required, "TIMEGRAPHER_CORPUS is needed");
+        eprintln!("SKIP: set TIMEGRAPHER_CORPUS to open {name}");
+        return None;
+    };
+    let file = |take: &str| root.join("takes").join(take).join("take_part01-001.flac");
+    let mut sound: Option<timegrapher_core::audio::Audio> = None;
+    for &(take, from, to) in parts {
+        let a = timegrapher_core::audio::load(&file(take)).unwrap();
+        let fs = a.sample_rate as usize;
+        let part = &a.samples[from * fs..to * fs];
+        match &mut sound {
+            Some(s) => s.samples.extend_from_slice(part),
+            None => {
+                sound = Some(timegrapher_core::audio::Audio {
+                    samples: part.to_vec(),
+                    sample_rate: a.sample_rate,
+                })
+            }
+        }
+    }
+    let dir = std::env::temp_dir().join(format!("tg-app-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    timegrapher_core::audio::write_wav(&dir.join("take.wav"), &sound.unwrap()).unwrap();
+    std::fs::write(
+        dir.join(timegrapher_core::take::MANIFEST),
+        "bph = 28800\nlift = 55\n\n[[recording]]\nfile = \"take.wav\"\nposition = \"DU\"\n",
+    )
+    .unwrap();
+    let app = opened(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    Some(app)
+}
+
+/// Shane's take (#2177): 70 s of `silence_empty_stand`, 100 s of
+/// `ym42_DU_2h`, 60 s of the stand. `name` keeps each test's folder
+/// its own.
+fn stand_both_ends(name: &str) -> Option<TimegrapherApp> {
+    spliced_take(
+        name,
+        &[
+            ("silence_empty_stand", 0, 70),
+            ("ym42_DU_2h", 0, 100),
+            ("silence_empty_stand", 100, 160),
+        ],
+    )
+}
+
+/// The stretches the strip draws as possible beats.
+fn possible_beats(app: &TimegrapherApp) -> Vec<(f64, f64)> {
+    app.strip_faint(None)
+        .into_iter()
+        .filter(|s| s.2 == "Possible Beats")
+        .map(|s| (s.0, s.1))
+        .collect()
+}
+
+/// The largest lead, ms, of the beats from `from` to `to` s on the strip
+/// as it is anchored now.
+fn widest_lead(app: &TimegrapherApp, from: f64, to: f64) -> f64 {
+    let live = app.live.as_ref().unwrap();
+    let period = 3600.0 / live.bph().unwrap() as f64;
+    let anchor = app.anchor.expect("anchored");
+    let breaks = app.take_breaks.as_deref().unwrap_or_default();
+    live.beats()
+        .iter()
+        .filter(|b| b.time > from && b.time < to)
+        .map(|b| {
+            anchor
+                .lead_on_true(b, period, breaks, app.take_rate_clock())
+                .abs()
+        })
+        .fold(0.0, f64::max)
+}
+
+/// The empty stand, the Yacht-Master put on it, then the stand again, as
+/// Shane played them (#2177), opened. The stand's beats, where no
+/// reading hears a watch (core's `live::unheard_spans`), are drawn as
+/// possible beats, not Tick and Tock; Fit spans the watch's beats alone,
+/// not the noise's scattered across the strip, which widened it to
+/// +/-500 ms; and the whole take's "over" is the stretch it read, the
+/// stand's lead left out, not the whole 230 s. Needs only
+/// `TIMEGRAPHER_CORPUS`.
+#[test]
+fn the_stand_at_both_ends_is_possible_beats_and_left_out_of_fit() {
+    let Some(app) = stand_both_ends("stand-ends") else {
+        return;
+    };
+    let live = app.live.as_ref().unwrap();
+    let faint = possible_beats(&app);
+    let possible = |t: f64| timegrapher_core::live::in_spans(&faint, t);
+    let noise = live
+        .beats()
+        .iter()
+        .filter(|b| b.time < 65.0 || b.time > 175.0);
+    assert!(noise.clone().count() > 50, "the stand has beats to draw");
+    assert!(noise.clone().all(|b| possible(b.time)), "{faint:?}");
+    let on = live
+        .beats()
+        .iter()
+        .filter(|b| b.time > 85.0 && b.time < 165.0);
+    assert!(!on.clone().any(|b| possible(b.time)), "{faint:?}");
+    // About +50 s/d drifts some 60 ms over the watch's 100 s.
+    assert!(
+        app.strip.half_width_ms <= 100.0,
+        "{}",
+        app.strip.half_width_ms
+    );
+    let w = app.whole_take().expect("whole take");
+    // Read from the watch's start, after the stand's 70 s that the reading
+    // leaves out, to the take's end, as `session` reads it (#2073).
+    assert!(w.span > 150.0 && w.span < 165.0, "over {} s", w.span);
+    let rate = w.m.rate_s_per_day.unwrap();
+    assert!((rate - 50.0).abs() < 10.0, "{rate}");
+    assert_eq!(w.span, w.m.measured_s());
+}
+
+/// The watch, the stand for 30 s in its place, then the watch again, its
+/// beat running on through (Trevor on #2192): the stand in the middle is
+/// possible beats, and Fit's width holds the watch's beats on both sides
+/// of it, not the noise's between them.
+#[test]
+fn the_stand_between_two_stretches_of_the_watch_is_left_out_of_fit() {
+    let Some(app) = spliced_take(
+        "stand-middle",
+        &[
+            ("ym42_DU_2h", 0, 60),
+            ("silence_empty_stand", 0, 30),
+            ("ym42_DU_2h", 90, 150),
+        ],
+    ) else {
+        return;
+    };
+    let faint = possible_beats(&app);
+    assert!(
+        timegrapher_core::live::in_spans(&faint, 75.0),
+        "the stand in the middle: {faint:?}"
+    );
+    assert!(
+        app.strip.half_width_ms <= 100.0,
+        "{}",
+        app.strip.half_width_ms
+    );
+}
+
+/// With Auto-Centre on, Fit and the centre the strip keeps put the
+/// watch's last beats on the centre line: the stand's beats after them,
+/// which the beat finder keeps near the watch's beat line, don't move it
+/// (Trevor on #2192).
+#[test]
+fn auto_centre_centres_on_the_watch_not_the_stand_after_it() {
+    let Some(mut app) = stand_both_ends("stand-follow") else {
+        return;
+    };
+    app.follow = true;
+    app.fit_take();
+    // The watch's last seconds lie near the centre line.
+    let fitted = widest_lead(&app, 165.0, 170.0);
+    assert!(fitted < 20.0, "Fit with Auto-Centre: {fitted} ms");
+    app.anchor = None;
+    app.centre();
+    let centred = widest_lead(&app, 165.0, 170.0);
+    assert!(centred < 20.0, "Auto-Centre: {centred} ms");
+}
+
+/// A take whose charts' run is read after it opened, in the background
+/// as the window reads it: Fit is made again once the run says where the
+/// watch is, and a view changed by hand in between is kept (Trevor on
+/// #2192).
+#[test]
+fn fit_is_made_again_when_the_run_comes_after_the_take_opens() {
+    let Some(mut app) = stand_both_ends("stand-refit") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let read_again = |app: &mut TimegrapherApp| {
+        // The run not read yet, as for a take opened without one.
+        app.trend.clear();
+        app.trend_key = (app.rev, 0);
+        app.fit_take();
+        let t = Instant::now();
+        while app.trend.is_empty() && t.elapsed().as_secs() < 120 {
+            app.take_reads_shown(&ctx);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(!app.trend.is_empty(), "the run came");
+    };
+    read_again(&mut app);
+    assert!(
+        app.strip.half_width_ms <= 100.0,
+        "fitted again: {}",
+        app.strip.half_width_ms
+    );
+    // Fitted before the run, with every beat; then set by hand.
+    app.trend.clear();
+    app.fit_take();
+    let wide = app.strip.half_width_ms;
+    assert!(wide > 100.0, "every beat: {wide}");
+    app.strip.set_half_width(wide / 2.0);
+    let by_hand = app.strip.half_width_ms;
+    app.trend_key = (app.rev, 0);
+    let t = Instant::now();
+    while app.trend.is_empty() && t.elapsed().as_secs() < 120 {
+        app.take_reads_shown(&ctx);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(app.strip.half_width_ms, by_hand, "kept as set by hand");
+}
+
+/// While listening, the newest beats have no reading yet, so nothing is
+/// drawn as possible beats for want of one (#2192).
+#[test]
+fn nothing_is_possible_beats_for_want_of_a_reading_while_listening() {
+    let Some(mut app) = stand_both_ends("stand-listening") else {
+        return;
+    };
+    assert!(!possible_beats(&app).is_empty(), "opened: the stand");
+    let base = std::env::temp_dir().join(format!("tg-app-listening-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let _tx = super::tests::queued_capture(&mut app, &base);
+    assert!(app.running());
+    assert!(app.strip_unheard().is_empty());
+    assert!(
+        possible_beats(&app).is_empty(),
+        "{:?}",
+        possible_beats(&app)
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

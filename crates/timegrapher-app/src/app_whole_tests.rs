@@ -250,6 +250,11 @@ fn a_mask_between_two_stretches_counts_once_on_the_whole_take() {
         "{:?}",
         w.m.caveats
     );
+    // Its hover's "over" is the stretch read less what that left out
+    // (core's `Measurement::measured_s`): 5 s to 60 s less the 25 s
+    // masked, not the stretches' 40 s with the hand's 10 s in them (#2177).
+    assert!((w.span - 30.0).abs() < 1e-9, "{}", w.span);
+    assert_eq!(w.span, w.m.measured_s());
 }
 
 /// A take kept as several files, its last position listed as more than
