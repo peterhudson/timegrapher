@@ -466,6 +466,7 @@ fn reference_table(sn: &Session) -> String {
         .readings
         .iter()
         .filter(|r| r.reference.is_some())
+        .map(|r| &r.reading)
         .collect();
     if with.is_empty() {
         return String::new();
@@ -522,15 +523,24 @@ fn cycles_table(sn: &Session) -> String {
     let rows: Vec<(&Reading, &timegrapher_core::session::Cycle)> = sn
         .readings
         .iter()
-        .flat_map(|r| r.cycles.iter().map(move |c| (r, c)))
+        .flat_map(|r| r.cycles.iter().map(move |c| (&r.reading, c)))
         .collect();
     let mut s = String::from("<h2>Periodic changes</h2>");
-    // Not searched is not "none found" (#1880).
+    let _ = write!(
+        s,
+        "<pre>{}</pre>",
+        esc(&crate::session_cmd::search_text(sn))
+    );
     if sn.input["settings"]["cycles"] == false {
-        s.push_str("<p>Not searched for: the search for periodic changes was turned off for this session.</p>");
         return s;
     }
     if rows.is_empty() {
+        if !sn.readings.iter().any(|r| {
+            r.search.timing_shortest_period_s.is_some()
+                || r.search.amplitude_shortest_period_s.is_some()
+        }) {
+            return s;
+        }
         let _ = write!(
             s,
             "<p>No periodic change in rate or amplitude named in any recording ({}, held across each recording's tests).</p>",
@@ -598,7 +608,12 @@ fn states_lines(sn: &Session) -> String {
 }
 
 fn shape_table(sn: &Session) -> String {
-    let with: Vec<&Reading> = sn.readings.iter().filter(|r| r.shape.is_some()).collect();
+    let with: Vec<&Reading> = sn
+        .readings
+        .iter()
+        .filter(|r| r.shape.is_some())
+        .map(|r| &r.reading)
+        .collect();
     if with.is_empty() {
         return String::new();
     }
@@ -804,6 +819,7 @@ fn state_charts(sn: &Session) -> String {
             .readings
             .iter()
             .filter(|rd| timegrapher_core::session::in_wind_state(rd.wind_h, st.wind_h))
+            .map(|r| &r.reading)
             .collect();
         body.push_str(&charts(lines, &rs, n));
     }
@@ -962,7 +978,16 @@ mod tests {
             text_reports: Vec::new(),
             report,
             power_reserve: None,
-            readings,
+            readings: readings
+                .into_iter()
+                .map(|reading| crate::session_cmd::SessionReading {
+                    reading,
+                    search: crate::session_cmd::SearchBands {
+                        timing_shortest_period_s: Some(3.0),
+                        amplitude_shortest_period_s: Some(16.0),
+                    },
+                })
+                .collect(),
         }
     }
 
@@ -1001,7 +1026,7 @@ mod tests {
         for (i, r) in later.iter_mut().enumerate() {
             r.wind_h = Some(if i % 2 == 0 { 24.0 } else { 24.04 });
         }
-        let later = session_of(later);
+        let later = session_of(later.into_iter().map(|r| r.reading).collect());
         assert_eq!(later.report.states.len(), 1);
         assert_eq!(later.poise.len(), 1);
         assert_eq!(later.poise[0].wind_h, later.report.states[0].wind_h);

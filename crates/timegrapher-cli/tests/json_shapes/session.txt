@@ -21,6 +21,7 @@ lift_deg
 notes
 owner
 readings
+readings[].amplitude_shortest_period_s
 readings[].bph
 readings[].bph_set
 readings[].cycles
@@ -161,6 +162,7 @@ readings[].shape.odd.noise_ratio
 readings[].shape.odd.ratio13
 readings[].shape.odd.ratio23
 readings[].shape.odd.sound1_found
+readings[].timing_shortest_period_s
 readings[].wind_h
 report
 report.findings

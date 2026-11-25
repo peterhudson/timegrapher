@@ -557,7 +557,7 @@ fn read_take_of(
 }
 
 pub(crate) fn read_one(e: &RecordingEntry, c: &Ctx) -> Result<Reading, String> {
-    Ok(read_one_inner(e, c, false)?.0)
+    Ok(read_one_inner(e, c, false)?.0.reading)
 }
 
 /// An entry of the session file with nothing to read in its recording,
@@ -623,7 +623,7 @@ pub(crate) fn read_one_with_context(
 ) -> Result<(Reading, crate::regress_provenance::ReadContext), String> {
     let (reading, context, _) = read_one_inner(e, c, true)?;
     let context = context.ok_or_else(|| "missing baseline provenance context".to_string())?;
-    Ok((reading, context))
+    Ok((reading.reading, context))
 }
 
 /// Whether the cycle search runs: off by `--no-cycles` or by the session
@@ -634,9 +634,9 @@ fn cycles_on(o: &Options, m: &Manifest) -> bool {
 
 /// The cycles found in an entry's reading, from its own windows; none for
 /// noise, or where the search is off ([`cycles_on`]).
-fn cycles_of(c: &Ctx, read: &take::EntryRead) -> Vec<session::Cycle> {
+fn cycles_of(c: &Ctx, read: &take::EntryRead) -> (Vec<session::Cycle>, SearchBands) {
     if !read.measurement.watch_heard || !cycles_on(c.o, c.m) {
-        Vec::new()
+        (Vec::new(), SearchBands::default())
     } else {
         let lc = LongConfig {
             wheels: c
@@ -656,7 +656,13 @@ fn cycles_of(c: &Ctx, read: &take::EntryRead) -> Vec<session::Cycle> {
         let mut long = longrun::analyse_with_breaks(&part.log, part.clock, &part.breaks, &lc);
         // The cycles the Steadiness pane names (#659).
         timegrapher_core::steadiness::family_long(&part.log, part.clock, &mut long, &lc);
-        session::cycles(&long, &lc.wheels)
+        (
+            session::cycles(&long, &lc.wheels),
+            SearchBands {
+                timing_shortest_period_s: long.timing.search.shortest_period_s(),
+                amplitude_shortest_period_s: long.amplitude.search.shortest_period_s(),
+            },
+        )
     }
 }
 
@@ -706,7 +712,7 @@ fn read_one_inner(
     capture: bool,
 ) -> Result<
     (
-        Reading,
+        SessionReading,
         Option<crate::regress_provenance::ReadContext>,
         EntryRun,
     ),
@@ -736,7 +742,7 @@ fn read_one_inner(
         )
         .into());
     }
-    let cycles = cycles_of(c, &read);
+    let (cycles, search) = cycles_of(c, &read);
     let shape = shape_of(e, c, &read)?;
     // A take of one entry is read whole here; one of several is read
     // whole once, after all of them ([`whole_take_run`], #1150).
@@ -794,23 +800,74 @@ fn read_one_inner(
         None
     };
     Ok((
-        Reading {
-            bph_set: cfg.analysis.bph,
-            label,
-            position,
-            wind_h: e.wind_h,
-            date: e.date.clone(),
-            notes: e.notes.clone(),
-            duration_s: stop - start,
-            bph: log.bph,
-            measurement,
-            cycles,
-            shape,
-            reference: e.reference.clone(),
+        SessionReading {
+            search,
+            reading: Reading {
+                bph_set: cfg.analysis.bph,
+                label,
+                position,
+                wind_h: e.wind_h,
+                date: e.date.clone(),
+                notes: e.notes.clone(),
+                duration_s: stop - start,
+                bph: log.bph,
+                measurement,
+                cycles,
+                shape,
+                reference: e.reference.clone(),
+            },
         },
         context,
         (run, heard_s),
     ))
+}
+
+/// The two independently searched bands; null means no trial period.
+/// Disabled and no-beat cases are identified by the session settings and
+/// the reading's existing `watch_heard`, not inferred from these options.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct SearchBands {
+    pub timing_shortest_period_s: Option<f64>,
+    pub amplitude_shortest_period_s: Option<f64>,
+}
+
+/// CLI-only additions to a core reading, flattened to keep its JSON shape.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionReading {
+    #[serde(flatten)]
+    pub reading: Reading,
+    #[serde(flatten)]
+    pub search: SearchBands,
+}
+
+impl std::ops::Deref for SessionReading {
+    type Target = Reading;
+    fn deref(&self) -> &Reading {
+        &self.reading
+    }
+}
+
+impl std::ops::DerefMut for SessionReading {
+    fn deref_mut(&mut self) -> &mut Reading {
+        &mut self.reading
+    }
+}
+
+impl SessionReading {
+    /// Core's words, with each series named as in the long report.
+    pub fn search_lines(&self) -> [String; 2] {
+        use timegrapher_core::longterm::shortest_text;
+        [
+            format!(
+                "Rate: {}",
+                shortest_text(self.search.timing_shortest_period_s)
+            ),
+            format!(
+                "Amplitude: {}",
+                shortest_text(self.search.amplitude_shortest_period_s)
+            ),
+        ]
+    }
 }
 
 /// The run of an entry when it is a take of its own and a long one, and
@@ -818,7 +875,7 @@ fn read_one_inner(
 type EntryRun = (Option<power_reserve::Results>, f64);
 
 /// A reading, with its entry's [`EntryRun`].
-type ReadRun = (Reading, EntryRun);
+type ReadRun = (SessionReading, EntryRun);
 
 /// The run of an entry that is a long take in the session's one position,
 /// read as a Power Reserve Test's run, or a test kept in parts whose save
@@ -860,7 +917,7 @@ pub struct Session<'a> {
     /// so when it did not (the readings carry the caveat too).
     #[serde(skip)]
     pub lift_known: bool,
-    pub readings: Vec<Reading>,
+    pub readings: Vec<SessionReading>,
     /// Entries with nothing to read, and why: they are not in `readings`.
     pub left_out: Vec<LeftOut>,
     pub report: SessionReport,
@@ -932,7 +989,8 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
     if ctx.tty {
         eprintln!();
     }
-    let report = session::evaluate(&readings);
+    let core_readings: Vec<_> = readings.iter().map(|r| r.reading.clone()).collect();
+    let report = session::evaluate(&core_readings);
     let bph = readings.first().map_or(0, |r| r.bph);
     let files: Vec<PathBuf> = m.recordings.iter().map(|e| base.join(&e.file)).collect();
     let settings = serde_json::json!({
@@ -963,7 +1021,7 @@ pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
         bph,
         lift_deg: o.lift(&m, cal),
         lift_known: lift_known(&ctx, cal),
-        poise: timegrapher_core::poise::by_state(&readings),
+        poise: timegrapher_core::poise::by_state(&core_readings),
         readings,
         left_out,
         report,
@@ -1082,7 +1140,11 @@ fn positions_listed(c: &Ctx) -> Vec<&'static str> {
 }
 
 /// The readings, the entries left out, and a long take's run.
-type ReadAll = (Vec<Reading>, Vec<LeftOut>, Option<power_reserve::Results>);
+type ReadAll = (
+    Vec<SessionReading>,
+    Vec<LeftOut>,
+    Option<power_reserve::Results>,
+);
 
 /// The summary, readings and report written to the report folder, and the
 /// summary printed (or its JSON with `--json`).
@@ -1163,7 +1225,8 @@ fn text_reports(s: &Session, base: &Path) -> Vec<TextReport> {
     use timegrapher_core::text_report::{self, Earlier};
     // Core picks the state the report is of, and the one it is set
     // against: wind not given is never pooled with a given state (#1665).
-    let (shown, against) = timegrapher_core::session::report_states(&s.readings);
+    let core_readings: Vec<_> = s.readings.iter().map(|r| r.reading.clone()).collect();
+    let (shown, against) = timegrapher_core::session::report_states(&core_readings);
     let readings: Vec<Reading> = shown.into_iter().cloned().collect();
     let full = against.as_ref().map(|(full, hours)| {
         let full: Vec<Reading> = full.iter().map(|r| (*r).clone()).collect();
@@ -1295,11 +1358,40 @@ fn print_summary(s: &Session) {
     println!();
     print_readings(s);
     print_notes(s);
+    print!("{}", search_text(s));
     print_states(s);
     print_poise(s);
     println!();
     print_findings(&s.report);
 }
+
+/// Each recording's searched bands, in core's words.
+pub(crate) fn search_text(s: &Session) -> String {
+    use std::fmt::Write;
+    if s.input["settings"]["cycles"] == false {
+        return format!("{SEARCH_OFF}\n");
+    }
+    let mut text = String::new();
+    for r in &s.readings {
+        let _ = writeln!(text, "{} ({})", r.label, r.position.display_label());
+        if !r.measurement.watch_heard {
+            let _ = writeln!(
+                text,
+                "  {}",
+                session::no_regular_beat_in(&r.measurement, r.bph_set)
+            );
+        } else {
+            for line in r.search_lines() {
+                let _ = writeln!(text, "  {line}");
+            }
+        }
+    }
+    text
+}
+
+/// Existing session-report wording for an explicitly disabled search.
+pub(crate) const SEARCH_OFF: &str =
+    "Not searched for: the search for periodic changes was turned off for this session.";
 
 /// The Dynamic Poise fit of each state of wind that gives one.
 fn print_poise(s: &Session) {
@@ -2495,5 +2587,131 @@ mod tests {
             ..Default::default()
         };
         assert!(take::span_of(&e, 300.0).is_err());
+    }
+}
+
+#[cfg(test)]
+mod search_band_tests {
+    use super::*;
+    use timegrapher_core::longterm::TOO_SHORT_TO_SEARCH;
+    use timegrapher_core::synth::{generate, SynthConfig};
+
+    /// Run the real session path, retaining the JSON and the HTML's text.
+    fn report(
+        name: &str,
+        duration_s: f64,
+        sound: bool,
+        disabled: &str,
+    ) -> (serde_json::Value, String) {
+        let dir =
+            std::env::temp_dir().join(format!("tg-search-band-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = SynthConfig {
+            duration_s,
+            ..Default::default()
+        };
+        let mut audio = generate(&cfg, |_| 270.0, |_| 0.0);
+        if !sound {
+            audio.samples.fill(0.0);
+        }
+        audio::write_wav(&dir.join("watch.wav"), &audio).unwrap();
+        let off = if disabled == "manifest" {
+            "cycles = false\n"
+        } else {
+            ""
+        };
+        fs::write(dir.join(MANIFEST), format!(
+            "bph = 28800\nlift = 52\nsettle_s = 0\n{off}[[recording]]\nfile = \"watch.wav\"\nposition = \"DU\"\n"
+        )).unwrap();
+        let o = Options {
+            bph: None,
+            lift: None,
+            calibre: None,
+            settle: None,
+            out: Some(dir.join("out")),
+            json: false,
+            init: false,
+            no_shape: true,
+            no_cycles: disabled == "flag",
+        };
+        run(std::slice::from_ref(&dir), &o).unwrap();
+        let json = serde_json::from_str(&fs::read_to_string(dir.join("out/summary.json")).unwrap())
+            .unwrap();
+        let html = fs::read_to_string(dir.join("out/report.html")).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+        (json, html)
+    }
+
+    #[test]
+    fn session_search_bands_preserve_each_series_in_json_and_text() {
+        let (json, html) = report("searched", 120.0, true, "");
+        let r = &json["readings"][0];
+        let timing = r["timing_shortest_period_s"]
+            .as_f64()
+            .expect("timing searched");
+        let amplitude = r["amplitude_shortest_period_s"]
+            .as_f64()
+            .expect("amplitude searched");
+        assert!(timing < amplitude, "the two series search different bands");
+        assert!(html.contains(&format!(
+            "Rate: Shortest cycle searched: {} s",
+            (timing * 100.0).round() / 100.0
+        )));
+        assert!(html.contains(&format!(
+            "Amplitude: Shortest cycle searched: {} s",
+            (amplitude * 100.0).round() / 100.0
+        )));
+        assert!(html.contains(&format!("watch.wav ({})", Position::CH.display_label())));
+        assert!(!html.contains(TOO_SHORT_TO_SEARCH));
+    }
+
+    #[test]
+    fn session_search_bands_say_too_short_for_each_unsearched_series() {
+        let (json, html) = report("short", 6.0, true, "");
+        let r = &json["readings"][0];
+        assert_eq!(r["measurement"]["watch_heard"], true);
+        for key in ["timing_shortest_period_s", "amplitude_shortest_period_s"] {
+            assert_eq!(r.get(key), Some(&serde_json::Value::Null), "{key}");
+        }
+        assert!(html.contains(&format!("Rate: {TOO_SHORT_TO_SEARCH}")));
+        assert!(html.contains(&format!("Amplitude: {TOO_SHORT_TO_SEARCH}")));
+        assert!(!html.contains("No periodic change"));
+    }
+
+    #[test]
+    fn session_search_bands_keep_a_searched_series_beside_an_unsearched_one() {
+        let (json, html) = report("mixed", 12.0, true, "");
+        let r = &json["readings"][0];
+        assert!(r["timing_shortest_period_s"].is_number());
+        assert_eq!(
+            r.get("amplitude_shortest_period_s"),
+            Some(&serde_json::Value::Null)
+        );
+        assert!(html.contains("Rate: Shortest cycle searched:"));
+        assert!(html.contains(&format!("Amplitude: {TOO_SHORT_TO_SEARCH}")));
+        assert!(!html.contains(&format!("Rate: {TOO_SHORT_TO_SEARCH}")));
+    }
+
+    #[test]
+    fn session_search_bands_keep_disabled_and_no_beat_distinct() {
+        for disabled in ["flag", "manifest"] {
+            let (json, html) = report(disabled, 120.0, true, disabled);
+            assert_eq!(json["input"]["settings"]["cycles"], false);
+            for key in ["timing_shortest_period_s", "amplitude_shortest_period_s"] {
+                assert_eq!(json["readings"][0].get(key), Some(&serde_json::Value::Null));
+            }
+            assert!(html.contains("Not searched for: the search for periodic changes was turned off for this session."));
+            assert!(!html.contains(TOO_SHORT_TO_SEARCH));
+            assert!(!html.contains("Shortest cycle searched"));
+        }
+        let (json, html) = report("silent", 12.0, false, "");
+        assert_eq!(json["readings"][0]["measurement"]["watch_heard"], false);
+        for key in ["timing_shortest_period_s", "amplitude_shortest_period_s"] {
+            assert_eq!(json["readings"][0].get(key), Some(&serde_json::Value::Null));
+        }
+        assert!(!html.contains(TOO_SHORT_TO_SEARCH));
+        assert!(!html.contains("Shortest cycle searched"));
+        assert!(!html.contains("No periodic change"));
     }
 }

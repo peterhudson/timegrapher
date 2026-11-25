@@ -1045,6 +1045,16 @@ pub fn beyond_simulated(significance: f64, calibrated: bool) -> bool {
 pub const TOO_SHORT_TO_SEARCH: &str =
     "Not searched: the take is too short for any cycle the search looks for.";
 
+/// The search-band words for a retained `Search::shortest_period_s` value.
+/// No period means the search tried none; callers distinguish disabled
+/// searches and recordings without a regular beat before using this.
+pub fn shortest_text(period_s: Option<f64>) -> String {
+    match period_s {
+        Some(p) => format!("Shortest cycle searched: {} s", (p * 100.0).round() / 100.0),
+        None => TOO_SHORT_TO_SEARCH.to_string(),
+    }
+}
+
 impl Search {
     /// The shortest trial period the search tried, s; none when it tried
     /// none.
@@ -1060,10 +1070,7 @@ impl Search {
     /// never reads as none found (Norm on #1897); with no period tried,
     /// that the take was too short to search (#1880).
     pub fn shortest_text(&self) -> String {
-        match self.shortest_period_s() {
-            Some(p) => format!("Shortest cycle searched: {} s", (p * 100.0).round() / 100.0),
-            None => TOO_SHORT_TO_SEARCH.to_string(),
-        }
+        shortest_text(self.shortest_period_s())
     }
 
     /// Whether the search tried any period at all.
