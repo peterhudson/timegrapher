@@ -94,6 +94,7 @@ take.left_out[].position
 take.left_out[].start_s
 take.left_out[].why
 take.readings
+take.readings[].amplitude_shortest_period_s
 take.readings[].bph
 take.readings[].bph_set
 take.readings[].cycles
@@ -223,6 +224,7 @@ take.readings[].shape.odd.noise_ratio
 take.readings[].shape.odd.ratio13
 take.readings[].shape.odd.ratio23
 take.readings[].shape.odd.sound1_found
+take.readings[].timing_shortest_period_s
 take.readings[].wind_h
 take.session_file
 timing_periods
