@@ -123,11 +123,38 @@ chip on the Calibre card says so, such as "Dandong 3235 is 28800 bph". The pick 
 the stand and isn't kept between runs; a watch in the Watches view keeps
 its own.
 
+## Co-axial Calibres
+
+Co-axial escapements are read in beta. The calibre table marks Omega's
+co-axial calibres, such as the 2500, 3861, 8500 and 8900. A take of one
+is read for a co-axial; every other calibre is read as a Swiss lever.
+
+- **The Calibre menu** tags it **Co-axial (beta)**. The hover on its
+  name on the Calibre card, and on its row in Manage Calibres, says:
+  "Co-axial escapement (beta): the beat error is the unlock's alone, and
+  the amplitude is an estimate, not yet checked against a reference."
+- **Lift** works as for any calibre: the table's lift angle where a
+  source gives one, so far only the 8500's 38°; otherwise a Lift field
+  to type it in, at 52° until you do.
+- **The Amplitude card** carries the chip **Co-axial Escapement
+  Estimate (beta)**, or **Co-axial Estimate (beta)** where the card is
+  narrower: the Swiss lever's formula is used, and the figure hasn't been
+  checked against a reference (M4).
+- **The Beat Error card** carries the chip **Co-axial (beta)**: the beat
+  error is the unlock's alone, never the drop's, since on a co-axial the
+  two sides end on different events (M5). Where the unlock isn't found,
+  no beat error is given, and the chip says why.
+
+The command line's `timegrapher calibres` and `analyze --calibre` say the
+same.
+
 ## What It Can't Tell You
 
 - **Whether a published lift angle is right for your watch.** Sources
   differ, and the list keeps differing figures as separate entries, each
   with its source. The amplitude moves with the lift angle (M4).
+- **Whether a co-axial's amplitude is right.** It is an estimate in
+  beta, not yet checked against a reference timegrapher.
 - **Whether a figure you add is right.** It is used as you typed it,
   marked Custom.
 

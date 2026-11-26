@@ -8,7 +8,8 @@ It can't see the balance, feel the mainspring or look at a tooth. Knowing
 which sound each number comes from tells you when to trust a number, and
 when the microphone, not the watch, has changed.
 
-This guide covers the **Swiss lever escapement** only.
+This guide covers the **Swiss lever escapement**. Co-axial escapements
+are read in beta (chapter 24).
 
 ## The Beat
 

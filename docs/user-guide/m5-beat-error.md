@@ -42,6 +42,14 @@ error near zero predicts only about half its windows on its side, so a
 scatter around zero is not taken for this. With fewer than 3 windows it
 is not judged.
 
+**On a co-axial escapement** (beta, chapter 24): the unlock's figure
+only. There is no beat error from the drop, in the hover or as a stand-in,
+since one side's impulse goes straight to the balance and the other's
+through the lever, so the two sides' last sounds are different events.
+The Beat Error card says **Co-axial (beta)**. Where the unlock isn't
+found, or its windows disagree in sign as above, no beat error is given,
+and the chip says which.
+
 **Which side is Tick:** the sound can't tell which pallet stone is which.
 Each take starts positive: the side that comes late over the first few
 seconds is called Tick. With a beat error nearer zero than 0.1 ms, the

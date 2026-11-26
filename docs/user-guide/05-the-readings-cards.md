@@ -184,7 +184,7 @@ Rest the pointer on a figure to see what stands behind it.
 | --- | --- |
 | **Rate** | The sound card's clock (M3). The big figure is on the clock the take is read on: its USB lines, a clock log that measured the card well enough, or a correction kept for the input or saved with the take. The hover says first by how much and from what, as in the picture. **Listening,** a correction kept for the input applies from the first second, and the recording's USB lines once 30 s of sound are in; until then the hover says first which clock the figure is on for now. Then the beats the readings are fitted to ("79 beats in 10 s"), and the **jitter**. |
 | **Amplitude** | The amplitude of the Ticks and of the Tocks, apart. |
-| **Beat Error** | First its **BE Angle**, the beat error as an angle of the balance's swing: "That's a BE Angle of 1.7 ± 0.2° of the balance's swing, at 302° amplitude". The ms grow as the amplitude falls; the degrees stay the same (M5). Then the beat error timed from the drop, beside the big figure's, timed from the unlock. |
+| **Beat Error** | First its **BE Angle**, the beat error as an angle of the balance's swing: "That's a BE Angle of 1.7 ± 0.2° of the balance's swing, at 302° amplitude". The ms grow as the amplitude falls; the degrees stay the same (M5). Then the beat error timed from the drop, beside the big figure's, timed from the unlock; a co-axial has none from the drop. |
 
 - **Jitter** is how far single beats land from the steady line the rate
   is fitted to, in microseconds: the spread of the dots across the strip.
@@ -249,6 +249,8 @@ the first and how many more ("12 s of Beats +1").
 | **6.8 s Masked** | Masked time in the stretch. | Nothing; it was left out by hand. |
 | **Sides Named by Count** (Beat Error) | On an opened take, Tick and Tock were named across a break by counting beats, not by their sound. | Treat the beat error's sign across that break with care. |
 | **Beat Error From the Drop** | The unlock wasn't found, so the beat error is timed from the drop. | Raise the level, or improve the contact, so the quiet unlock is heard. |
+| **Co-axial Escapement Estimate (beta)** (Amplitude) | The calibre is a co-axial, read in beta: the amplitude uses the Swiss lever's formula and hasn't been checked against a reference. At narrower widths, **Co-axial Estimate (beta)**. | Treat it as an estimate (chapter 24). |
+| **Co-axial (beta)** (Beat Error) | The beat error is the unlock's alone; a co-axial has none from the drop. **Co-axial: Unlock Not Found** when none is given. | Nothing while a figure shows; with none, help the quiet unlock be heard, as for Beat Error From the Drop. |
 | **Amplitude Read From 4 of 15 Windows** | Under 60% of the short readings in the stretch could be used. | Treat the figure as resting on less than its span. |
 | **First 12 s Left Out** | Noise before the watch was heard is left out of a whole take's reading. | Nothing. |
 
