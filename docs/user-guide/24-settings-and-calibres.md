@@ -134,8 +134,8 @@ is read for a co-axial; every other calibre is read as a Swiss lever.
   "Co-axial escapement (beta): the beat error is the unlock's alone, and
   the amplitude is an estimate, not yet checked against a reference."
 - **Lift** works as for any calibre: the table's lift angle where a
-  source gives one, so far only the 8500's 38°; otherwise a Lift field
-  to type it in, at 52° until you do.
+  source gives one (38° for the 2500 and 8500); otherwise set it with
+  **Lift** on the Calibre card, 52° until you do.
 - **The Amplitude card** carries the chip **Co-axial Escapement
   Estimate (beta)**, or **Co-axial Estimate (beta)** where the card is
   narrower: the Swiss lever's formula is used, and the figure hasn't been
@@ -145,8 +145,8 @@ is read for a co-axial; every other calibre is read as a Swiss lever.
   two sides end on different events (M5). Where the unlock isn't found,
   no beat error is given, and the chip says why.
 
-The command line's `timegrapher calibres` and `analyze --calibre` say the
-same.
+`timegrapher calibres` prints the same sentence, and `analyze --calibre`
+gives the same caveats.
 
 ## What It Can't Tell You
 

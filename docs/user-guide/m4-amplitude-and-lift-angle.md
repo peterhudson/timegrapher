@@ -92,10 +92,11 @@ say which.
   52°, 8.0 ms reads 259°, and 7.0 ms reads 296°. A muffled holder, clipping
   or automatic gain moves the unlock, and with it the amplitude.
 - **A co-axial's amplitude, checked.** A co-axial escapement (beta,
-  chapter 24) is read with the same formula, at its own lift angle, and
-  the Amplitude card says **Co-axial Escapement Estimate (beta)**. Its
-  unlock-to-drop time is shorter than a lever's at the same swing, and no
-  co-axial reading has yet been checked against a reference.
+  chapter 24) is read with the lever's formula, at the lift angle set for
+  it, and the Amplitude card says **Co-axial Escapement Estimate (beta)**.
+  Where its lift angle is smaller than 52°, such as the 8500's 38°, the
+  52° default reads it high: about 37% high for 38°. No co-axial reading
+  has yet been checked against a reference.
 - **The swing's two halves exactly.** The Tick and Tock amplitudes in the
   hover can differ because the two sides sound different, not because the
   balance swings further one way.

@@ -14,7 +14,7 @@ take.
 - **A timegrapher microphone:** a contact microphone in a watch holder.
   An ordinary microphone often hears the loud drop but misses the quiet
   unlock, so rate works and amplitude doesn't.
-- **A mechanical watch** with a Swiss lever escapement, fully wound.
+- **A mechanical watch** with a Swiss lever escapement (or a co-axial, read in beta: chapter 24), fully wound.
 - **Its calibre**, if you know it. The calibre gives the lift angle,
   which amplitude needs.
 
