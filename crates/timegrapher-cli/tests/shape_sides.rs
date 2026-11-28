@@ -148,8 +148,8 @@ fn shape_says_a_co_axial_amplitude_is_an_estimate() {
 /// On noise, where `analyze` finds no regular beat, `shape` says so in
 /// `analyze`'s words, that line alone, and prints no table; its JSON keeps
 /// its fields, with no window and no figure (#2371). Both over 10 s (the
-/// timing scatter decides) and under it (the beats' sound decides, and
-/// `analyze` gives no "not assessed" line with it).
+/// timing scatter decides) and under it (no verdict either way, Norm on
+/// #2333: `analyze` says regularity is not assessed, and so does `shape`).
 #[test]
 fn shape_measures_nothing_on_noise() {
     let dir = scratch("noise");
@@ -173,10 +173,20 @@ fn shape_measures_nothing_on_noise() {
         timegrapher_core::audio::write_wav(&wav, &audio).unwrap();
         let analyze = run(&config, &["analyze", w]);
         let said: Vec<&str> = analyze.lines().skip(1).collect();
-        assert!(
-            said.len() == 1 && said[0].starts_with("No regular beat found"),
-            "{seconds} s: {analyze}"
-        );
+        if seconds >= 10 {
+            assert!(
+                said.len() == 1 && said[0].starts_with("No regular beat found"),
+                "{seconds} s: {analyze}"
+            );
+        } else {
+            // Under 10 s there is no verdict either way (Norm on #2333).
+            let not_assessed = timegrapher_core::measure::not_assessed_text(seconds as f64);
+            assert_eq!(
+                said.first(),
+                Some(&not_assessed.as_str()),
+                "{seconds} s: {analyze}"
+            );
+        }
         let text = run(&config, &["shape", w]);
         assert_eq!(text.trim_end(), said[0], "{seconds} s: {text}");
         let s = json(&config, &["shape", w, "--json"]);

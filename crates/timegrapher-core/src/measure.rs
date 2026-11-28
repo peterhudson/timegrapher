@@ -30,8 +30,11 @@ use crate::timing::WindowFit;
 use serde::{Deserialize, Serialize};
 
 /// Seconds of sound needed to assess whether the beats are regular, and
-/// below which a stretch of beats is named `short_span`.
-pub const SHORT_SPAN_S: f64 = 10.0;
+/// below which a stretch of beats is named `short_span` and a reading
+/// waits ([`awaiting_verdict`]). The shortest piece a reading is fitted
+/// over ([`crate::timing::MIN_PIECE_S`]), for the same reason: a few
+/// seconds of beats give a rate several s/d out (Norm on #2333).
+pub const SHORT_SPAN_S: f64 = crate::timing::MIN_PIECE_S;
 
 /// Whether a stretch's beats are judged for regularity: it holds
 /// `listened_s` seconds of sound, at least [`SHORT_SPAN_S`], and
@@ -87,16 +90,31 @@ fn in_doubt(jitter_us: Option<f64>, bph: u32) -> bool {
 /// Whether a reading waits for its verdict: under [`SHORT_SPAN_S`] of
 /// sound has been heard since the start or the latest break, its masked
 /// seconds left out (`heard_s`; a mask does not restart the count, Norm
-/// on #2017), and the beats' averaged sound can't be judged
-/// (`beat_sound` None). Then no scatter can be judged, and a watch is
-/// heard only where the sound positively shows one, so there is no
-/// verdict either way and no figures: an empty stand's first seconds
-/// read as a rate of over 100,000 s/d when the timing's "watch" stood
-/// (Norm on #2014). A short average over longer sound is not waiting:
-/// what is heard does not depend on how it is averaged. Every reader
-/// asks this beside [`no_watch_reason`], so they withhold alike.
-pub fn awaiting_verdict(heard_s: f64, beat_sound: Option<bool>) -> bool {
-    heard_s < SHORT_SPAN_S && beat_sound.is_none()
+/// on #2017). Then there is no verdict either way and no figures, however
+/// the beats sound: a few seconds of beats is not a rate, and one stretch
+/// reads one way live, stopped and opened (Norm on #2333, revising #2014,
+/// where the beats' sound could speak for a watch sooner; live had no
+/// beats in its first seconds while a saved read had them, so a stopped
+/// take read a rate from about ten beats). An empty stand's first seconds
+/// show no figures either (#2014). A short average over longer sound is
+/// not waiting: what is heard does not depend on how it is averaged.
+/// Every reader asks this beside [`no_watch_reason`], so they withhold
+/// alike.
+pub fn awaiting_verdict(heard_s: f64) -> bool {
+    heard_s < SHORT_SPAN_S
+}
+
+/// A reader's verdict once `heard_s` of sound is heard
+/// ([`awaiting_verdict`]): why no watch is heard, `no_watch`, and whether
+/// it waits. While it waits there is no verdict either way, so no "No
+/// Regular Beat" from the beats' sound alone in the first seconds (Norm
+/// on #2333). Every reader takes its verdict through this.
+pub fn verdict_heard(
+    heard_s: f64,
+    no_watch: Option<NoWatchReason>,
+) -> (Option<NoWatchReason>, bool) {
+    let awaiting = awaiting_verdict(heard_s);
+    (no_watch.filter(|_| !awaiting), awaiting)
 }
 
 /// Why no regular beat was found, or `None` when one was, from the timing

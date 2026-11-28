@@ -1103,11 +1103,13 @@ fn readings_carry_their_errors_and_caveats() {
     // rates yet, and too short a take to borrow the amplitude's scatter.
     assert_eq!(early.rate_no_pm, Some(NoPm::TooFew), "{early:?}");
     assert_eq!(early.amplitude_no_pm, Some(NoPm::PoolShort), "{early:?}");
-    // Under 10 s of sound regularity is not assessed: the readings
-    // are shown, not withheld.
+    // Under 10 s of sound there is no verdict and no figures yet: the
+    // reading waits (Norm on #2333, where they had been shown).
     assert!(early.watch_heard, "{early:?}");
     assert!(
-        early.rate_s_per_day.is_some() && early.amplitude_deg.is_some(),
+        early.rate_s_per_day.is_none()
+            && early.amplitude_deg.is_none()
+            && early.listening.is_some(),
         "{early:?}"
     );
     let late = a.reading(10.0);

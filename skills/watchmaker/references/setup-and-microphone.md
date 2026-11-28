@@ -87,7 +87,7 @@ Device", "C-Media", "USB Audio") rather than "timegrapher".
 With the watch clamped, wound and running:
 
 ```sh
-timegrapher doctor --device "USB PnP Sound Device" --seconds 5
+timegrapher doctor --device "USB PnP Sound Device" --seconds 10
 timegrapher doctor --card 2 --json           # Linux: by ALSA card number
 timegrapher doctor --file take.wav           # check an existing recording
 timegrapher doctor --device NAME --save check.wav   # keep the few seconds it heard

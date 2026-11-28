@@ -83,6 +83,8 @@ pub fn clock_from(
 ///   `bytes_per_frame`) is fitted for rates ([`ClockFit::for_rates`]); where
 ///   the recording has USB lines (`usb_ppm`, fast positive), they set the
 ///   rate and the log keeps only its breaks ([`ClockFit::rate_from_usb`]).
+///   A log too short to fit over a take too short to fill one leaves it
+///   on the card's ([`crate::recorder::fit_unless_short`]).
 /// - A correction or the USB lines alone are one steady error over the
 ///   take ([`ClockFit::fixed`]); USB lines over a correction keep the
 ///   correction beside them, to say when the two disagree
@@ -95,21 +97,20 @@ pub fn clock(
     correction_ppm: Option<f64>,
     duration_s: f64,
 ) -> Result<Option<ClockFit>, String> {
-    let fitted = |text: &str| -> Result<ClockFit, String> {
+    let fitted = |text: &str| -> Result<Option<ClockFit>, String> {
         let pairs = clock::parse_log(text, sample_rate, bytes_per_frame)?;
-        ClockFit::for_rates(&pairs).map_err(|e| e.to_string())
+        crate::recorder::fit_unless_short(ClockFit::for_rates(&pairs), duration_s)
     };
     Ok(
         match (
             clock_from(log_text.is_some(), usb_ppm, correction_ppm),
             log_text,
         ) {
-            (Some(ClockFrom::Log), Some(text)) => Some(fitted(text)?),
-            (Some(ClockFrom::LogRatedByUsb), Some(text)) => {
-                let mut fit = fitted(text)?;
+            (Some(ClockFrom::Log), Some(text)) => fitted(text)?,
+            (Some(ClockFrom::LogRatedByUsb), Some(text)) => fitted(text)?.map(|mut fit| {
                 fit.rate_from_usb(usb_ppm.unwrap_or_default());
-                Some(fit)
-            }
+                fit
+            }),
             (Some(ClockFrom::Correction), _) => {
                 correction_ppm.map(|p| ClockFit::fixed(p, duration_s))
             }

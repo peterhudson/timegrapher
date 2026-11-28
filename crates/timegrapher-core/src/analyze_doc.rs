@@ -66,7 +66,7 @@ pub fn body(summary: &Summary, clock: Option<(f64, &str)>) -> Result<Value, Stri
     };
     let off = crate::measure::off_standard(&summary.caveats).is_some();
     let counted;
-    let summary = if summary.watch_heard {
+    let summary = if summary.heard_as_watch() {
         summary
     } else {
         let mut s = summary.clone();
@@ -77,7 +77,7 @@ pub fn body(summary: &Summary, clock: Option<(f64, &str)>) -> Result<Value, Stri
     let mut body = serde_json::to_value(summary).map_err(|e| e.to_string())?;
     body["overall"] = summary.escapement.overall_json(summary.overall.as_ref());
     let (_, bph) = crate::measure::watch_beats(
-        summary.watch_heard,
+        summary.heard_as_watch(),
         summary.beats_found,
         summary.bph,
         summary.bph_set,
@@ -319,5 +319,51 @@ mod tests {
             .unwrap()
             .iter()
             .any(|c| c["code"] == "set_rate_disagrees"));
+    }
+
+    /// A reading still waiting, under 10 s, has heard no watch yet, so the
+    /// document counts no beats of one (Norm on #2378 and #2333): on 5 s
+    /// of noise and on 5 s of a clean watch alike, `beats_found` 0 and no
+    /// `bph` with no rate set; with one set, `bph` is it.
+    #[test]
+    fn a_reading_still_waiting_counts_no_beats_of_a_watch() {
+        let mut x = 0x9e37_79b9_7f4a_7c15u64;
+        let noise = crate::audio::Audio {
+            samples: (0..5 * 48_000)
+                .map(|_| {
+                    x ^= x << 13;
+                    x ^= x >> 7;
+                    x ^= x << 17;
+                    (((x >> 11) as f64 / (1u64 << 53) as f64) - 0.5) as f32 * 0.02
+                })
+                .collect(),
+            sample_rate: 48_000,
+        };
+        let watch = generate(
+            &SynthConfig {
+                duration_s: 5.0,
+                ..Default::default()
+            },
+            |_| 280.0,
+            |_| 0.0,
+        );
+        for (what, audio) in [("noise", &noise), ("watch", &watch)] {
+            for set in [None, Some(28_800)] {
+                let cfg = AnalysisConfig {
+                    bph: set,
+                    ..Default::default()
+                };
+                let s = analyze(audio, &cfg).summary;
+                assert!(s.awaiting && !s.heard_as_watch(), "{what}: {:?}", s.caveats);
+                assert!(s.beats_found > 0, "{what}: the peaks found");
+                let doc = body(&s, None).unwrap();
+                let at = format!("{what}, set {set:?}");
+                assert_eq!(doc["beats_found"], 0, "{at}");
+                assert_eq!(doc["beats_found_fraction"], 0.0, "{at}");
+                assert_eq!(doc["bph"], json!(set), "{at}");
+                assert!(doc.get("bph_heard").is_none(), "{at}");
+                assert!(doc["rate_s_per_day"].is_null(), "{at}");
+            }
+        }
     }
 }

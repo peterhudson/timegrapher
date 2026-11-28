@@ -1140,16 +1140,17 @@ pub fn measure_reading(
         .into_iter()
         .filter(|b| b.time >= cut_from)
         .collect();
-    let no_watch = crate::measure::no_watch_reason_of(
-        jitter_us,
-        log.bph,
-        (assessed, beat_sound),
-        (&since_cut, from_t),
-    );
     // The sound behind the reading: since the latest cut, or the
     // stretch's own where it reads across one.
-    let awaiting =
-        crate::measure::awaiting_verdict(holes.heard_s(to_t).max(listened_s), beat_sound);
+    let (no_watch, awaiting) = crate::measure::verdict_heard(
+        holes.heard_s(to_t).max(listened_s),
+        crate::measure::no_watch_reason_of(
+            jitter_us,
+            log.bph,
+            (assessed, beat_sound),
+            (&since_cut, from_t),
+        ),
+    );
     let mut m = Measurement {
         start_s: from_s,
         end_s: to_s,
@@ -1323,7 +1324,9 @@ pub fn measure_reading(
         to_s,
         m.beat_error_source,
     );
-    if m.watch_heard {
+    // A reading still waiting has no figure for a window count to qualify
+    // (#2333).
+    if m.watch_heard && !awaiting {
         for (reading, coverage) in [
             (crate::confidence::Figure::Rate, m.coverage.rate),
             (crate::confidence::Figure::Amplitude, m.coverage.amplitude),

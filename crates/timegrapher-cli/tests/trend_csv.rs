@@ -124,9 +124,15 @@ fn a_take_is_cut_and_corrected_as_the_app_reads_it() {
             continue;
         }
         assert!(rate(a).is_some(), "the file alone reads at {t}");
+        // Dial Down heard from the end of its settling at 35 s, the mask
+        // left out: under 10 s of it, the reading waits (Norm on #2333).
+        let heard = t - 35.0 - (t.min(44.0) - 40.0).max(0.0);
+        let waits = t >= 35.0 && heard < 10.0;
         if across {
             assert_eq!(rate(b), None, "nothing read across a cut at {t}");
             cut += 1;
+        } else if waits {
+            assert_eq!(rate(b), None, "under 10 s heard at {t}");
         } else {
             let (a, b) = (rate(a).unwrap(), rate(b).unwrap());
             assert!((a - correction - b).abs() < 0.005, "{t}: {a} {b}");

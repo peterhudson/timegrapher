@@ -1,6 +1,7 @@
 //! The whole take's reading, headless: it is session's reading of the
 //! same stretch, at any length session reads.
 
+use super::readouts_tests::{cards_text, painted, stopped_listened};
 use super::tests::{painted_text, synthetic, themed};
 use super::*;
 
@@ -654,4 +655,68 @@ fn a_take_recorded_on_auto_plays_and_opens_kept_on_auto() {
         app.message
     );
     assert_eq!(app.bench.take.bph, None, "kept");
+}
+
+/// A ticking watch Stopped at every second from 1 to 12 s, and either
+/// side of 10 s: under 10 s heard, live waits and the stopped take (read
+/// as its saved take opens) reads no figures and says "Under 10 s Heard"
+/// on every card, at every Average Over, never a rate from a few beats;
+/// from 10 s both read. No Stop raises a fault, even one so short that
+/// its clock log has two lines (Norm on #2333; #2334).
+#[test]
+fn an_early_stop_reads_under_ten_seconds_heard_and_no_fault() {
+    use timegrapher_core::measure::{HeardSince, Wait};
+    use timegrapher_core::synth::{generate, SynthConfig};
+    let ctx = themed();
+    let stops = [
+        1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 9.9, 10.1, 10.5, 11.0, 12.0,
+    ];
+    let short = Wait::ShortHeard {
+        since: HeardSince::Start,
+    };
+    for stop_s in stops {
+        let base =
+            std::env::temp_dir().join(format!("tg-early-stop-{}-{stop_s}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::create_dir_all(&base);
+        let cfg = SynthConfig {
+            bph: 28_800,
+            duration_s: stop_s,
+            ..Default::default()
+        };
+        let audio = generate(&cfg, |_| 280.0, |_| 0.0);
+        let mut stopped_rate = None;
+        let mut app = stopped_listened(&base, &audio, |_| {});
+        assert_eq!(app.message, None, "{stop_s} s: no fault");
+        for average in timegrapher_core::live::AVERAGES {
+            app.bench.take.average_s = average;
+            let r = app.card_reading().expect("a reading");
+            let at = format!("{stop_s} s at {average} s");
+            if stop_s < 10.0 {
+                assert!(
+                    r.rate_s_per_day.is_none()
+                        && r.amplitude_deg.is_none()
+                        && r.beat_error_ms.is_none(),
+                    "{at}: {r:?}"
+                );
+                assert_eq!(r.listening, Some(HeardSince::Start), "{at}: {r:?}");
+                assert_eq!(
+                    app.listening(Some(&r)),
+                    Some((short.title(), short.text())),
+                    "{at}"
+                );
+                let text = cards_text(&app, &ctx);
+                assert_eq!(painted(&text, "Under 10 s"), 3, "{at}: {text}");
+                assert!(!text.contains("s/d"), "{at}: {text}");
+            } else {
+                assert!(
+                    r.rate_s_per_day.is_some() && r.listening.is_none(),
+                    "{at}: {r:?}"
+                );
+                stopped_rate = r.rate_s_per_day;
+            }
+        }
+        assert_eq!(stopped_rate.is_some(), stop_s >= 10.0, "{stop_s} s");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

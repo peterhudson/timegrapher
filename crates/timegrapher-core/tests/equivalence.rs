@@ -649,92 +649,112 @@ fn cut(mut a: Audio, seconds: f64) -> Audio {
     a
 }
 
-/// Under 10 s the scatter is not assessed; the beats' averaged sound is,
-/// and hiss alone shows no unlock or drop on either side, where it had
-/// read as a watch with readings. Every pipeline says so with the same
-/// reason.
-#[test]
-fn hiss_under_ten_seconds_gives_no_readings() {
-    let no_sound = Caveat::NoWatch {
-        reason: NoWatchReason::NoBeatSound,
-    };
-    for seconds in [3.0, 5.0, 9.0] {
-        let a = cut(empty_stand(), seconds);
-        let path = on_disk(&a, &format!("t5c{seconds}"));
-        let log = stream(&path, 47.0);
-        std::fs::remove_file(&path).ok();
-        let s = analyze(&a, &AnalysisConfig::default()).summary;
-        assert!(
-            !s.watch_heard && s.overall.is_none() && s.caveats.contains(&no_sound),
-            "{seconds} s analyze: {:?}",
-            s.caveats
-        );
-        let m = whole(&log);
-        assert!(
-            !m.watch_heard && m.rate_s_per_day.is_none() && m.caveats.contains(&no_sound),
-            "{seconds} s session: {:?}",
-            m.caveats
-        );
-        // Live listening, with the beat rate set as a watch's calibre
-        // sets it, keeps too few of these beats to read.
-        let mut l = LiveAnalyzer::new(
-            a.sample_rate,
-            LiveConfig {
-                analysis: AnalysisConfig {
-                    bph: Some(21_600),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
-        for c in a.samples.chunks(4800) {
-            l.push(c);
-        }
-        let r = l.reading(a.duration());
-        assert!(
-            r.rate_s_per_day.is_none(),
-            "{seconds} s live: {:?}",
-            r.caveats
-        );
-        // A file opened in the app: the log replayed.
-        let r = LiveAnalyzer::from_log(log.clone(), LiveConfig::default()).reading(log.duration_s);
-        assert!(
-            !r.watch_heard && r.rate_s_per_day.is_none() && r.caveats.contains(&no_sound),
-            "{seconds} s replayed: {:?}",
-            r.caveats
-        );
-    }
+/// Stop lengths the under-10 s rule is tried at: every second from 1 to
+/// 12 s, and either side of the 10 s edge (Norm on #2333).
+const SHORT_STOPS: [f64; 16] = [
+    1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 9.9, 10.0, 10.1, 10.5, 11.0, 12.0,
+];
+
+/// Whether a reading has no verdict either way: no "no watch" caveat.
+fn no_verdict(caveats: &[Caveat]) -> bool {
+    timegrapher_core::measure::no_watch_reason_in(caveats).is_none()
 }
 
-/// A watch under 10 s keeps its readings: its beats' sound shows an
-/// unlock and a drop.
+/// Under 10 s of sound heard there are no figures and no verdict either
+/// way, on every reader, however the beats sound: a watch whose beats
+/// sound plainly, and an empty stand's hiss, read alike until 10 s, then
+/// the watch reads and the hiss is no watch (Norm on #2333, revising
+/// #2014, where the beats' sound spoke sooner and a take stopped at
+/// 1.5 s read a rate from 11 beats while live still waited). Read whole
+/// by `analyze`, saved by `session`, live at every Average Over, and
+/// opened (the log replayed), as the app reads a stopped take.
 #[test]
-fn a_watch_under_ten_seconds_keeps_its_readings() {
-    for seconds in [3.0, 5.0, 9.0] {
-        let a = cut(watch(17), seconds);
-        let path = on_disk(&a, &format!("t5d{seconds}"));
-        let log = stream(&path, 47.0);
-        std::fs::remove_file(&path).ok();
-        let s = analyze(&a, &AnalysisConfig::default()).summary;
-        assert!(
-            s.watch_heard && s.overall.is_some(),
-            "{seconds} s analyze: {:?}",
-            s.caveats
-        );
-        let m = whole(&log);
-        assert!(
-            m.watch_heard && m.rate_s_per_day.is_some(),
-            "{seconds} s session: {:?}",
-            m.caveats
-        );
-        let r = pushed(&a, 4800).reading(a.duration());
-        assert!(r.watch_heard, "{seconds} s live: {:?}", r.caveats);
-        let r = LiveAnalyzer::from_log(log.clone(), LiveConfig::default()).reading(log.duration_s);
-        assert!(
-            r.watch_heard && r.rate_s_per_day.is_some(),
-            "{seconds} s replayed: {:?}",
-            r.caveats
-        );
+fn under_ten_seconds_heard_reads_no_figures_and_no_verdict_anywhere() {
+    use timegrapher_core::live::AVERAGES;
+    for seconds in SHORT_STOPS {
+        let waits = seconds < 10.0;
+        for (what, a) in [
+            ("watch", cut(watch(17), seconds)),
+            ("stand", cut(empty_stand(), seconds)),
+        ] {
+            let at = format!("{what} {seconds} s");
+            let is_watch = what == "watch";
+            let path = on_disk(&a, &format!("t5w{what}{seconds}"));
+            let log = stream(&path, 47.0);
+            std::fs::remove_file(&path).ok();
+            let s = analyze(&a, &AnalysisConfig::default()).summary;
+            let m = whole(&log);
+            let opened = LiveAnalyzer::from_log(log.clone(), LiveConfig::default());
+            let o = opened.reading(log.duration_s);
+            if waits {
+                assert!(
+                    s.overall.is_none() && no_verdict(&s.caveats),
+                    "{at} analyze: {:?}",
+                    s.caveats
+                );
+                assert!(
+                    m.rate_s_per_day.is_none()
+                        && m.amplitude_deg.is_none()
+                        && no_verdict(&m.caveats),
+                    "{at} session: {:?}",
+                    m.caveats
+                );
+                assert!(
+                    o.rate_s_per_day.is_none()
+                        && o.amplitude_deg.is_none()
+                        && no_verdict(&o.caveats),
+                    "{at} opened: {:?}",
+                    o.caveats
+                );
+                // Where the watch's beats are read, the reading says it
+                // waits: "Under 10 s Heard" on a stopped or opened take.
+                assert!(
+                    o.beats_used == 0 || o.listening.is_some(),
+                    "{at} opened: {o:?}"
+                );
+            } else if is_watch {
+                assert!(
+                    s.watch_heard && s.overall.is_some(),
+                    "{at} analyze: {:?}",
+                    s.caveats
+                );
+                assert!(m.watch_heard && m.rate_s_per_day.is_some(), "{at} session");
+                assert!(
+                    o.watch_heard && o.rate_s_per_day.is_some() && o.listening.is_none(),
+                    "{at} opened: {:?}",
+                    o.caveats
+                );
+            } else {
+                assert!(
+                    !s.watch_heard && s.overall.is_none() && !no_verdict(&s.caveats),
+                    "{at} analyze: {:?}",
+                    s.caveats
+                );
+                assert!(!m.watch_heard && m.rate_s_per_day.is_none(), "{at} session");
+                assert!(!o.watch_heard && o.rate_s_per_day.is_none(), "{at} opened");
+            }
+            // Live listening, at every Average Over: no figures and no
+            // verdict while under 10 s is heard; the stand never reads.
+            let live = pushed(&a, 4800);
+            for average in AVERAGES {
+                let r = live.reading_at(a.duration(), average);
+                let at = format!("{at} live at {average} s");
+                assert!(
+                    r.watch_heard || r.rate_s_per_day.is_none(),
+                    "{at}: {:?}",
+                    r.caveats
+                );
+                if waits {
+                    assert!(
+                        r.rate_s_per_day.is_none()
+                            && r.amplitude_deg.is_none()
+                            && r.beat_error_ms.is_none()
+                            && no_verdict(&r.caveats),
+                        "{at}: {r:?}"
+                    );
+                }
+            }
+        }
     }
 }
 

@@ -5,9 +5,11 @@ use timegrapher_core::diagnose::{check, DiagnoseConfig, IssueCode};
 use timegrapher_core::synth::{generate, SynthConfig};
 use timegrapher_core::{analysis, measure};
 
+/// A clean watch over 12 s: past the 10 s a reading needs, under which
+/// there is no verdict and no figures (#2333).
 fn watch(snr_db: f64) -> Audio {
     let cfg = SynthConfig {
-        duration_s: 6.0,
+        duration_s: 12.0,
         snr_db,
         ..Default::default()
     };
@@ -85,9 +87,11 @@ fn silence_and_noise_only() {
         sample_rate: 48000,
     };
     assert!(codes(&silent).contains(&IssueCode::Silent));
+    // Over the 10 s a verdict needs: under it there is none either way,
+    // so no NoTicks condition (#2333).
     let mut rng = timegrapher_core::synth::Rng::new(3);
     let noise = Audio {
-        samples: (0..48000 * 4)
+        samples: (0..48000 * 12)
             .map(|_| (0.05 * rng.normal()) as f32)
             .collect(),
         sample_rate: 48000,

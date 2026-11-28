@@ -7,14 +7,22 @@ name: Release
 # made when the draft is published), or push a tag vX.Y.Z. Run by hand
 # without the tick, or on a pull request touching the packaging, it builds the same files as workflow
 # artifacts and releases nothing.
+# A draft pull request builds nothing (#2490): about 55 macOS minutes went
+# on one draft branch's five runs on 27 Nov. The build runs when the pull
+# request is marked ready, and on each push while it is ready, as CI's full
+# suite does (ci.yml, "Draft first"). Its `mode` job reads the draft state
+# live, with the same script as CI's (.github/ci/pr_mode.sh).
 # Steps for cutting a release: docs/reference/install.md, "Making a release".
 on:
   push:
     tags: ["v*"]
   pull_request:
+    # The default three, plus marking a draft ready (the comment above).
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".cargo/config.toml"
       - ".github/workflows/release.yml"
+      - ".github/ci/pr_mode.sh"
       - ".github/scripts/release_ci_gate.py"
       - ".github/scripts/test_release_ci_gate.py"
       - "packaging/**"
@@ -30,10 +38,12 @@ permissions:
   contents: read
 
 # One release-capable run at a time, so two drafts never pick the same
-# version; pull request runs only build and may overlap.
+# version, and none is ever cancelled. Pull request runs only build: a newer
+# push to the pull request cancels its run still going, so runners go to the
+# newest head only.
 concurrency:
   group: release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Smaller programs: no debug information in the downloads (crash records
@@ -42,7 +52,36 @@ env:
   CARGO_PROFILE_RELEASE_STRIP: debuginfo
 
 jobs:
+  # Draft or ready, read live (the comment at the top). Off a pull request
+  # full is always true, so tag and Actions-tab runs build as before.
+  mode:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reading the pull request's draft state.
+      pull-requests: read
+    outputs:
+      full: ${{ steps.mode.outputs.full }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/ci/pr_mode.sh
+          sparse-checkout-cone-mode: false
+      - name: Draft or ready
+        id: mode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR_URL: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
+          EVENT_DRAFT: ${{ github.event.pull_request.draft }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/ci/pr_mode.sh
+
   ci-gate:
+    needs: mode
+    if: &build ${{ needs.mode.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -64,6 +103,8 @@ jobs:
   # base, so a draft can be made at any time without a version bump; X or Y
   # is raised by hand in Cargo.toml. A tag build takes the tag's version.
   version:
+    needs: mode
+    if: *build
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -98,6 +139,8 @@ jobs:
   # The documentation every download carries, as offline web pages, with
   # a Start Here page for each platform (packaging/docs_html.py).
   docs:
+    needs: mode
+    if: *build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

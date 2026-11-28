@@ -453,8 +453,9 @@ enum Command {
         /// (default: from the device, or the only USB sound card).
         #[arg(long)]
         card: Option<String>,
-        /// Seconds to record.
-        #[arg(long, default_value_t = 5.0)]
+        /// Seconds to record: by default the 10 s a reading needs, under
+        /// which there is no verdict and no figures (#2333).
+        #[arg(long, default_value_t = timegrapher_core::measure::SHORT_SPAN_S)]
         seconds: f64,
         /// Check a recording instead of listening live.
         #[arg(long)]
@@ -2458,7 +2459,7 @@ mod acquisition_defaults {
         let doctor = Cli::try_parse_from(["timegrapher", "doctor"]).unwrap();
         assert!(matches!(
             doctor.command,
-            Command::Doctor { seconds: 5.0, .. }
+            Command::Doctor { seconds, .. } if seconds == timegrapher_core::measure::SHORT_SPAN_S
         ));
         let record = Cli::try_parse_from([
             "timegrapher",

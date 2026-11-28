@@ -201,15 +201,18 @@ fn quick_look_line(
 }
 
 /// The ticks line: the beats found and their levels where a watch is
-/// heard; where none is (`analyze`'s rule), no count of beats or tick
-/// level, since they would be noise (#2091), only the background a set-up
-/// needs. The condition below says why.
+/// heard; where none is (`analyze`'s rule), or `analyze` has no verdict
+/// yet (its not-assessed fact, under 10 s, #2333), no count of beats or
+/// tick level, since they may be noise (#2091), only the background a
+/// set-up needs. The condition or the fact says why.
 fn ticks_line(c: &SignalCheck) -> String {
     let tick = c.tick_level_dbfs.map_or("no tick to measure".into(), |t| {
         format!("tick {}", opt(Some(t), " dBFS"))
     });
     let background = fixed_text(c.noise_level_dbfs, 1);
-    if c.watch_heard {
+    if c.not_assessed.is_some() {
+        format!("Ticks        not judged yet; background {background} dBFS")
+    } else if c.watch_heard {
         format!(
             "Ticks        {} of about {} beats at {} bph; {tick}, background {background} dBFS",
             c.beats_found, c.beats_expected, c.bph
@@ -374,6 +377,13 @@ mod tests {
         assert_eq!(
             ticks_line(&c),
             "Ticks        none heard; background -45.3 dBFS"
+        );
+        // No verdict yet, under 10 s: no count either (#2333).
+        c.watch_heard = true;
+        c.not_assessed = Some("Beat regularity not assessed: 5.0 s of sound, 10 s needed".into());
+        assert_eq!(
+            ticks_line(&c),
+            "Ticks        not judged yet; background -45.3 dBFS"
         );
     }
 

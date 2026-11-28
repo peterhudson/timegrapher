@@ -100,14 +100,14 @@ fn same_sound(sound: &BeatLog, kept: &BeatLog) {
     }
 }
 
-/// #2069: a take of 5 s, kept as its analysis alone, keeps its figures:
-/// the beats' sound the verdict reads under 10 s is kept, so the take
-/// reads as with its sound, as a whole and at every moment, where before
-/// it waited for a verdict and showed none.
+/// #2069: a short take, kept as its analysis alone, reads as with its
+/// sound, as a whole and at every moment: under 10 s both wait, with no
+/// figures (Norm on #2333), and from 10 s both read. Before #2069 the
+/// kept take waited where the one with its sound read.
 #[test]
 fn a_short_take_kept_reads_as_with_its_sound() {
     let dir = scratch("short");
-    let wav = watch(&dir, 5.0);
+    let wav = watch(&dir, 12.0);
     let (sound, kept) = with_sound_and_kept(&dir, &wav);
     same_sound(&sound, &kept);
     // The take as a whole (its Watches row).
@@ -130,7 +130,14 @@ fn a_short_take_kept_reads_as_with_its_sound() {
     let open = |l: &BeatLog| LiveAnalyzer::from_log(l.clone(), LiveConfig::default());
     let (a, b) = (open(&sound), open(&kept));
     assert!(same_readings(&a, &b, 1.0) > 0, "no moment with figures");
-    let end = b.reading(10.0);
+    for t in [1.0, 5.0, 9.5] {
+        let r = b.reading_at(t, 10.0);
+        assert!(
+            r.rate_s_per_day.is_none() && r.listening.is_some(),
+            "kept, at {t} s: {r:?}"
+        );
+    }
+    let end = b.reading(12.0);
     assert!(
         end.rate_s_per_day.is_some() && end.amplitude_deg.is_some(),
         "kept, at the end: {:?}",
@@ -139,12 +146,12 @@ fn a_short_take_kept_reads_as_with_its_sound() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// After a break, under 10 s of sound is judged by the beats' sound
-/// there: kept, each reading after the break is the one with its sound.
+/// After a break, kept, each reading is the one with its sound: under
+/// 10 s after the break both wait (Norm on #2333), then both read.
 #[test]
 fn under_ten_seconds_after_a_break_reads_as_with_its_sound() {
     let dir = scratch("break");
-    let wav = watch(&dir, 24.0);
+    let wav = watch(&dir, 30.0);
     let (sound, kept) = with_sound_and_kept(&dir, &wav);
     let open = |l: &BeatLog| {
         let mut a = LiveAnalyzer::from_log(l.clone(), LiveConfig::default());
@@ -153,7 +160,9 @@ fn under_ten_seconds_after_a_break_reads_as_with_its_sound() {
     };
     let (a, b) = (open(&sound), open(&kept));
     assert!(same_readings(&a, &b, 16.5) > 0, "no moment with figures");
-    assert!(b.reading_at(23.0, 10.0).rate_s_per_day.is_some());
+    let waiting = b.reading_at(23.0, 10.0);
+    assert!(waiting.rate_s_per_day.is_none() && waiting.listening.is_some());
+    assert!(b.reading_at(29.0, 10.0).rate_s_per_day.is_some());
     let _ = fs::remove_dir_all(&dir);
 }
 

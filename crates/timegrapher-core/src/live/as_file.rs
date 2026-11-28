@@ -196,17 +196,23 @@ impl LiveAnalyzer {
         }
         let own = self.own_reading_at(end_s, average_s);
         // Live shows no figures yet: none from the read either.
-        if !own.watch_heard || own.finding_beat || own.listening.is_some() {
+        if !own.watch_heard || own.finding_beat {
             return Some(own);
         }
         let read =
             (self.newest_read()).map(|v| v.reading_at(read_end_s.min(v.settled_to), average_s));
+        let waits = own.listening.is_some();
         // Until a read has figures of this watch as live hears it (one has
         // landed, past its own first seconds, at live's beat rate), none:
         // the beat is still being found, never live's own figures nor no
-        // beats (Norm on #2133).
+        // beats (Norm on #2133). Whether a verdict waits for 10 s heard is
+        // the read's too, so its end, beats, span and caveats are the saved
+        // take's (#2333, #2149); live's own until a read lands.
         Some(match read {
-            Some(r) if r.bph == own.bph && r.beats_used > 0 => with_read_figures(own, r),
+            Some(r) if r.bph == own.bph && (r.beats_used > 0 || r.listening.is_some()) => {
+                with_read_figures(own, r)
+            }
+            _ if waits => own,
             _ => without_figures(own),
         })
     }
@@ -400,7 +406,8 @@ impl LiveAnalyzer {
 
 /// Live's listening state, `own`, with the read's figures, `read`: its
 /// rate, beat error and amplitude with their ±, scatter, the beats and span
-/// behind them and its time, and its caveats on those figures. The figures
+/// behind them, its time, whether it waits for 10 s heard (#2333), and its
+/// caveats on those figures. The figures
 /// that name a side are the read's too, its sides as it tells them, as an
 /// opened take's are: never held back on live's sides (Norm on #2133).
 fn with_read_figures(own: LiveReading, read: LiveReading) -> LiveReading {
@@ -418,7 +425,6 @@ fn with_read_figures(own: LiveReading, read: LiveReading) -> LiveReading {
         clipped_fraction: own.clipped_fraction,
         watch_heard: own.watch_heard,
         finding_beat: own.finding_beat,
-        listening: own.listening,
         caveats,
         ..read
     }

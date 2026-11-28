@@ -389,8 +389,14 @@ fn a_lock_takes_the_nearest_standard_in_reach() {
             assert!((got - want).abs() < 0.05, "{at}: {got} for {want}");
         }
     });
+    // The first figures once 10 s is heard (Norm on #2333; from 5 s
+    // before, on the beats' sound). Sampled each whole second of sound,
+    // a live reading ends a little before the sound it has (its read
+    // lag), so at 10 s of sound it has not quite 10 s heard: the first
+    // whole second with figures is the next.
+    let ten = timegrapher_core::measure::SHORT_SPAN_S as u32;
     assert!(
-        first.is_some_and(|t| t <= 5),
+        first.is_some_and(|t| t <= ten + 1),
         "first reading at {first:?} s"
     );
 }
@@ -436,7 +442,9 @@ fn off_standard_from_the_first_reading() {
     each_second(&audio, [l], |t, [l]| {
         for average_s in timegrapher_core::live::AVERAGES {
             let r = l.reading(average_s);
-            if r.bph.is_none() || !r.watch_heard || r.finding_beat {
+            // A reading still waiting, under 10 s heard, has no figures
+            // and no verdict (Norm on #2333).
+            if r.bph.is_none() || !r.watch_heard || r.finding_beat || r.listening.is_some() {
                 continue;
             }
             read += 1;
@@ -472,7 +480,9 @@ fn one_verdict_per_lock_near_the_line() {
         each_second(&audio, [l], |t, [l]| {
             for average_s in [2.0, 60.0] {
                 let r = l.reading(average_s);
-                if r.bph.is_none() || !r.watch_heard || r.finding_beat {
+                // Still waiting, under 10 s heard: no figures and no
+                // verdict (Norm on #2333).
+                if r.bph.is_none() || !r.watch_heard || r.finding_beat || r.listening.is_some() {
                     continue;
                 }
                 let at = format!("{centre} at {t} s over {average_s} s");

@@ -1203,6 +1203,7 @@ mod tests {
             confidence: None,
             caveats: vec![],
             shape: None,
+            awaiting: false,
         }
     }
 

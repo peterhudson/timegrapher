@@ -39,7 +39,8 @@ fn a_live_take_keeps_its_readings_in_the_file() {
     // check to hear a watch. The live readings start after about 4 s and
     // the file is written once a second, so 10 s leaves six mid-take
     // writes to see: 6 s left two, and a run on Windows saw neither.
-    let seconds = 10.0;
+    // Over the 10 s a reading needs, so the last frame reads (#2333).
+    let seconds = 12.0;
     let mut child = bin()
         .args([
             "record",

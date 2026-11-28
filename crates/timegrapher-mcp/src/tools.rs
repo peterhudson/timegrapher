@@ -656,7 +656,7 @@ pub const TOOLS: &[ToolSpec] = &[
             detected with its figure, and on Linux `mixer` holds the sound card's controls \
             with the `amixer` command for each change in `fixes[]`. It changes nothing; \
             any change is the person's to make. \
-            Its rate and beat error come from a few seconds of sound (5 s unless set), \
+            Its rate and beat error come from a few seconds of sound (10 s unless set), \
             not from a measurement of the watch. \
             This uses the microphone: put the watch on it first.",
         command: &["doctor"],
@@ -667,7 +667,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 Kind::CaptureSeconds,
                 Arg::Flag("--seconds"),
                 false,
-                "Seconds to listen (5 if left out).",
+                "Seconds to listen (10 if left out).",
             ),
             BPH,
         ],
@@ -1104,6 +1104,25 @@ mod tests {
                 "--",
                 "-Pepsi"
             ]
+        );
+    }
+
+    /// The microphone check says the seconds `doctor` listens for when
+    /// none are set: the 10 s a reading needs (#2333).
+    #[test]
+    fn the_microphone_check_says_the_doctors_default_seconds() {
+        let t = find("check_microphone").unwrap();
+        let s = format!("{:.0}", timegrapher_core::measure::SHORT_SPAN_S);
+        assert!(
+            t.description.contains(&format!("({s} s unless set)")),
+            "{}",
+            t.description
+        );
+        let p = t.params.iter().find(|p| p.name == "seconds").unwrap();
+        assert!(
+            p.description.contains(&format!("({s} if left out)")),
+            "{}",
+            p.description
         );
     }
 

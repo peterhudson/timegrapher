@@ -444,7 +444,7 @@ The file stays bounded: at most 300 trend points, and 30 s of beats
 ## `doctor`
 
 ```sh
-timegrapher doctor [--device NAME] [--card N] [--seconds 5] [--file WAV]
+timegrapher doctor [--device NAME] [--card N] [--seconds 10] [--file WAV]
                    [--save WAV] [--apply] [--bph N] [--json]
 ```
 

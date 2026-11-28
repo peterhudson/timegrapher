@@ -129,9 +129,23 @@ pub struct Summary {
     /// The shape of the Tick and Tock and the beat error early and late
     /// (see [`crate::shape::Measures`]); `None` when no readings are given.
     pub shape: Option<crate::shape::Measures>,
+    /// The reading waits for its verdict, under 10 s of sound
+    /// ([`crate::measure::awaiting_verdict`], #2333): no figures and no
+    /// verdict either way. Not in the JSON, which says so by its missing
+    /// figures and its `short_span` caveat.
+    #[serde(skip)]
+    pub awaiting: bool,
 }
 
 impl Summary {
+    /// [`Self::withhold_readings`] while the reading waits for its
+    /// verdict ([`Self::awaiting`]).
+    pub fn withhold_while_awaiting(&mut self) {
+        if self.awaiting {
+            self.withhold_readings();
+        }
+    }
+
     /// Clear every reading, as when no regular beat is found: they would
     /// describe noise. What says so (`watch_heard`, `jitter_us`,
     /// `timing_scatter_fraction`, `beats_found`) and what describes the recording and the sound card
@@ -158,7 +172,15 @@ impl Summary {
         self.shape = None;
     }
 
-    /// Count no beats of a watch where none is heard (Norm on #2378):
+    /// Whether a watch is heard: its verdict says so and is not still
+    /// waiting ([`Self::awaiting`]). A reading still waiting, under 10 s,
+    /// has heard none yet (#2333), however `watch_heard` reads.
+    pub fn heard_as_watch(&self) -> bool {
+        self.watch_heard && !self.awaiting
+    }
+
+    /// Count no beats of a watch where none is heard (Norm on #2378), or
+    /// none yet ([`Self::heard_as_watch`], #2333):
     /// the peaks found are noise, so `beats_found` and its share are 0
     /// ([`crate::measure::watch_beats`]), and `beats_missing` follows from
     /// that share by its one rule, with its caveat. No rate is heard in
@@ -169,7 +191,7 @@ impl Summary {
     /// (`analyze/3`, [`crate::analyze_doc::body`]); the verdict itself
     /// is made before, on the fraction at the rate tried (#857).
     pub fn count_no_watch(&mut self) {
-        if self.watch_heard {
+        if self.heard_as_watch() {
             return;
         }
         let (found, bph) =
@@ -560,10 +582,9 @@ fn analyze_read(
         confidence,
         caveats,
         shape,
+        awaiting: heard.awaiting,
     };
-    if heard.awaiting {
-        summary.withhold_readings();
-    }
+    summary.withhold_while_awaiting();
     settle_beat_error(&mut summary, fits.figures.unlock_inconsistent);
     Analysis {
         summary,
@@ -582,7 +603,7 @@ struct Heard {
     jitter_us: Option<f64>,
     /// Why no watch is heard; none when one is.
     no_watch: Option<NoWatchReason>,
-    /// No verdict yet: under 10 s, and the beats' sound can't be judged
+    /// No verdict yet: under 10 s of sound
     /// ([`crate::measure::awaiting_verdict`]). No figures then.
     awaiting: bool,
     /// The sound heard after any lead of noise.
@@ -652,16 +673,20 @@ fn hear(
     let listened_s = audio.duration() - from_s;
     let jitter_us = crate::session::scatter_jitter_us(&fits.rate_windows);
     let assessed = crate::measure::regularity_assessed(listened_s, fits.holds_window);
-    Heard {
-        jitter_us,
-        // Its beats are the whole take's, every run counted.
-        no_watch: crate::measure::no_watch_reason_of(
+    // Its beats are the whole take's, every run counted.
+    let (no_watch, awaiting) = crate::measure::verdict_heard(
+        audio.duration(),
+        crate::measure::no_watch_reason_of(
             jitter_us,
             bph,
             (assessed, beat_sound),
             (beats, f64::NEG_INFINITY),
         ),
-        awaiting: crate::measure::awaiting_verdict(audio.duration(), beat_sound),
+    );
+    Heard {
+        jitter_us,
+        no_watch,
+        awaiting,
         listened_s,
         expected: crate::beats::expected_beats(listened_s, bph),
         clipping: Clipping::measure(&audio.samples, fs, beats),

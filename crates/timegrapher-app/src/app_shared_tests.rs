@@ -65,15 +65,16 @@ pub(super) fn synthetic_set(
     let audio = generate(&cfg, amp, extra);
     let live = app.bench.recording.live.as_mut().unwrap();
     for b in audio.samples.chunks(960) {
-        if live.push(b) {
-            let r = live.reading(app.bench.take.average_s);
-            app.bench.results.trend.push(TrendPoint::of(r.time_s, &r));
-        }
+        live.push(b);
     }
     app.poll();
-    // The charts read again on what the take rests on now, as the frame
-    // reads them.
+    // The charts read on what the take rests on now, as the frame reads
+    // them: the engine's whole run of readings, read once. A reading asked
+    // for at each pass would read everything heard again as a file each
+    // time until the template is built again (#1987), only to be replaced
+    // here (#2442).
     app.refresh_trend();
+    assert_eq!(app.bench.results.trend_key, app.trend_now(), "read once");
     app
 }
 

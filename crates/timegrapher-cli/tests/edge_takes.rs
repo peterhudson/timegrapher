@@ -5,9 +5,9 @@
 //! and `record` fed an edge take's sound checks it as `session` then reads
 //! the take it saved.
 //!
-//! One test makes the takes once and runs both checks on them: making them
+//! One test makes the takes once and runs the checks on them: making them
 //! is about a third of the work, and each test of its own made them again
-//! (#907).
+//! (#907). The takes are checked side by side, one to a core (#2442).
 
 use serde_json::Value;
 use std::path::Path;
@@ -19,14 +19,61 @@ fn session_and_doctor_on_each_edge_take() {
     let root = std::env::temp_dir().join(format!("tg-cli-edge-takes-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let takes = edge_takes::write_all(&root).unwrap();
-    let mut wrong = Vec::new();
-    for t in &takes {
-        session_reads_as_core_does(&root, t, &mut wrong);
-        doctor_finishes(&root, t);
-        record_checks_as_session_reads(&root, t, &mut wrong);
-    }
+    let (wrong, panicked) = check_side_by_side(&root, &takes);
     std::fs::remove_dir_all(&root).ok();
+    assert!(panicked.is_empty(), "panicked: {}", panicked.join(", "));
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// The three checks on every take in `takes`, one take to a thread and
+/// one thread to a core: each take's commands are their own processes,
+/// on their own folders, so the takes check side by side as they did
+/// one after another (#2442). Returns what differs, in the order of
+/// `takes`, and the takes whose check panicked: each thread is named
+/// after its take, so the panic's own message names it too.
+fn check_side_by_side(root: &Path, takes: &[EdgeTake]) -> (Vec<String>, Vec<String>) {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let next = &std::sync::atomic::AtomicUsize::new(0);
+    let mut found: Vec<(usize, Result<Vec<String>, ()>)> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..threads.min(takes.len()))
+            .map(|_| {
+                s.spawn(move || {
+                    let mut done = Vec::new();
+                    loop {
+                        let n = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(t) = takes.get(n) else {
+                            return done;
+                        };
+                        let one = std::thread::Builder::new()
+                            .name(t.id.to_string())
+                            .spawn_scoped(s, move || {
+                                let mut wrong = Vec::new();
+                                session_reads_as_core_does(root, t, &mut wrong);
+                                doctor_finishes(root, t);
+                                record_checks_as_session_reads(root, t, &mut wrong);
+                                wrong
+                            })
+                            .unwrap();
+                        done.push((n, one.join().map_err(|_| ())));
+                    }
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().unwrap())
+            .collect()
+    });
+    found.sort_by_key(|(n, _)| *n);
+    let mut wrong = Vec::new();
+    let mut panicked = Vec::new();
+    for (n, f) in found {
+        match f {
+            Ok(w) => wrong.extend(w),
+            Err(()) => panicked.push(takes[n].id.to_string()),
+        }
+    }
+    (wrong, panicked)
 }
 
 /// `timegrapher session --json` reads the take `t` as core does: what

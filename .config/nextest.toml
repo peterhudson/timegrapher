@@ -1,4 +1,13 @@
-# nextest settings. The default profile is nextest's own.
+# nextest settings. The default profile is nextest's own, plus a JUnit
+# report.
+
+# Every run writes target/nextest/<profile>/junit.xml, each test's result
+# and time. CI keeps each test job's report for 7 days (ci.yml, "Test
+# times"), so per-test times on macOS and Windows can be read without
+# running anything (#2490, for #2442). Other profiles take it from here.
+[profile.default.junit]
+path = "junit.xml"
+
 
 # Pull requests on macOS and Windows (ci.yml) leave out the 18 heaviest
 # pure-maths tests: each builds a synthetic watch's sound in memory and

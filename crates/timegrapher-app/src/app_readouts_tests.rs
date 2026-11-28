@@ -1799,7 +1799,7 @@ fn the_cards_say_listening_until_ten_seconds_are_heard() {
 }
 
 /// The reading cards' painted text, as one string.
-fn cards_text(app: &TimegrapherApp, ctx: &egui::Context) -> String {
+pub(super) fn cards_text(app: &TimegrapherApp, ctx: &egui::Context) -> String {
     let out = ctx.run(screen(), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
             let _ = app.readouts(ui);
@@ -1809,7 +1809,7 @@ fn cards_text(app: &TimegrapherApp, ctx: &egui::Context) -> String {
 }
 
 /// How many times `word` is painted in `text`, one shape a line.
-fn painted(text: &str, word: &str) -> usize {
+pub(super) fn painted(text: &str, word: &str) -> usize {
     text.lines().filter(|l| *l == word).count()
 }
 
@@ -2817,7 +2817,7 @@ pub(super) fn stopped_short_return_as(
 /// `audio` at 48 kHz listened to through the capture, the app set up by
 /// `prep` first (its beat rate, say), as the window hears it, stopped,
 /// and its Stop read in.
-fn stopped_listened(
+pub(super) fn stopped_listened(
     base: &Path,
     audio: &timegrapher_core::audio::Audio,
     prep: impl FnOnce(&mut TimegrapherApp),

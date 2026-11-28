@@ -881,8 +881,23 @@ fn row_against_cards(name: &str, dir: &Path, paused: bool) -> Vec<String> {
             card.beat_error_unlock_error_ms,
         ),
     ];
+    // Under 10 s heard neither has a figure nor a ±, and the cards wait
+    // (Norm's ruling A on #2333); the beats, span and caveats below still
+    // agree.
+    let awaiting = x.end_s - x.start_s < timegrapher_core::measure::SHORT_SPAN_S;
+    if awaiting && card.listening.is_none() {
+        wrong.push(format!("{name}: under 10 s heard, the cards don't wait"));
+    }
     for (what, row, card) in pairs {
         eprintln!("{name}: {what} {row:?} in the row, {card:?} on the cards");
+        if awaiting {
+            if row.is_some() || card.is_some() {
+                wrong.push(format!(
+                    "{name}: under 10 s heard, {what} {row:?} in the row, {card:?} on the cards"
+                ));
+            }
+            continue;
+        }
         if row.is_none() && what.ends_with('±') {
             continue;
         }

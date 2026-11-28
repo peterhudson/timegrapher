@@ -175,8 +175,24 @@ const CLOCK_EVERY_S: f64 = 10.0;
 /// after it drops a stray one). Few enough that a log still reaches
 /// [`crate::clock::MIN_POINTS`] entries, where it may correct a rate,
 /// only after about a minute.
-const CLOCK_EARLY_S: f64 = 3.0;
+pub const CLOCK_EARLY_S: f64 = 3.0;
 const CLOCK_EARLY_EVERY_S: f64 = 1.0;
+
+/// A clock log's fit, `fit`, for a take `duration_s` long. A take too
+/// short for its log to hold the entries a fit needs, one Stopped within
+/// [`CLOCK_EARLY_S`] (two lines a second apart, #2334), is read on the
+/// sound card's clock, as a take with no log is: its short log is no
+/// fault, and none is returned. Over a longer take, a log too short to
+/// fit is, said in the error's words.
+pub fn fit_unless_short(
+    fit: Result<crate::clock::ClockFit, crate::clock::ClockError>,
+    duration_s: f64,
+) -> Result<Option<crate::clock::ClockFit>, String> {
+    match fit {
+        Err(crate::clock::ClockError::TooFewPoints(_)) if duration_s <= CLOCK_EARLY_S => Ok(None),
+        fit => fit.map(Some).map_err(|e| e.to_string()),
+    }
+}
 
 /// Whether the clock log takes a line for a block that arrived at `at`,
 /// with `audio_s` of the take written by its end, when the last line on
