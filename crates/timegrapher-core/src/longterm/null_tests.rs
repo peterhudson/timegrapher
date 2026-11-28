@@ -2216,43 +2216,46 @@ fn the_misfit_culls_bands_and_bins_by_its_rules() {
 /// must stay within the 99% bound of 1 expected (4).
 #[test]
 fn a_walk_read_as_white_holds_its_false_alarms() {
-    let counts: Vec<(f64, usize)> = std::thread::scope(|sc| {
-        let hs: Vec<_> = [1800.0, 3600.0, 7200.0]
-            .into_iter()
-            .map(|span| {
-                sc.spawn(move || {
-                    let step = 0.25;
-                    let g0 = null_grid(NullModel::Readings, span, step, 0.0, 1.0, 1);
-                    let w = detrend_window(&g0, DETREND_S).map(|w| w as f64 * step);
-                    let scale = x_scale(&g0, w);
-                    let hits = (0..1000u64)
-                        .filter(|&d| {
-                            let seed =
-                                seed_of(&[NullModel::Timing as u64, span as u64, 25, 3000, 41, d]);
-                            let g = null_grid(NullModel::Timing, span, step, 3.0, scale, seed);
-                            let det = detrend_as(&g, DETREND_S, slow_for(NullModel::Timing));
-                            let band = Band {
-                                min_p: 3f64.max(8.0 * step),
-                                max_p: reach(NullModel::Timing, span / 3.0, w),
-                                false_alarm: 0.01,
-                                detrend_w: w,
-                                model: NullModel::Timing,
-                                given: None,
-                                wheels: &[],
-                            };
-                            let s = search(&det, &band, &[]);
-                            s.tail
-                                .significance(s.score.iter().copied().fold(0.0, f64::max))
-                                > 3.0
-                        })
-                        .count();
-                    (span, hits)
-                })
-            })
-            .collect();
-        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    let step = 0.25;
+    // Each take length's scale and window, made once; then every draw of
+    // every length over the machine's cores, the longest first.
+    let spans: Vec<(f64, Option<f64>, f64)> = [1800.0, 3600.0, 7200.0]
+        .into_iter()
+        .map(|span| {
+            let g0 = null_grid(NullModel::Readings, span, step, 0.0, 1.0, 1);
+            let w = detrend_window(&g0, DETREND_S).map(|w| w as f64 * step);
+            (span, w, x_scale(&g0, w))
+        })
+        .collect();
+    let draws: Vec<(f64, Option<f64>, f64, u64)> = spans
+        .iter()
+        .rev()
+        .flat_map(|&(span, w, scale)| (0..1000u64).map(move |d| (span, w, scale, d)))
+        .collect();
+    let hit = crate::cores::on_every_core(&draws, |&(span, w, scale, d)| {
+        let seed = seed_of(&[NullModel::Timing as u64, span as u64, 25, 3000, 41, d]);
+        let g = null_grid(NullModel::Timing, span, step, 3.0, scale, seed);
+        let det = detrend_as(&g, DETREND_S, slow_for(NullModel::Timing));
+        let band = Band {
+            min_p: 3f64.max(8.0 * step),
+            max_p: reach(NullModel::Timing, span / 3.0, w),
+            false_alarm: 0.01,
+            detrend_w: w,
+            model: NullModel::Timing,
+            given: None,
+            wheels: &[],
+        };
+        let s = search(&det, &band, &[]);
+        s.tail
+            .significance(s.score.iter().copied().fold(0.0, f64::max))
+            > 3.0
     });
-    for (span, hits) in counts {
+    for &(span, _, _) in &spans {
+        let hits = draws
+            .iter()
+            .zip(&hit)
+            .filter(|(d, &h)| d.0 == span && h)
+            .count();
         assert!(hits <= 4, "{span} s: {hits} of 1000 past p 0.001 (bound 4)");
     }
 }
