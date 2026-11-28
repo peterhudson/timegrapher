@@ -152,8 +152,10 @@ impl TimegrapherApp {
         );
     }
 
-    /// The runs in the position the watch is in now that the distributions
-    /// and the steadiness tests read, joined ([`Session::current_runs`]).
+    /// The runs in the position the watch is in now, joined
+    /// ([`Session::current_runs`]): the 2 s values read them; the readings
+    /// and the steadiness tests read only their heard parts
+    /// ([`Self::heard_runs`]).
     pub(super) fn current_runs(&self) -> timegrapher_core::take_context::Stretches<Position> {
         self.session.current_runs(self.bench.take.position)
     }
@@ -377,10 +379,13 @@ impl TimegrapherApp {
 
     /// Keeps core's readings for the pane ([`DistReadings`]) up to date
     /// with the take, the position on show and Average Over: read over what
-    /// the steadiness tests read ([`Self::steady_log`]) in the background
-    /// with `ctx`, the last ones showing until the next are ready, or here
-    /// and now without. While listening they are read again once a new
-    /// reading can have come.
+    /// the steadiness tests read ([`Self::steady_read`] of the position's
+    /// [`Self::heard_runs`]), each stretch no reading hears a watch in left
+    /// out and cut at both ends, in the background with `ctx`, the last
+    /// ones showing until the next are ready, or here and now without.
+    /// While listening they are read again once a new reading can have
+    /// come. What is heard rests on the readings at the Average Over, so
+    /// none is read on readings not yet read again (#2480).
     pub(super) fn update_dist_readings(&mut self, ctx: Option<&egui::Context>) {
         let key = DistKey {
             rev: self.bench.take.rev,
@@ -419,7 +424,7 @@ impl TimegrapherApp {
                 Err(TryRecvError::Empty) => {}
             }
         }
-        let runs = self.current_runs();
+        let runs = self.heard_runs();
         let clock = Self::rate_clock(&self.bench.take.take_clock).cloned();
         let joined = !self.session.stretches().is_empty();
         let Some(live) = self.bench.recording.live.as_ref() else {
@@ -436,12 +441,10 @@ impl TimegrapherApp {
             .dist_readings
             .as_ref()
             .is_none_or(|d| dur - d.upto_s >= self.bench.take.average_s);
-        if self.bench.results.dist_job.is_some() || !due {
+        if self.bench.results.dist_job.is_some() || !due || !self.trend_current() {
             return;
         }
-        let Some((log, breaks)) =
-            steady::log_of(live).map(|l| self.steady_log(l, &runs, clock.as_ref()))
-        else {
+        let Some((log, breaks)) = self.steady_read(&runs, clock.as_ref()) else {
             return;
         };
         let clock = clock.filter(|_| !joined); // A joined log is on it.
@@ -1020,12 +1023,53 @@ mod source_tests {
         );
         app.bench.take.average_s = 20.0;
         app.update_dist_readings(None);
+        assert!(
+            app.bench.results.dist_readings.is_none(),
+            "read on the readings at the old Average Over"
+        );
+        app.refresh_trend();
+        app.update_dist_readings(None);
         let longer = count(&app, SeriesKind::Rate);
         assert!(
             (4..=6).contains(&longer.len()),
             "{} rate readings at 20 s",
             longer.len()
         );
+    }
+
+    /// A stretch no reading hears a watch in (the stand's noise, here a
+    /// watch's beats the readings say are not one) is left out of the
+    /// readings and cut at both ends, as the steadiness tests leave it
+    /// out: no reading counts a beat of it (#2480).
+    #[test]
+    fn the_readings_leave_out_what_no_reading_hears() {
+        let mut app = super::super::tests::synthetic(400.0, 5.0);
+        app.bench.take.average_s = 10.0;
+        for p in &mut app.bench.results.trend {
+            if (150.0..=250.0).contains(&p.t) {
+                p.heard = false;
+            }
+        }
+        let end = app.bench.recording.live.as_ref().unwrap().duration_s();
+        let unheard = timegrapher_core::live::unheard_spans(&app.bench.results.trend, 10.0, end);
+        assert_eq!(unheard.len(), 1, "{unheard:?}");
+        let (u, v) = unheard[0];
+        app.update_dist_readings(None);
+        let grids = &app.bench.results.dist_readings.as_ref().unwrap().got.0;
+        let rate = &grids[0];
+        let mut kept = 0;
+        for (i, y) in rate.y.iter().enumerate() {
+            let from = rate.t0 + i as f64 * rate.step;
+            if y.is_finite() {
+                kept += 1;
+                assert!(
+                    from + rate.step <= u + 1e-6 || from >= v - 1e-6,
+                    "a reading over {from}..{} reaches into {u}..{v}",
+                    from + rate.step
+                );
+            }
+        }
+        assert!(kept >= 20, "{kept} readings");
     }
 }
 
