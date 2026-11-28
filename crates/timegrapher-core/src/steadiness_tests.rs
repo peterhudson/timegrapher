@@ -2872,3 +2872,36 @@ fn too_few_readings_says_only_what_is_missing() {
     );
     assert_ne!(ran.lead, Lead::TooShort, "{}", ran.headline);
 }
+
+/// A correlation never reads past ±1, at any lag, with or without gaps
+/// (#2370). Over the variance of every reading, a lag whose own pairs
+/// spread wider read past 1: a noise-free cycle of 89.9 readings, 90 of
+/// them, read 1.013 at lag 2.
+#[test]
+fn an_autocorrelation_stays_within_one() {
+    let cycle: Vec<f64> = (0..90)
+        .map(|i| (2.0 * std::f64::consts::PI * i as f64 / 89.9).sin())
+        .collect();
+    let mut rng = crate::synth::Rng::new(2370);
+    let gapped: Vec<f64> = (0..600)
+        .map(|i| {
+            let v = (i as f64 / 40.0).sin() * 3.0 + rng.normal();
+            if (i / 25) % 3 == 1 || rng.normal() > 1.0 {
+                f64::NAN
+            } else {
+                v
+            }
+        })
+        .collect();
+    let drift: Vec<f64> = (0..300).map(|i| i as f64 * 0.01 + rng.normal()).collect();
+    for (name, y) in [("cycle", &cycle), ("gapped", &gapped), ("drift", &drift)] {
+        let r = acf(y, y.len() / 2);
+        assert_eq!(r[0], 1.0, "{name}");
+        for (k, v) in r.iter().enumerate() {
+            assert!(v.is_nan() || v.abs() <= 1.0 + 1e-12, "{name} lag {k}: {v}");
+        }
+    }
+    // The cycle's lag 2 is the correlation of its pairs: just under 1.
+    let r = acf(&cycle, 2);
+    assert!(r[2] > 0.99 && r[2] <= 1.0, "{}", r[2]);
+}

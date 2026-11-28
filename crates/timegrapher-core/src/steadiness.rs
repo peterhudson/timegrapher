@@ -753,7 +753,13 @@ pub fn acf(y: &[f64], max_lag: usize) -> Vec<f64> {
     acf_pairs(y, max_lag).0
 }
 
-/// [`acf`], and the pairs each lag was read from.
+/// [`acf`], and the pairs each lag was read from. Each lag is the sum of
+/// products over its own pairs (about the mean of every reading) over the
+/// root of the sums of squares of the same pairs' two sides, so Cauchy–
+/// Schwarz holds it within ±1: over the lag-0 variance of all readings, a
+/// lag whose pairs spread wider than the whole series read past 1 (#2370).
+/// A lag with no pairs reads NaN, as every lag of a series with no spread
+/// does; one whose pairs have no spread on a side co-vary not at all, 0.
 fn acf_pairs(y: &[f64], max_lag: usize) -> (Vec<f64>, Vec<usize>) {
     let Some((m, _)) = mean_sd(y) else {
         return (Vec::new(), Vec::new());
@@ -761,20 +767,24 @@ fn acf_pairs(y: &[f64], max_lag: usize) -> (Vec<f64>, Vec<usize>) {
     let x: Vec<f64> = y.iter().map(|v| v - m).collect();
     let mut out = Vec::with_capacity(max_lag + 1);
     let mut pairs = Vec::with_capacity(max_lag + 1);
-    let mut c0 = 0.0;
+    let spread = x.iter().any(|v| v.is_finite() && *v != 0.0);
     for k in 0..=max_lag.min(y.len().saturating_sub(1)) {
-        let (mut s, mut n) = (0.0, 0usize);
+        let (mut s, mut a, mut b, mut n) = (0.0, 0.0, 0.0, 0usize);
         for i in 0..x.len() - k {
-            if x[i].is_finite() && x[i + k].is_finite() {
-                s += x[i] * x[i + k];
+            let (u, v) = (x[i], x[i + k]);
+            if u.is_finite() && v.is_finite() {
+                s += u * v;
+                a += u * u;
+                b += v * v;
                 n += 1;
             }
         }
-        let c = if n > 0 { s / n as f64 } else { f64::NAN };
-        if k == 0 {
-            c0 = c;
-        }
-        out.push(if c0 > 0.0 { c / c0 } else { f64::NAN });
+        let d = (a * b).sqrt();
+        out.push(match (spread && n > 0, d > 0.0) {
+            (false, _) => f64::NAN,
+            (true, true) => s / d,
+            (true, false) => 0.0,
+        });
         pairs.push(n);
     }
     (out, pairs)
