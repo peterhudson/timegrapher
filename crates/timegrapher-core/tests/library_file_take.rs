@@ -87,3 +87,67 @@ fn a_take_recorded_on_auto_is_marked_with_its_watchs_rate() {
     assert!(recorded_on_auto(&dir));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A take kept as its analysis alone, recorded on Auto, moved into a
+/// watch that sets a rate: it keeps what it was measured with, its
+/// `session.json` byte for byte, and is not read again (Vernon 101).
+#[test]
+fn a_kept_take_recorded_on_auto_keeps_its_session_json() {
+    use timegrapher_core::analysis_take::{DIR, HEADER};
+    let dir = scratch("kept");
+    let json = r#"{"watch": "Pepsi", "lift_deg": 52.0, "bph": null}"#;
+    take(&dir, "watch = \"Pepsi\"\naudio = false\n", json);
+    std::fs::create_dir_all(dir.join(DIR)).unwrap();
+    std::fs::write(dir.join(DIR).join(HEADER), "{}").unwrap();
+    assert!(recorded_on_auto(&dir));
+    let user = UserCalibres::default();
+    assert_eq!(file_take_under(&dir, &own(28_800), &user), Ok(false));
+    assert_eq!(std::fs::read_to_string(dir.join(RECORD)).unwrap(), json);
+    let toml = std::fs::read_to_string(dir.join(MANIFEST)).unwrap();
+    assert!(
+        toml.contains("watch = \"Own\"") && !toml.contains("bph"),
+        "{toml}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A take moved into a watch whose calibre is one of the user's own,
+/// with wheels: its `session.toml` gets that calibre's `[wheels]`, in
+/// place of the old calibre's (Vernon 101).
+#[test]
+fn a_user_calibres_wheels_go_with_the_take() {
+    let dir = scratch("wheels");
+    let mut user = UserCalibres::default();
+    user.put_custom(
+        serde_json::from_value(serde_json::json!({
+            "name": "Own 1",
+            "bph": 21600,
+            "wheels": [
+                {"name": "Escape wheel", "period_s": 7.5},
+                {"name": "Third wheel", "period_s": 450.0}
+            ]
+        }))
+        .unwrap(),
+    );
+    take(
+        &dir,
+        "calibre = \"Old 1\"\n\n[wheels]\n\"Fourth wheel\" = 60.0\n",
+        "{}",
+    );
+    let mut w = Watch::new("Own");
+    w.calibre = Some("Own 1".into());
+    assert_eq!(file_take_under(&dir, &w, &user), Ok(true));
+    let m: timegrapher_core::session::Manifest =
+        toml::from_str(&std::fs::read_to_string(dir.join(MANIFEST)).unwrap()).unwrap();
+    assert_eq!(m.calibre.as_deref(), Some("Own 1"));
+    assert_eq!(m.bph, Some(21600));
+    let wheels: Vec<_> = m.wheels.into_iter().collect();
+    assert_eq!(
+        wheels,
+        [
+            ("Escape wheel".to_string(), 7.5),
+            ("Third wheel".to_string(), 450.0)
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

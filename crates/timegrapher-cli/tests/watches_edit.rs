@@ -487,3 +487,63 @@ fn a_take_recorded_on_auto_moved_by_the_command_line_takes_its_rate() {
     }
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A take whose `session.toml` can't be given the watch's settings is
+/// still moved: `move-take` exits 0, `left` says what was left as it
+/// was, and `settings_changed` is null. A user calibres file that can't
+/// be read refuses the move before anything changes (Vernon 101).
+#[test]
+fn move_take_says_what_it_could_not_write_and_refuses_on_a_bad_calibre_file() {
+    let base = scratch("move-left");
+    ok(&base, &["watches", "new", "Pepsi"]);
+    ok(&base, &["watches", "new", "Own", "--bph", "21600"]);
+    let outside = base.join("2026-11-12 10.00 Dial Up");
+    take(&outside);
+    let doc = ok(
+        &base,
+        &["watches", "add-take", "Pepsi", outside.to_str().unwrap()],
+    );
+    let taken = PathBuf::from(doc["take"].as_str().unwrap());
+    // The calibres file doesn't read: refused, the take where it was.
+    let config = base.join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("calibres.json"), "{ not json").unwrap();
+    let e = refused(
+        &base,
+        &[
+            "watches",
+            "move-take",
+            taken.to_str().unwrap(),
+            "--to",
+            "Own",
+        ],
+    );
+    assert!(e.contains("calibres.json"), "{e}");
+    assert!(taken.join("session.toml").is_file());
+    assert_eq!(show(&base, "Own")["takes"].as_array().unwrap().len(), 0);
+    std::fs::remove_file(config.join("calibres.json")).unwrap();
+    // A session.toml that doesn't parse: moved, and said so.
+    let broken = "bph = = 1\n";
+    std::fs::write(taken.join("session.toml"), broken).unwrap();
+    let doc = ok(
+        &base,
+        &[
+            "watches",
+            "move-take",
+            taken.to_str().unwrap(),
+            "--to",
+            "Own",
+        ],
+    );
+    let at = PathBuf::from(doc["take"].as_str().unwrap());
+    assert!(!taken.exists() && at.is_dir());
+    assert_eq!(doc["watch"]["name"], "Own");
+    assert!(doc["settings_changed"].is_null(), "{doc}");
+    let left = doc["left"].as_str().unwrap();
+    assert!(left.contains("is in Own now"), "{left}");
+    assert_eq!(
+        std::fs::read_to_string(at.join("session.toml")).unwrap(),
+        broken
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
