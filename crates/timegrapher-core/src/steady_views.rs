@@ -82,16 +82,11 @@ pub struct Drawn {
 
 impl Drawn {
     /// What a drawn point says under the pointer, as the Readings view's
-    /// readout writes it (#1277): one reading's value, "+3.2 s/d"; a
-    /// band's mean, how many readings it holds and its lowest and
-    /// highest, the unit once, "+3.2 s/d, mean of 8, +1.0 to +5.1" (Hugh).
-    pub fn readout(&self, k: SeriesKind) -> String {
-        self.readout_parts(k).join(", ")
-    }
-
-    /// [`Drawn::readout`]'s parts, most needed first: the value, then
-    /// "mean of 8", then the range, so a short row can drop them from
-    /// the end and keep the value (Hugh on #1580).
+    /// readout writes it (#1277), in parts: one reading's value,
+    /// "+3.2 s/d"; a band's mean, how many readings it holds and its
+    /// lowest and highest, the unit once, "+3.2 s/d", "mean of 8",
+    /// "+1.0 to +5.1" (Hugh). Most needed first, so a short row can drop
+    /// them from the end and keep the value (Hugh on #1580).
     pub fn readout_parts(&self, k: SeriesKind) -> Vec<String> {
         let mut parts = vec![k.fmt(self.mean)];
         if self.count > 1 {
@@ -1200,7 +1195,7 @@ mod tests {
             hi: -0.04,
             count: 1,
         };
-        assert_eq!(one.readout(SeriesKind::Rate), "0.0 s/d");
+        assert_eq!(one.readout_parts(SeriesKind::Rate), ["0.0 s/d"]);
         let band = Drawn {
             t: 40.0,
             mean: 3.21,
@@ -1208,18 +1203,10 @@ mod tests {
             hi: 5.14,
             count: 8,
         };
-        assert_eq!(
-            band.readout(SeriesKind::Rate),
-            "+3.2 s/d, mean of 8, +1.0 to +5.1"
-        );
         // Most needed first, so a short row drops from the end (#1580).
         assert_eq!(
             band.readout_parts(SeriesKind::Rate),
             ["+3.2 s/d", "mean of 8", "+1.0 to +5.1"]
-        );
-        assert_eq!(
-            band.readout(SeriesKind::Rate),
-            band.readout_parts(SeriesKind::Rate).join(", ")
         );
         let amp = Drawn {
             t: 0.0,
@@ -1228,7 +1215,7 @@ mod tests {
             hi: 271.6,
             count: 1,
         };
-        assert_eq!(amp.readout(SeriesKind::Amplitude), "272°");
+        assert_eq!(amp.readout_parts(SeriesKind::Amplitude), ["272°"]);
         let amp_band = Drawn {
             count: 3,
             lo: 269.6,
@@ -1236,8 +1223,8 @@ mod tests {
             ..amp
         };
         assert_eq!(
-            amp_band.readout(SeriesKind::Amplitude),
-            "272°, mean of 3, 270 to 274"
+            amp_band.readout_parts(SeriesKind::Amplitude),
+            ["272°", "mean of 3", "270 to 274"]
         );
         let be = Drawn {
             t: 0.0,
@@ -1246,7 +1233,7 @@ mod tests {
             hi: 0.204,
             count: 1,
         };
-        assert_eq!(be.readout(SeriesKind::BeatError), "0.20 ms");
+        assert_eq!(be.readout_parts(SeriesKind::BeatError), ["0.20 ms"]);
     }
 
     #[test]

@@ -163,9 +163,9 @@ test("each figure takes the decimals the server gives with its ±", () => {
   assert.deepEqual(rates, ["+5.00", `${MINUS}${(3).toFixed(BASE_DIGITS.rate)}`]);
 });
 
-// Whether clipping is worth saying is core's call (Clipping::noted, the
-// `clipped` caveat the server turns into limits), not a threshold of the
-// view's own (#808).
+// Whether clipping is worth saying is core's call
+// (Clipping::noted_fraction, the `clipped` caveat the server turns into
+// limits), not a threshold of the view's own (#808).
 test("clipping is said only in the server's limits", () => {
   const doc = { clipping: { beats: 30, beat_fraction: 0.3 } };
   assert.ok(!context.recordingCards(doc, null, null).includes("Clipping"));

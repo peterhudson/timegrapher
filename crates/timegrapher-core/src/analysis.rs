@@ -328,14 +328,10 @@ impl Clipping {
         }
     }
 
-    /// More than [`Self::NOTED_FRACTION`] of the beats clipped.
-    pub fn noted(&self) -> bool {
-        Self::noted_fraction(self.beat_fraction)
-    }
-
     /// Whether `fraction` of the beats clipped is enough to name the
     /// `clipped` caveat: more than [`Self::NOTED_FRACTION`]. The one rule
-    /// every surface asks, from a [`Clipping`] or from a stored fraction.
+    /// every surface asks, from a [`Clipping`]'s `beat_fraction` or a stored
+    /// one.
     pub fn noted_fraction(fraction: f64) -> bool {
         fraction > Self::NOTED_FRACTION
     }
@@ -986,21 +982,12 @@ mod tests {
     use crate::synth::{generate, SynthConfig};
 
     /// One rule names the `clipped` caveat: strictly more than
-    /// `NOTED_FRACTION`, from a stored fraction or a [`Clipping`].
+    /// `NOTED_FRACTION`.
     #[test]
     fn clipping_noted_above_the_fraction_only() {
         assert!(!Clipping::noted_fraction(0.0));
         assert!(!Clipping::noted_fraction(Clipping::NOTED_FRACTION));
         assert!(Clipping::noted_fraction(Clipping::NOTED_FRACTION + 1e-9));
-        for f in [0.0, 0.01, 0.0101, 0.3] {
-            let c = Clipping {
-                samples: 0,
-                beats: 0,
-                beat_fraction: f,
-                peak_dbfs: 0.0,
-            };
-            assert_eq!(c.noted(), Clipping::noted_fraction(f), "{f}");
-        }
     }
 
     /// Clipping in figures (#1417): the clipped beats as a share of the

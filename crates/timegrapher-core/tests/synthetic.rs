@@ -1,5 +1,6 @@
 //! End-to-end checks on synthetic recordings with known answers.
 
+use timegrapher_core::analysis::Clipping;
 use timegrapher_core::synth::{generate, ExtraSound, Rub, Sound, SynthConfig};
 use timegrapher_core::{analyze, AnalysisConfig};
 
@@ -201,7 +202,7 @@ fn clipping_is_counted_per_beat() {
     let mut audio = generate(&cfg, |_| 280.0, |_| 0.0);
     let clean = analyze(&audio, &AnalysisConfig::default()).summary;
     assert_eq!(clean.clipping.samples, 0);
-    assert!(!clean.clipping.noted());
+    assert!(!Clipping::noted_fraction(clean.clipping.beat_fraction));
 
     // Drive it 12 dB too hot and clip at full scale, as a converter does.
     let peak = audio.samples.iter().fold(0f32, |m, v| m.max(v.abs()));
@@ -210,7 +211,7 @@ fn clipping_is_counted_per_beat() {
     }
     let hot = analyze(&audio, &AnalysisConfig::default()).summary;
     let c = hot.clipping;
-    assert!(c.noted(), "{c:?}");
+    assert!(Clipping::noted_fraction(c.beat_fraction), "{c:?}");
     assert!(c.beat_fraction > 0.5, "{c:?}");
     assert!(c.peak_dbfs > -0.1, "{c:?}");
 }

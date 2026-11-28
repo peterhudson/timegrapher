@@ -1,5 +1,4 @@
 [
- "crates/timegrapher-core/src/amplitude.rs::windows_between",
  "crates/timegrapher-core/src/capture.rs::replay_file",
  "crates/timegrapher-core/src/capture.rs::set_speed",
  "crates/timegrapher-core/src/edge_takes.rs::caveat_codes",
@@ -16,7 +15,6 @@
  "crates/timegrapher-core/src/scenarios.rs::beat_log",
  "crates/timegrapher-core/src/session.rs::fixed_clock",
  "crates/timegrapher-core/src/steadiness.rs::acf",
- "crates/timegrapher-core/src/steady_views.rs::readout",
  "crates/timegrapher-core/src/steady_views.rs::score_ticks",
  "crates/timegrapher-core/src/stream.rs::analyze_file",
  "crates/timegrapher-core/src/usbclock.rs::measure_due"

@@ -874,29 +874,12 @@ pub fn reject_side_outliers_from(wins: &mut [AmplitudeWindow], span_s: f64, from
 
 /// Amplitude in consecutive windows of `window_s` seconds from `from_s`,
 /// up to the last window that ends by `to_s`. Beat times and the window
-/// bounds are in the envelope's time base. [`windows_between_at`] with
-/// the degrees read at `osc_period_s` too.
-#[allow(clippy::too_many_arguments)]
-pub fn windows_between(
-    env: &[f32],
-    fs: f64,
-    beats: &[Beat],
-    osc_period_s: f64,
-    window_s: f64,
-    from_s: f64,
-    to_s: f64,
-    cfg: &AmplitudeConfig,
-) -> Vec<AmplitudeWindow> {
-    let span = (window_s, from_s, to_s);
-    windows_between_at(env, fs, beats, [osc_period_s; 2], span, cfg)
-}
-
-/// [`windows_between`] with the templates cut for the set rate's swing
-/// `osc[0]` and the unlock-to-drop times turned into degrees at the
-/// balance's own swing `osc[1]`, seconds (#2228): where the sound is
-/// looked for is the set rate's, so a live take and a saved one cut it
-/// alike, and the amplitude is the balance's. `span` is the window
-/// length, from and to, seconds.
+/// bounds are in the envelope's time base. The templates are cut for the
+/// set rate's swing `osc[0]` and the unlock-to-drop times turned into
+/// degrees at the balance's own swing `osc[1]`, seconds (#2228): where
+/// the sound is looked for is the set rate's, so a live take and a saved
+/// one cut it alike, and the amplitude is the balance's. `span` is the
+/// window length, from and to, seconds.
 pub fn windows_between_at(
     env: &[f32],
     fs: f64,
@@ -1035,7 +1018,7 @@ fn withhold_faint(wins: &mut [AmplitudeWindow]) {
     }
 }
 
-/// One window of [`windows_between`] from its beats `win`, its start and
+/// One window of [`windows_between_at`] from its beats `win`, its start and
 /// end, seconds, and each side's read in it, `sides`.
 fn window_of(
     win: &[Beat],
@@ -1097,7 +1080,7 @@ fn window_of(
     }
 }
 
-/// Where a side's guide unlock was read ([`windows_between`]), samples
+/// Where a side's guide unlock was read ([`windows_between_at`]), samples
 /// into its template: on one of [`PRE_S`], or of [`template_pre_s`] when
 /// the unlock lies beyond the shorter one's search.
 #[derive(Debug, Clone, Copy)]
@@ -1165,7 +1148,7 @@ fn good_side_times(beats: &[Beat], even: bool) -> Vec<f64> {
 
 /// The unlock, samples into the template, on a trimmed template of the
 /// beats at `times` starting `pre_s` before them, unguided: how a side's
-/// guide is first read ([`windows_between`]).
+/// guide is first read ([`windows_between_at`]).
 fn template_unlock(
     env: &[f32],
     fs: f64,
@@ -1403,7 +1386,7 @@ mod tests {
             });
         }
         let cfg = AmplitudeConfig::default();
-        let w = windows_between(&env, fs, &beats, 2.0 * period, 2.0, 0.0, 20.0, &cfg);
+        let w = windows_between_at(&env, fs, &beats, [2.0 * period; 2], (2.0, 0.0, 20.0), &cfg);
         let bumped = w.iter().find(|w| w.start_s == 6.0).unwrap();
         let clean = w.iter().find(|w| w.start_s == 10.0).unwrap();
         let (b, c) = (
@@ -1638,7 +1621,7 @@ mod tests {
             ..Default::default()
         };
         let osc = 2.0 * period;
-        let first = windows_between(&env, fs, &beats, osc, 2.0, 0.0, 8.0, &cfg);
+        let first = windows_between_at(&env, fs, &beats, [osc; 2], (2.0, 0.0, 8.0), &cfg);
         let w = &first[1];
         assert_eq!((w.even_deg, w.odd_deg), (None, None), "{w:?}");
         assert_eq!((w.even_unlock_ms, w.beat_error_unlock_ms), (None, None));
@@ -1654,14 +1637,12 @@ mod tests {
             45.0,
             crate::escapement::Escapement::SwissLever,
         );
-        let fresh = windows_between(
+        let fresh = windows_between_at(
             &env,
             fs,
             &beats,
-            osc,
-            2.0,
-            0.0,
-            8.0,
+            [osc; 2],
+            (2.0, 0.0, 8.0),
             &AmplitudeConfig {
                 lift_deg: 45.0,
                 ..Default::default()
@@ -1890,7 +1871,7 @@ mod tests {
             lift_deg: lift,
             ..Default::default()
         };
-        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        let w = windows_between_at(&env, fs, &beats, [osc; 2], (2.0, 0.0, secs - 0.5), &cfg);
         (w, amplitude_deg(0.72 * dt, osc, lift))
     }
 
@@ -1963,7 +1944,7 @@ mod tests {
             lift_deg: lift,
             ..Default::default()
         };
-        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, 20.0, &cfg);
+        let w = windows_between_at(&env, fs, &beats, [osc; 2], (2.0, 0.0, 20.0), &cfg);
         let missed = w.iter().find(|w| w.start_s == 6.0).unwrap();
         assert_eq!(
             (missed.even_deg, missed.odd_deg),
@@ -2022,7 +2003,7 @@ mod tests {
             lift_deg: lift,
             ..Default::default()
         };
-        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        let w = windows_between_at(&env, fs, &beats, [osc; 2], (2.0, 0.0, secs - 0.5), &cfg);
         let want = amplitude_deg(dt, osc, lift);
         assert!(!w.is_empty());
         for w in &w {
@@ -2085,7 +2066,14 @@ mod tests {
             });
         }
         let cfg = AmplitudeConfig::default();
-        let mut w = windows_between(&env, fs, &beats, 2.0 * period, 2.0, 0.0, secs - 0.5, &cfg);
+        let mut w = windows_between_at(
+            &env,
+            fs,
+            &beats,
+            [2.0 * period; 2],
+            (2.0, 0.0, secs - 0.5),
+            &cfg,
+        );
         // The 60 s as one chunk, as the run pinned below was read.
         withhold_faint_by_chunk(&mut w, |_| 0);
         assert_eq!(w.len(), noise.len());
@@ -2252,7 +2240,7 @@ mod tests {
             lift_deg: lift,
             ..Default::default()
         };
-        let w = windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg);
+        let w = windows_between_at(&env, fs, &beats, [osc; 2], (2.0, 0.0, secs - 0.5), &cfg);
         let want = dts.map(|dt| amplitude_deg(dt, osc, lift));
         assert!(!w.is_empty());
         for w in &w {
@@ -2308,7 +2296,7 @@ mod tests {
                 lift_deg: lift,
                 ..Default::default()
             };
-            windows_between(&env, fs, &beats, osc, 2.0, 0.0, secs - 0.5, &cfg)
+            windows_between_at(&env, fs, &beats, [osc; 2], (2.0, 0.0, secs - 0.5), &cfg)
         };
         let at52 = read(52.0);
         assert!(at52.iter().all(|w| w.beat_error_unlock_ms.is_some()));
