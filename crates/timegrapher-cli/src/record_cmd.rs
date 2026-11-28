@@ -704,7 +704,8 @@ impl StopWatch {
 /// A Power Reserve Test's results from its take `dir`, read from the
 /// sound as `session` reads it, on the take's clock log: the stop, the run
 /// time and each hour. It ended as `ending` says, as decided while it
-/// listened.
+/// listened, unless the saved reading contradicts a stop
+/// ([`power_reserve::confirmed`], #2502).
 fn reserve_results(
     dir: &Path,
     started: &str,
@@ -743,6 +744,7 @@ fn reserve_results(
     let (clock, breaks) = (ctx.clock, ctx.breaks);
     let beat_s = power_reserve::beat_s(Some(log.bph));
     let heard = power_reserve::heard(&log.beats, beat_s);
+    let ending = power_reserve::confirmed(ending, &heard, log.duration_s);
     let mut r = Results::of(&heard, ending, started, pos.common(), true, |s| {
         clock.as_ref().map_or(s, |c| c.map(s))
     })
@@ -1328,13 +1330,17 @@ fn print_report(r: &Report) {
         }
     }
     if let Some(p) = &r.power_reserve {
-        println!(
-            "Power reserve {}. {}.",
-            power_reserve::run_text(p.run_s),
-            p.ending_text()
-        );
+        println!("{}", reserve_line(p));
     }
     println!("Added to     {}", r.session_file);
+}
+
+/// The report's line for a Power Reserve Test's run: its run in core's
+/// words ([`power_reserve::run_words`]), "at least" for a run that ended
+/// while the watch still ran, then how it ended.
+fn reserve_line(p: &power_reserve::Results) -> String {
+    let run = power_reserve::run_words(p.run_s, p.ending, p.source);
+    format!("Power reserve {run}. {}.", p.ending_text())
 }
 
 /// What `record` says as it starts: the position, the input, the folder,
@@ -2381,5 +2387,90 @@ mod tests {
         assert_eq!(named.lift, 52.0);
         assert!(!named.lift_known, "a name alone does not supply a lift");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A take in a new folder of its own, `name`, its sound the synth
+    /// watches `parts` one after the other (each its beat rate and
+    /// seconds; a rate of 0 is silence), as `record` keeps it.
+    fn take_of_parts(name: &str, parts: &[(u32, f64)]) -> PathBuf {
+        use timegrapher_core::synth::{generate, SynthConfig};
+        let dir = std::env::temp_dir().join(format!("tg-record-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut samples = Vec::new();
+        let sr = SynthConfig::default().sample_rate;
+        for &(bph, duration_s) in parts {
+            if bph == 0 {
+                samples.resize(samples.len() + (duration_s * f64::from(sr)) as usize, 0.0);
+                continue;
+            }
+            let cfg = SynthConfig {
+                bph,
+                duration_s,
+                ..Default::default()
+            };
+            samples.extend(generate(&cfg, |_| 280.0, |_| 0.0).samples);
+        }
+        let a = audio::Audio {
+            samples,
+            sample_rate: sr,
+        };
+        audio::write_wav(&dir.join("take_part01-001.wav"), &a).unwrap();
+        dir
+    }
+
+    /// The results of the take `dir` for a test whose live check ended it
+    /// as `ending`, with no beat rate given.
+    fn results_for(dir: &Path, ending: power_reserve::Ending) -> power_reserve::Results {
+        let du = Position::parse("DU").unwrap();
+        reserve_results(dir, "2026-11-28T09:00:00Z", du, None, ending).unwrap()
+    }
+
+    /// #2502: a live stop that the saved sound contradicts (the watch heard
+    /// to the take's end) is written as its own ending, never a stop and
+    /// never by hand, with the saved reading's run: Norm's file A from
+    /// #2527, 32 s of 72,000 clicks and then a 28,800 watch. The saved
+    /// reading reads the whole take at the one rate it picks, so a live
+    /// check misled by its lock doesn't mislead it too.
+    #[test]
+    fn a_live_stop_the_saved_sound_contradicts_ends_early() {
+        use power_reserve::Ending;
+        let dir = take_of_parts("not-stopped", &[(72_000, 32.0), (28_800, 120.0)]);
+        let r = results_for(&dir, Ending::Stopped);
+        assert_eq!(r.ending, Ending::StopNotConfirmed);
+        assert_eq!(r.ending.text(), "Ended early while the watch still ran");
+        assert_eq!(r.ending.short(), "Ended early");
+        let v = serde_json::to_value(r.ending).unwrap();
+        assert_eq!(v, "stop_not_confirmed");
+        // The report's line reads the run "at least" (Hugh 51).
+        let mut two_min = r.clone();
+        two_min.run_s = 120.0;
+        assert_eq!(
+            reserve_line(&two_min),
+            "Power reserve at least 2 min 00 s. Ended early while the watch still ran."
+        );
+        two_min.ending = Ending::ByHand;
+        assert_eq!(
+            reserve_line(&two_min),
+            "Power reserve 2 min 00 s. Stopped by hand while the watch still ran."
+        );
+        // Every other ending is written as the live check gave it.
+        for e in [Ending::ByHand, Ending::Limit] {
+            assert_eq!(results_for(&dir, e).ending, e);
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// #2502: a real stop keeps STOP_AFTER_S of silence in the saved sound,
+    /// so it is written as a stop: 100 s of a 28,800 watch, then 700 s of
+    /// silence.
+    #[test]
+    fn a_real_stop_the_saved_sound_shows_stays_stopped() {
+        use power_reserve::Ending;
+        let dir = take_of_parts("stopped", &[(28_800, 100.0), (0, 700.0)]);
+        let r = results_for(&dir, Ending::Stopped);
+        assert_eq!(r.ending, Ending::Stopped);
+        assert!(r.last_beat_s < 100.0, "last beat {}", r.last_beat_s);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

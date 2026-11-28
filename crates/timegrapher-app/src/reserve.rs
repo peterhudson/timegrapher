@@ -150,9 +150,12 @@ impl Test {
     }
 
     /// Its results, with `to_true` mapping audio seconds to true seconds:
-    /// `None` until it ends, or when no beat was heard.
+    /// `None` until it ends, or when no beat was heard. Its ending is
+    /// checked against its run by the rule every surface writes a test's
+    /// results with ([`power_reserve::confirmed`], #2502).
     pub fn finish(&mut self, to_true: impl Fn(f64) -> f64) -> Option<&Results> {
-        let ending = self.ending?;
+        let ending = power_reserve::confirmed(self.ending?, &self.heard, self.now_s);
+        self.ending = Some(ending);
         self.results = Results::of(
             &self.heard,
             ending,
@@ -1271,6 +1274,25 @@ mod tests {
         assert!((r.first_beat_s - 100.0).abs() < 1e-9);
         // Nothing moves once it has ended.
         assert_eq!(t.update(&b, step, 1e6), None);
+    }
+
+    /// #2502: the app writes a test's ending by core's one rule
+    /// (`power_reserve::confirmed`), so a stop the beats it keeps don't
+    /// show is written as not confirmed, and a real one as a stop.
+    #[test]
+    fn a_stop_the_kept_beats_dont_show_is_not_confirmed() {
+        let step = 0.125;
+        let b = beats(0.0, 1000.0, step);
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        t.update(&b, step, 1000.0);
+        t.ending = Some(Ending::Stopped);
+        let r = t.finish(|s| s).unwrap();
+        assert_eq!(r.ending, Ending::StopNotConfirmed);
+        assert_eq!(t.ending, Some(Ending::StopNotConfirmed));
+        let mut t = Test::new(Position::DialUp, true, String::new(), 0.0);
+        let last = 1000.0 - step;
+        assert_eq!(t.update(&b, step, last + 600.0), Some(Ending::Stopped));
+        assert_eq!(t.finish(|s| s).unwrap().ending, Ending::Stopped);
     }
 
     #[test]

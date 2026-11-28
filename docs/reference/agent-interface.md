@@ -400,8 +400,11 @@ pane finds it) or 80 hours pass, then reads the take's sound as `session`
 reads it, on the take's clock log, and writes the run to the session
 folder's `power-reserve.json` (see [app.md](app.md), Power Reserve: the
 start, position, `ending` (`stopped`, `by_hand` for a recording that ended
-while the watch still ran, `limit`, or `recording_failed` or `input_failed`,
-each "at least" as long as heard), the first and last beats heard,
+while the watch still ran, `limit`, `stop_not_confirmed` for a stop the
+live check found that the saved reading doesn't show (its last beat less
+than 10 minutes before the end, core `power_reserve::confirmed`), or
+`recording_failed` or `input_failed`, each of the last three "at least" as
+long as heard), the first and last beats heard,
 `run_s` in true seconds, the silences of 30 s or more inside the run, and
 `hours[]`, each hour measured as `session` measures a stretch, with
 `read_s`, its seconds of whole 10 s readings, and `rate_se`,

@@ -75,6 +75,10 @@ pub enum Ending {
     /// while the watch still ran: the run is at least as long as heard,
     /// never a stop of the watch (#1882).
     InputFailed,
+    /// The live check found a stop that the test's saved sound doesn't
+    /// show ([`confirmed`], #2502): the run is at least as long as heard,
+    /// never a stop of the watch.
+    StopNotConfirmed,
 }
 
 impl Ending {
@@ -97,6 +101,7 @@ impl Ending {
             Ending::Listening => "Still listening, no stop found yet".to_string(),
             Ending::RecordingFailed => "The recording failed while the watch still ran".to_string(),
             Ending::InputFailed => "The sound input failed while the watch still ran".to_string(),
+            Ending::StopNotConfirmed => "Ended early while the watch still ran".to_string(),
         }
     }
 
@@ -122,6 +127,7 @@ impl Ending {
             Ending::Listening => "Still listening".to_string(),
             Ending::RecordingFailed => "Recording failed".to_string(),
             Ending::InputFailed => "Input failed".to_string(),
+            Ending::StopNotConfirmed => "Ended early".to_string(),
         }
     }
 }
@@ -237,6 +243,27 @@ impl Heard {
     /// Seconds since the last beat heard, at `now_s`.
     pub fn silent_s(&self, now_s: f64) -> Option<f64> {
         self.last_s.map(|l| (now_s - l).max(0.0))
+    }
+}
+
+/// The ending a test's results are written with (#2502): `live`, the
+/// ending its live check decided, unless that is a stop the test's saved
+/// reading contradicts. `saved` is the saved reading's own run ([`heard`]
+/// over its beats at the rate it read the take at, which the live check's
+/// lock doesn't set, so a lock on noise can't mislead both; #2496), and
+/// `end_s` the end of its sound, audio seconds. A stop stands while the
+/// saved run shows at least [`STOP_AFTER_S`] with no beat before the end,
+/// as a real stop's silence does. A saved run whose last beat is nearer
+/// the end is the watch heard still running, so the stop becomes
+/// [`Ending::StopNotConfirmed`]. Only a beat heard contradicts a stop: a
+/// saved reading that hears no run at all leaves it as it was. A backstop
+/// to the test's rate rule ([`TestRate`]), not instead of it (Norm on
+/// #2527).
+pub fn confirmed(live: Ending, saved: &Heard, end_s: f64) -> Ending {
+    let ran_on = saved.last_s.is_some() && !saved.stopped(end_s);
+    match live {
+        Ending::Stopped if ran_on => Ending::StopNotConfirmed,
+        e => e,
     }
 }
 
@@ -870,7 +897,10 @@ fn run_of(
 pub fn run_words(run_s: f64, ending: Ending, source: Source) -> String {
     let run = run_text(run_s);
     if (source == Source::LongTake && matches!(ending, Ending::TakeEnded | Ending::Listening))
-        || matches!(ending, Ending::RecordingFailed | Ending::InputFailed)
+        || matches!(
+            ending,
+            Ending::RecordingFailed | Ending::InputFailed | Ending::StopNotConfirmed
+        )
     {
         format!("at least {run}")
     } else {
@@ -1277,6 +1307,62 @@ mod tests {
         assert_eq!(Ending::InputFailed.short(), "Input failed");
         let v: serde_json::Value = serde_json::to_value(Ending::InputFailed).unwrap();
         assert_eq!(v, "input_failed");
+    }
+
+    /// #2502: a live stop the saved reading contradicts is its own ending,
+    /// at least as long as heard, in Hugh's words (#2502, Hugh 47).
+    #[test]
+    fn a_stop_not_confirmed_reads_at_least() {
+        assert_eq!(
+            sentence(7260.0, Ending::StopNotConfirmed, Source::Test, "DU", None),
+            "Power reserve at least 2 h 01 min in DU. Ended early while the watch still ran."
+        );
+        assert_eq!(
+            title(7260.0, Ending::StopNotConfirmed, Source::Test, 0),
+            "Ran at least 2 h 01 min \u{b7} Ended early"
+        );
+        let v: serde_json::Value = serde_json::to_value(Ending::StopNotConfirmed).unwrap();
+        assert_eq!(v, "stop_not_confirmed");
+    }
+
+    /// #2502 (Norm on #2527): a live stop stands only while the saved
+    /// beats show STOP_AFTER_S with none before the end. A saved run whose
+    /// last beat is nearer the end makes it not confirmed; a saved reading
+    /// that hears no run leaves it a stop; every other ending is kept.
+    #[test]
+    fn a_live_stop_stands_only_where_the_saved_beats_show_one() {
+        let saved = |last: Option<f64>| Heard {
+            first_s: last.map(|_| 1.0),
+            last_s: last,
+            pauses: Vec::new(),
+        };
+        let end = 1000.0;
+        let quiet_since = |s: f64| saved(Some(end - s));
+        assert_eq!(
+            confirmed(Ending::Stopped, &quiet_since(STOP_AFTER_S), end),
+            Ending::Stopped
+        );
+        assert_eq!(
+            confirmed(Ending::Stopped, &quiet_since(STOP_AFTER_S - 0.5), end),
+            Ending::StopNotConfirmed
+        );
+        assert_eq!(
+            confirmed(Ending::Stopped, &quiet_since(13.5), end),
+            Ending::StopNotConfirmed
+        );
+        assert_eq!(
+            confirmed(Ending::Stopped, &saved(None), end),
+            Ending::Stopped
+        );
+        for e in [
+            Ending::ByHand,
+            Ending::Limit,
+            Ending::RecordingFailed,
+            Ending::InputFailed,
+        ] {
+            assert_eq!(confirmed(e, &quiet_since(13.5), end), e);
+            assert_eq!(confirmed(e, &quiet_since(STOP_AFTER_S), end), e);
+        }
     }
 
     /// The rate a test holds at each check, with Auto locked at each

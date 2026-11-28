@@ -1094,8 +1094,10 @@ Watches view, and the pane is not brought forward. `timegrapher session`
 gives the same run in `power_reserve`, with `source` `long_take`.
 
 `power-reserve.json` (`schema` `power-reserve/1`) holds `started_utc`,
-`position`, `sound_kept`, `ending` (`stopped`, `by_hand`, `limit`, or
-`recording_failed` or `input_failed`, each "at least" as long as heard),
+`position`, `sound_kept`, `ending` (`stopped`, `by_hand`, `limit`,
+`stop_not_confirmed` (a stop the live check found that the saved reading
+doesn't show, core `power_reserve::confirmed`), or `recording_failed` or
+`input_failed`, each of the last three "at least" as long as heard),
 `first_beat_s` and `last_beat_s` (audio seconds of the take), `run_s`
 (true seconds from the first to the last), `pauses[]` (`from_s`, `to_s`:
 the silences of 30 s or more inside the run) and `hours[]`: `hour` (0,
