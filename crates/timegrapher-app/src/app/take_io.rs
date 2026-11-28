@@ -2328,12 +2328,8 @@ impl TimegrapherApp {
                 Err(TryRecvError::Empty) => break,
                 event => event,
             };
-            if matches!(event, Ok(Event::Audio(_))) {
-                taken += 1;
-                // Heard as it arrives, though core's gap rule may hold it a
-                // while.
-                self.bench.recording.audio_at = Some(Instant::now());
-            }
+            let audio = matches!(event, Ok(Event::Audio(_)));
+            taken += usize::from(audio);
             let (came, end, fail) = self.input_event(event, is_file);
             ended |= end;
             if fail.is_some() {
@@ -2342,6 +2338,12 @@ impl TimegrapherApp {
             if let Err(e) = came.into_iter().try_for_each(|l| self.take_live(l)) {
                 failure = Some(e);
                 break;
+            }
+            if audio {
+                // Heard, though core's gap rule may hold it a while. Stamped
+                // once taken in: the seconds the app spends saving and
+                // reading a block are never the input's quiet (#2137).
+                self.bench.recording.audio_at = Some(Instant::now());
             }
             if ended {
                 break;

@@ -104,6 +104,38 @@ fn listening_carries_on_without_frames() {
     let _ = std::fs::remove_dir_all(base);
 }
 
+/// The input's quiet is counted from once a block is taken in, never
+/// across the time the app spends saving and reading it. The block core
+/// builds its template again on (#1327) took 3 s in a debug build and 6 s
+/// with every core busy, and was taken for "No sound is arriving", which
+/// stopped listening with sound still queued (#2137).
+#[test]
+fn the_time_a_block_takes_is_never_the_inputs_quiet() {
+    let (mut app, base) = save_failure_fixture("quiet-after-take");
+    let tx = queued_capture(&mut app, &base);
+    // A clipped block: the meter notes when it was read, part way in.
+    tx.send(Event::Audio(timegrapher_core::capture::Block {
+        samples: vec![1.0; 960],
+        at: std::time::UNIX_EPOCH + Duration::from_millis(2000),
+    }))
+    .unwrap();
+    assert_eq!(app.poll_for(Duration::from_secs(60)), 1);
+    let read = app
+        .bench
+        .recording
+        .meter
+        .clipped_at
+        .expect("read as clipped");
+    let heard = app.bench.recording.audio_at.expect("heard");
+    drop(app);
+    drop(tx);
+    let _ = std::fs::remove_dir_all(base);
+    assert!(
+        heard >= read,
+        "the input's quiet counted from before the block was read"
+    );
+}
+
 /// A backlog is taken a frame's worth at a time, so the window never
 /// freezes while it catches up.
 #[test]
