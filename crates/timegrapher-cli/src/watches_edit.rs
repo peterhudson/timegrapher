@@ -63,6 +63,8 @@ pub enum Change {
     },
     /// Move a take of the library (its folder, as `watches show` gives it)
     /// to another watch; a take in Unsorted is filed under the watch so.
+    /// The take is read from then on with the watch's name, calibre, lift
+    /// angle and beat rate, as the app's move gives it.
     MoveTake {
         /// The take's folder, as `watches show` gives it.
         take: PathBuf,
@@ -247,6 +249,10 @@ struct Done {
     photos: Vec<PathBuf>,
     /// Said where the change is made but something was left behind.
     left: Option<String>,
+    /// For `move-take`: whether what the take is read with changed, the
+    /// watch's settings written into it (core `library::file_take_under`);
+    /// `None` for the other changes, and where they couldn't be written.
+    settings_changed: Option<bool>,
     text: String,
 }
 
@@ -282,6 +288,7 @@ pub fn run(c: &Change, library: Option<&Path>, json: bool) -> Result<(), String>
         "take": done.take.map(|t| t.display().to_string()),
         "photos": done.photos.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
         "left": done.left,
+        "settings_changed": done.settings_changed,
         "caveats": [],
     });
     output::print("watches-change", input, &body)
@@ -316,6 +323,7 @@ fn done(action: &'static str, text: String) -> Done {
         take: None,
         photos: Vec::new(),
         left: None,
+        settings_changed: None,
         text,
     }
 }
@@ -374,12 +382,37 @@ fn add_take(
 
 fn move_take(library: Option<&Path>, take: &Path, to: &str) -> Result<Done, String> {
     let mut lib = open(library, false)?;
-    let id = watch(&lib, to)?.watch.id.clone();
-    let moved = lib.move_take(&absolute(take), &id)?;
+    let w = watch(&lib, to)?.watch.clone();
+    // Read before the move, so a calibre file that can't be read refuses it.
+    let user = user_calibres()?;
+    let moved = lib.move_take(&absolute(take), &w.id)?;
+    // What it is read with from now on, as the app's move writes it (#2453).
+    let (settings_changed, left) = match library::file_take_under(&moved, &w, &user) {
+        Ok(changed) => (Some(changed), None),
+        Err(e) => (
+            None,
+            Some(format!(
+                "{} is in {} now, but its session file still says what it was recorded \
+                 with: {e}",
+                moved.display(),
+                w.name
+            )),
+        ),
+    };
+    let text = match settings_changed {
+        Some(true) => format!(
+            "moved to {}, read now with {}'s settings",
+            moved.display(),
+            w.name
+        ),
+        _ => format!("moved to {}", moved.display()),
+    };
     Ok(Done {
-        watch: watch_now(&lib, &id),
+        watch: watch_now(&lib, &w.id),
         take: Some(moved.clone()),
-        ..done("move-take", format!("moved to {}", moved.display()))
+        left,
+        settings_changed,
+        ..done("move-take", text)
     })
 }
 

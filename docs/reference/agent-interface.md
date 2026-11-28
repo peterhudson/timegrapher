@@ -91,7 +91,7 @@ readings: anything that compares two documents should leave `software` out.
 | `clock` | `clock list\|measure\|from-log\|set\|forget --json` | each input's stored clock error (below) |
 | `watches` | `watches list [--all] [--library DIR] --json` | the app's library of watches, read only: `library`, `bytes`, `watches[]` (`id`, `name`, `calibre`, `bph`, `lift_deg`, `archived`, `takes` (how many), `bytes`, `newest_started_utc`), `unsorted` (how many takes Quick Listen made are not yet filed under a watch), `unreadable[]`, `caveats[]` (none yet) (see [`watches`](#watches)) |
 | `watch` | `watches show NAME [--library DIR] --json` | one watch, or `Unsorted`: `library`, `id`, `name`, `unsorted`, `folder`, `calibre`, `bph`, `lift_deg`, `notes`, `archived`, `fields[]` (`label`, `kind`, `value`), `full_wind` (when it was last fully wound, UTC, as the app's Listen card Wind field or a test's Start gave it, and back to what it was before that Start once the test's take is thrown away; null where not given, and once a Power Reserve Test found the watch stopped), `photos` (how many), `bytes`, `takes[]` newest first (`path`, `name`, `started_utc`, `named_start` (only for a take with no `started_utc` whose folder's name gives its start: `2026-10-22T09:10`, in the recording computer's time, no zone; left out otherwise), `duration_s`, `positions[]`, `audio`, `incomplete`, `bytes`, `reading`, `at_end`, `wind_h` (hours from full wind to its start; null where the wind was not given, never taken as full wind)), `unreadable[]`, `caveats[]` (none yet) |
-| `watches-change` | `watches new\|edit\|add-take\|move-take\|keep-analysis-only\|delete-take\|add-photos\|delete-photo … --json` | what a change did: `action`, `watch` (`id`, `name`, `folder`), `take`, `photos[]`, `left`, `caveats[]` (see [Changing the watches](#changing-the-watches)) |
+| `watches-change` | `watches new\|edit\|add-take\|move-take\|keep-analysis-only\|delete-take\|add-photos\|delete-photo … --json` | what a change did: `action`, `watch` (`id`, `name`, `folder`), `take`, `photos[]`, `left`, `settings_changed`, `caveats[]` (see [Changing the watches](#changing-the-watches)) |
 | `devices` | `devices --json` | `devices[]`: `id`, `name`, `manufacturer`, `is_default`, `default_config`, `supported[]` (`min_channels`, `max_channels`, `min_sample_rate`, `max_sample_rate`, `sample_format`) |
 | `usb_agc` | `devices --agc --json` (`--agc-off`, `--agc-on` to set it) | macOS: each USB microphone's automatic gain switch, read over USB. `microphones[]`: `name`, `vendor_id`, `product_id`, `control` (`interface`, `unit`, `channel`, `volume`), `before` (the switch as read), `after` (read back after `--agc-off` or `--agc-on`, else null), `volume_db` (capture volume: current, lowest, highest), `error` (only when a request failed). On Windows the switch is the system's own control for each input that has one (the Sound control panel's "AGC"), and each entry carries only `name`, `before`, `after` and `error`. The microphone turns the switch on again when it is plugged in. On Linux the command fails and names the mixer instead. |
 | `doctor` | `doctor --json` | Schema `timegrapher.doctor/2`. `source`, `check`, `mixer`, `fixes[]`, `applied`, `after` (below). Version 2 removed `verdict`, `check.signal_band`, `issues[].severity`, `issues[].advice` and the `noisy` issue. |
@@ -624,7 +624,12 @@ analysis) into a watch's `takes/`, or moves it with `--move`; it is put
 together beside its place and moved in whole, so a copy cut short is
 never a take, and a folder already in the library is refused.
 `move-take` moves a take of the library (its `path` from `show`) to
-another watch, filing one from Unsorted. `keep-analysis-only` reads the
+another watch, filing one from Unsorted, and writes into its
+`session.toml` the watch's name and the calibre, lift angle and beat
+rate the watch sets, as the app's move does (core
+`library::file_take_under`); a take recorded on Auto moved into a watch
+that sets a beat rate is read at that rate from then on, and a take kept
+as its analysis alone keeps what it was measured with. `keep-analysis-only` reads the
 take's sound once more, keeps its analysis, checks it reads back and only
 then deletes the sound, as Keep Analysis Only does (it takes as long as
 reading the take twice; a take whose `session.toml` lists its sound files
@@ -642,8 +647,12 @@ subcommand), `watch` (`id`, `name`, `folder` after the change; `null`
 for a take in Unsorted), `take` (the take's folder after the change; for
 `delete-take` the one deleted; else `null`), `photos` (those added or
 deleted), `left` (`null`, or what was left behind where the change was
-made but part of the original couldn't be deleted, also on stderr) and
-`caveats` (empty). A refused change exits 1 with one line on stderr and
+made but part of the original couldn't be deleted, or, for `move-take`,
+that the take moved but its session file couldn't be given the watch's
+settings; also on stderr), `settings_changed` (for `move-take`, whether
+what the take is read with changed, so a reading of it should be made
+again; `null` for the other changes and where the settings couldn't be
+written) and `caveats` (empty). A refused change exits 1 with one line on stderr and
 changes nothing.
 
 ## `excerpt`

@@ -342,3 +342,208 @@ fn a_path_out_of_a_watchs_takes_is_never_a_take() {
     assert_eq!(show(&base, "Pepsi")["takes"].as_array().unwrap().len(), 1);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The take `doc` says a change moved, and what its `session.toml` says.
+fn moved(doc: &Value) -> (PathBuf, timegrapher_core::session::Manifest) {
+    let at = PathBuf::from(doc["take"].as_str().unwrap());
+    let text = std::fs::read_to_string(at.join("session.toml")).unwrap();
+    (at, toml::from_str(&text).unwrap())
+}
+
+/// `move-take` gives the take its new watch's settings, as the app's
+/// move does (#2453, the app's `a_moved_take_takes_its_new_watchs_settings`):
+/// the calibre's lift angle and beat rate where it gives them, the old
+/// calibre's wheels going with it and the file's comments kept; then a
+/// watch's own lift and rate, the calibre staying. The JSON says whether
+/// the take is read with anything new.
+#[test]
+fn a_moved_take_takes_its_new_watchs_settings_as_the_app_does() {
+    use timegrapher_core::calibre_store::{Catalog, UserCalibres};
+    let base = scratch("settings");
+    ok(&base, &["watches", "new", "Pepsi"]);
+    ok(
+        &base,
+        &["watches", "new", "Explorer", "--calibre", "ETA 2824-2"],
+    );
+    ok(
+        &base,
+        &["watches", "new", "Own", "--bph", "21600", "--lift", "49"],
+    );
+    let outside = base.join("2026-11-12 10.00 Dial Up");
+    take(&outside);
+    std::fs::write(
+        outside.join("session.toml"),
+        "# kept as written\nwatch = \"Pepsi\"\ncalibre = \"Old 1\"\nbph = 18000\nlift = 50\n\
+         lift_known = false\n\n[wheels]\n\"Escape wheel\" = 6.0\n\n\
+         [[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+    )
+    .unwrap();
+    let doc = ok(
+        &base,
+        &["watches", "add-take", "Pepsi", outside.to_str().unwrap()],
+    );
+    let taken = doc["take"].as_str().unwrap().to_string();
+    let doc = ok(&base, &["watches", "move-take", &taken, "--to", "Explorer"]);
+    assert_eq!(doc["settings_changed"], true);
+    assert!(doc["left"].is_null());
+    let (at, m) = moved(&doc);
+    let user = UserCalibres::default();
+    let eta = Catalog::new(&user).find("ETA 2824-2").unwrap();
+    assert_eq!(m.watch.as_deref(), Some("Explorer"));
+    assert_eq!(m.calibre.as_deref(), Some("ETA 2824-2"));
+    assert_eq!(
+        (m.lift, m.lift_known, m.bph),
+        (eta.lift_angle_deg(), Some(true), eta.bph())
+    );
+    assert!(m.wheels.is_empty(), "the old calibre's wheels go with it");
+    let text = std::fs::read_to_string(at.join("session.toml")).unwrap();
+    assert!(text.contains("# kept as written"), "{text}");
+    // Into the watch it is in: nothing new to read it with.
+    let doc = ok(
+        &base,
+        &[
+            "watches",
+            "move-take",
+            at.to_str().unwrap(),
+            "--to",
+            "Explorer",
+        ],
+    );
+    assert_eq!(doc["settings_changed"], false);
+    // Into a watch of its own lift and beat rate and no calibre: those
+    // two, and the calibre stays.
+    let doc = ok(
+        &base,
+        &["watches", "move-take", at.to_str().unwrap(), "--to", "Own"],
+    );
+    assert_eq!(doc["settings_changed"], true);
+    let (_, m) = moved(&doc);
+    assert_eq!(m.watch.as_deref(), Some("Own"));
+    assert_eq!(m.calibre.as_deref(), Some("ETA 2824-2"));
+    assert_eq!((m.lift, m.bph), (Some(49.0), Some(21600)));
+    // Other changes say nothing of settings.
+    let doc = ok(&base, &["watches", "new", "Daytona"]);
+    assert!(doc["settings_changed"].is_null());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A take recorded on Auto, moved by `move-take` into a watch that sets
+/// a beat rate, is read at that rate from then on, as the app's move does
+/// (#2453, the app's `a_take_recorded_on_auto_moved_into_a_watch_takes_its_rate`),
+/// even where `session.toml` already gave it. A take recorded at a set
+/// rate, or whose `session.json` is corrupt, keeps that file byte for
+/// byte, and the move says nothing was left (#2450).
+#[test]
+fn a_take_recorded_on_auto_moved_by_the_command_line_takes_its_rate() {
+    use timegrapher_core::set_rate::recorded_on_auto;
+    let base = scratch("auto");
+    ok(&base, &["watches", "new", "Pepsi"]);
+    ok(&base, &["watches", "new", "Own", "--bph", "17280"]);
+    for (name, json, auto) in [
+        (
+            "auto",
+            r#"{"watch": "Pepsi", "lift_deg": 52.0, "bph": null}"#,
+            true,
+        ),
+        (
+            "set",
+            r#"{"watch": "Pepsi", "lift_deg": 52.0, "bph": 17280}"#,
+            false,
+        ),
+        ("corrupt", r#"{"watch": "Pepsi", "bph": nu"#, false),
+    ] {
+        let outside = base.join(format!("2026-11-26 10.00 {name}"));
+        take(&outside);
+        std::fs::write(
+            outside.join("session.toml"),
+            "watch = \"Pepsi\"\nbph = 17280\n\n[[recording]]\nfile = \".\"\nposition = \"DU\"\n",
+        )
+        .unwrap();
+        std::fs::write(outside.join("session.json"), json).unwrap();
+        let doc = ok(
+            &base,
+            &["watches", "add-take", "Pepsi", outside.to_str().unwrap()],
+        );
+        let taken = PathBuf::from(doc["take"].as_str().unwrap());
+        assert_eq!(recorded_on_auto(&taken), auto, "{name}");
+        let doc = ok(
+            &base,
+            &[
+                "watches",
+                "move-take",
+                taken.to_str().unwrap(),
+                "--to",
+                "Own",
+            ],
+        );
+        assert!(doc["left"].is_null(), "{name}: {doc}");
+        let (at, m) = moved(&doc);
+        assert_eq!(m.bph, Some(17280), "{name}");
+        assert!(!recorded_on_auto(&at), "{name}");
+        // Only the take recorded on Auto is read with anything new.
+        assert_eq!(doc["settings_changed"], auto, "{name}");
+        let after = std::fs::read_to_string(at.join("session.json")).unwrap();
+        assert_eq!(after == json, !auto, "{name}: {after}");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A take whose `session.toml` can't be given the watch's settings is
+/// still moved: `move-take` exits 0, `left` says what was left as it
+/// was, and `settings_changed` is null. A user calibres file that can't
+/// be read refuses the move before anything changes (Vernon 101).
+#[test]
+fn move_take_says_what_it_could_not_write_and_refuses_on_a_bad_calibre_file() {
+    let base = scratch("move-left");
+    ok(&base, &["watches", "new", "Pepsi"]);
+    ok(&base, &["watches", "new", "Own", "--bph", "21600"]);
+    let outside = base.join("2026-11-12 10.00 Dial Up");
+    take(&outside);
+    let doc = ok(
+        &base,
+        &["watches", "add-take", "Pepsi", outside.to_str().unwrap()],
+    );
+    let taken = PathBuf::from(doc["take"].as_str().unwrap());
+    // The calibres file doesn't read: refused, the take where it was.
+    let config = base.join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("calibres.json"), "{ not json").unwrap();
+    let e = refused(
+        &base,
+        &[
+            "watches",
+            "move-take",
+            taken.to_str().unwrap(),
+            "--to",
+            "Own",
+        ],
+    );
+    assert!(e.contains("calibres.json"), "{e}");
+    assert!(taken.join("session.toml").is_file());
+    assert_eq!(show(&base, "Own")["takes"].as_array().unwrap().len(), 0);
+    std::fs::remove_file(config.join("calibres.json")).unwrap();
+    // A session.toml that doesn't parse: moved, and said so.
+    let broken = "bph = = 1\n";
+    std::fs::write(taken.join("session.toml"), broken).unwrap();
+    let doc = ok(
+        &base,
+        &[
+            "watches",
+            "move-take",
+            taken.to_str().unwrap(),
+            "--to",
+            "Own",
+        ],
+    );
+    let at = PathBuf::from(doc["take"].as_str().unwrap());
+    assert!(!taken.exists() && at.is_dir());
+    assert_eq!(doc["watch"]["name"], "Own");
+    assert!(doc["settings_changed"].is_null(), "{doc}");
+    let left = doc["left"].as_str().unwrap();
+    assert!(left.contains("is in Own now"), "{left}");
+    assert_eq!(
+        std::fs::read_to_string(at.join("session.toml")).unwrap(),
+        broken
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
