@@ -391,30 +391,33 @@ impl TimegrapherApp {
         }
     }
 
-    /// The beat rate the running test reads its beats at: the session's
-    /// while locked, kept in the test, else the rate it last ran at
-    /// ([`reserve::Test::bph`]).
+    /// The beat rate the running test reads its beats at, held in the
+    /// test from the session's locks ([`reserve::Test::hold_bph`], #2496).
     fn reserve_bph(&mut self) -> Option<u32> {
-        let now = self.bench.recording.live.as_ref().and_then(|l| l.bph());
         let t = self.bench.test.reserve.as_mut()?;
-        if now.is_some() {
-            t.bph = now;
+        match self.bench.recording.live.as_ref() {
+            Some(live) => t.hold_bph(live.beats(), live.bph()),
+            None => t.bph,
         }
-        t.bph
     }
 
     /// The run's hours from its first beat at audio second `first` to
     /// `to`, from hour `from_hour` on ([`power_reserve::hours_from`]), as
     /// `timegrapher session` reads each stretch, on the session's clock,
     /// breaks and masks.
-    fn reserve_hours(&self, first: f64, to: f64, from_hour: u32) -> Vec<power_reserve::Hour> {
+    pub(super) fn reserve_hours(
+        &self,
+        first: f64,
+        to: f64,
+        from_hour: u32,
+    ) -> Vec<power_reserve::Hour> {
         let bph = self.bench.test.reserve.as_ref().and_then(|t| t.bph);
         let Some(log) = self
             .bench
             .recording
             .live
             .as_ref()
-            .and_then(|l| steady::log_of_at(l, l.bph().or(bph)))
+            .and_then(|l| steady::log_of_at(l, bph.or(l.bph())))
         else {
             return Vec::new();
         };

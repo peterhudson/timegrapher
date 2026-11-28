@@ -2359,3 +2359,29 @@ fn an_ordinary_take_still_fails_when_its_input_sends_nothing() {
     drop(tx);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A running test's hours are read at the rate it holds, not at a live
+/// lock that differs from it (a relock on noise, #2496; Trevor 101 on
+/// #2527).
+#[test]
+fn a_running_tests_hours_are_read_at_the_rate_it_holds() {
+    let cfg = SynthConfig {
+        duration_s: 30.0,
+        bph: 21_600,
+        ..Default::default()
+    };
+    let ticks = generate(&cfg, |_| 280.0, |_| 0.0).samples;
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    let mut live = LiveAnalyzer::new(48_000, LiveConfig::default());
+    for s in ticks.chunks(48_000) {
+        live.push(s);
+    }
+    assert_eq!(live.bph(), Some(21_600), "the live lock");
+    app.bench.recording.live = Some(live);
+    let mut t = reserve::Test::new(Position::DialUp, true, String::new(), 0.0);
+    t.bph = Some(28_800);
+    app.bench.test.reserve = Some(t);
+    let hours = app.reserve_hours(1.0, 29.0, 0);
+    assert!(!hours.is_empty(), "the hour so far");
+    assert!(hours.iter().all(|h| h.bph == Some(28_800)), "{hours:?}");
+}

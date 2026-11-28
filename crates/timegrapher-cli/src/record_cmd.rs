@@ -654,8 +654,12 @@ impl<'a> StopFile<'a> {
 struct StopWatch {
     live: LiveAnalyzer,
     next_s: f64,
-    /// Reads the beats, each only once (#1892).
-    hearing: power_reserve::Hearing,
+    /// Reads the beats at the test's one rate, each only once (#1892,
+    /// #2496).
+    rate: power_reserve::TestRate,
+    /// The rate the test reads its beats at: the rate given, else as
+    /// [`power_reserve::TestRate::hold`] holds it.
+    bph: Option<u32>,
 }
 
 impl StopWatch {
@@ -666,7 +670,8 @@ impl StopWatch {
         StopWatch {
             live: LiveAnalyzer::new(fs_hz, cfg),
             next_s: 2.0,
-            hearing: power_reserve::Hearing::default(),
+            rate: power_reserve::TestRate::default(),
+            bph: set.bph,
         }
     }
 
@@ -684,8 +689,8 @@ impl StopWatch {
     /// How the test has ended by the sound taken in so far, if it has
     /// ([`power_reserve::Heard::ending`]), as the app decides it.
     fn ending(&mut self) -> Option<power_reserve::Ending> {
-        let beat_s = power_reserve::beat_s(self.live.bph());
-        let heard = self.hearing.update(self.live.beats(), beat_s);
+        let lock = self.live.bph();
+        let (_, heard) = self.rate.hold(&mut self.bph, lock, self.live.beats());
         heard.ending(self.live.duration_s(), 0.0)
     }
 
@@ -988,8 +993,8 @@ fn live(
                 f.push(&b.samples);
             }
             got += take;
-            if stop.as_mut().and_then(|s| s.push(&b.samples)).is_some() {
-                eprintln!("the watch has stopped");
+            if let Some(e) = stop.as_mut().and_then(|s| s.push(&b.samples)) {
+                eprintln!("{}", e.text());
                 break 'listen;
             }
             let s = got as f64 / fs_hz as f64;

@@ -93,7 +93,8 @@ timegrapher record FOLDER/first-look --position DU --seconds 60 --calibre NAME -
 
 Its `check` is the quick look: `watch_heard`, beats, rate, amplitude,
 beat error and clipping. For a closer look, `timegrapher analyze` the
-take's `audio-001.wav` with the same settings.
+take folder (`take` in `record`'s output) with the same settings; it
+reads the take's sound file and session file itself.
 
 Stop here if:
 
@@ -176,9 +177,14 @@ The program applies no tolerance: hold the numbers against the tables
 yourself. Write the answer as SKILL.md's "How to write the
 answer" says, with the service history and wear from step 0 in it.
 
-Then look at the shape of the Tick and the Tock: run `timegrapher analyze
-TAKE/audio-001.wav --calibre NAME --json` on each take (`take` in
-`record`'s output) and read its `shape` block against
+Then look at the shape of the Tick and the Tock: run this on each take
+folder (`take` in `record`'s output)
+
+```sh
+timegrapher analyze TAKE --calibre NAME --json
+```
+
+and read its `shape` block against
 [tick-shape.md](tick-shape.md#rules-for-possible-faults). A pattern
 that shows on the same side in several positions is worth passing on to
 a watchmaker; one in a single position is more likely the set-up.

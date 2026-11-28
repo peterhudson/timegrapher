@@ -186,7 +186,7 @@ timegrapher record --watch NAME [--library DIR] --position P [...]
 
 Records one position for `--seconds`, then stops; it listens only while
 it runs. Each run makes a take folder in FOLDER as the desktop app saves
-one (`audio-001.wav`, `clock.csv`, `session.json`, `session.toml`),
+one (`audio-001.flac`, `clock.csv`, `session.json`, `session.toml`),
 checks it, and adds every take to `FOLDER/session.toml` (written on the
 first take with the watch, calibre, bph and lift) with
 its position and `--wind-h`, and a comment line for no regular beat or
