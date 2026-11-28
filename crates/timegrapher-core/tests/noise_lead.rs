@@ -3,6 +3,7 @@
 //! and named, as long as the watch is heard for long enough after it.
 
 use timegrapher_core::audio::Audio;
+use timegrapher_core::cores::on_every_core;
 use timegrapher_core::measure::{Caveat, RATE_WINDOW_STEP_S};
 use timegrapher_core::stream::StreamConfig;
 use timegrapher_core::synth::{generate, noise_rms, Rng, SynthConfig, SCALE};
@@ -312,10 +313,17 @@ fn a_long_noise_lead_does_not_set_the_rate() {
             cases.extend((0..3).map(|k| (bph, 120.0, first + 3 * i as u64 + k, bound(120.0))));
         }
     }
-    for (bph, noise_s, seed, lead_to) in cases {
-        let what = format!("{bph} bph after {noise_s} s of noise ({seed})");
-        let (alone, led) = noise_then(noise_s, 60.0, bph, seed);
+    // The watch alone, and its reading, are the same for every case at
+    // one rate: made once per rate. The cases run over the machine's cores.
+    let alone: Vec<(u32, Audio, f64)> = on_every_core(&[14_400, 18_000, 19_800], |&bph| {
+        let alone = watch_at(bph, 60.0);
         let want = analyze(&alone, &AnalysisConfig::default()).summary;
+        (bph, alone, want.rate_s_per_day.unwrap())
+    });
+    on_every_core(&cases, |&(bph, noise_s, seed, lead_to)| {
+        let what = format!("{bph} bph after {noise_s} s of noise ({seed})");
+        let (_, alone, w) = alone.iter().find(|a| a.0 == bph).unwrap();
+        let led = noise_before(noise_s, alone, seed);
         for set in [None, Some(bph)] {
             let cfg = AnalysisConfig {
                 bph: set,
@@ -326,7 +334,7 @@ fn a_long_noise_lead_does_not_set_the_rate() {
             assert!(got.watch_heard, "{what}, set {set:?}: {:?}", got.caveats);
             assert_eq!(got.bph_heard, None, "{what}, set {set:?}");
             assert_eq!(got.bph_set, set, "{what}");
-            let (r, w) = (got.rate_s_per_day.unwrap(), want.rate_s_per_day.unwrap());
+            let r = got.rate_s_per_day.unwrap();
             assert!((r - w).abs() <= 0.3, "{what}: rate {r} against {w}");
             let lead = lead_left_out(&got.caveats).expect("the lead named");
             assert!(
@@ -334,7 +342,7 @@ fn a_long_noise_lead_does_not_set_the_rate() {
                 "{what}, set {set:?}: lead {lead}"
             );
         }
-    }
+    });
 }
 
 /// Stand noise alone, with no rate set, is still no watch and names no
@@ -369,31 +377,35 @@ fn stand_noise_alone_is_no_watch_when_guessed_again() {
 /// right for shares near 1.
 #[test]
 fn a_read_at_a_harmonic_loses_to_the_watchs_own_rate() {
-    for (bph, wrong) in [
-        (18_000, 12_000),
-        (18_000, 36_000),
-        (28_800, 14_400),
-        (28_800, 21_600),
-    ] {
-        let noises = (3101..=3105).chain(3111..=3115).chain(3121..=3140);
-        let noises = noises.map(Some);
-        for seed in std::iter::once(None).chain(noises) {
-            let watch = watch_at(bph, 60.0);
-            let watch = seed.map_or(watch.clone(), |seed| noise_over(&watch, seed));
-            let read = |r: u32| {
-                let cfg = AnalysisConfig {
-                    bph: Some(r),
-                    ..Default::default()
-                };
-                analyze(&watch, &cfg).summary
+    // Each watch, and its read at its own rate, serve both of its
+    // harmonics: made once per rate and noise. Those run over the
+    // machine's cores.
+    let noises = (3101..=3105).chain(3111..=3115).chain(3121..=3140);
+    let seeds: Vec<Option<u64>> = std::iter::once(None).chain(noises.map(Some)).collect();
+    let jobs: Vec<(u32, [u32; 2], Option<u64>)> =
+        [(18_000, [12_000, 36_000]), (28_800, [14_400, 21_600])]
+            .into_iter()
+            .flat_map(|(bph, wrongs)| seeds.iter().map(move |&seed| (bph, wrongs, seed)))
+            .collect();
+    on_every_core(&jobs, |&(bph, wrongs, seed)| {
+        let watch = watch_at(bph, 60.0);
+        let watch = seed.map_or(watch.clone(), |seed| noise_over(&watch, seed));
+        let read = |r: u32| {
+            let cfg = AnalysisConfig {
+                bph: Some(r),
+                ..Default::default()
             };
-            let (right, harmonic) = (read(bph), read(wrong));
+            analyze(&watch, &cfg).summary
+        };
+        let right = read(bph);
+        for wrong in wrongs {
+            let harmonic = read(wrong);
             let what = format!("{bph} read at {wrong}, noise {seed:?}");
             assert!(right.watch_heard, "{what}");
             assert!(reads_better(&right, &harmonic), "{what}");
             assert!(!reads_better(&harmonic, &right), "{what}");
         }
-    }
+    });
 }
 
 /// `watch` with the synthetic stand noise drawn from `seed` over it.
