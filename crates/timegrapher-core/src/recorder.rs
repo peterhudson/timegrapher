@@ -1110,8 +1110,8 @@ const SNAPSHOT_HEAD: u64 = 4096;
 pub struct PendingSave {
     parent: PathBuf,
     dest: PathBuf,
-    /// A new copy: its folder must not be there yet (#2401).
-    fresh: bool,
+    /// A new copy's folder or the copy saved before (#2401, #2437).
+    fresh: claim::SaveInto,
     files: Vec<PendingFile>,
     /// session.json and the companion files, written whole.
     written: NamedFiles,
@@ -1245,7 +1245,7 @@ impl PendingSave {
         mut before: impl FnMut(SaveStep, &Path) -> io::Result<()>,
     ) -> io::Result<SavedCopy> {
         let mut update = SaveUpdate::new(&self.parent, &self.dest)?;
-        update.fresh = self.fresh;
+        update.fresh = self.fresh.checked(&self.dest)?;
         let mut grown = None;
         for f in &self.files {
             let file = f.name();
@@ -1374,7 +1374,7 @@ struct SaveUpdate {
     dest: PathBuf,
     retain: bool,
     /// See [`PendingSave`]'s `fresh`.
-    fresh: bool,
+    fresh: claim::SaveInto,
 }
 
 impl SaveUpdate {
@@ -1395,7 +1395,7 @@ impl SaveUpdate {
             root,
             dest: dest.to_path_buf(),
             retain: false,
-            fresh: false,
+            fresh: claim::SaveInto::New,
         };
         fs::create_dir(&update.staged)?;
         fs::create_dir(&update.backup)?;
@@ -1423,12 +1423,13 @@ impl SaveUpdate {
                 _ => {}
             }
         }
+        self.fresh.check(&self.dest)?;
         let created = match fs::create_dir(&self.dest) {
             Ok(()) => true,
             // A new copy's folder is its own, never a take made meanwhile.
             Err(e)
                 if e.kind() == io::ErrorKind::AlreadyExists
-                    && !self.fresh
+                    && self.fresh != claim::SaveInto::New
                     && self.dest.is_dir() =>
             {
                 false
