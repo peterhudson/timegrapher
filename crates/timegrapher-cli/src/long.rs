@@ -298,21 +298,26 @@ impl ResolvedTrain {
     }
 }
 
-pub(crate) fn parse_wheel(s: &str) -> Result<Wheel, String> {
-    let (name, secs) = s
-        .rsplit_once('=')
-        .ok_or_else(|| format!("--wheel '{s}': expected NAME=SECONDS"))?;
+/// A `--wheel` value, NAME=SECONDS: the period is held to core's domain
+/// for a length of time, finite and above 0 (`input_domain::above`), so
+/// NaN and the infinities are refused (#2423). The error names no flag:
+/// clap adds it at the command line, `parse_wheel` here.
+pub(crate) fn wheel(s: &str) -> Result<Wheel, String> {
+    let (name, secs) = s.rsplit_once('=').ok_or("expected NAME=SECONDS")?;
     let period_s: f64 = secs
         .trim()
         .parse()
-        .map_err(|_| format!("--wheel '{s}': '{secs}' is not a number of seconds"))?;
-    if period_s <= 0.0 {
-        return Err(format!("--wheel '{s}': period must be positive"));
-    }
+        .map_err(|_| format!("'{secs}' is not a number of seconds"))?;
+    let period_s =
+        timegrapher_core::input_domain::above(period_s, 0.0).map_err(|e| format!("period {e}"))?;
     Ok(Wheel {
         name: name.trim().to_string(),
         period_s,
     })
+}
+
+pub(crate) fn parse_wheel(s: &str) -> Result<Wheel, String> {
+    wheel(s).map_err(|e| format!("--wheel '{s}': {e}"))
 }
 
 /// Expand each directory in place, in the desktop's manifest-first/natural

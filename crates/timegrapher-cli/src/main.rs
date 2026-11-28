@@ -79,6 +79,12 @@ fn parse_finite(text: &str) -> Result<f64, String> {
     timegrapher_core::input_domain::finite(number(text)?)
 }
 
+/// A `--wheel` NAME=SECONDS, checked by `long::wheel` so a bad period is
+/// a usage error before any recording is read (#2423).
+fn parse_wheel_flag(text: &str) -> Result<String, String> {
+    long::wheel(text).map(|_| text.to_string())
+}
+
 /// Where the developer commands, `regress` and `synth`, sit in the list
 /// of commands: after every command for measuring a watch (#2099).
 const DEVELOPER_ORDER: usize = 1000;
@@ -280,7 +286,7 @@ enum Command {
         escape_teeth: Option<u32>,
         /// Another wheel to name, as NAME=SECONDS per turn (repeatable),
         /// e.g. --wheel "third wheel=450".
-        #[arg(long)]
+        #[arg(long, value_parser = parse_wheel_flag)]
         wheel: Vec<String>,
         /// Folder for the report and data files (default: next to the
         /// recording, named after it).
@@ -329,7 +335,7 @@ enum Command {
         #[arg(long, value_parser = parse_escape_teeth)]
         escape_teeth: Option<u32>,
         /// Another wheel to name, as NAME=SECONDS per turn (repeatable).
-        #[arg(long)]
+        #[arg(long, value_parser = parse_wheel_flag)]
         wheel: Vec<String>,
         /// Length of each rate reading, seconds.
         #[arg(long, default_value_t = 10.0, value_parser = parse_positive)]
