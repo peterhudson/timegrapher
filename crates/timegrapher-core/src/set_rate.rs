@@ -70,6 +70,26 @@ pub fn read_at_text(bph: Option<u32>, from: Option<BphFrom>) -> String {
     }
 }
 
+/// The beat rate a session's header gives for reading `r` (#2432): the
+/// rate set, "17280 bph"; on Auto, the standard rate the lock was read at,
+/// "Auto, 28800 bph found", or, where the lock was judged off every
+/// standard rate ([`crate::measure::Caveat::OffStandardRate`]), the beat
+/// rate heard, "Auto, 17571 bph heard"; "Auto" alone with no watch heard.
+pub fn header_text(r: &crate::session::Reading) -> String {
+    if let Some(b) = r.bph_set {
+        return format!("{b} bph");
+    }
+    if let Some(o) = crate::measure::off_standard(&r.measurement.caveats) {
+        let heard = crate::figure_text::beat_rate_heard_text(o.bph_measured);
+        return format!("Auto, {heard} heard");
+    }
+    if r.measurement.watch_heard {
+        format!("Auto, {} bph found", r.bph)
+    } else {
+        "Auto".into()
+    }
+}
+
 /// What a session file whose calibre's rate is set aside says
 /// ([`set_aside_why`]): its takes are read on Auto, unless a rate is set.
 pub fn session_set_aside_text(calibre: Option<&Calibre>, bph: Option<u32>) -> Option<String> {

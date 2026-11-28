@@ -918,6 +918,17 @@ impl Session<'_> {
     pub fn lift_text(&self) -> String {
         timegrapher_core::measure::lift_words(self.lift_deg, self.lift_known)
     }
+
+    /// The beat rate as the text and the HTML report's header show it, in
+    /// core's words for the first reading
+    /// ([`timegrapher_core::set_rate::header_text`]): on Auto it says so,
+    /// never the standard rate alone (#2432).
+    pub fn rate_text(&self) -> String {
+        self.readings.first().map_or_else(
+            || format!("{} bph", self.bph),
+            timegrapher_core::set_rate::header_text,
+        )
+    }
 }
 
 pub fn run(paths: &[PathBuf], o: &Options) -> Result<(), String> {
@@ -1370,13 +1381,13 @@ fn print_watch(s: &Session) {
         (None, None) => String::new(),
     };
     println!(
-        "Watch        {}{} bph, {}",
+        "Watch        {}{}, {}",
         if name.is_empty() {
             String::new()
         } else {
             format!("{name}; ")
         },
-        s.bph,
+        s.rate_text(),
         s.lift_text()
     );
     if let Some(p) = &s.power_reserve {

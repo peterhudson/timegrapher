@@ -706,11 +706,11 @@ fn facts_table(sn: &Session) -> String {
     let _ = write!(
         body,
         r#"<table class="facts">
-<tr><th>Movement</th><td>{} bph, {}</td></tr>
+<tr><th>Movement</th><td>{}, {}</td></tr>
 <tr><th>Recordings</th><td>{} in {} position(s): {}</td></tr>
 <tr><th>Clock</th><td>{}</td></tr>
 {}{}</table>"#,
-        sn.bph,
+        esc(&sn.rate_text()),
         sn.lift_text(),
         sn.readings.len(),
         positions.len(),

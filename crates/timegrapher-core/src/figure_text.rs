@@ -3,6 +3,12 @@
 //! Core keeps full precision and JSON is never rounded; only text is, once,
 //! here.
 
+/// A beat rate heard ([`crate::timing::MeasuredRate`]) as text, to its
+/// place ([`base_digits::BEAT_RATE_HEARD`]): "17571 bph".
+pub fn beat_rate_heard_text(bph: f64) -> String {
+    format!("{} bph", fixed_text(bph, base_digits::BEAT_RATE_HEARD))
+}
+
 /// A signed figure as the app shows it, to `digits` decimals: `+1.2`,
 /// `-1.2`, and a figure that rounds to zero takes no sign (`0.0`, never
 /// `-0.0` or `+0.0`). The app sets the minus as a true minus sign.
