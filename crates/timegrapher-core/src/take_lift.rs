@@ -7,14 +7,56 @@ use super::*;
 /// Whether the lift a session file `m` gives was supplied, or `None`
 /// when it gives none: its `lift_known` where it says, else (an older
 /// file, which did not record it) supplied unless it is the default
-/// [`DEFAULT_LIFT_DEG`] and its calibre `cal` gives no lift (#685). Core,
-/// the CLI and the desktop take it from here.
+/// [`DEFAULT_LIFT_DEG`] and the file's own calibre gives no lift (#685).
+/// Only the file's own `calibre =` line counts (#2234): the recorder knew
+/// that calibre's lift and would have written it, so a 52 beside it was
+/// typed; a calibre named only on the call (`--calibre`, MCP `calibre`)
+/// was never known to the recorder. `cal` is the calibre this reading
+/// resolved; it stands for the file's own where it is the one the file
+/// names, else the file's line is looked up in the table. Core, the CLI
+/// and the desktop take it from here.
 pub fn file_lift_known(m: &Manifest, cal: Option<&Calibre>) -> Option<bool> {
     let lift = m.lift?;
     Some(
         m.lift_known
-            .unwrap_or(lift != DEFAULT_LIFT_DEG || cal.is_some_and(|c| c.lift_angle_deg.is_some())),
+            .unwrap_or(lift != DEFAULT_LIFT_DEG || own_calibre_gives_lift(m, cal)),
     )
+}
+
+/// Whether the calibre the session file `m` names gives a lift (#2234):
+/// `cal`'s where `cal` is that calibre ([`is_files_own`]), else the
+/// shipped table's row for the name; false where the file names none.
+fn own_calibre_gives_lift(m: &Manifest, cal: Option<&Calibre>) -> bool {
+    use crate::calibre_store::Entry;
+    let Some(named) = m
+        .calibre
+        .as_deref()
+        .filter(|n| !crate::calibres::key(n).is_empty())
+    else {
+        return false;
+    };
+    let row = crate::calibres::find(named);
+    match cal.filter(|c| is_files_own(named, row, c)) {
+        Some(c) => c.lift_angle_deg.is_some(),
+        None => row.is_some_and(|r| Entry::Table(r).lift_angle_deg().is_some()),
+    }
+}
+
+/// Whether `cal` is the calibre a file's line `named` (whose table row is
+/// `row`) names: it has that name; or the table resolves the name to it;
+/// or, where the table does not know the name, `cal` is no table
+/// calibre, so it can only be the user's calibre the line names by one
+/// of its aliases (core has no user catalogue here).
+fn is_files_own(named: &str, row: Option<&crate::calibres::Calibre>, cal: &Calibre) -> bool {
+    use crate::calibres::{find, key};
+    let k = key(&cal.name);
+    if k == key(named) {
+        return true;
+    }
+    match row {
+        Some(r) => key(&r.calibre) == k,
+        None => find(&cal.name).is_none_or(|t| key(&t.calibre) != k),
+    }
 }
 
 /// A take's lift angle, whether it was supplied, and where it came from.
@@ -138,5 +180,160 @@ mod tests {
                 from: SettingFrom::Default
             }
         );
+    }
+
+    /// An older file's bare 52 is typed only beside its own calibre line
+    /// that gives a lift; beside a calibre named only on the call it is
+    /// the default it was recorded with, and that calibre's lift wins
+    /// (#2234).
+    #[test]
+    fn an_older_files_bare_52_is_typed_only_beside_its_own_calibre() {
+        let cal = |name: &str, lift| Calibre {
+            name: name.into(),
+            bph: None,
+            lift_angle_deg: lift,
+            lift_set_aside_deg: None,
+            escape_teeth: None,
+            escapement: None,
+            wheels: Vec::new(),
+            meshes: Vec::new(),
+        };
+        let file = |text: &str| -> Manifest { toml::from_str(text).unwrap() };
+        let read = |m: &Manifest, c: &Calibre| {
+            let l = lift_setting(None, Some(m), Some(c));
+            (file_lift_known(m, Some(c)), l.lift_deg, l.known, l.from)
+        };
+        let x = cal("Test X", Some(59.0));
+        let unitas = calibre_named("Unitas 6497-2", &Default::default()).unwrap();
+        // No calibre line: the one on the call was never the recorder's.
+        assert_eq!(
+            read(&file("lift = 52"), &x),
+            (Some(false), 59.0, true, SettingFrom::Calibre)
+        );
+        // Its own line, however it is spelt, names the calibre read.
+        for own in ["calibre = \"Test X\"", "calibre = \"test-x\""] {
+            assert_eq!(
+                read(&file(&format!("{own}\nlift = 52")), &x),
+                (Some(true), 52.0, true, SettingFrom::Take),
+                "{own}"
+            );
+        }
+        // Its own line names another calibre: that one's lift decides,
+        // from the table, not the one on the call.
+        let with_lift = crate::calibres::find("Unitas 6497-2").unwrap();
+        assert!(with_lift.lift_angle_deg.is_some());
+        let own_lift = file("calibre = \"Unitas 6497-2\"\nlift = 52");
+        assert_eq!(
+            read(&own_lift, &x),
+            (Some(true), 52.0, true, SettingFrom::Take)
+        );
+        let no_lift = crate::calibres::find("Seagull ST36").unwrap();
+        assert!(no_lift.lift_angle_deg.is_none());
+        let own_none = file("calibre = \"Seagull ST36\"\nlift = 52");
+        assert_eq!(
+            read(&own_none, &x),
+            (Some(false), 59.0, true, SettingFrom::Calibre)
+        );
+        // Its own line names the calibre read, which gives no lift.
+        assert_eq!(
+            read(
+                &file("calibre = \"Test Y\"\nlift = 52"),
+                &cal("Test Y", None)
+            )
+            .0,
+            Some(false)
+        );
+        // Its own line is a name the table resolves: the calibre read is
+        // that row, and its own lift (here none) decides, not the row's.
+        let short = file("calibre = \"6497-2\"\nlift = 52");
+        assert_eq!(
+            crate::calibres::find("6497-2").map(|r| r.calibre.as_str()),
+            Some("Unitas 6497-2")
+        );
+        assert_eq!(
+            file_lift_known(&short, Some(&cal("Unitas 6497-2", None))),
+            Some(false)
+        );
+        // A label the table does not know, read with a table calibre
+        // named on the call: not the file's own.
+        assert_eq!(
+            read(&file("calibre = \"Unknown label\"\nlift = 52"), &unitas).0,
+            Some(false)
+        );
+        // A marker still wins, and any other value was typed.
+        assert_eq!(
+            read(&file("lift = 52\nlift_known = true"), &x).0,
+            Some(true)
+        );
+        assert_eq!(read(&file("lift = 50"), &x).0, Some(true));
+    }
+
+    /// A user's calibre the file's own line names by one of its aliases
+    /// is the file's own: a bare 52 beside it was typed, as on main
+    /// (#2234, Trevor 107's probe on #2540).
+    #[test]
+    fn a_users_calibre_named_by_its_alias_is_the_files_own() {
+        use crate::calibre_store::{CustomCalibre, UserCalibres};
+        let mut user = UserCalibres::default();
+        user.put_custom(CustomCalibre {
+            name: "Bench 44".into(),
+            maker: None,
+            aliases: vec!["Workshop-A".into()],
+            bph: None,
+            lift_angle_deg: Some(44.0),
+            escape_teeth: None,
+            escapement: None,
+            wheels: Vec::new(),
+            notes: None,
+        });
+        let m: Manifest = toml::from_str("calibre = \"Workshop-A\"\nlift = 52").unwrap();
+        let cal = calibre_named(m.calibre.as_deref().unwrap(), &user).unwrap();
+        assert_eq!(cal.name, "Bench 44");
+        assert_eq!(file_lift_known(&m, Some(&cal)), Some(true));
+        assert_eq!(
+            lift_setting(None, Some(&m), Some(&cal)),
+            LiftSetting {
+                lift_deg: 52.0,
+                known: true,
+                from: SettingFrom::Take
+            }
+        );
+    }
+
+    /// A user's calibre whose own name the table also resolves is the
+    /// file's own, read by that name or by an alias: its lift decides,
+    /// not the table row's (#2234, Trevor 107 on #2540).
+    #[test]
+    fn a_users_calibre_with_a_table_name_is_the_files_own() {
+        use crate::calibre_store::{CustomCalibre, UserCalibres};
+        let custom = |name: &str, alias: &str, lift| CustomCalibre {
+            name: name.into(),
+            maker: None,
+            aliases: vec![alias.into()],
+            bph: None,
+            lift_angle_deg: lift,
+            escape_teeth: None,
+            escapement: None,
+            wheels: Vec::new(),
+            notes: None,
+        };
+        let mut user = UserCalibres::default();
+        // Unitas 6497-2 gives a lift; this one does not.
+        user.put_custom(custom("6497-2", "Bench-A", None));
+        // The table's row for 2824-2 is another; this one gives a lift.
+        user.put_custom(custom("2824-2", "Bench-B", Some(44.0)));
+        for (line, name) in [("6497-2", "6497-2"), ("2824-2", "2824-2")] {
+            let row = crate::calibres::find(line).map(|r| r.calibre.clone());
+            assert!(row.is_some_and(|r| r != name), "{line}");
+        }
+        let known = |line: &str| {
+            let m: Manifest = toml::from_str(&format!("calibre = \"{line}\"\nlift = 52")).unwrap();
+            let cal = calibre_named(line, &user).unwrap();
+            (cal.name.clone(), file_lift_known(&m, Some(&cal)))
+        };
+        // By its own name: its missing lift makes the 52 assumed.
+        assert_eq!(known("6497-2"), ("6497-2".into(), Some(false)));
+        // By an alias the table does not know: its lift makes 52 typed.
+        assert_eq!(known("Bench-B"), ("2824-2".into(), Some(true)));
     }
 }
