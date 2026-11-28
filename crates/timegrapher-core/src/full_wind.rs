@@ -12,25 +12,43 @@ use std::path::Path;
 pub fn unix_of_utc(s: &str) -> Option<f64> {
     let s = s.trim().trim_end_matches('Z');
     let (date, time) = s.split_once('T')?;
-    let mut d = date.splitn(3, '-').map(str::parse::<i64>);
-    let (year, month, day) = (d.next()?.ok()?, d.next()?.ok()?, d.next()?.ok()?);
+    let mut d = date
+        .splitn(3, '-')
+        .map(|p| Some(p).filter(|p| digits(p))?.parse::<i64>().ok());
+    let (year, month, day) = (d.next()??, d.next()??, d.next()??);
     let mut t = time.splitn(3, ':');
-    let hour: i64 = t.next()?.parse().ok()?;
-    let minute: i64 = t.next()?.parse().ok()?;
-    let second: f64 = t.next().unwrap_or("0").parse().ok()?;
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+    let hour = t.next().filter(|p| digits(p))?.parse::<i64>().ok()?;
+    let minute = t.next().filter(|p| digits(p))?.parse::<i64>().ok()?;
+    let second = match t.next() {
+        None => 0.0,
+        Some(p) => {
+            let (whole, frac) = p.split_once('.').unwrap_or((p, "0"));
+            if !digits(whole) || !digits(frac) {
+                return None;
+            }
+            p.parse::<f64>().ok()?
+        }
+    };
+    // A real civil date and a time within its day: 2025-02-29, 24:00 and
+    // 12:60 are refused, not rolled into the next day or hour (#2422).
+    if !(0..24).contains(&hour) || !(0..60).contains(&minute) || !(0.0..60.0).contains(&second) {
         return None;
     }
-    // Days since 1970-01-01 from a civil date (Howard Hinnant's
-    // algorithm), the inverse of the one `utc` uses.
-    let y = year - i64::from(month <= 2);
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let mp = (month + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146097 + doe - 719468;
+    let date = chrono::NaiveDate::from_ymd_opt(
+        i32::try_from(year).ok()?,
+        u32::try_from(month).ok()?,
+        u32::try_from(day).ok()?,
+    )?;
+    let days = date
+        .signed_duration_since(chrono::NaiveDate::from_ymd_opt(1970, 1, 1)?)
+        .num_days();
     Some((days * 86400 + hour * 3600 + minute * 60) as f64 + second)
+}
+
+/// True when `p` is one or more ASCII digits, so no sign, space or
+/// exponent slips past `parse`.
+fn digits(p: &str) -> bool {
+    !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Hours since full wind `h` in whole tenths of an hour, rounded: the
@@ -106,6 +124,36 @@ mod tests {
         assert_eq!(unix_of_utc("2026-10-08T20:57"), Some(1_791_493_020.0));
         assert_eq!(unix_of_utc("not a time"), None);
         assert_eq!(unix_of_utc("2026-13-08T20:57:00Z"), None);
+    }
+
+    #[test]
+    fn impossible_dates_and_times_are_refused_not_rolled_over() {
+        // #2422: these used to roll into the next day, hour or minute.
+        for bad in [
+            "2025-02-29T12:00:00Z",
+            "2026-04-31T12:00:00Z",
+            "2026-11-25T24:00:00Z",
+            "2026-11-25T12:60:00Z",
+            "2026-11-25T12:00:60Z",
+            "2026-11-25T12:00:60.5Z",
+            "2026-11-25T-1:00:00Z",
+            "2026-11-25T12:00:+5Z",
+            "2026-11-25T12:00:1e1Z",
+            "2026-11-25T12:00:NaNZ",
+            "2026-00-10T12:00:00Z",
+            "2026-11-25T12:00:.Z",
+        ] {
+            assert_eq!(unix_of_utc(bad), None, "{bad}");
+        }
+        // Real leap days and the documented optional forms still read.
+        assert_eq!(unix_of_utc("2024-02-29T12:00:00Z"), Some(1_709_208_000.0));
+        assert_eq!(unix_of_utc("2000-02-29T00:00:00Z"), Some(951_782_400.0));
+        assert_eq!(
+            unix_of_utc("2026-11-25T23:59:59.999Z"),
+            Some(1_795_651_199.999)
+        );
+        assert_eq!(unix_of_utc("2026-11-25T23:59"), Some(1_795_651_140.0));
+        assert_eq!(unix_of_utc("2026-11-25T23:59:59"), Some(1_795_651_199.0));
     }
 
     #[test]
