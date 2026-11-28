@@ -164,7 +164,7 @@ parsed is an error and is not replaced.
 
 The `regress (engine)` job in `.github/workflows/ci.yml` checks out the public
 corpus at the full commit in its `CORPUS_REVISION` setting, currently
-`14b5e38d0aa954bf2c2c5ebb9f374a1f97ab6af1`. It verifies the checkout's actual
+`0b25df3fe6645af57fbdf66a3e48b766ec48f8a1`. It verifies the checkout's actual
 commit and records that commit, the engine revision and `corpus.json`'s SHA-256
 in the job log and summary before fetching audio. New corpus commits therefore
 do not silently change an existing engine revision's CI inputs.
@@ -234,6 +234,15 @@ contain all four authenticated inputs, even without the required-mode flag.
 Metadata belongs in `corpus.json`; audio can be under `takes/<take>/` or directly
 under `<take>/`. The fixture-validation unit cases use tiny constructed files
 without acoustic analysis or process-wide environment changes.
+
+### The R16 Power Reserve check
+
+The same job then runs `crates/timegrapher-cli/tests/record_reserve_corpus.rs`
+(#2531). It builds the #2496 reporter's R16 file from synthetic sound around
+the smoke take `shopvoices_28800_DU_14s` (checked against `corpus.json`, and
+the built file against the report's SHA-256), runs `record --power-reserve`
+on it, and expects `by_hand` at 772.0 s. Without the corpus it skips, unless
+`TIMEGRAPHER_REQUIRE_CORPUS` is set.
 
 ## Updating CI's corpus revision
 

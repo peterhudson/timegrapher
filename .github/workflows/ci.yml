@@ -469,7 +469,7 @@ jobs:
       # As in the test job: no debug info in CI's release builds.
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       # Reviewed with the engine baseline; update through docs/developer/regress.md.
-      CORPUS_REVISION: 14b5e38d0aa954bf2c2c5ebb9f374a1f97ab6af1
+      CORPUS_REVISION: 0b25df3fe6645af57fbdf66a3e48b766ec48f8a1
       TIMEGRAPHER_CORPUS: ${{ github.workspace }}/corpus
       TIMEGRAPHER_REQUIRE_CORPUS: "1"
       TIMEGRAPHER_CLI: ${{ github.workspace }}/target/release/timegrapher
@@ -610,6 +610,17 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --release -p timegrapher-core --test equivalence --test wheel_lines --test take_context -- --nocapture 2>&1 | tee equivalence.txt
+      # The #2496 reporter's R16 recipe through `record --power-reserve`
+      # (#2531): it reads the smoke take shopvoices_28800_DU_14s, which the
+      # engine check's --smoke fetch has brought, and skips without the
+      # corpus. Built without default features, as the build step is.
+      # About 30 s in release.
+      - name: Power Reserve Test on real shop noise (R16)
+        if: matrix.check == 'engine' && steps.changes.outputs.full != 'false'
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          cargo test --locked --release -p timegrapher-cli --no-default-features --test record_reserve_corpus -- --nocapture 2>&1 | tee -a equivalence.txt
       # The example take's audio stays out of the corpus audio cache, which
       # this job may save, so the cache and the other checks read as before.
       - name: Leave the example take's audio out of the cache
