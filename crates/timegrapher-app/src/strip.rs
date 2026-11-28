@@ -12,7 +12,8 @@
 //! right and early beats towards the top.
 
 use crate::strength::{self, Zero};
-use axis::{axis_ms, label_every, time_lines, time_step};
+pub use axis::fmt_time_fine;
+use axis::{axis_ms, clock_column, label_every, time_gap, time_step, CLOCK_COLUMN};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use sweep::{Geom, Sweep};
 use timegrapher_core::beats::Beat;
@@ -20,6 +21,7 @@ use timegrapher_core::breaks::Break;
 use timegrapher_core::chart_scale::{axis_number, round_step, steady_ends};
 use timegrapher_core::clock::ClockFit;
 use timegrapher_core::library::length_text;
+use timegrapher_core::time_of_day::time_lines;
 pub use timegrapher_core::timing::Anchor;
 
 mod axis;
@@ -998,12 +1000,10 @@ pub fn draw_strip(
         .iter()
         .map(|(o, s)| scale_column(ui, &font, o, *s))
         .collect();
-    let clock = extras.wall.is_some();
-    let (r, lane) = strip_rects(resp.rect, view, (extras.gutter, clock), &cols, row_h);
-    if view.horizontal {
-        crate::theme::note_time_span(ui.ctx(), r.x_range());
-    }
-    let g = Geom {
+    // The take's newest second so far, wherever the strip looks: a take
+    // falling on more than one day names the day on its labels (#2174).
+    let take_end = beats.last().map_or(end_s, |b| b.time.max(end_s));
+    let geom = |r| Geom {
         r,
         half: view.half_width_ms,
         span: view.span_s,
@@ -1015,6 +1015,18 @@ pub fn draw_strip(
             Sweep::Moving
         },
     };
+    let column = extras.wall.map(|_| CLOCK_COLUMN);
+    let (mut r, mut lane) = strip_rects(resp.rect, view, (extras.gutter, column), &cols, row_h);
+    if let (Some(w), false) = (extras.wall, view.horizontal) {
+        let need = clock_column(&painter, &font, w, &geom(r), take_end);
+        if need > CLOCK_COLUMN {
+            (r, lane) = strip_rects(resp.rect, view, (extras.gutter, Some(need)), &cols, row_h);
+        }
+    }
+    if view.horizontal {
+        crate::theme::note_time_span(ui.ctx(), r.x_range());
+    }
+    let g = geom(r);
     let f = Frame {
         painter,
         outer: resp.rect,
@@ -1028,6 +1040,7 @@ pub fn draw_strip(
         row_h,
         cols,
         oldest: g.oldest(),
+        take_end,
     };
     let mut input = StripInput::default();
     let drags = f.pointer(ui, &resp, &mut input);
@@ -1091,14 +1104,17 @@ fn unit_line(o: &Overlay) -> String {
 fn strip_rects(
     outer: Rect,
     view: &StripView,
-    (gutter, clock): (f32, bool),
+    (gutter, clock): (f32, Option<f32>),
     cols: &[f32],
     row_h: f32,
 ) -> (Rect, Rect) {
     let lane_h = row_h + 4.0;
     // Time of Day: a second row of labels under the take's time, across;
-    // down, a column wide enough for "14:35:20".
-    let (under, left) = if clock { (row_h, 52.0) } else { (0.0, 36.0) };
+    // down, a column `clock` points wide.
+    let (under, left) = match clock {
+        Some(w) => (row_h, w),
+        None => (0.0, 36.0),
+    };
     let overlays = cols.len();
     let r = if view.horizontal {
         // Room over the plot for each axis's second line, its unit, clear
@@ -1149,6 +1165,8 @@ struct Frame<'a> {
     cols: Vec<f32>,
     /// The time at the strip's oldest end.
     oldest: f64,
+    /// The take's newest second so far, wherever the strip looks.
+    take_end: f64,
 }
 
 /// What a drag on the strip is doing this frame.
@@ -1561,10 +1579,7 @@ impl Frame<'_> {
         let mut lines = Vec::new();
         let text = self.vis.weak_text_color();
         let along_px = if g.horizontal { r.width() } else { r.height() } as f64;
-        // The least room between two labelled lines, points: across, a
-        // label's width ("10:00:00"); down, its height with space each side.
-        let gap = if g.horizontal { 90.0 } else { 40.0 };
-        let tstep = time_step(g.span, gap, along_px);
+        let tstep = time_step(g.span, time_gap(g.horizontal), along_px);
         let wall = self.extras.wall;
         for t in time_lines(g.end, self.oldest, tstep) {
             let a = g.pos(-g.half, t);
@@ -1588,7 +1603,7 @@ impl Frame<'_> {
                 painter.text(
                     under,
                     under_align,
-                    w.label(t, tstep),
+                    w.label(t, tstep, (self.oldest, self.take_end)),
                     self.font.clone(),
                     text,
                 );
@@ -2072,7 +2087,7 @@ impl Frame<'_> {
         painter.line_segment([a, b], Stroke::new(1.0_f32, vis.weak_text_color()));
         let label = self.extras.wall.map_or_else(
             || fmt_time_fine(t),
-            |w| format!("{}  {}", fmt_time_fine(t), w.label_fine(t)),
+            |w| format!("{}  {}", fmt_time_fine(t), w.label_fine(t, self.take_end)),
         );
         let galley =
             painter.layout_no_wrap(label, FontId::proportional(11.0), vis.strong_text_color());
@@ -2086,18 +2101,6 @@ impl Frame<'_> {
         };
         painter.rect_filled(rect, 2.0, vis.extreme_bg_color.gamma_multiply(0.9));
         painter.galley(rect.min + Vec2::splat(2.0), galley, vis.strong_text_color());
-    }
-}
-
-/// A time to the hundredth of a second, such as "1:23.45", for the
-/// cursor's label.
-pub fn fmt_time_fine(t: f64) -> String {
-    let cs = (t.max(0.0) * 100.0).round() as u64;
-    let (s, frac) = (cs / 100, cs % 100);
-    if s >= 3600 {
-        format!("{}:{:02}:{:02}.{frac:02}", s / 3600, s / 60 % 60, s % 60)
-    } else {
-        format!("{}:{:02}.{frac:02}", s / 60, s % 60)
     }
 }
 

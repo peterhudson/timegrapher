@@ -68,7 +68,7 @@ hand meanwhile stays as you set it.
 
 ## Time of Day
 
-**Time of Day**, the clock in the Paper Strip's toolbar, writes the time of day on this computer's clock (`14:35:20`) under each of the strip's time labels, so the take's time and the clock's show together; with Direction set to Down, the take's time is above each line and the time of day below it. The cursor shows both too (`1:23.45  14:35:20.45`). With lines six hours or more apart, the time of day names the day (`Thu 06:00`). It is kept between runs.
+**Time of Day**, the clock in the Paper Strip's toolbar, writes the time of day on this computer's clock (`14:35:20`) under each of the strip's time labels, so the take's time and the clock's show together; with Direction set to Down, the take's time is above each line and the time of day below it. The cursor shows both too (`1:23.45  14:35:20.45`). With lines six hours or more apart, every time of day names its day (`Thu 06:00`). Closer, the first one after each midnight names it (`Fri 00:04:27`), and so does the take's first when the take runs past midnight; on such a take the cursor names the day too (`Fri 00:04:27.31`). It is kept between runs.
 
 - A take on the microphone counts from when its recording began, and each break in its sound moves the clock on by the time that passed.
 - A take opened counts from when its `session.json` says it began, and each break in its sound moves the clock on the same way. One segment of a take opened on its own has no start time of its own.

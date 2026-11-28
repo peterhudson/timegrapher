@@ -245,15 +245,15 @@
     },
     "crates/timegrapher-app/src/strip.rs": {
      "bounds": 5,
-     "comparisons": 10,
+     "comparisons": 8,
      "constants": 4,
-     "defaults": 1
+     "defaults": 0
     },
     "crates/timegrapher-app/src/strip/axis.rs": {
      "bounds": 0,
-     "comparisons": 2,
+     "comparisons": 3,
      "constants": 0,
-     "defaults": 0
+     "defaults": 1
     },
     "crates/timegrapher-app/src/strip/dots.rs": {
      "bounds": 1,
@@ -282,7 +282,7 @@
    },
    "total": {
     "bounds": 99,
-    "comparisons": 86,
+    "comparisons": 85,
     "constants": 62,
     "defaults": 2
    }
