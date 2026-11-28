@@ -67,12 +67,15 @@ jobs:
     outputs:
       full: ${{ steps.mode.outputs.full }}
       quick: ${{ steps.mode.outputs.quick }}
+      linux: ${{ steps.runner.outputs.linux }}
     steps:
-      # Only the script: release.yml's mode job runs the same one.
+      # Only the scripts: release.yml's mode job runs pr_mode.sh too.
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          sparse-checkout: .github/ci/pr_mode.sh
+          sparse-checkout: |
+            .github/ci/pr_mode.sh
+            .github/ci/linux_runner.sh
           sparse-checkout-cone-mode: false
       - name: Draft or ready
         id: mode
@@ -83,6 +86,23 @@ jobs:
           EVENT_DRAFT: ${{ github.event.pull_request.draft }}
           EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
         run: bash .github/ci/pr_mode.sh
+      # The runner for the heavy Linux jobs (test-linux, quick, regress):
+      # Peter's workstation when the code is ours and one of its runners is
+      # online, else GitHub's (.github/ci/linux_runner.sh, agents#48). A
+      # fork's pull request runs on GitHub's runners. A fork could still
+      # name the workstation in its own copy of this file, so the runners'
+      # job-started hook (.github/self-hosted/job-started.sh) refuses its
+      # jobs there too. The jobs' names, and so the required checks, are
+      # the same on either.
+      - name: Linux runner
+        id: runner
+        env:
+          # The token only for our own code (the same test as TRUSTED).
+          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]')) && secrets.RUNNER_STATUS_TOKEN || '' }}
+          TRUSTED: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]') }}
+          SWITCH: ${{ vars.SELF_HOSTED_LINUX }}
+          REPO: ${{ github.repository }}
+        run: bash .github/ci/linux_runner.sh
 
   test:
     name: test (${{ matrix.os }}${{ matrix.part && format(' {0}', matrix.part) || '' }})
@@ -135,6 +155,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
+      # On the workstation's runners (agents#48): keep the build folder,
+      # and the corpus audio, outside the cleaned workspace.
+      - name: Warm build folder (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: bash .github/ci/self_hosted_prep.sh
       - name: Full or light run
         id: changes
         shell: bash
@@ -174,8 +199,9 @@ jobs:
       # One cache key for each OS, as before Linux and macOS had jobs of
       # their own: the key otherwise names the job, and a new key would add a
       # cache while the repository's sit near GitHub's 10 GB limit.
+      # Not on the workstation, whose build folder stays warm on its own.
       - uses: Swatinem/rust-cache@v2
-        if: steps.changes.outputs.full != 'false'
+        if: steps.changes.outputs.full != 'false' && runner.environment == 'github-hosted'
         with:
           shared-key: test
           save-if: ${{ matrix.part != '2/2' }}
@@ -263,7 +289,11 @@ jobs:
         part: [1/2, 2/2]
     needs: mode
     if: *full-suite
-    runs-on: ${{ matrix.os }}
+    # The workstation or ubuntu-24.04 (the mode job); the name stays
+    # `test (ubuntu-24.04 1/2)` on either.
+    runs-on: ${{ fromJSON(needs.mode.outputs.linux) }}
+    permissions:
+      contents: read
     timeout-minutes: 45
     env: *test-env
     steps: *test-steps
@@ -396,7 +426,9 @@ jobs:
     name: quick (ubuntu-24.04)
     needs: mode
     if: ${{ needs.mode.outputs.quick == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(needs.mode.outputs.linux) }}
+    permissions:
+      contents: read
     timeout-minutes: 30
     env:
       CARGO_PROFILE_RELEASE_DEBUG: "0"
@@ -405,6 +437,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
+      # On the workstation's runners (agents#48): keep the build folder,
+      # and the corpus audio, outside the cleaned workspace.
+      - name: Warm build folder (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: bash .github/ci/self_hosted_prep.sh
       - name: Full or light run
         id: changes
         shell: bash
@@ -423,7 +460,7 @@ jobs:
           toolchain: '1.90.0'
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-        if: steps.changes.outputs.full != 'false'
+        if: steps.changes.outputs.full != 'false' && runner.environment == 'github-hosted'
         with:
           shared-key: test
           save-if: false
@@ -461,7 +498,9 @@ jobs:
         check: [engine, app, mcp]
     needs: mode
     if: *full-suite
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(needs.mode.outputs.linux) }}
+    permissions:
+      contents: read
     # Above the longest step's own limit plus about 6 minutes of setup,
     # so a hung job still fails within the hour (#2028).
     timeout-minutes: 60
@@ -478,6 +517,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
+      # On the workstation's runners (agents#48): keep the build folder,
+      # and the corpus audio, outside the cleaned workspace.
+      - name: Warm build folder (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: bash .github/ci/self_hosted_prep.sh
       # full=false also when a narrow run (the comment at the top) does not
       # need this check.
       - name: Full or light run
@@ -517,20 +561,25 @@ jobs:
       # space left on device". The runner image's Android SDK, .NET and
       # CodeQL bundle, which these jobs never use, make room.
       - name: Make disk room for the corpus audio
-        if: steps.changes.outputs.full != 'false'
+        if: steps.changes.outputs.full != 'false' && runner.environment == 'github-hosted'
         run: |
           df -h / | tail -1
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h / | tail -1
+      # The workstation keeps its own copy of the audio instead
+      # (.github/ci/self_hosted_audio.py), so the next step's links are free.
       - name: Corpus audio cache
         id: audio
-        if: steps.changes.outputs.full != 'false'
+        if: steps.changes.outputs.full != 'false' && runner.environment == 'github-hosted'
         uses: actions/cache@v6
         with:
           path: |
             corpus/takes/**/*.flac
           key: corpus-audio-${{ hashFiles('corpus/corpus.json') }}
           restore-keys: corpus-audio-
+      - name: Corpus audio kept on the workstation
+        if: steps.changes.outputs.full != 'false' && runner.environment == 'self-hosted'
+        run: python3 .github/ci/self_hosted_audio.py restore "$TG_CACHE/corpus-audio" corpus/takes
       # A cache from an older corpus.json can hold files the corpus has
       # since renamed; a take read as a whole folder would read them too.
       - name: Drop cached audio the corpus no longer lists
@@ -552,7 +601,7 @@ jobs:
       # GitHub's 10 GB limit with the corpus audio). Only the app check,
       # which builds the most, saves it.
       - uses: Swatinem/rust-cache@v2
-        if: steps.changes.outputs.full != 'false'
+        if: steps.changes.outputs.full != 'false' && runner.environment == 'github-hosted'
         with:
           shared-key: regress
           save-if: ${{ matrix.check == 'app' }}
@@ -641,6 +690,11 @@ jobs:
         run: |
           set -o pipefail
           cargo test --locked --release -p timegrapher-mcp --bins corpus_tests -- --nocapture 2>&1 | tee mcp-corpus.txt
+      # After the example take's audio is gone, as from the Actions cache. Only
+      # after a passing job, so a cut-off fetch is never kept.
+      - name: Keep the corpus audio on the workstation
+        if: success() && steps.changes.outputs.full != 'false' && runner.environment == 'self-hosted'
+        run: python3 .github/ci/self_hosted_audio.py keep "$TG_CACHE/corpus-audio" corpus/takes
       - name: Summary
         if: always()
         run: |

@@ -68,7 +68,8 @@ class DraftRule(unittest.TestCase):
             text = jobs(workflow)["mode"]
             self.assertIsNone(job_if(text))
             self.assertNotRegex(text, r"(?m)^    needs: ")
-            self.assertIn("sparse-checkout: .github/ci/pr_mode.sh\n", text)
+            # ci.yml's also takes linux_runner.sh (agents#48); only scripts.
+            self.assertRegex(text, r"sparse-checkout: (\|\n            )?\.github/ci/pr_mode\.sh\n")
             self.assertIn("        run: bash .github/ci/pr_mode.sh\n", text)
             self.assertNotIn("github.event.pull_request.draft", workflow.replace(
                 "EVENT_DRAFT: ${{ github.event.pull_request.draft }}", ""))
