@@ -197,8 +197,9 @@ and under it one pop-up, **Set**, of the six positions (with their keys)
 instead of the buttons (none while a take is on show or a test runs); the keys still work, and the bars aren't shown. Listen keeps
 its two icons, gives the take's length beside its caption ("Listen
 12:48"; on the narrowest windows in the Listen icon's hover instead),
-and shows Average Over's pop-up as **Avg 10 s**. At the narrowest, the
-boxes read "10 s" and "Wind"; their hovers give the whole words. Compact, Calibre keeps
+and its two boxes take the widest form that fits whole, down to **10 s**
+and **Wind** without their arrows, as at 1000 and 800 wide. Their hovers
+give the whole words. Compact, Calibre keeps
 its pop-up with the lift and beat rate under it; on the narrowest
 windows the lift alone, since nothing finds the lift while Auto finds the
 beat rate, with the beat rates in a **Beat Rate** submenu under the

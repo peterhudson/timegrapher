@@ -751,6 +751,68 @@ fn the_width_and_length_fields_show_their_units_whole() {
     }
 }
 
+/// The compact Listen card's two boxes, at 1000 and 800 wide, read
+/// "10 s" and "Wind" whole, as app.md says (Hugh on #2347): "Avg 10 s"
+/// has no room there, and neither box's words are cut, run into the
+/// other's or leave the card.
+#[test]
+fn the_compact_listen_boxes_read_10_s_and_wind_whole() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx);
+    let card = theme::palette(ctx.style().visuals.dark_mode).card;
+    let mut app = TimegrapherApp::with_devices(Vec::new(), None);
+    for w in [1000.0, 800.0] {
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(w, 800.0));
+        let mut out = None;
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            out = Some(ctx.run(input, |ctx| app.panels(ctx)));
+        }
+        let out = out.unwrap();
+        let texts = tests::painted_text(&out);
+        let drawn = |want: &str| {
+            let found: Vec<(egui::Rect, egui::Rect)> = out
+                .shapes
+                .iter()
+                .filter_map(|c| match &c.shape {
+                    egui::Shape::Text(t) if t.galley.text() == want => {
+                        Some((t.galley.rect.translate(t.pos.to_vec2()), c.clip_rect))
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(found.len(), 1, "{want} once at {w}: {texts}");
+            let (r, clip) = found[0];
+            assert!(holds(clip, r), "{want} cut at {w}: {r:?} in {clip:?}");
+            r
+        };
+        let avg = drawn("10 s");
+        let wind = drawn("Wind");
+        assert!(
+            avg.right() < wind.left(),
+            "the boxes run together at {w}: {avg:?}, {wind:?}"
+        );
+        // The Listen card: the card that holds the average's box.
+        let listen = out
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Rect(r) if r.fill == card && r.rect.contains_rect(avg) => Some(r.rect),
+                _ => None,
+            })
+            .min_by(|a, b| a.area().total_cmp(&b.area()))
+            .unwrap_or_else(|| panic!("no card holds the average at {w}"));
+        assert!(
+            listen.contains_rect(wind),
+            "Wind leaves the Listen card at {w}: {wind:?} in {listen:?}"
+        );
+        assert!(!texts.contains("Avg 10 s"), "{texts}");
+    }
+}
+
 /// Edit ▸ Remove All Masks asks before it brings every masked stretch
 /// back: the masks stay while the question is up.
 #[test]

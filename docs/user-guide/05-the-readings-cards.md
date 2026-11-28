@@ -292,8 +292,9 @@ On a narrow window the cards also take smaller forms by themselves:
 - **Current Position** becomes **Position**, with a **Set** pop-up of the
   six positions in place of the buttons, all ten when a 45° stop is
   current. The keys still work.
-- **Listen** gives the length beside its caption, and Average Over as
-  **Avg 10 s**. Wind steps down with the room: "Full 2.0 h ago" beside
+- **Listen** gives the length beside its caption, and its two boxes take
+  the widest form that fits whole, down to **10 s** and **Wind** without
+  their arrows, as at 1000 and 800 wide. Wind steps down with the room: "Full 2.0 h ago" beside
   its label, then "Wind: full 2.0 h ago" ("Wind: 54.1 h at start" once a
   take has begun), then "Wind 2.0 h", then "Wind" alone. Its hover keeps
   the whole of it.
