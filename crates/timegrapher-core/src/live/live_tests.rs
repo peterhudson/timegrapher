@@ -383,6 +383,22 @@ pub(super) fn viewer_phase_log(before_rate: f64, after_rate: f64) -> BeatLog {
 }
 
 #[test]
+fn an_imported_log_keeps_its_lock_template_until_a_restart() {
+    // The flag a file's reading set (#1503) stays with the analyzer it
+    // was read into, for the log the app reads its whole take from
+    // (#2536); a restart forgets the imported beats and the flag with them.
+    let mut log = viewer_phase_log(10.0, 10.0);
+    log.lock_template_kept = true;
+    let mut a = LiveAnalyzer::from_log(log, LiveConfig::default());
+    assert!(a.lock_template_kept());
+    a.restart();
+    assert!(!a.lock_template_kept());
+    let plain = LiveAnalyzer::from_log(viewer_phase_log(10.0, 10.0), LiveConfig::default());
+    assert!(!plain.lock_template_kept());
+    assert!(!LiveAnalyzer::new(48000, LiveConfig::default()).lock_template_kept());
+}
+
+#[test]
 fn trend_source_lines_never_take_the_other_sources_readings() {
     use crate::session::BeatErrorSource::{Drop, Unlock};
     let r = LiveAnalyzer::from_log(viewer_phase_log(10.0, 10.0), LiveConfig::default())

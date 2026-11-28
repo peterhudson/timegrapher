@@ -639,6 +639,11 @@ pub struct WindowFigures {
     /// allows, so no unlock beat error is given ([`unlock_inconsistent`],
     /// #1439).
     pub unlock_inconsistent: bool,
+    /// No window gives an unlock beat error, and more than half of those
+    /// that found both sides' edges, kept or culled, were withheld because
+    /// their two sides disagree ([`AmplitudeWindow::sides_disagree`],
+    /// Norm's ruling on #2486): the majority names the cause.
+    pub sides_disagree: bool,
 }
 
 /// [`WindowFigures`] of `wins`: the medians of their amplitude, Tick's and
@@ -658,7 +663,17 @@ pub fn window_figures(wins: &[&AmplitudeWindow], turned: bool) -> WindowFigures 
             })
             .flatten(),
         unlock_inconsistent: inconsistent,
+        sides_disagree: sides_disagree_most(wins),
     }
+}
+
+/// Whether no window of `wins` gives an unlock beat error and more than
+/// half of those that found both sides' edges were withheld for their
+/// sides ([`WindowFigures::sides_disagree`]).
+fn sides_disagree_most(wins: &[&AmplitudeWindow]) -> bool {
+    let found = wins.iter().filter(|w| w.found_both()).count();
+    let withheld = wins.iter().filter(|w| w.sides_disagree()).count();
+    wins.iter().all(|w| w.beat_error_unlock_ms.is_none()) && 2 * withheld > found
 }
 
 /// Whether the unlock beat errors of `wins`, as the figure takes them
@@ -707,10 +722,25 @@ pub fn floor_figures(
             w.beat_error_unlock_ms.is_some()
         }),
         unlock_inconsistent: figures.unlock_inconsistent,
+        sides_disagree: figures.sides_disagree,
     }
 }
 
 impl WindowFigures {
+    /// Why these give no unlock beat error, where they give none: its
+    /// signs disagreeing (#1439), its sides disagreeing in every window
+    /// (#1788), else not found.
+    pub fn drop_why(&self) -> crate::measure::DropWhy {
+        use crate::measure::DropWhy;
+        if self.unlock_inconsistent {
+            DropWhy::UnlockInconsistent
+        } else if self.sides_disagree {
+            DropWhy::SidesDisagree
+        } else {
+            DropWhy::UnlockNotFound
+        }
+    }
+
     /// `c` with no ± for a figure these give none of: a withheld amplitude
     /// ([`floor_figures`], #1429) has no ±, and nor has a beat error with
     /// no unlock figure, as a reading whose beat error comes from the drop
@@ -904,20 +934,12 @@ impl BeatErrorSource {
 
     /// The factual caveat for falling back to the drop.
     pub fn caveat(self) -> Option<crate::measure::Caveat> {
-        self.caveat_why(false)
+        self.caveat_why(crate::measure::DropWhy::UnlockNotFound)
     }
 
-    /// [`Self::caveat`], naming why: the unlock found `inconsistent`
-    /// ([`WindowFigures::unlock_inconsistent`], #1439), else not found.
-    pub fn caveat_why(self, inconsistent: bool) -> Option<crate::measure::Caveat> {
-        use crate::measure::{Caveat, DropWhy};
-        (self == Self::Drop).then_some(Caveat::BeatErrorFromDrop {
-            why: if inconsistent {
-                DropWhy::UnlockInconsistent
-            } else {
-                DropWhy::UnlockNotFound
-            },
-        })
+    /// [`Self::caveat`], naming `why` ([`WindowFigures::drop_why`]).
+    pub fn caveat_why(self, why: crate::measure::DropWhy) -> Option<crate::measure::Caveat> {
+        (self == Self::Drop).then_some(crate::measure::Caveat::BeatErrorFromDrop { why })
     }
 }
 
@@ -1346,7 +1368,7 @@ pub fn measure_reading(
     }
     if let Some(caveat) = log.escapement.beat_error_caveat(
         m.beat_error_source,
-        figures.unlock_inconsistent,
+        figures.drop_why(),
         m.watch_heard && !awaiting,
     ) {
         crate::measure::add(&mut m.caveats, caveat);

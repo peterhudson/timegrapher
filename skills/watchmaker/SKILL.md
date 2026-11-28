@@ -207,7 +207,10 @@ Work through them in this order. The reasons are in
      `beat_error_from_drop` says. Core uses the drop when the unlock
      wasn't found, or when the caveat's `why` is `unlock_inconsistent`:
      the unlock was found but its windows disagreed on which side is late,
-     so core judged it unfit to quote. Either way, don't quote
+     so core judged it unfit to quote, or `sides_disagree`: in most
+     windows that found both sides' unlocks, Tick's and Tock's
+     unlock-to-drop times disagreed, so one side's unlock was read on the
+     wrong sound. Either way, don't quote
      `beat_error_unlock_ms` over it. The drop can read differently from
      the unlock where Tick and Tock take different times from unlock to
      drop. Example: "Beat error 0.7 ms, read from the drop because the

@@ -387,9 +387,11 @@ fn analyse_figures(
     let beat_error_unlock_ms = timing::median_signed(uv.into_iter(), turned);
     // A co-axial's beat error is the unlock's alone, or none, said (#2313).
     let unlock = beat_error_unlock_ms.map(|_| crate::session::BeatErrorSource::Unlock);
-    let coaxial = log
-        .escapement
-        .beat_error_caveat(unlock, false, overall.is_some());
+    let coaxial = log.escapement.beat_error_caveat(
+        unlock,
+        crate::measure::DropWhy::UnlockNotFound,
+        overall.is_some(),
+    );
     LongReport {
         duration_s: duration,
         sample_rate: log.sample_rate,

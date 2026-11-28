@@ -350,3 +350,33 @@ fn a_copy_keeps_the_sides_withheld_as_faint() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A copy keeps each window's sides judged to disagree and which sides'
+/// amplitudes that left out (`bc/5`, #1788), each bit on its own.
+#[test]
+fn a_copy_keeps_the_sides_judged_to_disagree() {
+    let dir = folder("sides");
+    let files = take(&dir);
+    let paths: Vec<&Path> = files.iter().map(|f| f.as_path()).collect();
+    let cfg = StreamConfig::default();
+    let (mut log, peak) = crate::stream::analyze_files_peak(&paths, &cfg, |_| {}).unwrap();
+    let marks = [
+        ([true, false], false, [false; 2]),
+        ([false, true], false, [false; 2]),
+        ([false, false], true, [false; 2]),
+        ([true, true], true, [true, false]),
+    ];
+    assert!(log.amplitude_windows.len() >= marks.len());
+    for (w, (moved, disagree, faint)) in log.amplitude_windows.iter_mut().zip(marks) {
+        w.edit_extra(|x| {
+            x.sides_moved = moved;
+            x.sides_disagree = disagree;
+            x.faint_withheld = faint;
+        });
+    }
+    let (back, _) = decode(&encode(&log, peak)).expect("the copy reads");
+    for (b, w) in back.amplitude_windows.iter().zip(&log.amplitude_windows) {
+        assert_eq!(b.extra(), w.extra());
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

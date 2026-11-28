@@ -59,6 +59,23 @@ impl Escapement {
         drop_ms.filter(|_| self.is_swiss_lever())
     }
 
+    /// The ratio of a window's two sides' unlock-to-drop times (Tick over
+    /// Tock) its sides are judged against ([`crate::amplitude::sides_agree`],
+    /// Norm's ruling on #1788), given the ratios `ratios` of the windows
+    /// being screened: 1 on a Swiss lever, where one balance swings the
+    /// same arc each way through the same lever, so the two times are
+    /// equal; on a co-axial, whose two sides end on different events, the
+    /// watch's own, the median of `ratios`, and none with fewer than
+    /// [`crate::confidence::MIN_NOISE_VALUES`] of them, so no window is
+    /// judged.
+    pub fn sides_reference(self, ratios: &[f64]) -> Option<f64> {
+        if self.is_swiss_lever() {
+            return Some(1.0);
+        }
+        (ratios.len() >= crate::confidence::MIN_NOISE_VALUES)
+            .then(|| crate::dsp::median(&mut ratios.to_vec()))
+    }
+
     /// Whether a window whose two sides' edges were both outside the
     /// amplitude gate gives no unlock beat error: on a Swiss lever, where
     /// that gate says the edges were marked on the wrong sounds (#1977);
@@ -84,25 +101,22 @@ impl Escapement {
     /// on a Swiss lever, why it is the drop's where it is
     /// ([`crate::session::BeatErrorSource::caveat_why`]); on a co-axial
     /// whose readings are given (`read`), that it is the unlock's alone,
-    /// or why there is none (`inconsistent`: the unlock found, its signs
-    /// disagreeing, #1439; else not found). The one rule for every
+    /// or why there is none (`why`: the unlock's signs disagreeing,
+    /// #1439; its sides disagreeing, #1788; else not found,
+    /// [`crate::session::WindowFigures::drop_why`]). The one rule for every
     /// reading (Hugh's option (a) on #2317).
     pub fn beat_error_caveat(
         self,
         source: Option<crate::session::BeatErrorSource>,
-        inconsistent: bool,
+        why: crate::measure::DropWhy,
         read: bool,
     ) -> Option<crate::measure::Caveat> {
-        use crate::measure::{Caveat, DropWhy};
+        use crate::measure::Caveat;
         use crate::session::BeatErrorSource;
         if self.is_swiss_lever() {
-            return source.and_then(|s| s.caveat_why(inconsistent));
+            return source.and_then(|s| s.caveat_why(why));
         }
-        let why = (source != Some(BeatErrorSource::Unlock)).then_some(if inconsistent {
-            DropWhy::UnlockInconsistent
-        } else {
-            DropWhy::UnlockNotFound
-        });
+        let why = (source != Some(BeatErrorSource::Unlock)).then_some(why);
         read.then_some(Caveat::CoaxialBeatError { why })
     }
 
@@ -152,30 +166,42 @@ mod tests {
         use crate::session::BeatErrorSource::{Drop, Unlock};
         let c = Escapement::CoAxial;
         let said = |why| Some(Caveat::CoaxialBeatError { why });
-        assert_eq!(c.beat_error_caveat(Some(Unlock), false, true), said(None));
-        assert_eq!(c.beat_error_caveat(Some(Unlock), true, true), said(None));
+        let (false_, true_) = (DropWhy::UnlockNotFound, DropWhy::UnlockInconsistent);
+        assert_eq!(c.beat_error_caveat(Some(Unlock), false_, true), said(None));
+        assert_eq!(c.beat_error_caveat(Some(Unlock), true_, true), said(None));
         assert_eq!(
-            c.beat_error_caveat(None, false, true),
+            c.beat_error_caveat(None, false_, true),
             said(Some(DropWhy::UnlockNotFound))
         );
         assert_eq!(
-            c.beat_error_caveat(None, true, true),
+            c.beat_error_caveat(None, true_, true),
             said(Some(DropWhy::UnlockInconsistent))
         );
+        // Its sides disagreeing in every window (#1788) is said too.
+        assert_eq!(
+            c.beat_error_caveat(None, DropWhy::SidesDisagree, true),
+            said(Some(DropWhy::SidesDisagree))
+        );
         // No readings given: nothing said of the beat error.
-        assert_eq!(c.beat_error_caveat(None, false, false), None);
+        assert_eq!(c.beat_error_caveat(None, false_, false), None);
         // A lever's is #1439's, unchanged.
         let l = Escapement::SwissLever;
-        assert_eq!(l.beat_error_caveat(Some(Unlock), true, true), None);
-        assert_eq!(l.beat_error_caveat(None, false, true), None);
+        assert_eq!(l.beat_error_caveat(Some(Unlock), true_, true), None);
+        assert_eq!(l.beat_error_caveat(None, false_, true), None);
         assert_eq!(
-            l.beat_error_caveat(Some(Drop), true, true),
+            l.beat_error_caveat(Some(Drop), true_, true),
             Some(Caveat::BeatErrorFromDrop {
                 why: DropWhy::UnlockInconsistent
             })
         );
         assert_eq!(
-            l.beat_error_caveat(Some(Drop), false, false),
+            l.beat_error_caveat(Some(Drop), DropWhy::SidesDisagree, true),
+            Some(Caveat::BeatErrorFromDrop {
+                why: DropWhy::SidesDisagree
+            })
+        );
+        assert_eq!(
+            l.beat_error_caveat(Some(Drop), false_, false),
             Some(Caveat::FROM_DROP)
         );
     }

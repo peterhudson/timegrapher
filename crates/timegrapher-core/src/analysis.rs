@@ -585,7 +585,7 @@ fn analyze_read(
         awaiting: heard.awaiting,
     };
     summary.withhold_while_awaiting();
-    settle_beat_error(&mut summary, fits.figures.unlock_inconsistent);
+    settle_beat_error(&mut summary, fits.figures.drop_why());
     Analysis {
         summary,
         beats,
@@ -927,10 +927,10 @@ fn periods(
 }
 
 /// Withholds the readings where no watch is heard, and chooses the beat
-/// error shown, with its caveat: why it is from the drop where it is, the
-/// unlock found `inconsistent` or not found (#1439); never the drop on a
+/// error shown, with its caveat: why it is from the drop where it is
+/// (`why`, [`crate::session::WindowFigures::drop_why`]); never the drop on a
 /// co-axial, whose amplitude carries its caveat (#2313).
-fn settle_beat_error(summary: &mut Summary, inconsistent: bool) {
+fn settle_beat_error(summary: &mut Summary, why: crate::measure::DropWhy) {
     if !summary.watch_heard {
         summary.withhold_readings();
     }
@@ -941,7 +941,7 @@ fn settle_beat_error(summary: &mut Summary, inconsistent: bool) {
     )
     .map(|(_, source)| source);
     if let Some(caveat) =
-        escapement.beat_error_caveat(summary.beat_error_source, inconsistent, summary.watch_heard)
+        escapement.beat_error_caveat(summary.beat_error_source, why, summary.watch_heard)
     {
         crate::measure::add(&mut summary.caveats, caveat);
     }

@@ -455,6 +455,10 @@ pub struct LiveAnalyzer {
     /// ([`crate::analysis::lock_off_standard`], #2327): the verdict of
     /// its beats, which no lock of this engine's holds.
     log_off_standard: bool,
+    /// Whether an imported beat log's first chunk was read with the
+    /// template a short window gave ([`BeatLog::lock_template_kept`],
+    /// #1503): its readings carry the caveat a take's reading does.
+    log_template_kept: bool,
     /// Known jumps in an imported beat log. Replacing position/settling
     /// boundaries must not erase these intrinsic discontinuities.
     intrinsic_breaks: Vec<f64>,
@@ -552,6 +556,7 @@ impl LiveAnalyzer {
             candidates: VecDeque::new(),
             logged_bph: None,
             log_off_standard: false,
+            log_template_kept: false,
             intrinsic_breaks: Vec::new(),
             by_count: Vec::new(),
             breaks: Vec::new(),
@@ -566,6 +571,7 @@ impl LiveAnalyzer {
     pub fn from_log(log: BeatLog, cfg: LiveConfig) -> Self {
         let mut a = LiveAnalyzer::new(log.sample_rate, cfg);
         a.log_off_standard = crate::analysis::lock_off_standard(a.cfg.analysis.bph, &log);
+        a.log_template_kept = log.lock_template_kept;
         a.cfg.analysis.amplitude.lift_deg = log.lift_deg;
         a.cfg.analysis.amplitude.escapement = log.escapement;
         a.total = (log.duration_s * a.fs).round() as u64;
@@ -737,6 +743,7 @@ impl LiveAnalyzer {
         self.quiet_passes = 0;
         self.candidates.clear();
         self.intrinsic_breaks.clear();
+        self.log_template_kept = false;
         self.by_count.clear();
         self.breaks.clear();
         self.sides = beats::SideCheck::default();
@@ -772,6 +779,15 @@ impl LiveAnalyzer {
     /// none for a session heard live.
     pub fn by_count(&self) -> &[f64] {
         &self.by_count
+    }
+
+    /// Whether the beat log a recording was read into kept the template a
+    /// short window gave for its first chunk
+    /// ([`BeatLog::lock_template_kept`], #1503), so a log of this
+    /// analyzer's beats carries it as the file's reading does; false for
+    /// a session heard live, which locks on with that template.
+    pub fn lock_template_kept(&self) -> bool {
+        self.log_template_kept
     }
 
     /// The jumps in the beats alone, seconds, oldest first: those found
@@ -1656,8 +1672,7 @@ impl LiveAnalyzer {
         shown: bool,
     ) {
         let escapement = self.cfg.analysis.amplitude.escapement;
-        let inconsistent = figures.unlock_inconsistent;
-        if let Some(caveat) = escapement.beat_error_caveat(source, inconsistent, shown) {
+        if let Some(caveat) = escapement.beat_error_caveat(source, figures.drop_why(), shown) {
             measure::add(caveats, caveat);
         }
     }

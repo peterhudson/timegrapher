@@ -125,21 +125,105 @@ fn resolved(p: &Path) -> PathBuf {
     }
 }
 
-/// Refuse output files that are the input being read or each other,
-/// before anything is read or written: `analyze x.wav --beats x.wav`
-/// would put a CSV where the recording was (#1876).
+/// Whether `a` and `b` name one file: the same resolved path, or one
+/// folder and names that differ only in case, as on a disk that ignores
+/// case (macOS, Windows), where they are one file.
+fn same_file(a: &Path, b: &Path) -> bool {
+    a == b
+        || (a.parent() == b.parent()
+            && match (a.file_name(), b.file_name()) {
+                (Some(x), Some(y)) => x.eq_ignore_ascii_case(y),
+                _ => false,
+            })
+}
+
+/// The files a take keeps beside its sound, named by core: an output may
+/// name none of them, there or not yet (#2372).
+fn take_files() -> [&'static str; 10] {
+    [
+        timegrapher_core::take::MANIFEST,
+        timegrapher_core::take::RECORD,
+        timegrapher_core::take::CLOCK_LOG_NAMES[0],
+        timegrapher_core::take::CLOCK_LOG_NAMES[1],
+        timegrapher_core::take::CLOCK_LOG_NAMES[2],
+        timegrapher_core::library::POSITIONS_TEST_FILE,
+        timegrapher_core::library::POISE_TEST_FILE,
+        timegrapher_core::test_marks::FILE,
+        timegrapher_core::power_reserve::FILE,
+        timegrapher_core::recorder::STREAMED_TO,
+    ]
+}
+
+/// The folders a take keeps its analysis and reports in, named by core:
+/// an output may name no file inside them.
+fn take_folders() -> [&'static str; 3] {
+    [
+        timegrapher_core::analysis_take::DIR,
+        timegrapher_core::checkpoint::DIR,
+        timegrapher_core::take::REPORT_DIR,
+    ]
+}
+
+/// What of the take read from `read` (resolved, in the folder `dir`, for
+/// the recording named `input`) the resolved output `r` would write over,
+/// if anything.
+fn take_file(r: &Path, input: &Path, read: &Path, dir: &Path) -> Option<String> {
+    if same_file(r, read) {
+        return Some("the recording being read".into());
+    }
+    if [input, read]
+        .iter()
+        .any(|f| same_file(r, &resolved(&sidecar_path(f))))
+    {
+        return Some("the recording's sidecar".into());
+    }
+    if let Some(name) = take_files()
+        .into_iter()
+        .find(|n| same_file(r, &dir.join(n)))
+    {
+        return Some(format!("the take's {name}"));
+    }
+    if let Some(folder) = take_folders().into_iter().find(|f| {
+        let f = resolved(&dir.join(f));
+        r.starts_with(&f) || r.parent().is_some_and(|p| same_file(p, &f))
+    }) {
+        return Some(format!("in the take's {folder} folder"));
+    }
+    let sound = |f: &Path| {
+        let f = resolved(f);
+        same_file(r, &f) || same_file(r, &resolved(&sidecar_path(&f)))
+    };
+    let beside = r.parent() == Some(dir) && timegrapher_core::take::is_sound(r);
+    let listed = timegrapher_core::take_path::recordings_in(dir)
+        .unwrap_or_default()
+        .iter()
+        .any(|f| sound(f));
+    (beside || listed).then(|| "a recording of the take being read, or its sidecar".into())
+}
+
+/// Refuse output files that are the input being read, a file of the take
+/// it is read from, or each other, before anything is read or written:
+/// `analyze x.wav --beats x.wav` would put a CSV where the recording was
+/// (#1876), and `--beats TAKE/session.toml` where the take's calibre, lift
+/// and positions were (#2372). The recording read is the FLAC when its WAV
+/// was kept as one (core's `audio::kept_path`). The take's files are every
+/// sound file in the folder and each recording's sidecar, [`take_files`]
+/// and any file in [`take_folders`], refused whether or not they are there
+/// yet: a CSV named as one would be read as the take's.
 pub fn files_apart(input: &Path, outputs: &[(&str, &Path)]) -> Result<(), String> {
-    let read = resolved(input);
+    let named = resolved(input);
+    let read = resolved(&timegrapher_core::audio::kept_path(input).unwrap_or(input.to_path_buf()));
+    let dir = read.parent().map(Path::to_path_buf);
     let mut seen: Vec<(&str, PathBuf)> = Vec::new();
     for &(flag, p) in outputs {
         let r = resolved(p);
-        if r == read {
+        if let Some(what) = dir.as_deref().and_then(|d| take_file(&r, &named, &read, d)) {
             return Err(format!(
-                "{flag} {} is the recording being read; name another file",
+                "{flag} {} is {what}; name another file",
                 p.display()
             ));
         }
-        if let Some((other, _)) = seen.iter().find(|(_, s)| *s == r) {
+        if let Some((other, _)) = seen.iter().find(|(_, s)| same_file(s, &r)) {
             return Err(format!(
                 "{flag} and {other} both name {}; give each its own file",
                 p.display()
@@ -172,6 +256,97 @@ mod files_apart_tests {
         let e = files_apart(&wav, &[("--beats", &beats), ("--windows", &beats)]).unwrap_err();
         assert!(e.contains("--windows and --beats"), "{e}");
         assert!(files_apart(Path::new("x.wav"), &[("--trend", Path::new("t.csv"))]).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A take's own files are refused as outputs, there or not yet, in any
+    /// case, and so is the FLAC read for a WAV kept as one (#2372).
+    #[test]
+    fn an_output_may_not_be_a_file_of_the_take() {
+        let dir = std::env::temp_dir().join(format!("tg-apart-take-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Canonical, so a folder not yet made sits under the same path as
+        // the take's (macOS's temporary folder is reached through a link).
+        let dir = dir.canonicalize().unwrap();
+        let wav = dir.join("take_part01-001.wav");
+        std::fs::write(&wav, b"RIFF").unwrap();
+        std::fs::write(dir.join("take_part01-002.wav"), b"RIFF").unwrap();
+        std::fs::write(dir.join("session.toml"), b"").unwrap();
+        for sub in [
+            "analysis",
+            "analysis/sub",
+            "analysis.partial",
+            "session_report",
+            "elsewhere",
+        ] {
+            std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+        for (name, says) in [
+            ("session.toml", "take's session.toml"),
+            ("Session.TOML", "take's session.toml"),
+            ("session.json", "take's session.json"),
+            ("clock.csv", "take's clock.csv"),
+            ("clocklog.txt", "take's clocklog.txt"),
+            ("clock.log", "take's clock.log"),
+            ("take_part01-002.wav", "recording of the take"),
+            ("TAKE_PART01-001.WAV", "recording being read"),
+            ("positions-test.json", "take's positions-test.json"),
+            ("poise-test.json", "take's poise-test.json"),
+            ("test-marks.json", "take's test-marks.json"),
+            ("power-reserve.json", "take's power-reserve.json"),
+            ("streamed-to.txt", "take's streamed-to.txt"),
+            ("take_part01-001.wav.json", "recording's sidecar"),
+            ("take_part01-002.wav.json", "recording of the take"),
+            // A WAV left beside its FLAC, which the take's list leaves out.
+            ("take_part03-001.wav", "recording of the take"),
+            ("analysis/analysis.json", "in the take's analysis folder"),
+            // Two folders down, and in the folder named in another case.
+            ("analysis/sub/x.csv", "in the take's analysis folder"),
+            ("ANALYSIS/x.csv", "in the take's analysis folder"),
+            (
+                "analysis.partial/partial.json",
+                "in the take's analysis.partial folder",
+            ),
+            (
+                "session_report/report.html",
+                "in the take's session_report folder",
+            ),
+        ] {
+            let e = files_apart(&wav, &[("--windows", &dir.join(name))]).unwrap_err();
+            assert!(e.contains("--windows") && e.contains(says), "{name}: {e}");
+        }
+        assert!(files_apart(&wav, &[("--beats", &dir.join("beats.csv"))]).is_ok());
+        // A take file's name in a folder that is not the take's is written.
+        for name in ["session.toml", "take_part01-001.wav.json", "x.wav"] {
+            let other = dir.join("elsewhere").join(name);
+            assert!(files_apart(&wav, &[("--beats", &other)]).is_ok(), "{name}");
+        }
+        // Two outputs whose names differ only in case are one file.
+        let e = files_apart(
+            &wav,
+            &[
+                ("--beats", &dir.join("a.csv")),
+                ("--windows", &dir.join("A.csv")),
+            ],
+        )
+        .unwrap_err();
+        assert!(e.contains("--windows and --beats both name"), "{e}");
+        // The WAV kept as FLAC: the FLAC is what is read.
+        let gone = dir.join("take_part02-001.wav");
+        let flac = dir.join("take_part02-001.flac");
+        std::fs::write(&flac, b"fLaC").unwrap();
+        let e = files_apart(&gone, &[("--beats", &flac)]).unwrap_err();
+        assert!(e.contains("recording being read"), "{e}");
+        let e =
+            files_apart(&gone, &[("--beats", &dir.join("take_part02-001.wav.json"))]).unwrap_err();
+        assert!(e.contains("recording's sidecar"), "{e}");
+        // The sidecar of the FLAC actually read, named by the WAV's name.
+        let e = files_apart(
+            &gone,
+            &[("--beats", &dir.join("take_part02-001.flac.json"))],
+        )
+        .unwrap_err();
+        assert!(e.contains("recording's sidecar"), "{e}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -315,7 +315,11 @@ pub fn at_lift(
     w.even_deg = ed;
     w.odd_deg = od;
     // Its sides as read at the new lift; the caller screens them again.
-    w.edit_extra(|x| x.outlier_deg = [None; 2]);
+    w.edit_extra(|x| {
+        x.outlier_deg = [None; 2];
+        x.sides_moved = [false; 2];
+        x.sides_disagree = false;
+    });
     (w.even_unlock_ms, w.even_drop_ms) = (ek.map(|e| e[0]), ek.map(|e| e[1]));
     (w.odd_unlock_ms, w.odd_drop_ms) = (ok.map(|e| e[0]), ok.map(|e| e[1]));
     w.set_culled([ec, oc]);
@@ -500,6 +504,16 @@ pub struct Extra {
     /// same side's in its chunk ([`withhold_faint_by_chunk`], #1738): it
     /// keeps no edges and no amplitude, and is named in the caveats.
     pub faint_withheld: [bool; 2],
+    /// The window's two sides' unlock-to-drop times disagree
+    /// ([`sides_agree`], Norm's ruling on #1788): one side's edge is on the
+    /// wrong sound, so it gives no unlock beat error and no mean
+    /// amplitude, and both sides' amplitudes are left out
+    /// ([`screen_unlock_beat_error`]).
+    pub sides_disagree: bool,
+    /// Each side whose amplitude that screen moved to
+    /// [`Extra::outlier_deg`], so a screen run again with a new reference
+    /// can put it back.
+    pub sides_moved: [bool; 2],
 }
 
 impl Extra {
@@ -507,6 +521,7 @@ impl Extra {
         self.culled_ms.swap(0, 1);
         self.outlier_deg.swap(0, 1);
         self.faint_withheld.swap(0, 1);
+        self.sides_moved.swap(0, 1);
     }
 }
 
@@ -548,6 +563,7 @@ impl AmplitudeWindow {
         self.edit_extra(|x| {
             x.culled_ms[k] = None;
             x.outlier_deg[k] = None;
+            x.sides_moved[k] = false;
             x.faint_withheld[k] = true;
         });
     }
@@ -570,6 +586,16 @@ impl AmplitudeWindow {
     fn unlocks_s(&self) -> Option<[Option<f64>; 2]> {
         let (e, o) = (self.even_unlock_ms?, self.odd_unlock_ms?);
         Some([Some(e / 1000.0), Some(o / 1000.0)])
+    }
+
+    /// Whether both sides' edges were found, kept or culled.
+    pub fn found_both(&self) -> bool {
+        matches!(edges_found(self), [Some(_), Some(_)])
+    }
+
+    /// Whether the window's two sides disagree ([`Extra::sides_disagree`]).
+    pub fn sides_disagree(&self) -> bool {
+        self.extra().sides_disagree
     }
 
     /// Each side withheld as too faint ([`Extra::faint_withheld`]).
@@ -677,12 +703,26 @@ fn edges_found(w: &AmplitudeWindow) -> [Option<[f64; 2]>; 2] {
 /// at all (#2313, [`crate::escapement::Escapement::both_culled_unheard`]):
 /// its unlock-to-drop time is shorter than a lever's at the same
 /// amplitude, so a side out of the gate says nothing about its edges, and
-/// the far fences alone screen them. Windows without both sides' edges
-/// are left as they are. Returns how many sides were outside.
+/// the far fences alone screen them.
+///
+/// A window whose two sides' unlock-to-drop times disagree against the
+/// escapement's reference over `wins`, their ratio beyond
+/// [`SIDES_DISAGREE_RATIO`] of it either way ([`sides_agree`],
+/// [`crate::escapement::Escapement::sides_reference`]) has one side's edge
+/// on the wrong sound, and the times can't say which: it gives no unlock
+/// beat error, and both sides' amplitudes are left out
+/// ([`Extra::outlier_deg`], edges kept), so it gives no mean amplitude
+/// either. Cull, never fill (Norm's ruling on #1788, #1707). A window
+/// judged so by an earlier screen is judged afresh. Windows without both
+/// sides' edges are left as they are. Returns how many sides were
+/// outside the fences.
 pub fn screen_unlock_beat_error(
     wins: &mut [AmplitudeWindow],
     escapement: crate::escapement::Escapement,
 ) -> usize {
+    for w in wins.iter_mut() {
+        put_back_sides(w);
+    }
     let found: Vec<[Option<[f64; 2]>; 2]> = wins.iter().map(edges_found).collect();
     let fences = [0, 1].map(|k| {
         let mut v: Vec<f64> = found
@@ -696,6 +736,8 @@ pub fn screen_unlock_beat_error(
     let inside = |k: usize, e: [f64; 2]| {
         fences[k].is_some_and(|(lo, hi)| (lo..=hi).contains(&(e[1] - e[0])))
     };
+    let ratios: Vec<f64> = found.iter().filter_map(|f| sides_ratio(*f)).collect();
+    let r0 = escapement.sides_reference(&ratios);
     let mut n = 0;
     for (w, f) in wins.iter_mut().zip(found) {
         let [Some(e), Some(o)] = f else { continue };
@@ -710,6 +752,11 @@ pub fn screen_unlock_beat_error(
         }
         let ok = [inside(0, e), inside(1, o)];
         n += ok.iter().filter(|&&k| !k).count();
+        let share = share_of_ratio(SIDES_DISAGREE_RATIO);
+        if r0.is_some_and(|r0| !sides_agree(e[1] - e[0], o[1] - o[0], r0, share)) {
+            withhold_sides(w);
+            continue;
+        }
         w.beat_error_unlock_ms = if ok == [true, true] {
             unlock_beat_error_ms(w.beat_error_ms, Some(e[0]), Some(o[0]))
         } else {
@@ -719,22 +766,64 @@ pub fn screen_unlock_beat_error(
     n
 }
 
-/// `wins`, kept for either escapement, as read for `escapement` (#2313):
-/// on a co-axial, screened again ([`screen_unlock_beat_error`]); on a
-/// Swiss lever, with no unlock beat error in a window whose two sides are
-/// both culled, the one way the two reads differ. A log read for the same
-/// escapement is left as it was.
-pub fn kept_for(wins: &mut [AmplitudeWindow], escapement: crate::escapement::Escapement) {
-    if escapement.is_co_axial() {
-        screen_unlock_beat_error(wins, escapement);
+/// A window's two sides' unlock-to-drop times' ratio, Tick over Tock, from
+/// their edges as found (`f`, [`edges_found`]); none where a side's isn't
+/// a finite time after its unlock.
+fn sides_ratio(f: [Option<[f64; 2]>; 2]) -> Option<f64> {
+    let [Some(e), Some(o)] = f else { return None };
+    let (e, o) = (e[1] - e[0], o[1] - o[0]);
+    let r = e / o;
+    (e > 0.0 && o > 0.0 && r.is_finite()).then_some(r)
+}
+
+/// Withhold a window whose two sides disagree
+/// ([`screen_unlock_beat_error`]): no unlock beat error, and each side's
+/// amplitude moved to [`Extra::outlier_deg`], marked so
+/// [`put_back_sides`] can move it back.
+fn withhold_sides(w: &mut AmplitudeWindow) {
+    w.beat_error_unlock_ms = None;
+    let deg = [w.even_deg.take(), w.odd_deg.take()];
+    w.edit_extra(|x| {
+        x.sides_disagree = true;
+        for (k, a) in deg.into_iter().enumerate() {
+            if let Some(a) = a {
+                x.outlier_deg[k] = Some(a);
+                x.sides_moved[k] = true;
+            }
+        }
+    });
+}
+
+/// Undo [`withhold_sides`]: each side it moved to
+/// [`Extra::outlier_deg`] back to its amplitude, so a screen run again
+/// judges the window afresh. The unlock beat error is the screen's to give.
+fn put_back_sides(w: &mut AmplitudeWindow) {
+    let x = w.extra();
+    if !x.sides_disagree && x.sides_moved == [false; 2] {
         return;
     }
-    for w in wins.iter_mut() {
-        let [e, o] = w.culled();
-        if e.is_some() && o.is_some() {
-            w.beat_error_unlock_ms = None;
+    let back = [0, 1].map(|k| x.outlier_deg[k].filter(|_| x.sides_moved[k]));
+    w.even_deg = w.even_deg.or(back[0]);
+    w.odd_deg = w.odd_deg.or(back[1]);
+    w.edit_extra(|x| {
+        for k in 0..2 {
+            if x.sides_moved[k] {
+                x.outlier_deg[k] = None;
+            }
         }
-    }
+        x.sides_moved = [false; 2];
+        x.sides_disagree = false;
+    });
+}
+
+/// `wins`, kept for either escapement, as read for `escapement` (#2313):
+/// screened again ([`screen_unlock_beat_error`]) for it, so the two reads
+/// differ only as the screen does: a window with both sides culled gives
+/// no unlock beat error on a lever, and the sides are judged against the
+/// escapement's own reference (#1788). A log read for the same
+/// escapement is left as it was.
+pub fn kept_for(wins: &mut [AmplitudeWindow], escapement: crate::escapement::Escapement) {
+    screen_unlock_beat_error(wins, escapement);
 }
 
 /// [`reject_side_outliers`] for the windows of `wins` whose middle is at
@@ -774,7 +863,10 @@ pub fn reject_side_outliers_from(wins: &mut [AmplitudeWindow], span_s: f64, from
         let out = [lone(even[i], odd[i]), lone(odd[i], even[i])];
         let r = read[first + i];
         [w.even_deg, w.odd_deg] = [0, 1].map(|k| r[k].filter(|_| !out[k]));
-        w.edit_extra(|x| x.outlier_deg = [0, 1].map(|k| r[k].filter(|_| out[k])));
+        w.edit_extra(|x| {
+            x.outlier_deg = [0, 1].map(|k| r[k].filter(|_| out[k]));
+            x.sides_moved = [false; 2];
+        });
         n += usize::from(out[0]) + usize::from(out[1]);
     }
     n
@@ -1026,9 +1118,40 @@ fn short_reach_s() -> f64 {
 fn sides_go_long(unlocks_s: [Option<f64>; 2]) -> bool {
     let beyond = |u: Option<f64>| u.filter(|at| *at < -short_reach_s());
     match (beyond(unlocks_s[0]), beyond(unlocks_s[1])) {
-        (Some(e), Some(o)) => (e - o).abs() <= SIDES_UNLOCK_AGREE_SHARE * (e + o).abs() / 2.0,
+        (Some(e), Some(o)) => sides_agree(e, o, 1.0, SIDES_UNLOCK_AGREE_SHARE),
         _ => false,
     }
+}
+
+/// Whether a window's two sides, whose unlocks lie `e` and `o` from the
+/// drop (Tick, Tock), agree for a watch whose ratio of the two is `r0`
+/// ([`crate::escapement::Escapement::sides_reference`]): when `e` and
+/// `r0`·`o` lie within `share` of their mean of each other. Times only,
+/// so it holds at every lift. The one test for both the long templates
+/// ([`sides_go_long`], #1703, at [`SIDES_UNLOCK_AGREE_SHARE`]) and the
+/// screen of a window's unlock beat error ([`screen_unlock_beat_error`],
+/// at [`SIDES_DISAGREE_RATIO`] as a share, [`share_of_ratio`]).
+pub fn sides_agree(e: f64, o: f64, r0: f64, share: f64) -> bool {
+    (e - r0 * o).abs() <= share * (e + r0 * o).abs() / 2.0
+}
+
+/// How far apart a window's two sides' unlock-to-drop times may lie for
+/// its unlock beat error to stand ([`screen_unlock_beat_error`]), as the
+/// largest ratio of the longer to the shorter, against the escapement's
+/// own ratio (Norm's amended ruling on #1788, #2486): a healthy lever's
+/// two sides are not equal (the ratio's median 1.03 to 1.14 on the corpus
+/// takes Norm read, and a 90th percentile up to 1.30), while an unlock
+/// read on the wrong sound sits far out (about 1.6 on the #2318 clip, 0.55
+/// to 0.75 on `dd3235_DU_30min`). The log-midpoint of 1.30 and 1.57,
+/// rounded down, and frozen there. Wider than the long templates'
+/// [`SIDES_UNLOCK_AGREE_SHARE`], which chooses a template, not a cull.
+pub const SIDES_DISAGREE_RATIO: f64 = 1.4;
+
+/// A largest ratio `ratio` of two times as the share of their mean they
+/// may lie apart by, as [`sides_agree`] takes it: x and y with
+/// max(x/y, y/x) ≤ `ratio` are exactly those within this share.
+pub fn share_of_ratio(ratio: f64) -> f64 {
+    2.0 * (ratio - 1.0) / (ratio + 1.0)
 }
 
 /// The times of the good beats of one side (even or not) in `beats`.
@@ -1125,6 +1248,10 @@ fn faint_sides(heights: &[Option<f32>]) -> Vec<bool> {
         .map(|h| h.is_some_and(|h| h < FAINT_SOUND_MAX_SHARE * median))
         .collect()
 }
+
+#[cfg(test)]
+#[path = "amplitude_sides_tests.rs"]
+mod sides_tests;
 
 #[cfg(test)]
 mod tests {

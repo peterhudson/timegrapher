@@ -940,6 +940,28 @@ fn an_opened_take_keeps_the_sides_it_named_by_count() {
 }
 
 #[test]
+fn an_opened_take_keeps_its_lock_template_caveat() {
+    // A file whose first chunk was read with the short template (#1503):
+    // the log the readings come from says so, as session's does, and its
+    // whole take carries core's caveat (#2536).
+    let mut log = context_log();
+    log.lock_template_kept = true;
+    let live = LiveAnalyzer::from_log(log, LiveConfig::default());
+    let derived = log_of(&live).expect("log");
+    assert!(derived.lock_template_kept);
+    let m = timegrapher_core::session::measure(&derived, None, 0.0, 120.0);
+    assert!(
+        m.caveats
+            .contains(&timegrapher_core::measure::Caveat::LockTemplateKept),
+        "{:?}",
+        m.caveats
+    );
+    // One read without it carries none.
+    let plain = LiveAnalyzer::from_log(context_log(), LiveConfig::default());
+    assert!(!log_of(&plain).expect("log").lock_template_kept);
+}
+
+#[test]
 fn derived_log_keeps_known_cuts_and_beat_quality() {
     let log = context_log();
     let original: Vec<_> = log
