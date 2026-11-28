@@ -299,4 +299,41 @@ mod tests {
             }
         );
     }
+
+    /// A user's calibre whose own name the table also resolves is the
+    /// file's own, read by that name or by an alias: its lift decides,
+    /// not the table row's (#2234, Trevor 107 on #2540).
+    #[test]
+    fn a_users_calibre_with_a_table_name_is_the_files_own() {
+        use crate::calibre_store::{CustomCalibre, UserCalibres};
+        let custom = |name: &str, alias: &str, lift| CustomCalibre {
+            name: name.into(),
+            maker: None,
+            aliases: vec![alias.into()],
+            bph: None,
+            lift_angle_deg: lift,
+            escape_teeth: None,
+            escapement: None,
+            wheels: Vec::new(),
+            notes: None,
+        };
+        let mut user = UserCalibres::default();
+        // Unitas 6497-2 gives a lift; this one does not.
+        user.put_custom(custom("6497-2", "Bench-A", None));
+        // The table's row for 2824-2 is another; this one gives a lift.
+        user.put_custom(custom("2824-2", "Bench-B", Some(44.0)));
+        for (line, name) in [("6497-2", "6497-2"), ("2824-2", "2824-2")] {
+            let row = crate::calibres::find(line).map(|r| r.calibre.clone());
+            assert!(row.is_some_and(|r| r != name), "{line}");
+        }
+        let known = |line: &str| {
+            let m: Manifest = toml::from_str(&format!("calibre = \"{line}\"\nlift = 52")).unwrap();
+            let cal = calibre_named(line, &user).unwrap();
+            (cal.name.clone(), file_lift_known(&m, Some(&cal)))
+        };
+        // By its own name: its missing lift makes the 52 assumed.
+        assert_eq!(known("6497-2"), ("6497-2".into(), Some(false)));
+        // By an alias the table does not know: its lift makes 52 typed.
+        assert_eq!(known("Bench-B"), ("2824-2".into(), Some(true)));
+    }
 }
