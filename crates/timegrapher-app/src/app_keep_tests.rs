@@ -1423,10 +1423,10 @@ fn a_moved_takes_lift_becomes_known_from_its_watch() {
     let mut w = library::Watch::new("Own");
     w.lift = Some(52.0);
     let mut doc: toml_edit::DocumentMut = "lift = 52\nlift_known = false\n".parse().unwrap();
-    assert!(super::watches_pane::settings_of(&mut doc, &w, &cal));
+    assert!(library::settings_of(&mut doc, &w, &cal.user));
     assert_eq!(doc.get("lift_known").and_then(|i| i.as_bool()), Some(true));
     // Already so: nothing changes, and nothing is read again.
-    assert!(!super::watches_pane::settings_of(&mut doc, &w, &cal));
+    assert!(!library::settings_of(&mut doc, &w, &cal.user));
 }
 
 /// A watch whose calibre's rate, or its own, is outside 12,000 to 72,000
@@ -1441,7 +1441,7 @@ fn a_watch_rate_outside_the_range_files_a_take_on_auto() {
     for w in [&iwc, &own] {
         assert_eq!(cal.watch_bph(w), None, "{}", w.name);
         let mut doc = toml_edit::DocumentMut::new();
-        super::watches_pane::settings_of(&mut doc, w, &cal);
+        library::settings_of(&mut doc, w, &cal.user);
         assert!(doc.get("bph").is_none(), "{}: {doc}", w.name);
     }
     assert_eq!(cal.bph("IWC 9520"), None);

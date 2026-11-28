@@ -225,6 +225,30 @@ impl Watch {
         self.bph.filter(|b| !crate::set_rate::in_range(*b))
     }
 
+    /// The lift angle a take of the watch starts with, and is read with
+    /// once moved into it ([`file_take_under`]): its calibre's, from the
+    /// table and the user's calibres (`user`), where it gives one, else the
+    /// watch's own, where inside [`crate::input_domain::LIFT_RANGE_DEG`].
+    pub fn take_lift(&self, user: &crate::calibre_store::UserCalibres) -> Option<f64> {
+        let cat = crate::calibre_store::Catalog::new(user);
+        cat.find(self.calibre.as_deref().unwrap_or_default())
+            .and_then(|e| e.lift_angle_deg())
+            .or(self
+                .lift
+                .filter(|l| crate::input_domain::LIFT_RANGE_DEG.contains(l)))
+    }
+
+    /// The beat rate a take of the watch starts with, as
+    /// [`Watch::take_lift`]: its calibre's where inside the range
+    /// ([`crate::set_rate::in_range`]), else [`Watch::beat_rate`].
+    pub fn take_bph(&self, user: &crate::calibre_store::UserCalibres) -> Option<u32> {
+        let cat = crate::calibre_store::Catalog::new(user);
+        cat.find(self.calibre.as_deref().unwrap_or_default())
+            .and_then(|e| e.bph())
+            .filter(|b| crate::set_rate::in_range(*b))
+            .or(self.beat_rate())
+    }
+
     /// Set the lift angle by hand: refused when the calibre gives one
     /// (`given`), or out of range.
     pub fn set_lift(&mut self, lift: f64, given: FromCalibre) -> Result<(), String> {
@@ -2682,6 +2706,101 @@ fn read_take(dir: &Path, bytes: u64) -> Result<Take, String> {
             .map(|r| r.summary()),
         wind_h: manifest.as_ref().and_then(crate::full_wind::take_wind_h),
     })
+}
+
+/// Write into the session.toml of the take at `take`, moved into the
+/// watch `w`, what it is read with from now on (#1283, Peter's call):
+/// the watch's name, and the calibre, lift angle and beat rate the watch
+/// has set (the calibre's own where the table or the user's calibres
+/// `user` give them, as a new take of it starts with), each in place of
+/// the take's. What the watch leaves unset stays as recorded, and so does
+/// the rest of the file, comments too. A take kept as its analysis alone
+/// keeps what it was measured with: its sound is gone, so it can't be
+/// read again. A take with no session.toml has nothing to change.
+///
+/// The watch's beat rate stands though the take was recorded on Auto
+/// (Peter on #2357): such a take's session.json is marked
+/// ([`crate::set_rate::mark_watch_rate`]). Only one recorded on Auto
+/// ([`crate::set_rate::recorded_on_auto`]) is marked (#2450): a take
+/// recorded at a set rate, or whose session.json can't be read, keeps
+/// that file as it is.
+///
+/// Whether what the take is read with changed, so it is read again. The
+/// one rule for every move of a take into a watch: the app's and
+/// `timegrapher watches move-take` (#2453).
+pub fn file_take_under(
+    take: &Path,
+    w: &Watch,
+    user: &crate::calibre_store::UserCalibres,
+) -> Result<bool, String> {
+    let file = take.join(take::MANIFEST);
+    let text = match crate::recorder::read_settled(&file) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("{}: {e}", file.display())),
+    };
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("Can't read {}: {e}", file.display()))?;
+    if !w.name.is_empty() {
+        doc["watch"] = toml_edit::value(w.name.as_str());
+    }
+    let kept = crate::checkpoint::is_kept(take);
+    let mut changed = !kept && settings_of(&mut doc, w, user);
+    if doc.to_string() != text {
+        write_atomic(&file, doc.to_string().as_bytes())?;
+    }
+    if !kept && w.take_bph(user).is_some() && crate::set_rate::recorded_on_auto(take) {
+        changed |= crate::set_rate::mark_watch_rate(take)?;
+    }
+    Ok(changed)
+}
+
+/// [`file_take_under`]'s settings: the watch's calibre (with its own
+/// wheels, for one of the user's), lift angle and beat rate, where it has
+/// them, put into `doc`. Whether any differed from the take's.
+pub fn settings_of(
+    doc: &mut toml_edit::DocumentMut,
+    w: &Watch,
+    user: &crate::calibre_store::UserCalibres,
+) -> bool {
+    use crate::calibre_store::{Catalog, Entry};
+    let number = |doc: &toml_edit::DocumentMut, key: &str| {
+        doc.get(key)
+            .and_then(|i| i.as_float().or(i.as_integer().map(|n| n as f64)))
+    };
+    let mut changed = false;
+    if let Some(c) = w.calibre.as_deref().filter(|c| !c.is_empty()) {
+        if doc.get("calibre").and_then(|i| i.as_str()) != Some(c) {
+            doc["calibre"] = toml_edit::value(c);
+            doc.remove("wheels");
+            if let Some(Entry::Custom(custom)) = Catalog::new(user).find(c) {
+                if !custom.wheels.is_empty() {
+                    let mut t = toml_edit::Table::new();
+                    for wheel in &custom.wheels {
+                        t.insert(&wheel.name, toml_edit::value(wheel.period_s));
+                    }
+                    doc["wheels"] = toml_edit::Item::Table(t);
+                }
+            }
+            changed = true;
+        }
+    }
+    if let Some(l) = w.take_lift(user) {
+        let known = doc.get("lift_known").and_then(|i| i.as_bool());
+        if number(doc, "lift") != Some(l) || known == Some(false) {
+            doc["lift"] = toml_edit::value(l);
+            doc["lift_known"] = toml_edit::value(true);
+            changed = true;
+        }
+    }
+    if let Some(b) = w.take_bph(user) {
+        if number(doc, "bph") != Some(f64::from(b)) {
+            doc["bph"] = toml_edit::value(i64::from(b));
+            changed = true;
+        }
+    }
+    changed
 }
 
 #[path = "library_add.rs"]
