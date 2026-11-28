@@ -2154,12 +2154,27 @@ mod tests {
         o.file = Some(wav);
         o.bph = Some(28800);
         o.power_reserve = true;
-        // Played back in real time, so the stop comes part way through.
-        o.live = Some(base.join("live.json"));
+        // Played back in real time, so the stop comes part way through:
+        // once the live file says 4 s have been heard, however slowly a
+        // busy machine plays them back (#2549), and never after the
+        // recording is done.
+        let live_path = base.join("live.json");
+        o.live = Some(live_path.clone());
         o.stop_file = Some(stop.clone());
-        let asker = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(4));
-            fs::write(stop, "").unwrap();
+        let asker = std::thread::spawn(move || loop {
+            let doc: Option<serde_json::Value> = fs::read_to_string(&live_path)
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok());
+            if let Some(d) = doc {
+                if d["done"].as_bool() == Some(true) {
+                    break;
+                }
+                if d["recorded_s"].as_f64().is_some_and(|s| s >= 4.0) {
+                    fs::write(&stop, "").unwrap();
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
         });
         let (_, rep, _) = record(&o).unwrap();
         asker.join().unwrap();
